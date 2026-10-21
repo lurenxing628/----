@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 import re
-from copy import deepcopy
 from typing import Dict, Optional, Union
 
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -110,4 +109,4 @@ def normalize_process_input(action, payload):
         return {field: _source_operations(payload[field]), "discard_group_refs": discarded}
     # The existing normalizer validates shape/capacity without erasing raw spaces.
     normalize_route_preview_input(payload["route"])
-    return {field: deepcopy(payload[field]), "discard_group_refs": discarded}
+    return {field: payload[field], "discard_group_refs": discarded}

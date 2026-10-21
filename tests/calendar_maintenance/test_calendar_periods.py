@@ -154,7 +154,8 @@ def test_explicit_periods_replace_legacy_nonminute_hours(schema_conn, personal):
         before = domain.snapshot(DAY)
         assert domain.proposed_row({"periods": LUNCH}, before).shift_hours == 8
         with TransactionManager(schema_conn).transaction(begin_immediate=True):
-            result = domain.apply("upsert", {"date": DAY, "fields": {"type": "work", "periods": LUNCH}}, before)
+            normalized = domain.normalize("upsert", {"date": DAY, "fields": {"type": "work", "periods": LUNCH}})
+            result = domain._apply_checked("upsert", normalized, domain.snapshot(DAY))
     else:
         schema_conn.execute("INSERT INTO WorkCalendar(date,shift_start,shift_hours) VALUES (?,'08:00',1.234)", (DAY,))
         schema_conn.commit()

@@ -62,10 +62,10 @@ class PreflightChecks:
             gaps.append(issue("quantity_unknown", "批次数量未填写或无效，请到批次管理补填。"))
         if not number(op["seq"], integer=True, positive=True):
             gaps.append(issue("sequence_invalid", "工序顺序号不合法，排不出前后关系。请到批次管理核对工序号。"))
-        if op["op_type_id"] not in self.catalogs["op_type"]:
-            gaps.append(issue("op_type_missing", "这道工序的工种没有登记。请到资料总览补登工种。"))
         work_type = self.catalogs["op_type"].get(op["op_type_id"])
-        if work_type is not None and not supports_source(work_type["category"], op["source"]):
+        if work_type is None:
+            gaps.append(issue("op_type_missing", "这道工序的工种没有登记。请到资料总览补登工种。"))
+        elif not supports_source(work_type["category"], op["source"]):
             gaps.append(issue("source_category_mismatch", "该工种不支持本序所选的自制或外协归属，请先核对工艺。"))
         if op["source"] == "internal":
             for key, label in (("setup_hours", "换型工时"), ("unit_hours", "单件工时")):
@@ -137,9 +137,7 @@ class PreflightChecks:
                 gaps.append(issue(kind + "_identity_missing", "实际记录的原设备、人员或供应商身份缺失，请核对历史记录。"))
         return gaps
 
-    def readiness(self, batch, enabled):
-        if not enabled:
-            return []
+    def readiness(self, batch):
         if hasattr(self, "availability") and any(row["id"] in self.availability.reviews for row in self.materials[batch["batch_id"]]):
             status, problems = self.availability.readiness_state(batch, date.today().isoformat())
             return problems or ([] if status == "yes" else [issue("material_not_ready", "按当前日期的到料，物料尚未全部齐套。")])
@@ -157,10 +155,8 @@ class PreflightChecks:
     def operation_readiness(self, batch, op, settings):
         if not settings["ready_check"]:
             return [], None
-        if not self.materials[batch["batch_id"]]:
-            return self.readiness(batch, True), None
         if not any(row["id"] in self.availability.reviews for row in self.materials[batch["batch_id"]]):
-            return self.readiness(batch, True), None
+            return self.readiness(batch), None
         try:
             day = self.availability.operation_release(batch, op, settings.get("material_strategy", "strict"))
         except WorkbenchCommandRejected as exc:

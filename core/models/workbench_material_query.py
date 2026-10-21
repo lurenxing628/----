@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import ClassVar, Dict, Optional
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_table_query import normalize_column_filters, table_columns
@@ -11,6 +11,8 @@ from core.models.workbench_resource_table_query import normalize_column_filters,
 
 @dataclass(frozen=True)
 class MaterialPageRequest:
+    kind: ClassVar[str] = "material"
+    category: ClassVar[Optional[str]] = None
     query: str = ""
     status: Optional[str] = None
     number: int = 1

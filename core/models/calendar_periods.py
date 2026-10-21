@@ -10,9 +10,11 @@ MAX_WORK_PERIODS = 8
 DEFAULT_WORK_PERIODS = [{"start": "08:30", "end": "11:50", "day_offset": 0},
                         {"start": "13:30", "end": "17:30", "day_offset": 0}]
 
+_CLOCK_RE = re.compile(r"(?:[01]\d|2[0-3]):[0-5]\d")
+
 
 def _clock(value):
-    if not isinstance(value, str) or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value):
+    if not isinstance(value, str) or not _CLOCK_RE.fullmatch(value):
         raise ValidationError("工作时段请填写小时和分钟，例如 08:00。", field="periods")
     hour, minute = map(int, value.split(":"))
     return hour * 60 + minute
@@ -76,13 +78,11 @@ def period_windows(day, periods):
 
 
 def period_hours(periods):
-    return sum((high - low).total_seconds() for low, high in
-               period_windows(datetime(2000, 1, 1).date(), periods)) / 3600
-
-
-def payload_periods(payload):
-    """The public array wins only when explicitly provided, including an empty day."""
-    return normalize_periods(payload["periods"]) if "periods" in payload else decode_periods(payload.get("periods_json"))
+    total_minutes = 0
+    for p in periods:
+        start, end = _clock(p["start"]), _clock(p["end"])
+        total_minutes += end - start + (1440 if end <= start else 0)
+    return total_minutes / 60
 
 
 def period_summary(periods, start="08:00"):

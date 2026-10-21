@@ -1,7 +1,6 @@
 """Linear snapshot indexing and whole-file validation for sparse hours edits."""
 
 from collections import defaultdict
-from copy import deepcopy
 
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -9,8 +8,8 @@ from core.models.workbench_process_commands import process_number, process_ref
 from core.models.workbench_resource_action import action_row, reject_action_row
 
 from .file_hours_values import HOURS_FIELDS, assertions, flat_hours, hours_values, row_key, supplied_values
+from .part_actions_facts import plain_part_action_facts as _plain
 from .projection import public_sequence, require_ref
-from .queries import _plain
 from .zero_hours import zero_confirmation_required
 
 
@@ -77,7 +76,7 @@ class HoursFilePreview:
 
     def row(self, decoded):
         row = action_row(decoded["row"], action="update")
-        row["errors"] = deepcopy(decoded["errors"])
+        row["errors"] = list(decoded["errors"])
         try:
             values = supplied_values(decoded["values"])
             code, sequence = row_key(values)
@@ -85,14 +84,14 @@ class HoursFilePreview:
             part_ref, operation = self.resolve(values)
             group = self.group(operation)
             row.update(entity_ref=part_ref, before=flat_hours(operation, group),
-                       expected={"part_ref": part_ref, "operation_ref": operation["ref"], "operation": _plain(deepcopy(operation)),
-                                 "group": _plain(deepcopy(group))})
+                       expected={"part_ref": part_ref, "operation_ref": operation["ref"], "operation": _plain(operation),
+                                 "group": _plain(group)})
             assertions(values, operation, group)
             updates = hours_values(values, operation, group)
             # 归属确认过期只挡真正改工时的行；原样导回的行判不变。
             if any(updates[key] != row["before"][key] for key in updates):
                 self.source_ready(operation)
-            row["input"] = {"values": deepcopy(values), "hours": updates}
+            row["input"] = {"values": values, "hours": updates}
         except ValidationError as exc:
             reject_action_row(row, exc.message, field=exc.field or "input")
         except WorkbenchCommandRejected as exc:

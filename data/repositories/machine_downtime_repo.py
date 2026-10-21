@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 from core.models import MachineDowntime
 
@@ -46,67 +46,10 @@ class MachineDowntimeRepository(BaseRepository):
         rows = self.fetchall(sql, tuple(params))
         return [MachineDowntime.from_row(r) for r in rows]
 
-    def list_active_after(self, machine_id: str, start_time: str) -> List[MachineDowntime]:
-        """
-        列出某设备在 start_time 之后仍可能影响排产的有效停机区间（end_time > start_time）。
-
-        口径：坏时间行经 aps_parse_dt 解析为 NULL、比较为假后**有意从结果剔除**，不做坏行兜底。
-        本方法供排产资源占用/延误诊断当“约束区间”用，坏行没有可比较边界，纳入会污染判定；
-        与 list_active_overlaps_with_machine_names（明细展示，兜底坏行做降级提示）口径相反但各有其所。
-        写入层（MachineDowntimeService.create/create_by_scope）已强制归一，坏行仅可能来自外部直写/导入。
-        """
-        parsed_start_time = require_dt_for_sql(start_time, "停机查询开始时间写法不对，无法读取停机线索")
-        rows = self.fetchall(
-            f"""
-            SELECT id, machine_id, scope_type, scope_value, start_time, end_time, reason_code, reason_detail,
-                   status, created_at, updated_at
-            FROM MachineDowntimes
-            WHERE machine_id = ?
-              AND status = 'active'
-              AND {time_dt(None, "end_time")} > ?
-            ORDER BY start_time ASC, id ASC
-            """,
-            (machine_id, parsed_start_time),
-        )
-        return [MachineDowntime.from_row(r) for r in rows]
-
-    def list_active_by_machines(self, machine_ids: List[str]) -> Dict[str, List[MachineDowntime]]:
-        """批量取多台设备的全部有效（status='active'）停机段，按 machine_id 分组、组内 start_time/id 升序。
-
-        与 list_active_after 的等价前提：
-        - list_active_after 用 SQL 预筛 end_time>窗口起点，再由调用方在 Python 里做精确重叠判定
-          （d_end<=start 或 d_start>=end 则跳过）。这里把 SQL 预筛去掉、改在调用方对全部 active 段
-          做同一段 Python 重叠判定——因重叠成立必然 end_time>窗口起点，候选集合与命中顺序逐字一致。
-        - 坏时间段：list_active_after 由 SQL time_dt 解析为 NULL 后剔除；这里这些段会进入 Python，
-          但 parse_dt 解析为 None 后被同样的 None 判定剔除,剔除结果一致。
-        - 组内排序 start_time ASC, id ASC 保持“首个重叠段命中”语义不变。
-        """
-        ids = sorted({str(m).strip() for m in machine_ids if str(m or "").strip()})
-        out: Dict[str, List[MachineDowntime]] = {mid: [] for mid in ids}
-        if not ids:
-            return out
-        for i in range(0, len(ids), 900):  # SQLite 默认变量上限约 999，分块留余量
-            chunk = ids[i : i + 900]
-            placeholders = ", ".join("?" for _ in chunk)
-            rows = self.fetchall(
-                f"""
-                SELECT id, machine_id, scope_type, scope_value, start_time, end_time, reason_code, reason_detail,
-                       status, created_at, updated_at
-                FROM MachineDowntimes
-                WHERE machine_id IN ({placeholders})
-                  AND status = 'active'
-                ORDER BY machine_id, start_time ASC, id ASC
-                """,
-                tuple(chunk),
-            )
-            for row in rows:
-                out.setdefault(str(row.get("machine_id") or ""), []).append(MachineDowntime.from_row(row))
-        return out
-
     def list_active_overlaps_with_machine_names(self, start_time: str, end_time: str) -> List[Dict[str, Any]]:
         parsed_start_time = require_dt_for_sql(start_time, "停机重叠查询时间写法不对，无法读取停机线索")
         parsed_end_time = require_dt_for_sql(end_time, "停机重叠查询时间写法不对，无法读取停机线索")
-        rows = self.fetchall(
+        return self.fetchall(
             f"""
             SELECT md.machine_id, m.name AS machine_name, md.start_time, md.end_time, md.reason_code, md.reason_detail
             FROM MachineDowntimes md
@@ -117,7 +60,6 @@ class MachineDowntimeRepository(BaseRepository):
             """,
             (parsed_end_time, parsed_start_time),
         )
-        return [dict(row) for row in rows]
 
     def has_overlap(
         self,
@@ -152,30 +94,6 @@ class MachineDowntimeRepository(BaseRepository):
         sql += " LIMIT 1"
         return bool(self.fetchvalue(sql, tuple(params)))
 
-    def list_active_machine_ids_at(self, now_str: str) -> Set[str]:
-        """返回此刻处于有效停机的设备集合（可用性判定）。
-
-        口径：坏时间行解析为 NULL、比较为假后**有意排除**，不做坏行兜底。坏行对任意 now 恒满足
-        兜底条件，若计入会把该设备永久误标为停机不可用；故与明细查询的坏行兜底口径相反。
-        """
-        parsed_now = require_dt_for_sql(now_str, "停机状态查询时间写法不对，无法读取停机状态")
-        rows = self.fetchall(
-            f"""
-            SELECT DISTINCT machine_id
-            FROM MachineDowntimes
-            WHERE status='active'
-              AND {time_dt(None, "start_time")} <= ?
-              AND {time_dt(None, "end_time")} > ?
-            """,
-            (parsed_now, parsed_now),
-        )
-        out: Set[str] = set()
-        for r in rows:
-            mid = str((r or {}).get("machine_id") or "").strip()
-            if mid:
-                out.add(mid)
-        return out
-
     def create(self, payload: Dict[str, Any]) -> MachineDowntime:
         d = payload if isinstance(payload, MachineDowntime) else MachineDowntime.from_row(payload)
         cur = self.execute(
@@ -195,20 +113,18 @@ class MachineDowntimeRepository(BaseRepository):
                 d.status or "active",
             ),
         )
-        lastrowid = getattr(cur, "lastrowid", None)
-        d.id = int(lastrowid) if lastrowid is not None else None
+        d.id = int(cur.lastrowid) if cur.lastrowid is not None else None
         return d
 
     def update(self, downtime_id: int, updates: Dict[str, Any]) -> None:
         if not updates:
             return
-        allowed = {"start_time", "end_time", "reason_code", "reason_detail", "status"}
         set_parts: List[str] = []
         params: List[Any] = []
         for key in ("start_time", "end_time", "reason_code", "reason_detail", "status"):
-            if key in updates and key in allowed:
+            if key in updates:
                 set_parts.append(f"{key} = ?")
-                params.append(updates.get(key))
+                params.append(updates[key])
         if not set_parts:
             return
         set_parts.append("updated_at = CURRENT_TIMESTAMP")

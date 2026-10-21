@@ -15,6 +15,9 @@ from core.models.workbench_template_lineage import (
 )
 from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
 
+_UPDATED_COLUMNS = SEMANTIC_COLUMNS + ("batch_id",)
+_INITIAL_SEMANTIC_COLUMNS = SEMANTIC_COLUMNS + OWNER_COLUMNS
+
 MAX_EVIDENCE_BYTES = 16 * 1024 * 1024
 MAX_EVENTS = 50000
 
@@ -63,11 +66,6 @@ def read_events(repo, refs):
     return result
 
 
-def validate_origin(origin, events):
-    prepared = _prepare_origin(origin, events)
-    return prepared.template, prepared.initial
-
-
 def _prepare_origin(origin, events):
     try:
         template = restore_snapshot(origin["template_snapshot"])
@@ -94,14 +92,19 @@ def _validate_events(events):
     positions = {previous["event_id"]: 0}
     prefixes = [(False, False, False)]
     withdrawn = retired = modified = False
+    prev_snap = None
     for position, row in enumerate(events[1:], 1):
         if row["event_id"] <= previous["event_id"]:
             _invalid()
         if row["event_type"] == "updated":
-            keys = SEMANTIC_COLUMNS + ("batch_id",)
-            changed = snapshot({key: previous[key] for key in keys}) != snapshot({key: row[key] for key in keys})
+            if prev_snap is None:
+                prev_snap = snapshot({key: previous[key] for key in _UPDATED_COLUMNS})
+            row_snap = snapshot({key: row[key] for key in _UPDATED_COLUMNS})
+            changed = prev_snap != row_snap
+            prev_snap = row_snap
         elif row["event_type"] in ("retired", "withdrawn", "batch_changed"):
             changed = True
+            prev_snap = None
         else:
             _invalid()
         if bool(row["affects_calibration"]) != changed:
@@ -123,7 +126,7 @@ class _PreparedOrigin:
         self.positions = positions
         self.prefixes = prefixes
         self.source_eligible = bool(origin["source_eligible"])
-        self.initial_semantic = snapshot({key: initial[key] for key in SEMANTIC_COLUMNS + OWNER_COLUMNS})
+        self.initial_semantic = snapshot({key: initial[key] for key in _INITIAL_SEMANTIC_COLUMNS})
         self._eligibility = {}
 
     @property
@@ -155,7 +158,7 @@ def _problems(prepared, current):
 
 
 def _validate_semantic(prepared, current):
-    if snapshot({key: current[key] for key in SEMANTIC_COLUMNS + OWNER_COLUMNS}) != prepared.initial_semantic:
+    if snapshot({key: current[key] for key in _INITIAL_SEMANTIC_COLUMNS}) != prepared.initial_semantic:
         _invalid()
 
 

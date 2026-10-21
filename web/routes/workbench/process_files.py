@@ -6,7 +6,6 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_file import IMPORT_BYTE_LIMIT, check_format, file_columns
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process.files import WorkbenchProcessFileService, file_operation
-from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
@@ -37,14 +36,13 @@ def _upload(kind):
 @read_endpoint
 def process_file_preview(kind):
     content, fmt, mode, target = _upload(kind)
-    reader = WorkbenchProcessQueryService(g.db, current_app.logger)
-    service = WorkbenchProcessFileService(g.db, current_app.logger, reader)
+    service = WorkbenchProcessFileService(g.db, current_app.logger)
     # 文件事实只解析、校验一次；每次预检仍在服务读快照中比对当前工艺资料。
     preview, extra = service.preview_import(kind, content, file_format=fmt, mode=mode, target_ref=target)
     source = preview.source
     body = preview.as_dict()
-    data = action_preview(preview, file_operation(kind), kind=kind, content=source, extra=extra, body=body)
-    snapshot = bind_read_snapshot({"kind": "process_file_import", "operation": file_operation(kind),
+    data = action_preview(preview, body["operation"], kind=kind, content=source, extra=extra, body=body)
+    snapshot = bind_read_snapshot({"kind": "process_file_import", "operation": body["operation"],
                                    "preview_ref": data["preview_ref"], "target_ref": target}, body["request"]["state"])
     return query_success(data, snapshot, body["notices"])
 

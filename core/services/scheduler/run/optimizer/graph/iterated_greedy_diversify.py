@@ -5,10 +5,8 @@ thresholds adapt that idea to a SGS run that may complete only a few tasks.
 """
 from __future__ import annotations
 
-from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
-
 from .iterated_greedy_neighborhoods import GeneratorRotation
-from .iterated_greedy_reference import capture_reference
+from .iterated_greedy_reference import restart_from_pool
 
 
 class LargeGeneratorRotation(GeneratorRotation):
@@ -45,50 +43,11 @@ class BudgetStagnation:
         self.explore_next = True
         search.non_improving = 0
         report["diversification_requests"] += 1
-        return self._restart()
-
-    def _restart(self):
-        search = self.search
-        reference = search.reference
-        search._seed_solution_pool()
-        restart = search.solution_pool.pick(search.pool_rnd, exclude_entry=reference)
-        if restart is None or restart.decision_key() == reference.decision_key():
-            return reference
-        search._activate_entry(restart)
-        # A known solution's full decode is a reference capture, accounted as such (never as a rejection).
-        try:
-            decoded = capture_reference(search, restart)
-        except SharedSearchSkip:
-            search._activate_entry(reference)
-            raise
-        if decoded is None:
-            search.report["pool"]["restart_captures_failed"] += 1
-            search._activate_entry(reference)
-            return reference
-        if decoded is not restart:
-            search.solution_pool.refresh(decoded)
-        restart = decoded
-        search.report["pool"]["restarts"] += 1
-        search.rotation.reset_sizes()
-        search.idle_iterations = search.rejected_iterations = 0
-        search.reference = restart
-        return restart
+        return restart_from_pool(search, search.reference)
 
     def consume_exploration(self):
         explore, self.explore_next = self.explore_next, False
         return explore
 
 
-def extended_positions(without, op_id, positions, parent):
-    """Add distant feasible ranks when stale hints are relaxed; preserve DAG order."""
-    index = {item: position for position, item in enumerate(without)}
-    low = max((index[item] + 1 for item in parent.predecessors[op_id]), default=0)
-    high = min((index[item] for item in parent.successors[op_id]), default=len(without))
-    result = list(positions)
-    for position in (low, (low + high) // 2, high):
-        if position not in result:
-            result.append(position)
-    return result
-
-
-__all__ = ["BudgetStagnation", "LargeGeneratorRotation", "extended_positions"]
+__all__ = ["BudgetStagnation", "LargeGeneratorRotation"]

@@ -49,7 +49,7 @@ class ProcessRouteFileOperations:
             extra = {"affected_groups": preview.affected_groups(rows), "zero_review_required": False}
         return rows, extra
 
-    def apply_rows(self, rows, *, discard_group_refs, confirm_zero_unit_hours):
+    def apply_rows(self, rows):
         if not self.conn.in_transaction:
             raise RuntimeError("路线文件保存必须在外层BEGIN IMMEDIATE事务中执行。")
         with self.tx.transaction():

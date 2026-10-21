@@ -1,7 +1,7 @@
 """Shared private resource facts and identity checks, without public token handling."""
 
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, Optional, overload
+from typing import Any, Dict, Optional
 
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -166,10 +166,6 @@ class WorkbenchResourceStateService:
             raise WorkbenchCommandRejected("storage_failure", "这条资源的编号和实际记录对不上，操作没有执行。请联系维护人员核对数据。", 500)
         return raw
 
-    def by_ref(self, kind, ref):
-        identity = self.identities.get(ref)
-        return self.current(identity, kind)
-
     def related(self, kind, code):
         if code is None:
             return None
@@ -213,24 +209,6 @@ class WorkbenchResourceStateService:
             result["pattern"] = self.repo.pattern(code)
             result["members"] = self.repo.shift_members(code)
         return result
-
-    @overload
-    def selected(self, kind, ref: str, *, category=None) -> str: ...
-
-    @overload
-    def selected(self, kind, ref: None, *, category=None) -> None: ...
-
-    def selected(self, kind, ref: Optional[str], *, category=None) -> Optional[str]:
-        if ref is None:
-            return None
-        identity, raw = self.by_ref(kind, ref)
-        self._require_selected(identity, raw, category)
-        return identity.entity_key
-
-    def selected_record(self, kind, identity, *, category=None):
-        current, raw = self.current(identity, kind)
-        self._require_selected(current, raw, category)
-        return current, raw
 
     @staticmethod
     def _require_selected(identity, raw, category):

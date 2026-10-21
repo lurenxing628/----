@@ -5,11 +5,11 @@ from __future__ import annotations
 import pytest
 
 from core.infrastructure.database import ensure_schema, get_connection
-from core.services.scheduler.schedule_plan_query_service import (
+from core.models.schedule_plan_role import (
     ROLE_ADOPTED,
     ROLE_BASELINE_BEST,
-    SchedulePlanQueryService,
 )
+from core.services.common.plan_query import SchedulePlanQueryService
 from data.repositories.schedule_plan_query_repo import SOURCE_CANDIDATE_ROWS, SOURCE_SCHEDULE
 from tests._support.paths import REPO_ROOT
 

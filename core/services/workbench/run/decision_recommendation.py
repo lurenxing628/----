@@ -41,6 +41,8 @@ class RecommendationSupport:
     def __init__(self, source, candidate_ref):
         self.source, self.key = source, candidate_ref
         self._batches, self._operations = None, None
+        self._effort_support = None
+        self._changeover_support = None
 
     def batches(self, direction, metric):
         source, key = self.source, self.key
@@ -115,14 +117,24 @@ class RecommendationSupport:
         elif group == "stability":
             values = self.operations(name)
         elif definition["source"] == "runtime_operation_effort":
-            remaining = source.completion.scope(key)
-            refs = remaining["unplanned_operation_refs"] + remaining["deferred_operation_refs"]
-            values = [_support(source, key, "preparation", ref, "preparation", {"work_scope": "remaining", "batch_ref": source.operation_batch_ref(ref)}) for ref in refs[:3]]
+            if self._effort_support is None:
+                remaining = source.completion.scope(key)
+                refs = remaining["unplanned_operation_refs"] + remaining["deferred_operation_refs"]
+                self._effort_support = [_support(source, key, "preparation", ref, "preparation",
+                    {"work_scope": "remaining", "batch_ref": source.operation_batch_ref(ref)}) for ref in refs[:3]]
+            values = self._effort_support
         elif definition["source"] == "archived_changeover_events":
-            events = source.changeovers.projection(key)["events"][:3]
-            lookup = {task["row_ref"]: task for task in source.changeovers.tasks(key)}
-            values = [_support(source, key, "changeover", row["next_row_ref"], "changeovers", {"resource_ref": row["machine_ref"], "resource_kind": "machine"},
-                tasks=[lookup[row["next_row_ref"]]], batch_ref=lookup[row["next_row_ref"]]["batch_ref"], operation_ref=row["next_operation_ref"]) for row in events]
+            if self._changeover_support is None:
+                events = source.changeovers.projection(key)["events"][:3]
+                if not events:
+                    self._changeover_support = []
+                else:
+                    lookup = {task["row_ref"]: task for task in source.changeovers.tasks(key)}
+                    self._changeover_support = [_support(source, key, "changeover", row["next_row_ref"], "changeovers",
+                        {"resource_ref": row["machine_ref"], "resource_kind": "machine"},
+                        tasks=[lookup[row["next_row_ref"]]], batch_ref=lookup[row["next_row_ref"]]["batch_ref"],
+                        operation_ref=row["next_operation_ref"]) for row in events]
+            values = self._changeover_support
         elif definition["source"] == "archived_resource_calendar":
             values = self.resources(definition, delta["direction"])
         else:

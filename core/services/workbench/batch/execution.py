@@ -3,7 +3,6 @@
 from collections import defaultdict
 
 from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.execution.ledger import ExecutionLedgerService

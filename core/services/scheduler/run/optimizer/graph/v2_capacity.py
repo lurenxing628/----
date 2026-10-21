@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping as MappingABC
-from datetime import datetime, time, timedelta
-from inspect import Parameter, signature
+from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from core.algorithm_contracts.operator_eligibility import qualified_operators
-from core.algorithms.value_domains import INTERNAL
+from core.algorithm_contracts.value_domains import INTERNAL
 from core.errors import ValidationError
 
 _RESIDUAL_CAPACITY_MAX_WINDOW_DAYS = 30
@@ -56,7 +55,8 @@ def residual_capacity_for_operation(
     resource_pool: Optional[Dict[str, Any]],
     prepared: Optional[FixedResourceBlockingFacts] = None,
 ) -> Dict[str, float]:
-    machine_ids = _candidate_machine_ids(op, resource_pool=resource_pool)
+    pool = _ResourcePoolView(resource_pool)
+    machine_ids = _candidate_machine_ids(op, pool=pool)
     if not machine_ids or due_exclusive <= start_dt:
         return _capacity_payload(
             0.0,
@@ -72,11 +72,15 @@ def residual_capacity_for_operation(
                                                seed_results_by_resource_id=seed_results_by_resource_id)
     window_end = _residual_capacity_window_end(start_dt=start_dt, due_exclusive=due_exclusive)
     priority = getattr(batch, "priority", None)
-    requires_auto_operator = _requires_auto_operator(op, resource_pool=resource_pool)
+    requires_auto_operator = _requires_auto_operator(op, pool=pool)
+    fixed_operator = _text(getattr(op, "operator_id", None))
+    fixed_operator_ids = (tuple(qualified_operators(resource_pool, [fixed_operator], getattr(op, "op_type_id", None)))
+                          if fixed_operator else None)
     candidates = []
     effective_candidate_machine_count = 0
     for machine_id in machine_ids:
-        operator_ids = _candidate_operator_ids(op, machine_id=machine_id, resource_pool=resource_pool)
+        operator_ids = (fixed_operator_ids if fixed_operator_ids is not None
+                        else _candidate_operator_ids(op, machine_id=machine_id, pool=pool))
         if requires_auto_operator and not operator_ids:
             continue
         effective_candidate_machine_count += 1
@@ -128,10 +132,6 @@ def seed_results_by_resource_id(seed_results: Iterable[Any]) -> Dict[str, Dict[s
 def _residual_capacity_window_end(*, start_dt: datetime, due_exclusive: datetime) -> datetime:
     max_end = start_dt + timedelta(days=_RESIDUAL_CAPACITY_MAX_WINDOW_DAYS)
     return min(due_exclusive, max_end)
-
-
-def seed_results_by_machine_id(seed_results: Iterable[Any]) -> Dict[str, List[Any]]:
-    return seed_results_by_resource_id(seed_results).get("machine", {})
 
 
 def bottleneck_on(*, bottleneck_score: float, residual_capacity_pressure: float, machine_count: int) -> float:
@@ -206,7 +206,6 @@ def _capacity_payload(
 ) -> Dict[str, float]:
     if window_hours <= 0.0:
         pressure = 1.0 if int(resource_candidate_machine_count) > 0 else 0.0
-        ratio = 0.0
     else:
         ratio = max(0.0, min(1.0, float(residual_hours) / float(window_hours)))
         pressure = max(0.0, min(1.0, 1.0 - ratio))
@@ -214,11 +213,8 @@ def _capacity_payload(
         "residual_capacity_window_hours": float(window_hours),
         "residual_capacity_blocked_hours": float(blocked_hours),
         "residual_capacity_hours": float(residual_hours),
-        "residual_capacity_ratio": float(ratio),
         "residual_capacity_pressure": float(pressure),
         "candidate_machine_count": int(candidate_machine_count),
-        "effective_candidate_machine_count": int(candidate_machine_count),
-        "resource_candidate_machine_count": int(resource_candidate_machine_count),
         "bottleneck_machine_count": int(bottleneck_machine_count),
     }
 
@@ -229,21 +225,19 @@ def _capacity_rank(item: Tuple[float, float, float]) -> Tuple[float, float, floa
     return (ratio, float(residual_hours), float(window_hours), -float(blocked_hours))
 
 
-def _requires_auto_operator(op: Any, *, resource_pool: Optional[Dict[str, Any]]) -> bool:
+def _requires_auto_operator(op: Any, *, pool: _ResourcePoolView) -> bool:
     if _text(getattr(op, "operator_id", None)):
         return False
     if _text(getattr(op, "machine_id", None)):
         return True
     op_type_id = _text(getattr(op, "op_type_id", None))
-    pool = _ResourcePoolView(resource_pool)
     return bool(op_type_id and op_type_id in pool.machines_by_op_type)
 
 
-def _candidate_machine_ids(op: Any, *, resource_pool: Optional[Dict[str, Any]]) -> Tuple[str, ...]:
+def _candidate_machine_ids(op: Any, *, pool: _ResourcePoolView) -> Tuple[str, ...]:
     fixed_machine = _text(getattr(op, "machine_id", None))
     fixed_operator = _text(getattr(op, "operator_id", None))
     op_type_id = _text(getattr(op, "op_type_id", None))
-    pool = _ResourcePoolView(resource_pool)
     if fixed_machine:
         candidates = [fixed_machine]
     elif fixed_operator:
@@ -252,21 +246,21 @@ def _candidate_machine_ids(op: Any, *, resource_pool: Optional[Dict[str, Any]]) 
         candidates = _text_list(pool.machines_by_op_type.get(op_type_id))
     else:
         candidates = []
-    if op_type_id and op_type_id in pool.machines_by_op_type:
+    if (fixed_machine or fixed_operator) and op_type_id and op_type_id in pool.machines_by_op_type:
         allowed = set(_text_list(pool.machines_by_op_type.get(op_type_id)))
         candidates = [machine_id for machine_id in candidates if machine_id in allowed]
     return _unique_text_tuple(candidates)
 
 
-def _candidate_operator_ids(op: Any, *, machine_id: str, resource_pool: Optional[Dict[str, Any]]) -> Tuple[str, ...]:
-    fixed_operator = _text(getattr(op, "operator_id", None))
-    if fixed_operator:
-        return tuple(qualified_operators(resource_pool, [fixed_operator], getattr(op, "op_type_id", None)))
-    pool = _ResourcePoolView(resource_pool)
-    return _unique_text_tuple(qualified_operators(resource_pool, _text_list(pool.operators_by_machine.get(machine_id)), getattr(op, "op_type_id", None)))
+def _candidate_operator_ids(op: Any, *, machine_id: str, pool: _ResourcePoolView) -> Tuple[str, ...]:
+    return _unique_text_tuple(qualified_operators(
+        pool.resource_pool, _text_list(pool.operators_by_machine.get(machine_id)), getattr(op, "op_type_id", None),
+    ))
+
 
 class _ResourcePoolView:
     def __init__(self, resource_pool: Optional[Dict[str, Any]]) -> None:
+        self.resource_pool = resource_pool
         self.machines_by_op_type = _mapping_part(resource_pool, "machines_by_op_type")
         self.operators_by_machine = _mapping_part(resource_pool, "operators_by_machine")
         self.machines_by_operator = _mapping_part(resource_pool, "machines_by_operator")
@@ -362,87 +356,7 @@ def _calendar_capacity_hours(
     if callable(capacity):
         return _non_negative_float(capacity(start_dt, end_dt, priority=priority, operator_id=operator_id),
                                    field="calendar_capacity_hours")
-    policy_for_datetime = getattr(calendar_service, "policy_for_datetime", None)
-    if not callable(policy_for_datetime):
-        return _wall_hours(start_dt, end_dt)
-    supports_operator_id = _policy_for_datetime_supports_operator_id(policy_for_datetime)
-    cursor = start_dt
-    total = 0.0
-    guard = 0
-    while cursor < end_dt:
-        guard += 1
-        if guard > 4000:
-            raise ValidationError("GraphReady v2 残余容量计算超过安全循环上限。", field="graph_ready_v2_features")
-        if supports_operator_id is False:
-            policy = policy_for_datetime(cursor)
-        else:
-            try:
-                policy = policy_for_datetime(cursor, operator_id=operator_id)
-            except TypeError as exc:
-                if supports_operator_id is True or not _is_unexpected_operator_id_type_error(exc):
-                    raise
-                policy = policy_for_datetime(cursor)
-        window_start, window_end = _next_work_window(policy, cursor)
-        if not _policy_allows(policy, priority) or _policy_efficiency(policy) <= 0.0:
-            cursor = _next_calendar_day(cursor, end_dt)
-            continue
-        if cursor < window_start:
-            cursor = min(window_start, end_dt)
-            continue
-        if window_end <= cursor:
-            cursor = _next_calendar_day(cursor, end_dt)
-            continue
-        segment_end = min(end_dt, window_end)
-        total += _wall_hours(cursor, segment_end) * _policy_efficiency(policy)
-        cursor = segment_end
-    return float(total)
-
-
-def _next_work_window(policy: Any, cursor: datetime):
-    periods = getattr(policy, "work_windows", None)
-    if callable(periods):
-        windows: Any = periods()
-        return next(((start, end) for start, end in windows if end > cursor), (cursor, cursor))
-    return policy.work_window()
-
-
-def _policy_for_datetime_supports_operator_id(policy_for_datetime: Any) -> Optional[bool]:
-    try:
-        parameters = signature(policy_for_datetime).parameters.values()
-    except (TypeError, ValueError):
-        return None
-    for parameter in parameters:
-        if parameter.kind == Parameter.VAR_KEYWORD:
-            return True
-        if parameter.name == "operator_id" and parameter.kind in (
-            Parameter.POSITIONAL_OR_KEYWORD,
-            Parameter.KEYWORD_ONLY,
-        ):
-            return True
-    return False
-
-
-def _is_unexpected_operator_id_type_error(exc: TypeError) -> bool:
-    message = str(exc)
-    return "operator_id" in message and "unexpected keyword" in message
-
-
-def _next_calendar_day(cursor: datetime, end_dt: datetime) -> datetime:
-    next_day = datetime.combine(cursor.date() + timedelta(days=1), time.min)
-    if next_day <= cursor:
-        next_day = cursor + timedelta(days=1)
-    return min(end_dt, next_day)
-
-
-def _policy_allows(policy: Any, priority: Any) -> bool:
-    allowed = getattr(policy, "is_priority_allowed", None)
-    if callable(allowed):
-        return bool(allowed(priority))
-    return True
-
-
-def _policy_efficiency(policy: Any) -> float:
-    return max(0.0, _non_negative_float(getattr(policy, "efficiency", 1.0), field="calendar.efficiency"))
+    return _wall_hours(start_dt, end_dt)
 
 
 def _wall_hours(start_dt: datetime, end_dt: datetime) -> float:
@@ -495,6 +409,5 @@ __all__ = [
     "FixedResourceBlockingFacts",
     "bottleneck_on",
     "residual_capacity_for_operation",
-    "seed_results_by_machine_id",
     "seed_results_by_resource_id",
 ]

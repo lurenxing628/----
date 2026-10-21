@@ -136,8 +136,8 @@ def entry_reference_rows(entry, common, metric_keys):
     # keep one row, so an unused coverage axis is not changed into a known zero.
     identity = [_at(entry, path) if path in ("entry_ref", "timeline") else None for _label, path in ENTRY_FIELDS]
     metric_blanks = [None] * len(METRIC_FIELDS)
-    scopes = [("范围引用", None, entry, ENTRY_REFERENCE_FIELDS)]
-    scopes.extend(("指标覆盖引用", key, entry["metrics"][key], METRIC_REFERENCE_FIELDS) for key in metric_keys)
+    scopes = [("范围引用", None, entry, ENTRY_REFERENCE_FIELDS),
+              *(("指标覆盖引用", key, entry["metrics"][key], METRIC_REFERENCE_FIELDS) for key in metric_keys)]
     for record_type, metric_key, source, fields in scopes:
         prefix = common + [record_type] + identity + [metric_key, None, None, None, None] + metric_blanks
         for label, path, kind in fields:

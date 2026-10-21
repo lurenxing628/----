@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from core.errors import ValidationError
 from core.services.scheduler.graph.precedence_builder import build_linear_edges_by_batch as _NATIVE_LINEAR_EDGES
@@ -21,6 +21,10 @@ from .schedule_graph_dispatch_context import (
 )
 from .schedule_graph_dispatch_context import (
     graph_ready_public_fields as _graph_ready_public_fields,
+)
+from .schedule_graph_projection_helpers import (
+    _sample,
+    _truncated,
 )
 from .schedule_graph_projection_helpers import (
     graph_node_metrics_sample as _graph_node_metrics_sample,
@@ -54,7 +58,6 @@ class ScheduleGraphDispatchPreparation:
     graph_analysis_diagnostics: Optional[Dict[str, Any]]
     graph_ready_context: Optional[Any]
     graph_dispatch_mode_override: Optional[str] = None
-    graph_health_context: Optional[Dict[str, Any]] = None
 
 
 def _elapsed_ms(started: float) -> int:
@@ -75,13 +78,6 @@ def _graph_block_on_cycle(cfg: Any) -> str:
     return value
 
 
-def maybe_analyze_schedule_graph(
-    schedule_input: ScheduleRunInput,
-) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
-    preparation = prepare_schedule_graph_for_dispatch(schedule_input)
-    return preparation.graph_analysis_public, preparation.graph_analysis_diagnostics
-
-
 def prepare_schedule_graph_for_dispatch(
     schedule_input: ScheduleRunInput,
 ) -> ScheduleGraphDispatchPreparation:
@@ -93,10 +89,9 @@ def prepare_schedule_graph_for_dispatch(
             graph_analysis_diagnostics=None,
             graph_ready_context=None,
             graph_dispatch_mode_override=None,
-            graph_health_context=None,
         )
     graph_block_on_cycle = _graph_block_on_cycle(schedule_input.cfg)
-    public, diagnostics, graph_ready_context, graph_dispatch_mode_override, graph_health_context = _build_schedule_graph_analysis_projection(
+    public, diagnostics, graph_ready_context, graph_dispatch_mode_override = _build_schedule_graph_analysis_projection(
         schedule_input,
         mode=mode,
         graph_block_on_cycle=graph_block_on_cycle,
@@ -112,7 +107,6 @@ def prepare_schedule_graph_for_dispatch(
         graph_analysis_diagnostics=diagnostics,
         graph_ready_context=graph_ready_context,
         graph_dispatch_mode_override=graph_dispatch_mode_override,
-        graph_health_context=graph_health_context,
     )
 
 
@@ -121,7 +115,7 @@ def _build_schedule_graph_analysis_projection(
     *,
     mode: str,
     graph_block_on_cycle: str,
-) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str], Optional[Dict[str, Any]]]:
+) -> Tuple[Dict[str, Any], Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
     from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
     from core.services.scheduler.graph.exporter import graph_summary_to_dict
     from core.services.scheduler.graph.input_adapter import GraphInputContractError, build_operation_nodes_from_rows
@@ -129,10 +123,10 @@ def _build_schedule_graph_analysis_projection(
     from core.services.scheduler.graph.precedence_builder import GraphBuildContractError, build_linear_edges_by_batch
 
     started = time.time()
-    scope = _graph_input_scope(schedule_input)
     score_weights = _graph_score_weights(schedule_input.cfg) if mode == "on" else None
     score_requested = bool(score_weights is not None and _graph_score_requested(score_weights))
     metrics_mode = "full" if score_requested else "basic"
+    nodes = None
     try:
         nodes = build_operation_nodes_from_rows(
             schedule_input.algo_ops,
@@ -140,7 +134,6 @@ def _build_schedule_graph_analysis_projection(
             resource_pool=schedule_input.resource_pool,
             frozen_op_ids=schedule_input.frozen_op_ids,
         )
-        scope = _graph_input_scope(schedule_input, nodes=nodes)
         edges = build_linear_edges_by_batch(nodes)
         analyzer = ScheduleGraphAnalysisService()
         if build_linear_edges_by_batch is _NATIVE_LINEAR_EDGES:
@@ -159,9 +152,11 @@ def _build_schedule_graph_analysis_projection(
             payload=payload,
         )
     except NetworkXUnavailable as exc:
+        scope = _graph_input_scope(schedule_input, nodes=nodes)
         public, diagnostics = _graph_unavailable_projection(mode=mode, exc=exc, elapsed_ms=_elapsed_ms(started), scope=scope)
-        return public, diagnostics, None, None, None
+        return public, diagnostics, None, None
     except GraphInputContractError as exc:
+        scope = _graph_input_scope(schedule_input, nodes=nodes)
         public, diagnostics = _graph_contract_error_projection(
             mode=mode,
             status="input_error",
@@ -170,8 +165,9 @@ def _build_schedule_graph_analysis_projection(
             elapsed_ms=_elapsed_ms(started),
             scope=scope,
         )
-        return public, diagnostics, None, None, None
+        return public, diagnostics, None, None
     except GraphBuildContractError as exc:
+        scope = _graph_input_scope(schedule_input, nodes=nodes)
         public, diagnostics = _graph_contract_error_projection(
             mode=mode,
             status="build_error",
@@ -180,8 +176,9 @@ def _build_schedule_graph_analysis_projection(
             elapsed_ms=_elapsed_ms(started),
             scope=scope,
         )
-        return public, diagnostics, None, None, None
+        return public, diagnostics, None, None
 
+    scope = _graph_input_scope(schedule_input, nodes=nodes)
     public, diagnostics = _project_graph_analysis_payload(
         mode=mode,
         graph_block_on_cycle=graph_block_on_cycle,
@@ -193,7 +190,7 @@ def _build_schedule_graph_analysis_projection(
         resource_matching_public=projections.resource_matching_public,
         resource_matching_diagnostics=projections.resource_matching_diagnostics,
     )
-    return public, diagnostics, projections.ready_context, _graph_dispatch_mode_override(public), projections.health_context
+    return public, diagnostics, projections.ready_context, _graph_dispatch_mode_override(public)
 
 
 def _format_cycle_error_message(diagnostics: Optional[Dict[str, Any]]) -> str:
@@ -302,14 +299,6 @@ def _graph_contract_error_projection(
     return public, None
 
 
-def _truncated(values: List[Any], limit: int) -> bool:
-    return len(values) > int(limit)
-
-
-def _sample(values: List[Any], limit: int) -> List[Any]:
-    return list(values[: int(limit)])
-
-
 def _project_graph_analysis_payload(
     *,
     mode: str,
@@ -322,11 +311,11 @@ def _project_graph_analysis_payload(
     resource_matching_public: Optional[Dict[str, Any]] = None,
     resource_matching_diagnostics: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    cycle_edges = list(payload["cycle_edges"])
-    topological_order = list(payload["topological_order"])
-    critical_path = list(payload["critical_path"])
-    warnings = list(payload["warnings"])
-    node_metrics = dict(payload["node_metrics"])
+    cycle_edges = payload["cycle_edges"]
+    topological_order = payload["topological_order"]
+    critical_path = payload["critical_path"]
+    warnings = payload["warnings"]
+    node_metrics = payload["node_metrics"]
 
     public = {
         "mode": mode,
@@ -370,10 +359,7 @@ def _project_graph_analysis_payload(
             limit=_GRAPH_NODE_METRIC_SAMPLE_LIMIT,
         ),
         "node_metrics_count": int(len(node_metrics)),
-        "node_metrics_truncated": _truncated(
-            list(node_metrics),
-            _GRAPH_NODE_METRIC_SAMPLE_LIMIT,
-        ),
+        "node_metrics_truncated": len(node_metrics) > _GRAPH_NODE_METRIC_SAMPLE_LIMIT,
         "node_metrics_status": "available" if node_metrics else "skipped_basic_report",
     }
     if score_diagnostics:
@@ -385,6 +371,5 @@ def _project_graph_analysis_payload(
 
 __all__ = [
     "ScheduleGraphDispatchPreparation",
-    "maybe_analyze_schedule_graph",
     "prepare_schedule_graph_for_dispatch",
 ]

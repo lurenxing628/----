@@ -2,11 +2,11 @@
 
 import codecs
 import csv
-import os
 from tempfile import SpooledTemporaryFile
 
 from core.models.workbench_command import canonical_json
 from core.models.workbench_resource_file import ResourceFileDownload
+from core.services.common.excel_instruction_sheet import close_write_only_sheets
 from core.services.workbench.facts.file_writer import _value, check_capacity
 from core.services.workbench.facts.process_file_xml import preserve_carriage_returns
 from core.services.workbench.facts.table_cells import number_text
@@ -37,6 +37,7 @@ def export_rows(data, snapshot):
     records = [("task", row) for row in data["tasks"]] + [("unplanned_operation", row) for row in data["unplanned_operations"] or []]
     if not records:
         records = [("candidate", {})]
+    common_gaps = data["data_gaps"] + candidate["data_gaps"] + generation["data_gaps"]
     for kind, row in records:
         values = [RECORD_KINDS[kind]] + common + [row.get(key) for key in ("row_ref", "operation_ref", "batch_ref", "batch_label",
             "part_label", "sequence", "process_label", "quantity", "due_date", "start", "end")]
@@ -46,8 +47,7 @@ def export_rows(data, snapshot):
         values.extend((row.get(key) or {}).get("label") for key in ("machine", "operator", "supplier"))
         values.extend([_text(REPORT_STATES, (row.get("execution_at_generation") or {}).get("execution_state")),
                        (row.get("reason") or {}).get("message"),
-                       canonical_json(row.get("data_gaps", []) + data["data_gaps"] + candidate["data_gaps"]
-                                      + generation["data_gaps"])])
+                       canonical_json(row.get("data_gaps", []) + common_gaps)])
         yield values
 
 
@@ -111,8 +111,5 @@ def _xlsx(data, snapshot):
             buffer.seek(0)
             return buffer.read()
     finally:
-        if not ws.closed:
-            ws.close()
-        if ws._writer is not None and os.path.exists(ws._writer.out):
-            ws._writer.cleanup()
+        close_write_only_sheets([ws])
         wb.close()

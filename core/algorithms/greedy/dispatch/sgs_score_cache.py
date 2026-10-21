@@ -50,7 +50,6 @@ EligibleResources = Optional[Tuple[Tuple[str, ...], Tuple[str, ...]]]
 class AutoAssignProbeContract(NamedTuple):
     """What the parent package tells the cache about its auto-assign probe; dispatch never imports it."""
 
-    eligible_resources: Callable[[Any, Any], EligibleResources]
     natives_intact: Callable[[], bool]
 
 
@@ -338,12 +337,11 @@ class SgsScoreCache:
         """
         self._suspended = True
 
-    def begin_round(self) -> bool:
+    def begin_round(self) -> None:
         """Auto-assign keys may only be reused while the probe still runs the module's own code."""
         self._suspended = False
         if self._timing is not None and self._shared_slots is not None:
             self._shared_slots.begin_round()
-        return True
 
     def record_attempt(self, attempt: Any) -> None:
         """Sink for the probe result of the candidate currently being scored."""

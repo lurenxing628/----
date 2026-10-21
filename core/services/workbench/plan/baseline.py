@@ -107,7 +107,6 @@ class _BaselineReader:
         # candidate id/key against the current base. Same-number replacements fail.
         base_ref = self.references.get_plan_ref(base_locator)
         self.facts["base_plan_ref"] = base_ref
-        self.repo.source_rows(base_locator.version, header["base_source_table"], header["base_candidate_id"])
         base_entry = self._base_entry(base_locator)
         if base_entry is None or not base_entry.can_view:
             return _unavailable("baseline_unavailable", self.facts)

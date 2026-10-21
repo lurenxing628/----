@@ -98,9 +98,6 @@ def _extract_freeze_warnings(all_warnings: Any) -> List[str]:
         text = str(warning)
         if text.startswith("[freeze_window]") or text.startswith("【冻结窗口】"):
             freeze_warnings.append(text)
-            continue
-        if text.startswith("【冻结窗口】"):
-            freeze_warnings.append(text)
     return freeze_warnings
 
 
@@ -137,7 +134,6 @@ def _freeze_meta_dict(
             application_status=application_status,
             meta=meta,
         ),
-        "freeze_degradation_count": int(meta.get("freeze_degradation_count") or 0) if isinstance(meta, dict) else 0,
         "degradation_from_warning_fallback": bool(not has_freeze_meta and bool(freeze_warnings)),
         "degradation_reason": degradation_reason,
     }

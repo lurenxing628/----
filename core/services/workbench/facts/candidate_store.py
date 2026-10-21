@@ -41,7 +41,7 @@ class CandidateStore:
                 reject("candidate_schema_unavailable", "排产记录结构不完整，请联系维护人员。", 503)
             yield
 
-    def run_head(self, run_ref):
+    def run(self, run_ref):
         row = self.repo.job_head(run_ref)
         if row is None:
             reject("entity_not_found", "找不到这次排产，页面没有打开。请到「排产记录」重新选择。", 404)
@@ -53,9 +53,6 @@ class CandidateStore:
             corrupt()
         return {"run_ref": reference(row[0], stored=True), "state": row[1],
                 "accepted_at": row[2], "finished_at": row[3]}
-
-    def run(self, run_ref):
-        return self.run_head(run_ref)
 
     def receipt(self, run):
         row = self.repo.receipt_state_and_result(run["run_ref"])

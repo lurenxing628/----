@@ -12,10 +12,6 @@ TABLES = dict(RESOURCE_KEYS, supplier=("Suppliers", "supplier_id"))
 
 
 class WorkbenchResourceFileRepository(BaseRepository):
-    def raw(self, kind, code):
-        table, key = TABLES[kind]
-        return self.fetchone(f'SELECT * FROM "{table}" WHERE "{key}"=?', (code,))
-
     def raw_many(self, kind, codes):
         table, key = TABLES[kind]
         codes, result = list(dict.fromkeys(codes)), {}

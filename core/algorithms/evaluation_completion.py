@@ -23,7 +23,6 @@ OBJECTIVE_SCOPE_UNKNOWN = "unknown"
 class PreparedBatchDue:
     batch_id: str
     priority_weight: float
-    due_date: Optional[date]
     due_invalid: bool
     due_exclusive: Optional[datetime]
     due_text: str
@@ -69,7 +68,7 @@ def prepare_evaluation_context(
         # Due projection keeps each source row and its order, even when raw keys
         # normalize to one ID. Completion weights retain the last such source.
         due_batches.append(PreparedBatchDue(
-            batch_id=bid, priority_weight=weight, due_date=due_date_value, due_invalid=due_invalid,
+            batch_id=bid, priority_weight=weight, due_invalid=due_invalid,
             due_exclusive=due_exclusive(due_date_value) if due_date_value else None, due_text=_due_text(due_raw),
         ))
     return PreparedEvaluationContext(
@@ -218,10 +217,6 @@ def _incomplete_batch_ids(
     }
     incomplete.update(key[0] for key in unexpected)
     return incomplete
-
-
-def _expected_keys(operations: Iterable[Any], seeds: Iterable[Any]) -> Set[OperationKey]:
-    return _prepare_expected_keys(operations, seeds)[0]
 
 
 def _prepare_expected_keys(

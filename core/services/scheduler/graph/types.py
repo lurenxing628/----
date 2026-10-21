@@ -35,7 +35,7 @@ class FrozenDict(dict):
 def _freeze_json_like(value: Any) -> Any:
     if isinstance(value, FrozenDict):
         return value
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return FrozenDict({str(k): _freeze_json_like(v) for k, v in value.items()})
     if isinstance(value, (list, tuple)):
         return tuple(_freeze_json_like(item) for item in value)
@@ -87,7 +87,6 @@ class OperationGraphNode:
     ext_group_id: Optional[str] = None
     ext_merge_mode: str = ""
     ext_group_total_days: Optional[float] = None
-    merge_context_degraded: bool = False
     candidate_machine_ids: Tuple[str, ...] = field(default_factory=tuple)
     candidate_operator_ids: Tuple[str, ...] = field(default_factory=tuple)
     raw: Mapping[str, Any] = field(default_factory=dict)
@@ -96,15 +95,13 @@ class OperationGraphNode:
         _require_nonblank(self.node_id, field_name="node_id")
         _require_nonblank(self.batch_id, field_name="batch_id")
         _require_nonblank(self.op_code, field_name="op_code")
-        seq = _require_int_value(self.seq, field_name="seq")
-        duration_minutes = _require_int_value(self.duration_minutes, field_name="duration_minutes")
-        if duration_minutes < 0:
+        _require_int_value(self.seq, field_name="seq")
+        _require_int_value(self.duration_minutes, field_name="duration_minutes")
+        if self.duration_minutes < 0:
             raise ValueError("OperationGraphNode.duration_minutes 不能为负数。")
-        object.__setattr__(self, "seq", seq)
-        object.__setattr__(self, "duration_minutes", duration_minutes)
         object.__setattr__(self, "candidate_machine_ids", _compact_text_tuple(self.candidate_machine_ids))
         object.__setattr__(self, "candidate_operator_ids", _compact_text_tuple(self.candidate_operator_ids))
-        object.__setattr__(self, "raw", _freeze_json_like(dict(self.raw or {})))
+        object.__setattr__(self, "raw", _freeze_json_like(self.raw if self.raw is not None else {}))
 
 
 @dataclass(frozen=True)

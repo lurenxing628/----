@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Optional
 
-from ._helpers import RowLike, as_dict, get, parse_int
+from ._helpers import RowLike, get, parse_int
 from .enums import LockStatus
 
 
@@ -18,21 +18,6 @@ class Schedule:
     lock_status: str = LockStatus.UNLOCKED.value  # V1 仅占位（不做资源锁）
     version: int = 1
     created_at: Optional[str] = None
-
-    def is_locked(self) -> bool:
-        return str(self.lock_status or "").strip().lower() == LockStatus.LOCKED.value
-
-    def is_unlocked(self) -> bool:
-        return not self.is_locked()
-
-    def has_machine(self) -> bool:
-        return bool(str(self.machine_id or "").strip())
-
-    def has_operator(self) -> bool:
-        return bool(str(self.operator_id or "").strip())
-
-    def has_any_resource(self) -> bool:
-        return self.has_machine() or self.has_operator()
 
     @classmethod
     def from_row(cls, row: RowLike) -> Schedule:
@@ -53,19 +38,4 @@ class Schedule:
             ),
             version=parse_int(version, default=1) or 1,
             created_at=get(row, "created_at"),
-        )
-
-    def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "id": self.id,
-                "op_id": self.op_id,
-                "machine_id": self.machine_id,
-                "operator_id": self.operator_id,
-                "start_time": self.start_time,
-                "end_time": self.end_time,
-                "lock_status": self.lock_status,
-                "version": self.version,
-                "created_at": self.created_at,
-            }
         )

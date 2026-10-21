@@ -51,7 +51,6 @@ from core.models.workbench_material_query import MaterialPageRequest
 from core.models.workbench_resource_file_source import PreparedImportSource
 from core.services.workbench import messages
 from data.repositories.workbench_material_file_repo import WorkbenchMaterialFileRepository
-from data.repositories.workbench_material_query_repo import WorkbenchMaterialQueryRepository
 
 from .bulk import full_material_snapshot
 from .file_codec import check_export_capacity, read_material_file, write_material_file
@@ -81,7 +80,6 @@ class WorkbenchMaterialFileService:
     def __init__(self, conn, logger=None, reader=None):
         self.conn = conn
         self.adapter = WorkbenchMaterialService(conn, logger=logger)
-        self.query = WorkbenchMaterialQueryRepository(conn, logger=logger)
         self.reader = reader if reader is not None else WorkbenchMaterialQueryService(conn, logger=logger)
         self.repo = WorkbenchMaterialFileRepository(conn, logger=logger)
         self.tx = TransactionManager(conn)
@@ -185,10 +183,11 @@ class WorkbenchMaterialFileService:
             row["result"] = "new"
             return
         normalized = row["input"]
-        changes = dict(normalized["fields"])
-        if "label" in normalized:
-            changes["name"] = normalized["label"]
-        row["changes"] = {key: {"before": raw[key], "after": value} for key, value in changes.items() if raw[key] != value}
+        changes = {key: {"before": raw[key], "after": value} for key, value in normalized["fields"].items()
+                   if raw[key] != value}
+        if "label" in normalized and raw["name"] != normalized["label"]:
+            changes["name"] = {"before": raw["name"], "after": normalized["label"]}
+        row["changes"] = changes
         row["result"] = "update" if row["changes"] else "unchanged"
         row["requires_confirmation"] = bool(row["changes"] and row["expected"]["requirements"])
 
@@ -231,7 +230,7 @@ class WorkbenchMaterialFileService:
             if snapshot is not None and snapshot["fingerprint"] is not None:
                 captured = snapshot["by_ref"]
             else:
-                captured = {row["ref"]: row for row in self.query.export_by_refs(refs)}
+                captured = {row["ref"]: row for row in self.reader.repo.export_by_refs(refs)}
             rows, total = (captured.get(ref) for ref in refs), len(refs)
         check_export_capacity(total, file_format)
         return list(self._export_rows(rows))

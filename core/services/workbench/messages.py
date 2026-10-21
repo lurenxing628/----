@@ -6,32 +6,15 @@
 """
 from datetime import datetime, timedelta, timezone
 
-HOURS_UNIT = "小时"
 BEIJING = timezone(timedelta(hours=8))
 
 STALE = "数据已更新，请刷新后重试。刚才的选择已保留。"
 UNAVAILABLE = "此功能尚未开通。"
 FAILURE = "操作没有完成。请刷新重试；仍不行请联系维护人员，并告知下方编号。"
 
-_ENDINGS = ("。", "！", "？", "；")
-
-
-def sentence(text: str) -> str:
-    """补齐句号，让拼接出来的提示读起来是完整的句子。"""
-    text = text.strip()
-    return text if text.endswith(_ENDINGS) else text + "。"
-
 
 def pending(action: str) -> str:
     return f"上次{action}的结果还没查到，可能已经生效。请点「查询结果」，不要重复提交。"
-
-
-def rejected(action: str, reason: str) -> str:
-    return f"上次{action}没有生效：{sentence(reason)}填写内容已保留，改好后重新提交。"
-
-
-def done(action: str, next_step: str = "") -> str:
-    return f"{action}已完成。{sentence(next_step) if next_step else ''}"
 
 
 def unknown(action: str) -> str:

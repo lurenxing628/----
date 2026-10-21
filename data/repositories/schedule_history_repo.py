@@ -1,33 +1,16 @@
 from __future__ import annotations
 
-import sqlite3
 import sys
 from typing import Any, Dict, List, Optional
 
 from core.errors import AppError, ErrorCode
 from core.models import ScheduleHistory
 
-from .base_repo import BaseRepository
-
-
-def _strict_non_negative_int(value, *, field: str) -> int:
-    if value is None or isinstance(value, bool) or isinstance(value, float):
-        raise ValueError(f"invalid {field}: {value!r}")
-    number = int(value)
-    if number < 0:
-        raise ValueError(f"invalid {field}: {value!r}")
-    return number
+from .base_repo import BaseRepository, strict_non_negative_int
 
 
 class ScheduleHistoryRepository(BaseRepository):
     """排产历史仓库（ScheduleHistory）。"""
-
-    def get(self, history_id: int) -> Optional[ScheduleHistory]:
-        row = self.fetchone(
-            "SELECT id, schedule_time, version, strategy, batch_count, op_count, result_status, result_summary, created_by FROM ScheduleHistory WHERE id = ?",
-            (int(history_id),),
-        )
-        return ScheduleHistory.from_row(row) if row else None
 
     def list_recent(self, limit: int = 20) -> List[ScheduleHistory]:
         rows = self.fetchall(
@@ -46,7 +29,7 @@ class ScheduleHistoryRepository(BaseRepository):
     def get_latest_version(self) -> int:
         try:
             val = self.fetchvalue("SELECT COALESCE(MAX(version), 0) FROM ScheduleHistory", default=0)
-            latest = _strict_non_negative_int(val, field="latest schedule version")
+            latest = strict_non_negative_int(val, field="latest schedule version")
         except AppError:
             raise
         except (TypeError, ValueError) as exc:
@@ -88,12 +71,7 @@ class ScheduleHistoryRepository(BaseRepository):
                 )
 
             cur = conn.execute("INSERT INTO ScheduleVersionSeq DEFAULT VALUES")
-            lastrowid = getattr(cur, "lastrowid", None)
-            v = int(lastrowid) if lastrowid is not None else 0
-            if v <= 0:
-                # 兜底：极端情况下 lastrowid 不可用时再查一次
-                row = conn.execute("SELECT COALESCE(MAX(version), 0) FROM ScheduleVersionSeq").fetchone()
-                v = int((row[0] if row else 0) or 0)
+            v = int(cur.lastrowid or 0)
 
             if int(v) <= 0:
                 raise RuntimeError(f"allocate_next_version 返回非法版本号：{v!r}")

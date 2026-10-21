@@ -46,20 +46,18 @@ def process_stage_preview(ref):
             identity = reader.resolve(ref)
             bind_read_snapshot({"kind": "part", "entity_ref": ref}, state, body["snapshot_ref"])
             checked = domain.checked_facts(identity, reader.facts())
-            _, _, operations, groups, workflow = checked
+            _, _, operations, _, workflow = checked
             if workflow["route"]["state"] != "confirmed":
                 raise WorkbenchCommandRejected("stage_locked", "工艺路线还没有确认，归属没有保存。请先点「确认保存路线」，再点「保存归属并继续」。")
             action = body["action"]
             prepared = domain.prepare_review(action, normalized, checked, facts=reader.facts())
-            affected = {row["ref"] for row in prepared.affected} if action == "source_confirm" else set()
-            if action == "source_confirm" and affected:
-                group_ids = {row["group_id"] for row in groups if row["ref"] in affected}
+            if action == "source_confirm" and prepared.affected:
+                group_ids = {row["group_id"] for row in prepared.affected}
                 members = defaultdict(list)
                 for operation in operations:
                     if operation["status"] == "active" and operation["ext_group_id"] in group_ids:
                         members[operation["ext_group_id"]].append(operation)
-                affected_groups = [project_group(row, members[row["group_id"]])
-                                   for row in groups if row["ref"] in affected]
+                affected_groups = [project_group(row, members[row["group_id"]]) for row in prepared.affected]
             else:
                 affected_groups = []
             binding = {"state": state, "input": reviewed_input(action, normalized)}

@@ -22,7 +22,7 @@ def _default_runtime() -> OptimizerRuntime:
     from ..schedule_optimizer_steps import _run_ortools_warmstart
 
     return OptimizerRuntime(
-        scheduler_factory=lambda **kwargs: GreedyScheduler(**kwargs),
+        scheduler_factory=GreedyScheduler,
         clock=time.monotonic,
         rng_factory=random.Random,
         run_ortools_warmstart=_run_ortools_warmstart,

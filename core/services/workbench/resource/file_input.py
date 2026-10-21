@@ -62,7 +62,8 @@ class ResourceFileInput:
                 payload["fields"][key] = value
         normalized = self.reader.domain.normalize_input(action, payload)
         self._unique_name(code, normalized)
-        self._policy(normalized, {"category": normalized["fields"].get("category", (before or {}).get("category", scope["category"]))})
+        category = normalized["fields"].get("category", (before or {}).get("category", scope["category"]))
+        self._policy(normalized, category)
         return normalized, related
 
     def _changes(self, values, before, scope):
@@ -143,9 +144,9 @@ class ResourceFileInput:
                 raise ValidationError("这个工种名称已经被另一个编号用了，这一行没有导入。请换一个名称。", field="label")
 
     @staticmethod
-    def _policy(payload, scope):
+    def _policy(payload, category):
         mode = payload["fields"].get("default_merge_mode")
-        if mode is not None and not supports_source(scope["category"], "external"):
+        if mode is not None and not supports_source(category, "external"):
             raise WorkbenchCommandRejected("constraint_conflict", "自制工种不能设置外协周期规则，没有导入。请把归属改成外协，或者清掉" + _column("op_type", "default_merge_mode") + "。")
 
 

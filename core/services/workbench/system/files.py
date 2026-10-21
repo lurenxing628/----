@@ -37,15 +37,14 @@ class SystemFileWorkspace:
         return path
 
     @staticmethod
-    def _capture_source(path):
-        signature = backup_signature(path)
+    def _capture_source(path, signature):
         original = file_content(path)
         if not same(signature, backup_signature(path)):
             raise WorkbenchCommandRejected("stale_write", "所选备份在预检时发生了变化，请刷新后重新选择。")
         return {"filename": os.path.basename(path), "signature": signature}, original
 
-    def execute(self, *, request_key, action, intent, guard, audit, restore_runner=None):
-        if action not in ("create", "delete", "restore"):
+    def execute(self, *, request_key, action, intent, guard, audit):
+        if action not in ("create", "delete"):
             raise WorkbenchCommandRejected("invalid_input", "不支持这个维护动作，没有执行任何操作。", 400)
         with maintenance_window(self.database_path, logger=self.logger, action="workbench_" + action):
             old = self.journal.admission(request_key)
@@ -55,16 +54,11 @@ class SystemFileWorkspace:
             selected = guard()
             path = self.selected_path(selected) if selected else None
             target = {"filename": selected["filename"], "signature": selected["signature"]} if path else None
-            original = None
-            if action == "restore":
-                target, original = self._capture_source(path)
             # Intent and target identity are durable before any destructive operation.
-            row, _ = self.journal.begin(request_key, action, intent, previous=old)
-            if action == "restore":
-                self._restore_source = (row["job_ref"], path, original)
-            verification = {**row["source_verification"], "target": "captured" if action == "restore" else "not_checked"}
+            row, _ = self.journal.begin(request_key, action, intent, previous=None)
+            verification = {**row["source_verification"], "target": "not_checked"}
             self.journal.record(row, "checking", target=target, source_verification=verification)
-            return self._finish(row, action, path, restore_runner, audit)
+            return self._finish(row, action, path, None, audit)
 
     def prepare_restore(self, *, request_key, intent, guard):
         """Short maintenance section only; release it BEFORE waiting for HTTP/workers."""
@@ -75,8 +69,8 @@ class SystemFileWorkspace:
                 return row, replayed, None
             selected = guard()
             path = self.selected_path(selected)
-            target, original = self._capture_source(path)
-            row, _ = self.journal.begin(request_key, "restore", intent, previous=previous)
+            target, original = self._capture_source(path, selected["signature"])
+            row, _ = self.journal.begin(request_key, "restore", intent, previous=None)
             self._restore_source = (row["job_ref"], path, original)
             verification = {**row["source_verification"], "target": "captured"}
             self.journal.record(row, "checking", target=target, restart_required=True,

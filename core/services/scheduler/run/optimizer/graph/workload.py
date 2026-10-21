@@ -14,7 +14,7 @@ from core.shared.strict_parse import parse_optional_date
 def operation_workload_signals(
     operations: Dict[int, Any], durations: Dict[int, float], *, batches: Dict[str, Any],
     start_dt: datetime, graph_ready_context: Optional[Dict[str, Any]],
-    seed_results: List[Any], calendar_service: Optional[Any],
+    seed_results: List[Any], calendar_service: Optional[Any], work_buckets=None,
 ) -> Tuple[Dict[int, float], Dict[int, float]]:
     """Count each reachable work bucket once; release follows longest predecessor path.
 
@@ -23,7 +23,7 @@ def operation_workload_signals(
     already completed under the graph dispatch contract.
     """
     predecessors = _predecessors(operations, durations, graph_ready_context)
-    buckets, members, work = _work_buckets(operations, durations)
+    buckets, members, work = _work_buckets(operations, durations) if work_buckets is None else work_buckets
     links, release = _bucket_releases(operations, batches, buckets, predecessors, start_dt, seed_results)
     ordered = _topological_order(links)
     _advance_releases(operations, batches, members, work, links, release, ordered, calendar_service)
@@ -32,13 +32,13 @@ def operation_workload_signals(
             {op_id: (release[bucket] - start_dt).total_seconds() / 3600.0 for op_id, bucket in buckets.items()})
 
 
-def batch_ordering_workload_signals(operations, durations):
+def batch_ordering_workload_signals(operations, durations, *, work_buckets=None):
     """Retain the established whole-batch ordering heuristic, using real work units.
 
     This is a candidate ordering signal, not a precedence release estimate. Piece
     quantities and external-group identities retain the current input contract.
     """
-    buckets, _members, work = _work_buckets(operations, durations)
+    buckets, _members, work = _work_buckets(operations, durations) if work_buckets is None else work_buckets
     by_batch: Dict[str, List[int]] = {}
     for op_id in durations:
         by_batch.setdefault(str(operations[op_id].batch_id), []).append(op_id)
@@ -78,10 +78,15 @@ def _bucket_releases(operations, batches, buckets, predecessors, start_dt, seed_
     release = {bucket: start_dt for bucket in links}
     seed_ends = {int(item.op_id): item.end_time for item in seed_results
                  if isinstance(getattr(item, "end_time", None), datetime)}
+    ready_by_batch: Dict[str, Optional[datetime]] = {}
     for op_id, bucket in buckets.items():
-        ready = parse_optional_date(getattr(batches[str(operations[op_id].batch_id)], "ready_date", None), field="ready_date")
-        if ready is not None:
-            release[bucket] = max(release[bucket], datetime.combine(ready, datetime.min.time()))
+        batch_id = str(operations[op_id].batch_id)
+        if batch_id not in ready_by_batch:
+            ready = parse_optional_date(getattr(batches[batch_id], "ready_date", None), field="ready_date")
+            ready_by_batch[batch_id] = None if ready is None else datetime.combine(ready, datetime.min.time())
+        ready_dt = ready_by_batch[batch_id]
+        if ready_dt is not None:
+            release[bucket] = max(release[bucket], ready_dt)
         for parent in predecessors[op_id]:
             if parent in buckets and buckets[parent] != bucket:
                 links[buckets[parent]].add(bucket)

@@ -9,7 +9,6 @@ from core.algorithm_contracts.dispatch_rules import (
     as_dispatch_rule_spec,
     build_dispatch_key,
 )
-from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import EXTERNAL, INTERNAL
 from core.algorithm_runtime.dispatch_context import ensure_dispatch_context
 from core.algorithm_runtime.internal_slot import estimate_internal_slot, validate_internal_hours_for_mode
@@ -19,7 +18,6 @@ from core.algorithm_runtime.sgs_estimate_reuse import sgs_handoff_scope
 from core.algorithm_runtime.slot_overlap_reuse import sgs_overlap_reuse
 from core.errors import ValidationError
 
-from .batch_order import _coerce_state
 from .sgs_checkpoint import (
     DecodeCheckpoint,
     DecodeCheckpointRequest,
@@ -70,51 +68,20 @@ def dispatch_sgs(
     batches: Dict[str, Any],
     batch_order: Dict[str, int],
     dispatch_rule: Union[DispatchRule, DispatchRuleSpec],
-    base_time: datetime,
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-    state: Optional[ScheduleRunState] = None,
-    batch_progress: Optional[Dict[str, datetime]] = None,
-    external_group_cache: Optional[Dict[Tuple[str, ...], Tuple[datetime, datetime]]] = None,
-    machine_timeline: Optional[Dict[str, List[Tuple[datetime, datetime]]]] = None,
-    operator_timeline: Optional[Dict[str, List[Tuple[datetime, datetime]]]] = None,
-    machine_busy_hours: Optional[Dict[str, float]] = None,
-    operator_busy_hours: Optional[Dict[str, float]] = None,
-    last_op_type_by_machine: Optional[Dict[str, str]] = None,
-    last_end_by_machine: Optional[Dict[str, datetime]] = None,
+    state: ScheduleRunState,
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
     graph_ready_context: Optional[Any] = None,
-    results: Optional[List[ScheduleResult]] = None,
-    errors: Optional[List[str]] = None,
-    blocked_batches: Optional[set] = None,
-    scheduled_count: int = 0,
-    failed_count: int = 0,
     strict_mode: bool = False,
     decode_resume: Optional[DecodeCheckpoint] = None,
     decode_checkpoints: Optional[DecodeCheckpointRequest] = None,
 ) -> Tuple[int, int]:
     ctx = ensure_dispatch_context(context)
     rule_spec = as_dispatch_rule_spec(dispatch_rule)
-    run_state = _coerce_state(
-        state=state,
-        base_time=base_time,
-        batch_progress=batch_progress,
-        external_group_cache=external_group_cache,
-        machine_timeline=machine_timeline,
-        operator_timeline=operator_timeline,
-        machine_busy_hours=machine_busy_hours,
-        operator_busy_hours=operator_busy_hours,
-        last_op_type_by_machine=last_op_type_by_machine,
-        last_end_by_machine=last_end_by_machine,
-        results=results,
-        errors=errors,
-        blocked_batches=blocked_batches,
-        scheduled_count=scheduled_count,
-        failed_count=failed_count,
-    )
-    ops_by_batch = _group_sgs_ops(sorted_ops=sorted_ops, batches=batches, state=run_state)
-    batch_ids = sorted(list(ops_by_batch.keys()), key=lambda item: (batch_order.get(item, 999999), item))
+    ops_by_batch = _group_sgs_ops(sorted_ops=sorted_ops, batches=batches, state=state)
+    batch_ids = sorted(ops_by_batch, key=lambda item: (batch_order.get(item, 999999), item))
     next_idx: Dict[str, int] = {batch_id: 0 for batch_id in batch_ids}
     avg_proc_hours, total_hours_by_op_id = _average_proc_hours(
         ctx,
@@ -122,10 +89,10 @@ def dispatch_sgs(
         batches=batches,
         strict_mode=bool(strict_mode),
     )
-    with sgs_overlap_reuse(run_state.machine_timeline, expected_operations=len(sorted_ops) + len(run_state.results)):
+    with sgs_overlap_reuse(state.machine_timeline, expected_operations=len(sorted_ops) + len(state.results)):
         _run_sgs_loop(
             ctx,
-            run_state,
+            state,
             ops_by_batch,
             batch_ids,
             next_idx,
@@ -143,8 +110,7 @@ def dispatch_sgs(
             decode_resume=decode_resume,
             decode_checkpoints=decode_checkpoints,
         )
-    _ = scheduled_count
-    return run_state.scheduled_count, run_state.failed_count
+    return state.scheduled_count, state.failed_count
 
 
 def _group_sgs_ops(*, sorted_ops: List[Any], batches: Dict[str, Any], state: ScheduleRunState) -> Dict[str, List[Any]]:
@@ -176,14 +142,11 @@ def _average_proc_hours(
                 op_id = _positive_op_id(getattr(op, "id", 0))
                 cached = total_hours_by_op_id.get(op_id) if op_id is not None else None
                 if cached is not None:
-                    sample = cached
-                    samples.append(sample)
+                    samples.append(cached)
                 else:
                     sample = _append_proc_sample(ctx, samples, op=op, batch=batch, strict_mode=strict_mode)
-                if sample is not None:
-                    cache_key = _positive_op_id(getattr(op, "id", 0))
-                    if cache_key is not None:
-                        total_hours_by_op_id[cache_key] = float(sample)
+                    if sample is not None and op_id is not None:
+                        total_hours_by_op_id[op_id] = float(sample)
     if samples:
         return sum(samples) / float(len(samples)), total_hours_by_op_id
     ctx.increment("dispatch_key_avg_proc_hours_fallback_count")
@@ -232,7 +195,7 @@ def _run_sgs_loop(
     score_cache = getattr(ctx, "sgs_score_cache", None)
     if score_cache is not None and score_cache.state is not state:
         raise RuntimeError("SGS 评分缓存绑定的运行状态与本次派工不一致")
-    if not hasattr(ctx, "native_scoring"):
+    if getattr(ctx, "native_scoring", None) is None:
         ctx.native_scoring = _native_score_functions_unchanged()
     pruning = (GraphPriorityPruning.for_cache(score_cache, graph_state, batches, total_hours_by_op_id, strict_mode=strict_mode)
                if ctx.native_scoring else None)
@@ -295,15 +258,15 @@ def _complete_reused_tail(graph_state: Optional[Dict[str, Any]], *, ops_by_batch
     _ensure_graph_ready_complete(graph_state=graph_state, ops_by_batch=ops_by_batch, blocked_batches=blocked_batches)
 
 
-def _prepare_scoring_round(ctx, state, candidates, priority_pruning):
+def _prepare_scoring_round(ctx, priority_pruning):
     natives_intact = ctx.native_scoring
     cache = getattr(ctx, "sgs_score_cache", None)
     if cache is not None and not natives_intact:
         # The handoff scope still holds this cache; an instrumented scorer must see every estimate itself.
         cache.suspend_round()
         cache = None
-    if cache is not None and not cache.begin_round():
-        cache = None
+    if cache is not None:
+        cache.begin_round()
     if cache is None or cache._timing is None:
         priority_pruning = None
     return cache, priority_pruning
@@ -327,7 +290,7 @@ def _score_candidates(
     *,
     priority_pruning: Optional[GraphPriorityPruning] = None,
 ) -> List[Tuple[Tuple[float, ...], str, Any]]:
-    cache, priority_pruning = _prepare_scoring_round(ctx, state, candidates, priority_pruning)
+    cache, priority_pruning = _prepare_scoring_round(ctx, priority_pruning)
     candidates, remainder = (priority_pruning.partition(candidates, graph_state)
                              if priority_pruning is not None else (candidates, []))
     attempt_sink = cache.record_attempt if cache is not None else None
@@ -352,12 +315,7 @@ def _score_candidates(
                 graph_state,
                 attempt_sink=attempt_sink,
             )
-        fallback = None
-        if cache is not None:
-            def cached(batch_id=batch_id, op=op, score=score, active_cache=cache):
-                return active_cache.resolve(op, batches[batch_id], batch_id, graph_state, score)
-            fallback = cached
-        key = fallback() if fallback is not None else score()
+        key = cache.resolve(op, batches[batch_id], batch_id, graph_state, score) if cache is not None else score()
         scored.append((key, batch_id, op))
     if remainder:
         if any(item[0][0] == 0.0 for item in scored):

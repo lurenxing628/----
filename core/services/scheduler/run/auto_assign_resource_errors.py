@@ -30,7 +30,7 @@ def is_auto_assign_resource_error(message: Any) -> bool:
 
 
 def first_auto_assign_resource_error(messages: Optional[List[str]]) -> str:
-    for item in list(messages or []):
+    for item in messages or ():
         text = str(item or "").strip()
         if is_auto_assign_resource_error(text):
             return text
@@ -39,16 +39,17 @@ def first_auto_assign_resource_error(messages: Optional[List[str]]) -> str:
 
 def public_auto_assign_resource_error_message(message: Any) -> str:
     text = str(message or "").strip()
-    public_message = legacy_public_error_message(text)
-    if not public_message:
+    if not (
+        any(text.startswith(prefix) for prefix in AUTO_ASSIGN_RESOURCE_ERROR_PREFIXES)
+        or _legacy_auto_assign_invalid_hours_tail(text)
+        or _is_sgs_auto_assign_resource_error(text)
+    ):
         return ""
-    if not is_auto_assign_resource_error(text):
-        return ""
-    return public_message
+    return legacy_public_error_message(text)
 
 
 def first_public_auto_assign_resource_error(messages: Optional[List[str]]) -> str:
-    for item in list(messages or []):
+    for item in messages or ():
         public_message = public_auto_assign_resource_error_message(item)
         if public_message:
             return public_message
@@ -56,20 +57,22 @@ def first_public_auto_assign_resource_error(messages: Optional[List[str]]) -> st
 
 
 def auto_assign_failed_op_ids_from_errors(*, errors: Any, operations: List[Any]) -> Set[int]:
+    if not errors:
+        return set()
     id_index = _operation_id_index(operations)
     out: Set[int] = set()
-    for raw_error in list(errors or []):
+    for raw_error in errors:
         op_id = _auto_assign_error_op_id(raw_error, id_index)
         if op_id:
             out.add(op_id)
     return out
 
 
-def _operation_id_index(operations: List[Any]) -> Dict[str, Dict[Any, List[int]]]:
+def _operation_id_index(operations: List[Any]) -> Dict[str, Any]:
     ids_by_code: Dict[str, List[int]] = {}
     ids_by_batch_and_code: Dict[Tuple[str, str], List[int]] = {}
     ids_by_batch_and_seq: Dict[Tuple[str, int], List[int]] = {}
-    for op in list(operations or []):
+    for op in operations or ():
         op_code = str(getattr(op, "op_code", "") or "").strip()
         batch_id = str(getattr(op, "batch_id", "") or "").strip()
         try:
@@ -92,20 +95,27 @@ def _operation_id_index(operations: List[Any]) -> Dict[str, Dict[Any, List[int]]
     }
 
 
-def _auto_assign_error_op_id(message: Any, id_index: Dict[str, Dict[Any, List[int]]]) -> Optional[int]:
+def _auto_assign_error_op_id(message: Any, id_index: Dict[str, Any]) -> Optional[int]:
     batch_id, op_text = _auto_assign_error_identity(message)
     if not op_text:
         return None
     seq = _operation_sequence(op_text)
     if batch_id:
         if seq > 0:
-            return _single_op_id(list(id_index["by_batch_and_seq"].get((batch_id, seq)) or []))
-        by_batch_and_code = id_index["by_batch_and_code"]
-        for (op_batch_id, op_code), op_ids in _longest_batch_op_codes(by_batch_and_code):
+            return _single_op_id(id_index["by_batch_and_seq"].get((batch_id, seq)))
+        longest_batch = id_index.get("longest_by_batch_and_code")
+        if longest_batch is None:
+            longest_batch = _longest_batch_op_codes(id_index["by_batch_and_code"])
+            id_index["longest_by_batch_and_code"] = longest_batch
+        for (op_batch_id, op_code), op_ids in longest_batch:
             if op_batch_id == batch_id and _tail_belongs_to_op_code(op_text, op_code):
                 return _single_op_id(op_ids)
         return None
-    for op_code, op_ids in _longest_op_codes(id_index["by_code"]):
+    longest_code = id_index.get("longest_by_code")
+    if longest_code is None:
+        longest_code = _longest_op_codes(id_index["by_code"])
+        id_index["longest_by_code"] = longest_code
+    for op_code, op_ids in longest_code:
         if _tail_belongs_to_op_code(op_text, op_code):
             return _single_op_id(op_ids)
     return None
@@ -120,9 +130,11 @@ def _positive_int(value: Any) -> int:
     return number if number > 0 else 0
 
 
-def _single_op_id(op_ids: List[int]) -> Optional[int]:
-    unique_ids = sorted({int(op_id) for op_id in list(op_ids or []) if int(op_id or 0) > 0})
-    return unique_ids[0] if len(unique_ids) == 1 else None
+def _single_op_id(op_ids: Optional[List[int]]) -> Optional[int]:
+    if not op_ids:
+        return None
+    first = op_ids[0]
+    return first if all(op_id == first for op_id in op_ids) else None
 
 
 def _auto_assign_error_identity(message: Any) -> Tuple[str, str]:
@@ -162,9 +174,8 @@ def _sgs_auto_assign_error_identity(text: str) -> Tuple[str, str]:
     marker = " 的"
     if not _is_sgs_auto_assign_resource_error(text) or marker not in text:
         return "", ""
-    batch_id = text[len("批次 ") :].split(marker, 1)[0].strip()
-    operation_text = text.split(marker, 1)[1].split("（", 1)[0].strip()
-    return batch_id, _normalize_sgs_operation_text(operation_text)
+    batch_part, operation_part = text[len("批次 ") :].split(marker, 1)
+    return batch_part.strip(), _normalize_sgs_operation_text(operation_part.split("（", 1)[0].strip())
 
 
 def _normalize_sgs_operation_text(text: str) -> str:

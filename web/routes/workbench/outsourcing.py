@@ -59,11 +59,11 @@ def _snapshot_time(token, scope):
         return datetime.now().replace(microsecond=0), None
     try:
         saved = resolve_public_token(_SCOPE, token, message=messages.STALE, field="snapshot_ref")
-        if saved["scope"] != scope:
-            raise ValueError("scope changed")
-        return factory_time(saved["as_of"]), saved
-    except (ValidationError, ValueError, TypeError, KeyError) as exc:
+    except ValidationError as exc:
         raise WorkbenchCommandRejected("snapshot_stale", messages.STALE) from exc
+    if saved["scope"] != scope:
+        raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
+    return factory_time(saved["as_of"]), saved
 
 
 def _read(kind, ref=None):
@@ -87,11 +87,11 @@ def _read(kind, ref=None):
         facts = fact_value(content)
         if saved is not None and saved["content"] != facts:
             reject("外协来源或登记内容有变化，还没有保存；系统没有偷偷用新数据。请点「刷新」后重新核对。", "snapshot_stale", 409)
+        stamp = now.isoformat(timespec="seconds")
         if token is None:
-            stamp = now.isoformat(timespec="seconds")
             token = issue_public_token(_SCOPE, {"scope": scope, "content": facts, "as_of": stamp},
                                        key=(content_text(scope), stamp), group=facts, ttl_seconds=900)
-    response = query_success(data, {"snapshot_ref": token, "as_of": now.isoformat(timespec="seconds")}, byte_limit=MAX_BYTES)
+    response = query_success(data, {"snapshot_ref": token, "as_of": stamp}, byte_limit=MAX_BYTES)
     response.headers["Cache-Control"] = "no-store"
     return response
 

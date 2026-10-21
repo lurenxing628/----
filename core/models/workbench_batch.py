@@ -14,6 +14,9 @@ FIELDS = ("quantity", "due_date", "priority", "ready_status", "ready_date", "rem
 SORTS = ("business_code", "part_no", "quantity", "due_date", "priority", "ready_status", "status")
 MAX_INTEGER = 9007199254740991
 
+_PUBLIC_REF_RE = re.compile(r"[0-9a-f]{48}")
+_DATE_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+
 
 def object_fields(value, allowed, required=()):
     if not isinstance(value, dict) or set(value) - set(allowed) or set(required) - set(value):
@@ -22,7 +25,7 @@ def object_fields(value, allowed, required=()):
 
 
 def public_ref(value):
-    if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{48}", value) is None:
+    if not isinstance(value, str) or _PUBLIC_REF_RE.fullmatch(value) is None:
         raise WorkbenchCommandRejected("invalid_input", "这条记录已失效，请刷新后重新选择。", 400)
     return value
 
@@ -43,7 +46,7 @@ def number(value, field, *, integer=False, positive=False, nullable=False):
 def date_value(value, field):
     if value is None:
         return None
-    if not isinstance(value, str) or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) is None:
+    if not isinstance(value, str) or _DATE_RE.fullmatch(value) is None:
         raise ValidationError("日期请按 2026-09-13 这样填；不填就是清除。", field=field)
     try:
         date.fromisoformat(value)
@@ -62,7 +65,8 @@ def text(value, field, *, nullable=False, limit=2000):
 
 def normalize_batch_input(action, payload):
     if action == "delete":
-        return dict(object_fields(payload, ()))
+        object_fields(payload, ())
+        return {}
     if action not in ("create", "update"):
         raise WorkbenchCommandRejected("invalid_input", "不支持的批次操作。", 400)
     required = ("business_code", "part_ref", "fields") if action == "create" else ("fields",)

@@ -45,15 +45,12 @@ _FREEZE_DISABLED_NO_FREEZABLE_PREFIX = "no_freezable_prefix"
 class _LoadedScheduleMapOutcome:
     schedule_map: Dict[int, Dict[str, Any]]
     invalid_row_count: int
-    invalid_row_samples: List[str]
 
 
 @dataclass(frozen=True)
 class _FreezeSeedScope:
-    freeze_days: int
     start_str: str
     freeze_end_str: str
-    seed_operations: List[Any]
     seed_operations_by_batch: Dict[str, List[Any]]
     op_by_id: Dict[int, Any]
     op_ids_all: List[int]
@@ -106,7 +103,6 @@ def _freeze_window_days(
         _record_freeze_degradation(
             meta,
             warnings,
-            "freeze window config degraded",
             strict_mode=strict_mode,
             disabled_reason=_FREEZE_DISABLED_CONFIG_DEGRADED,
         )
@@ -127,7 +123,6 @@ def _freeze_window_days(
 def _record_freeze_degradation(
     meta: Dict[str, Any],
     warnings: List[str],
-    message: str,
     *,
     strict_mode: bool,
     disabled_reason: Optional[str] = None,
@@ -164,20 +159,6 @@ def _finalize_freeze_application_status(meta: Dict[str, Any]) -> None:
     meta["freeze_degradation_reason"] = FREEZE_WINDOW_DEGRADED_MESSAGE
 
 
-def _invalid_schedule_row_sample(row: Any) -> str:
-    try:
-        row_dict = dict(row)
-    except Exception:
-        row_dict = {"repr": repr(row)[:160]}
-    parts: List[str] = []
-    for key in ("op_id", "start_time", "end_time"):
-        value = row_dict.get(key)
-        if value in (None, ""):
-            continue
-        parts.append(f"{key}={value}")
-    return ",".join(parts) or repr(row_dict)[:160]
-
-
 def _load_schedule_map(
     svc,
     *,
@@ -189,7 +170,6 @@ def _load_schedule_map(
 ) -> _LoadedScheduleMapOutcome:
     schedule_map: Dict[int, Dict[str, Any]] = {}
     invalid_row_count = 0
-    invalid_row_samples: List[str] = []
     duplicate_op_ids: Set[int] = set()
     reader = schedule_rows_reader if schedule_rows_reader is not None else svc.schedule_repo.list_version_rows_by_op_ids_start_range
     rows = reader(
@@ -208,18 +188,13 @@ def _load_schedule_map(
                 duplicate_op_ids.add(int(oid))
                 schedule_map.pop(int(oid), None)
                 invalid_row_count += 1
-                if len(invalid_row_samples) < 5:
-                    invalid_row_samples.append(f"duplicate op_id={oid}")
                 continue
             schedule_map[int(oid)] = row_dict
         except Exception:
             invalid_row_count += 1
-            if len(invalid_row_samples) < 5:
-                invalid_row_samples.append(_invalid_schedule_row_sample(row))
     return _LoadedScheduleMapOutcome(
         schedule_map=schedule_map,
         invalid_row_count=int(invalid_row_count),
-        invalid_row_samples=invalid_row_samples,
     )
 
 
@@ -249,7 +224,6 @@ def _hold_window_days(hold_window: Tuple[datetime, datetime], start_dt: datetime
 
 
 def _prepare_freeze_seed_scope(
-    svc,
     *,
     cfg: Any,
     prev_version: int,
@@ -278,16 +252,14 @@ def _prepare_freeze_seed_scope(
     seed_operations = reschedulable_operations if reschedulable_operations is not None else operations
     seed_operations_by_batch = group_seed_operations_by_batch(seed_operations)
     op_by_id: Dict[int, Any] = {int(op.id): op for op in seed_operations if op and op.id}
-    op_ids_all = sorted(list(op_by_id.keys()))
+    op_ids_all = sorted(op_by_id)
     if not op_ids_all:
         _set_freeze_disabled(freeze_meta, _FREEZE_DISABLED_NO_RESCHEDULABLE_OPERATIONS)
         return None
 
     return _FreezeSeedScope(
-        freeze_days=int(freeze_days),
         start_str=fmt_dt(start_dt),
         freeze_end_str=fmt_dt(freeze_end),
-        seed_operations=seed_operations,
         seed_operations_by_batch=seed_operations_by_batch,
         op_by_id=op_by_id,
         op_ids_all=op_ids_all,
@@ -322,18 +294,14 @@ def _load_previous_schedule_for_freeze(
         _record_freeze_degradation(
             freeze_meta,
             warnings,
-            FREEZE_WINDOW_DEGRADED_MESSAGE,
             strict_mode=bool(strict_mode),
         )
         return None
 
     if load_outcome.invalid_row_count > 0:
-        sample_text = ", ".join(load_outcome.invalid_row_samples[:5])
         _record_freeze_degradation(
             freeze_meta,
             warnings,
-            f"previous schedule rows contained {load_outcome.invalid_row_count} invalid entries"
-            + (f" ({sample_text})" if sample_text else ""),
             strict_mode=bool(strict_mode),
         )
         if not load_outcome.schedule_map:
@@ -347,7 +315,6 @@ def _load_previous_schedule_for_freeze(
 
 
 def _apply_freeze_prefixes(
-    svc,
     *,
     scope: _FreezeSeedScope,
     schedule_map: Dict[int, Dict[str, Any]],
@@ -360,7 +327,7 @@ def _apply_freeze_prefixes(
 ) -> Set[int]:
     frozen_op_ids: Set[int] = set()
     anchors_lookup = window_anchors_by_batch(
-        rows_in_window(svc, scope.anchor_start, scope.anchor_end, schedule_map), scope.op_by_id)
+        rows_in_window(scope.anchor_start, scope.anchor_end, schedule_map), scope.op_by_id)
 
     for bid, anchors in anchors_lookup.items():
         prefix = prefix_op_ids_for_anchors(scope.seed_operations_by_batch.get(bid, []), bid, anchors)
@@ -371,22 +338,19 @@ def _apply_freeze_prefixes(
             freeze_meta.setdefault("freeze_skipped_batch_ids", []).append(bid)
             continue
         if missing:
-            sample = ", ".join([str(x) for x in missing[:5]])
             _record_freeze_degradation(
                 freeze_meta,
                 warnings,
-                f"missing prefix rows for batch {bid}: {sample}",
                 strict_mode=bool(strict_mode),
             )
             continue
 
-        invalid_oid = _cache_seed_for_prefix(svc, prefix=prefix, schedule_map=schedule_map, seed_tmp=seed_tmp,
+        invalid_oid = _cache_seed_for_prefix(prefix=prefix, schedule_map=schedule_map, seed_tmp=seed_tmp,
                                              point_validator=point_validator)
         if invalid_oid:
             _record_freeze_degradation(
                 freeze_meta,
                 warnings,
-                f"invalid previous schedule time range for op_id={invalid_oid}",
                 strict_mode=bool(strict_mode),
             )
             _discard_seed_cache(prefix, seed_tmp)
@@ -407,7 +371,7 @@ def _finish_freeze_seed_result(
     warnings: List[str],
 ) -> Tuple[Set[int], List[Dict[str, Any]], List[str]]:
     seed_results = _build_seed_results(frozen_op_ids, op_by_id=scope.op_by_id, seed_tmp=seed_tmp)
-    seed_results.sort(key=lambda x: (x.get("start_time") or datetime.min, x.get("op_id") or 0))
+    seed_results.sort(key=lambda x: (x["start_time"], x["op_id"]))
 
     freeze_meta["freeze_applied"] = bool(frozen_op_ids)
     if str(freeze_meta.get("freeze_state") or "").strip().lower() != "degraded":
@@ -446,7 +410,6 @@ def build_freeze_window_seed(
     freeze_meta = _init_freeze_meta(meta)
 
     scope = _prepare_freeze_seed_scope(
-        svc,
         cfg=cfg,
         prev_version=int(prev_version),
         start_dt=start_dt,
@@ -474,7 +437,6 @@ def build_freeze_window_seed(
 
     seed_tmp: Dict[int, Dict[str, Any]] = {}
     frozen_op_ids = _apply_freeze_prefixes(
-        svc,
         scope=scope,
         schedule_map=load_outcome.schedule_map,
         seed_tmp=seed_tmp,

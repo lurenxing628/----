@@ -34,7 +34,7 @@ def batch_template():
     if request.args:
         raise WorkbenchCommandRejected("invalid_input", "模板下载不需要其他条件，没有开始下载。请直接点「下载模板」。", 400)
     # 示例行移到了「填写说明」表，数据表只留表头，用户不用先删示例再填。
-    return download(write_batch_file([], template=True), "批次导入模板.xlsx", 0)
+    return download(write_batch_file([]), "批次导入模板.xlsx", 0)
 
 
 @api_endpoint
@@ -57,7 +57,7 @@ def batch_import_preview():
     # File checks only compare rows with the captured facts; no further SQL after the snapshot.
     with batch_read_snapshot(reader) as fingerprint:
         bind_read_snapshot(snapshot_scope(scope), fingerprint, request.form["snapshot_ref"])
-        document = WorkbenchBatchFileService(g.db, current_app.logger, reader=reader).preview(content, request.form["mode"], parsed)
+        document = WorkbenchBatchFileService(g.db, current_app.logger, reader=reader).preview(request.form["mode"], parsed)
     # Retaining the finished document needs no read slot or second write token.
     token, expires_at = save_preview("import_confirm", None, document, fingerprint, with_expiry=True)
     data = {**document, "preview_ref": token, "expires_at": expires_at, "write_context": None}
@@ -70,7 +70,7 @@ def batch_import_preview():
 @api_endpoint
 def batch_import_confirm():
     body = command_body()
-    normalized = dict(object_fields(body["input"], ("preview_ref",), ("preview_ref",)))
+    normalized = object_fields(body["input"], ("preview_ref",), ("preview_ref",))
     token = normalized["preview_ref"]
     if not isinstance(token, str) or not token:
         raise WorkbenchCommandRejected("invalid_input", retry_message("import_confirm", "预检结果编号缺失"), 400)

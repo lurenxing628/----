@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Optional
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, get
 from .enums import OperatorStatus
 
 
@@ -31,17 +31,4 @@ class Operator:
             team_id=str(team_id) if team_id is not None and team_id != "" else None,
             created_at=get(row, "created_at"),
             updated_at=get(row, "updated_at"),
-        )
-
-    def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "operator_id": self.operator_id,
-                "name": self.name,
-                "status": self.status,
-                "remark": self.remark,
-                "team_id": self.team_id,
-                "created_at": self.created_at,
-                "updated_at": self.updated_at,
-            }
         )

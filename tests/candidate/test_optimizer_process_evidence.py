@@ -33,7 +33,6 @@ from core.services.scheduler.run.optimizer.shared_archive import SharedScheduleA
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget
 from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 from core.services.scheduler.run.optimizer.shared_process import build_shared_process
-from core.services.scheduler.run.optimizer.signature_support import schedule_with_optional_strict_mode
 from core.services.scheduler.run.optimizer.step_report_hooks import _append_multi_start_trace, _append_ortools_trace
 from core.services.scheduler.run.schedule_candidate_plan import CandidateComparisonOutcome, CandidatePlan
 from core.services.scheduler.run.schedule_payload_contract import ValidatedSchedulePayload
@@ -99,12 +98,11 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
         archive=archive, budget=budget, scheduler=scheduler, operations=operations, batches=batches,
         seed_results=seed_results, downtime_map=downtime_map, resource_pool=None,
         clock=clock, started_at=started_at, deadline=deadline, event_sink=shared.record_event,
-        schedule_fn=schedule_with_optional_strict_mode, start_dt=START_DT,
+        start_dt=START_DT,
     )
     shared.decode_session = session
     decode_inputs = dict(
-        scheduler=scheduler, strict_mode=True, algo_ops_to_schedule=operations, batches=batches,
-        start_dt=START_DT, end_date=None, downtime_map=downtime_map, seed_sr_list=seed_results, dispatch_mode_cfg="batch_order",
+        strict_mode=True, start_dt=START_DT, end_date=None, dispatch_mode_cfg="batch_order",
         dispatch_rule_cfg="slack", resource_pool=None, objective_name="min_overdue", optimizer_algo_stats={},
         readiness_gate_enabled=False, graph_ready_context=None, decode_session=session,
     )
@@ -128,8 +126,11 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
         return result
 
     monkeypatch.setattr(schedule_optimizer_steps, "_solve_ortools_order", solve_order)
-    warmstart_inputs = dict(**decode_inputs, algo_mode="improve", cfg=cfg, strategy_enum=SortStrategy.FIFO,
-                           deadline=deadline, best=best, t_begin=started_at, logger=None, clock=clock)
+    warmstart_inputs = dict(
+        **decode_inputs, scheduler=scheduler, algo_ops_to_schedule=operations, batches=batches,
+        algo_mode="improve", cfg=cfg, strategy_enum=SortStrategy.FIFO,
+        deadline=deadline, best=best, t_begin=started_at, logger=None, clock=clock,
+    )
     optional_report = OptimizationSearchReportState(
         algorithm_profile="improve", seed=0, time_budget_seconds=10, objective_name="min_overdue", started_at=0.0,
     )
@@ -175,7 +176,7 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
         algorithm_profile="unified_schedule_optimizer", seed=0, time_budget_seconds=10,
         objective_name="min_overdue", started_at=started_at, candidate_clock=clock,
     )
-    view = _GoalView("min_overdue", OptimizerSearchState(shared_archive=archive), shared_report)
+    view = _GoalView("min_overdue", OptimizerSearchState(), shared_report)
     shared.views[view.objective] = view
     shared_inputs = dict(warmstart_inputs, deadline=deadline, clock=clock, t_begin=started_at,
                          best=shared_best, decode_session=session)

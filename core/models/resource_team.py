@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, get
 from .enums import ResourceTeamStatus
 
 
@@ -31,13 +31,11 @@ class ResourceTeam:
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "team_id": self.team_id,
-                "name": self.name,
-                "status": self.status,
-                "remark": self.remark,
-                "created_at": self.created_at,
-                "updated_at": self.updated_at,
-            }
-        )
+        return {
+            "team_id": self.team_id,
+            "name": self.name,
+            "status": self.status,
+            "remark": self.remark,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }

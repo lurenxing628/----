@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from .schedule_graph_dispatch_context import (
     GRAPH_CYCLE_DISABLED_REASON,
     node_op_id,
-    positive_op_id_set,
+    schedule_input_op_id_sets,
 )
 from .schedule_input_contracts import ScheduleRunInput
 
@@ -195,15 +195,8 @@ def build_available_graph_score_projection(
 
 
 def graph_score_op_id_sets(schedule_input: ScheduleRunInput) -> Tuple[Set[int], Set[int]]:
-    schedulable_op_ids = positive_op_id_set(getattr(op, "id", None) for op in schedule_input.algo_ops_to_schedule or [])
-    fixed_op_ids = positive_op_id_set(schedule_input.frozen_op_ids or ())
-    fixed_op_ids.update(
-        positive_op_id_set(
-            (item or {}).get("op_id") if isinstance(item, dict) else getattr(item, "op_id", None)
-            for item in schedule_input.seed_results or ()
-        )
-    )
-    return schedulable_op_ids, set(schedulable_op_ids).union(fixed_op_ids)
+    schedulable_op_ids, fixed_op_ids, _ = schedule_input_op_id_sets(schedule_input)
+    return schedulable_op_ids, schedulable_op_ids | fixed_op_ids
 
 
 def node_metrics_by_op_id(

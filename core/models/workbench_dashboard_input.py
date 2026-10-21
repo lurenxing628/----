@@ -60,8 +60,6 @@ def _dates(value, now):
 
 
 def validate_handling(value, now):
-    if not value["remark"]:
-        invalid("remark", "请填写处置备注。")
     if value["status"] != "new":
         for key in ("owner", "deadline", "action"):
             if not value[key]:

@@ -23,14 +23,18 @@ def _definitions(legacy=False):
 def _columns(sql, name):
     current, legacy = _definitions(), _definitions(True)
     known = current.get(name)
-    if known is not None and canonical_sql(sql) in (canonical_sql(known), canonical_sql(legacy[name])):
-        definition = legacy[name] if canonical_sql(sql) == canonical_sql(legacy[name]) else known
-        names = {column.casefold(): column for column in ddl_columns(definition, name)}
-        ordered = [names[part.split(" ", 1)[0].casefold()] for part in canonical_ddl_parts(sql)
-                   if part.split(" ", 1)[0].casefold() in names]
-        if sorted(ordered) != sorted(names.values()):
-            raise ValueError("Archived column definitions are incomplete: " + name)
-        return tuple(ordered)
+    canonical = canonical_sql(sql)
+    if known is not None:
+        legacy_sql = canonical_sql(legacy[name])
+        known_sql = canonical_sql(known)
+        if canonical in (known_sql, legacy_sql):
+            definition = legacy[name] if canonical == legacy_sql else known
+            names = {column.casefold(): column for column in ddl_columns(definition, name)}
+            ordered = [names[part.split(" ", 1)[0].casefold()] for part in canonical_ddl_parts(sql)
+                       if part.split(" ", 1)[0].casefold() in names]
+            if sorted(ordered) != sorted(names.values()):
+                raise ValueError("Archived column definitions are incomplete: " + name)
+            return tuple(ordered)
     return tuple(ddl_columns(sql, name, restricted=True))
 
 
@@ -151,9 +155,9 @@ def project_facts(value):
               for name, rows in value["tables"].items()}
     result = {key: item for key, item in value.items()
               if key != "columns" and not (key == "version" and item == "production-facts-v2")}
-    result.update(schema=list(value["schema"]), tables=tables)
-    if _version(value) not in (39, 40, 41, 42, 43, 44):
-        return result
+    version = _version(value)
+    if version not in (39, 40, 41, 42, 43, 44):
+        return {**result, "schema": list(value["schema"]), "tables": tables}
     for name in READ_MODEL_TABLES:
         tables.pop(name, None)
     schema, roles = [], _business_role_schema()
@@ -161,9 +165,10 @@ def project_facts(value):
         if _derived_schema(row) or _performance_index(row):
             continue
         kind, name, table, sql = row
-        if kind == "table" and table == name and name in roles and canonical_sql(sql) in roles[name]:
+        canonical = canonical_sql(sql)
+        if kind == "table" and table == name and name in roles and canonical in roles[name]:
             schema.append((kind, name, table, roles[name][1]))
-        elif kind == "table" and name in current and canonical_sql(sql) in (
+        elif kind == "table" and name in current and canonical in (
                 canonical_sql(current[name]), canonical_sql(legacy[name])):
             schema.append((kind, name, table, canonical_sql(legacy[name])))
             if name in tables:
@@ -174,5 +179,5 @@ def project_facts(value):
             schema.append(row)
     rows = _named_rows(value, "SchemaVersion", tables["SchemaVersion"])
     tables["SchemaVersion"] = [{**row, "version": 39, "updated_at": None} for row in rows]
-    result["schema"] = schema
+    result.update(schema=schema, tables=tables)
     return result

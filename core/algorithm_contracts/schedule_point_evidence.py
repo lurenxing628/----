@@ -1,10 +1,12 @@
 """Internal exact-work witness, deliberately not a public allow-zero flag."""
 
 import math
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime
 
 from .types import ScheduleResult
+
+_RESULT_FIELDS = tuple(f.name for f in fields(ScheduleResult))
 
 
 @dataclass(frozen=True)
@@ -42,7 +44,7 @@ def verified_point(row, validator):
 class PointSeedResult(ScheduleResult):
     # Internal witness is deliberately absent from dataclass/JSON fields.
     def __init__(self, result, evidence):
-        super().__init__(**asdict(result))
+        super().__init__(**{name: getattr(result, name) for name in _RESULT_FIELDS})
         if type(evidence) is not SchedulePointEvidence or not evidence.matches(self):
             raise ValueError("Invalid point seed witness")
         self._point_evidence = evidence

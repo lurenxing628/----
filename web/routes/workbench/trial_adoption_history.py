@@ -5,7 +5,7 @@ import re
 from flask import g, request
 
 from core.models.workbench_trial import reject
-from core.services.workbench.trial.adoption_history import WorkbenchTrialAdoptionHistoryService, history_scope
+from core.services.workbench.trial.adoption_history import WorkbenchTrialAdoptionHistoryService
 from core.services.workbench.trial.adoption_history_policy import MAX_DIRECTORY_BYTES
 from web.api_responses import query_success
 
@@ -27,9 +27,8 @@ def trial_adoption_history(scenario_ref):
     if numbers["page"] > 1 and not request.args.get("snapshot_ref"):
         reject("snapshot_required", "翻页位置已失效，请回到第 1 页重新查询。", 400)
     status = request.args.get("status", "all")
-    scope = history_scope(scenario_ref, status, numbers["size"])
     data, content = WorkbenchTrialAdoptionHistoryService(g.db).read(scenario_ref, status=status, **numbers)
-    response = query_success(data, bind_read_snapshot(scope, content, request.args.get("snapshot_ref")), byte_limit=MAX_DIRECTORY_BYTES)
+    response = query_success(data, bind_read_snapshot(data["scope"], content, request.args.get("snapshot_ref")), byte_limit=MAX_DIRECTORY_BYTES)
     response.headers["Cache-Control"] = "no-store"
     return response
 

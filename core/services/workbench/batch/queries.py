@@ -10,13 +10,13 @@ from .template_validation import template_status
 
 def cell(entity, key):
     if key == "ready_status":
-        return entity.get("display_ready_status", entity["fields"][key])
+        return entity["display_ready_status"]
     if key == "part_no":
         return entity["relationships"][key]
     return entity[key] if key in ("business_code", "status") else entity["fields"][key]
 
 
-def matches_entity(query, batch, entity):
+def matches_entity(query, entity):
     if query["status"] and query["status"] != entity["status"] or query["ready_status"] and query["ready_status"] != cell(entity, "ready_status"):
         return False
     if query["focus"] == "unready" and cell(entity, "ready_status") == "yes":
@@ -41,10 +41,15 @@ class WorkbenchBatchQueryService(BatchFacts):
             if query["batch_ids"] is not None and batch["batch_id"] not in query["batch_ids"]:
                 continue
             entity = projection.summary(batch)
-            if matches_entity(query, batch, entity):
+            if matches_entity(query, entity):
                 rows.append(entity)
+
+        def sort_key(row):
+            value = cell(row, query["sort"])
+            return value is None, value or 0
+
         rows.sort(key=lambda row: row["business_code"])
-        rows.sort(key=lambda row: (cell(row, query["sort"]) is None, cell(row, query["sort"]) or 0), reverse=query["direction"] == "desc")
+        rows.sort(key=sort_key, reverse=query["direction"] == "desc")
         return rows
 
     def page(self, scope):

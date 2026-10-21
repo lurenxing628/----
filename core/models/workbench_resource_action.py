@@ -33,7 +33,7 @@ def resource_refs(refs, *, allow_empty=False):
         raise ValidationError("所选设备或人员已失效，请刷新后重新选择。", field="refs")
     if len(set(refs)) != len(refs):
         raise ValidationError("选择里有重复，请重新选择。", field="refs")
-    return list(refs)
+    return refs
 
 
 def check_category(kind, raw, scope):

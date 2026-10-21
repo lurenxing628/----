@@ -109,6 +109,7 @@ class HistoryReader:
         self._condition_sources = {}
         self._condition_sides = {}
         self.history_metrics_cache = {}
+        self.history_range_facts = {}
 
     def condition_source(self, packet):
         """Share a verified saved source while keeping missing-event evidence separate."""

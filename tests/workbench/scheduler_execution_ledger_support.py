@@ -11,8 +11,7 @@ from core.infrastructure.workbench_execution_ledger_schema import install_execut
 from core.infrastructure.workbench_execution_void_schema import install_execution_voids
 from core.infrastructure.workbench_metadata_schema import install_metadata
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
-from core.services.scheduler.execution_fact_provider import ExecutionFactProvider
-from core.services.scheduler.execution_snapshot import build_execution_snapshot
+from core.services.scheduler.execution.execution_fact_provider import ExecutionFactProvider
 from tests.workbench.execution_ledger_support import LedgerCase, install_current_content_storage
 from tests.workbench.plan_identity_support import load_v24_schema
 
@@ -75,11 +74,6 @@ def plan_rows(conn, version):
 
 def read_facts(conn, version=1):
     return ExecutionFactProvider(conn).facts_by_op_id_for_plan_rows(plan_rows(conn, version), PLAN_FIELDS)
-
-
-def read_snapshot(conn, version=1):
-    facts = read_facts(conn, version)
-    return build_execution_snapshot(facts, list(facts))
 
 
 def formal_rows(conn):

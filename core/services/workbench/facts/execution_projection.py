@@ -4,8 +4,6 @@ from dataclasses import replace
 from typing import Any, Callable, Dict, Iterable, Optional, Protocol
 
 from core.models.content import content_text
-from core.services.execution.projection import project_execution as project_execution
-from core.services.execution.projection import report_dto as report_dto
 
 # 报工状态、完成依据与资料完整性的用户显示值只有这一份，导出和下载都从这里取。
 # 词表决策：.codestable/compound/2026-09-13-decision-ui-copy-glossary.md。

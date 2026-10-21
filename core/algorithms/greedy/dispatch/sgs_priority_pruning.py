@@ -24,9 +24,10 @@ from core.algorithm_runtime.native_snapshot import UNSUPPORTED, scalar_snapshot
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.errors import ValidationError
 
+from .sgs_due_span import _external_candidate_window
 from .sgs_priority_keys import ValidatedGraphPriorityKeys
 from .sgs_score_cache import plain_record_class
-from .sgs_scoring import _external_candidate_window, _parse_due_date
+from .sgs_scoring import _parse_due_date
 
 _FIELDS = ("id", "seq", "batch_id", "piece_id", "source", "machine_id", "operator_id", "op_type_name",
            "setup_hours", "unit_hours", "quantity", "priority", "due_date", "ready_date", "material_ready_date", "ready_status",
@@ -110,12 +111,13 @@ class GraphPriorityPruning:
             source = getattr(op, "source", "internal")
             if type(source) is not str:
                 return False
-            if source.strip().lower() == "external":
+            normalized_source = source.strip().lower()
+            if normalized_source == "external":
                 if not self._certified_external(op, strict):
                     return False
                 self._has_external, self.fixed_resources = True, False
                 continue
-            if not self._certified_internal(op, op_id, hours):
+            if not self._certified_internal(normalized_source, op_id, hours):
                 return False
             fixed = self._certified_resources(op)
             if fixed is None:
@@ -132,17 +134,15 @@ class GraphPriorityPruning:
         try:
             _external_candidate_window(
                 SimpleNamespace(calendar=self._calendar), ScheduleRunState(base_time=datetime.min),
-                op=op, batch_id=op.batch_id, prev_end=datetime.min, strict_mode=strict,
+                op=op, prev_end=datetime.min, strict_mode=strict,
             )
         except (ValidationError, ValueError, OverflowError):
             return False
         return True
 
     @staticmethod
-    def _certified_internal(op, op_id, hours):
-        source = getattr(op, "source", "internal")
-        return (type(source) is str and source.strip().lower() == "internal"
-                and type(getattr(op, "id", None)) is int and type(getattr(op, "seq", None)) is int
+    def _certified_internal(normalized_source, op_id, hours):
+        return (normalized_source == "internal"
                 and op_id in hours and type(hours[op_id]) is float and math.isfinite(hours[op_id]) and hours[op_id] >= 0)
 
     def _certified_resources(self, op):

@@ -36,7 +36,7 @@ def _page(key):
 
 
 def _current_snapshot(scope, token, as_of):
-    snapshot = bind_read_snapshot(scope, None, token)
+    snapshot = bind_read_snapshot(scope, None, token, as_of=as_of)
     snapshot["as_of"] = as_of
     return snapshot
 

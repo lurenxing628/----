@@ -1,8 +1,7 @@
 """Small read-only relation DTOs, with provenance distinct from eligibility."""
 
 from core.models.resource_capabilities import machine_types
-
-from .metrics import _status
+from core.models.workbench_resource_status import public_resource_status
 
 RELATION_KINDS = {"machines": "machine", "operators": "operator", "suppliers": "supplier"}
 RELATION_BASIS = {
@@ -16,7 +15,7 @@ _PERSON_SOURCES = {"skill": "工种技能记录", "machine_authorization": "匹�
 
 def _base_entity(kind, identity, row):
     profile = {"inactive_reason": row.get("inactive_reason")}
-    status = _status(kind, row, profile)
+    status = public_resource_status(kind, row["status"], profile)
     entity = {"kind": kind, "ref": identity.ref, "business_code": identity.entity_key,
               "label": row["name"], "status": status, "fields": {"remark": row["remark"]},
               "issues": [], "write_context": None}

@@ -51,9 +51,14 @@ def _execution(facts, ref, gaps):
 
 
 def operation_labels(facts, ref, payload=None, *, prepared=None):
-    gaps = list(prepared["operation_gaps"]) if prepared is not None else []
-    op = prepared["operation"] if prepared is not None else facts.operation(ref, payload, gaps)
+    if prepared is not None:
+        op = prepared["operation"]
+    else:
+        gaps = []
+        op = facts.operation(ref, payload, gaps)
     if ref not in facts._operation_labels:
+        if prepared is not None:
+            gaps = list(prepared["operation_gaps"])
         facts._operation_labels[ref] = _base_operation_labels(facts, ref, op, gaps)
     base = facts._operation_labels[ref]
     result = {**base, "data_gaps": [dict(item) for item in base["data_gaps"]]}
@@ -140,10 +145,6 @@ def _task_dto(row, facts, start, end, *, prepared=None):
         task[kind] = _resource(facts, kind, payload.get(kind + "_id"), gaps)
     task["supplier"] = _resource(facts, "supplier", operation.get("supplier_id"), gaps)
     return task
-
-
-def tasks_projection(rows, candidate, facts):
-    return tasks_projection_with_intervals(rows, candidate, facts)[0]
 
 
 def tasks_projection_with_intervals(rows, candidate, facts):

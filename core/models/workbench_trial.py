@@ -1,8 +1,7 @@
 """Trial commands and public validation, independent of legacy plan roles."""
 
 import re
-from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, NoReturn
+from typing import NoReturn
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import local_time
@@ -93,20 +92,8 @@ def issue(code, message, task_ref=None, related_task_ref=None, severity="blocker
     return result
 
 
-@dataclass(frozen=True)
-class TrialValidation:
-    status: str
-    can_adopt: bool
-    issues: List[Dict[str, Any]] = field(default_factory=list)
-    constraints_status: str = "blocked"
-    adoption: Dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self):
-        return asdict(self)
-
-
 def validation(issues):
     state = "blocked" if any(row["severity"] == "blocker" for row in issues) else "warning" if issues else "valid"
     review = issue("scenario_adoption_preview_required", "保存试调方案后，正式采用前需要单独预检。", severity="warning")
-    return TrialValidation(state, False, list(issues), state,
-                           {"available": False, "blocked_reasons": [review]}).to_dict()
+    return {"status": state, "can_adopt": False, "issues": [dict(row) for row in issues],
+            "constraints_status": state, "adoption": {"available": False, "blocked_reasons": [review]}}

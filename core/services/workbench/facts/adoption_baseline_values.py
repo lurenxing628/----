@@ -3,7 +3,6 @@
 import json
 from typing import NoReturn
 
-from core.infrastructure.schema_probe import table_exists
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial_codec import same as same
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
@@ -51,10 +50,6 @@ def stored(text):
     value = json.loads(text, object_pairs_hook=pairs)
     require(type(value) is dict, "json_object")
     return value
-
-
-def has_table(conn, name):
-    return table_exists(conn, name)
 
 
 def raw_table_rows(rows, table):

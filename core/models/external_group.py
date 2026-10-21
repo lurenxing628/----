@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get, parse_float, parse_int
+from ._helpers import RowLike, get, parse_float, parse_int
 from .enums import MergeMode
 
 
@@ -46,17 +46,15 @@ class ExternalGroup:
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "group_id": self.group_id,
-                "part_no": self.part_no,
-                "start_seq": self.start_seq,
-                "end_seq": self.end_seq,
-                "merge_mode": self.merge_mode,
-                "total_days": self.total_days,
-                "supplier_id": self.supplier_id,
-                "remark": self.remark,
-                "created_at": self.created_at,
-            }
-        )
+        return {
+            "group_id": self.group_id,
+            "part_no": self.part_no,
+            "start_seq": self.start_seq,
+            "end_seq": self.end_seq,
+            "merge_mode": self.merge_mode,
+            "total_days": self.total_days,
+            "supplier_id": self.supplier_id,
+            "remark": self.remark,
+            "created_at": self.created_at,
+        }
 

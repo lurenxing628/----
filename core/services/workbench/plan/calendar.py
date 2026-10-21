@@ -50,9 +50,10 @@ def _resource_projections(engine, facts, ids, bounds, global_calendar, resources
 
 
 def _unavailable_result(scope, time_scope, context, code):
+    global_cal = unavailable("global_calendar", code)
     dto = {"state": "unavailable", "plan_ref": scope.plan_ref, "time_scope": time_scope,
-           "global": unavailable("global_calendar", code), "resources": None,
-           "issues": unavailable("global_calendar", code)["issues"]}
+           "global": global_cal, "resources": None,
+           "issues": global_cal["issues"]}
     return dto, {"context": context, "state": "unavailable", "reason": code, "sources": None, "resources": None}
 
 

@@ -58,7 +58,7 @@ def _describe_parent(search: Any, source: Any) -> None:
     report = search.report
     report["parent_origin"] = str(source.get("candidate_origin") or "baseline")
     report["parent_score"] = list(source["score"])
-    profile = (source.get("graph_ready_profile") or {}) if isinstance(source, dict) else {}
+    profile = source.get("graph_ready_profile") or {}
     report["parent_profile_slug"] = profile.get("weight_profile_slug")
 
 

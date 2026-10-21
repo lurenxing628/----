@@ -11,7 +11,6 @@ from core.shared.field_parse import parse_field_float, parse_field_int
 from .schedule_config_runtime_fields import (
     MISSING_POLICY_ERROR,
     MISSING_POLICY_FALLBACK_WITH_DEGRADATION,
-    default_snapshot_values,
     get_field_spec,
     list_runtime_config_fields,
 )
@@ -251,10 +250,10 @@ def _coerce_float_field(
             field_label=label,
         )
     )
-    if spec.choices and not float_matches_choice(parsed_float, tuple(spec.choices)):
+    if spec.choices and not float_matches_choice(parsed_float, spec.choices):
         if strict_mode:
             raise ValidationError(
-                f"“{label}”填写不正确：{value}（可填写：{_format_choice_allow_text(tuple(spec.choices))}）",
+                f"“{label}”填写不正确：{value}（可填写：{_format_choice_allow_text(spec.choices)}）",
                 field=spec.key,
             )
         _record_invalid_choice_degradation(
@@ -263,7 +262,7 @@ def _coerce_float_field(
             field_name=spec.key,
             raw_value=value,
             fallback=str(effective_fallback),
-            valid_values=tuple(spec.choices),
+            valid_values=spec.choices,
         )
         return float(effective_fallback)
     return parsed_float
@@ -295,10 +294,10 @@ def _coerce_int_field(
             field_label=label,
         )
     )
-    if spec.choices and not _int_matches_choice(parsed_int, tuple(spec.choices)):
+    if spec.choices and not _int_matches_choice(parsed_int, spec.choices):
         if strict_mode:
             raise ValidationError(
-                f"“{label}”填写不正确：{value}（可填写：{_format_choice_allow_text(tuple(spec.choices))}）",
+                f"“{label}”填写不正确：{value}（可填写：{_format_choice_allow_text(spec.choices)}）",
                 field=spec.key,
             )
         _record_invalid_choice_degradation(
@@ -307,7 +306,7 @@ def _coerce_int_field(
             field_name=spec.key,
             raw_value=value,
             fallback=str(effective_fallback),
-            valid_values=tuple(spec.choices),
+            valid_values=spec.choices,
         )
         return int(effective_fallback)
     return parsed_int
@@ -389,7 +388,6 @@ def _validate_present_runtime_cfg_fields(
     *,
     source: str,
 ) -> Dict[str, Any]:
-    default_map = default_snapshot_values()
     values: Dict[str, Any] = {}
     for spec in list_runtime_config_fields():
         missing, raw = read_runtime_cfg_raw_value(cfg, spec.key)
@@ -402,7 +400,6 @@ def _validate_present_runtime_cfg_fields(
             source=source,
             collector=DegradationCollector(),
             missing=False,
-            fallback=default_map[spec.key],
             missing_policy=MISSING_POLICY_ERROR,
         )
     return values
@@ -420,7 +417,6 @@ def ensure_schedule_config_snapshot(
             source=source,
         )
     collector = seed_snapshot_degradation_collector(cfg)
-    default_map = default_snapshot_values()
     for spec in list_runtime_config_fields():
         if bool(strict_mode) and spec.key in values:
             continue
@@ -432,7 +428,6 @@ def ensure_schedule_config_snapshot(
             source=source,
             collector=collector,
             missing=missing,
-            fallback=default_map[spec.key],
             missing_policy=(MISSING_POLICY_ERROR if bool(strict_mode) else MISSING_POLICY_FALLBACK_WITH_DEGRADATION),
         )
     if bool(strict_mode):
@@ -461,15 +456,16 @@ def coerce_runtime_config_field(
     collector: Optional[DegradationCollector] = None,
     missing_policy: str = MISSING_POLICY_FALLBACK_WITH_DEGRADATION,
 ) -> Any:
-    default_map = default_snapshot_values()
     missing, raw = read_runtime_cfg_raw_value(cfg, key)
-    active_collector = collector if collector is not None else DegradationCollector()
-    return coerce_config_field(key, raw, strict_mode=bool(strict_mode), source=source, collector=active_collector, missing=missing, fallback=default_map[key], missing_policy=missing_policy)
+    return coerce_config_field(
+        key,
+        raw,
+        strict_mode=bool(strict_mode),
+        source=source,
+        collector=collector,
+        missing=missing,
+        missing_policy=missing_policy,
+    )
 
 
 __all__ = ["coerce_runtime_config_field", "ensure_schedule_config_snapshot"]
-
-# Compatibility names used by the existing low-level contracts.
-_coerce_config_field = coerce_config_field
-_float_matches_choice = float_matches_choice
-_normalize_valid_texts = normalize_choice_tokens

@@ -6,14 +6,16 @@ from typing import Any, Dict, List
 from core.models.public_identifier_redaction import contains_internal_identifier
 from core.models.scheduler_degradation_messages import public_degradation_events
 
-PUBLIC_ATTEMPT_METRIC_KEYS = {
+COMPARISON_METRIC_KEYS = (
+    "failed_ops",
     "overdue_count",
     "weighted_tardiness_hours",
     "total_tardiness_hours",
     "makespan_hours",
     "changeover_count",
-}
-PUBLIC_SCORE_SCHEMA_KEYS = PUBLIC_ATTEMPT_METRIC_KEYS | {"failed_ops"}
+)
+PUBLIC_SCORE_SCHEMA_KEYS = set(COMPARISON_METRIC_KEYS)
+PUBLIC_ATTEMPT_METRIC_KEYS = {key for key in COMPARISON_METRIC_KEYS if key != "failed_ops"}
 
 
 def safe_metric_key(value: Any) -> str:
@@ -49,10 +51,6 @@ def public_float(value: Any) -> Any:
     return None
 
 
-def safe_bool(value: Any) -> bool:
-    return bool(value)
-
-
 def safe_attempt_text(value: Any) -> str:
     text = str(value or "").strip()
     if not text or contains_internal_identifier(text):
@@ -75,14 +73,6 @@ def project_attempt_score(value: Any) -> List[Any]:
     if not isinstance(value, (list, tuple)):
         return []
     return [item for item in value if isinstance(item, (int, float)) and not isinstance(item, bool)]
-
-
-def project_attempt_failed_ops(value: Any) -> Any:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    return None
 
 
 def project_attempt_metrics(value: Any) -> Dict[str, Any]:
@@ -168,15 +158,14 @@ def project_degradation_event_list(events: Any) -> List[Dict[str, Any]]:
 
 
 __all__ = [
+    "COMPARISON_METRIC_KEYS",
     "PUBLIC_ATTEMPT_METRIC_KEYS",
     "PUBLIC_SCORE_SCHEMA_KEYS",
-    "project_attempt_failed_ops",
     "project_attempt_metrics",
     "project_attempt_score",
     "project_degradation_event_list",
     "project_public_metrics",
     "safe_attempt_text",
-    "safe_bool",
     "safe_counter_dict",
     "public_float",
     "public_int",

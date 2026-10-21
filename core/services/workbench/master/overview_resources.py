@@ -19,12 +19,12 @@ def _shown(value, labels):
 def add_resources(graph):
     for domain, table, key in CATALOGS:
         for row in graph.facts.rows(table):
-            entity = graph.add(domain, row[key], row[key], row["name"], category=row.get("category") if domain == "opType" else None)
+            entity = graph.add(domain, row[key], row[key], row["name"], category=row["category"] if domain == "opType" else None)
             for name, label in ((key, "编号"), ("name", "名称")):
                 graph.field(entity, label, row[name], table + "." + name)
                 if not isinstance(row[name], str) or not row[name].strip():
                     graph.issue(entity, name + ".missing", label + "未填写", "这条资料的" + label + "未填写，请补充。")
-            graph.field(entity, "备注", row.get("remark"), table + ".remark", required=False)
+            graph.field(entity, "备注", row["remark"], table + ".remark", required=False)
             if domain == "opType":
                 _op_type(graph, entity, row)
             else:

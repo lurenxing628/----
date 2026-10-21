@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get, parse_float_or_default
+from ._helpers import RowLike, get, parse_float_or_default
 from .enums import MaterialStatus
 
 
@@ -35,15 +35,13 @@ class Material:
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "material_id": self.material_id,
-                "name": self.name,
-                "spec": self.spec,
-                "unit": self.unit,
-                "stock_qty": self.stock_qty,
-                "status": self.status,
-                "remark": self.remark,
-                "created_at": self.created_at,
-            }
-        )
+        return {
+            "material_id": self.material_id,
+            "name": self.name,
+            "spec": self.spec,
+            "unit": self.unit,
+            "stock_qty": self.stock_qty,
+            "status": self.status,
+            "remark": self.remark,
+            "created_at": self.created_at,
+        }

@@ -34,8 +34,8 @@ from .read_context import PlanReadContext, PlanReadQuery
 from .workspace_dto import resource_directory, workspace_projections
 
 
-def _selected_plan(context, plan_ref, locator, *, repo=None):
-    repo = context.repo if repo is None else repo
+def _selected_plan(context, locator):
+    repo = context.repo
     query = PlanReadQuery(repo, repo.latest_version())
     history = repo.get_history_identity_row(locator.version)
     if locator.scenario_id is not None:
@@ -146,36 +146,28 @@ class WorkbenchPlanQueryService:
             raise RuntimeError("A valid catalog binding must have a permanent plan reference.")
         return reference.plan_ref, None
 
-    def _selected(self, plan_ref, *, context=None):
-        context = context if context is not None else PlanReadContext(
+    def _selected(self, plan_ref):
+        context = PlanReadContext(
             self.conn, self.logger, references=self.references, entities=self.entities)
         with context.read_scope():
             return context.selected(plan_ref)
 
     def _selected_metadata(
-        self, plan_ref, *, repo=None, locator=None, context=None,
+        self, plan_ref,
     ) -> Tuple[SchedulePlanResolution, PlanCatalogEntry, Dict[str, Union[str, bool]]]:
-        if not self.conn.in_transaction:
-            raise RuntimeError("Plan reads require read_snapshot() or an existing read transaction.")
-        context = context if context is not None else PlanReadContext(
-            self.conn, self.logger, references=self.references, entities=self.entities)
-        repo = repo if repo is not None else PlanMetadataRepository(self.conn, logger=self.logger)
+        repo = PlanMetadataRepository(self.conn, logger=self.logger)
+        context = PlanReadContext(
+            self.conn, self.logger, references=self.references, entities=self.entities, repo=repo)
         with context.read_scope():
-            locator = context.resolve(plan_ref) if locator is None else locator
-            _, entry, span = _selected_plan(context, plan_ref, locator, repo=repo)
+            _, entry, span = context.selected(plan_ref)
             return cast(SchedulePlanResolution, entry.resolution), entry, span
 
-    def _task_rows(self, repo, entry, scope, *, context=None):
-        context = context if context is not None else getattr(repo, "context", None)
+    def _task_rows(self, repo, entry, scope):
+        context = getattr(repo, "context", None)
         context = context if context is not None else PlanReadContext(
             self.conn, self.logger, references=self.references, entities=self.entities)
         with context.read_scope():
             return context.scoped_rows(entry, scope)
-
-    def _resources(self, rows, *, context=None):
-        context = context if context is not None else PlanReadContext(
-            self.conn, self.logger, references=self.references, entities=self.entities)
-        return context.resources(rows)
 
     def workspace(self, scope, *, context=None):
         context = context if context is not None else PlanReadContext(

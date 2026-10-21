@@ -86,7 +86,7 @@ def _read_data_row(line, cells, headers):
     return {"row": line, "values": values, "errors": errors}
 
 
-def write_batch_file(rows, *, template=False):
+def write_batch_file(rows):
     import openpyxl
     from openpyxl.cell.cell import TYPE_STRING
     from openpyxl.comments import Comment

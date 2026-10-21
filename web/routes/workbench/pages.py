@@ -71,8 +71,7 @@ def _host(view: str):
         "messages": [{"category": str(category), "message": str(message)}
                      for category, message in get_flashed_messages(with_categories=True)],
         "titles": VIEW_TITLES,
-        "enabled_views": ["system", "process", "batches", "analysis", "gantt", "review", "reports", "basedata",
-                          "field", "fieldgantt", "run", "calib", "trial", "dashboard", "delay"],
+        "enabled_views": list(VIEW_TITLES),
         "entry_url": url_for("workbench.index"),
         "trial_url": url_for("workbench.trial"),
         "nav_groups": navigation_groups(),

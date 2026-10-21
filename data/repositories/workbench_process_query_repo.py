@@ -51,10 +51,7 @@ class WorkbenchProcessQueryRepository(BaseRepository):
     def supplier_reference_rows(self):
         return self.fetchall("SELECT supplier_id, name FROM Suppliers")
 
-    def op_type_categories(self):
-        return self.fetchall("SELECT op_type_id,category FROM OpTypes")
-
     def supplier_status_rows(self):
-        """供应商状态连停用原因（WorkbenchSupplierProfiles.inactive_reason）。"""
-        return self.fetchall("""SELECT s.supplier_id,s.status,p.inactive_reason
+        """供应商状态连名称与停用原因（WorkbenchSupplierProfiles.inactive_reason）。"""
+        return self.fetchall("""SELECT s.supplier_id,s.name,s.status,p.inactive_reason
         FROM Suppliers s LEFT JOIN WorkbenchSupplierProfiles p ON p.supplier_id=s.supplier_id""")

@@ -32,11 +32,6 @@ class WorkbenchSupplierStateRepository(BaseRepository):
         }
         return supplier
 
-    def get_op_type_by_ref(self, ref):
-        return self.fetchone("""SELECT ot.*, r.ref, r.revision FROM OpTypes AS ot
-            JOIN WorkbenchEntityRefs AS r ON r.kind = 'op_type' AND r.active = 1
-                AND r.entity_key = ot.op_type_id WHERE r.ref = ?""", (ref,))
-
     def get_profile(self, code):
         return self.fetchone("SELECT * FROM WorkbenchSupplierProfiles WHERE supplier_id = ?", (code,))
 

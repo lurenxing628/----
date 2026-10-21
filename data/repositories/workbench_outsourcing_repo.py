@@ -42,7 +42,7 @@ class WorkbenchOutsourcingRepository:
         if row is None:
             return None
         members = [row[0] for row in self.conn.execute("SELECT operation_ref FROM WorkbenchOutsourcingMembers WHERE outsourcing_ref=? ORDER BY operation_ref", (ref,))]
-        return self._header(dict(row), members)
+        return self._header(row, members)
 
     @staticmethod
     def _header(row, members):
@@ -60,7 +60,7 @@ class WorkbenchOutsourcingRepository:
         for start in range(0, len(refs), 400):
             chunk = refs[start:start + 400]
             marks = ",".join("?" for _ in chunk)
-            headers = {row["outsourcing_ref"]: dict(row) for row in self.conn.execute(
+            headers = {row["outsourcing_ref"]: row for row in self.conn.execute(
                 "SELECT * FROM WorkbenchOutsourcingReceipts WHERE outsourcing_ref IN (" + marks + ")", chunk)}
             members = {ref: [] for ref in chunk}
             for row in self.conn.execute("SELECT outsourcing_ref,operation_ref FROM WorkbenchOutsourcingMembers "

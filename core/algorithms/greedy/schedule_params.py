@@ -58,15 +58,12 @@ class ScheduleParams:
 
 
 def _snapshot_attr(snapshot: Any, key: str) -> Any:
-    label = _field_label(key)
     if snapshot is None:
         raise ValidationError("缺少运行期配置快照。", field="config_snapshot")
-    if not hasattr(snapshot, key):
-        raise ValidationError(f"运行期配置缺少“{label}”字段。", field=key)
     try:
         return getattr(snapshot, key)
-    except Exception as exc:
-        raise ValidationError(f"读取运行期配置中的“{label}”失败。", field=key) from exc
+    except AttributeError as exc:
+        raise ValidationError(f"运行期配置缺少“{_field_label(key)}”字段。", field=key) from exc
 
 
 def _require_choice(raw_value: Any, *, field: str, valid_values: Set[str]) -> str:
@@ -228,8 +225,6 @@ def _resolve_base_time(
     base_time = start_dt or datetime.now()
     if isinstance(base_time, datetime):
         return base_time
-    if base_time is None:
-        return datetime.now()
 
     parsed = parse_datetime(base_time)
     if parsed is not None:
@@ -380,6 +375,7 @@ def resolve_schedule_params(
     warnings: List[str] = []
     runtime_snapshot = None
     snapshot_degradation_seen = set()
+    events_by_field: Dict[str, List[Dict[str, Any]]] = {}
 
     def _runtime_snapshot() -> Any:
         nonlocal runtime_snapshot
@@ -393,15 +389,14 @@ def resolve_schedule_params(
                     "构建运行期配置快照失败，请检查排产参数配置。",
                     field="config_snapshot",
                 ) from exc
+            for event in getattr(runtime_snapshot, "degradation_events", ()) or ():
+                if isinstance(event, dict):
+                    event_field = str(event.get("field") or "").strip()
+                    events_by_field.setdefault(event_field, []).append(event)
         return runtime_snapshot
 
     def _record_snapshot_degradations(field: str, *, counter_key: str) -> None:
-        snapshot = _runtime_snapshot()
-        for event in getattr(snapshot, "degradation_events", ()) or ():
-            if not isinstance(event, dict):
-                continue
-            if str(event.get("field") or "").strip() != field:
-                continue
+        for event in events_by_field.get(field, ()):
             code = str(event.get("code") or "").strip()
             marker = (
                 code,

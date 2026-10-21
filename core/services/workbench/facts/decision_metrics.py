@@ -3,7 +3,7 @@
 from core.models.workbench_run_candidate import local_time
 
 from .candidate_projection import metrics as saved_metrics
-from .decision_delivery import decision_delivery_summary, project_decision_delivery
+from .decision_delivery import project_decision_delivery
 from .delivery_projection import delivery_summary
 from .preflight_dependencies import material_deferred_ids
 from .preparation_projection import (
@@ -93,7 +93,9 @@ def delivery_coverage(facts, tasks, batch_refs, deferred_refs, *, candidate=None
         deferred_ids = {facts.operations[ref] for ref in deferred_refs}
         items = project_decision_delivery(facts, tasks, batch_refs, deferred_ids=deferred_ids, candidate=candidate)
     summary = delivery_summary(items)
-    return decision_delivery_summary(items), delivery_metric_values(summary)
+    coverage = {**summary, "state": "complete" if summary["complete_batch_count"] == summary["batch_count"] else "partial",
+                "delivery_state": summary["state"]}
+    return coverage, delivery_metric_values(summary)
 
 
 def delivery_metric_values(summary):
@@ -108,9 +110,8 @@ def delivery_metric_values(summary):
     return result
 
 
-def candidate_metrics(candidate, tasks, facts, settings, disposition, batch_refs, *, delivery_items=None, operation_scope=None):
-    refs, deferred, skipped = (admission_operations(facts, settings, disposition)
-                               if operation_scope is None else operation_scope)
+def candidate_metrics(candidate, tasks, facts, disposition, batch_refs, *, delivery_items, operation_scope):
+    refs, deferred, skipped = operation_scope
     expected = refs - deferred
     has_result = candidate["status"] == "completed"
     scheduled = {row["operation_ref"] for row in tasks} & expected
@@ -159,7 +160,8 @@ def project_official_core_metrics(tasks, operation_refs, deferred_refs, availabl
     refs = set(operation_refs)
     tasks = [task for task in tasks if task["operation_ref"] in refs]
     summary = delivery_summary(delivery_items)
-    coverage = decision_delivery_summary(delivery_items)
+    coverage = {**summary, "state": "complete" if summary["complete_batch_count"] == summary["batch_count"] else "partial",
+                "delivery_state": summary["state"]}
     reason = {"code": "official_algorithm_metric_missing", "message": "排产时的正式计划未保存这项计算指标。"}
     values = {definition["key"]: metric_value(None, state="unavailable", unknown=1, scope=definition["scope"], reason=reason)
               for definition in metric_definitions() if metric_keys is None or definition["key"] in metric_keys}

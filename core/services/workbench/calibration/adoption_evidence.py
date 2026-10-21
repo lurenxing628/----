@@ -51,7 +51,7 @@ def read_evidence(conn, repo, template_ref, intent, clock: Callable[[], datetime
                    "suggestion": suggestion, "latest_adoption": latest}
         method_blockers = [reason for reason in row["blocked_reasons"]
                            if reason["code"] == SUGGESTION_BELOW_PRECISION_CODE]
-        blockers = _blockers(template, suggestion, samples, facts["lineage_available"], method_blockers)
+        blockers = _blockers(template, suggestion, facts["lineage_available"], method_blockers)
         evidence = CalibrationAdoptionEvidence(template, suggestion, samples, binding, as_of.isoformat(timespec="seconds"), blockers)
         encoded = evidence.audit_document()
         if len(encoded.encode("utf-8")) > MAX_EVIDENCE_BYTES:
@@ -59,7 +59,7 @@ def read_evidence(conn, repo, template_ref, intent, clock: Callable[[], datetime
         return evidence
 
 
-def _blockers(template, suggestion, samples, lineage_available, method_blockers):
+def _blockers(template, suggestion, lineage_available, method_blockers):
     blockers = []
     if not lineage_available:
         blockers.append(issue("template_lineage_missing", "找不到已确认的模板来源，不能采用。"))
@@ -69,6 +69,4 @@ def _blockers(template, suggestion, samples, lineage_available, method_blockers)
     if value is None or not MIN_SAMPLES <= suggestion["sample_count"] <= MAX_SAMPLES:
         blockers.append(issue("insufficient_samples", "这个模板版本下合格的整道完工记录不足 5 条，不能采用。"))
     blockers.extend(method_blockers)
-    if len(samples) != suggestion["sample_count"] or any(not row["eligible"] for row in samples):
-        raise WorkbenchCommandRejected("calibration_source_unavailable", "所选完工记录和统计依据对不上，没有执行采用。请刷新后重试。", 500)
     return blockers

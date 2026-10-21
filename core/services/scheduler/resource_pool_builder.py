@@ -43,8 +43,9 @@ class CapturedResourceFacts:
         ids = set(operator_ids)
         missing = ids - self._qualifications.keys()
         if missing:
+            ordered_missing = sorted(missing)
             profiles, skills = [], []
-            for oid in sorted(missing):
+            for oid in ordered_missing:
                 if oid in self.operators:
                     stored = self._profiles.get(oid, ())
                     if stored:
@@ -53,7 +54,7 @@ class CapturedResourceFacts:
                     else:
                         profiles.append({"operator_id": oid, "profile_operator_id": None, "skills_declared": None})
                 skills.extend(self._skills.get(oid, ()))
-            self._qualifications.update(OperatorQualificationService.project_facts(sorted(missing), profiles, skills))
+            self._qualifications.update(OperatorQualificationService.project_facts(ordered_missing, profiles, skills))
         return {oid: self._qualifications[oid] for oid in sorted(ids)}
 
     def exists(self, operator_id, machine_id):
@@ -78,10 +79,6 @@ class CapturedResourceFacts:
                 service.require(operator_id=work_type[0], op_type_id=work_type[1],
                                 machine_id=None, qualifications=qualifications)
                 checked_work_types.add(work_type)
-
-
-def _skill_rank(v: Any) -> int:
-    return int(_skill_rank_common(v))
 
 
 def _op_type_ids_for_ops(algo_ops: List[Any]) -> set:
@@ -112,7 +109,7 @@ def _build_operator_machine_maps(rows, *, active_machines, active_ops):
         if not oid or not mid or mid not in active_machines or oid not in active_ops:
             continue
         primary = to_yes_no(row.get("is_primary"), default=YesNo.NO.value) == YesNo.YES.value
-        rank = (0 if primary else 1) * 10 + _skill_rank(row.get("skill_level"))
+        rank = (0 if primary else 1) * 10 + _skill_rank_common(row.get("skill_level"))
         operators_by_machine.setdefault(mid, []).append((rank, oid))
         machines_by_operator.setdefault(oid, []).append(mid)
         pair_rank[oid, mid] = rank
@@ -157,11 +154,10 @@ def _machine_ids_for_downtime_load(algo_ops):
                    and (op.machine_id or "").strip()})
 
 
-def load_machine_downtimes(svc, *, algo_ops, start_dt, downtimes, warnings=None, meta=None):
+def load_machine_downtimes(*, algo_ops, start_dt, downtimes, meta=None):
     """Select relevant intervals from the capture's already checked, grouped downtime."""
     if meta is not None:
         meta["downtime_load_ok"] = True
-        meta["downtime_load_error"] = None
     return {mid: [(start, end) for start, end in downtimes.get(mid, ()) if end > start_dt]
             for mid in _machine_ids_for_downtime_load(algo_ops)}
 
@@ -169,9 +165,9 @@ def load_machine_downtimes(svc, *, algo_ops, start_dt, downtimes, warnings=None,
 def build_resource_pool(svc, *, cfg, algo_ops, resource_facts, meta=None):
     """Build automatic assignment inputs from this operation's captured resources."""
     if meta is not None:
-        meta.update(resource_pool_attempted=False, resource_pool_build_ok=None, resource_pool_build_error=None)
+        meta.update(resource_pool_attempted=False, resource_pool_build_ok=None)
     if to_yes_no(cfg.auto_assign_enabled, default=YesNo.NO.value) != YesNo.YES.value:
-        return None, []
+        return None
     if meta is not None:
         meta["resource_pool_attempted"] = True
     try:
@@ -197,21 +193,20 @@ def build_resource_pool(svc, *, cfg, algo_ops, resource_facts, meta=None):
                                        for oid, skills in qualifications.items()}
         if meta is not None:
             meta["resource_pool_build_ok"] = True
-        return pool, []
-    except OperatorQualificationError as exc:
+        return pool
+    except OperatorQualificationError:
         if meta is not None:
-            meta.update(resource_pool_build_ok=False, resource_pool_build_error=exc.message)
+            meta["resource_pool_build_ok"] = False
         raise
 
 
-def extend_downtime_map_for_resource_pool(svc, *, cfg, resource_pool, downtime_map, start_dt, downtimes,
-                                        warnings=None, meta=None):
+def extend_downtime_map_for_resource_pool(*, cfg, resource_pool, downtime_map, start_dt, downtimes, meta=None):
     """Include automatic assignment equipment using the same captured downtime groups."""
     if (to_yes_no(cfg.auto_assign_enabled, default=YesNo.NO.value) != YesNo.YES.value or not resource_pool
             or not isinstance(resource_pool.get("operators_by_machine"), dict)):
         return downtime_map
     if meta is not None:
-        meta.update(downtime_extend_attempted=True, downtime_extend_ok=True, downtime_extend_error=None)
+        meta.update(downtime_extend_attempted=True, downtime_extend_ok=True)
     for mid in resource_pool["operators_by_machine"]:
         if mid not in downtime_map:
             downtime_map[mid] = [(start, end) for start, end in downtimes.get(mid, ()) if end > start_dt]

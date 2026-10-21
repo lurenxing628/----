@@ -62,9 +62,8 @@ class ExecutionLedgerService(ExecutionLedgerReader):
         projections = super().project_loaded(facts)
         if not contexts or self.context_factory is None:
             return projections
-        result = [attach_context(row, self.context_factory if contexts else None,
-                                 self.fact_snapshot(facts, row.operation_ref)) for row in projections]
-        return result
+        return [attach_context(row, self.context_factory,
+                               self.fact_snapshot(facts, row.operation_ref)) for row in projections]
 
     def get_task(self, task_ref, *, comparison_task_ref=None):
         with self.read_snapshot():

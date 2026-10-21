@@ -44,10 +44,12 @@ class CandidatePointReader:
             raise PointEventError("point_evidence_invalid", "零工时工序的来源记录里有重复工序。")
 
     def work(self, operation_ref, payload):
-        expected = {key: value for key, value in payload.items() if key != "locked"}
         op_id = payload.get("op_id")
-        matches = op_id in (self.ids or set()) if self.from_task_rows else (
-            self.validated.get(op_id) == expected and self.engine.get(op_id) == expected)
+        if self.from_task_rows:
+            matches = op_id in (self.ids or set())
+        else:
+            expected = {key: value for key, value in payload.items() if key != "locked"}
+            matches = self.validated.get(op_id) == expected and self.engine.get(op_id) == expected
         if not matches:
             raise PointEventError("point_evidence_missing", "零工时工序在本次排产结果里没有完全一致的记录。")
         gaps = []

@@ -56,7 +56,7 @@ def test_read_only_zero_hours_and_unavailable_worker(request, fixture_name, sour
                       else "not-json" if action == "unknown" else '{"result":"committed"}')
                      for index, action in enumerate(actions)]
         receipts.executemany("INSERT INTO WorkbenchCommandReceipts VALUES (?,?,?)", originals)
-        originals = list(WorkbenchPreflightFactsRepository(receipts).read_whole_table("WorkbenchCommandReceipts"))
+        originals = WorkbenchPreflightFactsRepository(receipts).capture_table("WorkbenchCommandReceipts")[1]
         statements = []
         receipts.set_trace_callback(statements.append)
         capture = ProductionFactsCapture(receipts)
@@ -70,8 +70,8 @@ def test_read_only_zero_hours_and_unavailable_worker(request, fixture_name, sour
                and 'FROM "WorkbenchCommandReceipts"' in statement]
         assert len(sql) == 1 and "typeof(\"action\")='text'" in sql[0]
         assert "COLLATE BINARY IN" in sql[0] and '"action" GLOB' in sql[0]
-        assert len(list(WorkbenchPreflightFactsRepository(receipts).read_whole_table(
-            "WorkbenchCommandReceipts"))) == len(originals)
+        assert len(WorkbenchPreflightFactsRepository(receipts).capture_table(
+            "WorkbenchCommandReceipts")[1]) == len(originals)
     finally:
         receipts.close()
     table_reads = Counter()

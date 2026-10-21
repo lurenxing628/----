@@ -87,10 +87,11 @@ class IGIteration:
         working = _park(order, set(removed), successors=search.parent.successors)
         pending = list(removed)
         search.rnd.shuffle(pending)
+        anchors = {op_id: idx for idx, op_id in enumerate(order)}
         for op_id in pending:
             without = [item for item in working if item != op_id]
             best_position, best_score = None, None
-            for position in _insertion_positions(without, op_id, parent=search.parent, anchor=order.index(op_id),
+            for position in _insertion_positions(without, op_id, parent=search.parent, anchor=anchors[op_id],
                                                  window=search.limits.insertion_window):
                 search._require_budget()
                 before = search.report["decodes"]

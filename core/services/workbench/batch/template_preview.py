@@ -48,7 +48,7 @@ def _group_structures(rows):
     for row in rows:
         if row["external_group"] is not None:
             members[_group_key(row)].append(row["sequence"])
-    return {key: {"piece_id": key[1], "start_sequence": public_sequence(key[2]), "end_sequence": public_sequence(key[3]),
+    return {key: {"piece_id": key[1], "start_sequence": key[2], "end_sequence": key[3],
                   "merge_mode": key[4], "total_days": key[5], "member_sequences": sorted(sequences, key=int)}
             for key, sequences in members.items()}
 

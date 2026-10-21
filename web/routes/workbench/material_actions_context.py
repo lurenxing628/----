@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from functools import wraps
 from types import MappingProxyType
+from typing import Optional, Union
 
 from flask import request
 from werkzeug.exceptions import HTTPException
@@ -14,19 +16,24 @@ from werkzeug.exceptions import HTTPException
 from core.errors import AppError, ValidationError
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_material_file import normalize_scope
+from core.models.workbench_material_file import MaterialPreview, normalize_scope
 from core.models.workbench_material_query import MaterialPageRequest
+from core.models.workbench_resource_file_source import PreparedImportSource
 from core.services.workbench.material.files import local_created_at
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
 from .api_responses import api_endpoint
-from .material_actions_previews import RetainedPreview
-from .read_context import bind_read_snapshot
 from .write_context import preview_write_context, validate_preview_confirmation
 
 PREVIEW_SCOPE = "workbench-material-preview-v1"
 EXPORT_SCOPE = "workbench-material-export-v1"
 TTL_SECONDS = 900
+
+
+@dataclass(frozen=True)
+class RetainedPreview:
+    preview: MaterialPreview
+    content: Optional[Union[bytes, PreparedImportSource]]
 
 
 def read_endpoint(function):
@@ -137,7 +144,8 @@ def _public_after(row, before):
     if row["action"] != "delete" and row["input"] is not None:
         payload = row["input"]
         after = dict(before or {})
-        after.update(payload.get("fields", {}))
+        if "fields" in payload:
+            after.update(payload["fields"])
         after.update({key: payload[key] for key in ("business_code", "label") if key in payload})
         return after
     return None
@@ -151,12 +159,7 @@ def public_row(row):
     return {"row": row["row"], "business_code": row["business_code"],
             "entity_ref": row.get("entity_ref") or (identity["ref"] if identity else None),
             "action": row["action"], "result": row["result"], "before": before, "after": after,
-            "changes": {_PUBLIC_FIELD_NAMES[key]: value
-                        for key, value in row["changes"].items() if key in _PUBLIC_FIELD_NAMES},
+            "changes": {_PUBLIC_FIELD_NAMES[key]: value for key, value in row["changes"].items()},
             "errors": row["errors"], "requires_confirmation": row["requires_confirmation"],
             "reference_fields": row.get("reference_fields", []),
             "reference_count": len(expected["requirements"]) if expected else 0}
-
-
-def check_source_snapshot(query_scope, fingerprint, snapshot_ref):
-    return bind_read_snapshot(query_scope, fingerprint, snapshot_ref)

@@ -8,13 +8,11 @@ from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_contract_issues
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
-from data.repositories.workbench_preflight_facts_repo import PREFLIGHT_TABLES, WorkbenchPreflightFactsRepository
+from data.repositories.workbench_preflight_facts_repo import WorkbenchPreflightFactsRepository
 
 if TYPE_CHECKING:
     from core.errors import ValidationError
     from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
-
-TABLES = PREFLIGHT_TABLES
 
 
 def full_facts_content(conn, capture=None):
@@ -80,7 +78,7 @@ class PreflightFacts:
         self.config_snapshot, self.config_error = None, None
         self.capture = capture
         self.execution_service = getattr(capture, "execution_service", None)
-        self.tables = self.repo.preflight_tables(capture=capture)
+        self.tables = self.repo.preflight_tables(capture)
         self.refs = {(row["kind"], row["entity_key"]): row["ref"]
                      for row in self.tables["WorkbenchEntityRefs"] if row["active"]}
         self.operation_refs = {int(row["source_key"]): row["ref"] for row in self.tables["WorkbenchPlanSourceRefs"]
@@ -104,10 +102,6 @@ class PreflightFacts:
         if ref is None:
             raise WorkbenchCommandRejected("storage_failure", "工序编号缺失，请联系维护人员。", 500)
         return ref
-
-    def schedule_through(self, version):
-        """与排产输入同口径：version 及以前的正式安排，按 version,id 排序，同一工序后者为准。"""
-        return sorted((row for row in self.tables["Schedule"] if row["version"] <= version), key=lambda row: (row["version"], row["id"]))
 
     def latest_plan_rows(self, version):
         return self.capture.latest_plan_rows(version)

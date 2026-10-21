@@ -71,11 +71,9 @@ def _fact_patch(payload):
     return result
 
 
-def _validate_timeline(sent: datetime, planned: datetime, returned: Optional[datetime], now: datetime) -> None:
+def _validate_timeline(sent: datetime, planned: datetime, returned: Optional[datetime]) -> None:
     if planned < sent or returned is not None and returned < sent:
         reject("计划回厂和实际回厂不能早于发出时间。")
-    if sent > now or returned is not None and returned > now:
-        reject("实际发出和实际回厂不能晚于当前时间。")
 
 
 @dataclass
@@ -104,11 +102,9 @@ def prepare_values(before, payload, now):
         reject("确认状态必须是在途、已回厂或待确认。")
     sent, planned = factory_time(values["sent"]), factory_time(values["planned"])
     returned = factory_time(values["returned"]) if values["returned"] is not None else None
-    _validate_timeline(sent, planned, returned, now)
+    _validate_timeline(sent, planned, returned)
+    result = PreparedReceiptValues(values, sent, returned)
+    result.check_recording_time(now)
     if (values["confirmedState"] == "returned") != (returned is not None):
         reject("已回厂状态与实际回厂时间必须同时填写；未回厂时实际回厂必须为空。")
-    return PreparedReceiptValues(values, sent, returned)
-
-
-def next_values(before, payload, now):
-    return prepare_values(before, payload, now).values
+    return result

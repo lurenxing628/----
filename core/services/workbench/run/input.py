@@ -90,7 +90,7 @@ def prepare_candidate_run_input(conn, normalized_input: Dict[str, Any],
 
 
 def _prepare_facts(conn, settings, facts, fingerprint, execution_projections,
-                   config_snapshot, baseline, validated_projections):
+                   config_snapshot, baseline, validated_projections, *, hold=None):
     raw_batches = facts.selected(settings["batch_refs"])
     batches = {row["batch_id"]: batch_model(row) for row in raw_batches}
     raw_ops = [row for row in facts.tables["BatchOperations"] if row["batch_id"] in batches]
@@ -99,7 +99,7 @@ def _prepare_facts(conn, settings, facts, fingerprint, execution_projections,
                                   validated=validated_projections)
     facts.execution_projections.update(projections)
     return _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operations, projections,
-                    config_snapshot=config_snapshot, baseline=baseline)
+                    hold=hold, config_snapshot=config_snapshot, baseline=baseline)
 
 
 def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operations, projections, hold=None, *,
@@ -118,14 +118,14 @@ def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operation
                     if baseline is None else baseline["version"] or 0)
     start = datetime.combine(local_date(settings["start_date"]), datetime.min.time())
     guards = execution_guards(svc, facts, operations, batches, projections, prev_version, piece_scope=piece_scope)
-    execution_facts, fixed, completed, execution_seeds, revisions, snapshot = guards
+    execution_facts, fixed, completed, execution_seeds, snapshot = guards
     cycles = external_execution_cycles(facts, batches, operations, execution_seeds, set(fixed) | set(completed))
     dispositions, mutable = classify_rows(facts, settings, raw_batches, operations, projections,
                                          set(fixed) | set(completed), piece_scope=piece_scope, external_cycles=cycles)
     guarded_ids = set(fixed) | set(completed) | set(cycles)
     algo_outcome, runtime_mutable = _algorithm_scope(svc, facts, batches, operations, mutable, guarded_ids, cycles, settings)
     reservations = build_execution_resource_reservations(
-        svc, facts=execution_facts, selected_op_ids={op.id for op in operations}, start_dt=start, capture=facts.capture,
+        facts=execution_facts, selected_op_ids={op.id for op in operations}, start_dt=start, capture=facts.capture,
     )
     calendar = CalendarService(conn, capture=facts.capture)
     if reservations:
@@ -146,16 +146,15 @@ def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operation
     )
     return CandidateRunInput(
         normalized_batch_ids=[row["batch_id"] for row in raw_batches], start_dt_norm=start,
-        end_date_norm=local_date(settings["end_date"]), created_by_text="system", run_label="排产计算",
+        end_date_norm=local_date(settings["end_date"]),
         t0=time.time(), cal_svc=calendar, cfg_svc=None, cfg=cfg, readiness_gate_enabled=settings["ready_check"],
         batches=batches, operations=operations, reschedulable_operations=mutable,
         reschedulable_op_ids={op.id for op in mutable}, missing_internal_resource_op_ids=missing_ids,
         algo_input_outcome=algo_outcome, algo_ops=algo_outcome.value, prev_version=prev_version,
         frozen_op_ids=frozen, seed_results=seeds, execution_facts=execution_facts,
         execution_fixed_op_ids=fixed, execution_completed_op_ids=completed, execution_seed_results=execution_seeds,
-        execution_guard_state_revisions=revisions, execution_snapshot_revision=snapshot.revision,
+        execution_snapshot_revision=snapshot.revision,
         execution_snapshot_op_ids=list(snapshot.op_ids), execution_snapshot_op_count=snapshot.op_count,
-        execution_has_guarded_facts=bool(fixed or completed or reservations),
         schedule_output_allowed_op_ids={op.id for op in mutable} | guarded_ids,
         payload_validation_operations=operations, algo_warnings=warnings, freeze_meta=freeze_meta,
         algo_ops_to_schedule=to_schedule, downtime_meta=downtime_meta, resource_pool_meta=pool_meta,

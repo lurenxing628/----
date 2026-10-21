@@ -5,9 +5,8 @@ from dataclasses import dataclass
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_batch import normalize_operation_input, object_fields
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
-from core.models.workbench_template_lineage import operation_code as operation_code
 from core.services.scheduler.contracts.external_context import context_problem, group_from_context
-from core.services.workbench.calibration.template_lineage import TemplateLineageWriter
+from core.services.scheduler.template_lineage import TemplateLineageWriter
 from data.repositories.batch_operation_repo import BatchOperationRepository
 
 from .facts import BatchFacts, related, require_unreferenced
@@ -43,8 +42,8 @@ class WorkbenchBatchOperationService:
         return {}
 
     def _prepare_sync(self, batch, facts, *, relations, resources):
-        require_unreferenced(facts, batch, relations)
-        bound = {row["operation_id"] for row in facts.get("BatchMaterialStages", [])}
+        require_unreferenced(relations)
+        bound = {row["operation_id"] for row in facts["BatchMaterialStages"]}
         if any(row["id"] in bound for row in relations["operations"]):
             raise WorkbenchCommandRejected("constraint_conflict", "物料需求已绑定本批使用工序，请先在物料需求中改为开工前用料，再更新工艺并重新选择使用工序。")
         rows = [row for row in facts["PartOperations"] if row["part_no"] == batch["part_no"] and row["status"] == "active"]
@@ -91,9 +90,10 @@ class WorkbenchBatchOperationService:
         if not self.conn.in_transaction:
             raise RuntimeError("工序编辑必须由工作台命令事务持有。")
         batch, facts = self.reader.batch(ref), self.reader.load()
-        require_unreferenced(facts, batch)
-        row = next((row for row in facts["BatchOperations"] if row["batch_id"] == batch["batch_id"]
-                    and facts["operation_refs"][row["id"]] == payload["operation_ref"]), None)
+        relations = related(facts, batch)
+        require_unreferenced(relations)
+        row = next((row for row in relations["operations"]
+                    if facts["operation_refs"][row["id"]] == payload["operation_ref"]), None)
         if row is None:
             raise WorkbenchCommandRejected("entity_not_found", "工序已失效或不属于该批次，不能按序号猜测替换。", 404)
         internal = row["source"] == "internal"
@@ -147,7 +147,7 @@ class WorkbenchBatchOperationService:
         resources.require_operator(row["operator_id"], row["op_type_id"], row["machine_id"])
 
     def _validate_external(self, resources, facts, batch, row, changes):
-        context = next((item for item in facts.get("BatchExternalContexts", []) if item["operation_id"] == row["id"]), None)
+        context = next((item for item in facts["BatchExternalContexts"] if item["operation_id"] == row["id"]), None)
         problem = context_problem(context, operation_id=row["id"], part_no=batch["part_no"], sequence=row["seq"])
         group = None if problem else group_from_context(context)
         if group and group["merge_mode"] == "merged" and "ext_days" in changes:

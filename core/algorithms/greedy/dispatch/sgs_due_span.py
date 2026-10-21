@@ -72,7 +72,6 @@ def _external_candidate_window(
     state: ScheduleRunState,
     *,
     op: Any,
-    batch_id: str,
     prev_end: datetime,
     strict_mode: bool,
 ) -> Tuple[datetime, datetime]:

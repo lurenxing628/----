@@ -13,7 +13,7 @@ def batch_id(result: Any) -> str:
 def latest_result(results: List[Any]) -> Optional[Any]:
     rows = [
         row
-        for row in list(results or [])
+        for row in results or ()
         if getattr(row, "end_time", None) is not None and batch_id(row)
     ]
     if not rows:
@@ -28,16 +28,9 @@ def latest_result(results: List[Any]) -> Optional[Any]:
     )
 
 
-def positive_count(value: Any) -> int:
-    try:
-        return max(int(len(value or [])), 0)
-    except TypeError:
-        return 0
-
-
 def finish_by_batch(results: List[Any]) -> Dict[str, datetime]:
     out: Dict[str, datetime] = {}
-    for result in list(results or []):
+    for result in results or ():
         bid = batch_id(result)
         end_time = getattr(result, "end_time", None)
         if not bid or not isinstance(end_time, datetime):
@@ -79,14 +72,6 @@ def most_tardy_batch(
     return best
 
 
-def tardy_batch_count(finish_by_batch_rows: Dict[str, datetime], batches: Dict[str, Any]) -> int:
-    return 0 if most_tardy_batch(finish_by_batch_rows=finish_by_batch_rows, batches=batches) is None else 1
-
-
-def due_batch_count(batches: Dict[str, Any]) -> int:
-    return sum(1 for batch in (batches or {}).values() if batch_due_date(batch) is not None)
-
-
 def prepare_batch_due_dates(batches: Dict[str, Any]) -> Tuple[Tuple[str, Optional[date]], ...]:
     return tuple((str(raw_batch_id or "").strip(), batch_due_date(batch))
                  for raw_batch_id, batch in (batches or {}).items())
@@ -114,7 +99,7 @@ def earliest_due_pressure_batch(
 
 def bottleneck_machine_rows(results: List[Any]) -> Tuple[str, List[Any]]:
     grouped: Dict[str, List[Any]] = {}
-    for result in list(results or []):
+    for result in results or ():
         machine_id = str(getattr(result, "machine_id", "") or "").strip()
         if machine_id:
             grouped.setdefault(machine_id, []).append(result)
@@ -136,7 +121,7 @@ def busy_hours(rows: List[Any]) -> float:
 
 def prepare_machine_rows(results: List[Any]) -> List[List[Any]]:
     grouped: Dict[str, List[Any]] = {}
-    for result in list(results or []):
+    for result in results or ():
         machine_id = str(getattr(result, "machine_id", "") or "").strip()
         if machine_id:
             grouped.setdefault(machine_id, []).append(result)
@@ -148,10 +133,12 @@ def first_changeover_pair(results: List[Any], *, prepared_machine_rows: Optional
     groups = prepared_machine_rows if prepared_machine_rows is not None else prepare_machine_rows(results)
     for rows in groups:
         previous = None
+        previous_type = ""
         for row in rows:
-            if previous is not None and op_type(previous) and op_type(row) and op_type(previous) != op_type(row):
+            current_type = op_type(row)
+            if previous is not None and previous_type and current_type and previous_type != current_type:
                 return previous, row
-            previous = row
+            previous, previous_type = row, current_type
     return None
 
 
@@ -188,9 +175,10 @@ def pick_resource_pair(pool: Dict[str, Any]) -> Optional[Tuple[str, str, int]]:
         return None
     for machine_id in sorted(str(key) for key in operators_by_machine.keys()):
         operators = [
-            str(item).strip()
-            for item in list(operators_by_machine.get(machine_id) or [])
-            if str(item).strip()
+            text
+            for item in operators_by_machine.get(machine_id) or ()
+            for text in (str(item).strip(),)
+            if text
         ]
         if len(operators) < 2:
             continue
@@ -204,25 +192,16 @@ def pick_resource_pair(pool: Dict[str, Any]) -> Optional[Tuple[str, str, int]]:
     return None
 
 
-def resource_pair_count(pool: Dict[str, Any]) -> int:
-    pair_rank = pool.get("pair_rank")
-    return len(pair_rank) if isinstance(pair_rank, dict) else 0
-
-
 __all__ = [
     "batch_id",
     "bottleneck_machine_rows",
     "changeover_count",
-    "due_batch_count",
     "earliest_due_pressure_batch",
     "finish_by_batch",
     "first_changeover_pair",
     "latest_result",
     "most_tardy_batch",
     "pick_resource_pair",
-    "positive_count",
     "prepare_batch_due_dates",
     "prepare_machine_rows",
-    "resource_pair_count",
-    "tardy_batch_count",
 ]

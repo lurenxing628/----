@@ -18,7 +18,7 @@ from .production_report_validation import (
     execution_conflict_details,
     execution_conflicts,
     execution_facts_changed,
-    legacy_link_values,
+    prepare_legacy_link,
     require_current,
     validate_legacy_link,
     validate_merged_cycle,
@@ -166,7 +166,7 @@ class ReportBatchPreparation:
         legacy_by_operation = cast(Dict[str, List[Dict[str, Any]]], self.facts["legacy"])
         legacy = legacy_by_operation.get(operation_ref, [])
         link = old["legacy_fact_ref"] if old else item["payload"].get("legacy_fact_ref")
-        known = legacy_link_values(legacy, link)
+        known, resource_refs = prepare_legacy_link(legacy, link)
         row: Dict[str, Any]
         if old is None:
             if self.before_projections[operation_ref].completion_basis == "complete_reports":
@@ -182,7 +182,7 @@ class ReportBatchPreparation:
                        local_operator=self.actor, declared_operator=item["payload"]["declared_operator"],
                        revision_at=now.isoformat(timespec="seconds"), receipt_ref=None)
         validate_actual_values(row["values"], now)
-        validate_legacy_link(legacy, link, row["values"], known_values=known)
+        validate_legacy_link(row["values"], known, resource_refs)
         preserves_legacy_actuals = link is not None and all(known.get(field) == row["values"].get(field) for field in
             ("actual_start", "actual_end", "actual_machine_ref", "actual_operator_ref"))
         previous_values = known if preserves_legacy_actuals else old["values"] if old else None
@@ -229,12 +229,8 @@ class ReportBatchPreparation:
         return {"row_number": index, "action": action or row["action"], "ref": item["ref"], "report_ref": row["report_ref"],
                 "report_no": row["report_no"], "revision_ref": row["revision_ref"], "operation_ref": row["operation_ref"], "result": result}
 
-    def materialize(self, now, actor=None):
+    def materialize(self, now):
         """Convert this checked simulation into commit identities and current server timestamps."""
-        if actor is None:
-            actor = self.actor
-        elif not isinstance(actor, str) or not actor.strip():
-            raise ValueError("Local application operator must be supplied by the server")
         stamp = now.isoformat(timespec="seconds")
         report_refs, revision_refs = {}, {}
         for row in self.appended:
@@ -248,7 +244,7 @@ class ReportBatchPreparation:
             row["previous_revision_ref"] = revision_refs.get(row["previous_revision_ref"], row["previous_revision_ref"])
             if row["sequence"] == 1:
                 row["recorded_at"] = stamp
-            row["revision_at"], row["local_operator"] = stamp, actor
+            row["revision_at"], row["local_operator"] = stamp, self.actor
         for row in self.rows:
             row["report_ref"] = report_refs.get(row["report_ref"], row["report_ref"])
             row["revision_ref"] = revision_refs.get(row["revision_ref"], row["revision_ref"])

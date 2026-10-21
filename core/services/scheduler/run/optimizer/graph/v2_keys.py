@@ -1,7 +1,7 @@
 """GraphReady v2 priority keys: rank-normalized feature tuples per candidate formula."""
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.graph_ready_profiles import (
@@ -56,19 +56,12 @@ def _v2_priority_key_for_metric(metric: Dict[str, Any], *, profile: GraphReadyWe
     critical_ratio = _required_non_negative_metric(metric, "critical_ratio_rank01")
     bottleneck_due_gate = _required_non_negative_metric(metric, "bottleneck_due_gate_rank01")
     graph_bonus = _required_non_negative_metric(metric, "graph_bonus_rank01")
-    jitter = _stable_jitter(metric)
+    jitter = _required_non_negative_metric(metric, "graph_ready_v2_jitter")
 
     return _formula_key(metric, formula, dict(due_deadline=due_deadline, due_budget=due_budget,
         due_pressure=due_pressure, slack_hours=slack_hours, remaining=remaining, saveability=saveability,
         processing_rank=processing_rank, sacrifice_penalty=sacrifice_penalty, critical_ratio=critical_ratio,
         bottleneck_due_gate=bottleneck_due_gate, graph_bonus=graph_bonus, jitter=jitter))
-
-
-def _objective_priority_key(metric, formula, due_deadline, slack_hours, processing_rank, jitter):
-    if formula in {"weighted_spt", "weighted_atc", "type_group", "type_group_reverse"}:
-        return _formula_key(metric, formula, dict(due_deadline=due_deadline, slack_hours=slack_hours,
-                                                processing_rank=processing_rank, jitter=jitter))
-    return None
 
 
 def _required_finite_metric(metric: Dict[str, Any], field: str) -> float:
@@ -106,9 +99,5 @@ def _required_positive_metric(metric: Dict[str, Any], field: str) -> float:
     return number
 
 
-def _stable_jitter(metric: Dict[str, Any]) -> float:
-    return _required_non_negative_metric(metric, "graph_ready_v2_jitter")
-
-
-__all__ = ["_objective_priority_key", "_required_finite_metric", "_required_non_negative_metric",
-           "_required_positive_metric", "_stable_jitter", "_v2_priority_key_for_metric"]
+__all__ = ["_required_finite_metric", "_required_non_negative_metric", "_required_positive_metric",
+           "_v2_priority_key_for_metric", "validate_v2_formula"]

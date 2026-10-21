@@ -14,7 +14,7 @@ def import_networkx() -> Any:
     """Lazily import NetworkX so graph_analysis=off does not require it."""
     try:
         nx = importlib.import_module("networkx")
-    except Exception as exc:
+    except ImportError as exc:
         raise NetworkXUnavailable("缺少可选依赖 networkx==3.1；请先安装 requirements-optimizer-lite-win7.txt") from exc
 
     version = str(getattr(nx, "__version__", "") or "").strip()

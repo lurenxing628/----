@@ -1,7 +1,7 @@
 """The three graph phase stages as rotation units: weight profiles, elite repair, iterated greedy."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from core.algorithms import SortStrategy
 from core.errors import ValidationError
@@ -19,8 +19,6 @@ from .repair import EliteRepairPool, EliteRepairRun
 from .reporting import append_graph_attempt, append_graph_trace, record_rejected_attempt
 from .v2_contract import is_graph_ready_v2_contract_error
 
-if TYPE_CHECKING:
-    from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
 class GraphSearchState:
     """The incumbent shared by all stages of one graph phase run."""
@@ -35,9 +33,7 @@ class ProfileStage(SearchStage):
     def __init__(self, *, profiles: List[GraphReadyWeightProfile], search: GraphReadyProfileSearch, pool: EliteRepairPool,
                  state: GraphSearchState, order: List[str], strict_mode: bool, base_strategy: SortStrategy,
                  dispatch_rule_cfg: str, version: int, attempts: List[Dict[str, Any]], improvement_trace: List[Dict[str, Any]],
-                 search_report_state: Any, clock: Callable[[], float], t_begin: float,
-                 extra_summary: Optional[Callable[[], Dict[str, Any]]] = None,
-                 decode_session: SharedDecodeSession) -> None:
+                 search_report_state: Any, clock: Callable[[], float], t_begin: float) -> None:
         self.profiles = list(profiles)
         self.search = search
         self.pool = pool
@@ -52,8 +48,6 @@ class ProfileStage(SearchStage):
         self.search_report_state = search_report_state
         self.clock = clock
         self.t_begin = t_begin
-        self.extra_summary = extra_summary
-        self.decode_session = decode_session
         self.index = 0
         self.finished = False
 
@@ -78,9 +72,8 @@ class ProfileStage(SearchStage):
                                               search_report_state=self.search_report_state, fingerprint=fingerprint,
                                               clock=self.clock, t_begin=self.t_begin):
             return 0
-        improved = score_strictly_better(candidate.get("score"), (self.state.best or {}).get("score"))
-        _accept_candidate(candidate, profile=profile, incumbent=self.state.best, version=self.version,
-                          search_report_state=self.search_report_state, fingerprint=fingerprint)
+        improved = _accept_candidate(candidate, profile=profile, incumbent=self.state.best, version=self.version,
+                                     search_report_state=self.search_report_state, fingerprint=fingerprint)
         append_graph_trace(improvement_trace=self.improvement_trace, candidate=candidate, profile=profile, clock=self.clock,
                            t_begin=self.t_begin)
         self.state.best = candidate
@@ -90,8 +83,6 @@ class ProfileStage(SearchStage):
         if self.finished:
             return
         self.finished = True
-        if self.extra_summary is not None:
-            self.search.report.update(self.extra_summary())
         self.search.publish(attempts=self.attempts, report_state=self.search_report_state)
 
 
@@ -247,14 +238,15 @@ def _accept_candidate(
     version: int,
     search_report_state: Any,
     fingerprint: Any = None,
-) -> None:
+) -> bool:
+    event = None
+    if incumbent is not None:
+        event = build_graph_ready_improve_only_acceptance_event(
+            candidate_score=candidate.get("score"), incumbent_score=incumbent.get("score"), seed=int(version))
     if search_report_state is not None:
-        event = None
-        if incumbent is not None:
-            event = build_graph_ready_improve_only_acceptance_event(
-                candidate_score=candidate.get("score"), incumbent_score=incumbent.get("score"), seed=int(version))
         search_report_state.mark_candidate_accepted(candidate, origin=profile.candidate_origin,
                                                      acceptance_event=event, fingerprint=fingerprint)
+    return event is not None
 
 
 __all__ = ["GraphSearchState", "IteratedGreedyStage", "ProfileStage", "RepairStage", "iterated_greedy_parent_profile"]

@@ -1,11 +1,10 @@
 """Lossless SQLite snapshot encoding, including legacy BLOB and REAL values."""
 
 import json
-from typing import Optional
 
 from core.models.content import packed as packed
 from core.models.content import same as same
-from core.models.content import unpacked as unpacked
+from core.models.content import unpacked
 from core.models.workbench_command import canonical_json
 from core.models.workbench_trial import MAX_TRIAL_BYTES, reject
 
@@ -33,33 +32,23 @@ def _load_document(text):
     if type(text) is not str or size > MAX_TRIAL_BYTES:
         reject("trial_snapshot_invalid", "试调数据读不到或超过上限。请刷新后重试。")
     try:
-        value = json.loads(text)
-        return value, unpacked(value), size
-    except (ValueError, TypeError) as exc:
-        from core.models.workbench_command import WorkbenchCommandRejected
-        if isinstance(exc, WorkbenchCommandRejected):
-            raise
+        return unpacked(json.loads(text)), size
+    except (ValueError, TypeError):
         reject("trial_snapshot_invalid", "试调数据读不出来，这里不改用最新计划。请刷新后重试。")
-
-
-def load_document(text: object, fingerprint: Optional[str] = None):
-    """Parse the original packed document and typed values; retain legacy metadata."""
-    packed_value, value, _size = _load_document(text)
-    return packed_value, value
 
 
 def load_object_with_size(text):
     """Decode one stored fragment and retain its actual UTF-8 byte count."""
-    _packed_value, value, size = _load_document(text)
+    value, size = _load_document(text)
     return require_object(value), size
 
 
-def load(text: object, fingerprint: Optional[str] = None):
-    return load_document(text, fingerprint)[1]
+def load(text: object):
+    return _load_document(text)[0]
 
 
-def load_object(text: object, fingerprint: Optional[str] = None):
-    return require_object(load(text, fingerprint))
+def load_object(text: object):
+    return require_object(load(text))
 
 
 def require_object(value: object):

@@ -2,9 +2,9 @@
 
 import codecs
 import csv
+import json
 import re
 from tempfile import SpooledTemporaryFile
-from typing import Union
 
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_action_values import FileDownload
@@ -167,7 +167,6 @@ def _segments(side):
     if not segments:
         return None
     # 多段事实单列保存，独立时间和资源差值继续为空。
-    import json
     return json.dumps(segments, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -194,8 +193,7 @@ def operation_rows(data):
             _resource(after, "supplier", "ref"), _resource(after, "supplier", "label"), _boolean(row["supplier_changed"])]
 
 
-def read_decision_export(conn, run_ref, section, *, filter_section=None,
-                         page: Union[int, str] = 1, size: Union[int, str] = 20, **query):
+def read_decision_export(conn, run_ref, section, *, filter_section=None, **query):
     selected = query.get("selected_candidate_ref")
     details = ("batches", "operations", "resources", "resource-days", "preparation", "changeovers", "process")
     detail_section = filter_section or (section if section in details else None)
@@ -204,6 +202,8 @@ def read_decision_export(conn, run_ref, section, *, filter_section=None,
     filters = {key: query.pop(key) for key in ("batch_ref", "resource_ref", "change_kind", "delivery_filter", "selected_batch_ref",
         "resource_kind", "pressure_filter", "grain", "pressure_threshold", "display_start", "display_end", "bucket_start", "bucket_end",
         "machine_ref", "allocation_state", "work_scope", "event_side", "process_candidate_ref", "objective", "record_kind", "sort", "order") if key in query}
+    query.pop("page", None)
+    query.pop("size", None)
     query.pop("heatmap_page", None)
     query.pop("heatmap_size", None)
     if filters and detail_section is None:
@@ -283,6 +283,9 @@ def _export_context(source):
 
 
 def write_run_decision_export(data, snapshot, fmt, section="overview"):
+    if fmt == "csv" and section in ("recommendation", "process"):
+        csv_table = recommendation_csv(data, snapshot) if section == "recommendation" else process_csv(data, snapshot)
+        return FileDownload("排产方案比较.csv", "text/csv; charset=utf-8", _csv(*csv_table), len(csv_table[1]))
     tables = {}
     if section in ("overview", "all"):
         tables["方案总览"] = (HEADERS, list(overview_rows(data)))
@@ -308,9 +311,7 @@ def write_run_decision_export(data, snapshot, fmt, section="overview"):
         tables.update(recommendation_export_tables(data, snapshot))
     if section in ("process", "all"):
         tables.update(process_export_tables(data, snapshot))
-    csv_table = (recommendation_csv(data, snapshot) if section == "recommendation" else process_csv(data, snapshot) if section == "process"
-                 else next(iter(tables.values()))) if fmt == "csv" else next(iter(tables.values()))
-    content = _csv(*csv_table) if fmt == "csv" else _xlsx(data, snapshot, tables)
+    content = _csv(*next(iter(tables.values()))) if fmt == "csv" else _xlsx(data, snapshot, tables)
     mime = "text/csv; charset=utf-8" if fmt == "csv" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     return FileDownload("排产方案比较." + fmt, mime, content, sum(len(rows) for _, rows in tables.values()))
 

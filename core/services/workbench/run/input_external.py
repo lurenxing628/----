@@ -29,8 +29,8 @@ from core.services.workbench.facts.run_input_rows import fail
 
 
 def prime_template_cache(svc, tables, batches, operations):
-    contexts = {row["operation_id"]: row for row in tables.get("BatchExternalContexts", [])}
-    members = member_index(contexts, tables.get("BatchOperations", []))
+    contexts = {row["operation_id"]: row for row in tables["BatchExternalContexts"]}
+    members = member_index(contexts, tables["BatchOperations"])
     for op in operations:
         if op.source != "external":
             continue
@@ -48,7 +48,7 @@ def prime_template_cache(svc, tables, batches, operations):
 
 
 def _merged_groups(tables, batches, operations):
-    contexts = {row["operation_id"]: row for row in tables.get("BatchExternalContexts", [])}
+    contexts = {row["operation_id"]: row for row in tables["BatchExternalContexts"]}
     groups = {}
     for op in operations:
         if op.source != "external":
@@ -110,17 +110,17 @@ def preflight_external_cycles(facts, batches, operations, projections):
 
     同组未报工成员按不重排时段保留的安排是否与实际周期一致，由 preflight_held 按排产同一保留范围核对。
     """
-    contexts = {row["operation_id"]: row for row in facts.tables.get("BatchExternalContexts", [])}
+    contexts = {row["operation_id"]: row for row in facts.tables["BatchExternalContexts"]}
     if not any(op["source"] == "external" and (contexts.get(op["id"]) or {}).get("merge_mode") == "merged"
                and projections[facts.operation_ref(op)]["first_actual_start"] for op in operations):
         return {}, []
     svc = build_schedule_repository_bundle(facts.conn)
     version = max((row["version"] for row in facts.capture.table("ScheduleHistory")), default=0)
-    prior = prior_execution_projections(facts, version, projections)
+    prior = prior_execution_projections(facts, version)
     models = [SimpleNamespace(**op) for op in operations]
     batch_models = {batch["batch_id"]: SimpleNamespace(**batch) for batch in batches}
     groups = execution_groups(facts, batch_models, models)
-    _, fixed, completed, seeds, _, _ = build_execution_guardrails_from_projections(
+    _, fixed, completed, seeds, _ = build_execution_guardrails_from_projections(
         svc, models, prev_version=version, execution_projections=prior, facts=facts, external_groups=groups)
     rows = {op["id"]: op for op in operations}
     periods, problems = _actual_periods(facts, groups, seeds, fixed | completed, rows, completed_ids=completed)
@@ -128,7 +128,7 @@ def preflight_external_cycles(facts, batches, operations, projections):
     return cycles, problems
 
 
-def prior_execution_projections(facts, version, projections):
+def prior_execution_projections(facts, version):
     refs = {facts.operation_refs[op_id] for op_id in facts.latest_plan_rows(version)}
     supplied = facts.execution_projections
     missing = sorted(refs - set(supplied))
@@ -159,7 +159,7 @@ def _planned_external(facts, version):
             if op["source"] == "external" and op["id"] in planned and op["id"] in facts.operation_refs}
 
 
-def _resource_bearing_external(facts, version, projections):
+def _resource_bearing_external(facts, version):
     external = _planned_external(facts, version)
     supplied = {ref: facts.execution_projections[ref].to_dict() for ref in external if ref in facts.execution_projections}
     missing = sorted(set(external) - set(supplied))
@@ -200,18 +200,18 @@ def _guard_verdict(guard_facts, op_id, selected):
     return None
 
 
-def external_resource_issues(facts, svc, operations, projections, version):
+def external_resource_issues(facts, svc, operations, version):
     """与排产守卫同一份执行事实核对外协记录里的本厂设备人员，先指出要更正的报工或要核对的旧记录。
 
     只先投影正式计划里的外协工序；有带资源的记录时才按守卫口径整体核对，平时不多读。
     """
-    candidates = _resource_bearing_external(facts, version, projections) if version is not None else {}
+    candidates = _resource_bearing_external(facts, version)
     if not candidates:
         return []
     try:
         if version not in facts.resource_execution:
             facts.resource_execution[version] = collect_resource_execution_facts(
-                svc, prev_version=version, execution_projections=prior_execution_projections(facts, version, projections),
+                svc, prev_version=version, execution_projections=prior_execution_projections(facts, version),
                 capture=facts.capture, ledger=getattr(facts, "execution_service", None))
         guard_facts, _, _ = facts.resource_execution[version]
     except (AppError, ValueError, TypeError, KeyError, OverflowError):

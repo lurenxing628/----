@@ -18,7 +18,7 @@ from web.api_responses import query_success
 from .api_responses import api_endpoint
 from .read_budget import PLAN_READ_SLOTS
 from .read_context import bind_read_snapshot, resolve_read_snapshot
-from .reports import arguments, bind_report_snapshot, download_response, report_read_time
+from .reports import arguments, download_response, report_read_time
 
 
 def _official(export):
@@ -32,7 +32,7 @@ def _official(export):
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
             facts = reader.read(scope, as_of=as_of)
-            snapshot = bind_report_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of, binding)
+            snapshot = bind_read_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of=as_of, binding=binding)
             data, ordered, labels = report_workspace(reader, facts, snapshot, topic, page)
     if not export:
         response = query_success(data, snapshot)
@@ -78,8 +78,9 @@ def _catalog(kind, export=False):
         with reader.read_snapshot():
             facts = catalog_facts(reader, scope)
             snapshot = bind_read_snapshot(facts["scope"].scope(), facts["fingerprint"], token)
-            data, ordered, selected = catalog_workspace(reader, facts, snapshot, page)
-            data["exports"] = {"url": "/api/workbench/v1/reports/" + kind + "/export", "formats": ["csv", "xlsx"], "scope": "all_filtered_rows"}
+            data, ordered, selected = catalog_workspace(facts, snapshot, page)
+            if not export:
+                data["exports"] = {"url": "/api/workbench/v1/reports/" + kind + "/export", "formats": ["csv", "xlsx"], "scope": "all_filtered_rows"}
     if export:
         # 读事务和读额度都已释放：文件只用已读出的结果生成。
         format_name = request.args.get("format", "xlsx")

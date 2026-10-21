@@ -101,7 +101,7 @@ def _project_text_and_budget_fields(public_algo: Dict[str, Any]) -> None:
     else:
         public_algo["time_budget_seconds"] = time_budget_seconds
 
-    _replace_with_mapping_or_drop(public_algo, "config_snapshot", project_config_snapshot)
+    _replace_projected_or_drop(public_algo, "config_snapshot", project_config_snapshot)
     _replace_with_text_list_or_drop(public_algo, "hard_constraints")
     _replace_with_text_list_or_drop(public_algo, "soft_objectives")
 
@@ -114,9 +114,9 @@ def _project_score_fields(public_algo: Dict[str, Any], *, unified: bool = False)
         public_algo.pop("comparison_metric", None)
 
     if not unified:
-        _replace_with_list_or_drop(public_algo, "best_score", project_attempt_score)
+        _replace_projected_or_drop(public_algo, "best_score", project_attempt_score)
     _project_best_score_schema_field(public_algo)
-    _replace_with_mapping_or_drop(public_algo, "metrics", project_public_metrics)
+    _replace_projected_or_drop(public_algo, "metrics", project_public_metrics)
 
 
 def _project_best_score_schema_field(public_algo: Dict[str, Any]) -> None:
@@ -160,18 +160,18 @@ def _project_search_report_field(public_algo: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _project_algo_context_fields(public_algo: Dict[str, Any]) -> None:
-    _replace_with_list_or_drop(public_algo, "improvement_trace", project_improvement_trace)
-    _replace_with_mapping_or_drop(public_algo, "downtime_avoid", project_downtime_avoid)
-    _replace_with_mapping_or_drop(public_algo, "freeze_window", project_freeze_window)
-    _replace_with_mapping_or_drop(public_algo, "resource_pool", project_resource_pool)
-    _replace_with_mapping_or_drop(public_algo, "warning_pipeline", project_warning_pipeline)
-    _replace_with_mapping_or_drop(public_algo, "metrics_state", project_metrics_state)
+    _replace_projected_or_drop(public_algo, "improvement_trace", project_improvement_trace)
+    _replace_projected_or_drop(public_algo, "downtime_avoid", project_downtime_avoid)
+    _replace_projected_or_drop(public_algo, "freeze_window", project_freeze_window)
+    _replace_projected_or_drop(public_algo, "resource_pool", project_resource_pool)
+    _replace_projected_or_drop(public_algo, "warning_pipeline", project_warning_pipeline)
+    _replace_projected_or_drop(public_algo, "metrics_state", project_metrics_state)
 
 
 def _project_auxiliary_fields(public_algo: Dict[str, Any]) -> None:
     _replace_with_text_list_or_drop(public_algo, "metrics_degradation_reasons")
-    _replace_with_mapping_or_drop(public_algo, "fallback_counts", safe_counter_dict)
-    _replace_with_mapping_or_drop(public_algo, "param_fallbacks", safe_counter_dict)
+    _replace_projected_or_drop(public_algo, "fallback_counts", safe_counter_dict)
+    _replace_projected_or_drop(public_algo, "param_fallbacks", safe_counter_dict)
     _replace_with_text_list_or_drop(public_algo, "fallback_count_parse_errors")
 
     for key in ("merge_context_degraded", "metrics_degraded", "fallback_count_parse_failed"):
@@ -180,10 +180,10 @@ def _project_auxiliary_fields(public_algo: Dict[str, Any]) -> None:
 
 
 def _project_nested_summary_fields(public_algo: Dict[str, Any]) -> None:
-    _replace_with_mapping_or_drop(public_algo, "graph_analysis", project_public_graph_analysis)
-    _replace_with_mapping_or_drop(public_algo, "candidate_comparison", project_candidate_comparison)
-    _replace_with_mapping(public_algo, "input_contract", project_input_contract)
-    _replace_with_list(public_algo, "merge_context_events", project_degradation_event_list)
+    _replace_projected_or_drop(public_algo, "graph_analysis", project_public_graph_analysis)
+    _replace_projected_or_drop(public_algo, "candidate_comparison", project_candidate_comparison)
+    _replace_projected(public_algo, "input_contract", project_input_contract)
+    _replace_projected(public_algo, "merge_context_events", project_degradation_event_list)
 
 
 def _replace_with_text_or_drop(data: Dict[str, Any], key: str) -> None:
@@ -202,7 +202,7 @@ def _replace_with_text_list_or_drop(data: Dict[str, Any], key: str) -> None:
         data.pop(key, None)
 
 
-def _replace_with_mapping_or_drop(data: Dict[str, Any], key: str, projector) -> None:
+def _replace_projected_or_drop(data: Dict[str, Any], key: str, projector) -> None:
     if key not in data:
         return
     projected = projector(data.get(key))
@@ -212,22 +212,7 @@ def _replace_with_mapping_or_drop(data: Dict[str, Any], key: str, projector) -> 
         data.pop(key, None)
 
 
-def _replace_with_mapping(data: Dict[str, Any], key: str, projector) -> None:
-    if key in data:
-        data[key] = projector(data.get(key))
-
-
-def _replace_with_list_or_drop(data: Dict[str, Any], key: str, projector) -> None:
-    if key not in data:
-        return
-    projected = projector(data.get(key))
-    if projected:
-        data[key] = projected
-    else:
-        data.pop(key, None)
-
-
-def _replace_with_list(data: Dict[str, Any], key: str, projector) -> None:
+def _replace_projected(data: Dict[str, Any], key: str, projector) -> None:
     if key in data:
         data[key] = projector(data.get(key))
 

@@ -44,7 +44,7 @@ def claim_run(conn, run_ref, now, retry_original=None) -> Tuple[Dict[str, Any], 
                     return row, public_job_status(repo.status(run_ref))
                 # The same write transaction already owns this observed job.
                 row = cast(Dict[str, Any], repo.get(run_ref))
-            require_admission(repo, row)
+                require_admission(repo, row)
             claimed = repo.claim(run_ref, PROCESS_EXECUTOR_REF, now())
             if claimed is None:
                 raise RuntimeError("Run was claimed by another worker")
@@ -75,11 +75,9 @@ def capture_claim_retry_state(conn, run_ref):
     with TransactionManager(conn).transaction():
         require_run_schema(repo)
         row = repo.get(run_ref)
-        if row is None:
-            raise RuntimeError("Run disappeared before claim")
-        original = {"job": row, "admission": _admission(conn, row)}
-        _require_unchanged_unclaimed(repo, row, original)
-        return original
+        _require_unclaimed_row(repo, row)
+        require_admission(repo, row)
+        return {"job": row, "admission": _admission(conn, row)}
 
 
 def _admission(conn, row):
@@ -94,10 +92,16 @@ def _admission(conn, row):
     return receipt
 
 
-def _require_unchanged_unclaimed(repo, row, original):
-    if (row is None or row != original["job"] or row["state"] != "queued" or row["stage"] != "queued"
+def _require_unclaimed_row(repo, row):
+    if (row is None or row["state"] != "queued" or row["stage"] != "queued"
             or any(row[key] is not None for key in ("executor_ref", "started_at", "finished_at", "error_json"))
             or repo.receipt(row["run_ref"]) is not None or repo.has_candidates(row["run_ref"])):
+        raise RuntimeError("Run claim retry evidence changed; reconciliation required")
+
+
+def _require_unchanged_unclaimed(repo, row, original):
+    _require_unclaimed_row(repo, row)
+    if row != original["job"]:
         raise RuntimeError("Run claim retry evidence changed; reconciliation required")
     require_admission(repo, row)
     if _admission(repo.conn, row) != original["admission"]:

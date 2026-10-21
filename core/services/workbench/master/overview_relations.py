@@ -83,11 +83,13 @@ def _requirement_fields(graph, entity, row, batch, availability, readiness):
 
 def resource_profile_fields(graph):
     facts = graph.facts
-    groups = facts.index("WorkbenchMachineGroups", "group_id")
-    members = facts.index("WorkbenchMachineGroupMembers", "machine_id")
+    available = facts.available("WorkbenchMachineGroups", "WorkbenchMachineGroupMembers")
+    if available:
+        groups = facts.index("WorkbenchMachineGroups", "group_id")
+        members = facts.index("WorkbenchMachineGroupMembers", "machine_id")
     for row in facts.rows("Machines"):
         entity = graph.by_key[("equipment", row["machine_id"])]
-        if not facts.available("WorkbenchMachineGroups", "WorkbenchMachineGroupMembers"):
+        if not available:
             graph.unknown(entity, "设备组", "WorkbenchMachineGroups / WorkbenchMachineGroupMembers")
             continue
         member = members.get(row["machine_id"])

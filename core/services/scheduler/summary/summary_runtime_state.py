@@ -24,8 +24,36 @@ from .due_risk_items import (
 from .schedule_summary_assembly import (
     _finish_time_by_batch as finish_time_by_batch,
 )
-from .schedule_summary_degradation import _metric_int, _metric_sample
 from .schedule_summary_freeze import _extract_freeze_warnings, _freeze_meta_dict
+
+
+def _metric_int(metrics: Any, key: str) -> int:
+    if metrics is None:
+        return 0
+    try:
+        return max(0, int(getattr(metrics, key, 0) or 0))
+    except Exception:
+        return 0
+
+
+def _metric_sample(metrics: Any, key: str, *, limit: int) -> List[str]:
+    if metrics is None:
+        return []
+    raw = getattr(metrics, key, None)
+    if not isinstance(raw, (list, tuple)):
+        return []
+    out: List[str] = []
+    for item in raw:
+        try:
+            text = str(item).strip()
+        except Exception:
+            continue
+        if not text or text in out:
+            continue
+        out.append(text)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def _warning_list(value: Any) -> List[str]:
@@ -137,22 +165,6 @@ def _counter_dict(value: Any, *, bucket_name: str) -> Tuple[Dict[str, int], List
     return out, errors
 
 
-def _fallback_samples_dict(value: Any) -> Dict[str, List[Dict[str, Any]]]:
-    if not isinstance(value, dict):
-        return {}
-    out: Dict[str, List[Dict[str, Any]]] = {}
-    for key, raw in value.items():
-        if not isinstance(raw, list):
-            continue
-        samples: List[Dict[str, Any]] = []
-        for item in raw:
-            if isinstance(item, dict):
-                samples.append(dict(item))
-        if samples:
-            out[str(key)] = samples
-    return out
-
-
 def build_overdue_items(
     *,
     batches: Dict[str, Any],
@@ -194,27 +206,28 @@ def _build_runtime_state(
         summary=summary,
         incomplete_batch_ids=incomplete_batch_ids,
     )
-    invalid_due_count = _metric_int(best_metrics, "invalid_due_count") or int(overdue_meta.get("invalid_due_count") or 0)
-    invalid_due_batch_ids_sample = _metric_sample(best_metrics, "invalid_due_batch_ids_sample", limit=10) or list(
-        overdue_meta.get("invalid_due_batch_ids_sample") or []
+    invalid_due_count = _metric_int(best_metrics, "invalid_due_count") or overdue_meta["invalid_due_count"]
+    invalid_due_batch_ids_sample = (
+        _metric_sample(best_metrics, "invalid_due_batch_ids_sample", limit=10)
+        or overdue_meta["invalid_due_batch_ids_sample"]
     )
+    normalized_batch_ids = [str(batch_id).strip() for batch_id in batches]
     unscheduled_batch_ids_all = [
-        str(batch_id).strip()
-        for batch_id in sorted(batches.keys(), key=lambda item: str(item).strip())
-        if str(batch_id).strip() and str(batch_id).strip() not in finish_by_batch
+        batch_id for batch_id in sorted(normalized_batch_ids) if batch_id and batch_id not in finish_by_batch
     ]
-    unscheduled_batch_count = _metric_int(best_metrics, "unscheduled_batch_count") or int(len(unscheduled_batch_ids_all))
-    unscheduled_batch_ids_sample = _metric_sample(best_metrics, "unscheduled_batch_ids_sample", limit=20) or list(
-        unscheduled_batch_ids_all[:20]
+    unscheduled_batch_count = _metric_int(best_metrics, "unscheduled_batch_count") or len(unscheduled_batch_ids_all)
+    unscheduled_batch_ids_sample = (
+        _metric_sample(best_metrics, "unscheduled_batch_ids_sample", limit=20) or unscheduled_batch_ids_all[:20]
     )
     return RuntimeState(
         finish_by_batch=finish_by_batch,
         overdue_items=overdue_items,
-        near_due_items=list(overdue_meta.get("near_due_items") or []),
-        invalid_due_count=int(invalid_due_count),
-        invalid_due_batch_ids_sample=list(invalid_due_batch_ids_sample),
-        unscheduled_batch_count=int(unscheduled_batch_count),
-        unscheduled_batch_ids_sample=list(unscheduled_batch_ids_sample),
+        near_due_items=overdue_meta["near_due_items"],
+        invalid_due_count=invalid_due_count,
+        invalid_due_batch_ids_sample=invalid_due_batch_ids_sample,
+        unscheduled_batch_count=unscheduled_batch_count,
+        unscheduled_batch_ids_sample=unscheduled_batch_ids_sample,
+        incomplete_batch_ids=incomplete_batch_ids,
     )
 
 
@@ -278,15 +291,12 @@ def _build_fallback_state(algo_stats: Optional[Dict[str, Any]]) -> FallbackState
         algo_stats_dict.get("fallback_counts"),
         bucket_name="fallback_counts",
     )
-    fallback_samples = _fallback_samples_dict(algo_stats_dict.get("fallback_samples"))
     param_fallbacks, param_fallback_errors = _counter_dict(
         algo_stats_dict.get("param_fallbacks"),
         bucket_name="param_fallbacks",
     )
     return FallbackState(
-        raw_stats=algo_stats_dict,
         fallback_counts=fallback_counts,
-        fallback_samples=fallback_samples,
         param_fallbacks=param_fallbacks,
         legacy_external_days_defaulted_count=int(fallback_counts.get("legacy_external_days_defaulted_count") or 0),
         ortools_warmstart_failed_count=int(fallback_counts.get("ortools_warmstart_failed_count") or 0),

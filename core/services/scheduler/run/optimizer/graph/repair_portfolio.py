@@ -18,7 +18,6 @@ class RepairPortfolio:
     extras: Tuple[Tuple[str, RepairDecision], ...]
     inherited_resources: Tuple[Tuple[int, str, str], ...]
     move_layout: Tuple[Tuple[str, int], ...] = field(init=False)
-    _batch_family_representative_indices: Tuple[int, ...] = field(init=False)
 
     def __post_init__(self) -> None:
         first_by_kind: Dict[str, int] = {}
@@ -34,15 +33,10 @@ class RepairPortfolio:
             if extra_index is not None:
                 layout.append(("extra", extra_index))
         object.__setattr__(self, "move_layout", tuple(layout))
-        object.__setattr__(self, "_batch_family_representative_indices", representatives)
 
     @property
     def candidate_count(self) -> int:
         return len(self.move_layout)
-
-    @property
-    def batch_family_representative_indices(self) -> Tuple[int, ...]:
-        return self._batch_family_representative_indices
 
     def decisions(self, start: int = 0) -> Iterator[Tuple[str, RepairDecision]]:
         for position in range(start, len(self.move_layout)):
@@ -54,8 +48,12 @@ class RepairPortfolio:
         # batch-rank-only decision on purpose: re-picking the operations under the new ranks is this
         # neighbourhood's search freedom. Block-moving the parent's pick sequence instead (2026-09-18)
         # lost 7 of 20 end-to-end cases against this baseline and was withdrawn.
-        neighbor = RepairNeighborhood(self.batches.order, (self.batches.moves[index],))
-        kind, order = next(neighbor.neighbors())
+        kind, source, target = self.batches.moves[index]
+        order = list(self.batches.order)
+        if kind == "adjacent_swap":
+            order[source], order[target] = order[target], order[source]
+        else:
+            order.insert(target, order.pop(source))
         return kind, RepairDecision(tuple(order), resource_overrides=self.inherited_resources)
 
 
@@ -93,10 +91,6 @@ class ParentRepairPortfolio:
                     kind, decision = item
                     yield kind, decision, profile
 
-    def decisions(self) -> Iterator[Tuple[str, RepairDecision]]:
-        for kind, decision, _profile in self.profiled_decisions():
-            yield kind, decision
-
 
 def build_repair_portfolio(candidate: Dict[str, Any], *, operations: List[Any], metrics_by_op_id: Dict[int, Dict[str, Any]],
                            start_dt: Any, seed: int, objective_name: str, graph_context: Optional[Dict[str, Any]],
@@ -107,15 +101,14 @@ def build_repair_portfolio(candidate: Dict[str, Any], *, operations: List[Any], 
     basis on purpose (2026-09-18: it cost 6% weighted tardiness on medium_shift_pool and helped nowhere)."""
     prepared = (prepared_parent if prepared_parent is not None else prepare_repair_parent(
         candidate, operations, resource_pool, graph_context, resource_moves=graph_context is not None))
-    decoded_parent = dict(candidate, decoded_batch_order=prepared.decoded_batch_order)
-    batches = build_repair_neighborhood(decoded_parent, operations=operations, metrics_by_op_id=metrics_by_op_id,
-                                        start_dt=start_dt, seed=seed, objective_name=objective_name, prepared_parent=prepared)
+    batches = build_repair_neighborhood(
+        operations=operations, metrics_by_op_id=metrics_by_op_id, start_dt=start_dt, seed=seed,
+        objective_name=objective_name, prepared_parent=prepared)
     inherited = prepared.inherited_resources
     if graph_context is None:
         return RepairPortfolio(batches, (), inherited)
     operation_decisions = operation_repair_decisions(
-        candidate, operations=operations, graph_context=graph_context, metrics_by_op_id=metrics_by_op_id,
-        batch_order=batches.order, start_dt=start_dt, objective_name=objective_name, resource_pool=resource_pool,
+        metrics_by_op_id=metrics_by_op_id, batch_order=batches.order, start_dt=start_dt, objective_name=objective_name,
         prepared_parent=prepared)
     resources = (("resource_alternative", decision) for decision in iter_resource_decisions(
         candidate, operations=operations, resource_pool=resource_pool, batch_order=batches.order,

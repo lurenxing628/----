@@ -99,9 +99,6 @@ def plan_chain(plan_ref, visible_refs, *, target_task_ref=None, context):
         return unavailable(plan_ref, "chain_target_not_found", "所选工序不在此计划中，请重新选择。", **target)
     point_count = sum(task["start"] == task["end"] for task in mapping.values())
     raw = compute_critical_chain_from_rows(rows, target_id=target_id)
-    if type(raw) is not dict:
-        return unavailable(plan_ref, "chain_engine_unavailable", "关键链计算失败，请重试。",
-                           engine_reason="invalid_result_type", **target)
     if not _result_valid(raw, mapping, point_count, target_id):
         return unavailable(plan_ref, "chain_engine_unavailable", "计划链没算出完整、可核对的结果。请刷新后重试。",
                            engine_reason=raw.get("reason_code", "invalid_result"), **target)

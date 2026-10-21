@@ -41,39 +41,24 @@ class ExponentialCooling:
 
 class TemperatureScale:
     """Fix the primary scale at the first usable primary delta, and the secondary scale at the first
-    usable secondary delta observed between equal primaries; retain sample counts for reporting."""
+    usable secondary delta observed between equal primaries."""
 
     def __init__(self) -> None:
-        self.count = 0
-        self.total = 0.0
-        self._value = 0.0
-        self.secondary_count = 0
-        self._secondary = 0.0
+        self.value = 0.0
+        self.secondary = 0.0
 
     def observe(self, candidate: Sequence[float], reference: Sequence[float]) -> None:
         if len(candidate) < 2 or len(reference) < 2 or candidate[0] != reference[0]:
             return
         delta = abs(float(candidate[1]) - float(reference[1]))
         if delta > 0.0 and math.isfinite(delta):
-            if not self.count:
-                self._value = delta
-            self.count += 1
-            self.total += delta
+            if not self.value:
+                self.value = delta
             return
         if delta == 0.0 and len(candidate) > 2 and len(reference) > 2:
             secondary = abs(float(candidate[2]) - float(reference[2]))
-            if secondary > 0.0 and math.isfinite(secondary):
-                if not self.secondary_count:
-                    self._secondary = secondary
-                self.secondary_count += 1
-
-    @property
-    def value(self) -> float:
-        return self._value
-
-    @property
-    def secondary(self) -> float:
-        return self._secondary
+            if secondary > 0.0 and math.isfinite(secondary) and not self.secondary:
+                self.secondary = secondary
 
 
 def _anneal(candidate_value: float, reference_value: float, *, temperature: float, u: float) -> bool:
@@ -83,11 +68,10 @@ def _anneal(candidate_value: float, reference_value: float, *, temperature: floa
     return float(candidate_value) + float(temperature) * math.log(u) < float(reference_value)
 
 
-def sa_accept(candidate: Sequence[float], reference: Sequence[float], *, temperature: float, u: float,
-              secondary_temperature: float = 0.0) -> bool:
+def sa_accept(candidate: Tuple[float, ...], reference: Tuple[float, ...], *, temperature: float, u: float,
+              secondary_temperature: float) -> bool:
     """Failed operations are never traded; the primary anneals with ``temperature``; equal primaries anneal the
     secondary component with ``secondary_temperature`` (0 keeps the plain lexicographic order)."""
-    candidate, reference = tuple(candidate), tuple(reference)
     if not candidate or not reference:
         raise ValueError("scores must be non-empty tuples")
     if candidate[0] != reference[0]:
@@ -148,19 +132,21 @@ class SolutionPool:
         self.entries: List[PoolEntry] = []
         self._sequence = 0
 
-    def add(self, entry: PoolEntry) -> bool:
+    def add(self, entry: PoolEntry) -> None:
         key = entry.decision_key()
         if any(item.decision_key() == key for item in self.entries):
-            return False
+            return
+        self._insert_new(entry)
+
+    def _insert_new(self, entry: PoolEntry) -> None:
         self._sequence += 1
         entry.sequence = self._sequence
         self.entries.append(entry)
         self.entries.sort(key=lambda item: (item.score, item.sequence))
         if len(self.entries) > self.size:
             self._retain_diverse_boundary()
-        return any(item is entry for item in self.entries)
 
-    def refresh(self, entry: PoolEntry) -> bool:
+    def refresh(self, entry: PoolEntry) -> None:
         """Replace a formally decoded decision's older entry, preserving its selection history.
 
         Its score may improve or worsen after the first formal decode. New decisions still pass
@@ -174,10 +160,8 @@ class SolutionPool:
             entry.sequence = previous.sequence
             self.entries[index] = entry
             self.entries.sort(key=lambda item: (item.score, item.sequence))
-            if len(self.entries) > self.size:
-                self._retain_diverse_boundary()
-            return any(item is entry for item in self.entries)
-        return self.add(entry)
+            return
+        self._insert_new(entry)
 
     def _retain_diverse_boundary(self) -> None:
         """Keep better scores unconditionally, then maximise distance only within the tied boundary.
@@ -201,13 +185,11 @@ class SolutionPool:
         selected = max(combinations(tied, count), key=diversity)
         self.entries = [self.entries[i] for i in kept + list(selected)]
 
-    def pick(self, rnd: random.Random, *, exclude_order: Optional[Tuple[int, ...]] = None,
-             exclude_entry: Optional[PoolEntry] = None) -> Optional[PoolEntry]:
-        if exclude_entry is not None:
-            candidates = [item for item in self.entries if item.decision_key() != exclude_entry.decision_key()]
-        else:
-            candidates = [item for item in self.entries if item.order != exclude_order]
-        candidates = candidates or list(self.entries)
+    def pick(self, rnd: random.Random, *, exclude_entry: Optional[PoolEntry] = None) -> Optional[PoolEntry]:
+        excluded_key = exclude_entry.decision_key() if exclude_entry is not None else None
+        candidates = (self.entries if excluded_key is None else
+                      [item for item in self.entries if item.decision_key() != excluded_key])
+        candidates = candidates or self.entries
         if not candidates:
             return None
         best_score = candidates[0].score

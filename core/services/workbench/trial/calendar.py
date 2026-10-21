@@ -22,8 +22,8 @@ def calendar_engine(tables):
     return factory.engine
 
 
-def original_duration(original, *, allow_point=False, effort=None):
-    """Saved points require a frozen witness; opt-in allows calendar math only."""
+def original_duration(original, *, effort=None):
+    """Saved zero-hour work requires a frozen point witness."""
     op, batch, execution = original["operation"], original["batch"], original["execution"]
     if op["source"] == "external":
         group = original.get("external_group")
@@ -31,16 +31,13 @@ def original_duration(original, *, allow_point=False, effort=None):
         if not number(days, positive=True):
             reject("external_duration_unknown", "原外协周期缺失或无效，不能推测完工时间。", 422)
         return {"basis": "calendar_days", "days": days, "total_hours": None, "quantity": None}
-    if op["source"] != "internal":
-        reject("duration_source_unknown", "这道工序是自制还是外协读不到，算不出时长。", 422)
-    if not number(op["setup_hours"]) or not number(op["unit_hours"]):
-        reject("hours_missing", "原换型工时或单件工时缺失。", 422)
-    quantity = _original_target(op, batch, execution)
-    effort = effort if effort is not None else new_slot_effort(original)
-    if effort.target_quantity != quantity:
-        reject("quantity_unknown", "标准需求的目标量与保存执行事实不一致。", 422)
+    if effort is None:
+        effort = new_slot_effort(original)
+    else:
+        _original_target(op, batch, execution)
+    quantity = effort.target_quantity
     total = effort.required_standard_hours
-    if total == 0 and allow_point is not True:
+    if total == 0:
         try:
             trial_point_evidence(original)
         except PointEventError:
@@ -86,9 +83,9 @@ def _original_target(op, batch, execution):
     return quantity
 
 
-def estimate(engine, original, arrangement, *, allow_point=False, effort=None):
-    """allow_point enables calendar math only, not production save or adoption."""
-    duration = original_duration(original, allow_point=allow_point, effort=effort)
+def estimate(engine, original, arrangement, *, effort=None):
+    """Estimate a slot with saved work and the snapshot-local calendar."""
+    duration = original_duration(original, effort=effort)
     start = datetime.fromisoformat(arrangement["start"])
     if duration["basis"] == "calendar_days":
         return start, engine.add_calendar_days(start, duration["days"])

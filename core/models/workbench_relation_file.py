@@ -1,6 +1,6 @@
 """可操作设备关系文件的列目录。只读列是参考资料，不写入；文件不删除任何已有关系。"""
 
-from typing import Any, Dict, FrozenSet, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from core.errors import ValidationError
 from core.models.workbench_action_values import FileDownload
@@ -45,10 +45,6 @@ EXPORT_LABELS: Dict[str, Dict[str, str]] = {
     "skill_level": {"beginner": "初级", "normal": "普通", "expert": "熟练"},
     "is_primary": {"yes": "是", "no": "否"},
 }
-NULLABLE: FrozenSet[str] = frozenset()
-NUMERIC_FIELDS: FrozenSet[str] = frozenset()
-DATE_FIELDS: FrozenSet[str] = frozenset()
-TIME_FIELDS: FrozenSet[str] = frozenset()
 
 SHEET_NAMES = {"operator_machine": "可操作设备"}
 DISPLAY_NAMES = {"operator_machine": "可操作设备"}
@@ -138,7 +134,7 @@ def table_descriptor(kind: str) -> Dict[str, Any]:
             "value_hint": _VALUE_HINTS[key],
             "error_hint": _ERROR_HINTS[key],
             "enum": ENUMS.get(key),
-            "nullable": key in NULLABLE,
+            "nullable": False,
         })
     return {
         "table_id": kind,

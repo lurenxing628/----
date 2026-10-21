@@ -67,7 +67,7 @@ def execution_anchors(conn, rows, live):
     operations = [SimpleNamespace(**row["original"]["operation"]) for row in rows]
     facts = live["preflight_facts"]
     batches = {row["batch_id"]: SimpleNamespace(**row) for row in facts.tables["Batches"]}
-    _, fixed, completed, seeds, _, _ = build_execution_guardrails_from_projections(
+    _, fixed, completed, seeds, _ = build_execution_guardrails_from_projections(
         svc, operations, prev_version=version, execution_projections=projections, facts=facts,
         external_groups=execution_groups(facts, batches, operations))
     refs = _active_entity_refs(live["facts"]["tables"])
@@ -109,7 +109,10 @@ def attach_execution_anchors(conn, rows, live):
     try:
         anchors = execution_anchors(conn, rows, live)
     except (AppError, ValueError, TypeError, KeyError, OverflowError) as exc:
-        return [anchor_issue(exc)]
+        problem = anchor_issue(exc)
+        live["execution_anchors"] = ({}, problem)
+        return [problem]
+    live["execution_anchors"] = (anchors, None)
     for row in rows:
         anchor = anchors.get(row["original"]["operation"]["id"])
         if anchor is not None:

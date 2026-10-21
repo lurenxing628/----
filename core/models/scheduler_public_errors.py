@@ -177,15 +177,14 @@ def public_safe_identifier(value: Any, *, max_chars: int = 80) -> str:
         return ""
     if not _ALLOWED_IDENTIFIER_RE.fullmatch(text):
         return ""
-    return text[:max_chars]
+    return text
 
 
 def public_safe_label(value: Any, *, max_chars: int = 80) -> str:
     full_text = _clean_text(value)
     if not full_text or _contains_sensitive_marker(full_text):
         return ""
-    text = full_text[:max_chars]
-    return text[:max_chars]
+    return full_text[:max_chars]
 
 
 def _positive_int(value: Any) -> int:
@@ -256,7 +255,7 @@ def legacy_public_error_message(raw: Any) -> str:
             continue
         if text.startswith("外部组合并周期未设置或不合法："):
             return f"外部组合并周期未设置或不合法：批次 {match.group('batch')} 组 {match.group('group')}"
-        return text[:500]
+        return text
     return ""
 
 
@@ -304,8 +303,6 @@ def public_error_message_from_detail(raw: Any) -> str:
     legacy_message = legacy_public_error_message(message)
     if legacy_message:
         return legacy_message
-    if message == GENERIC_PUBLIC_ERROR_MESSAGE:
-        return GENERIC_PUBLIC_ERROR_MESSAGE
     return GENERIC_PUBLIC_ERROR_MESSAGE
 
 

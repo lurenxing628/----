@@ -10,9 +10,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import List, Optional
 
-from .priority_constants import PRIORITY_ORDER, PRIORITY_SCORE, normalize_priority
+from .priority_constants import PRIORITY_RANK, PRIORITY_SCORE, normalize_priority
 
 
 class SortStrategy(Enum):
@@ -29,7 +29,6 @@ class BatchForSort:
     batch_id: str
     priority: str  # normal/urgent/critical
     due_date: Optional[date] = None
-    ready_status: str = "yes"  # yes/no/partial（当前排产仅允许 yes；此字段保留供未来扩展）
     ready_date: Optional[date] = None
     created_at: Optional[datetime] = None
 
@@ -52,7 +51,7 @@ class PriorityFirstStrategy(BaseSortStrategy):
     def sort(self, batches: List[BatchForSort], *, base_date: Optional[date] = None) -> List[BatchForSort]:
         def sort_key(batch: BatchForSort):
             pr = normalize_priority(batch.priority, default="normal")
-            priority_rank = PRIORITY_ORDER.get(pr, 99)
+            priority_rank = PRIORITY_RANK[pr]
             due_rank = batch.due_date if batch.due_date else date.max
             return (priority_rank, due_rank, batch.batch_id)
 
@@ -70,7 +69,7 @@ class DueDateFirstStrategy(BaseSortStrategy):
             has_due = 0 if batch.due_date else 1  # 无交期的排最后
             due_rank = batch.due_date if batch.due_date else date.max
             pr = normalize_priority(batch.priority, default="normal")
-            priority_rank = PRIORITY_ORDER.get(pr, 99)
+            priority_rank = PRIORITY_RANK[pr]
             return (has_due, due_rank, priority_rank, batch.batch_id)
 
         return sorted(batches, key=sort_key)
@@ -98,7 +97,7 @@ score = priority_weight×priority_score + due_weight×due_score
 
         def calc_score(batch: BatchForSort) -> float:
             pr = normalize_priority(batch.priority, default="normal")
-            priority_score = PRIORITY_SCORE.get(pr, 0)
+            priority_score = PRIORITY_SCORE[pr]
 
             if batch.due_date:
                 days_left = (batch.due_date - today).days
@@ -152,7 +151,3 @@ class StrategyFactory:
                 due_weight=kwargs.get("due_weight", 0.5),
             )
         return strategy_class()
-
-    @classmethod
-    def get_available_strategies(cls) -> List[Dict[str, str]]:
-        return [{"key": s.value, "name": cls.create(s).get_name()} for s in SortStrategy]

@@ -12,7 +12,6 @@ from .candidate_fingerprint import (
 from .search_report_helpers import (
     append_fingerprint_event,
     candidate_summary,
-    dict_copy,
     empty_acceptance_counter,
     empty_neighborhood_counter,
     final_report_payload,
@@ -36,7 +35,6 @@ class OptimizationSearchReportState:
     time_budget_seconds: int
     objective_name: str
     started_at: float
-    strict_mode: bool = False
     candidate_profile: Optional[Dict[str, Any]] = None
     evaluated_candidates: int = 0
     accepted_candidates: int = 0
@@ -94,14 +92,16 @@ class OptimizationSearchReportState:
         identity = self._candidate_fingerprint(candidate, seen=self.candidate_fingerprints)
         self._best_candidate, self._best_identity = candidate, identity
         self.best_fingerprint = identity.output_key
-        self.best_candidate_fingerprint = identity.to_report_dict()
+        report_dict = identity.to_report_dict()
+        score_list = list(candidate.get("score") or ())
+        self.best_candidate_fingerprint = report_dict
         self.best_origin = origin
-        self.best_score = list(candidate.get("score") or ())
+        self.best_score = score_list
         self.candidate_fingerprints.add(identity.output_key)
         if self.initial_fingerprint is None:
             self.initial_fingerprint = identity.output_key
-            self.initial_candidate_fingerprint = identity.to_report_dict()
-            self.initial_score = list(candidate.get("score") or ())
+            self.initial_candidate_fingerprint = report_dict
+            self.initial_score = list(score_list)
 
     def _observe_candidate(self, candidate: Dict[str, Any], *, origin: str, verified: bool) -> None:
         if self.candidate_observer is None:
@@ -169,12 +169,13 @@ class OptimizationSearchReportState:
         self.best_score = list(candidate.get("score") or [])
         self.accepted_candidates += 1
         if self.candidate_acceptance_observer is not None:
-            self.candidate_acceptance_observer(candidate=candidate, origin=origin, current_only=False)
+            self.candidate_acceptance_observer(candidate=candidate)
         self.accepted_fingerprints.add(fingerprint.output_key)
         if not was_initial:
             self.best_improved_candidates += 1
         append_fingerprint_event(self.fingerprint_events, origin=origin, status="accepted", fingerprint=fingerprint)
-        self._append_attempt_summary(candidate_summary(candidate, origin=origin, status="best_improved" if not was_initial else "accepted"))
+        if len(self.attempt_summary) < 12:
+            self._append_attempt_summary(candidate_summary(candidate, origin=origin, status="best_improved" if not was_initial else "accepted"))
         if acceptance_event is not None:
             self.mark_acceptance_event(acceptance_event, best_improved=not was_initial, current_accepted=True)
 
@@ -194,10 +195,11 @@ class OptimizationSearchReportState:
         self.accepted_candidates += 1
         self.current_accepted_candidates += 1
         if self.candidate_acceptance_observer is not None:
-            self.candidate_acceptance_observer(candidate=candidate, origin=origin, current_only=True)
+            self.candidate_acceptance_observer(candidate=candidate)
         self.accepted_fingerprints.add(fingerprint.output_key)
         append_fingerprint_event(self.fingerprint_events, origin=origin, status="current_accepted", fingerprint=fingerprint)
-        self._append_attempt_summary(candidate_summary(candidate, origin=origin, status="current_accepted"))
+        if len(self.attempt_summary) < 12:
+            self._append_attempt_summary(candidate_summary(candidate, origin=origin, status="current_accepted"))
         if acceptance_event is not None:
             self.mark_acceptance_event(acceptance_event, best_improved=False, current_accepted=True)
 
@@ -212,23 +214,26 @@ class OptimizationSearchReportState:
         current_accepted: bool = False,
     ) -> None:
         row = safe_acceptance_event(event)
-        name = safe_text(row.get("acceptance_name")) or "unknown"
-        bucket = self.acceptance_summary.setdefault(name, empty_acceptance_counter())
+        name = row["acceptance_name"]
+        bucket = self.acceptance_summary.get(name)
+        if bucket is None:
+            bucket = empty_acceptance_counter()
+            self.acceptance_summary[name] = bucket
         bucket["attempted"] += 1
-        if bool(row.get("accepted")):
+        accepted = row["accepted"]
+        if accepted:
             bucket["accepted"] += 1
         else:
             bucket["rejected"] += 1
         if current_accepted and not best_improved:
             bucket["non_improving_accepted"] += 1
-        if best_improved and bool(row.get("accepted")):
+        if best_improved and accepted:
             self.best_acceptance_passed = True
             self.best_acceptance_event_count += 1
         if len(self.acceptance_events) < 50:
-            stored = dict(row)
-            stored["best_improved"] = bool(best_improved)
-            stored["current_accepted"] = bool(current_accepted)
-            self.acceptance_events.append(stored)
+            row["best_improved"] = bool(best_improved)
+            row["current_accepted"] = bool(current_accepted)
+            self.acceptance_events.append(row)
 
     def set_effective_neighborhoods(
         self,
@@ -239,7 +244,7 @@ class OptimizationSearchReportState:
         dispatch_mode: str,
     ) -> None:
         profile = dict(self.candidate_profile or {})
-        configured_values = list_copy(configured) or list_copy(profile.get("configured_neighborhoods")) or list_copy(profile.get("neighborhoods"))
+        configured_values = list_copy(configured)
         effective_values = list_copy(effective)
         if configured_values:
             profile["configured_neighborhoods"] = configured_values
@@ -269,21 +274,24 @@ class OptimizationSearchReportState:
 
     def mark_neighborhood_move(self, move: Dict[str, Any]) -> None:
         row = safe_neighborhood_move(move)
-        name = safe_text(row.get("neighborhood_name")) or "unknown"
-        bucket = self.neighborhood_summary.setdefault(name, empty_neighborhood_counter())
+        name = row["neighborhood_name"]
+        bucket = self.neighborhood_summary.get(name)
+        if bucket is None:
+            bucket = empty_neighborhood_counter()
+            self.neighborhood_summary[name] = bucket
         bucket["attempted"] += 1
-        if bool(row.get("noop")):
+        if row["noop"]:
             bucket["noop"] += 1
         else:
             bucket["effective"] += 1
-        if bool(row.get("fallback_used")):
+        if row["fallback_used"]:
             bucket["fallback"] += 1
-        if safe_text(row.get("candidate_rejected")):
+        if row["candidate_rejected"]:
             bucket["rejected"] += 1
         if len(self.neighborhood_moves) < 50:
             self.neighborhood_moves.append(row)
 
-    def mark_optional_warmstart_failed(self, *, reason: str) -> None:
+    def mark_optional_warmstart_failed(self, *, reason: str = "optional_warmstart_failed") -> None:
         self.optional_warmstart_failed = True
         self.mark_candidate_rejected(reason=reason or "optional_warmstart_failed")
 
@@ -303,7 +311,7 @@ class OptimizationSearchReportState:
     def _append_attempt_summary(self, row: Dict[str, Any]) -> None:
         if len(self.attempt_summary) >= 12:
             return
-        self.attempt_summary.append(dict(row))
+        self.attempt_summary.append(row)
 
     def _record_rejection_reason(self, reason: str) -> None:
         safe_reason = normalize_reason(reason)

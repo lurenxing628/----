@@ -32,7 +32,7 @@ def _resource_equal(left: Any, right: Any) -> bool:
 
 
 def _rows_by_op_id(payload: ValidatedSchedulePayload) -> Dict[int, ValidatedScheduleRow]:
-    return {int(row.op_id): row for row in list(payload.schedule_rows or [])}
+    return {row.op_id: row for row in payload.schedule_rows}
 
 
 def _ops_by_id(operations: Optional[List[Any]]) -> Dict[int, Any]:
@@ -137,10 +137,11 @@ def _validate_completed_downstream_constraints(*, rows, prepared):
             downstream.update(by_group.get(group, ()))
         downstream.discard(completed_op_id)
         completed_row = rows[completed_op_id]
+        completed_interval = {"start_time": completed_row.start_time, "end_time": fact.actual_end_time}
         for op_id in sorted(downstream):
             row = rows[op_id]
             problem = protected_interval_problem(
-                {"start_time": completed_row.start_time, "end_time": fact.actual_end_time},
+                completed_interval,
                 {"start_time": row.start_time, "end_time": row.end_time},
                 previous_group=group, current_group=groups.get(op_id))
             if problem == "merged_group_split":

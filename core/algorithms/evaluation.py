@@ -7,6 +7,8 @@ from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from core.algorithm_contracts.changeover_events import ChangeoverArrangement, project_changeover_events
+from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_contracts.value_domains import INTERNAL
 from core.algorithms.evaluation_completion import (
     UNKNOWN_OBJECTIVE_VALUE,
     BatchCompletion,
@@ -15,9 +17,7 @@ from core.algorithms.evaluation_completion import (
     collect_batch_completion,
     prepare_evaluation_context,
 )
-from core.algorithms.objective_specs import objective_metric_keys
-from core.algorithms.types import ScheduleResult
-from core.algorithms.value_domains import INTERNAL
+from core.models.objective import objective_metric_keys
 
 
 @dataclass
@@ -75,8 +75,8 @@ class ScheduleMetrics:
             "util_defined": bool(self.util_defined),
             "invalid_due_count": int(self.invalid_due_count),
             "unscheduled_batch_count": int(self.unscheduled_batch_count),
-            "invalid_due_batch_ids_sample": [str(x) for x in list(self.invalid_due_batch_ids_sample or [])[:10]],
-            "unscheduled_batch_ids_sample": [str(x) for x in list(self.unscheduled_batch_ids_sample or [])[:20]],
+            "invalid_due_batch_ids_sample": [str(x) for x in (self.invalid_due_batch_ids_sample or ())[:10]],
+            "unscheduled_batch_ids_sample": [str(x) for x in (self.unscheduled_batch_ids_sample or ())[:20]],
         }
         if self.completion is not None:
             payload["completion"] = self.completion.to_dict()
@@ -279,8 +279,8 @@ def _count_changeovers(by_machine: Dict[str, List[ScheduleResult]]) -> int:
         machine_ref=machine, operation_ref=str(result.op_id) if result.op_id > 0 else None,
         row_ref=str(result.op_id) if result.op_id > 0 else None,
         type_ref=result.op_type_id, type_label=result.op_type_name,
-        start=result.start_time, end=result.end_time, source=(result.source or "").strip().lower(),
-        point_event=result.start_time is not None and result.start_time == result.end_time,
+        start=result.start_time, end=result.end_time, source=INTERNAL,
+        point_event=result.start_time == result.end_time,
         sort_key=(result.op_id,))
         for machine, machine_results in by_machine.items() for result in machine_results]
     # The public algorithm metric is an integer. Saved-event consumers retain the
@@ -331,22 +331,12 @@ def _util_avg(hours: List[float], horizon: float) -> float:
 
 
 def _cv(values: List[float]) -> float:
-    clean = []
-    for value in values:
-        try:
-            float_value = float(value)
-        except (TypeError, ValueError, OverflowError) as exc:
-            raise ValueError(f"负荷波动统计值必须是数字：{value!r}") from exc
-        if not math.isfinite(float_value):
-            raise ValueError(f"负荷波动统计值必须是有限数字：{value!r}")
-        if float_value >= 0:
-            clean.append(float_value)
-    if len(clean) <= 1:
+    if len(values) <= 1:
         return 0.0
-    mean_value = statistics.fmean(clean)
+    mean_value = statistics.fmean(values)
     if not math.isfinite(mean_value) or mean_value <= 0:
         return 0.0
-    return float(statistics.pstdev(clean) / mean_value)
+    return float(statistics.pstdev(values) / mean_value)
 
 
 def objective_score(objective: str, metrics: ScheduleMetrics) -> Tuple[float, ...]:

@@ -33,22 +33,23 @@ class WorkbenchResourceBulkService:
 
     def _prepare_delete(self, refs, scope):
         request = {"refs": resource_refs(refs), "scope": resource_scope(self.kind, scope)}
-        preparation = self.reader.preparation(refs=request["refs"], machine_authorizations=True)
+        preparation = self.reader.preparation(refs=request["refs"], machine_authorizations=self.kind in ("machine", "operator"))
         identities = [preparation.find_by_ref(self.kind, ref) for ref in request["refs"]]
         codes = [identity.entity_key for identity in identities if identity is not None]
         references = preparation.capture_references(self.repo, self.kind, codes)
         states = preparation.states(self.kind, codes)
-        planned = [self._row(number, ref, request["scope"], preparation, states, references)
-                   for number, ref in enumerate(request["refs"], 1)]
+        planned = [self._row(number, ref, identity, request["scope"], preparation, states, references)
+                   for number, (ref, identity) in enumerate(zip(request["refs"], identities), 1)]
         rows = [row for row, _change in planned]
         return ResourceActionPreview.build(self.kind + ".bulk_delete", request, rows), [change for _row, change in planned]
 
-    def _row(self, number, ref, scope, preparation, states, references):
+    def _row(self, number, ref, identity, scope, preparation, states, references):
         row = action_row(number, action="delete")
         row.update(entity_ref=ref, input={})
         change = None
         try:
-            identity = preparation.identity(self.kind, ref)
+            if identity is None:
+                raise WorkbenchCommandRejected("entity_not_found", "这条资源已经删除了，请刷新后重新选择。", 404)
             code = identity.entity_key
             row["business_code"] = code
             expected = {"state": states[code], "references": references[code]}

@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Any, Optional
+from typing import Optional
 
 from core.errors import ValidationError
-from core.shared.local_datetime import format_local_datetime as _fmt_dt
 
 
 def _parse_date(value: Optional[str]) -> Optional[date]:
@@ -59,7 +58,6 @@ def _week_range_from_dates(start_day: date, end_day: date) -> WeekRange:
 
 def _resolve_explicit_date_range(
     *,
-    offset_weeks_int: int,
     start_date: Optional[str],
     end_date: Optional[str],
 ) -> WeekRange:
@@ -83,9 +81,6 @@ def _resolve_explicit_date_range(
     )
     if ed < sd:
         raise ValidationError("end_date 不能早于 start_date", field="end_date")
-    if offset_weeks_int:
-        sd = sd + timedelta(days=7 * offset_weeks_int)
-        ed = ed + timedelta(days=7 * offset_weeks_int)
     return _week_range_from_dates(sd, ed)
 
 
@@ -111,14 +106,6 @@ class WeekRange:
     start_dt: datetime  # 周一/区间开始 00:00:00
     end_dt_exclusive: datetime  # 下周一/区间结束+1 00:00:00
 
-    @property
-    def start_str(self) -> str:
-        return _fmt_dt(self.start_dt)
-
-    @property
-    def end_exclusive_str(self) -> str:
-        return _fmt_dt(self.end_dt_exclusive)
-
 
 def resolve_week_range(
     *,
@@ -137,11 +124,9 @@ def resolve_week_range(
     - offset_weeks：周偏移（-1 上周，+1 下周）
     - start_date/end_date：可选，期望为 YYYY-MM-DD；若提供则优先使用
     """
-    offset_weeks_int = _normalize_offset_weeks(offset_weeks)
     if _date_arg_provided(start_date) or _date_arg_provided(end_date):
         return _resolve_explicit_date_range(
-            offset_weeks_int=offset_weeks_int,
             start_date=start_date,
             end_date=end_date,
         )
-    return _resolve_week_mode_range(week_start=week_start, offset_weeks_int=offset_weeks_int)
+    return _resolve_week_mode_range(week_start=week_start, offset_weeks_int=_normalize_offset_weeks(offset_weeks))

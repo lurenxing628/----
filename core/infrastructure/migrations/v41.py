@@ -146,7 +146,7 @@ def _backfill(conn):
         repo.insert_admission_read_model(run["run_ref"], admission["scope"], admission["decision"])
         if terminal:
             models = build_decision_read_models(run, packet["capture"], packet["receipt"], packet["rows"],
-                packet["prepared_candidates"], official, facts=packet["facts"], dependencies=dependencies,
+                packet["prepared_candidates"], facts=packet["facts"],
                 process=(packet["receipt"] or {}).get("unified_process"), admission=admission["decision"])
             repo.insert_decision_read_models(run["run_ref"], models["run_model"], models["candidate_models"])
 

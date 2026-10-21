@@ -7,7 +7,6 @@ from core.models.objective import best_score_schema
 from core.models.workbench_run_compute import CandidateRunComputation, PreparedRunResult
 from core.models.workbench_run_job import durable_value, new_run_ref
 from core.services.scheduler.run.optimizer.shared_process import _numeric_score
-from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.decision_read_model import build_decision_read_models
 
 
@@ -75,17 +74,16 @@ def _prepare_result_artifacts(computation, identities, *, run_ref=None, batch_re
         raise ValueError("Duplicate candidate identity")
     candidate_refs = {row["key"]: row["candidate_ref"] for row in candidates}
     unified = getattr(comparison, "generation_policy_version", None) == "unified_search_v1"
-    if unified:
-        for row in candidates:
-            artifact = row["artifact"]
+    for row in candidates:
+        artifact = row["artifact"]
+        if unified:
             artifact["evaluations"] = {target: {**evaluation, "scoring_scope":
                 _scope_references(evaluation["scoring_scope"], identities, batch_refs)}
                 for target, evaluation in artifact["evaluations"].items()}
             artifact["search_evidence_ref"] = {**artifact["search_evidence_ref"], "run_ref": run_ref}
-    for row in candidates:
-        process = row["artifact"].get("process_evidence")
+        process = artifact.get("process_evidence")
         if process is not None:
-            row["artifact"]["process_evidence"] = _evidence_references(process, candidate_refs)
+            artifact["process_evidence"] = _evidence_references(process, candidate_refs)
     selected = comparison.selection.selected_candidate_key
     if not any(row["key"] == selected and row["status"] == "completed" for row in candidates):
         raise ValueError("Selected candidate is missing")
@@ -170,9 +168,8 @@ def _scope_references(scope, identities, batch_refs):
             "complete_batch_refs": [batch_refs[batch_id] for batch_id in scope["complete_batch_ids"]]}
 
 
-def prepare_run_result(computation, identities, *, run, capture, admission, facts=None, dependencies=None):
+def prepare_run_result(computation, identities, *, run, capture, admission, facts):
     """Build the final bundle once before the parent completion transaction."""
-    facts = GenerationFacts(capture) if facts is None else facts
     batch_refs = {key: ref for (kind, key), ref in facts.entity_refs.items() if kind == "batch"}
     candidates, result = _prepare_result_artifacts(computation, identities, run_ref=run["run_ref"], batch_refs=batch_refs)
     packets = {}
@@ -183,8 +180,8 @@ def prepare_run_result(computation, identities, *, run, capture, admission, fact
                       for task, row in zip(candidate["tasks"], payload.schedule_rows)} if payload is not None else {})
         packets[candidate["candidate_ref"]] = {"raw_tasks": candidate["tasks"], "intervals": intervals,
             "scheduled_op_ids": payload.scheduled_op_ids if payload is not None else None}
-    models = build_decision_read_models(run, capture, result, candidates, packets, None,
-        facts=facts, dependencies=dependencies, admission=admission, process=result.get("unified_process"))
+    models = build_decision_read_models(run, capture, result, candidates, packets,
+        facts=facts, admission=admission, process=result.get("unified_process"))
     from data.repositories.workbench_run_repo import encode_decision_read_models, encode_result
     from data.repositories.workbench_run_result_repo import encode_candidate_rows
 

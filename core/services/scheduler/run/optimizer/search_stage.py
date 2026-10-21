@@ -18,7 +18,7 @@ class SearchStage:
 
     def unavailable_reason(self) -> Optional[str]:
         """Explain why this stage cannot currently start; None means it can start."""
-        return None if self.available() else "no_available_task"
+        raise NotImplementedError
 
     def finish(self) -> None:
         """Publish the report at search completion, including a stage that never ran."""

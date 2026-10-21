@@ -67,7 +67,7 @@ def lower_input(case, *batch_ids):
         case.conn, settings, capture=production.capture))
     version = svc.history_repo.get_latest_version()
     prior_refs = {production.operation_refs[op_id] for op_id in production.latest_plan_rows(version)}
-    facts, fixed, completed, actual, revisions, snap = build_execution_guardrails_from_projections(svc, operations, prev_version=version,
+    facts, fixed, completed, actual, snap = build_execution_guardrails_from_projections(svc, operations, prev_version=version,
         execution_projections=[row for row in production.execution_projections.values() if row.operation_ref in prior_refs],
         facts=production, external_groups=execution_groups(production, batches, operations))
     refs = WorkbenchPlanIdentityRepository(case.conn).get_operation_refs(op.id for op in operations)
@@ -87,7 +87,7 @@ def lower_input(case, *batch_ids):
         reschedulable_operations=[op for op in operations if op.id not in fixed | completed],
         hold_window=hold_window(case.conn, settings)[0])
     return SimpleNamespace(preflight_facts=production, latest_plan_rows=production.latest_plan_rows(version),
-        execution_reservations=build_execution_resource_reservations(svc, facts=facts,
+        execution_reservations=build_execution_resource_reservations(facts=facts,
             selected_op_ids={op.id for op in operations}, capture=production.capture),
         operation_sources=({op.id: op.source for op in operations}, []),
         normalized_batch_ids=ids, normalized_input=settings,
@@ -97,7 +97,7 @@ def lower_input(case, *batch_ids):
         algo_ops=build_algo_operations(svc, operations, strict_mode=True),
         frozen_op_ids={seed["op_id"] for seed in held}, seed_results=list(actual) + held,
         execution_facts=facts, execution_fixed_op_ids=fixed, execution_completed_op_ids=completed,
-        execution_seed_results=actual, execution_guard_state_revisions=revisions,
+        execution_seed_results=actual,
         execution_snapshot_revision=snap.revision, execution_snapshot_op_ids=list(snap.op_ids),
         execution_snapshot_op_count=snap.op_count, schedule_output_allowed_op_ids={op.id for op in operations})
 

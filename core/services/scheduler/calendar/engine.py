@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from functools import lru_cache
 from typing import Any, Dict, Optional, Tuple
@@ -34,6 +34,18 @@ NATIVE_TIMING_METHODS = ("get_efficiency", "adjust_to_working_time", "add_workin
                          "certified_slot_window", "working_hours_between", "default_periods")
 _NORMAL_PRIORITY = BatchPriority.NORMAL.value
 _ALLOWED_FLAG = YesNo.YES.value
+
+
+def _parse_finite_float_value(raw: Any, *, field: str, number_msg: str, finite_msg: str) -> float:
+    if isinstance(raw, bool):
+        raise ValidationError(number_msg, field=field)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError, OverflowError):
+        raise ValidationError(number_msg, field=field) from None
+    if not math.isfinite(value):
+        raise ValidationError(finite_msg, field=field)
+    return value
 
 
 @lru_cache(maxsize=4096)
@@ -74,15 +86,12 @@ class DayPolicy:
     allow_normal: str
     allow_urgent: str
     shift_start: time = time(8, 0, 0)
-    _window_start: Optional[datetime] = None
-    _window_end: Optional[datetime] = None
+    _window_start: datetime = field(init=False, repr=False)
+    _window_end: datetime = field(init=False, repr=False)
     periods_json: Optional[str] = None
     _period_offsets: Optional[tuple] = None
 
     def __post_init__(self) -> None:
-        d = datetime.strptime(self.date_str, "%Y-%m-%d").date()
-        self._window_start = datetime.combine(d, self.shift_start)
-        self._window_end = self._window_start + timedelta(hours=float(self.shift_hours or 0.0))
         if self.periods_json is not None:
             if self._period_offsets is None:
                 self._period_offsets = period_offsets(decode_periods(self.periods_json))
@@ -90,7 +99,12 @@ class DayPolicy:
             if windows:
                 self._window_start, self._window_end = windows[0][0], windows[-1][1]
             else:
-                self._window_end = self._window_start
+                d = datetime.strptime(self.date_str, "%Y-%m-%d").date()
+                self._window_start = self._window_end = datetime.combine(d, self.shift_start)
+        else:
+            d = datetime.strptime(self.date_str, "%Y-%m-%d").date()
+            self._window_start = datetime.combine(d, self.shift_start)
+            self._window_end = self._window_start + timedelta(hours=float(self.shift_hours or 0.0))
 
     def work_windows(self) -> tuple:
         if self.periods_json is not None:
@@ -113,15 +127,7 @@ class DayPolicy:
         return self.allow_urgent == _ALLOWED_FLAG
 
     def work_window(self) -> Tuple[datetime, datetime]:
-        start = self._window_start
-        end = self._window_end
-        if start is None or end is None:
-            d = datetime.strptime(self.date_str, "%Y-%m-%d").date()
-            start = datetime.combine(d, self.shift_start)
-            end = start + timedelta(hours=float(self.shift_hours or 0.0))
-            self._window_start = start
-            self._window_end = end
-        return start, end
+        return self._window_start, self._window_end
 
 
 class CalendarEngine:
@@ -133,10 +139,9 @@ class CalendarEngine:
     - 读取日历数据（WorkCalendar/OperatorCalendar）但不负责 CRUD/导入
     """
 
-    def __init__(self, conn, logger=None, op_logger=None, *, capture=None):
+    def __init__(self, conn, logger=None, *, capture=None):
         self.conn = conn
         self.logger = logger
-        self.op_logger = op_logger
         self.capture = capture
         self.repo = CalendarRepository(conn, logger=logger)
         self.operator_calendar_repo = OperatorCalendarRepository(conn, logger=logger)
@@ -275,14 +280,10 @@ class CalendarEngine:
         raw_efficiency = getattr(cal, "efficiency", 1.0)
         if raw_efficiency is None or (isinstance(raw_efficiency, str) and raw_efficiency.strip() == ""):
             raw_efficiency = 1.0
-        if isinstance(raw_efficiency, bool):
-            raise ValidationError("日历效率必须是数字", field="efficiency")
-        try:
-            efficiency = float(raw_efficiency)
-        except Exception:
-            raise ValidationError("日历效率必须是数字", field="efficiency") from None
-        if not math.isfinite(efficiency):
-            raise ValidationError("日历效率必须是有限数字", field="efficiency")
+        efficiency = _parse_finite_float_value(
+            raw_efficiency, field="efficiency",
+            number_msg="日历效率必须是数字", finite_msg="日历效率必须是有限数字",
+        )
         if efficiency <= 0:
             raise ValidationError("日历效率必须大于 0", field="efficiency")
         return efficiency
@@ -334,25 +335,24 @@ class CalendarEngine:
         raw_shift_hours = getattr(cal, "shift_hours", 0.0)
         if raw_shift_hours is None or (isinstance(raw_shift_hours, str) and raw_shift_hours.strip() == ""):
             raw_shift_hours = 0.0
-        if isinstance(raw_shift_hours, bool):
-            raise ValidationError("班次工时必须是数字", field="shift_hours")
-        try:
-            shift_hours = float(raw_shift_hours)
-        except Exception:
-            raise ValidationError("班次工时必须是数字", field="shift_hours") from None
-        if not math.isfinite(shift_hours):
-            raise ValidationError("班次工时必须是有限数字", field="shift_hours")
+        shift_hours = _parse_finite_float_value(
+            raw_shift_hours, field="shift_hours",
+            number_msg="班次工时必须是数字", finite_msg="班次工时必须是有限数字",
+        )
         if shift_hours < 0:
             raise ValidationError("班次工时不能为负数", field="shift_hours")
         efficiency = self._normalize_efficiency(cal)
 
         # shift_start/shift_end：默认 08:00；若提供 shift_end 则优先用其推导 shift_hours
         ss_t = self._parse_shift_start(cal)
-        shift_hours = self._override_shift_hours_by_shift_end(cal, date_str=date_str, shift_start_t=ss_t, shift_hours=shift_hours)
         periods_json = getattr(cal, "periods_json", None)
         offsets = None
         if periods_json is not None:
             offsets, shift_hours = self._period_facts_for_json(periods_json)
+        else:
+            shift_hours = self._override_shift_hours_by_shift_end(
+                cal, date_str=date_str, shift_start_t=ss_t, shift_hours=shift_hours,
+            )
 
         p = DayPolicy(
             date_str=getattr(cal, "date", None) or date_str,
@@ -383,8 +383,8 @@ class CalendarEngine:
             return p_today
 
         # Today's empty/rest window may start at 00:00 while yesterday's night shift is still running.
-        if dt.date() > date.min:
-            prev_str = (dt.date() + timedelta(days=-1)).isoformat()
+        if today > date.min:
+            prev_str = (today + timedelta(days=-1)).isoformat()
             p_prev = self._policy_for_date(prev_str, operator_id=operator_id)
             if any(start <= dt < end for start, end in p_prev.work_windows()):
                 return p_prev
@@ -398,7 +398,7 @@ class CalendarEngine:
         return self._policy_for_datetime(dt, operator_id=operator_id)
 
     def get_efficiency(self, dt: datetime, machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> float:
-        return float(self._policy_for_datetime(dt, operator_id=operator_id).efficiency or 1.0)
+        return self._policy_for_datetime(dt, operator_id=operator_id).efficiency
 
     def capacity_hours_between(self, start: datetime, end: datetime, *, priority=None, operator_id=None) -> float:
         """Efficiency-weighted capacity over the same disjoint pieces used by scheduling."""
@@ -481,14 +481,9 @@ class CalendarEngine:
     def _add_hours(self, start, hours, priority, operator_id, *, efficiency_weighted):
         if hours is None:
             raise ValidationError("缺少工时参数", field="hours")
-        if isinstance(hours, bool):
-            raise ValidationError("工时必须是数字", field="hours")
-        try:
-            total = float(hours)
-        except Exception:
-            raise ValidationError("工时必须是数字", field="hours") from None
-        if not math.isfinite(total):
-            raise ValidationError("工时必须是有限数字", field="hours")
+        total = _parse_finite_float_value(
+            hours, field="hours", number_msg="工时必须是数字", finite_msg="工时必须是有限数字",
+        )
         if total < 0:
             raise ValidationError("工时不能为负数", field="hours")
         if total == 0:
@@ -557,14 +552,9 @@ class CalendarEngine:
         """
         if days is None:
             raise ValidationError("缺少周期参数", field="days")
-        if isinstance(days, bool):
-            raise ValidationError("周期必须是数字", field="days")
-        try:
-            d = float(days)
-        except Exception:
-            raise ValidationError("周期必须是数字", field="days") from None
-        if not math.isfinite(d):
-            raise ValidationError("周期必须是有限数字", field="days")
+        d = _parse_finite_float_value(
+            days, field="days", number_msg="周期必须是数字", finite_msg="周期必须是有限数字",
+        )
         if d < 0:
             raise ValidationError("周期不能为负数", field="days")
         if d > MAX_CALENDAR_DAYS:

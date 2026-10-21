@@ -41,20 +41,18 @@ from .iterated_greedy_acceptance import (
 )
 from .iterated_greedy_checkpoints import CheckpointStore
 from .iterated_greedy_contract import (
-    IG_CANDIDATE_POLICY,
     IG_PHASE,
-    IG_PROFILE_SLUG,
     IteratedGreedyLimits,
     _BudgetExhausted,
     ig_decode_profile,
     iterated_greedy_public_message,
 )
-from .iterated_greedy_features import entry_features, tardy_signals
+from .iterated_greedy_features import entry_features
 from .iterated_greedy_incumbent import IGIncumbentTracker
 from .iterated_greedy_incumbent import feasible_candidate as _feasible
-from .iterated_greedy_moves import _insertion_positions, _latest_rank, _Parent, _parent_from_candidate, _park
-from .iterated_greedy_neighborhoods import GeneratorRotation, build_generators, tardy_random_destroy
-from .iterated_greedy_reference import activate_entry, adopt_incumbent, reference_for_iteration, seed_solution_pool
+from .iterated_greedy_moves import _Parent
+from .iterated_greedy_neighborhoods import GeneratorRotation, build_generators
+from .iterated_greedy_reference import adopt_incumbent, reference_for_iteration
 from .iterated_greedy_start import start_reference
 from .repair_decisions import RepairDecision
 from .reporting import append_graph_attempt, record_rejected_attempt
@@ -65,9 +63,7 @@ _PENDING_OUTPUT_CACHE_SIZE = 32
 _STOP_BY_BUDGET = ("time_budget", "decode_budget", "decode_would_overrun", "estimated_decode_cost")
 _FAILED = ((), False)
 # Helpers reachable through this module for existing callers and tests.
-_destroy = tardy_random_destroy
-__all__ = ["IG_CANDIDATE_POLICY", "IG_PROFILE_SLUG", "_IteratedGreedySearch", "_BudgetExhausted", "_Parent", "_destroy",
-           "_insertion_positions", "_latest_rank", "_park", "_parent_from_candidate", "_publish"]
+__all__ = ["_IteratedGreedySearch", "_BudgetExhausted", "_Parent", "_publish"]
 
 
 class _IteratedGreedySearch:
@@ -75,8 +71,8 @@ class _IteratedGreedySearch:
                  evaluate: Callable[..., Dict[str, Any]], metrics_by_op_id: Dict[int, Dict[str, Any]], start_dt: Any,
                  seed: int, deadline: float, clock: Callable[[], float], t_begin: float, attempts: List[Dict[str, Any]],
                  improvement_trace: List[Dict[str, Any]], report_state: Any, strict_mode: bool, report: Dict[str, Any],
-                 decode_session: SharedDecodeSession, operations: Optional[List[Any]] = None,
-                 graph_context: Optional[Dict[str, Any]] = None) -> None:
+                 decode_session: SharedDecodeSession, operations: List[Any],
+                 graph_context: Dict[str, Any]) -> None:
         self.limits = limits
         self.parent = parent
         self.operations = operations
@@ -113,7 +109,8 @@ class _IteratedGreedySearch:
         self.pending_outputs: OrderedDictType[Tuple[int, ...], Tuple[Any, Any, int]] = OrderedDict()
         self.pending_output_rows = 0
         self.decoded_entries: OrderedDictType[Tuple[int, ...], PoolEntry] = OrderedDict()
-        self.decode_seconds: List[float] = []
+        self.decode_seconds_total = 0.0
+        self.decode_count = 0
         self.incumbent = IGIncumbentTracker(pool=pool, report_state=report_state, report=report, seed=seed,
                                              clock=clock, t_begin=t_begin, improvement_trace=improvement_trace)
         self.reference: Optional[PoolEntry] = None
@@ -146,7 +143,7 @@ class _IteratedGreedySearch:
         """Choose an existing quality tier and formally check an optional constructive start."""
         start_reference(self)
 
-    def adopt_incumbent(self, candidate: Dict[str, Any], profile: Optional[GraphReadyWeightProfile] = None) -> None:
+    def adopt_incumbent(self, candidate: Dict[str, Any], profile: Optional[GraphReadyWeightProfile]) -> None:
         """Another stage improved the incumbent: base the walk on it, as OR-Tools LNS bases on the shared best."""
         adopt_incumbent(self, candidate, profile)
 
@@ -162,12 +159,6 @@ class _IteratedGreedySearch:
             self.decoded_entries.clear()
             if count_switch:
                 self.report["context_switches"] += 1
-
-    def _activate_entry(self, entry: PoolEntry) -> None:
-        activate_entry(self, entry)
-
-    def _seed_solution_pool(self) -> None:
-        seed_solution_pool(self)
 
     def _reference_for_iteration(self) -> PoolEntry:
         return reference_for_iteration(self)
@@ -209,9 +200,6 @@ class _IteratedGreedySearch:
     def _features(self, entry: PoolEntry) -> Dict[str, Any]:
         return entry_features(self, entry)
 
-    def _signals(self, candidate: Dict[str, Any]) -> Dict[int, float]:
-        return tardy_signals(self, candidate)
-
     # ---- decoding and incumbent acceptance ----------------------------------------------------------------------------
     def _score_trial(self, order: Tuple[int, ...], reference: PoolEntry) -> Optional[Tuple[Tuple[float, ...], bool]]:
         self.last_decode_skip = None
@@ -230,13 +218,16 @@ class _IteratedGreedySearch:
             # A rejected decision is not retried; the rejection reason is already recorded.
             self.scores[order] = _FAILED
             return None
-        scored = (tuple(candidate["score"]), _feasible(candidate))
+        score = tuple(candidate["score"])
+        feasible = _feasible(candidate)
+        scored = (score, feasible)
+        receipt = candidate.get("decode_receipt") or {}
         self.scores[order] = scored
-        self.scored_decodes += int((candidate.get("decode_receipt") or {}).get("actual_decoder_calls", 1) > 0)
-        verified = bool((candidate.get("decode_receipt") or {}).get("verified", resume is None))
+        self.scored_decodes += int(receipt.get("actual_decoder_calls", 1) > 0)
+        verified = bool(receipt.get("verified", resume is None))
         if resume is not None and not verified:
             self._remember_output(order, candidate)
-            if _feasible(candidate) and (self.best is None or tuple(candidate["score"]) < tuple(self.best["score"])):
+            if feasible and (self.best is None or score < tuple(self.best["score"])):
                 self.report["validation_decodes"] += 1
                 verified_entry = self._decode_entry(order)
                 if verified_entry is None:
@@ -332,8 +323,8 @@ class _IteratedGreedySearch:
             decode_kwargs["decode_checkpoints"] = checkpoints
         decode_started = self.clock()
         try:
-            candidate = self.evaluate(profile=self.profile, order=batch_order, repair_order=batch_order,
-                                      repair_decision=decision, repair_parent=self.parent.prepared, before_decode=self._before_decode, **decode_kwargs)
+            candidate = self.evaluate(profile=self.profile, order=batch_order, repair_decision=decision,
+                                      repair_parent=self.parent.prepared, before_decode=self._before_decode, **decode_kwargs)
         except ValidationError as exc:
             if checkpoints is not None and is_capture_failure(exc, resumed=resume is not None):
                 # Capture refused or lost before the decode finished: degrade to plain full decodes, report why.
@@ -345,7 +336,7 @@ class _IteratedGreedySearch:
                     "graph_ready_elite_repair", "graph_ready_iterated_greedy", "decode_checkpoint"):
                 raise
             reason = reason_from_validation(exc)
-            self._reject(reason)
+            self.incumbent.reject(reason)
             best = self._require_best()
             record_rejected_attempt(attempts=self.attempts, strategy=best["strategy"], dispatch_rule=best["dispatch_rule"],
                                     reason=reason, message=str(exc), profile_slug=self.profile.slug)
@@ -353,8 +344,9 @@ class _IteratedGreedySearch:
         receipt = candidate.get("decode_receipt") or {}
         actual_calls = int(receipt.get("actual_decoder_calls", 1))
         if actual_calls:
-            self.decode_seconds.append(max(self.clock() - decode_started, 0.0))
-            self.report["mean_decode_ms"] = sum(self.decode_seconds) * 1000.0 / len(self.decode_seconds)
+            self.decode_seconds_total += max(self.clock() - decode_started, 0.0)
+            self.decode_count += 1
+            self.report["mean_decode_ms"] = self.decode_seconds_total * 1000.0 / self.decode_count
             self.checkpoints.note_decode(len(order), resumed_from=resume)
         verified = bool(receipt.get("verified", resume is None))
         if resume is not None and not verified:
@@ -388,9 +380,6 @@ class _IteratedGreedySearch:
                                           on_decision=record_decision)
         self.improved_incumbent = improved or self.improved_incumbent
 
-    def _reject(self, reason: str, *, record: bool = True) -> None:
-        self.incumbent.reject(reason, record=record)
-
     def _finish_report(self) -> None:
         report = self.report
         report["status"] = "strict_improvement" if report["accepted"] else "no_strict_improvement"
@@ -398,8 +387,8 @@ class _IteratedGreedySearch:
             report["status"] = "skipped_by_budget"
         report["generators"] = {generator.name: generator.summary() for generator in self.generators}
         report["checkpoints"] = self.checkpoints.summary()
-        report["acceptance"]["temperature_scale"] = self.scale.value if self.scale.count else None
-        report["acceptance"]["secondary_temperature_scale"] = self.scale.secondary if self.scale.secondary_count else None
+        report["acceptance"]["temperature_scale"] = self.scale.value or None
+        report["acceptance"]["secondary_temperature_scale"] = self.scale.secondary or None
         report["pool"]["entries"] = len(self.solution_pool.entries)
 
 

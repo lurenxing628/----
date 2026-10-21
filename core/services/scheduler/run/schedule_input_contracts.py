@@ -15,8 +15,6 @@ class ScheduleRunInput:
     normalized_batch_ids: List[str]
     start_dt_norm: datetime
     end_date_norm: Optional[date]
-    created_by_text: str
-    run_label: str
     t0: float
     cal_svc: Any
     cfg_svc: Any
@@ -36,11 +34,9 @@ class ScheduleRunInput:
     execution_fixed_op_ids: Set[int]
     execution_completed_op_ids: Set[int]
     execution_seed_results: List[Dict[str, Any]]
-    execution_guard_state_revisions: Dict[int, str]
     execution_snapshot_revision: str
     execution_snapshot_op_ids: List[int]
     execution_snapshot_op_count: int
-    execution_has_guarded_facts: bool
     schedule_output_allowed_op_ids: Set[int]
     payload_validation_operations: List[BatchOperation]
     algo_warnings: List[str]
@@ -89,4 +85,4 @@ def _build_freeze_window_seed_with_meta(
         meta=freeze_meta,
     )
     frozen_op_ids, seed_results, algo_warnings = result
-    return set(frozen_op_ids or set()), list(seed_results or []), list(algo_warnings or []), freeze_meta
+    return frozen_op_ids, seed_results, algo_warnings, freeze_meta

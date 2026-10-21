@@ -37,9 +37,7 @@ def rebuild_external_group_cache_from_seeds(
     if not seed_results:
         return
 
-    group_key_by_op_id = _merged_group_key_by_op_id(operations)
-
-    operation_ids = {_op_identity_int(getattr(op, "id", 0)) for op in operations}
+    group_key_by_op_id, operation_ids = _merged_group_key_by_op_id(operations)
     for key, blocks in _seed_blocks_by_group(seed_results, group_key_by_op_id, operation_ids, seed_group_keys or {}).items():
         distinct_blocks = sorted(set(blocks))
         if len(distinct_blocks) == 1:
@@ -50,20 +48,20 @@ def rebuild_external_group_cache_from_seeds(
         increment_counter(algo_stats, "seed_external_group_block_inconsistent_count", 1)
 
 
-def _merged_group_key_by_op_id(operations: List[Any]) -> Dict[int, Tuple[str, ...]]:
+def _merged_group_key_by_op_id(operations: List[Any]) -> Tuple[Dict[int, Tuple[str, ...]], set]:
     group_key_by_op_id: Dict[int, Tuple[str, ...]] = {}
+    operation_ids: set = set()
     for op in operations:
+        op_id = _op_identity_int(getattr(op, "id", 0))
+        operation_ids.add(op_id)
         if str(getattr(op, "source", "") or "").strip().lower() != EXTERNAL:
             continue
         merge_mode = str(getattr(op, "ext_merge_mode", None) or "").strip().lower()
         ext_group_id = str(getattr(op, "ext_group_id", None) or "").strip()
         bid = str(getattr(op, "batch_id", "") or "").strip()
-        if merge_mode != MERGED or not ext_group_id or not bid:
-            continue
-        op_id = _op_identity_int(getattr(op, "id", 0))
-        if op_id > 0:
+        if merge_mode == MERGED and ext_group_id and bid and op_id > 0:
             group_key_by_op_id[op_id] = external_group_key(op)
-    return group_key_by_op_id
+    return group_key_by_op_id, operation_ids
 
 
 def _seed_blocks_by_group(
@@ -149,23 +147,18 @@ def schedule_external(
         else:
             total_days = getattr(op, "ext_group_total_days", None)
             collector = DegradationCollector()
-            try:
-                total_days_f = float(
-                    parse_field_float(
-                        total_days,
-                        field="ext_group_total_days",
-                        strict_mode=bool(strict_mode),
-                        scope="greedy.external.schedule",
-                        fallback=0.0,
-                        collector=collector,
-                        min_value=0.0,
-                        min_inclusive=False,
-                    )
+            total_days_f = float(
+                parse_field_float(
+                    total_days,
+                    field="ext_group_total_days",
+                    strict_mode=bool(strict_mode),
+                    scope="greedy.external.schedule",
+                    fallback=0.0,
+                    collector=collector,
+                    min_value=0.0,
+                    min_inclusive=False,
                 )
-            except Exception:
-                if strict_mode:
-                    raise
-                total_days_f = 0.0
+            )
             if not total_days_f or total_days_f <= 0:
                 errors.append(f"外部组合并周期未设置或不合法：批次 {bid} 组 {ext_group_id} total_days={total_days!r}")
                 return None, False
@@ -197,24 +190,19 @@ def schedule_external(
     # separate（或无组）：按单道工序 ext_days 推进
     ext_days = getattr(op, "ext_days", None)
     collector = DegradationCollector()
-    try:
-        ext_days_f = float(
-            parse_field_float(
-                ext_days,
-                field="ext_days",
-                strict_mode=bool(strict_mode),
-                scope="greedy.external.schedule",
-                fallback=1.0,
-                collector=collector,
-                min_value=0.0,
-                min_inclusive=False,
-                min_violation_fallback=0.0,
-            )
+    ext_days_f = float(
+        parse_field_float(
+            ext_days,
+            field="ext_days",
+            strict_mode=bool(strict_mode),
+            scope="greedy.external.schedule",
+            fallback=1.0,
+            collector=collector,
+            min_value=0.0,
+            min_inclusive=False,
+            min_violation_fallback=0.0,
         )
-    except Exception:
-        if strict_mode:
-            raise
-        ext_days_f = 0.0
+    )
     _record_compat_counters(collector)
     if ext_days_f <= 0:
         errors.append(f"外协周期不合法：工序 {getattr(op, 'op_code', '-') or '-'} ext_days={ext_days!r}")

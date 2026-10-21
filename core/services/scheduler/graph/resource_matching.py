@@ -81,8 +81,8 @@ def _build_operation_machine_graph(
         operation_node_id = str(node.node_id)
         operation_node_ids.add(operation_node_id)
         graph.add_node(operation_node_id, bipartite=0)
-        machine_ids = {str(machine_id).strip() for machine_id in node.candidate_machine_ids if str(machine_id).strip()}
-        candidate_machine_ids_by_operation[operation_node_id] = set(machine_ids)
+        machine_ids = set(node.candidate_machine_ids)
+        candidate_machine_ids_by_operation[operation_node_id] = machine_ids
         if not machine_ids:
             warnings.append(_missing_candidate_warning(node))
             continue
@@ -143,7 +143,7 @@ def _bottleneck_machine_ids(
         unmatched_candidate_machine_ids.update(candidate_machine_ids_by_operation.get(operation_node_id, set()))
     bottlenecks = [
         (int(machine_edge_counts[machine_id]), machine_id)
-        for machine_id in sorted(unmatched_candidate_machine_ids)
+        for machine_id in unmatched_candidate_machine_ids
         if int(machine_edge_counts.get(machine_id, 0)) > 1
     ]
     bottlenecks.sort(key=lambda item: (-int(item[0]), str(item[1])))
@@ -190,11 +190,11 @@ def summarize_operation_machine_matching(
     return ResourceMatchingSummary(
         status="available",
         reason="ok",
-        ready_operation_count=int(len(nodes)),
+        ready_operation_count=len(nodes),
         operation_with_candidate_count=sum(1 for node in nodes if bool(node.candidate_machine_ids)),
-        machine_count=int(len(machine_edge_counts)),
+        machine_count=len(machine_edge_counts),
         edge_count=int(graph.number_of_edges()),
-        matched_operation_count=int(len(matches)),
+        matched_operation_count=len(matches),
         unmatched_operation_ids=unmatched_ids,
         bottleneck_machine_ids=bottleneck_ids,
         matches=matches,
@@ -212,8 +212,8 @@ def resource_matching_summary_to_public_dict(summary: ResourceMatchingSummary) -
         "machine_count": int(summary.machine_count),
         "edge_count": int(summary.edge_count),
         "matched_operation_count": int(summary.matched_operation_count),
-        "unmatched_operation_count": int(len(summary.unmatched_operation_ids)),
-        "bottleneck_machine_count": int(len(summary.bottleneck_machine_ids)),
+        "unmatched_operation_count": len(summary.unmatched_operation_ids),
+        "bottleneck_machine_count": len(summary.bottleneck_machine_ids),
     }
 
 
@@ -223,10 +223,10 @@ def _truncated(values: Tuple[Any, ...], limit: int) -> bool:
 
 def resource_matching_summary_to_diagnostics_dict(summary: ResourceMatchingSummary) -> Dict[str, Any]:
     """Return sampled diagnostics payload; never returns nx.Graph."""
-    matches = tuple(summary.matches)
-    unmatched_operation_ids = tuple(summary.unmatched_operation_ids)
-    bottleneck_machine_ids = tuple(summary.bottleneck_machine_ids)
-    warnings = tuple(summary.warnings)
+    matches = summary.matches
+    unmatched_operation_ids = summary.unmatched_operation_ids
+    bottleneck_machine_ids = summary.bottleneck_machine_ids
+    warnings = summary.warnings
     return {
         "matches_sample": [
             {
@@ -235,16 +235,16 @@ def resource_matching_summary_to_diagnostics_dict(summary: ResourceMatchingSumma
             }
             for match in matches[:_DIAGNOSTIC_SAMPLE_LIMIT]
         ],
-        "matches_count": int(len(matches)),
+        "matches_count": len(matches),
         "matches_truncated": _truncated(matches, _DIAGNOSTIC_SAMPLE_LIMIT),
         "unmatched_operation_ids_sample": list(unmatched_operation_ids[:_DIAGNOSTIC_SAMPLE_LIMIT]),
-        "unmatched_operation_count": int(len(unmatched_operation_ids)),
+        "unmatched_operation_count": len(unmatched_operation_ids),
         "unmatched_operation_ids_truncated": _truncated(unmatched_operation_ids, _DIAGNOSTIC_SAMPLE_LIMIT),
         "bottleneck_machine_ids_sample": list(bottleneck_machine_ids[:_DIAGNOSTIC_SAMPLE_LIMIT]),
-        "bottleneck_machine_count": int(len(bottleneck_machine_ids)),
+        "bottleneck_machine_count": len(bottleneck_machine_ids),
         "bottleneck_machine_ids_truncated": _truncated(bottleneck_machine_ids, _DIAGNOSTIC_SAMPLE_LIMIT),
         "warnings_sample": [dict(warning) for warning in warnings[:_DIAGNOSTIC_SAMPLE_LIMIT]],
-        "warning_count": int(len(warnings)),
+        "warning_count": len(warnings),
         "warnings_truncated": _truncated(warnings, _DIAGNOSTIC_SAMPLE_LIMIT),
     }
 

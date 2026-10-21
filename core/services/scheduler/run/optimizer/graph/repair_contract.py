@@ -15,8 +15,6 @@ class EliteRepairLimits:
     enabled: bool = True
     top_k: int = 3
     max_neighbors_per_elite: int = 8
-    time_budget_ms: Optional[int] = None
-    max_candidates: int = 60
     max_rounds: int = 3
 
 
@@ -34,12 +32,13 @@ def resolve_elite_repair_limits(construction: Optional[Dict[str, Any]], *, enabl
     if not isinstance(active, bool):
         _invalid("enabled")
     time_budget = raw.get("time_budget_ms")
+    if time_budget is not None:
+        _positive_int(time_budget, "time_budget_ms")
+    _positive_int(optimization.get("max_candidate_profiles", 60), "max_candidate_profiles")
     return EliteRepairLimits(
         enabled=active and enabled,
         top_k=min(_positive_int(raw.get("top_k", 3), "top_k"), 8),
         max_neighbors_per_elite=min(_positive_int(raw.get("max_neighbors_per_elite", 8), "max_neighbors_per_elite"), 32),
-        time_budget_ms=None if time_budget is None else _positive_int(time_budget, "time_budget_ms"),
-        max_candidates=_positive_int(optimization.get("max_candidate_profiles", 60), "max_candidate_profiles"),
         max_rounds=min(_positive_int(raw.get("max_rounds", 3), "max_rounds"), 8),
     )
 

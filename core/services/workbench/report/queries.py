@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_report import TOPICS
-
 from .review_projection import project_cohort, project_detail, validate_selected_refs
 from .review_summary import charts, resource_rows, summary
 
@@ -19,8 +16,6 @@ SORTS = {"delivery": ("batch_label", "planned_end", "finish_deviation_minutes", 
 
 
 def report_workspace(reader, facts, snapshot, topic, page):
-    if topic not in TOPICS:
-        raise WorkbenchCommandRejected("invalid_input", "没有这个报表专题，报表没有变化。请从上方专题里重新选择。", 400)
     facts["reader"] = reader
     validate_selected_refs(facts["scope"], facts)
     operations, records, labels = project_cohort(facts, snapshot["as_of"])

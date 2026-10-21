@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Sequence
 
 from core.models import OperatorMachine
 
@@ -9,13 +9,6 @@ from .base_repo import BaseRepository
 
 class OperatorMachineRepository(BaseRepository):
     """人员-设备关联仓库（OperatorMachine）。"""
-
-    def get(self, link_id: int) -> Optional[OperatorMachine]:
-        row = self.fetchone(
-            "SELECT id, operator_id, machine_id, skill_level, is_primary, created_at FROM OperatorMachine WHERE id = ?",
-            (link_id,),
-        )
-        return OperatorMachine.from_row(row) if row else None
 
     def exists(self, operator_id: str, machine_id: str) -> bool:
         return bool(
@@ -140,9 +133,6 @@ class OperatorMachineRepository(BaseRepository):
             (operator_id, machine_id),
         )
 
-    def delete(self, link_id: int) -> None:
-        self.execute("DELETE FROM OperatorMachine WHERE id = ?", (link_id,))
-
     def update_fields(self, operator_id: str, machine_id: str, *, skill_level: str, is_primary: str) -> int:
         cur = self.execute(
             """
@@ -152,4 +142,4 @@ class OperatorMachineRepository(BaseRepository):
             """,
             (skill_level, is_primary, operator_id, machine_id),
         )
-        return int(getattr(cur, "rowcount", 0) or 0)
+        return int(cur.rowcount)

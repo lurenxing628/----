@@ -97,7 +97,6 @@ def _build_operation_node(
         "ext_group_id": _optional_text(_read_field(row, "ext_group_id")),
         "ext_merge_mode": _optional_text(_read_field(row, "ext_merge_mode")) or "",
         "ext_group_total_days": ext_group_total_days,
-        "merge_context_degraded": bool(_read_field(row, "merge_context_degraded")),
         "candidate_machine_ids": candidate_machine_ids,
         "candidate_operator_ids": candidate_operator_ids,
         "raw": _raw_snapshot(row),
@@ -242,11 +241,11 @@ def _operation_duration_minutes(
         setup_hours = _require_nonnegative_float(_read_field(row, "setup_hours"), field="setup_hours", scope=scope)
         unit_hours = _require_nonnegative_float(_read_field(row, "unit_hours"), field="unit_hours", scope=scope)
         quantity = _require_nonnegative_float(_read_field(batch, "quantity"), field="quantity", scope=scope)
-        return _round_minutes((setup_hours + unit_hours * quantity) * 60, scope=scope)
+        return _round_minutes((setup_hours + unit_hours * quantity) * 60)
     if _is_merged_external(row) and ext_group_total_days is not None:
-        return _round_minutes(ext_group_total_days * 24 * 60, scope=scope)
+        return _round_minutes(ext_group_total_days * 24 * 60)
     ext_days = _require_positive_float(_read_field(row, "ext_days"), field="ext_days", scope=scope)
-    return _round_minutes(ext_days * 24 * 60, scope=scope)
+    return _round_minutes(ext_days * 24 * 60)
 
 
 def _is_merged_external(row: Any) -> bool:
@@ -254,11 +253,8 @@ def _is_merged_external(row: Any) -> bool:
     return merge_mode == "merged"
 
 
-def _round_minutes(value: float, *, scope: str) -> int:
-    minutes = int(round(value))
-    if minutes < 0:
-        raise GraphInputContractError(f"{scope} duration_minutes 不能为负数：{value!r}")
-    return minutes
+def _round_minutes(value: float) -> int:
+    return int(round(value))
 
 
 def _operation_node_id(row: Any, *, batch_id: str, op_code: str, scope: str) -> str:
@@ -277,9 +273,9 @@ def _candidate_machine_ids(row: Any, *, resource_pool: GraphResourcePreparation)
     elif fixed_operator:
         candidates = _machines_for_fixed_operator(fixed_operator, resource_pool=resource_pool)
     elif op_type_id and op_type_id in resource_pool.machines_by_op_type:
-        candidates = _text_list(resource_pool.machines_by_op_type.get(op_type_id))
+        return _unique_text_tuple(_text_list(resource_pool.machines_by_op_type.get(op_type_id)))
     else:
-        candidates = []
+        return ()
     if op_type_id and op_type_id in resource_pool.machines_by_op_type:
         allowed = set(_text_list(resource_pool.machines_by_op_type.get(op_type_id)))
         candidates = [machine_id for machine_id in candidates if machine_id in allowed]
@@ -363,7 +359,6 @@ def _raw_snapshot(row: Any) -> Mapping[str, Any]:
         "supplier_id",
         "ext_group_id",
         "ext_merge_mode",
-        "merge_context_degraded",
     )
     return {field: _json_snapshot_value(_read_field(row, field)) for field in fields}
 

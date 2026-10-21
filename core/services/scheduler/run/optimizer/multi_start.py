@@ -8,9 +8,8 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Tuple, cast
 
 from core.algorithm_contracts.dispatch_rules import dispatch_rule_search_pool
-from core.algorithms import ScheduleResult, SortStrategy
+from core.algorithms import SortStrategy
 from core.algorithms.evaluation import objective_score
-from core.services.scheduler.contracts.scheduler_like import SchedulerLike
 
 from .attempt_records import candidate_tag, evaluate_optional_start_candidate
 from .candidate_fingerprint import score_strictly_better
@@ -19,7 +18,6 @@ from .search_stage import SearchStage
 from .search_state import OptimizerSearchState
 from .shared_budget import SharedSearchSkip
 from .shared_decode import decode_and_metrics
-from .signature_support import schedule_with_optional_strict_mode as _schedule_with_optional_strict_mode
 from .step_report_hooks import _multi_start_deadline_reached, _record_multi_start_candidate
 
 if TYPE_CHECKING:
@@ -88,12 +86,10 @@ def _resolve_multi_start_strategy_params(
     *,
     strategy: SortStrategy,
     cfg: Any,
-    strict_mode: bool,
-    optimizer_algo_stats: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
     if strategy != SortStrategy.WEIGHTED:
         return {}
-    return weighted_strategy_params(cfg, strict_mode=bool(strict_mode))
+    return weighted_strategy_params(cfg)
 
 
 def _get_cached_multi_start_order(
@@ -106,22 +102,17 @@ def _get_cached_multi_start_order(
     cache_key = (str(strategy.value), tuple(sorted((str(key), value) for key, value in (params or {}).items())))
     if cache_key not in order_cache:
         order_cache[cache_key] = list(build_order(strategy, params))
-    return list(order_cache[cache_key])
+    return order_cache[cache_key]
 
 
 def _evaluate_multi_start_candidate(
     *,
-    scheduler: SchedulerLike,
     strict_mode: bool,
-    algo_ops_to_schedule: List[Any],
-    batches: Dict[str, Any],
     strategy: SortStrategy,
     params: Dict[str, Any],
     start_dt: datetime,
     end_date: Optional[date],
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
     order: List[str],
-    seed_sr_list: List[ScheduleResult],
     dispatch_mode: str,
     dispatch_rule: str,
     resource_pool: Optional[Dict[str, Any]],
@@ -160,8 +151,6 @@ def _evaluate_multi_start_candidate(
         "score": (float(decoded.summary.failed_ops),) + objective_score(objective_name, decoded.metrics),
         "algo_stats": decoded.algo_stats,
         "resource_pool": resource_pool or {},
-        "seed_result_count": len(seed_sr_list or []),
-        "mutable_scope": {"scope": "batch_order", "batch_count": len(order or [])},
     }
     candidate["_shared_entry_id"] = decoded.entry_id
     candidate["_archive_observation"] = decoded.archive_observation
@@ -178,21 +167,27 @@ def _evaluate_multi_start_candidate(
 
 def _iter_multi_start_specs(
     *, keys: List[str], dispatch_modes: List[str], dispatch_rule_cfg: str, valid_dispatch_rules: List[str],
-    snapshot: Any, strict_mode: bool, optimizer_algo_stats: Optional[Dict[str, Any]], deadline_reached: Callable[[], bool],
+    snapshot: Any, deadline_reached: Callable[[], bool],
     graph_rule_scope: Optional[Dict[str, Any]] = None,
+    rules_by_mode: Optional[Dict[str, List[str]]] = None,
 ) -> Iterator[Tuple[str, str, str, SortStrategy, Dict[str, Any]]]:
+    strategy_cache: Dict[str, Tuple[SortStrategy, Dict[str, Any]]] = {}
     for dm in dispatch_modes:
         if deadline_reached():
             break
-        dispatch_rules = _dispatch_rules_for_mode(dm, dispatch_rule_cfg, valid_dispatch_rules, graph_rule_scope=graph_rule_scope)
+        dispatch_rules = (
+            rules_by_mode[dm] if rules_by_mode is not None else
+            _dispatch_rules_for_mode(dm, dispatch_rule_cfg, valid_dispatch_rules, graph_rule_scope=graph_rule_scope)
+        )
         for key in keys:
             if deadline_reached():
                 break
-            strategy = SortStrategy(key)
-            params = _resolve_multi_start_strategy_params(
-                strategy=strategy, cfg=snapshot, strict_mode=strict_mode,
-                optimizer_algo_stats=optimizer_algo_stats,
-            )
+            if key not in strategy_cache:
+                strategy = SortStrategy(key)
+                strategy_cache[key] = (
+                    strategy, _resolve_multi_start_strategy_params(strategy=strategy, cfg=snapshot),
+                )
+            strategy, params = strategy_cache[key]
             for rule in dispatch_rules:
                 if deadline_reached():
                     break
@@ -206,9 +201,7 @@ class MultiStartStage(SearchStage):
 
     def __init__(
         self, *, keys: List[str], dispatch_modes: List[str], dispatch_rule_cfg: str,
-        valid_dispatch_rules: List[str], scheduler: SchedulerLike, algo_ops_to_schedule: List[Any],
-        batches: Dict[str, Any], start_dt: datetime, end_date: Optional[date],
-        downtime_map: Dict[str, List[Tuple[datetime, datetime]]], seed_sr_list: List[ScheduleResult],
+        valid_dispatch_rules: List[str], start_dt: datetime, end_date: Optional[date],
         cfg: Any, resource_pool: Optional[Dict[str, Any]], objective_name: str, deadline: float,
         t_begin: float, build_order: Any,
         optimizer_algo_stats: Optional[Dict[str, Any]] = None, readiness_gate_enabled: bool = False,
@@ -231,25 +224,26 @@ class MultiStartStage(SearchStage):
             str(keys[0]) if keys else "", str(dispatch_modes[0]) if dispatch_modes else "", str(dispatch_rule_cfg),
         )
         self.evaluate = partial(
-            _evaluate_multi_start_candidate, scheduler=scheduler, strict_mode=self.strict_mode,
-            algo_ops_to_schedule=algo_ops_to_schedule, batches=batches, start_dt=start_dt,
-            end_date=end_date, downtime_map=downtime_map, seed_sr_list=seed_sr_list,
+            _evaluate_multi_start_candidate, strict_mode=self.strict_mode,
+            start_dt=start_dt, end_date=end_date,
             resource_pool=resource_pool, objective_name=objective_name, optimizer_algo_stats=optimizer_algo_stats,
             readiness_gate_enabled=bool(readiness_gate_enabled), graph_ready_context=graph_ready_context,
             decode_session=decode_session, before_decode=self._note_decode,
         )
         graph_rule_scope = graph_rule_search_scope(graph_ready_context)
+        rules_by_mode = {
+            dm: _dispatch_rules_for_mode(dm, dispatch_rule_cfg, valid_dispatch_rules, graph_rule_scope=graph_rule_scope)
+            for dm in dispatch_modes
+        }
         snapshot = ensure_optimizer_config_snapshot(cfg, strict_mode=self.strict_mode)
         self.specs = _iter_multi_start_specs(
             keys=keys, dispatch_modes=dispatch_modes, dispatch_rule_cfg=dispatch_rule_cfg,
-            valid_dispatch_rules=valid_dispatch_rules, snapshot=snapshot, strict_mode=self.strict_mode,
-            optimizer_algo_stats=optimizer_algo_stats, deadline_reached=self._deadline_reached,
-            graph_rule_scope=graph_rule_scope,
+            valid_dispatch_rules=valid_dispatch_rules, snapshot=snapshot,
+            deadline_reached=self._deadline_reached, rules_by_mode=rules_by_mode,
         )
         self.efficiency: Dict[str, Any] = {
             "proof": "shared_decode_request",
-            "configured_candidates": sum(len(keys) * len(_dispatch_rules_for_mode(
-                dm, dispatch_rule_cfg, valid_dispatch_rules, graph_rule_scope=graph_rule_scope)) for dm in dispatch_modes),
+            "configured_candidates": sum(len(keys) * len(rules_by_mode[dm]) for dm in dispatch_modes),
             "eligible_candidates": 0, "decoded_candidates": 0, "predecode_pruned_candidates": 0,
             "skipped_by_budget": 0, "reused_candidates": 0,
         }
@@ -336,7 +330,7 @@ class MultiStartStage(SearchStage):
         self.efficiency["skipped_by_budget"] = (
             self.efficiency["configured_candidates"] - self.efficiency["decoded_candidates"]
             - self.efficiency["predecode_pruned_candidates"]
-            - self.efficiency.get("reused_candidates", 0)
+            - self.efficiency["reused_candidates"]
         )
         if self.search_report_state is not None:
             self.search_report_state.update_candidate_profile(multi_start_efficiency=self.efficiency)

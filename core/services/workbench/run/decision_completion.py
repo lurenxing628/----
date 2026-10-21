@@ -1,11 +1,11 @@
 """Request-local completed cohorts and remaining demand from archived facts."""
 
+from core.services.workbench.facts.common_completed_delivery import common_completed_delivery
 from core.services.workbench.facts.completion_scope import (
     attach_remaining_operations,
     completion_groups,
     project_completion_summary,
 )
-from core.services.workbench.facts.decision_delivery import common_delivery
 from core.services.workbench.facts.decision_preparation import preparation_work_items
 from core.services.workbench.facts.preparation_projection import public_preparation_metrics
 
@@ -16,8 +16,7 @@ class DecisionCompletion:
         self._work = {}
 
     def delivery(self, key):
-        if key == "reference" and self.source.comparison_mode == "candidates" and self.source.reference_ref:
-            return self.delivery(self.source.reference_ref)
+        key = self.source.computation_key(key)
         if key not in self._delivery:
             self._delivery[key] = self.source.delivery(key)
         return self._delivery[key]
@@ -60,7 +59,7 @@ class DecisionCompletion:
         return set(scope["unplanned_operation_refs"]) | set(scope["deferred_operation_refs"])
 
     def common(self, key):
-        return common_delivery(self.delivery("reference"), self.delivery(key))
+        return common_completed_delivery(self.delivery("reference"), self.delivery(key))
 
 
 def compact_completion(value, drill):

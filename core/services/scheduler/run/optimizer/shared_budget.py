@@ -192,8 +192,7 @@ class SharedSearchBudget:
         return {objective: improvements[objective] / seconds if seconds > 0.0 else 0.0
                 for objective, seconds in elapsed.items()}
 
-    def _feedback_bonuses(self) -> Dict[str, float]:
-        rates = self._feedback_rates()
+    def _feedback_bonuses(self, rates: Dict[str, float]) -> Dict[str, float]:
         maximum = max(rates.values(), default=0.0)
         return {objective: 0.25 * rate / maximum if maximum > 0.0 else 0.0
                 for objective, rate in rates.items()}
@@ -223,7 +222,7 @@ class SharedSearchBudget:
                 return objective
         if not candidates:
             return None
-        bonuses = self._feedback_bonuses()
+        bonuses = self._feedback_bonuses(self._feedback_rates())
         return min(candidates, key=lambda objective: (
             self._goals[objective].charged_seconds / self._goals[objective].weight
             / (1.0 + bonuses[objective]), self.target_objectives.index(objective)))
@@ -253,7 +252,8 @@ class SharedSearchBudget:
 
     def summary(self, *, finished_at: Optional[float] = None) -> Dict[str, Any]:
         now = self.clock() if finished_at is None else finished_at
-        rates, bonuses = self._feedback_rates(), self._feedback_bonuses()
+        rates = self._feedback_rates()
+        bonuses = self._feedback_bonuses(rates)
         goals = {
             objective: {
                 "objective_status": self._status(goal), "weight": goal.weight,

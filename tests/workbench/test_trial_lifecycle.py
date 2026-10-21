@@ -105,9 +105,9 @@ def test_complete_create_change_save_and_reopen(trial_case, kind, monkeypatch):
     if kind == "official":
         # The original full-snapshot format and its old metadata remain readable.
         old_header = dict(stored_header, snapshot_json=dump(saved), snapshot_hash="legacy-saved-marker")
-        stored_rows = deepcopy(repo.scenario_rows(saved["scenario_ref"]))
+        stored_rows = deepcopy(list(repo.iter_scenario_rows(saved["scenario_ref"])))
         old_repo = SimpleNamespace(schema_issues=lambda: [], scenario_header=lambda _ref: old_header,
-                                   scenario_rows=lambda _ref: stored_rows)
+                                   iter_scenario_rows=lambda _ref: stored_rows)
         assert load_scenario_record(old_repo, saved["scenario_ref"])[1] == saved
         assert old_header["snapshot_hash"] == "legacy-saved-marker"
         # Python equality merges True and 1; permanent rows must keep the stored type.
@@ -142,16 +142,16 @@ def test_scenario_fragments_share_exact_logical_limit_without_counting_physical_
     assert len(encoded.header.encode("utf-8")) + sum(len(text.encode("utf-8")) for text in encoded.tasks) > expected_bytes
     repo = SimpleNamespace(schema_issues=lambda: [],
         scenario_header=lambda _ref: {"snapshot_json": encoded.header},
-        scenario_rows=lambda _ref: [{"row_ref": row["row_ref"], "payload_json": text}
-                                  for row, text in zip(tasks, encoded.tasks)])
+        iter_scenario_rows=lambda _ref: [{"row_ref": row["row_ref"], "payload_json": text}
+                                       for row, text in zip(tasks, encoded.tasks)])
     # Historical pretty-printed wrappers still decode through their own layout.
     import json
 
     old_repo = SimpleNamespace(schema_issues=lambda: [],
         scenario_header=lambda _ref: {"snapshot_json": json.dumps(json.loads(encoded.header), ensure_ascii=False, indent=2)},
-        scenario_rows=lambda _ref: [{"row_ref": row["row_ref"],
-                                    "payload_json": json.dumps(json.loads(text), ensure_ascii=False, indent=2)}
-                                  for row, text in zip(tasks, encoded.tasks)])
+        iter_scenario_rows=lambda _ref: [{"row_ref": row["row_ref"],
+                                        "payload_json": json.dumps(json.loads(text), ensure_ascii=False, indent=2)}
+                                       for row, text in zip(tasks, encoded.tasks)])
     assert load_scenario_record(old_repo, "saved")[1] == snapshot
     monkeypatch.setattr(codec, "MAX_TRIAL_BYTES", expected_bytes)
     assert load_scenario_record(old_repo, "saved")[1] == snapshot
@@ -180,7 +180,7 @@ def test_scenario_row_binding_is_checked_when_assembling_the_saved_rows():
     encoded = encode_scenario({"name": "试调", "tasks": [row]})
     repo = SimpleNamespace(schema_issues=lambda: [],
         scenario_header=lambda _ref: {"snapshot_json": encoded.header},
-        scenario_rows=lambda _ref: [{"row_ref": row["row_ref"], "payload_json": dump(dict(row, row_ref="2" * 48))}])
+        iter_scenario_rows=lambda _ref: [{"row_ref": row["row_ref"], "payload_json": dump(dict(row, row_ref="2" * 48))}])
     with pytest.raises(WorkbenchCommandRejected) as error:
         load_scenario_record(repo, "saved")
     assert error.value.code == "trial_snapshot_invalid"

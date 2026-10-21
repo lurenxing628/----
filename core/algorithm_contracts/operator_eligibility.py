@@ -7,7 +7,7 @@ from core.errors import ValidationError
 
 def qualified_operators(pool, candidates, op_type_id):
     if pool is None or "operator_skills" not in pool:
-        return list(candidates)
+        return candidates if isinstance(candidates, list) else list(candidates)
     skills = pool["operator_skills"]
     if not isinstance(skills, Mapping):
         raise ValidationError("排产资源池的人员技能资料无效。", field="operator_qualification")

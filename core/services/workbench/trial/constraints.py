@@ -58,7 +58,7 @@ def _same_merged_cycle(row, previous):
             and row["original"]["operation"]["piece_id"] == previous["original"]["operation"]["piece_id"])
 
 
-def resource_issues(rows, live, *, conn=None):
+def resource_issues(rows, live, *, conn):
     occupied = _trial_intervals(rows)
     issues = _outside_intervals(occupied, rows, live, conn=conn)
     issues.extend(_overlap_issues(occupied))
@@ -66,7 +66,7 @@ def resource_issues(rows, live, *, conn=None):
     return issues
 
 
-def _outside_intervals(occupied, rows, live, *, conn=None):
+def _outside_intervals(occupied, rows, live, *, conn):
     issues = []
     selected = {row["operation_ref"] for row in rows}
     refs = {int(row["source_key"]): row["ref"] for row in live["facts"]["tables"]["WorkbenchPlanSourceRefs"]
@@ -92,7 +92,7 @@ def _outside_intervals(occupied, rows, live, *, conn=None):
 
 def _outside_occupancy(row, conn, point_versions):
     """A proven point occupies nothing; an unproven interval reports a blocker."""
-    if conn is not None and row["start_time"] == row["end_time"]:
+    if row["start_time"] == row["end_time"]:
         from core.models.workbench_command import WorkbenchCommandRejected
         from core.services.workbench.plan.point_evidence import official_point_work
 
@@ -160,11 +160,13 @@ def _actual_reservations(rows, live):
         if row["current"]["start"] == row["current"]["end"]:
             # The row validator must prove the point before any save/adoption.
             continue
+        row_start = datetime.fromisoformat(row["current"]["start"])
+        row_end = datetime.fromisoformat(row["current"]["end"])
         for kind in ("machine", "operator"):
             for ref, execution, fact in index[kind, row["current"][kind + "_ref"]]:
                 if row["operation_ref"] == ref:
                     continue
-                conflict = _actual_conflict(row, execution, fact)
+                conflict = _actual_conflict(row, row_start, row_end, execution, fact)
                 if conflict:
                     issues.append(conflict)
                     _issue_limit(issues)
@@ -192,7 +194,7 @@ def _actual_index(live):
     return index, issues
 
 
-def _actual_conflict(row, execution, fact):
+def _actual_conflict(row, row_start, row_end, execution, fact):
     # Partial report end is never whole-operation resource release.
     if execution["execution_state"] != "complete":
         return issue("execution_resource_release_unknown", "同一资源仍有未确认整道完工的实际生产，不能推测释放时间。", row["task_ref"])
@@ -200,7 +202,7 @@ def _actual_conflict(row, execution, fact):
     end = fact.get("actual_end") or execution["confirmed_finish"]
     if not start or not end:
         return issue("execution_resource_interval_unknown", "已有实际生产占用时间不完整，无法证明资源可用。", row["task_ref"])
-    if datetime.fromisoformat(start) < datetime.fromisoformat(row["current"]["end"]) and datetime.fromisoformat(end) > datetime.fromisoformat(row["current"]["start"]):
+    if datetime.fromisoformat(start) < row_end and datetime.fromisoformat(end) > row_start:
         return issue("execution_resource_overlap", "安排与真实生产资源占用重叠。", row["task_ref"])
     return None
 

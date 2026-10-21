@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Union
 from core.models import OpType
 
 from .base_repo import BaseRepository
+from .reference_checks import exists_any_nonblank_reference, exists_value_reference
 
 
 class OpTypeRepository(BaseRepository):
@@ -48,14 +49,13 @@ class OpTypeRepository(BaseRepository):
         if not updates:
             return
 
-        allowed = {"name", "category", "default_hours", "remark"}
         set_parts: List[str] = []
         params: List[Any] = []
 
         for key in ("name", "category", "default_hours", "remark"):
-            if key in allowed and key in updates:
+            if key in updates:
                 set_parts.append(f"{key} = ?")
-                params.append(updates.get(key))
+                params.append(updates[key])
 
         if not set_parts:
             return
@@ -74,77 +74,25 @@ class OpTypeRepository(BaseRepository):
     # 引用检查（给 Service 层做删除/清空保护）
     # -------------------------
     def has_machine_reference(self, op_type_id: str) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM Machines WHERE op_type_id IS NOT NULL AND TRIM(op_type_id) <> '' AND op_type_id = ? LIMIT 1",
-                (op_type_id,),
-                default=None,
-            )
-            is not None
-        )
+        return exists_value_reference(self, table="Machines", column="op_type_id", value=op_type_id)
 
     def has_supplier_reference(self, op_type_id: str) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM Suppliers WHERE op_type_id IS NOT NULL AND TRIM(op_type_id) <> '' AND op_type_id = ? LIMIT 1",
-                (op_type_id,),
-                default=None,
-            )
-            is not None
-        )
+        return exists_value_reference(self, table="Suppliers", column="op_type_id", value=op_type_id)
 
     def has_part_operation_reference(self, op_type_id: str) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM PartOperations WHERE op_type_id IS NOT NULL AND TRIM(op_type_id) <> '' AND op_type_id = ? LIMIT 1",
-                (op_type_id,),
-                default=None,
-            )
-            is not None
-        )
+        return exists_value_reference(self, table="PartOperations", column="op_type_id", value=op_type_id)
 
     def has_batch_operation_reference(self, op_type_id: str) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM BatchOperations WHERE op_type_id IS NOT NULL AND TRIM(op_type_id) <> '' AND op_type_id = ? LIMIT 1",
-                (op_type_id,),
-                default=None,
-            )
-            is not None
-        )
+        return exists_value_reference(self, table="BatchOperations", column="op_type_id", value=op_type_id)
 
     def has_any_machine_reference(self) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM Machines WHERE op_type_id IS NOT NULL AND TRIM(op_type_id) <> '' LIMIT 1",
-                default=None,
-            )
-            is not None
-        )
+        return exists_any_nonblank_reference(self, table="Machines", column="op_type_id")
 
     def has_any_supplier_reference(self) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM Suppliers WHERE op_type_id IS NOT NULL AND TRIM(op_type_id) <> '' LIMIT 1",
-                default=None,
-            )
-            is not None
-        )
+        return exists_any_nonblank_reference(self, table="Suppliers", column="op_type_id")
 
     def has_any_part_operation_reference(self) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM PartOperations WHERE op_type_id IS NOT NULL AND TRIM(op_type_id) <> '' LIMIT 1",
-                default=None,
-            )
-            is not None
-        )
+        return exists_any_nonblank_reference(self, table="PartOperations", column="op_type_id")
 
     def has_any_batch_operation_reference(self) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM BatchOperations WHERE op_type_id IS NOT NULL AND TRIM(op_type_id) <> '' LIMIT 1",
-                default=None,
-            )
-            is not None
-        )
+        return exists_any_nonblank_reference(self, table="BatchOperations", column="op_type_id")

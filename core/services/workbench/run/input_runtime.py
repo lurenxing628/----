@@ -36,10 +36,10 @@ def stored_point_validator(facts, version):
 
 
 def _strict_pool(svc, *, cfg, algo_ops, meta, resource_facts):
-    pool, warnings = build_resource_pool(svc, cfg=cfg, algo_ops=algo_ops, meta=meta, resource_facts=resource_facts)
+    pool = build_resource_pool(svc, cfg=cfg, algo_ops=algo_ops, meta=meta, resource_facts=resource_facts)
     if cfg.auto_assign_enabled == "yes" and (pool is None or meta.get("resource_pool_build_ok") is not True):
         fail("resource_pool_unavailable", "自动分配要用的设备人员清单建不起来，这次排产没有开始。请到资料总览核对设备和人员后重试。")
-    return pool, warnings
+    return pool
 
 
 def _occupies_machine(seed):
@@ -56,7 +56,7 @@ def held_machine_downtimes(svc, seeds, *, facts):
     internal = [seed for seed in seeds if _occupies_machine(seed)]
     if not internal:
         return {}
-    return load_machine_downtimes(svc, algo_ops=[SimpleNamespace(**seed) for seed in internal],
+    return load_machine_downtimes(algo_ops=[SimpleNamespace(**seed) for seed in internal],
                                   start_dt=min(seed["start_time"] for seed in internal),
                                   downtimes=runtime_resource_facts(facts).downtimes)
 

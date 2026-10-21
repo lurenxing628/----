@@ -6,7 +6,6 @@ from .optimizer_budget_projection import project_optimizer_budget
 from .optimizer_public_safety import (
     project_attempt_score,
     safe_attempt_text,
-    safe_bool,
     safe_counter_dict,
     safe_non_negative_int,
     safe_public_text_list,
@@ -152,7 +151,7 @@ def _safe_graph_ready_optimization(value: Any) -> Dict[str, Any]:
     if slugs:
         out["weight_profile_slugs"] = slugs
     if "truncated" in value:
-        out["truncated"] = safe_bool(value.get("truncated"))
+        out["truncated"] = bool(value.get("truncated"))
     tie_breaker = safe_public_text_list(value.get("selection_tiebreaker"))
     if tie_breaker:
         out["selection_tiebreaker"] = tie_breaker
@@ -181,7 +180,7 @@ def _copy_int_fields(source: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _copy_bool_fields(source: Dict[str, Any]) -> Dict[str, Any]:
-    return {key: safe_bool(source.get(key)) for key in _PUBLIC_BOOL_KEYS if key in source}
+    return {key: bool(source.get(key)) for key in _PUBLIC_BOOL_KEYS if key in source}
 
 
 def _project_skipped_phases(value: Any) -> List[Dict[str, Any]]:
@@ -227,7 +226,7 @@ def _project_attempt_summary(value: Any) -> List[Dict[str, Any]]:
     return out
 
 
-def _project_neighborhood_summary(value: Any) -> Dict[str, Dict[str, int]]:
+def _project_counter_summary(value: Any, counter_keys: Tuple[str, ...]) -> Dict[str, Dict[str, int]]:
     if not isinstance(value, dict):
         return {}
     out: Dict[str, Dict[str, int]] = {}
@@ -236,25 +235,7 @@ def _project_neighborhood_summary(value: Any) -> Dict[str, Dict[str, int]]:
         if not name or not isinstance(raw_counts, dict):
             continue
         row: Dict[str, int] = {}
-        for key in _NEIGHBORHOOD_COUNTER_KEYS:
-            number = safe_non_negative_int(raw_counts.get(key))
-            if number is not None:
-                row[key] = number
-        if row:
-            out[name] = row
-    return out
-
-
-def _project_acceptance_summary(value: Any) -> Dict[str, Dict[str, int]]:
-    if not isinstance(value, dict):
-        return {}
-    out: Dict[str, Dict[str, int]] = {}
-    for raw_name, raw_counts in value.items():
-        name = safe_attempt_text(raw_name)
-        if not name or not isinstance(raw_counts, dict):
-            continue
-        row: Dict[str, int] = {}
-        for key in _ACCEPTANCE_COUNTER_KEYS:
+        for key in counter_keys:
             number = safe_non_negative_int(raw_counts.get(key))
             if number is not None:
                 row[key] = number
@@ -301,7 +282,7 @@ def _project_profile_public(value: Dict[str, Any]) -> Dict[str, Any]:
             public[key] = number
     for key in _PROFILE_PUBLIC_BOOL_KEYS:
         if key in value:
-            public[key] = safe_bool(value.get(key))
+            public[key] = bool(value.get(key))
     for key in _PROFILE_PUBLIC_LIST_KEYS:
         values = safe_public_text_list(value.get(key))
         if values:
@@ -321,7 +302,7 @@ def _project_profile_diagnostics(value: Dict[str, Any]) -> Dict[str, Any]:
             diagnostics[key] = number
     for key in _PROFILE_DIAGNOSTIC_BOOL_KEYS:
         if key in value:
-            diagnostics[key] = safe_bool(value.get(key))
+            diagnostics[key] = bool(value.get(key))
     candidate_construction = _safe_candidate_construction(value.get("candidate_construction"))
     if candidate_construction:
         diagnostics["candidate_construction"] = candidate_construction
@@ -355,11 +336,11 @@ def project_search_report(value: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     if attempt_summary:
         public["public_attempt_summary"] = attempt_summary
 
-    neighborhood_summary = _project_neighborhood_summary(value.get("neighborhood_summary"))
+    neighborhood_summary = _project_counter_summary(value.get("neighborhood_summary"), _NEIGHBORHOOD_COUNTER_KEYS)
     if neighborhood_summary:
         public["neighborhood_summary"] = neighborhood_summary
 
-    acceptance_summary = _project_acceptance_summary(value.get("acceptance_summary"))
+    acceptance_summary = _project_counter_summary(value.get("acceptance_summary"), _ACCEPTANCE_COUNTER_KEYS)
     if acceptance_summary:
         public["acceptance_summary"] = acceptance_summary
 

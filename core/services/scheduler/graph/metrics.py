@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .impact_counts import compute_impact_counts_by_node as _compute_impact_counts_by_node
 from .nx_runtime import import_networkx
@@ -10,8 +10,6 @@ _SOURCE_NODE_ID = "__GRAPH_METRICS_SOURCE__"
 
 
 def _node_sort_key(graph: Any, node_id: str) -> Tuple[str, int, str, str]:
-    if node_id == _SOURCE_NODE_ID:
-        return ("", -1, "", str(node_id))
     data = graph.nodes[node_id]
     return (
         str(data["batch_id"]),
@@ -37,38 +35,8 @@ def get_topological_generations(graph: Any) -> List[List[str]]:
     ]
 
 
-def get_generation_index(graph: Any) -> Dict[str, int]:
-    result: Dict[str, int] = {}
-
-    for index, group in enumerate(get_topological_generations(graph)):
-        for node_id in group:
-            result[node_id] = index
-
-    return result
-
-
 def _duration_of(graph: Any, node_id: str) -> int:
     return int(graph.nodes[node_id]["duration_minutes"])
-
-
-def build_duration_weighted_graph(graph: Any) -> Any:
-    nx = import_networkx()
-
-    weighted = nx.DiGraph()
-    weighted.add_node(_SOURCE_NODE_ID)
-
-    for node_id, data in graph.nodes(data=True):
-        weighted.add_node(node_id, **dict(data))
-
-    for node_id in graph.nodes:
-        if graph.in_degree(node_id) == 0:
-            weighted.add_edge(_SOURCE_NODE_ID, node_id, weight=_duration_of(graph, node_id))
-
-    for from_node_id, to_node_id, data in graph.edges(data=True):
-        lag_minutes = int(data["lag_minutes"])
-        weighted.add_edge(from_node_id, to_node_id, weight=_duration_of(graph, to_node_id) + lag_minutes)
-
-    return weighted
 
 
 def get_critical_path(
@@ -111,20 +79,6 @@ def get_critical_path(
     return path, minutes
 
 
-def get_upstream_operations(graph: Any, node_id: str) -> Set[str]:
-    nx = import_networkx()
-    return set(nx.ancestors(graph, node_id))
-
-
-def get_downstream_operations(graph: Any, node_id: str) -> Set[str]:
-    nx = import_networkx()
-    return set(nx.descendants(graph, node_id))
-
-
-def get_impact_count(graph: Any, node_id: str) -> int:
-    return len(get_downstream_operations(graph, node_id))
-
-
 def _build_downstream_critical_minutes_by_node(
     graph: Any,
     *,
@@ -142,13 +96,9 @@ def _build_downstream_critical_minutes_by_node(
     return result
 
 
-def get_downstream_critical_minutes(graph: Any, node_id: str) -> int:
-    return _build_downstream_critical_minutes_by_node(graph)[node_id]
-
-
 def _machine_ids_for_node(data: Dict[str, Any]) -> Tuple[str, ...]:
     ids: List[str] = []
-    for raw in list(data.get("candidate_machine_ids") or ()):
+    for raw in data.get("candidate_machine_ids") or ():
         text = str(raw or "").strip()
         if text:
             ids.append(text)
@@ -238,14 +188,8 @@ def build_node_metrics(
 
 
 __all__ = [
-    "build_duration_weighted_graph",
     "build_node_metrics",
     "get_critical_path",
-    "get_downstream_critical_minutes",
-    "get_downstream_operations",
-    "get_generation_index",
-    "get_impact_count",
     "get_topological_generations",
     "get_topological_order",
-    "get_upstream_operations",
 ]

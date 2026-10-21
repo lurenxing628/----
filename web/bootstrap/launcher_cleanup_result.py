@@ -111,7 +111,7 @@ def _cleanup_ownership_failure(
             return RuntimeCleanupFailure(contract_result.path, "ownership_unavailable", contract_result.reason or contract_result.error)
         if expected_contract is None or not _contracts_match(contract_result.payload or {}, expected_contract):
             return RuntimeCleanupFailure(contract_result.path, "ownership_changed", "运行时契约归属已变化，已保留当前实例文件。")
-    if expected_lock is None and expected_contract is None and any(os.path.lexists(path) for path in _cleanup_paths((log_dir,))):
+    if expected_lock is None and expected_contract is None and any(os.path.lexists(path) for path in _cleanup_paths(log_dir)):
         return RuntimeCleanupFailure(runtime_lock_path(log_dir), "ownership_unavailable", "缺少原实例身份，已保留运行时文件。")
     return None
 
@@ -123,7 +123,7 @@ def _remove_contract_artifacts(
     missing_paths: List[str],
     failures: List[RuntimeCleanupFailure],
 ) -> None:
-    for path in _cleanup_paths((log_dir,)):
+    for path in _cleanup_paths(log_dir):
         attempted_paths.append(path)
         try:
             removed = remove_fixed_file(path, allow_symlink=False)
@@ -134,20 +134,15 @@ def _remove_contract_artifacts(
             (removed_paths if removed else missing_paths).append(path)
 
 
-def _cleanup_paths(target_dirs: Tuple[str, ...]) -> Tuple[str, ...]:
-    paths: List[str] = []
-    for log_dir in target_dirs:
-        paths.extend(
-            [
-                os.path.join(log_dir, "aps_runtime.json"),
-                os.path.join(log_dir, "aps_port.txt"),
-                os.path.join(log_dir, "aps_host.txt"),
-                os.path.join(log_dir, "aps_db_path.txt"),
-                os.path.join(log_dir, RUNTIME_ERROR_FILE),
-                os.path.join(log_dir, "launcher.log"),
-            ]
-        )
-    return tuple(paths)
+def _cleanup_paths(log_dir: str) -> Tuple[str, ...]:
+    return (
+        os.path.join(log_dir, "aps_runtime.json"),
+        os.path.join(log_dir, "aps_port.txt"),
+        os.path.join(log_dir, "aps_host.txt"),
+        os.path.join(log_dir, "aps_db_path.txt"),
+        os.path.join(log_dir, RUNTIME_ERROR_FILE),
+        os.path.join(log_dir, "launcher.log"),
+    )
 
 
 def _runtime_contract_log_dirs_result(
@@ -159,12 +154,11 @@ def _runtime_contract_log_dirs_result(
     if payload is None:
         return tuple(log_dirs), tuple(failures)
 
-    _append_runtime_log_dir(log_dirs, state_dir, payload, failures, contract_path)
+    _append_runtime_log_dir(log_dirs, payload, failures, contract_path)
     data_dirs = payload.get("data_dirs") or {}
     if isinstance(data_dirs, dict):
         _append_mirror_log_dir(
             log_dirs,
-            state_dir,
             data_dirs.get("log_dir"),
             payload=payload,
             failures=failures,
@@ -178,7 +172,6 @@ def _runtime_contract_log_dirs_result(
 
 def _append_runtime_log_dir(
     log_dirs: List[str],
-    state_dir: str,
     payload: dict,
     failures: List[RuntimeCleanupFailure],
     contract_path: str,
@@ -188,7 +181,6 @@ def _append_runtime_log_dir(
         return
     _append_mirror_log_dir(
         log_dirs,
-        state_dir,
         runtime_log_dir(runtime_dir_s),
         payload=payload,
         failures=failures,
@@ -225,7 +217,6 @@ def _matching_contract_error(mirror_log_dir_abs: str, payload: dict) -> str:
 
 def _append_mirror_log_dir(
     log_dirs: List[str],
-    state_dir: str,
     mirror_log_dir: Any,
     *,
     payload: dict,
@@ -238,8 +229,7 @@ def _append_mirror_log_dir(
         return
     mirror_log_dir_abs = os.path.abspath(mirror_log_dir_s)
     existing = {os.path.normcase(path) for path in log_dirs}
-    state_dir_abs = os.path.abspath(state_dir)
-    if os.path.normcase(mirror_log_dir_abs) in existing or os.path.normcase(mirror_log_dir_abs) == os.path.normcase(state_dir_abs):
+    if os.path.normcase(mirror_log_dir_abs) in existing:
         return
     mirror_error = _matching_contract_error(mirror_log_dir_abs, payload)
     if mirror_error:

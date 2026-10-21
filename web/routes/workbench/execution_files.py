@@ -20,7 +20,7 @@ from web.routes.workbench.read_context import bind_read_snapshot, fact_value
 from web.routes.workbench.resource_action_context import read_endpoint, resolve_context, retain_context
 from web.routes.workbench.write_context import preview_write_context, validate_preview_confirmation
 
-from .execution import arguments, command_body, field_context
+from .execution import arguments, command_body
 
 # 报工文件弹窗：没有预检结果时按钮叫「开始预检」，出了预检结果后改为「重新预检」；换文件要点「选择文件」。
 PREVIEW_NAMESPACE = 'workbench-field-file-preview-v1'
@@ -70,15 +70,14 @@ def field_file_confirm():
         raise WorkbenchCommandRejected('invalid_input', '只能确认刚才预检过的那份文件，报工还没有写入。请点「重新预检」。', 400)
     ref = body['input']['preview_ref']
     # Replay must remain possible after retained bytes and edit tokens expire.
-    service = WorkbenchProductionReportService(g.db, context_factory=field_context)
+    service = WorkbenchProductionReportService(g.db)
     def load_items():
         document, source = resolve_context(PREVIEW_NAMESPACE, ref, 'stale_write')
-        stored = document
-        preview = stored['preview']
+        preview = document['preview']
         if not preview['can_confirm']:
             raise WorkbenchCommandRejected('stale_write', '预检结果已过期，报工还没有写入，也没有替换任何内容。请点「重新预检」。')
         cohort, read_state = FieldWorkspaceService(g.db).cohort(preview['scope'])
-        if fact_value(read_state) != stored['read_state']:
+        if fact_value(read_state) != document['read_state']:
             raise WorkbenchCommandRejected('stale_write', '预检之后报工记录有变化，报工还没有写入。请点「重新预检」。')
         checked, prepared = FieldReportFileService(g.db).prepare_source(source, cohort)
         if not same(checked['items'], preview['items']) or not same(checked['snapshot'], preview['snapshot']) or not checked['can_confirm']:

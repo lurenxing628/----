@@ -2,8 +2,6 @@
 
 from typing import Any, Dict
 
-from core.models.calendar_periods import decode_periods
-
 _STATE_FIELDS = ("date", "explicit", "calendar_ref", "revision", "row", "identity", "history", "effective", "default_periods")
 _STORED_FIELDS = ("day_type", "shift_start", "shift_end", "shift_hours", "efficiency", "allow_normal", "allow_urgent", "remark")
 
@@ -19,9 +17,9 @@ def calendar_policy(state: Dict[str, Any]) -> Dict[str, Any]:
     # A configured workday with both priorities disabled is stopped, not a holiday edit.
     if row is not None and row["day_type"] == "workday":
         fields["type"] = "work"
-    fields["periods"] = decode_periods(row.get("periods_json")) if row is not None else effective.get("periods")
+    fields["periods"] = effective["periods"]
     fields["note"] = row["remark"] if row is not None else None
-    return {"explicit": state["explicit"], "fields": fields, "effective": effective, "default_periods": state.get("default_periods"),
+    return {"explicit": state["explicit"], "fields": fields, "effective": effective, "default_periods": state["default_periods"],
             "stored": {key: row[key] for key in _STORED_FIELDS} if row is not None else None}
 
 

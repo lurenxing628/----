@@ -38,9 +38,7 @@ def calendar_checkpoint_snapshot(service):
         if reusable and cached is not None and cached[0] is connection and cached[1] == metadata:
             return cached[2]
         # The fixed business SELECTs already return immutable row tuples in a stable order.
-        capture = service._engine.capture
-        rows = (CalendarCheckpointRepository(connection).calendar_signature_rows() if capture is None
-                else CalendarCheckpointRepository(connection).calendar_signature_rows(capture=capture))
+        rows = CalendarCheckpointRepository(connection).calendar_signature_rows(capture=service._engine.capture)
         after = _metadata(connection)
         if metadata != after:
             raise ValidationError("读取断点日历证书时日历输入发生变化，请重新排产。", field="decode_checkpoint",

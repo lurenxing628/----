@@ -105,26 +105,29 @@ def process_export_records(source, filters=None, *, include_all_objectives=False
     if process is not None and process.get("version") == UNIFIED_PROCESS_VERSION:
         selected = process_details(source, filters or normalize_process_filters(), all_rows=True)
         current = selected["filters"]
-        selected = {**selected, "actions": _shared_ordered(selected["actions"], {**current, "record_kind": "attempts",
-            "sort": current["sort"] if current["record_kind"] == "attempts" else "rank"}),
-            "progress": {**selected["progress"], "points": _shared_ordered(selected["progress"]["points"],
-                {**current, "record_kind": "progress", "sort": current["sort"] if current["record_kind"] == "progress" else "elapsed_ms"})}}
+        selected = {**selected,
+            "actions": selected["items"] if current["record_kind"] == "attempts" else _shared_ordered(
+                selected["actions"], {**current, "record_kind": "attempts", "sort": "rank"}),
+            "progress": {**selected["progress"],
+                "points": selected["items"] if current["record_kind"] == "progress" else _shared_ordered(
+                    selected["progress"]["points"], {**current, "record_kind": "progress", "sort": "elapsed_ms"})}}
         return [{"process_version": UNIFIED_PROCESS_VERSION, "process": process,
                  "export_objectives": process["target_objectives"] if include_all_objectives or filters is None else [selected["selected_objective"]["name"]],
                  "projected": selected}]
     projected = _projection(source)
     if filters is None:
         refs = [row["candidate_ref"] for row in source.rows]
-        filters = normalize_process_filters()
+        current = normalize_process_filters()
     else:
         selected = process_details(source, filters, all_rows=True)
         refs = [selected["candidate"]["candidate_ref"]]
-        filters = selected["filters"]
-    return [{**projected[ref], "candidate": projected[ref]["candidate"],
-             "attempts": _ordered(projected[ref]["attempts"], {**filters, "record_kind": "attempts",
-                 "sort": filters["sort"] if filters["record_kind"] == "attempts" else "rank"}),
-             "progress": {**projected[ref]["progress"], "points": _ordered(projected[ref]["progress"]["points"],
-                 {**filters, "record_kind": "progress", "sort": filters["sort"] if filters["record_kind"] == "progress" else "elapsed_ms"})}}
+        current = selected["filters"]
+    return [{**projected[ref],
+             "attempts": selected["items"] if filters is not None and current["record_kind"] == "attempts" else _ordered(
+                 projected[ref]["attempts"], {**current, "record_kind": "attempts", "sort": "rank"}),
+             "progress": {**projected[ref]["progress"],
+                 "points": selected["items"] if filters is not None and current["record_kind"] == "progress" else _ordered(
+                     projected[ref]["progress"]["points"], {**current, "record_kind": "progress", "sort": "elapsed_ms"})}}
             for ref in refs]
 
 

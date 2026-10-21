@@ -31,13 +31,6 @@ class ScheduleRepository(BaseRepository):
         )
         return Schedule.from_row(row) if row else None
 
-    def list_by_version(self, version: int) -> List[Schedule]:
-        rows = self.fetchall(
-            "SELECT id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version, created_at FROM Schedule WHERE version = ? ORDER BY start_time, id",
-            (int(version),),
-        )
-        return [Schedule.from_row(r) for r in rows]
-
     def list_version_rows_by_op_ids_start_range(
         self,
         *,
@@ -95,32 +88,6 @@ class ScheduleRepository(BaseRepository):
         sql = build_schedule_detail_sql(where_clauses=("s.version = ?",))
         return cast(List[ScheduleDetailRow], self.fetchall(sql, (int(version),)))
 
-    def list_by_machine(self, machine_id: str, version: Optional[int] = None) -> List[Schedule]:
-        if version is None:
-            rows = self.fetchall(
-                "SELECT id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version, created_at FROM Schedule WHERE machine_id = ? ORDER BY start_time, id",
-                (machine_id,),
-            )
-        else:
-            rows = self.fetchall(
-                "SELECT id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version, created_at FROM Schedule WHERE machine_id = ? AND version = ? ORDER BY start_time, id",
-                (machine_id, int(version)),
-            )
-        return [Schedule.from_row(r) for r in rows]
-
-    def create(self, schedule: Union[Schedule, Dict[str, Any]]) -> Schedule:
-        s = schedule if isinstance(schedule, Schedule) else Schedule.from_row(schedule)
-        op_id = _require_schedule_op_id(s)
-        cur = self.execute(
-            """
-            INSERT INTO Schedule (op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (op_id, s.machine_id, s.operator_id, s.start_time, s.end_time, s.lock_status, int(s.version)),
-        )
-        s.id = int(cur.lastrowid) if cur.lastrowid is not None else s.id
-        return s
-
     def bulk_create(self, schedules: Sequence[Union[Schedule, Dict[str, Any]]]) -> int:
         params = []
         for item in schedules:
@@ -141,6 +108,3 @@ class ScheduleRepository(BaseRepository):
             params,
         )
         return cur.rowcount
-
-    def delete(self, schedule_id: int) -> None:
-        self.execute("DELETE FROM Schedule WHERE id = ?", (int(schedule_id),))

@@ -15,30 +15,14 @@ from core.services.capacity.plan_calendar_intervals import IntervalIndex, hours,
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES
 from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
 
-from .candidate_tasks import _resource
 from .resource_intervals import KINDS, ResourceIntervals, details, resource_cohort, task_interval
 from .resource_summary import resource_summary
 
 RESOURCE_METRIC_VERSION = "decision-resource-v4"
-__all__ = ["ResourceTaskIndex", "normalize_resource_calendar", "resource_cohort", "resource_summary", "resource_day_bounds", "resource_period_bounds", "RESOURCE_METRIC_VERSION"]
+__all__ = ["ResourceTaskIndex", "normalize_resource_calendar", "resource_cohort", "resource_summary", "resource_period_bounds", "RESOURCE_METRIC_VERSION"]
 
 _INSIDE_FIELDS = ("occupied_hours", "summed_load_hours", "outside_calendar_hours", "overlap_hours")
 _SPAN_FIELDS = ("span_occupied_hours", "span_summed_hours", "span_overlap_hours", "overlap_span_hours")
-
-
-def saved_resource_tasks(rows, facts, resources, *, operation_refs=None):
-    """Feed verified saved arrangements to the common cohort without rich DTOs."""
-    for row in rows:
-        if operation_refs is not None and row["operation_ref"] not in operation_refs:
-            continue
-        payload = row["payload"]
-        task = {"row_ref": row["row_ref"], "source": payload["source"]}
-        for kind in KINDS:
-            key = kind, payload[kind + "_id"]
-            if key not in resources:
-                resources[key] = _resource(facts, kind, key[1], [])
-            task[kind] = resources[key]
-        yield task
 
 
 def _days(low, high):
@@ -49,11 +33,6 @@ def _days(low, high):
         end = min(high, boundary)
         yield low, end
         low = end
-
-
-def resource_day_bounds(start, end):
-    """Factory-local half-open natural-day slices of an already selected window."""
-    return _days(instant(start), instant(end))
 
 
 def resource_period_bounds(start, end, grain="day"):
@@ -522,10 +501,7 @@ class ResourceTaskIndex:
 
     def day_filter_summary(self, resource, calendar):
         """Return full natural-day filtering facts from the first window fold."""
-        measurement = self._measurement(resource, calendar)
-        if measurement._day_filter_summary is None:
-            return None
-        return dict(measurement._day_filter_summary)
+        return self._measurement(resource, calendar)._day_filter_summary
 
     def segments(self, resource):
         """Known concurrency spans, reusing the same independent-operation sweep."""

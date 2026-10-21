@@ -171,7 +171,7 @@ def test_execution_feedback_requires_pause_and_exception_details_before_write(tm
 
 def test_event_read_normalizes_once_and_checks_each_scope_once(tmp_path, monkeypatch):
     from core.models import operation_execution_event as event_model
-    from core.services.scheduler.operation_execution_scope_read import scope_from_feedback_context
+    from core.services.scheduler.execution.operation_execution_scope_read import scope_from_feedback_context
     from data.repositories import operation_execution_event_repo as event_repo
 
     conn = _connect(tmp_path)

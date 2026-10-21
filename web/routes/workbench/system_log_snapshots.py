@@ -1,6 +1,5 @@
 """Keep an immutable, sanitized log window for paging and its exact export."""
 
-import json
 import time
 from dataclasses import dataclass
 from threading import RLock
@@ -24,6 +23,8 @@ _LOCK = RLock()
 @dataclass(frozen=True)
 class _LogWindow:
     document: str
+    rows: list
+    sources: list
     expires_at: float
     size_bytes: int
 
@@ -59,7 +60,7 @@ def retain_log_snapshot(scope, rows, sources):
         if snapshot["snapshot_ref"] not in windows:
             while windows and (len(windows) >= _MAX_WINDOWS or sum(item.size_bytes for item in windows.values()) + size > _MAX_BYTES):
                 del windows[min(windows, key=lambda token: windows[token].expires_at)]
-            windows[snapshot["snapshot_ref"]] = _LogWindow(document, time.monotonic() + _TTL_SECONDS, size)
+            windows[snapshot["snapshot_ref"]] = _LogWindow(document, rows, sources, time.monotonic() + _TTL_SECONDS, size)
     return snapshot
 
 
@@ -69,5 +70,4 @@ def resolve_log_snapshot(scope, token):
         if window is None:
             raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
     snapshot = bind_read_snapshot(_bound_scope(scope), window.document, token)
-    data = json.loads(window.document)
-    return data["rows"], data["sources"], snapshot
+    return window.rows, window.sources, snapshot

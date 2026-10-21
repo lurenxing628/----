@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import time
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
-from core.algorithms import ScheduleResult, SortStrategy
+from core.algorithms import SortStrategy
 from core.algorithms.evaluation import objective_score
 from core.errors import ValidationError
 from core.services.scheduler.contracts.scheduler_like import SchedulerLike
@@ -17,22 +17,16 @@ from .optimizer.config import (
 )
 from .optimizer.shared_budget import SharedSearchSkip
 from .optimizer.shared_decode import decode_and_metrics
-from .optimizer.signature_support import schedule_with_optional_strict_mode as _schedule_with_optional_strict_mode
 from .optimizer.step_report_hooks import (
     _mark_report_deadline_skip,
     _mark_report_phase_skipped,
     _record_ortools_candidate,
-    _record_ortools_failure,
     _record_ortools_optional_failure,
 )
 
 if TYPE_CHECKING:
     from .optimizer.search_report import OptimizationSearchReportState
     from .optimizer.shared_decode import SharedDecodeSession
-
-
-def _step_config_snapshot(cfg: Any, *, strict_mode: bool) -> Any:
-    return ensure_optimizer_config_snapshot(cfg, strict_mode=bool(strict_mode))
 
 
 def _solve_ortools_order(
@@ -68,25 +62,20 @@ def _solve_ortools_order(
     )
 
 
-def _ortools_strategy_params(snapshot: Any, *, strategy: SortStrategy, strict_mode: bool) -> Dict[str, Any]:
+def _ortools_strategy_params(snapshot: Any, *, strategy: SortStrategy) -> Dict[str, Any]:
     if strategy != SortStrategy.WEIGHTED:
         return {}
-    return weighted_strategy_params(snapshot, strict_mode=bool(strict_mode))
+    return weighted_strategy_params(snapshot)
 
 
 def _evaluate_ortools_candidate(
     *,
-    scheduler: SchedulerLike,
     strict_mode: bool,
-    algo_ops_to_schedule: List[Any],
-    batches: Dict[str, Any],
     strategy: SortStrategy,
     params: Dict[str, Any],
     start_dt: datetime,
     end_date: Optional[date],
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
     ort_order: List[str],
-    seed_sr_list: List[ScheduleResult],
     dispatch_mode_cfg: str,
     dispatch_rule_cfg: str,
     resource_pool: Optional[Dict[str, Any]],
@@ -124,8 +113,6 @@ def _evaluate_ortools_candidate(
         "score": (float(decoded.summary.failed_ops),) + objective_score(objective_name, decoded.metrics),
         "algo_stats": decoded.algo_stats,
         "resource_pool": resource_pool or {},
-        "seed_result_count": len(seed_sr_list or []),
-        "mutable_scope": {"scope": "batch_order", "batch_count": len(ort_order or [])},
     }
     candidate["_shared_entry_id"] = decoded.entry_id
     candidate["_archive_observation"] = decoded.archive_observation
@@ -168,8 +155,6 @@ def _run_ortools_warmstart(
     batches: Dict[str, Any],
     start_dt: datetime,
     end_date: Optional[date],
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
-    seed_sr_list: List[ScheduleResult],
     dispatch_mode_cfg: str,
     dispatch_rule_cfg: str,
     resource_pool: Optional[Dict[str, Any]],
@@ -187,7 +172,7 @@ def _run_ortools_warmstart(
     decode_session: SharedDecodeSession,
 ) -> Optional[Dict[str, Any]]:
     # 可选：OR-Tools 高质量起点（瓶颈子问题）
-    snapshot = _step_config_snapshot(cfg, strict_mode=bool(strict_mode))
+    snapshot = ensure_optimizer_config_snapshot(cfg, strict_mode=bool(strict_mode))
     now = clock or time.time
 
     skip_reason = _ortools_warmstart_skip_reason(algo_mode=algo_mode, snapshot=snapshot, deadline=deadline, now=now)
@@ -265,17 +250,12 @@ def _run_ortools_warmstart(
 
     try:
         cand = _evaluate_ortools_candidate(
-            scheduler=scheduler,
             strict_mode=bool(strict_mode),
-            algo_ops_to_schedule=algo_ops_to_schedule,
-            batches=batches,
             strategy=strategy_enum,
-            params=_ortools_strategy_params(snapshot, strategy=strategy_enum, strict_mode=bool(strict_mode)),
+            params=_ortools_strategy_params(snapshot, strategy=strategy_enum),
             start_dt=start_dt,
             end_date=end_date,
-            downtime_map=downtime_map,
             ort_order=list(ort_order),
-            seed_sr_list=seed_sr_list,
             dispatch_mode_cfg=dispatch_mode_cfg,
             dispatch_rule_cfg=dispatch_rule_cfg,
             resource_pool=resource_pool,
@@ -327,6 +307,5 @@ def _record_warmstart_shared_skip(
 
 
 __all__ = [
-    "_record_ortools_failure",
     "_run_ortools_warmstart",
 ]

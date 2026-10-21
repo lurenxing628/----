@@ -8,6 +8,7 @@ from types import MappingProxyType
 from flask import current_app, g, request
 from werkzeug.exceptions import HTTPException
 
+from core.errors import ValidationError
 from core.infrastructure.backup import MaintenanceWindowError
 from core.models.workbench_command import (
     WorkbenchCommandRejected,
@@ -16,7 +17,7 @@ from core.models.workbench_command import (
 from core.models.workbench_system import object_fields
 from core.services.workbench import messages
 from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
-from web.api_responses import failure, query_success
+from web.api_responses import failure, failure_payload, json_response, query_success
 from web.public_token_registry import issue_public_token, resolve_public_token
 
 BASE = "/api/workbench/v1/system"
@@ -36,12 +37,11 @@ def system_endpoint(function):
         except Exception:
             current_app.logger.exception("系统工作区请求失败 endpoint=%s", request.endpoint)
             key = getattr(g, "system_request_key", None)
-            response = failure("storage_failure", messages.unknown("这次维护操作"), 500,
-                               committed="unknown" if key else False)
+            payload = failure_payload("storage_failure", messages.unknown("这次维护操作"), 500,
+                                      committed="unknown" if key else False)
             if key:
-                payload = response.get_json()
                 payload["error"].update({"request_key": key, "result_target": BASE + "/results/" + key})
-                response.set_data(current_app.json.dumps(payload))
+            response = json_response(payload, status=500)
         response.headers["Cache-Control"] = "no-store"
         return response
     return wrapped
@@ -61,17 +61,13 @@ def issue_context(kind, value, *, database=None):
                               key=(db_scope, kind), group=fact_value(value), ttl_seconds=900)
 
 
-def resolve_context(kind, token):
+def resolve_context(kind, token, *, database=None):
     try:
         payload = resolve_public_token(SCOPE, token, message=messages.STALE, field="write_token")
-    except (ValueError, TypeError) as exc:
+    except (ValidationError, ValueError, TypeError) as exc:
         raise WorkbenchCommandRejected("stale_write", messages.STALE) from exc
-    except Exception as exc:
-        from core.errors import ValidationError
-        if isinstance(exc, ValidationError):
-            raise WorkbenchCommandRejected("stale_write", messages.STALE) from exc
-        raise
-    if payload.get("database") != database_scope() or payload.get("kind") != kind:
+    db_scope = database_scope() if database is None else database
+    if payload["database"] != db_scope or payload["kind"] != kind:
         raise WorkbenchCommandRejected("stale_write", "本页数据已过期，和这次操作对不上，数据没有改动。请刷新页面后重试。")
     return payload["value"]
 
@@ -83,7 +79,8 @@ def command_body():
     validate_request_key(body["request_key"])
     if not isinstance(body["write_token"], str):
         raise WorkbenchCommandRejected("invalid_input", "本页数据已过期，数据没有改动。请刷新页面后重试。", 400)
-    object_fields(body["input"], (), body["input"].keys() if isinstance(body["input"], dict) else ())
+    if type(body["input"]) is not dict:
+        raise WorkbenchCommandRejected("invalid_input", "提交的内容格式不正确，数据没有改动。请刷新页面后重新填写。", 400)
     g.system_request_key = body["request_key"]
     return body
 

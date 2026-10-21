@@ -78,16 +78,13 @@ class OperatorRepository(BaseRepository):
         if not updates:
             return
 
-        allowed = {"name", "status", "remark", "team_id"}
         set_parts: List[str] = []
         params: List[Any] = []
 
         for key in ("name", "status", "remark", "team_id"):
-            if key not in allowed:
-                continue
             if key in updates:
                 set_parts.append(f"{key} = ?")
-                params.append(updates.get(key))
+                params.append(updates[key])
 
         if not set_parts:
             return

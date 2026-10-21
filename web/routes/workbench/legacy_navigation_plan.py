@@ -5,7 +5,6 @@ from typing import Mapping
 
 from werkzeug.exceptions import NotFound
 
-from core.errors import AppError
 from core.models.schedule_plan_role import VALID_PLAN_ROLES, _normalize_role, plan_role_label
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.services.report.date_input import validate_explicit_report_date_range
@@ -13,14 +12,13 @@ from core.services.report.report_context_filters import (
     REPORT_RESOURCE_FILTER_ARG_KEYS,
     normalize_report_resource_filter,
 )
+from core.services.scheduler.schedule_result_view_range import resolve_schedule_result_week_range
 from core.services.scheduler.version_resolution import resolve_version_or_latest
-from core.services.workbench.plan.legacy_range import resolve_legacy_gantt_range
 from web.plan_context_token import request_scenario_id_from_args
 
 from .legacy_page_contract import LegacyNavigationInvalid
 
 IDENTITY_KEYS = frozenset(("version", "plan_role", "scenario_id", "plan_context_token"))
-RESOURCE_KEYS = frozenset(REPORT_RESOURCE_FILTER_ARG_KEYS)
 
 
 @dataclass(frozen=True)
@@ -77,11 +75,12 @@ def resource_filter(args):
 
 def gantt_context(queries, plan, args):
     locator = plan.locator
-    wr, _span, source = resolve_legacy_gantt_range(
+    wr, source = resolve_schedule_result_week_range(
         plan_query_service=queries, version=locator.version,
         plan_role=locator.plan_role, scenario_id=locator.scenario_id,
         week_start=args.get("week_start"), offset_weeks=args.get("offset_weeks", 0),
-        start_date=args.get("start_date"), end_date=args.get("end_date"))
+        start_date=args.get("start_date"), end_date=args.get("end_date"),
+        default_to_version_span=True, max_explicit_date_days=62)
     context = {"plan_ref": plan.plan_ref}
     if source != "version_span":
         context.update(range_start=wr.start_dt.isoformat(timespec="seconds"),
@@ -90,6 +89,4 @@ def gantt_context(queries, plan, args):
 
 
 def invalid_plan_input(exc):
-    if isinstance(exc, (ValueError, AppError, OverflowError)):
-        raise LegacyNavigationInvalid("地址里的计划编号、日期或筛选不对，页面没有打开；系统没有替你换记录或放宽范围。请从侧栏重新进入。") from exc
-    raise TypeError("Only domain input failures may be translated here.")
+    raise LegacyNavigationInvalid("地址里的计划编号、日期或筛选不对，页面没有打开；系统没有替你换记录或放宽范围。请从侧栏重新进入。") from exc

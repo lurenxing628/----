@@ -34,7 +34,7 @@ def _cell(value):
 def actual_gantt_csv(data, snapshot, view):
     if data["availability"]["state"] != "available":
         raise WorkbenchCommandRejected("execution_ledger_unavailable", "现场报工记录读不出来，导不出完整的实际数据。请刷新后重试。")
-    selected = view_items(data, snapshot["as_of"], view)
+    selected = view_items(data, view)
     names = {row["ref"]: row["label"] or row["business_code"] for row in data["resources"]}
     stream = StringIO(newline="")
     writer = csv.writer(stream)

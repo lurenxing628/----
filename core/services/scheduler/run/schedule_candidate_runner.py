@@ -3,24 +3,49 @@ from __future__ import annotations
 import math
 import time
 from copy import deepcopy
-from dataclasses import replace
-from typing import Any, Callable, Optional
+from dataclasses import is_dataclass, replace
+from types import SimpleNamespace
+from typing import Any, Callable, Optional, cast
 
-from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
+from core.errors import ValidationError
+from core.models.schedule_config_runtime import ensure_schedule_config_snapshot
 
 from .optimizer.search_budget import SearchBudget, SearchBudgetExhausted
 from .optimizer.shared_process import _numeric_score, score_scope_payload
-from .schedule_candidate_plan import (
-    CANDIDATE_STATUS_COMPLETED,
-    CANDIDATE_STATUS_FAILED,
-    CANDIDATE_STATUS_SKIPPED,
-    CandidateComparisonOutcome,
-    CandidatePlan,
-)
-from .schedule_candidate_runtime_helpers import _public_budget, _replace_schedule_input_cfg, _resolve_total_budget
+from .schedule_candidate_plan import CandidateComparisonOutcome, CandidatePlan
 from .schedule_candidate_selection import BusinessObjectiveSelectionResult
 from .schedule_graph_report import prepare_schedule_graph_for_dispatch
 from .schedule_shared_optimizer import optimize_shared_schedule
+
+
+def _replace_schedule_input_cfg(schedule_input: Any, *, cfg: Any) -> Any:
+    if is_dataclass(schedule_input) and not isinstance(schedule_input, type):
+        return replace(cast(Any, schedule_input), cfg=cfg)
+    if hasattr(schedule_input, "__dict__"):
+        data = dict(vars(schedule_input))
+        data["cfg"] = cfg
+        return SimpleNamespace(**data)
+    raise TypeError("schedule_input 必须是 dataclass 或普通对象，才能构造候选级输入。")
+
+
+def _resolve_total_budget(run_time_budget_seconds: Optional[float], *, cfg: Any) -> float:
+    if run_time_budget_seconds is None:
+        return float(cfg.time_budget_seconds)
+    if isinstance(run_time_budget_seconds, bool):
+        raise ValidationError("这次找更好排法先试多久必须是数字。", field="run_time_budget_seconds")
+    try:
+        budget = float(run_time_budget_seconds)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValidationError("这次找更好排法先试多久必须是数字。", field="run_time_budget_seconds") from exc
+    if math.isnan(budget) or budget <= 0:
+        raise ValidationError("这次找更好排法先试多久必须大于 0 秒。", field="run_time_budget_seconds")
+    return budget
+
+
+def _public_budget(total_budget: float) -> Optional[float]:
+    if not math.isfinite(total_budget):
+        return None
+    return float(total_budget)
 
 
 def run_candidate_comparison(
@@ -30,7 +55,6 @@ def run_candidate_comparison(
     clock: Optional[Callable[[], float]] = None,
     run_time_budget_seconds: Optional[float] = None,
     strict_mode: bool = False, logger: Any = None,
-    on_progress: Optional[Callable[[int, int], None]] = None,
 ) -> CandidateComparisonOutcome:
     """Publish the actual business representatives from one shared search archive."""
     now = clock or time.monotonic
@@ -41,7 +65,7 @@ def run_candidate_comparison(
     started = now()
     deadline = started + total_budget
     budget = SearchBudget(clock=now, started_at=started, deadline=deadline,
-                          outer_deadline=deadline, assigned_seconds=total_budget)
+                          assigned_seconds=total_budget)
     prepare_graph = prepare_graph_fn or prepare_schedule_graph_for_dispatch
     preparation = None
 
@@ -76,7 +100,7 @@ def run_candidate_comparison(
     if not candidates:
         raise SearchBudgetExhausted("candidate_time_budget_reached")
     selected = entries[selected_entries[primary]]
-    scope = score_scope_payload(shared.archive.entry(selected_entries[primary]).score_scope)
+    scope = dict(selected.evaluations[primary]["scoring_scope"])
     known = scope["components_known"]
     winners = {target: entries[selected_entries[target]].candidate_key if known and selected_entries[target] is not None else None
                for target in targets}
@@ -109,7 +133,7 @@ def _business_representative(shared, entry, *, sequence, primary, targets, cfg, 
                        if scope["components_known"] else [])
     labels = {"min_overdue": "交期优先", "min_tardiness": "拖期更轻", "min_changeover": "切换更少",
               "min_weighted_tardiness": "加权拖期更轻"}
-    params = dict(candidate["params"])
+    params = candidate["params"]
     origin = deepcopy(entry.evidence_origin)
     profile = params.get("graph_ready_profile")
     if profile is not None:
@@ -124,9 +148,9 @@ def _business_representative(shared, entry, *, sequence, primary, targets, cfg, 
         results=candidate["results"], summary=candidate["summary"], metrics=candidate["metrics"], health=None,
         graph_analysis_public=preparation.graph_analysis_public if preparation is not None else None,
         graph_analysis_diagnostics=preparation.graph_analysis_diagnostics if preparation is not None else None,
-        used_strategy=candidate["strategy"], used_params=params, best_order=list(candidate.get("order") or []),
+        used_strategy=candidate["strategy"], used_params=params, best_order=candidate.get("order") or [],
         algo_mode=str(cfg.algo_mode), objective_name=primary, objective=primary,
-        algo_stats=dict(candidate.get("algo_stats") or {}), time_budget_seconds=total_budget,
+        algo_stats=candidate.get("algo_stats") or {}, time_budget_seconds=total_budget,
         sort_strategy=str(getattr(candidate["strategy"], "value", candidate["strategy"])),
         dispatch_mode=str(params["dispatch_mode"]), dispatch_rule=str(params["dispatch_rule"]),
         adopted_dispatch_rule=str(params["dispatch_rule"]), generation_policy_version="unified_search_v1",
@@ -140,4 +164,4 @@ def _business_representative(shared, entry, *, sequence, primary, targets, cfg, 
 
 
 
-__all__ = ["CANDIDATE_STATUS_COMPLETED", "CANDIDATE_STATUS_FAILED", "CANDIDATE_STATUS_SKIPPED", "CandidateComparisonOutcome", "CandidatePlan", "run_candidate_comparison"]
+__all__ = ["CandidateComparisonOutcome", "CandidatePlan", "run_candidate_comparison"]

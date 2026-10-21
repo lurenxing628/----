@@ -36,10 +36,6 @@ def report_read_time(token, binding=None):
         raise WorkbenchCommandRejected("snapshot_stale", messages.STALE) from exc
 
 
-def bind_report_snapshot(scope, fingerprint, token, as_of, binding=None):
-    return bind_read_snapshot(scope, fingerprint, token, as_of=as_of, binding=binding)
-
-
 def _report_page(topic):
     try:
         raw_page, raw_size = request.args.get("page", "1"), request.args.get("size", "20")
@@ -88,13 +84,14 @@ def _read(export=False, operation_ref=None):
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
             facts = reader.read(scope, as_of=as_of)
-            snapshot = bind_report_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of, binding)
+            snapshot = bind_read_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of=as_of, binding=binding)
             if operation_ref is not None:
                 data = report_detail(reader, facts, snapshot, operation_ref)
             else:
                 data, rows, _ = report_workspace(reader, facts, snapshot, topic, page)
                 data["columns"] = public_columns(topic)
-                data["exports"] = {"url": "/api/workbench/v1/analytics/export", "formats": ["csv", "xlsx"], "scope": "all_filtered_rows"}
+                if not export:
+                    data["exports"] = {"url": "/api/workbench/v1/analytics/export", "formats": ["csv", "xlsx"], "scope": "all_filtered_rows"}
     if export:
         # 读事务和读额度都已释放：文件只用已读出的结果生成，编码再久也不挡别人提交写入。
         return download_response(export_table(reader.engine, data, rows, snapshot, request.args.get("format", "csv")), snapshot)

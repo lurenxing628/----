@@ -23,8 +23,7 @@ def _issues(items):
 
 
 def _work_complete(row):
-    return (row.get("work_available", True) and row.get("work_state", "complete") == "complete"
-            and not row.get("unknown_workload_count", 0))
+    return row["work_available"] and row["work_state"] == "complete" and not row["unknown_workload_count"]
 
 
 def _sum(values, *, empty=False):
@@ -38,15 +37,15 @@ def _count(values):
 
 
 def _known(row, field, work_available=True):
-    if field != "available_hours" and (not work_available or not row.get("work_available", True)):
+    if field != "available_hours" and (not work_available or not row["work_available"]):
         return None
-    return row.get("known_" + field, row.get(field))
+    return row["known_" + field] if "known_" + field in row else row[field]
 
 
 def _full_window_pairs(rows):
     """Balance compares complete resource windows, including their idle capacity."""
-    return [row for row in rows if _work_complete(row) and row.get("available_hours") is not None
-            and row.get("occupied_hours") is not None]
+    return [row for row in rows if _work_complete(row) and row["available_hours"] is not None
+            and row["occupied_hours"] is not None]
 
 
 def _known_day_totals(rows, field):
@@ -101,20 +100,20 @@ def resource_summary(windows, *, kind=None, identity_issues=(), work_available=T
     result: Dict[str, Any] = {"resource_count": len(rows),
               "known_capacity_count": sum(row["available_hours"] is not None for row in rows),
               "unknown_capacity_count": sum(row["available_hours"] is None for row in rows),
-              "unknown_workload_count": sum(row.get("unknown_workload_count", 0) for row in rows) + len(identity),
+              "unknown_workload_count": sum(row["unknown_workload_count"] for row in rows) + len(identity),
               "unknown_workload_resource_count": len(rows) if identity or not work_available else sum(not _work_complete(row) for row in rows)}
     for field in HOUR_FIELDS:
-        values = [row.get(field) for row in rows]
+        values = [row[field] for row in rows]
         result[field] = None if (field != "available_hours" and workload_unknown) or None in values else fsum(values)
         result["known_" + field] = _sum([_known(row, field, work_available) for row in rows],
                                       empty=not rows and (field == "available_hours" or work_available and not identity))
     for field in ("task_count", "operation_count"):
-        values = [row.get(field) for row in rows]
+        values = [row[field] for row in rows]
         result[field] = None if workload_unknown or None in values else sum(values)
         known_counts = [value for value in (_known(row, field, work_available) for row in rows)
                         if value is not None]
         result["known_" + field] = sum(known_counts) if known_counts or not rows and work_available and not identity else None
-    used = [None if row.get("operation_count") is None or not _work_complete(row) else row["operation_count"] > 0 for row in rows]
+    used = [None if row["operation_count"] is None or not _work_complete(row) else row["operation_count"] > 0 for row in rows]
     result["used_resource_count"], _ = _count(used)
     if identity or not work_available:
         result["used_resource_count"] = None
@@ -125,8 +124,8 @@ def resource_summary(windows, *, kind=None, identity_issues=(), work_available=T
             result[field] = None
         if not work_available:
             result["known_" + field] = None
-    days = [None if row["unknown_days"] is None else row["unknown_days"] > 0 for row in rows]
-    result["unknown_day_resource_count"], result["known_unknown_day_resource_count"] = _count(days)
+    unknown_day_count = sum(row["unknown_days"] > 0 for row in rows)
+    result["unknown_day_resource_count"] = result["known_unknown_day_resource_count"] = unknown_day_count
     peak_rows = [row for row in rows if row["available_hours"] != 0]
     peaks = [row["peak_utilization"] for row in peak_rows]
     known_peaks = [_known(row, "peak_utilization", work_available) for row in rows]

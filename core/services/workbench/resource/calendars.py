@@ -275,7 +275,7 @@ class WorkbenchCalendarService:
         patch = calendar_domain_fields(fields)
         self._settle_periods(row, payload, patch, fields)
         payload.update(patch)
-        derived = self._shift_window_is_derived(patch, row)
+        derived = self._shift_window_is_derived(patch)
         if derived:
             # 工时或开工时刻改变而未明确结束时刻时，按当前开始时刻重新推算结束。
             payload["shift_end"] = None
@@ -319,7 +319,7 @@ class WorkbenchCalendarService:
         return row
 
     @staticmethod
-    def _shift_window_is_derived(patch: Dict[str, Any], row: Optional[Dict[str, Any]]) -> bool:
+    def _shift_window_is_derived(patch: Dict[str, Any]) -> bool:
         return "shift_end" not in patch and bool({"shift_hours", "shift_start"} & patch.keys())
 
     @staticmethod
@@ -347,26 +347,6 @@ class WorkbenchCalendarService:
     def _require_write_transaction(self) -> None:
         if not self.conn.in_transaction or not in_transaction_context(self.conn):
             raise RuntimeError("日历写入必须由外层 WorkbenchCommandService 持有写事务。")
-
-    def apply(self, action: str, normalized_input: Dict[str, Any], checked: Any) -> WorkbenchCommandOutcome:
-        """Private command mutate callback; never owns/commits the outer write transaction.
-
-        For upsert/delete, checked is the server-held snapshot(date) bound to the
-        write context. For confirm it is the original server-held CalendarRangePreview.
-        The caller validates write_token in its guard under BEGIN IMMEDIATE, using
-        this same connection. Returned outcomes are provisional until the receipt
-        and domain writes commit together. Receipts contain only stable dates/refs.
-        """
-        self._require_write_transaction()
-        payload = self.normalize(action, normalized_input)
-        if action == "confirm":
-            return self.confirm(payload, checked)
-        if action not in ("upsert", "delete"):
-            raise ValidationError("「预览变更」不能当成保存操作。", field="action")
-        before = self.snapshot(payload["date"])
-        if checked != before:
-            raise WorkbenchCommandRejected("stale_write", "日历已变化，请刷新后重新核对。")
-        return self._apply_day(action, payload, before)
 
     def _apply_checked(self, action, normalized_input, checked):
         """Consume the guard's current facts in its same outer command transaction."""
@@ -463,7 +443,7 @@ class WorkbenchCalendarService:
         if not preview.created_at <= now < preview.expires_at:
             raise WorkbenchCommandRejected("snapshot_stale", "这份变更清单已过期或内容有变化，请重新点「预览变更」。")
         with self._calendar._admin.normalization_operation(self._calendar._engine.default_periods):
-            current = self._preview_days(self.normalize("preview", preview.request), expected=preview)
+            current = self._preview_days(preview.request, expected=preview)
         if current["days"] != preview.days:
             raise WorkbenchCommandRejected("snapshot_stale", "范围里的日历或命中的日期已经变了，请重新点「预览变更」。")
         results = self.write_days([(item["before"], model) for item, model in zip(current["days"], current["calendars"])])

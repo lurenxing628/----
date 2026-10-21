@@ -10,12 +10,12 @@ import pytest
 from core.errors import AppError
 from core.infrastructure.database import get_connection
 from core.infrastructure.operation_execution_event_data_contract import operation_execution_event_data_issues
+from core.models.schedule_plan_role import ROLE_BASELINE_BEST
+from core.services.scheduler.execution.operation_execution_scope_read import scope_from_feedback_context
 from core.services.scheduler.operation_execution_feedback_service import (
     ExecutionFeedbackContext,
     OperationExecutionFeedbackService,
 )
-from core.services.scheduler.operation_execution_scope_read import scope_from_feedback_context
-from core.services.scheduler.schedule_plan_query_service import ROLE_BASELINE_BEST
 from data.repositories.schedule_plan_query_repo import SOURCE_CANDIDATE_ROWS
 from tests.operation_execution.operation_execution_state_revision_support import (
     _connect,

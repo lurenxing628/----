@@ -1,9 +1,7 @@
 """Snapshot-bound process reads and route differences, without template writes."""
 
-import math
 from collections import defaultdict
 from contextlib import contextmanager
-from datetime import date, datetime
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.content import content_text
@@ -15,24 +13,6 @@ from data.repositories.workbench_process_query_repo import WorkbenchProcessQuery
 
 from .projection import capabilities, project_group, project_operation, project_part, public_sequence
 from .route_choices import changed_route_sequences, preview_existing_route, route_choice_context
-
-_PLAIN_SCALARS = frozenset((str, int, bool, type(None)))
-
-
-def _plain(value):
-    if type(value) in _PLAIN_SCALARS:
-        return value
-    if isinstance(value, (date, datetime)):
-        return {"storage_type": type(value).__name__, "iso": value.isoformat()}
-    if isinstance(value, dict):
-        return {key: _plain(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_plain(item) for item in value]
-    if isinstance(value, float) and not math.isfinite(value):
-        return {"storage_type": "float", "value": str(value)}
-    if isinstance(value, bytes):
-        return {"storage_type": "blob", "hex": value.hex()}
-    return value
 
 
 def _route_changes(active, proposed):

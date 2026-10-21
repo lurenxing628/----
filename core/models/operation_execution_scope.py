@@ -85,14 +85,14 @@ class OperationExecutionScope:
 
 
 def operation_execution_scope_from_event(event: Any) -> OperationExecutionScope:
-    return OperationExecutionScope.from_values(
-        schedule_version=getattr(event, "schedule_version", None),
-        schedule_id=getattr(event, "schedule_id", None),
-        op_id=getattr(event, "op_id", None),
-        batch_id=getattr(event, "batch_id", None),
-        source_table=getattr(event, "source_table", None),
-        effective_plan_role=getattr(event, "effective_plan_role", None),
-        scenario_id=getattr(event, "scenario_id", None),
+    return OperationExecutionScope(
+        schedule_version=event.schedule_version,
+        schedule_id=event.schedule_id,
+        op_id=event.op_id,
+        batch_id=event.batch_id,
+        source_table=event.source_table,
+        effective_plan_role=event.effective_plan_role,
+        scenario_id=event.scenario_id,
     )
 
 

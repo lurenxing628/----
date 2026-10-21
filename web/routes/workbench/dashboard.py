@@ -39,22 +39,17 @@ def _arguments(detail, history):
     return query, token, numbers["history_page"]
 
 
-def _time(token, binding=None):
-    if token is None:
+def _time(binding):
+    if binding is None:
         return datetime.now().replace(microsecond=0)
     try:
-        payload = resolve_read_snapshot(token) if binding is None else binding
-        stamp = payload.as_of
+        stamp = binding.as_of
         parsed = datetime.fromisoformat(stamp)
         if parsed.tzinfo is not None or parsed.isoformat(timespec="seconds") != stamp:
             raise ValueError()
         return parsed
     except (ValidationError, ValueError, TypeError, KeyError) as exc:
         raise WorkbenchCommandRejected("snapshot_stale", messages.STALE) from exc
-
-
-def _bind(query, data, token, binding=None):
-    return bind_read_snapshot(query.scope(), data["snapshot_contents"], token, as_of=data["as_of"], binding=binding)
 
 
 def _history(reader, item_ref, number, size):
@@ -72,7 +67,7 @@ def _read(item_ref=None, history=False):
     admission = PLAN_READ_SLOTS.slot(lane=request.headers.get("X-Workbench-Read-Lane")) if item_ref is None else PLAN_READ_SLOTS.slot()
     with admission:
         with reader.read_snapshot():
-            sources = reader.load(_time(token, binding))
+            sources = reader.load(_time(binding))
             records = _history(reader, item_ref, history_page, query.size) if history else None
         # 读事务到此结束：整份看板的投影和指纹只用已读出的事实，算多久都不挡别人提交写入。
         data = reader.project(sources)
@@ -85,7 +80,8 @@ def _read(item_ref=None, history=False):
             except Exception:
                 current_app.logger.exception("Dashboard analysis failed after the list was read")
                 analysis_error = "分析数据没有读出来，请刷新重试。"
-    snapshot = _bind(query, data, token, binding)
+    snapshot = bind_read_snapshot(query.scope(), data["snapshot_contents"], token,
+                                  as_of=data["as_of"], binding=binding)
     if item_ref is None:
         result = reader.workspace(data, query)
         result["analysis"] = analysis

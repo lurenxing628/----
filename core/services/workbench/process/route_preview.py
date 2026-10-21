@@ -81,7 +81,7 @@ def _segment_diagnostics(segment, normalized, tail, diagnostics):
         is_tail = tail is not None and message == errors[-1]
         diagnostics.append(route_diagnostic(
             "missing_operation_name" if is_tail else "missing_sequence", message,
-            sequence=route_sequence(tail.group(1)) if is_tail and tail is not None else None))
+            sequence=route_sequence(tail.group(1)) if is_tail else None))
     if _segment_ambiguities(segment):
         diagnostics.append(route_diagnostic("ambiguous_route_format", "工艺路线里有符号、小数、指数或空格，拼不出明确的工序。请改用逐行填工序号和工种名。"))
 
@@ -188,13 +188,17 @@ class ProcessRoutePreviewService:
         previous = self._batch
         facts = self._reference_facts()
         types, capabilities, context, _ = facts
-        identities = WorkbenchIdentityRepository(self.conn, self.logger)
+        if self._facts is not None:
+            identities = {"op_type": {}, "supplier": {}}
+            for row in self._facts["identities"]:
+                if row["active"] and row["kind"] in identities:
+                    identities[row["kind"]][row["entity_key"]] = WorkbenchEntityIdentity(
+                        row["ref"], row["kind"], row["entity_key"], row["revision"], bool(row["active"]))
+
         def refs(kind, keys):
             if self._facts is None:
-                return identities.active_map(kind, keys)
-            return {row["entity_key"]: WorkbenchEntityIdentity(
-                row["ref"], row["kind"], row["entity_key"], row["revision"], bool(row["active"]))
-                    for row in self._facts["identities"] if row["kind"] == kind and row["active"]}
+                return WorkbenchIdentityRepository(self.conn, self.logger).active_map(kind, keys)
+            return identities[kind]
         self._batch = {"facts": facts, "candidates": self._candidates(types, capabilities),
                        "op_refs": refs("op_type", [row.op_type_id for row in context.op_types.values()]),
                        "supplier_refs": refs("supplier", [value[0] for value in context.suppliers.values()])}
@@ -251,7 +255,7 @@ class ProcessRoutePreviewService:
                 for seq, name in sorted(rows, key=lambda row: row[0])]
 
     def _route_refs(self, context, names):
-        identities = WorkbenchIdentityRepository(self.conn, self.logger)
+        identities = WorkbenchIdentityRepository(self.conn, self.logger) if self._batch is None else None
         op_refs = _persisted_refs(identities, "op_type", [ot.op_type_id for name, ot in context.op_types.items() if name in names],
                                   None if self._batch is None else self._batch["op_refs"])
         supplier_refs = _persisted_refs(identities, "supplier", [value[0] for name, value in context.suppliers.items()

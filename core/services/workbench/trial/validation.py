@@ -21,7 +21,7 @@ from .protection import TrialProtection, frozen_arrangements, frozen_issue, froz
 
 
 class TrialValidator:
-    def __init__(self, conn, admission, rows, live):
+    def __init__(self, conn, admission, rows, live, *, anchors=None, anchor_error=None):
         self.conn, self.admission, self.rows, self.live = conn, admission, rows, live
         self.tables = live["facts"]["tables"]
         self.checks = live["preflight_facts"].checks()
@@ -35,11 +35,17 @@ class TrialValidator:
         self.qualification_cache = {}
         self._protected_state = None
         self._protect()
-        self.anchors, self.anchor_error = {}, None
-        try:
-            self.anchors = execution_anchors(conn, rows, live)
-        except (AppError, ValueError, TypeError, KeyError, OverflowError) as exc:
-            self.anchor_error = anchor_issue(exc)
+        if anchors is None and anchor_error is None:
+            prepared_anchors = live.get("execution_anchors")
+            if prepared_anchors is not None:
+                anchors, anchor_error = prepared_anchors
+            else:
+                try:
+                    anchors = execution_anchors(conn, rows, live)
+                except (AppError, ValueError, TypeError, KeyError, OverflowError) as exc:
+                    anchor_error = anchor_issue(exc)
+        self.anchors = {} if anchors is None else anchors
+        self.anchor_error = anchor_error
         self.downtime = {}
         for row in self.tables["MachineDowntimes"]:
             self.downtime.setdefault(row["machine_id"], []).append(row)
@@ -55,7 +61,7 @@ class TrialValidator:
         self.settings = adoption_settings(self.admission, self.rows, self.checks, self.live["execution"])
         self.frozen, self.frozen_issue = {}, None
         try:
-            self.frozen = frozen_arrangements(self.conn, self.admission, self.rows, self.live, self.checks,
+            self.frozen = frozen_arrangements(self.conn, self.admission, self.rows, self.live,
                                               settings=self.settings)
         except (AppError, ValueError, TypeError, KeyError, OverflowError):
             self.frozen_issue = issue("freeze_window_unavailable", "正式采用要原样保留来源排产不重排时段里的原安排，"

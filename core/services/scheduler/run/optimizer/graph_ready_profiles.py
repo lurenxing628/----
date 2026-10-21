@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import zip_longest
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -64,11 +64,21 @@ class GraphReadyWeightProfile:
 
 
 def graph_ready_weight_profile_summary(max_weight_profiles: int = 9) -> Dict[str, Any]:
+    _profiles, summary = resolve_weight_grid_profiles_and_summary(max_weight_profiles=max_weight_profiles)
+    return summary
+
+
+def resolve_weight_grid_profiles_and_summary(
+    *, max_weight_profiles: int = 9, objective_name: str = "min_overdue",
+) -> Tuple[List[GraphReadyWeightProfile], Dict[str, Any]]:
     profiles, truncated, reason = default_weight_profiles(max_weight_profiles=max_weight_profiles)
-    return {
+    objective_name = normalize_objective_name(objective_name)
+    profiles = [replace(profile, objective_name=objective_name) for profile in profiles]
+    summary = {
         "schema_version": 1,
         "phase": GRAPH_READY_PHASE,
         "candidate_policy": "weight_grid",
+        "objective_name": objective_name,
         "max_weight_profiles": int(max_weight_profiles),
         "configured_weight_profile_count": len(GRAPH_READY_DEFAULT_WEIGHT_PROFILES),
         "effective_weight_profile_count": len(profiles),
@@ -77,19 +87,34 @@ def graph_ready_weight_profile_summary(max_weight_profiles: int = 9) -> Dict[str
         "truncation_reason": reason,
         "selection_tiebreaker": list(GRAPH_READY_SELECTION_TIEBREAKER),
     }
+    return profiles, summary
 
 
 def graph_ready_v2_profile_summary(max_candidate_profiles: int = 60, *, seed: int = 0, objective_name: str = "min_overdue",
                                    shared_search: bool = False) -> Dict[str, Any]:
-    profiles, truncated, reason = graph_ready_v2_profiles(max_candidate_profiles=max_candidate_profiles, seed=seed,
-                                                       objective_name=objective_name, shared_search=shared_search)
-    return {
+    _profiles, summary = resolve_v2_profiles_and_summary(
+        max_candidate_profiles=max_candidate_profiles, seed=seed,
+        objective_name=objective_name, shared_search=shared_search,
+    )
+    return summary
+
+
+def resolve_v2_profiles_and_summary(
+    *, max_candidate_profiles: int, seed: int = 0, objective_name: str = "min_overdue",
+    shared_search: bool = False,
+) -> Tuple[List[GraphReadyWeightProfile], Dict[str, Any]]:
+    objective_name = normalize_objective_name(objective_name)
+    profiles, truncated, reason, configured_count = _graph_ready_v2_profile_data(
+        max_candidate_profiles=max_candidate_profiles, seed=seed,
+        objective_name=objective_name, shared_search=shared_search)
+    profiles = [replace(profile, objective_name=objective_name) for profile in profiles]
+    summary = {
         "schema_version": 1,
         "phase": GRAPH_READY_PHASE,
         "candidate_policy": "objective_aware_portfolio",
         "max_candidate_profiles": int(max_candidate_profiles),
-        "configured_candidate_profile_count": len(_graph_ready_v2_profile_specs(objective_name=objective_name)),
-        "objective_name": normalize_objective_name(objective_name),
+        "configured_candidate_profile_count": configured_count,
+        "objective_name": objective_name,
         "objective_candidate_version": "baseline_and_successor_portfolio_v1",
         "effective_candidate_profile_count": len(profiles),
         "weight_profile_slugs": [profile.slug for profile in profiles],
@@ -102,6 +127,7 @@ def graph_ready_v2_profile_summary(max_candidate_profiles: int = 60, *, seed: in
         "truncation_reason": reason,
         "selection_tiebreaker": list(GRAPH_READY_SELECTION_TIEBREAKER),
     }
+    return profiles, summary
 
 
 def default_weight_profiles(*, max_weight_profiles: int) -> Tuple[List[GraphReadyWeightProfile], bool, Optional[str]]:
@@ -113,13 +139,23 @@ def default_weight_profiles(*, max_weight_profiles: int) -> Tuple[List[GraphRead
 
 def graph_ready_v2_profiles(*, max_candidate_profiles: int, seed: int = 0, objective_name: str = "min_overdue",
                            shared_search: bool = False) -> Tuple[List[GraphReadyWeightProfile], bool, Optional[str]]:
+    profiles, truncated, reason, _ = _graph_ready_v2_profile_data(
+        max_candidate_profiles=max_candidate_profiles, seed=seed,
+        objective_name=objective_name, shared_search=shared_search)
+    return profiles, truncated, reason
+
+
+def _graph_ready_v2_profile_data(
+    *, max_candidate_profiles: int, seed: int, objective_name: str, shared_search: bool,
+) -> Tuple[List[GraphReadyWeightProfile], bool, Optional[str], int]:
     limit = _positive_limit(max_candidate_profiles)
     specs = _graph_ready_v2_profile_specs(seed=seed, objective_name=objective_name)
     if shared_search:
         specs = _shared_profile_specs(specs, objective_name=objective_name)
+    configured_count = len(specs)
     profiles = [_build_profile(index, raw) for index, raw in enumerate(specs[:limit])]
-    truncated = len(specs) > len(profiles)
-    return profiles, truncated, ("max_candidate_profiles" if truncated else None)
+    truncated = configured_count > len(profiles)
+    return profiles, truncated, ("max_candidate_profiles" if truncated else None), configured_count
 
 
 def profile_payload(profile: GraphReadyWeightProfile, *, version: Optional[int]) -> Dict[str, Any]:
@@ -200,9 +236,10 @@ def _weight_fields() -> Tuple[str, str, str, str]:
 
 def _graph_ready_v2_profile_specs(*, seed: int = 0, objective_name: str = "min_overdue") -> Tuple[Dict[str, Any], ...]:
     v1 = tuple(dict(item) for item in GRAPH_READY_DEFAULT_WEIGHT_PROFILES)
-    baseline = tuple(dict(item, feature_basis=BATCH_WORKLOAD_BASIS) for item in _v2_ordering_specs(seed))
+    base_specs = _v2_ordering_specs(seed)
+    baseline = tuple(dict(item, feature_basis=BATCH_WORKLOAD_BASIS) for item in base_specs)
     objective_name = normalize_objective_name(objective_name)
-    successor = _successor_profile_specs(seed, objective_name)
+    successor = _successor_profile_specs(base_specs, objective_name)
     # Preserve two established, distinct baseline parents before adding features.
     # Remaining baseline and enhanced candidates compete within the same limits.
     portfolio = [v1[0], baseline[0], baseline[1]]
@@ -239,8 +276,8 @@ def _v2_ordering_specs(seed: int) -> Tuple[Dict[str, Any], ...]:
     )
 
 
-def _successor_profile_specs(seed: int, objective_name: str) -> Tuple[Dict[str, Any], ...]:
-    v2_specs = _v2_ordering_specs(seed)
+def _successor_profile_specs(base_specs: Tuple[Dict[str, Any], ...], objective_name: str) -> Tuple[Dict[str, Any], ...]:
+    v2_specs = base_specs
     if objective_name == "min_tardiness":
         preferred = ("spt", "min_slack", "edd", "atc_like")
         v2_specs = tuple(item for name in preferred for item in v2_specs if item["formula_slug"] == name) + tuple(

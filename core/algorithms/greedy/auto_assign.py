@@ -16,12 +16,11 @@ from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_SUCCESS,
     AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
     AutoAssignAttempt,
-    auto_assign_attempt_from_result,
 )
 from core.algorithm_runtime.internal_slot import estimate_internal_slot, validate_internal_hours
 from core.algorithm_runtime.resource_quality import prefer_resource_pair
 from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_handoff
-from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
+from core.algorithm_runtime.slot_overlap_reuse import SlotOverlapReuse, overlap_reuse_for
 from core.errors import ValidationError
 from core.shared.strict_parse import parse_required_int
 
@@ -164,9 +163,13 @@ def auto_assign_internal_resources_attempt(
         count(counter)
     if not candidates.machines:
         return AutoAssignAttempt(reason=candidates.reason)
-    pool = _coerce_resource_pool(resource_pool)
     if resource_preparation is None:
+        pool = candidates.pool
         pool["pair_rank"] = dict(pool["pair_rank"])
+    elif resource_pool is resource_preparation.resource_pool:
+        pool = candidates.pool
+    else:
+        pool = _coerce_resource_pool(resource_pool)
     total_hours_base = (total_hours_by_op_id.get(getattr(op, "id", None))
                         if total_hours_by_op_id is not None else None)
     if total_hours_base is None:
@@ -205,10 +208,6 @@ def auto_assign_internal_resources_attempt(
 def qualified_resource_pairs(op: Any, resource_pool: Any) -> Tuple[Tuple[str, str], ...]:
     """The shared machine, authorization and skill rule used by assignment and repair."""
     return prepare_resource_candidates(op, resource_pool).pairs
-
-
-def eligible_auto_assign_resources(op: Any, resource_pool: Any) -> Optional[Tuple[Tuple[str, ...], Tuple[str, ...]]]:
-    return prepare_resource_candidates(op, resource_pool).eligible_resources
 
 
 def _fixed_resource_inputs(op: Any) -> Tuple[str, str, str]:
@@ -346,6 +345,7 @@ def _choose_best_pair(
     non_window_infeasible_pairs = 0
     prev_end = batch_progress.get(str(getattr(op, "batch_id", "") or "").strip(), base_time)
     handoff = current_sgs_handoff()
+    overlap_reuse = overlap_reuse_for(machine_timeline)
     for machine_id in machine_candidates:
         operator_candidates = (static_candidates.operators_for_machine(machine_id) if static_candidates is not None
                                else _operator_candidates_for_machine(machine_id, fixed_operator=fixed_operator, pool=pool,
@@ -353,6 +353,9 @@ def _choose_best_pair(
         if not operator_candidates:
             continue
         seen_operator = True
+        m_timeline = machine_timeline.get(machine_id) or []
+        m_downtimes = (machine_downtimes.get(machine_id) or []) if machine_downtimes and machine_id else []
+        m_busy = float(machine_busy_hours.get(machine_id, 0.0) or 0.0)
         for operator_id in _sort_operator_candidates(operator_candidates, machine_id=machine_id, pool=pool, operator_busy_hours=operator_busy_hours):
             probe = _pair_score(
                 calendar=calendar,
@@ -373,6 +376,10 @@ def _choose_best_pair(
                 pool=pool,
                 abort_after=best[0] if best is not None else None,
                 handoff=handoff,
+                m_timeline=m_timeline,
+                m_downtimes=m_downtimes,
+                m_busy=m_busy,
+                overlap_reuse=overlap_reuse,
             )
             if probe.score is not None:
                 if best is not None and probe.score[:2] == best[:2]:
@@ -400,7 +407,6 @@ def _pair_failure_attempt(
     window_blocked_pairs: int,
     non_window_infeasible_pairs: int,
     count: Any,
-    static_candidates: Optional[ResourceCandidates] = None,
 ) -> AutoAssignAttempt:
     if not seen_operator:
         count("auto_assign_no_operator_candidate_count")
@@ -455,7 +461,20 @@ def _pair_score(
     pool: Dict[str, Any],
     abort_after: Optional[datetime],
     handoff: Any = None,
+    m_timeline: Optional[List[Tuple[datetime, datetime]]] = None,
+    m_downtimes: Optional[List[Tuple[datetime, datetime]]] = None,
+    m_busy: Optional[float] = None,
+    overlap_reuse: Optional[SlotOverlapReuse] = None,
 ) -> _PairProbe:
+    if m_timeline is None:
+        m_timeline = machine_timeline.get(machine_id) or []
+        if overlap_reuse is None:
+            overlap_reuse = overlap_reuse_for(machine_timeline)
+    if m_downtimes is None:
+        m_downtimes = (machine_downtimes.get(machine_id) or []) if machine_downtimes and machine_id else []
+    if m_busy is None:
+        m_busy = float(machine_busy_hours.get(machine_id, 0.0) or 0.0)
+
     def estimate_pair(abort_at: Optional[datetime]):
         return estimate_internal_slot(
             calendar=calendar,
@@ -465,14 +484,14 @@ def _pair_score(
             operator_id=operator_id,
             base_time=base_time,
             prev_end=prev_end,
-            machine_timeline=machine_timeline.get(machine_id) or [],
+            machine_timeline=m_timeline,
             operator_timeline=operator_timeline.get(operator_id) or [],
             end_dt_exclusive=end_dt_exclusive,
-            machine_downtimes=(machine_downtimes.get(machine_id) or []) if machine_downtimes and machine_id else [],
+            machine_downtimes=m_downtimes,
             last_op_type_by_machine=last_op_type_by_machine,
             abort_after=abort_at,
             total_hours_base=total_hours_base,
-            overlap_reuse=overlap_reuse_for(machine_timeline),
+            overlap_reuse=overlap_reuse,
         )
 
     estimate = None
@@ -490,7 +509,7 @@ def _pair_score(
         return _PairProbe(score=None, window_blocked=False)
     if estimate.blocked_by_window:
         return _PairProbe(score=None, window_blocked=True)
-    load_penalty = float(machine_busy_hours.get(machine_id, 0.0) or 0.0) + float(operator_busy_hours.get(operator_id, 0.0) or 0.0)
+    load_penalty = m_busy + float(operator_busy_hours.get(operator_id, 0.0) or 0.0)
     return _PairProbe(
         score=(estimate.end_time, int(estimate.changeover_penalty), float(load_penalty), _pair_rank(pool, operator_id, machine_id), machine_id, operator_id),
         window_blocked=False,

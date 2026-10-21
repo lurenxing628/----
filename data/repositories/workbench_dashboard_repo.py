@@ -54,10 +54,6 @@ class WorkbenchDashboardRepository:
                    "_tail_after_json": selected["_tail_after_json"], "_receipt_ref": selected["_receipt_ref"],
                    "_stored_body_bytes": selected["_stored_body_bytes"]}
 
-    def identity(self, item_ref):
-        result = rows(self.conn, "SELECT * FROM " + self.items_table + " WHERE item_ref=?", (item_ref,))
-        return result[0] if result else None
-
     def has_item(self, item_ref):
         return self.conn.execute("SELECT 1 FROM " + self.items_table + " WHERE item_ref=?", (item_ref,)).fetchone() is not None
 

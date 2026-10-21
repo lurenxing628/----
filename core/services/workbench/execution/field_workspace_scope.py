@@ -95,10 +95,10 @@ def page_input(value):
 
 def matches(task, scope, labels):
     if scope.get('query'):
-        searchable = [task['batch_id'], task['operation_label'], task['part_name'], task.get('piece_id'),
-                      task.get('planned_machine_label'), task.get('planned_operator_label')]
+        searchable = [task['batch_id'], task['operation_label'], task['part_name'], task['piece_id'],
+                      task['planned_machine_label'], task['planned_operator_label']]
         for report in task['execution']['reports']:
-            searchable.extend(report.get(key) for key in ('report_no', 'actual_machine_label', 'actual_operator_label'))
+            searchable.extend(report[key] for key in ('report_no', 'actual_machine_label', 'actual_operator_label'))
         for fact in task['execution']['legacy_facts']:
             searchable.extend(labels.get(fact[key]) for key in ('actual_machine_ref', 'actual_operator_ref'))
         if scope['query'].casefold() not in ' '.join(value for value in searchable if isinstance(value, str)).casefold():

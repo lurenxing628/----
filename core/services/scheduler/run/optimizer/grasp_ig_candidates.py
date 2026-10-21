@@ -4,7 +4,7 @@ from datetime import date, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
-from core.algorithms import ScheduleResult, SortStrategy
+from core.algorithms import SortStrategy
 from core.algorithms.evaluation import objective_score
 from core.errors import ValidationError
 
@@ -43,25 +43,18 @@ def _candidate_tag(origin: str, index: int, dispatch_mode: str, dispatch_rule: s
 
 def _evaluate_candidate(
     *,
-    scheduler: Any,
     strict_mode: bool,
-    algo_ops_to_schedule: List[Any],
-    batches: Dict[str, Any],
     strategy: SortStrategy,
     params: Dict[str, Any],
     start_dt: datetime,
     end_date: Optional[date],
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
     order: List[str],
-    seed_sr_list: List[ScheduleResult],
     dispatch_mode: str,
     dispatch_rule: str,
     resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
     optimizer_algo_stats: Optional[Dict[str, Any]],
-    schedule_fn: Callable[..., Any],
     readiness_gate_enabled: bool,
-    graph_ready_context: Optional[Any],
     construction: Dict[str, Any],
     decode_session: SharedDecodeSession,
 ) -> Dict[str, Any]:
@@ -79,9 +72,9 @@ def _evaluate_candidate(
         dispatch_mode=dispatch_mode,
         dispatch_rule=dispatch_rule,
         readiness_gate_enabled=bool(readiness_gate_enabled),
-        graph_enabled=graph_ready_context is not None,
-        graph_score_enabled=bool(graph_ready_context and graph_ready_context.get("score_enabled")),
-        graph_priority_key_by_op_id=(graph_ready_context or {}).get("graph_priority_key_by_op_id"),
+        graph_enabled=False,
+        graph_score_enabled=False,
+        graph_priority_key_by_op_id=None,
     )
     candidate = {
         "results": decoded.results,
@@ -95,13 +88,6 @@ def _evaluate_candidate(
         "score": (float(decoded.summary.failed_ops),) + objective_score(objective_name, decoded.metrics),
         "algo_stats": decoded.algo_stats,
         "resource_pool": resource_pool or {},
-        "seed_result_count": len(seed_sr_list or []),
-        "mutable_scope": {
-            "scope": "candidate_construction_batch_order",
-            "batch_count": len(order or []),
-            "candidate_source": str(construction.get("family") or ""),
-            "restart_index": int(construction.get("restart_index") or 0),
-        },
     }
     candidate["_shared_entry_id"] = decoded.entry_id
     candidate["_archive_observation"] = decoded.archive_observation
@@ -270,7 +256,6 @@ def _candidate_specs_for_run(
     version: int,
     candidate_construction: Dict[str, Any],
     dispatch_rule_cfg: str,
-    valid_dispatch_rules: List[str],
     batch_order_enabled: bool,
     rng_factory: Callable[[int], Any],
     search_report_state: Optional[OptimizationSearchReportState],
@@ -294,9 +279,7 @@ def _candidate_specs_for_run(
         version=int(version),
         candidate_construction=candidate_construction if isinstance(candidate_construction, dict) else {},
         dispatch_rule_cfg=dispatch_rule_cfg,
-        valid_dispatch_rules=valid_dispatch_rules,
         rng_factory=rng_factory,
-        dispatch_mode="batch_order",
     )
     if not specs:
         _mark_phase_skipped(search_report_state, "candidate_budget_empty")
@@ -325,22 +308,15 @@ def _run_candidate_spec(
     *,
     spec: Dict[str, Any],
     best: Optional[Dict[str, Any]],
-    scheduler: Any,
     strict_mode: bool,
-    algo_ops_to_schedule: List[Any],
-    batches: Dict[str, Any],
     base_strategy: SortStrategy,
     base_params: Dict[str, Any],
     start_dt: datetime,
     end_date: Optional[date],
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
-    seed_sr_list: List[ScheduleResult],
     resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
     optimizer_algo_stats: Optional[Dict[str, Any]],
-    schedule_fn: Callable[..., Any],
     readiness_gate_enabled: bool,
-    graph_ready_context: Optional[Any],
     attempts: List[Dict[str, Any]],
     improvement_trace: List[Dict[str, Any]],
     search_report_state: Optional[OptimizationSearchReportState],
@@ -355,26 +331,19 @@ def _run_candidate_spec(
     decode_started = clock()
     try:
         candidate = _evaluate_candidate(
-            scheduler=scheduler,
             strict_mode=bool(strict_mode),
-            algo_ops_to_schedule=algo_ops_to_schedule,
-            batches=batches,
             strategy=base_strategy,
-            params=dict(base_params or {}),
+            params=base_params,
             start_dt=start_dt,
             end_date=end_date,
-            downtime_map=downtime_map,
-            order=list(spec["order"]),
-            seed_sr_list=seed_sr_list,
+            order=spec["order"],
             dispatch_mode=dispatch_mode,
             dispatch_rule=dispatch_rule,
             resource_pool=resource_pool,
             objective_name=objective_name,
             optimizer_algo_stats=optimizer_algo_stats,
-            schedule_fn=schedule_fn,
             readiness_gate_enabled=bool(readiness_gate_enabled),
-            graph_ready_context=graph_ready_context,
-            construction=dict(spec["construction"]),
+            construction=spec["construction"],
             decode_session=decode_session,
         )
     except SharedSearchSkip as exc:
@@ -423,15 +392,13 @@ class GraspIGStage(SearchStage):
     name = GRASP_IG_PHASE
 
     def __init__(
-        self, *, algo_mode: str, version: int, candidate_construction: Dict[str, Any], scheduler: Any,
-        algo_ops_to_schedule: List[Any], batches: Dict[str, Any], start_dt: datetime, end_date: Optional[date],
-        downtime_map: Dict[str, List[Tuple[datetime, datetime]]], seed_sr_list: List[ScheduleResult],
-        base_strategy: SortStrategy, base_params: Dict[str, Any],
+        self, *, algo_mode: str, version: int, candidate_construction: Dict[str, Any],
+        start_dt: datetime, end_date: Optional[date], base_strategy: SortStrategy, base_params: Dict[str, Any],
         build_order: Callable[[SortStrategy, Dict[str, Any]], List[str]], dispatch_rule_cfg: str,
-        valid_dispatch_rules: List[str], resource_pool: Optional[Dict[str, Any]], objective_name: str,
+        resource_pool: Optional[Dict[str, Any]], objective_name: str,
         deadline: float, optimizer_algo_stats: Optional[Dict[str, Any]], t_begin: float,
-        readiness_gate_enabled: bool, strict_mode: bool, graph_ready_context: Optional[Any],
-        clock: Callable[[], float], rng_factory: Callable[[int], Any], schedule_fn: Callable[..., Any],
+        readiness_gate_enabled: bool, strict_mode: bool,
+        clock: Callable[[], float], rng_factory: Callable[[int], Any],
         batch_order_enabled: bool = True,
         search_report_state: Optional[OptimizationSearchReportState] = None,
         state: OptimizerSearchState,
@@ -444,33 +411,23 @@ class GraspIGStage(SearchStage):
         self.index = 0
         self.finished = False
         self._stop_reason: Optional[str] = None
-        self.schedule_fn = schedule_fn
         self.run_spec = partial(
-            _run_candidate_spec, scheduler=scheduler, strict_mode=bool(strict_mode),
-            algo_ops_to_schedule=algo_ops_to_schedule, batches=batches, base_strategy=base_strategy,
-            base_params=base_params, start_dt=start_dt, end_date=end_date, downtime_map=downtime_map,
-            seed_sr_list=seed_sr_list, resource_pool=resource_pool, objective_name=objective_name,
+            _run_candidate_spec, strict_mode=bool(strict_mode), base_strategy=base_strategy,
+            base_params=base_params, start_dt=start_dt, end_date=end_date,
+            resource_pool=resource_pool, objective_name=objective_name,
             optimizer_algo_stats=optimizer_algo_stats, readiness_gate_enabled=bool(readiness_gate_enabled),
-            graph_ready_context=graph_ready_context, attempts=self.state.attempts,
-            improvement_trace=self.state.improvement_trace, search_report_state=search_report_state,
-            clock=clock, t_begin=t_begin,
-            decode_session=decode_session,
+            attempts=self.state.attempts, improvement_trace=self.state.improvement_trace,
+            search_report_state=search_report_state, clock=clock, t_begin=t_begin, decode_session=decode_session,
         )
-        if graph_ready_context is not None:
-            self._stop_reason = "graph_ready_uses_graph_candidate_phase"
-            _mark_phase_skipped(search_report_state, self._stop_reason)
-            self.specs: List[Dict[str, Any]] = []
-        else:
-            specs = _candidate_specs_for_run(
-                algo_mode=algo_mode, best=self.state.best, base_strategy=base_strategy, base_params=base_params,
-                build_order=build_order, version=int(version), candidate_construction=candidate_construction,
-                dispatch_rule_cfg=dispatch_rule_cfg, valid_dispatch_rules=valid_dispatch_rules,
-                batch_order_enabled=batch_order_enabled, rng_factory=rng_factory,
-                search_report_state=search_report_state,
-            )
-            self.specs = specs if specs is not None else []
-            if specs is None:
-                self._stop_reason = "candidate_specs_unavailable"
+        specs = _candidate_specs_for_run(
+            algo_mode=algo_mode, best=self.state.best, base_strategy=base_strategy, base_params=base_params,
+            build_order=build_order, version=int(version), candidate_construction=candidate_construction,
+            dispatch_rule_cfg=dispatch_rule_cfg, batch_order_enabled=batch_order_enabled, rng_factory=rng_factory,
+            search_report_state=search_report_state,
+        )
+        self.specs: List[Dict[str, Any]] = specs if specs is not None else []
+        if specs is None:
+            self._stop_reason = "candidate_specs_unavailable"
 
     def available(self) -> bool:
         if self.finished or self._stop_reason is not None or self.index >= len(self.specs):
@@ -495,7 +452,7 @@ class GraspIGStage(SearchStage):
         spec = self.specs[self.index]
         self.index += 1
         previous = self.state.best
-        self.state.best = self.run_spec(spec=spec, best=previous, schedule_fn=self.schedule_fn)
+        self.state.best = self.run_spec(spec=spec, best=previous)
         return int(self.state.best is not previous and score_strictly_better(
             (self.state.best or {}).get("score"), (previous or {}).get("score"),
         ))

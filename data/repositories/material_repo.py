@@ -95,15 +95,14 @@ class MaterialRepository(BaseRepository):
         if not updates:
             return
 
-        allowed = {"name", "spec", "unit", "stock_qty", "status", "remark"}
         set_parts: List[str] = []
         params: List[Any] = []
 
         for key in ("name", "spec", "unit", "stock_qty", "status", "remark"):
-            if key not in allowed or key not in updates:
+            if key not in updates:
                 continue
 
-            val = updates.get(key)
+            val = updates[key]
             if key == "stock_qty":
                 # stock_qty 允许传空/None 表示“不改”
                 if val is None or (isinstance(val, str) and val.strip() == ""):

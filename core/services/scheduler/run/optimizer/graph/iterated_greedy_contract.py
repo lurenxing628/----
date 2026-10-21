@@ -1,7 +1,6 @@
 """Limits, report shape and public wording of the graph-ready iterated greedy stage."""
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, replace
 from typing import Any, Dict, Optional, Tuple
 
@@ -25,7 +24,6 @@ IG_ALGORITHM = "operation_destroy_best_insertion_v3"
 IG_PARTIAL_EVALUATION = "checkpoint_resume_prefix_exact"
 IG_ACCEPTANCE = "simulated_annealing_exponential_cooling"
 IG_GENERATORS = ("time_window", "resource_window", "tardy_random")
-IG_STATUSES = ("not_run", "skipped_no_parent", "skipped_by_budget", "strict_improvement", "no_strict_improvement")
 
 
 class _BudgetExhausted(RuntimeError):
@@ -38,7 +36,7 @@ def ig_decode_profile(profile: GraphReadyWeightProfile) -> GraphReadyWeightProfi
     """The canonical IG decode profile: same objective as the parent, inert formula and weights."""
     weights = {name: 0.0 for name in ("critical_path", "successor_count", "downstream_work_hours", "bottleneck_machine")}
     return replace(profile, slug=IG_PROFILE_SLUG, candidate_origin=GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
-                   candidate_policy=IG_CANDIDATE_POLICY, profile_order=0, raw_weights=weights, effective_weights=dict(weights),
+                   candidate_policy=IG_CANDIDATE_POLICY, profile_order=0, raw_weights=weights, effective_weights=weights,
                    formula_slug=IG_DECODE_FORMULA_SLUG, formula_version=IG_DECODE_FORMULA_VERSION, jitter_seed=0,
                    feature_basis=SUCCESSOR_WORKLOAD_BASIS)
 
@@ -52,7 +50,6 @@ class IteratedGreedyLimits:
     insertion_window: int = 6
     max_iterations: int = 200
     max_decodes: int = 400
-    time_budget_ms: Optional[int] = None
     generators: Tuple[str, ...] = IG_GENERATORS
     # Checkpoints captured per full decode; 0 turns trial resumption off.
     checkpoint_count: int = 8
@@ -89,10 +86,12 @@ def resolve_iterated_greedy_limits(construction: Optional[Dict[str, Any]], *, en
     if not isinstance(due_date_seed, bool):
         _invalid("due_date_seed")
     time_budget = raw.get("time_budget_ms")
+    if time_budget is not None:
+        _positive_int(time_budget, "time_budget_ms")
     max_size = min(_positive_int(raw.get("max_destruction_size", 6), "max_destruction_size"), 12)
     size = min(_positive_int(raw.get("destruction_size", 3), "destruction_size"), max_size)
-    start_ratio = _unit_fraction(raw.get("temperature_ratio_start", 1.0), "temperature_ratio_start", low=0.0, high=1.0, low_open=True)
-    end_ratio = _unit_fraction(raw.get("temperature_ratio_end", 0.01), "temperature_ratio_end", low=0.0, high=start_ratio, low_open=True)
+    start_ratio = _unit_fraction(raw.get("temperature_ratio_start", 1.0), "temperature_ratio_start", high=1.0)
+    end_ratio = _unit_fraction(raw.get("temperature_ratio_end", 0.01), "temperature_ratio_end", high=start_ratio)
     return IteratedGreedyLimits(
         enabled=active and enabled,
         destruction_size=size,
@@ -100,7 +99,6 @@ def resolve_iterated_greedy_limits(construction: Optional[Dict[str, Any]], *, en
         insertion_window=min(_positive_int(raw.get("insertion_window", 6), "insertion_window"), 32),
         max_iterations=min(_positive_int(raw.get("max_iterations", 200), "max_iterations"), 10000),
         max_decodes=min(_positive_int(raw.get("max_decodes", 400), "max_decodes"), 100000),
-        time_budget_ms=None if time_budget is None else _positive_int(time_budget, "time_budget_ms"),
         generators=_generators(raw.get("generators", IG_GENERATORS)),
         checkpoint_count=min(_non_negative_int(raw.get("checkpoint_count", 8), "checkpoint_count"), 64),
         pool_size=min(_positive_int(raw.get("pool_size", 3), "pool_size"), 8),
@@ -197,11 +195,11 @@ def _non_negative_int(value: Any, field: str) -> int:
     return int(value)
 
 
-def _unit_fraction(value: Any, field: str, *, low: float, high: float, low_open: bool = False, high_open: bool = False) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+def _unit_fraction(value: Any, field: str, *, high: float) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         _invalid(field)
     number = float(value)
-    if number < low or number > high or (low_open and number == low) or (high_open and number == high):
+    if not 0.0 < number <= high:
         _invalid(field)
     return number
 

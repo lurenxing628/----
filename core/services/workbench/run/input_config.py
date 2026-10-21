@@ -49,12 +49,11 @@ def hold_window(conn, settings, *, snapshot=None):
         cfg = configuration_snapshot(conn) if snapshot is None else snapshot
     except ValidationError:
         return None, "default"
-    days = cfg.freeze_window_days if str(cfg.freeze_window_enabled).strip().lower() == "yes" else 0
-    if not isinstance(days, int) or days <= 0:
+    if cfg.freeze_window_enabled != "yes" or cfg.freeze_window_days <= 0:
         return None, "default"
     start = datetime.combine(local_date(settings["start_date"]), datetime.min.time())
     try:
-        end = start + timedelta(days=days)
+        end = start + timedelta(days=cfg.freeze_window_days)
     except OverflowError:
         end = datetime.max.replace(second=0, microsecond=0)  # 天数大到越过 9999 年：按一直保留到最后处理
     return (start, end), "default"

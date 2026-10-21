@@ -17,7 +17,7 @@ from core.services.workbench.plan.read_context import PlanReadContext
 from core.services.workbench.plan.workspace_dto import resource_directory
 
 from .actual_gantt_chain import plan_chain
-from .actual_gantt_scope import cohort_match
+from .actual_gantt_scope import matches_execution_resource
 from .ledger import ExecutionLedgerService
 
 MAX_ACTUAL_RESPONSE_BYTES = 32 * 1024 * 1024
@@ -76,13 +76,9 @@ def _merge_resources(planned, actual):
 
 def _items(tasks, projection):
     by_operation = {row["operation_ref"]: row for row in projection["projections"]}
-    if len(by_operation) != len(projection["projections"]) or set(by_operation) != {t["operation_ref"] for t in tasks}:
-        raise WorkbenchCommandRejected("projection_invalid", "报工记录与计划工序不匹配，请刷新重试。")
     items = []
     for task in tasks:
         execution = by_operation[task["operation_ref"]]
-        if execution["comparison_task_ref"] != task["task_ref"]:
-            raise WorkbenchCommandRejected("projection_invalid", "报工记录对应的任务和你选的计划不是一份。请刷新后重试。")
         items.append({"task": task, "execution": execution})
     if sum(len(item["execution"]["reports"]) for item in items) > MAX_ACTUAL_REPORTS:
         raise WorkbenchCommandRejected("query_too_large", "所选范围超过一次能读的 50000 条报工上限，系统没有返回截断后的记录。请缩小范围后重试。", 413)
@@ -157,32 +153,31 @@ class ActualGanttService:
             items = [{"task": task, "execution": None} for task in planned["tasks"]]
             resources = planned["resources"]
         else:
-            if projection["available"] is not True or projection["time_basis"] != "factory_local":
-                raise WorkbenchCommandRejected("projection_invalid", "现场报工记录读不出来，或者时间的计算方式对不上。请刷新后重试。")
             items = _items(planned["tasks"], projection)
             resources = _merge_resources(planned["resources"], projection["resources"])
         return projection, items, resources, availability
 
     def workspace(self, scope, *, chain_target=None, include_chain=True):
-        context = PlanReadContext(self.conn)
+        context = PlanReadContext(self.conn, references=self.plans.references, entities=self.plans.entities)
         with context.read_scope():
             planned, plan_state = self._planned(scope, context)
-        projection, items, resources, availability = self._execution(planned, scope)
-        if scope.resource_ref is not None:
-            items = [item for item in items if cohort_match(item, scope)]
-        _, _, gantt_graph = project_process_order(self.conn, plan_ref=scope.plan_ref, context=context)
-        data = {"plan": planned["plan"], "scope": scope.scope(), "plan_span": planned["plan_span"],
-                "axis_span": _span(planned["plan_span"], items), "availability": availability,
-                "items": items, "task_count": len(items), "items_complete": True,
-                "report_count": sum(len(item["execution"]["reports"]) for item in items) if projection else None,
-                "resources": resources, "calendar": planned["projections"]["calendar"],
-                "gantt_graph": gantt_graph,
-                "semantics": {"cohort": "plan_finish_date_and_plan_overlap", "resources": "planned_or_actual_or_recorded_remaining",
-                              "reports": "all_effective_reports_of_selected_operations", "local_filters": "search_late_selected",
-                              "export": "full_snapshot_cohort_or_explicit_local_view", "time_basis": "factory_local"}}
-        state = content_text({"plan": plan_state, "execution": projection["snapshot_facts"] if projection else None,
-                                   "data": data})
-        if include_chain:
-            data["critical_chain"] = plan_chain(scope.plan_ref,
-                {item["task"]["task_ref"] for item in items}, target_task_ref=chain_target, context=context)
-        return data, state
+            projection, items, resources, availability = self._execution(planned, scope)
+            if scope.resource_ref is not None:
+                items = [item for item in items if matches_execution_resource(
+                    item["task"], item["execution"], scope.resource_type, scope.resource_ref)]
+            _, _, gantt_graph = project_process_order(self.conn, plan_ref=scope.plan_ref, context=context)
+            data = {"plan": planned["plan"], "scope": scope.scope(), "plan_span": planned["plan_span"],
+                    "axis_span": _span(planned["plan_span"], items), "availability": availability,
+                    "items": items, "task_count": len(items), "items_complete": True,
+                    "report_count": sum(len(item["execution"]["reports"]) for item in items) if projection else None,
+                    "resources": resources, "calendar": planned["projections"]["calendar"],
+                    "gantt_graph": gantt_graph,
+                    "semantics": {"cohort": "plan_finish_date_and_plan_overlap", "resources": "planned_or_actual_or_recorded_remaining",
+                                  "reports": "all_effective_reports_of_selected_operations", "local_filters": "search_late_selected",
+                                  "export": "full_snapshot_cohort_or_explicit_local_view", "time_basis": "factory_local"}}
+            state = content_text({"plan": plan_state, "execution": projection["snapshot_facts"] if projection else None,
+                                       "data": data})
+            if include_chain:
+                data["critical_chain"] = plan_chain(scope.plan_ref,
+                    {item["task"]["task_ref"] for item in items}, target_task_ref=chain_target, context=context)
+            return data, state

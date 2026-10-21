@@ -4,8 +4,9 @@ import math
 from typing import Any, Dict, List, Tuple
 
 from core.services.scheduler.contracts.optimizer_public_safety import (
-    project_attempt_failed_ops,
+    COMPARISON_METRIC_KEYS,
     project_attempt_metrics,
+    public_int,
     safe_attempt_text,
     safe_non_negative_int,
 )
@@ -22,7 +23,6 @@ REJECTED_DIAGNOSTIC_ATTEMPT_KEYS = DIAGNOSTIC_ATTEMPT_KEYS | {
     "dispatch_mode",
     "dispatch_rule",
 }
-COMPARISON_METRIC_KEYS = ("failed_ops", "overdue_count", "weighted_tardiness_hours", "total_tardiness_hours", "makespan_hours", "changeover_count")
 _COMPLETION_KEYS = ("expected_operation_count", "missing_operation_count", "unexpected_result_count", "complete_batch_count", "incomplete_batch_count")
 _SOURCE_LABELS = (
     ("graph_ready_base", "按基础规则试排"), ("graph_ready_weight_grid", "按不同优先侧重试排"),
@@ -106,16 +106,16 @@ def _project_public_attempt(attempt: Dict[str, Any]) -> Dict[str, Any]:
     score, _primary = project_attempt_evaluation(attempt.get("score"), None, raw_completion if isinstance(raw_completion, dict) else {})
     if score:
         public_attempt["score"] = score
-    failed_ops = project_attempt_failed_ops(attempt.get("failed_ops"))
+    failed_ops = public_int(attempt.get("failed_ops"))
     if failed_ops is not None:
         public_attempt["failed_ops"] = failed_ops
     metrics = project_attempt_metrics(attempt.get("metrics"))
     if metrics:
         public_attempt["metrics"] = metrics
-    source_label = _source_label(attempt)
+    origin = _source_origin(attempt)
+    source_label = _source_label(attempt, origin=origin)
     if source_label:
         public_attempt["source_label"] = source_label
-    origin = _source_origin(attempt)
     if origin:
         public_attempt["candidate_origin"] = origin
     profile = safe_attempt_text(attempt.get("weight_profile_slug"))
@@ -133,8 +133,7 @@ def _project_public_attempt(attempt: Dict[str, Any]) -> Dict[str, Any]:
     return public_attempt
 
 
-def _source_label(attempt: Dict[str, Any]) -> str:
-    origin = _source_origin(attempt)
+def _source_label(attempt: Dict[str, Any], *, origin: str) -> str:
     label = next((label for key, label in _SOURCE_LABELS if key == origin), "")
     if label:
         return label

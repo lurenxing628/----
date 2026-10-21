@@ -76,20 +76,6 @@ class BatchOperationRepository(BaseRepository):
         if not updates:
             return
 
-        allowed = {
-            "piece_id",
-            "seq",
-            "op_type_id",
-            "op_type_name",
-            "source",
-            "machine_id",
-            "operator_id",
-            "supplier_id",
-            "setup_hours",
-            "unit_hours",
-            "ext_days",
-            "status",
-        }
         set_parts: List[str] = []
         params: List[Any] = []
 
@@ -107,11 +93,9 @@ class BatchOperationRepository(BaseRepository):
             "ext_days",
             "status",
         ):
-            if key not in allowed:
-                continue
             if key in updates:
                 set_parts.append(f"{key} = ?")
-                params.append(updates.get(key))
+                params.append(updates[key])
 
         if not set_parts:
             return

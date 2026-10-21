@@ -11,7 +11,7 @@ import heapq
 import math
 from dataclasses import dataclass
 from datetime import datetime
-from itertools import combinations
+from itertools import chain, combinations
 from typing import Any, Callable, Dict, FrozenSet, Iterator, Optional, Tuple
 
 _MAX_PROBES = 2048
@@ -66,7 +66,7 @@ def build_due_date_seed(*, parent: Any, candidate: Dict[str, Any], metrics: Dict
         result["estimated_start_offset_hours"] = offset
         budget.check()
         search = _SeedSearch(jobs, offset, _estimate(order, jobs, offset), budget)
-        deferred = _moore_deferred(jobs, offset, budget)
+        deferred = _moore_deferred(search.jobs_by_due, offset, budget)
         result["deferred_count"] = len(deferred)
         key = search.probe(deferred)
         if len(deferred) <= 2 and math.comb(len(jobs), len(deferred)) <= _MAX_PROBES:
@@ -194,10 +194,10 @@ def _finite_number(value: Any) -> bool:
         return False
 
 
-def _moore_deferred(jobs: Dict[int, _Job], offset: float, budget: _Budget) -> FrozenSet[int]:
+def _moore_deferred(jobs: Tuple[_Job, ...], offset: float, budget: _Budget) -> FrozenSet[int]:
     heap, deferred = [], set()
     completion = offset
-    for job in sorted(jobs.values(), key=lambda item: (item.due, item.processing, item.op_id)):
+    for job in jobs:
         budget.check()
         heapq.heappush(heap, (-job.processing, -job.due, -job.op_id))
         completion += job.processing
@@ -209,11 +209,11 @@ def _moore_deferred(jobs: Dict[int, _Job], offset: float, budget: _Budget) -> Fr
     return frozenset(deferred)
 
 
-def _order_for(deferred: FrozenSet[int], jobs: Dict[int, _Job]) -> Tuple[int, ...]:
-    early = sorted((job for job in jobs.values() if job.op_id not in deferred),
-                   key=lambda job: (job.due, job.processing, job.op_id))
-    late = sorted((jobs[op_id] for op_id in deferred), key=lambda job: (job.processing, job.due, job.op_id))
-    return tuple(job.op_id for job in early + late)
+def _order_for(deferred: FrozenSet[int], jobs_by_due: Tuple[_Job, ...],
+               jobs_by_processing: Tuple[_Job, ...]) -> Tuple[int, ...]:
+    early = (job.op_id for job in jobs_by_due if job.op_id not in deferred)
+    late = (job.op_id for job in jobs_by_processing if job.op_id in deferred)
+    return tuple(chain(early, late))
 
 
 def _estimate(order: Tuple[int, ...], jobs: Dict[int, _Job], offset: float) -> Tuple[int, float]:
@@ -231,6 +231,8 @@ def _estimate(order: Tuple[int, ...], jobs: Dict[int, _Job], offset: float) -> T
 class _SeedSearch:
     def __init__(self, jobs: Dict[int, _Job], offset: float, original_key: Tuple[int, float], budget: _Budget) -> None:
         self.jobs, self.offset, self.budget = jobs, offset, budget
+        self.jobs_by_due = tuple(sorted(jobs.values(), key=lambda job: (job.due, job.processing, job.op_id)))
+        self.jobs_by_processing = tuple(sorted(jobs.values(), key=lambda job: (job.processing, job.due, job.op_id)))
         self.original_key = self.best_key = original_key
         self.best_order: Optional[Tuple[int, ...]] = None
         self.keys: Dict[FrozenSet[int], Tuple[int, float]] = {}
@@ -241,7 +243,7 @@ class _SeedSearch:
         self.budget.check()
         if deferred in self.keys:
             return self.keys[deferred]
-        order = _order_for(deferred, self.jobs)
+        order = _order_for(deferred, self.jobs_by_due, self.jobs_by_processing)
         key = self.probe_order(order)
         self.keys[deferred] = key
         return key
@@ -302,7 +304,7 @@ def _polish_order(search: _SeedSearch, order: Tuple[int, ...]) -> None:
     # Early-EDD / late-SPT alone cannot express a late job inserted into unused slack
     # between on-time jobs. Evaluate these orders cheaply before one formal SGS decode.
     # Every distinct order consumes the same global probe allowance and time guard.
-    key = _estimate(order, search.jobs, search.offset)
+    key = search.best_key
     while True:
         search.budget.check()
         for proposed in _insertion_orders(order, search.jobs, search.offset):

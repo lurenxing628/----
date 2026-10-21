@@ -6,7 +6,7 @@ count, decides when a projection is over budget, and chunks keyed lookups.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from .base_repo import BaseRepository
 from .schedule_time_sql import overlap_or_bad_time_sql, parse_dt_for_sql, register_schedule_time_sql_functions
@@ -22,9 +22,10 @@ class CalendarFactsRepository(BaseRepository):
     def __init__(self, conn, logger=None):
         super().__init__(conn, logger=logger)
         register_schedule_time_sql_functions(conn)
+        self._read_schema_version: Optional[int] = None
 
-    def schema_version(self):
-        if not hasattr(self, "_read_schema_version"):
+    def schema_version(self) -> int:
+        if self._read_schema_version is None:
             self._read_schema_version = self.fetchvalue("SELECT version FROM SchemaVersion WHERE id=1")
             if type(self._read_schema_version) is not int:
                 raise ValueError("Calendar schema version is missing or invalid")

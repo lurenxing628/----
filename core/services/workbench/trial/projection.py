@@ -12,6 +12,7 @@ from core.services.workbench.facts.delivery_projection import (
     project_delivery_batch,
     task_intervals,
 )
+from core.services.workbench.facts.operation_effort_evidence import saved_operation_efforts
 from core.services.workbench.facts.preflight_checks import stored_date
 from core.services.workbench.facts.resource_projection import RESOURCE_METRIC_VERSION
 from core.services.workbench.facts.trial_origin import delivery_origin, operation_contexts
@@ -187,7 +188,7 @@ def comparison(tasks, checked, rows, admission, origin_issues=(), facts=None, *,
             "changeovers": None, "changeover_reason": "原试调来源的工种资料缺失。"}
 
 
-def scenario_comparison(saved, head, rows, *, projected=None, facts=None, origin=None):
+def scenario_comparison(saved, head, *, projected=None, facts=None, origin=None):
     """Reproject a historical saved view from its immutable source, without writing it."""
     if head is None:
         projected = []
@@ -200,7 +201,6 @@ def scenario_comparison(saved, head, rows, *, projected=None, facts=None, origin
                               "_delivery_source_unknown": True})
         admission = {"source": {}, "facts": {"tables": {"BatchOperations": []}}}
         return comparison(saved["tasks"], saved["validation"], projected, admission, ["trial_source_unavailable"])
-    projected = scenario_rows(saved, rows) if projected is None else projected
     return comparison(saved["tasks"], saved["validation"], projected, head["admission"], facts=facts, origin=origin)
 
 
@@ -217,16 +217,12 @@ def scenario_rows(saved, rows):
     return projected
 
 
-def scenario_capacity(saved, head, rows, *, projected=None, archive=None):
+def scenario_capacity(saved, head, *, projected=None, archive=None):
     if head is None:
         return dict(saved["capacity"], state="unavailable", source="archived_resource_calendar",
                     metric_version=RESOURCE_METRIC_VERSION, resource_common=None,
                     reason="原草稿保存的日历来源缺失，资源容量未知。", resources=[])
     admission = head["admission"]
-    if archive is None:
-        facts = GenerationFacts(admission["source"]["capture"]) if "capture" in admission["source"] else None
-        archive = facts.archive if facts is not None else admission["facts"]
-    projected = scenario_rows(saved, rows) if projected is None else projected
     return trial_capacity(projected, archive, source_ref=admission["source"]["identity"])
 
 
@@ -276,9 +272,10 @@ def draft_projection(head, rows, checked, live, context_factory, frozen=None, *,
             task["edit_context"]["can_change"] = False
             task["edit_context"]["blocked_reasons"].extend(context["blocked_reasons"])
     unplanned = _unplanned(contexts)
-    ledger = operation_effort_ledger(rows, admission)
+    before_efforts = saved_operation_efforts(admission["source"].get("operation_effort"))
+    ledger = operation_effort_ledger(rows, admission, before_efforts=before_efforts)
     pairs, preparation = preparation_projection(rows, admission, ledger,
-        current_evidence=current_evidence, contexts=contexts)
+        current_evidence=current_evidence, contexts=contexts, before_efforts=before_efforts)
     apply_preparation(tasks, unplanned, pairs)
     compared = comparison(tasks, checked, rows, admission, facts=facts, origin=origin)
     compared["preparation_common"] = preparation

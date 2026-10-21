@@ -24,7 +24,7 @@ def project_admitted_scope(settings, archive, *, tables=None, entity_refs=None, 
         selected.append({"batch_ref": ref, "batch_id": batch_id, "part_no": part_no,
                          "part_label": text(part.get("part_name"), prefix + "part_label", gaps)})
     operations = (_table(archive, "BatchOperations") if tables is None else
-                  list(tables["BatchOperations"].values()) if "BatchOperations" in archive["tables"] else None)
+                  tables["BatchOperations"].values() if "BatchOperations" in archive["tables"] else None)
     complete_scope = summary["batch_count"] is not None and all(item["batch_id"] is not None for item in selected)
     operation_count = None
     if complete_scope and operations is not None:

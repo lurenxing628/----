@@ -27,7 +27,6 @@ class ScheduleRunState:
     results: List[ScheduleResult] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
     blocked_batches: set = field(default_factory=set)
-    initial_scheduled_count: int = 0
     failed_count: int = 0
     seed_count: int = 0
     missing_seed_machine_count: int = 0
@@ -38,46 +37,9 @@ class ScheduleRunState:
     batch_failure_sources: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     readiness_gate_enabled: bool = False
 
-    @classmethod
-    def from_legacy(
-        cls,
-        *,
-        base_time: datetime,
-        batch_progress: Dict[str, datetime],
-        external_group_cache: Dict[Tuple[str, ...], Tuple[datetime, datetime]],
-        machine_timeline: Dict[str, List[Tuple[datetime, datetime]]],
-        operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],
-        machine_busy_hours: Dict[str, float],
-        operator_busy_hours: Dict[str, float],
-        last_op_type_by_machine: Dict[str, str],
-        last_end_by_machine: Dict[str, datetime],
-        results: List[ScheduleResult],
-        errors: List[str],
-        blocked_batches: set,
-        scheduled_count: int,
-        failed_count: int,
-    ) -> ScheduleRunState:
-        initial_scheduled_count = max(int(scheduled_count or 0) - len(results or []), 0)
-        return cls(
-            base_time=base_time,
-            batch_progress=batch_progress,
-            external_group_cache=external_group_cache,
-            machine_timeline=machine_timeline,
-            operator_timeline=operator_timeline,
-            machine_busy_hours=machine_busy_hours,
-            operator_busy_hours=operator_busy_hours,
-            last_op_type_by_machine=last_op_type_by_machine,
-            last_end_by_machine=last_end_by_machine,
-            results=results,
-            errors=errors,
-            blocked_batches=blocked_batches,
-            initial_scheduled_count=initial_scheduled_count,
-            failed_count=int(failed_count or 0),
-        )
-
     @property
     def scheduled_count(self) -> int:
-        return int(self.initial_scheduled_count or 0) + len(self.results)
+        return len(self.results)
 
     def clone(self) -> ScheduleRunState:
         """Independent snapshot for a decode checkpoint.
@@ -102,11 +64,10 @@ class ScheduleRunState:
             results=list(self.results),
             errors=list(self.errors),
             blocked_batches=set(self.blocked_batches),
-            initial_scheduled_count=int(self.initial_scheduled_count or 0),
-            failed_count=int(self.failed_count or 0),
-            seed_count=int(self.seed_count or 0),
-            missing_seed_machine_count=int(self.missing_seed_machine_count or 0),
-            missing_seed_operator_count=int(self.missing_seed_operator_count or 0),
+            failed_count=self.failed_count,
+            seed_count=self.seed_count,
+            missing_seed_machine_count=self.missing_seed_machine_count,
+            missing_seed_operator_count=self.missing_seed_operator_count,
             missing_seed_machine_samples=list(self.missing_seed_machine_samples),
             missing_seed_operator_samples=list(self.missing_seed_operator_samples),
             failure_details=list(self.failure_details),
@@ -152,7 +113,7 @@ class ScheduleRunState:
             self._retire_resource_demand(detail["op_id"])
             if batch_id:
                 self.batch_failure_sources[batch_id] = detail
-        for skipped_op in list(skipped_ops or []):
+        for skipped_op in skipped_ops or ():
             self.failure_details.append(
                 self._failure_detail(
                     "skipped_after_batch_failure",
@@ -194,7 +155,7 @@ class ScheduleRunState:
                 "graph_fixed_successor_order_conflict",
                 op,
                 batch_id=batch_id,
-                extra={"fixed_successor_op_ids": [int(item) for item in list(fixed_successor_op_ids or [])][:20]},
+                extra={"fixed_successor_op_ids": [int(item) for item in (fixed_successor_op_ids or ())[:20]]},
             )
         )
 
@@ -296,7 +257,7 @@ class ScheduleRunState:
             detail["failed_op_id"] = failed_source.get("op_id")
             detail["failed_op_code"] = failed_source.get("op_code")
         if extra:
-            detail.update(dict(extra))
+            detail.update(extra)
         return detail
 
     @staticmethod

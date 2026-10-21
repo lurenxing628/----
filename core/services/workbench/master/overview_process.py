@@ -1,7 +1,5 @@
 """Route checks retain the current workflow's zero/unknown and merged-group rules."""
 
-from collections import defaultdict
-
 from core.models.resource_capabilities import supports_source
 
 from .overview_graph import number, text
@@ -12,9 +10,7 @@ MERGE_TEXT = {"merged": "合并设置", "separate": "分别设置"}
 
 def add_process(graph):
     facts = graph.facts
-    grouped = defaultdict(list)
-    for row in facts.rows("PartOperations"):
-        grouped[row["part_no"]].append(row)
+    grouped = facts.grouped("PartOperations", "part_no")
     for row in facts.rows("Parts"):
         key = row["part_no"]
         part = graph.add("part", key, key, row["part_name"])
@@ -26,7 +22,7 @@ def add_process(graph):
         if not facts.available("PartOperations", "ExternalGroups"):
             graph.unknown(part, "工艺路线", "PartOperations / ExternalGroups", relation=True)
             continue
-        operations = grouped[key]
+        operations = grouped.get(key, [])
         active = [op for op in operations if op["status"] == "active"]
         graph.field(part, "有效模板工序数", len(active), "PartOperations.status=active")
         if not active:
@@ -35,14 +31,13 @@ def add_process(graph):
         if operations or isinstance(row["route_raw"], str) and row["route_raw"].strip():
             route = graph.add("route", key, key, (row["part_name"] or key) + " · 工艺路线")
             graph.link(part, route, "工艺路线", "Parts -> PartOperations", "所属零件")
-            _route(graph, route, row, operations)
+            _route(graph, route, row, operations, active)
     _orphan_operations(graph, grouped)
 
 
-def _route(graph, route, row, operations):
+def _route(graph, route, row, operations, active):
     graph.field(route, "原始路线", row["route_raw"], "Parts.route_raw", required=False)
     graph.field(route, "路线解析标记", PARSED_TEXT.get(row["route_parsed"], row["route_parsed"]), "Parts.route_parsed")
-    active = [op for op in operations if op["status"] == "active"]
     graph.field(route, "有效工序数", len(active), "PartOperations.status=active")
     graph.field(route, "保留历史工序数", len(operations) - len(active), "PartOperations.status", required=False)
     if (row["route_parsed"] == "yes") != bool(active):

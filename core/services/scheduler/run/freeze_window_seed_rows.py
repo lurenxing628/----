@@ -4,13 +4,13 @@ from types import SimpleNamespace
 from typing import Any, Dict, List, Set
 
 from core.algorithm_contracts.schedule_point_evidence import verified_point
-from core.algorithms.value_domains import INTERNAL
+from core.algorithm_contracts.value_domains import INTERNAL
 from core.shared.local_datetime import parse_local_datetime as parse_dt
 
 
-def cache_seed_for_prefix(svc, *, prefix, schedule_map, seed_tmp, point_validator=None):
+def cache_seed_for_prefix(*, prefix, schedule_map, seed_tmp, point_validator=None):
     for oid in prefix:
-        row = schedule_map.get(int(oid)) or {}
+        row = schedule_map[int(oid)]
         start = parse_dt(row.get("start_time"))
         end = parse_dt(row.get("end_time"))
         if not start or not end or end < start:
@@ -35,9 +35,7 @@ def build_seed_results(frozen_op_ids: Set[int], *, op_by_id: Dict[int, Any],
         op, seed = op_by_id.get(oid), seed_tmp.get(oid)
         if not op or not seed:
             continue
-        row, start, end = seed.get("row"), seed.get("start_time"), seed.get("end_time")
-        if not row or not start or not end:
-            continue
+        row, start, end = seed["row"], seed["start_time"], seed["end_time"]
         results.append({"op_id": oid, "op_code": op.op_code, "batch_id": op.batch_id,
                         "seq": int(op.seq or 0), "machine_id": row.get("machine_id"),
                         "operator_id": row.get("operator_id"), "start_time": start, "end_time": end,

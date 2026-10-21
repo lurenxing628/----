@@ -64,7 +64,7 @@ def _batch_row(source, key, item, scope, reason):
             "remaining_drill": _remaining_drill(source, key, available, count, batch_ref=item["batch_ref"])}
 
 
-def completion_batches(source, filters, *, page: Union[int, str] = 1, size: Union[int, str] = 20, all_rows=False):
+def completion_batches(source, filters, *, page: Union[int, str] = 1, size: Union[int, str] = 20):
     key = filters["completion_candidate_ref"] or source.selected_ref
     if key is None:
         reject("invalid_input", "请选择本次排产中的候选后查看工序安排。", 422)
@@ -83,7 +83,7 @@ def completion_batches(source, filters, *, page: Union[int, str] = 1, size: Unio
     items = known + unknown
     page, size = _page(page), _page(size, size=True)
     offset = (page - 1) * size
-    selected = items if all_rows else items[offset:offset + size]
+    selected = items[offset:offset + size]
     remaining = source.completion.remaining_operation_refs(key)
     return {"run_ref": source.run["run_ref"], "scope": source.scope, "baseline": source.baseline,
             "candidate": {"candidate_ref": key, "label": candidate["artifact"].get("label"), "persisted_status": candidate["status"]},

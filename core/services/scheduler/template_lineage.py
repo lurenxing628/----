@@ -38,11 +38,12 @@ def _entity_facts(facts):
     return {(row["kind"], row["entity_key"]): row for row in facts["WorkbenchEntityRefs"] if row["active"]}
 
 
-def _template_facts(facts, entities):
-    rows = {str(row["id"]): row for row in facts["PartOperations"]}
+def _template_facts(facts, entities, *, target_ids=None):
+    rows = {str(row["id"]): row for row in facts["PartOperations"]
+            if target_ids is None or row["id"] in target_ids}
     result = {}
     for (kind, key), identity in entities.items():
-        if kind != "template_operation":
+        if kind != "template_operation" or (target_ids is not None and key not in rows):
             continue
         row = rows.get(key)
         part = entities.get(("part", row["part_no"])) if row is not None else None
@@ -87,6 +88,7 @@ class TemplateLineageWriter:
     def __init__(self, conn):
         self.conn = conn
         self.repo = WorkbenchTemplateLineageRepository(conn)
+        self.contexts = BatchExternalContextRepository(conn)
 
     def require_ready(self):
         if not self.conn.in_transaction:
@@ -112,8 +114,9 @@ class TemplateLineageWriter:
         """Capture fixed raw templates once for this caller transaction."""
         self.require_ready()
         if facts is not None:
+            target_ids = {row["id"] for row in rows}
             entities = _entity_facts(facts)
-            templates = _template_facts(facts, entities)
+            templates = _template_facts(facts, entities, target_ids=target_ids)
             by_id = {row["id"]: row for row in templates.values() if row["id"] is not None}
             rows = [by_id.get(row["id"]) for row in rows]
         return [_PreparedTemplate(_template_row(row), snapshot(row)) for row in rows]
@@ -126,8 +129,7 @@ class TemplateLineageWriter:
             if instance["part_ref"] != template["part_ref"]:
                 raise WorkbenchCommandRejected("template_lineage_mismatch", "目标批次不是这个来源模板的零件，系统没有按图号猜着匹配，这次没有复制。请重新选择批次。")
             if instance["source"] == "external":
-                contexts = BatchExternalContextRepository(self.conn)
-                if not contexts.mark_template_copy(instance["id"]):
+                if not self.contexts.mark_template_copy(instance["id"]):
                     raise WorkbenchCommandRejected("external_context_missing", "没有保存这道外协工序的周期记录，这次没有复制。请先完成版本升级。")
             self._record_new_origin(instance, template, prepared.encoded)
             return instance["id"]
@@ -153,7 +155,7 @@ class TemplateLineageWriter:
         external_ids = {row["id"] for row in rows if row["source"] == "external"}
         contexts = {}
         if external_ids:
-            captured = facts["BatchExternalContexts"] if facts is not None else BatchExternalContextRepository(self.conn).for_operations(external_ids)
+            captured = facts["BatchExternalContexts"] if facts is not None else self.contexts.for_operations(external_ids)
             contexts = {row["operation_id"]: row for row in captured if row["operation_id"] in external_ids}
             if set(contexts) != external_ids:
                 raise WorkbenchCommandRejected("external_context_missing", "原工序缺少外协周期记录，不能按当前模板猜着复制。请先核对原批次。")
@@ -178,7 +180,7 @@ class TemplateLineageWriter:
             if original["source"] == "external":
                 if original["part_ref"] != instance["part_ref"]:
                     raise WorkbenchCommandRejected("template_lineage_mismatch", "目标批次不是原外协周期记录的零件，这次没有复制。")
-                BatchExternalContextRepository(self.conn).copy_captured(cast(dict, prepared.context), instance["id"])
+                self.contexts.copy_captured(cast(dict, prepared.context), instance["id"])
             origin = prepared.origin
             # Known but polluted origins remain known and polluted after copying.
             if origin is not None:
@@ -199,8 +201,10 @@ class TemplateLineageWriter:
         self.require_ready()
         if not isinstance(reason, str) or not reason.strip():
             raise WorkbenchCommandRejected("invalid_input", "撤回模板来源必须填写原因，这次没有撤回。请填好原因后重新提交。", 400)
+        if not read_origins(self.repo, [operation_ref]):
+            raise WorkbenchCommandRejected("entity_not_found", "这道工序没有可撤回的模板来源。请刷新后重新选择。", 404)
         rows = read_events(self.repo, [operation_ref]).get(operation_ref, [])
-        if not read_origins(self.repo, [operation_ref]) or not rows:
+        if not rows:
             raise WorkbenchCommandRejected("entity_not_found", "这道工序没有可撤回的模板来源。请刷新后重新选择。", 404)
         if any(row["event_type"] == "withdrawn" for row in rows):
             return False

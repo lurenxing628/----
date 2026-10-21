@@ -5,8 +5,6 @@ from datetime import date, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
-from core.algorithms import ScheduleResult
-
 from .acceptance import AcceptanceDecision, decide_acceptance
 from .attempt_records import (
     append_rejected_reason_attempt,
@@ -15,11 +13,6 @@ from .attempt_records import (
 )
 from .local_search_candidate_eval import evaluate_local_search_candidate
 from .local_search_fingerprints import LocalSearchFingerprintTracker, local_candidate_fingerprint
-from .local_search_report_hooks import (
-    mark_acceptance_rejected,
-    mark_best_candidate_accepted,
-    mark_current_candidate_accepted,
-)
 from .local_search_state import LocalSearchState, candidate_can_update_best
 from .neighborhood_moves import NeighborhoodMove
 from .neighborhood_registry import choose_neighborhood_move
@@ -70,7 +63,6 @@ def _record_improvement(
     t_begin: float,
     reference: Optional[Dict[str, Any]] = None,
     search_report_state: Optional[OptimizationSearchReportState] = None,
-    accepted: bool = True,
 ) -> None:
     metrics = candidate["metrics"]
     score = candidate["score"]
@@ -105,7 +97,7 @@ def _record_improvement(
         "metrics": metrics.to_dict(),
     }
     attempt.update(attempt_decision_evidence(
-        candidate=candidate, reference=reference, accepted=accepted,
+        candidate=candidate, reference=reference, accepted=True,
         search_report_state=search_report_state, clock=clock, t_begin=t_begin,
     ))
     attempts.append(attempt)
@@ -138,28 +130,14 @@ def _record_noop_neighbor(
 def mark_neighborhood_move(
     search_report_state: Optional[OptimizationSearchReportState],
     move: NeighborhoodMove,
-    *,
-    noop: Optional[bool] = None,
-    candidate_rejected: str = "",
-    reason: str = "",
 ) -> None:
-    if search_report_state is None:
-        return
-    row = move.to_report_dict()
-    if noop is not None:
-        row["noop"] = bool(noop)
-    if candidate_rejected:
-        row["candidate_rejected"] = str(candidate_rejected)
-    if reason:
-        diagnostics = dict(row.get("diagnostics") or {})
-        diagnostics["reason"] = str(reason)
-        row["diagnostics"] = diagnostics
-    search_report_state.mark_neighborhood_move(row)
+    if search_report_state is not None:
+        search_report_state.mark_neighborhood_move(move.to_report_dict())
 
 
 def _apply_accepted_candidate(
     *,
-    candidate: Optional[Dict[str, Any]],
+    candidate: Dict[str, Any],
     local_state: LocalSearchState,
     candidate_fingerprint: Any,
     acceptance_decision: AcceptanceDecision,
@@ -173,8 +151,6 @@ def _apply_accepted_candidate(
     incumbent_fingerprint_changed: bool,
     search_report_state: Optional[OptimizationSearchReportState] = None,
 ) -> Tuple[bool, bool, int]:
-    if candidate is None:
-        return False, False, no_improve + 1
     if acceptance_decision.accepted and candidate_can_update_best(
         candidate=candidate,
         best=local_state.best,
@@ -192,7 +168,6 @@ def _apply_accepted_candidate(
             t_begin=t_begin,
             reference=local_state.best,
             search_report_state=search_report_state,
-            accepted=acceptance_decision.accepted,
         )
         local_state.improve_best(candidate)
         return True, True, 0
@@ -219,20 +194,14 @@ def run_local_search_candidate_round(
     version: int,
     iteration: int,
     iteration_limit: int,
-    scheduler: Any,
     strict_mode: bool,
-    algo_ops_to_schedule: List[Any],
     batches: Dict[str, Any],
     start_dt: datetime,
     end_date: Optional[date],
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
-    seed_sr_list: List[ScheduleResult],
     resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
     optimizer_algo_stats: Optional[Dict[str, Any]],
-    schedule_fn: Callable[..., Any],
     readiness_gate_enabled: bool,
-    graph_ready_context: Optional[Any],
     valid_dispatch_rules: List[str],
     fingerprint_tracker: LocalSearchFingerprintTracker,
     clock: Callable[[], float],
@@ -243,15 +212,15 @@ def run_local_search_candidate_round(
     move = choose_neighborhood_move(
         order=local_state.current_order,
         neighborhoods=vns_state.current_choice(),
-        results=list(local_state.current.get("results") or []),
+        results=local_state.current.get("results") or [],
         batches=batches,
         resource_pool=local_state.current_resource_pool or resource_pool,
         rnd=rnd,
         current_dispatch_rule=cur_dispatch_rule,
         valid_dispatch_rules=valid_dispatch_rules,
     )
+    mark_neighborhood_move(search_report_state, move)
     if move.noop:
-        mark_neighborhood_move(search_report_state, move)
         _record_noop_neighbor(
             attempts=attempts,
             search_report_state=search_report_state,
@@ -261,7 +230,6 @@ def run_local_search_candidate_round(
             move=move,
         )
         return LocalSearchRoundResult(no_improve + 1, False, False, move)
-    mark_neighborhood_move(search_report_state, move)
     cand_order = list(move.batch_order or local_state.current_order)
     candidate_resource_pool = local_state.current_resource_pool or resource_pool
     candidate_pair_rank = local_state.current_resource_pair_rank
@@ -277,26 +245,19 @@ def run_local_search_candidate_round(
     # microseconds, so the decode time is measured from it without another clock call.
     evaluate = partial(
         evaluate_local_search_candidate,
-        scheduler=scheduler,
         strict_mode=bool(strict_mode),
-        algo_ops_to_schedule=algo_ops_to_schedule,
-        batches=batches,
         strategy=cur_strat,
         params=cur_params,
         start_dt=start_dt,
         end_date=end_date,
-        downtime_map=downtime_map,
         order=cand_order,
-        seed_sr_list=seed_sr_list,
         dispatch_mode=candidate_mode,
         dispatch_rule=candidate_rule,
         resource_pool=candidate_resource_pool,
         resource_pair_rank=candidate_pair_rank,
         objective_name=objective_name,
         optimizer_algo_stats=optimizer_algo_stats,
-        schedule_fn=schedule_fn,
         readiness_gate_enabled=bool(readiness_gate_enabled),
-        graph_ready_context=graph_ready_context,
         neighborhood_move=move,
         decode_session=decode_session,
     )
@@ -391,28 +352,31 @@ def _record_acceptance_result(
     candidate: Dict[str, Any],
     acceptance_decision: AcceptanceDecision,
 ) -> None:
+    if best_improved and candidate_fingerprint is not None:
+        fingerprint_tracker.mark_best(candidate_fingerprint)
+    if search_report_state is None:
+        return
     if best_improved:
-        if candidate_fingerprint is not None:
-            fingerprint_tracker.mark_best(candidate_fingerprint)
-        mark_best_candidate_accepted(
-            search_report_state=search_report_state,
-            candidate=candidate,
-            acceptance_decision=acceptance_decision,
+        search_report_state.local_search_improved = True
+        search_report_state.mark_candidate_accepted(
+            candidate,
+            origin="local_search",
+            acceptance_event=acceptance_decision.to_report_dict(),
             fingerprint=candidate_fingerprint,
         )
-        return
-    if accepted_current:
-        mark_current_candidate_accepted(
-            search_report_state=search_report_state,
-            candidate=candidate,
-            acceptance_decision=acceptance_decision,
+    elif accepted_current:
+        search_report_state.mark_current_candidate_accepted(
+            candidate,
+            origin="local_search",
+            acceptance_event=acceptance_decision.to_report_dict(),
             fingerprint=candidate_fingerprint,
         )
-        return
-    mark_acceptance_rejected(
-        search_report_state=search_report_state,
-        acceptance_decision=acceptance_decision,
-    )
+    else:
+        search_report_state.mark_acceptance_event(
+            acceptance_decision.to_report_dict(),
+            best_improved=False,
+            current_accepted=False,
+        )
 
 
 __all__ = ["LocalSearchRoundResult", "mark_neighborhood_move", "run_local_search_candidate_round", "stamp_decode_runtime"]

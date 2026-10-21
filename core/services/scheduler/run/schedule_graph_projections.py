@@ -4,17 +4,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from .schedule_graph_dispatch_context import (
-    build_graph_health_context,
-    build_graph_ready_context,
-    build_graph_resource_matching_projection,
-)
+from .schedule_graph_dispatch_context import build_graph_ready_context
+from .schedule_graph_resource_matching_context import build_graph_resource_matching_projection
 from .schedule_graph_score_projection import build_graph_score_projection
 
 
 @dataclass(frozen=True)
 class GraphDispatchProjections:
-    health_context: Dict[str, Any]
     ready_context: Optional[Dict[str, Any]]
     score_public: Dict[str, Any]
     score_diagnostics: Dict[str, Any]
@@ -32,17 +28,14 @@ def build_graph_dispatch_projections(
     score_requested: bool,
     score_weights: Optional[Dict[str, int]],
 ) -> GraphDispatchProjections:
-    health = build_graph_health_context(
-        nodes=nodes, payload=payload, schedule_input=schedule_input,
-    )
     score, score_public, score_diagnostics = build_graph_score_projection(
         mode=mode,
         is_dag=bool(payload["is_dag"]),
         score_requested=score_requested,
         score_weights=score_weights,
         nodes=nodes,
-        node_metrics=dict(payload["node_metrics"]),
-        topological_order=list(payload["topological_order"]),
+        node_metrics=payload["node_metrics"],
+        topological_order=payload["topological_order"],
         schedule_input=schedule_input,
     )
     ready = build_graph_ready_context(
@@ -52,8 +45,6 @@ def build_graph_dispatch_projections(
     resource_public, resource_diagnostics = build_graph_resource_matching_projection(
         mode=mode,
         is_dag=bool(payload["is_dag"]),
-        graph_enhancement_allowed=bool(mode != "on" or ready is not None),
-        graph_enhancement_disabled_reason=None,
         schedule_input=schedule_input,
         nodes=nodes,
         edges=edges,
@@ -62,5 +53,5 @@ def build_graph_dispatch_projections(
     if ready is not None and score:
         ready.update(score)
     return GraphDispatchProjections(
-        health, ready, score_public, score_diagnostics, resource_public, resource_diagnostics,
+        ready, score_public, score_diagnostics, resource_public, resource_diagnostics,
     )

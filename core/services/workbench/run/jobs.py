@@ -30,13 +30,6 @@ from .preflight_facts import PreflightFacts
 from .progress import read_progress
 
 
-def _with_progress(payload):
-    """Attach the worker's in-process candidate progress while the run is still computing."""
-    if payload is not None and payload["state"] == "running" and payload["stage"] == "computing":
-        payload["progress"] = read_progress(payload["run_ref"])
-    return payload
-
-
 class WorkbenchRunService:
     def __init__(self, conn, *, integration_enabled=False,
                  input_resolver: Optional[Callable[..., Tuple[Dict[str, Any], str]]] = None, context_factory=None,
@@ -67,7 +60,7 @@ class WorkbenchRunService:
                 prepared = PreflightService(self.conn, facts=facts).evaluate_prepared(data["normalized_input"])
                 prepared.data, prepared.fingerprint = data, fingerprint
             if not prepared.data["blockers"]:
-                _, issues = candidate_admission_issues(self.conn, prepared.settings, prepared=prepared)
+                issues = candidate_admission_issues(self.conn, prepared=prepared)
                 prepared.data["blockers"].extend(issues)
             snapshot = {"input_ref": input_ref, "normalized_input": prepared.settings,
                         "data_context_ref": self.data_context.ref()}
@@ -103,7 +96,7 @@ class WorkbenchRunService:
                          "executor_ref": None, "started_at": None, "finished_at": None, "error_json": None}
         prepared.read_models = prepare_admission_read_models(prepared.head, capture, official,
                                                             facts=facts, receipt=receipt, dependencies=dependencies)
-        prepared.capture_payload, prepared.generation_facts = capture, facts
+        prepared.capture_payload = capture
         return prepared
 
     def _reasons(self, data):
@@ -196,14 +189,19 @@ class WorkbenchRunService:
         validate_request_key(request_key)
         with TransactionManager(self.conn).transaction():
             require_run_schema(self.repo)
-            row = self.repo.by_request_head(request_key)
-            if row is None and self.repo.command_receipt_action(request_key) == "scheduling.run":
+            row = self.repo.status_by_request(request_key)
+            if row is not None:
+                return self._status(row)
+            if self.repo.command_receipt_action(request_key) == "scheduling.run":
                 raise WorkbenchCommandRejected("run_result_inconsistent", messages.unknown("排产"), 500)
-            return self._status(self.repo.status(row["run_ref"])) if row else None
+            return None
 
     @staticmethod
     def _status(row):
-        return _with_progress(public_job_status(row))
+        payload = public_job_status(row)
+        if payload["state"] == "running" and payload["stage"] == "computing":
+            payload["progress"] = read_progress(payload["run_ref"])
+        return payload
 
     def recover_unfinished_runs(self, *, executor_is_active=None):
         from .worker_recovery import recover_unfinished_runs

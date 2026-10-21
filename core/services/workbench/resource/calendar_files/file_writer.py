@@ -74,14 +74,15 @@ def write_calendar_file(kind, rows, fmt, *, template=False):
 
 def _csv(kind, rows, filename):
     count = 0
+    columns = file_columns(kind)
     with SpooledTemporaryFile(max_size=4 * 1024 * 1024, mode="w+b") as buffer:
         text = codecs.getwriter("utf-8-sig")(buffer)
         writer = csv.writer(text, lineterminator="\r\n")
         writer.writerow([item["label"] for item in public_columns(kind)])
         for count, row in enumerate(rows, 1):
-            values = [_value(row[field], field, count + 1, "csv") for field in file_columns(kind)]
+            values = [_value(row[field], field, count + 1, "csv") for field in columns]
             writer.writerow(["" if field in PERIOD_COLUMNS and value == "" else "'" + value
-                             for field, value in zip(file_columns(kind), values)])
+                             for field, value in zip(columns, values)])
         text.flush()
         buffer.seek(0)
         return CalendarFileDownload(filename + ".csv", "text/csv; charset=utf-8", buffer.read(), count)
@@ -110,6 +111,7 @@ def _xlsx(kind, rows, filename, template, descriptor):
     wb = openpyxl.Workbook(write_only=True)
     ws = wb.create_sheet(descriptor["sheet_name"])
     sheets, count = [ws], 0
+    columns = file_columns(kind)
     try:
         ws.freeze_panes = "A2"
         for index, column in enumerate(public_columns(kind), 1):
@@ -118,14 +120,13 @@ def _xlsx(kind, rows, filename, template, descriptor):
         for count, row in enumerate(rows, 1):
             check_capacity(count, "xlsx")
             cells = []
-            for field in file_columns(kind):
+            for field in columns:
                 value = _value(row[field], field, count + 1, "xlsx")
                 cell = WriteOnlyCell(ws, value=value)
-                if type(value) is str:
-                    cell.data_type, cell.number_format = "s", "@"
+                cell.data_type, cell.number_format = "s", "@"
                 cells.append(cell)
             ws.append(cells)
-        ws.auto_filter.ref = "A1:" + get_column_letter(len(file_columns(kind))) + str(count + 1)
+        ws.auto_filter.ref = "A1:" + get_column_letter(len(columns)) + str(count + 1)
         add_enum_dropdowns(ws, descriptor, count, write_only=True)
         sheets.append(append_instruction_sheet(wb, descriptor))
         with SpooledTemporaryFile(max_size=4 * 1024 * 1024, mode="w+b") as buffer:

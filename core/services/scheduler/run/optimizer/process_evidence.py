@@ -7,11 +7,12 @@ from typing import Any, Dict, List
 POINT_BUDGET = 200
 SAMPLING_POLICY = "elapsed_equal_width_bucket_end_best_v1"
 _MANDATORY = ("first_valid", "first_expected_complete", "final")
+_MANDATORY_SET = frozenset(_MANDATORY)
 
 
 def sample_elapsed_points(points: List[Dict[str, Any]], *, elapsed_ms: int, limit: int = POINT_BUDGET):
     """Keep milestones and the last incumbent event in each equal elapsed-time bucket."""
-    mandatory = {index for index, row in enumerate(points) if set(row.get("flags", ())) & set(_MANDATORY)}
+    mandatory = {index for index, row in enumerate(points) if not _MANDATORY_SET.isdisjoint(row.get("flags", ()))}
     slots = max(int(limit) - len(mandatory), 0)
     buckets: Dict[int, int] = {}
     if slots:

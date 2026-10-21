@@ -7,4 +7,3 @@ INTERNAL = "internal"
 EXTERNAL = "external"
 
 MERGED = "merged"
-SEPARATE = "separate"

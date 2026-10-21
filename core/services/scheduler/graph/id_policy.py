@@ -36,13 +36,7 @@ def normalize_operation_row_id(row_id: Any) -> Optional[int]:
     text = str(row_id).strip()
     if not text or not _ROW_ID_TEXT_PATTERN.fullmatch(text):
         return None
-    try:
-        normalized = int(float(text))
-    except Exception:
-        return None
-    if normalized <= 0:
-        return None
-    return normalized
+    return int(text.partition(".")[0])
 
 
 def make_operation_node_id(batch_id: Any, op_code: Any, row_id: Any = None) -> str:
@@ -60,10 +54,6 @@ def make_operation_node_id(batch_id: Any, op_code: Any, row_id: Any = None) -> s
 
 def make_machine_node_id(machine_id: Any) -> str:
     return f"{MACHINE_NODE_PREFIX}{_require_text_component(machine_id, field_name='machine_id')}"
-
-
-def make_operator_node_id(operator_id: Any) -> str:
-    return f"{OPERATOR_NODE_PREFIX}{_require_text_component(operator_id, field_name='operator_id')}"
 
 
 def display_id(node_id: Any) -> str:
@@ -86,6 +76,5 @@ __all__ = [
     "display_id",
     "make_machine_node_id",
     "make_operation_node_id",
-    "make_operator_node_id",
     "normalize_operation_row_id",
 ]

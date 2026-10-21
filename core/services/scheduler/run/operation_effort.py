@@ -1,7 +1,7 @@
 """Capture requirements after the run has separated slots from retained seeds."""
 
 from dataclasses import replace
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
+from typing import AbstractSet, Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 from core.algorithm_contracts.operation_effort import OperationEffort
 from core.algorithm_runtime.operation_effort import external_operation_effort, internal_operation_effort
@@ -20,7 +20,7 @@ def _gap(field: str, code: str, message: str) -> Dict[str, str]:
     return {"field": field, "code": code, "message": message}
 
 
-def _role(op_id: int, slots: Mapping[int, Any], seeds: Mapping[int, Any], fact: Any, projection: Any) -> str:
+def _role(op_id: int, slots: AbstractSet[int], seeds: Mapping[int, Any], fact: Any, projection: Any) -> str:
     completed = (_read(projection, "execution_state") == "complete"
                  or _read(fact, "actual_status") == EXECUTION_STATUS_COMPLETED)
     if completed:
@@ -34,10 +34,17 @@ def _role(op_id: int, slots: Mapping[int, Any], seeds: Mapping[int, Any], fact: 
     return OperationRequirementRole.NOT_SCHEDULED.value
 
 
+def _execution_quantities(fact: Any, projection: Any) -> Tuple[Any, Any, Any]:
+    execution = projection if projection is not None else fact
+    return (
+        _read(execution, "target_quantity"),
+        _read(execution, "remaining_quantity"),
+        _read(execution, "target_basis" if projection is not None else "quantity_basis"),
+    )
+
+
 def _seed_effort(op: Any, role: str, saved: Optional[_SavedEffort], fact: Any, projection: Any) -> OperationEffort:
-    execution_target = _read(projection, "target_quantity") if projection is not None else _read(fact, "target_quantity")
-    remaining = _read(projection, "remaining_quantity") if projection is not None else _read(fact, "remaining_quantity")
-    execution_basis = _read(projection, "target_basis") if projection is not None else _read(fact, "quantity_basis")
+    execution_target, remaining, execution_basis = _execution_quantities(fact, projection)
     known = saved is not None and _read(saved, "required_standard_hours") is not None
     source: str = op.source
     state = (OperationSetupState.EXTERNAL.value if source == SourceType.EXTERNAL.value else
@@ -82,7 +89,7 @@ def build_operation_efforts(
     arrangement. The caller binds permanent operation references when saving.
     """
     algo = {op.id: op for op in algo_operations}
-    slots = {op.id: op for op in operations_to_schedule}
+    slots = {op.id for op in operations_to_schedule}
     seeds = {row["op_id"]: row for row in seed_results}
     facts, projections, saved = execution_facts or {}, execution_projections or {}, saved_efforts or {}
     result = []
@@ -96,15 +103,13 @@ def build_operation_efforts(
         batch = batches.get(runtime_op.batch_id)
         if batch is None:
             raise ValidationError("排槽工序缺少所属批次，实际标准需求无法计算。", field="batch_id")
-        remaining = _read(projection, "remaining_quantity") if projection is not None else _read(fact, "remaining_quantity")
+        target, remaining, basis = _execution_quantities(fact, projection)
         if runtime_op.source == SourceType.INTERNAL.value:
             effort = internal_operation_effort(runtime_op, batch, remaining_quantity=remaining)
         elif runtime_op.source == SourceType.EXTERNAL.value:
             effort = external_operation_effort(runtime_op, batch, remaining_quantity=remaining)
         else:
             raise ValidationError("排槽工序的内制或外协来源不明确。", field="source")
-        target = _read(projection, "target_quantity") if projection is not None else _read(fact, "target_quantity")
-        basis = _read(projection, "target_basis") if projection is not None else _read(fact, "quantity_basis")
         result.append(replace(effort, requirement_role=role, execution_target_quantity=target,
                               execution_quantity_basis=basis or OperationQuantityBasis.UNKNOWN.value))
     return result

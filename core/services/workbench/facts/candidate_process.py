@@ -70,7 +70,6 @@ def _counts(evidence, report):
 
 
 def _completion(raw):
-    raw = _dict(raw)
     result = {key: _number(raw.get(key), integer=True) for key in COMPLETION_KEYS}
     # Older metric artifacts save this exact membership rather than its count.
     if result["incomplete_batch_count"] is None and type(raw.get("incomplete_batch_ids")) is list:
@@ -178,8 +177,8 @@ def _attempts(artifact, objective, source_ref):
         if not public:
             continue
         item = public[0]
-        metrics = _dict(item.get("metrics"))
-        completion = _dict(metrics.get("completion"))
+        metrics = item.get("metrics") or {}
+        completion = metrics.get("completion") or {}
         raw_completion = _dict(_dict(raw.get("metrics")).get("completion"))
         public_completion = _completion(raw_completion)
         score, primary = _objective_values(raw.get("score"), metrics.get(objective["primary_metric_key"]), raw_completion)

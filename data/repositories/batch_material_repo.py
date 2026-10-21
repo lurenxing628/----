@@ -26,11 +26,14 @@ class BatchMaterialRepository(BaseRepository):
                 LEFT JOIN BatchMaterialStages s ON s.requirement_id=m.id WHERE m.batch_id=? ORDER BY m.id""", (source_batch_id,))
         for row in requirements:
             operation_id = row["operation_id"]
-            if operation_id is not None and (operation_map is None or operation_id not in operation_map):
-                raise ValueError("复制物料需求时缺少使用工序的对应关系，未保存。")
+            target_operation_id = None
+            if operation_id is not None:
+                if operation_map is None or operation_id not in operation_map:
+                    raise ValueError("复制物料需求时缺少使用工序的对应关系，未保存。")
+                target_operation_id = operation_map[operation_id]
             created = self.add(target_batch_id, row["material_id"], required_qty=row["required_qty"], available_qty=0, ready_status="no")
-            if operation_id is not None and operation_map is not None:
-                stages.replace_operation(created.id, operation_map[operation_id])
+            if target_operation_id is not None:
+                stages.replace_operation(created.id, target_operation_id)
 
     def get(self, bm_id: int) -> Optional[BatchMaterial]:
         row = self.fetchone(
@@ -92,7 +95,7 @@ class BatchMaterialRepository(BaseRepository):
                 tuple(chunk),
             )
             for row in rows:
-                out.setdefault(str(row.get("batch_id") or ""), []).append(row)
+                out.setdefault(str(row["batch_id"] or ""), []).append(row)
         return out
 
     def add(self, batch_id: str, material_id: str, *, required_qty: float, available_qty: float, ready_status: str) -> BatchMaterial:
@@ -137,16 +140,12 @@ class BatchMaterialRepository(BaseRepository):
         for key in ("required_qty", "available_qty", "ready_status"):
             if key in updates:
                 set_parts.append(f"{key} = ?")
-                params.append(updates.get(key))
+                params.append(updates[key])
 
         params.append(int(bm_id))
         sql = f"UPDATE BatchMaterials SET {', '.join(set_parts)} WHERE id = ?"
         cur = self.execute(sql, tuple(params))
-        return int(getattr(cur, "rowcount", 0) or 0)
+        return int(cur.rowcount)
 
     def delete(self, bm_id: int) -> None:
         self.execute("DELETE FROM BatchMaterials WHERE id = ?", (int(bm_id),))
-
-    def delete_by_batch(self, batch_id: str) -> int:
-        cur = self.execute("DELETE FROM BatchMaterials WHERE batch_id = ?", (str(batch_id),))
-        return int(getattr(cur, "rowcount", 0) or 0)

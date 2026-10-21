@@ -121,59 +121,6 @@ def _job(row):
         inconsistent()
 
 
-def _candidates(rows):
-    result = {}
-    for row in rows:
-        ref = _ref(row["candidate_ref"])
-        count = row["task_count"]
-        if (ref in result or type(count) is not int or count < 0 or count != row["actual_count"]
-                or row["status"] not in ("completed", "failed", "skipped")
-                or (row["status"] != "completed" and count != 0)
-                or type(row["sequence"]) is not int or row["sequence"] < 0
-                or (count > 0 and (row["first_ordinal"] != 0 or row["last_ordinal"] != count - 1))):
-            inconsistent()
-        result[ref] = row
-    return result
-
-
-def _receipt_manifest(row, result, candidates):
-    if (row["state"] not in TERMINAL_STATES or row["receipt_state"] != row["state"] or result.get("state") != row["state"]
-            or row["recorded_at"] != row["finished_at"]):
-        inconsistent()
-    succeeded = row["state"] in ("complete", "partial")
-    manifest = result.get("candidates")
-    if (result.get("result_persisted") is not succeeded or type(manifest) is not list
-            or len(manifest) != len(candidates) or bool(candidates) is not succeeded):
-        inconsistent()
-    return succeeded, manifest
-
-
-def _manifest_candidates(manifest, candidates):
-    seen = set()
-    for item in manifest:
-        if type(item) is not dict:
-            inconsistent()
-        ref = _ref(item.get("candidate_ref"))
-        actual = candidates.get(ref)
-        if (ref in seen or actual is None or type(item.get("task_count")) is not int
-                or item["task_count"] != actual["task_count"] or item.get("status") != actual["status"]):
-            inconsistent()
-        seen.add(ref)
-
-
-def _manifest(row, candidates):
-    if row["result_json"] is None:
-        if row["state"] in TERMINAL_STATES or candidates or row["receipt_state"] is not None:
-            inconsistent()
-        return None
-    result = stored_json(row["result_json"])
-    succeeded, manifest = _receipt_manifest(row, result, candidates)
-    _manifest_candidates(manifest, candidates)
-    if succeeded and not any(item["status"] == "completed" for item in candidates.values()):
-        inconsistent()
-    return result
-
-
 def _stored_error(row, result):
     error = result.get("error") if result is not None and row["state"] in ("failed", "interrupted") else None
     if type(error) is dict and all(type(error.get(key)) is str and error[key] for key in ("code", "message")):
@@ -219,11 +166,11 @@ def _scope_batch_count(refs, gaps):
     valid_refs = (type(refs) is list and bool(refs)
                   and all(type(ref) is str and re.fullmatch(r"[0-9a-f]{48}", ref) is not None for ref in refs))
     count = None
-    if valid_refs and type(refs) is list:
+    if valid_refs:
         if len(set(refs)) != len(refs):
             inconsistent()
         count = len(refs)
-    if not valid_refs:
+    else:
         gaps.append(_gap("batch_count", refs))
     return count
 
@@ -241,19 +188,3 @@ def scope_summary(raw):
         inconsistent()
     result["batch_count"] = _scope_batch_count(settings.get("batch_refs"), gaps)
     return {**result, "selection": "explicit_batches", "basis": "captured_at_run_admission", "data_gaps": gaps}
-
-
-def public_run(row, rows):
-    _job(row)
-    candidates = _candidates(rows)
-    result = _manifest(row, candidates)
-    pending = row["stage"] == "awaiting_reconciliation"
-    return {"run_ref": row["run_ref"], "state": row["state"], "stage": row["stage"],
-            "accepted_at": row["accepted_at"], "started_at": row["started_at"], "finished_at": row["finished_at"],
-            "candidate_count": len(candidates), "task_count": sum(item["task_count"] for item in rows),
-            "task_count_basis": "persisted_rows_across_candidates", "counts_final": row["state"] in TERMINAL_STATES,
-            "scope_summary": scope_summary(row["normalized_input_json"]), "recovery_required": pending,
-            "recovery_reason": {"code": "awaiting_reconciliation", "message": "运行状态待核对，本次读取未恢复或重跑。"} if pending else None,
-            "error": _failure(row, result),
-            "completion_semantics": "execution_state_only", "constraint_verification": "not_checked_by_history",
-            "task_content_verification": "candidate_workspace_required"}

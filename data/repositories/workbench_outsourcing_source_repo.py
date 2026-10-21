@@ -142,21 +142,20 @@ class WorkbenchOutsourcingSourceRepository:
                 facts._entity(dict(row))
 
     def _capture_active_refs(self, facts, kind, values):
-        requested = {_key(kind, value): value for value in values}
-        keys = [value for key, value in requested.items() if key not in facts._active_refs]
+        keys = [key for key in dict.fromkeys(_key(kind, value) for value in values) if key not in facts._active_refs]
         # Preserve TEXT affinity for entity_key, including non-text legacy relations.
-        for chunk in _chunks(list(_key(kind, value) for value in keys), size=400):
+        for chunk in _chunks(keys, size=400):
             values = [key[2] for key in chunk]
             rows = self.conn.execute("WITH requested(request_index,request_key) AS (VALUES " + _requests(values) + ") "
                 "SELECT requested.request_index,r.* FROM requested JOIN WorkbenchEntityRefs r "
                 "ON r.entity_key=requested.request_key WHERE r.kind=? AND r.active=1", values + [kind])
-            for value in values:
-                facts._active_refs[_key(kind, value)] = None
+            for key in chunk:
+                facts._active_refs[key] = None
             for row in rows:
                 identity = dict(row)
                 index = identity.pop("request_index")
                 facts._entity(identity)
-                facts._active_refs[_key(kind, values[index])] = identity["ref"]
+                facts._active_refs[chunk[index]] = identity["ref"]
 
     def _capture_source_rows(self, facts, kind, values):
         requested = {_key(kind, value): value for value in values}

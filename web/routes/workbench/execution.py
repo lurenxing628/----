@@ -44,7 +44,8 @@ def field_query(task_ref=None):
             raise WorkbenchCommandRejected('entity_not_found', '所选任务不在当前范围，请刷新后重选。', 404)
         if args.get('operation_ref') and cohort['tasks'][index]['operation_ref'] != args['operation_ref']:
             raise WorkbenchCommandRejected('constraint_conflict', '选中的工序和这条任务对不上，安排没有变化。请刷新页面后重新选择工序。')
-        number = index // size + 1
+        if task_ref is None:
+            number = index // size + 1
     data = reader.detail(cohort, task_ref) if task_ref else reader.page(cohort, number, size)
     response = query_success(data, snapshot, byte_limit=MAX_PLAN_RESPONSE_BYTES)
     response.headers['Cache-Control'] = 'no-store'
@@ -75,7 +76,7 @@ def save_report(action, ref):
     from core.services.workbench.execution.production_report import WorkbenchProductionReportService
 
     body = command_body()
-    service = WorkbenchProductionReportService(g.db, context_factory=field_context)
+    service = WorkbenchProductionReportService(g.db)
     result = service.execute(action, ref, body['input'], request_key=body['request_key'],
                              validate_context=lambda subject, operation, snapshot: validate_field_context(body['write_token'], subject, operation, snapshot))
     response = json_response(result)

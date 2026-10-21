@@ -8,7 +8,6 @@ from core.services.scheduler.graph.precedence_builder import build_precedence_gr
 from core.services.scheduler.graph.types import GraphAnalysisSummary, OperationGraphEdge
 from core.services.scheduler.graph.validators import collect_graph_warnings
 from core.services.scheduler.run.schedule_graph_dispatch_context import (
-    build_graph_health_context,
     build_graph_ready_context,
     graph_input_scope,
 )
@@ -62,7 +61,6 @@ def piece_graph_preparer(prepared):
         public, diagnostics = _project_graph_analysis_payload(mode="on", payload=payload, elapsed_ms=0,
             scope=graph_input_scope(candidate_input, nodes=nodes), score_public=score_public,
             score_diagnostics=score_diagnostics)
-        return ScheduleGraphDispatchPreparation(public, diagnostics, context, "sgs",
-            build_graph_health_context(nodes=nodes, payload=payload, schedule_input=candidate_input))
+        return ScheduleGraphDispatchPreparation(public, diagnostics, context, "sgs")
 
     return prepare

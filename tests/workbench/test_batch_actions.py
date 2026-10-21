@@ -193,7 +193,7 @@ def test_plan_counts_protect_batches_without_binding_plan_contents(batch_client)
     entity = BatchProjection(facts).entity(batch)
     assert relations['protected'] and entity['relationships']['plan_reference_count'] == 4
     with pytest.raises(WorkbenchCommandRejected, match='已经进了计划'):
-        require_unreferenced(None, batch, relations)
+        require_unreferenced(relations)
     assert not any('SELECT * FROM "Schedule"' in sql or 'SELECT * FROM OperationExecutionEvents' in sql or
                    'SELECT * FROM WorkbenchPlanSourceRefs' in sql for sql in trace)
     before = reader.fingerprint()

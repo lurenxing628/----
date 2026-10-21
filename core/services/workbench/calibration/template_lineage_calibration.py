@@ -28,13 +28,14 @@ def project_lineage_calibration(templates, instances, projections, lineage, *, a
     unbound_summaries = {key: summarize_samples(values) for key, values in unbound.items()}
     empty = summarize_samples([])
     rows = []
+    generated_at = as_of.isoformat(timespec="seconds")
     for template in templates:
         summary = summarize_samples(samples_by_template[template.operation_ref])
         missing = unbound_summaries.get(template.part_no, empty)
         summary["candidate_count"] += missing["candidate_count"]
         summary["excluded_count"] += missing["excluded_count"]
         summary["exclusion_reasons"] += missing["exclusion_reasons"]
-        rows.append(build_suggestion(template, summary, generated_at=as_of.isoformat(timespec="seconds")))
+        rows.append(build_suggestion(template, summary, generated_at=generated_at))
     unbound_count = sum(map(len, unbound.values()))
     constraints = ([issue("template_lineage_missing", "部分完工记录未关联工艺模板，未参与校准。")]
                    if unbound_count else [])

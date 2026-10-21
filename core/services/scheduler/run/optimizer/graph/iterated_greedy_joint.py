@@ -19,16 +19,14 @@ class _WindowIndex:
     """Build resource adjacency once per decoded reference, O(n log n)."""
 
     def __init__(self, search, reference):
-        self.scope = frozenset(search.parent.order)
-        self.order = tuple(op_id for op_id in reference.order if op_id in self.scope)
-        self.positions = {op_id: rank for rank, op_id in enumerate(self.order)}
+        self.positions = {op_id: rank for rank, op_id in enumerate(reference.order)}
         self.rows = {int(row.op_id): row for row in reference.candidate["results"]
                      if int(row.op_id) in self.positions}
         self.resources, self.adjacent, self.switches = {}, defaultdict(set), defaultdict(int)
         queues = defaultdict(list)
         for op_id, row in self.rows.items():
-            resources = frozenset((kind, str(getattr(row, kind))) for kind in ("machine_id", "operator_id")
-                                  if getattr(row, kind, None))
+            resources = frozenset((kind, str(value)) for kind, value in (
+                ("machine_id", row.machine_id), ("operator_id", row.operator_id)) if value)
             self.resources[op_id] = resources
             for resource in resources:
                 queues[resource].append(op_id)
@@ -51,7 +49,7 @@ class _WindowIndex:
 def _index_for(search, reference):
     features = search._features(reference)
     index = features.get(_INDEX_KEY)
-    if index is None or index.scope != frozenset(search.parent.order):
+    if index is None:
         index = _WindowIndex(search, reference)
         features[_INDEX_KEY] = index
     return index, features
@@ -82,14 +80,13 @@ def _related(search, index, op_id):
     return related.intersection(index.rows)
 
 
-def _next_member(search, index, features, frontier, selected):
+def _next_member(search, index, features, frontier, selected, related_by_op):
     resources = set().union(*(index.resources[op_id] for op_id in selected))
     anchor = index.rows[selected[0]].start_time
-    related = {op_id: _related(search, index, op_id) for op_id in selected}
 
     def rank(op_id):
         novelty = len(index.resources[op_id] - resources)
-        coupling = sum(op_id in neighbours for neighbours in related.values())
+        coupling = sum(op_id in neighbours for neighbours in related_by_op.values())
         distance = abs((index.rows[op_id].start_time - anchor).total_seconds())
         return (-novelty, -coupling, _pressure(search, index, features, op_id), distance, index.positions[op_id])
 
@@ -111,13 +108,16 @@ def joint_removed(search, reference, removed, size):
         return ()
     seed = min(seeds, key=lambda op_id: (_pressure(search, index, features, op_id), index.positions[op_id]))
     selected, frontier = [seed], set()
+    related_by_op = {}
     while len(selected) < count:
         search._require_budget()
-        frontier.update(_related(search, index, selected[-1]))
+        neighbours = _related(search, index, selected[-1])
+        related_by_op[selected[-1]] = neighbours
+        frontier.update(neighbours)
         frontier.difference_update(selected)
         if not frontier:
             break
-        selected.append(_next_member(search, index, features, frontier, selected))
+        selected.append(_next_member(search, index, features, frontier, selected, related_by_op))
     return tuple(sorted(selected, key=index.positions.__getitem__))
 
 
@@ -146,7 +146,7 @@ def _block_bounds(parent, selected, kept):
     return low, high
 
 
-def joint_orders(search, reference, removed, limit=2):
+def joint_orders(search, reference, removed):
     """Propose up to two joint block moves; the kept order is never rearranged.
 
     The common insertion interval enforces every external DAG edge, while the
@@ -154,10 +154,10 @@ def joint_orders(search, reference, removed, limit=2):
     operation must stay between two selected operations there is no legal block;
     emit nothing and let ordinary insertions search that window instead.
     """
-    if limit <= 0 or len(removed) < 2:
+    if len(removed) < 2:
         return ()
     index, features = _index_for(search, reference)
-    selected = set(removed).intersection(index.rows)
+    selected = set(removed)
     if not 2 <= len(selected) <= _MAX_JOINT_SIZE:
         return ()
     kept = tuple(op_id for op_id in reference.order if op_id not in selected)
@@ -175,7 +175,7 @@ def joint_orders(search, reference, removed, limit=2):
         if order not in seen and _jointly_moved(order, selected, index.positions):
             result.append(order)
             seen.add(order)
-        if len(result) >= min(int(limit), 2):
+        if len(result) >= 2:
             break
     return tuple(result)
 

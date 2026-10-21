@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Optional
 
-from ._helpers import RowLike, as_dict, get, parse_int
+from ._helpers import RowLike, get, parse_int
 
 
 @dataclass
@@ -36,21 +36,3 @@ class OperationLog:
             error_code=get(row, "error_code"),
             error_message=get(row, "error_message"),
         )
-
-    def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "id": self.id,
-                "log_time": self.log_time,
-                "log_level": self.log_level,
-                "module": self.module,
-                "action": self.action,
-                "target_type": self.target_type,
-                "target_id": self.target_id,
-                "operator": self.operator,
-                "detail": self.detail,
-                "error_code": self.error_code,
-                "error_message": self.error_message,
-            }
-        )
-

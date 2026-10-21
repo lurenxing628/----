@@ -13,6 +13,8 @@ from data.repositories.workbench_process_part_facts_repo import WorkbenchProcess
 
 from .projection import require_ref
 
+_PLAIN_SCALARS = frozenset((str, int, bool, type(None)))
+
 
 def check_process_template(operations, groups, part_no, group_parts):
     group_keys = {row["group_id"] for row in groups}
@@ -58,6 +60,8 @@ def check_part_action_storage(conn, contracts=None):
 
 
 def plain_part_action_facts(value):
+    if type(value) in _PLAIN_SCALARS:
+        return value
     if isinstance(value, dict):
         return {key: plain_part_action_facts(item) for key, item in value.items()}
     if isinstance(value, list):

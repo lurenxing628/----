@@ -122,7 +122,6 @@ class DispatchInputs:
     # tie-break
     changeover_penalty: int  # 0=同族/不换型，1=换型（更差）
     batch_order: int
-    batch_id: str
     seq: int
     op_id: int
     atc_k: float = DEFAULT_ATC_K
@@ -183,21 +182,18 @@ def build_dispatch_key(inp: DispatchInputs) -> Tuple[float, ...]:
     - tie-break：优先避免换型 -> 更高优先级 -> 更早交期 -> 更早开始 -> 更稳定批次顺序
     """
     pr = normalize_priority(inp.priority, default="normal")
-    pr_rank = float(PRIORITY_RANK.get(pr, 99))
-    w = float(PRIORITY_WEIGHT.get(pr, 1.0))
+    pr_rank = float(PRIORITY_RANK[pr])
+    w = float(PRIORITY_WEIGHT[pr])
 
     slack_h, time_left_h = _due_spans(inp)
 
-    p = _safe_positive(inp.proc_hours)
-    if not p or p <= 0:
-        # 回退到平均处理时间尺度（若也不可用，再回退到 1h）
-        p = _safe_positive(inp.avg_proc_hours) or 1.0
-
-    avg_p = _safe_positive(inp.avg_proc_hours) or p
-
     if inp.rule == DispatchRule.CR:
+        p = _safe_positive(inp.proc_hours) or _safe_positive(inp.avg_proc_hours) or 1.0
         primary = _weighted_urgency(float(time_left_h / p), w)
     elif inp.rule == DispatchRule.ATC:
+        avg_raw = _safe_positive(inp.avg_proc_hours)
+        p = _safe_positive(inp.proc_hours) or avg_raw or 1.0
+        avg_p = avg_raw or p
         # ATC 越大越优；这里用 -ATC 使其“越小越好”。k 来自规则规格，不再写死。
         k = _finite_positive(inp.atc_k)
         if k is None:

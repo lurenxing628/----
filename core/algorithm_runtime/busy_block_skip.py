@@ -13,8 +13,10 @@ def _native_union_end(segment_groups, start, limit):
     """Extend only continuous occupancy; even a microsecond gap ends the walk."""
     cursor = start
     while cursor < limit:
-        ends = [index.covered_end(cursor) for index in segment_groups]
-        next_cursor = max((end for end in ends if end is not None and cursor < end <= limit), default=cursor)
+        next_cursor = max(
+            (end for index in segment_groups for end in (index.covered_end(cursor),) if end is not None and cursor < end <= limit),
+            default=cursor,
+        )
         if next_cursor == cursor:
             return cursor
         cursor = next_cursor
@@ -53,9 +55,10 @@ def advance_busy_block(calendar, *, earliest, shift_to, segment_groups, total_ba
     window = _certified_window(calendar, earliest, priority, operator_id)
     if window is None or shift_to >= window[1]:
         return shift_to
-    covered = [index.covered_end(shift_to) for index in segment_groups]
-    reachable = [end for end in covered if end is not None and shift_to < end <= window[1]]
-    next_shift = max(reachable, default=shift_to)
+    next_shift = max(
+        (end for index in segment_groups for end in (index.covered_end(shift_to),) if end is not None and shift_to < end <= window[1]),
+        default=shift_to,
+    )
     if _can_extend_union(segment_groups, shift_to, next_shift):
         return _native_union_end(segment_groups, next_shift, window[1])
     return next_shift

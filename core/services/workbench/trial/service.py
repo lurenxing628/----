@@ -1,7 +1,6 @@
 """Persistent draft lifecycle. No publish, actual writes, or latest-base fallback."""
 
 import getpass
-from copy import deepcopy
 from datetime import datetime
 
 from core.infrastructure.read_evidence import read_evidence_scope
@@ -211,11 +210,12 @@ class WorkbenchTrialService:
                     head, rows = load_draft(self.repo, saved["draft_ref"], header=header)
                     projected = scenario_rows(saved, rows)
                     facts, archive, origin, contexts = source_projection(projected, head["admission"])
-                result = deepcopy(saved)
+                result = {**saved, "tasks": [dict(task) for task in saved["tasks"]],
+                          "comparison": dict(saved["comparison"])}
                 result["comparison"] = (result["comparison"] if "delivery_summary" in result["comparison"]
-                                        else scenario_comparison(saved, head, rows, projected=projected,
+                                        else scenario_comparison(saved, head, projected=projected,
                                                                  facts=facts, origin=origin))
-                result["capacity"] = scenario_capacity(saved, head, rows, projected=projected, archive=archive)
+                result["capacity"] = scenario_capacity(saved, head, projected=projected, archive=archive)
                 if head is not None:
                     pairs, preparation = preparation_projection(projected, head["admission"], saved.get("operation_effort"),
                         current_evidence={"kind": "scenario", "scenario_ref": saved["scenario_ref"]}, contexts=contexts)

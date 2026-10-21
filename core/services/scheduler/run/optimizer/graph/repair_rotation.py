@@ -12,14 +12,14 @@ def _pending_neighbors(elite: Dict[str, Any]) -> int:
     return elite["neighborhood"].candidate_count - elite.get("decision_offset", 0)
 
 
-def _fresh_pool_elites(elites: List[Dict[str, Any]], pool: Any) -> List[Dict[str, Any]]:
-    known = {id(elite) for elite in elites}
+def _fresh_pool_elites(pool: Any, *groups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    known = {id(elite) for group in groups for elite in group}
     return [elite for elite in pool.elites if id(elite) not in known and _pending_neighbors(elite) > 0]
 
 
 def _with_unvisited_pool_elites(elites: List[Dict[str, Any]], queued: List[Dict[str, Any]],
                                 pool: Any) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    admitted = elites + _fresh_pool_elites(elites + queued, pool)
+    admitted = elites + _fresh_pool_elites(pool, elites, queued)
     return admitted[:pool.limits.top_k], admitted[pool.limits.top_k:] + queued
 
 
@@ -27,7 +27,7 @@ def _fill_round_slots(elites: List[Dict[str, Any]], queued: List[Dict[str, Any]]
                       deferred: List[Dict[str, Any]], pool: Any) -> None:
     # Appending is intentional: the current round's list iterator will visit these admitted
     # parents. A late arrival consumes an unused slot, never an extra round or active slot.
-    fresh = _fresh_pool_elites(elites + queued + deferred, pool)
+    fresh = _fresh_pool_elites(pool, elites, queued, deferred)
     slots = max(pool.limits.top_k - len(elites), 0)
     elites.extend(fresh[:slots])
     queued.extend(fresh[slots:])
@@ -64,7 +64,6 @@ def _prepare_next_repair_round(
 
 def _retain_pending_tail(elite: Dict[str, Any], deferred_elites: List[Dict[str, Any]]) -> None:
     if _pending_neighbors(elite):
-        elite["pending_tail"] = True
         deferred_elites.append(elite)
 
 

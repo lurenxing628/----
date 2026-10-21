@@ -1,8 +1,7 @@
 """Use exact SQLite admission facts with the existing scheduler input builder."""
 
 from core.models.workbench_preflight import normalize_preflight_input
-from core.services.workbench.facts.run_input_rows import batch_model, operation_model
-from core.services.workbench.run.input import _prepare, _projection_map
+from core.services.workbench.run.input import _prepare_facts
 
 
 def prepare_trial_adoption_input(conn, settings, projections, live, hold=None, *, capture, validated_projections=None):
@@ -14,14 +13,7 @@ def prepare_trial_adoption_input(conn, settings, projections, live, hold=None, *
     # Do not re-read them with PARSE_DECLTYPES or change the global connection.
     if capture.conn is not conn:
         raise RuntimeError("Trial input requires this transaction's own production capture")
-    facts.bind_capture(capture)
-    raw_batches = facts.selected(settings["batch_refs"])
-    batches = {row["batch_id"]: batch_model(row) for row in raw_batches}
-    raw_ops = [row for row in facts.tables["BatchOperations"] if row["batch_id"] in batches]
-    operations = [operation_model(row) for row in raw_ops]
-    projected = _projection_map(projections, [facts.operation_ref(row) for row in raw_ops], validated=validated_projections)
-    facts.execution_projections.update(projected)
     # Adoption validates in this caller-owned read transaction; it does not
     # hand this prepared input to an independent calculation.
-    return _prepare(conn, settings, facts, "", raw_batches, batches, operations, projected, hold=hold,
-                    baseline=live["baseline"])
+    return _prepare_facts(conn, settings, facts, "", projections, None, live["baseline"],
+                          validated_projections, hold=hold)

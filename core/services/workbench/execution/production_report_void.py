@@ -40,7 +40,6 @@ class WorkbenchReportVoidService:
         self.conn = ledger.conn
 
     def _prepare(self, payload):
-        self.ledger.require_schema()
         header = self.ledger.report_header(report_ref=payload["report_ref"])
         if header is None:
             reject("原报工记录不存在，请刷新后重新选择。", "entity_not_found", 404)

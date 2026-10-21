@@ -12,7 +12,7 @@ from core.models.calendar_periods import (
     normalize_periods,
     period_summary,
 )
-from core.models.enums import CALENDAR_DAY_TYPE_STORED_VALUES, CalendarDayType, YesNo
+from core.models.enums import CalendarDayType, YesNo
 from core.services.common.datetime_normalize import normalize_date, normalize_hhmm
 from core.services.common.normalization_matrix import (
     normalize_calendar_day_type_value,
@@ -39,10 +39,9 @@ class CalendarAdmin:
     - 不承载排产引擎的“时间推进”逻辑（见 calendar_engine.py）
     """
 
-    def __init__(self, conn, logger=None, op_logger=None):
+    def __init__(self, conn, logger=None):
         self.conn = conn
         self.logger = logger
-        self.op_logger = op_logger
         self.tx_manager = TransactionManager(conn)
         self.repo = CalendarRepository(conn, logger=logger)
         self.operator_calendar_repo = OperatorCalendarRepository(conn, logger=logger)
@@ -95,20 +94,11 @@ class CalendarAdmin:
     # -------------------------
 
     @staticmethod
-    def _normalize_text(value: Any) -> Optional[str]:
-        return normalize_text(value)
-
-    @staticmethod
-    def _normalize_float(value: Any, field: str, allow_none: bool = True) -> Optional[float]:
-        return parse_finite_float(value, field=field, allow_none=allow_none)
-
-    @staticmethod
-    def _normalize_hhmm(value: Any, field: str, allow_none: bool = True) -> Optional[str]:
-        return normalize_hhmm(value, field=field, allow_none=allow_none)
-
-    @staticmethod
-    def _normalize_date(value: Any) -> str:
-        return normalize_date(value)
+    def _require_operator_id(operator_id: Any) -> str:
+        op_id = normalize_text(operator_id)
+        if not op_id:
+            raise ValidationError("“工号”不能为空", field="工号")
+        return op_id
 
     @staticmethod
     def _validate_day_type(value: Any) -> str:
@@ -120,15 +110,13 @@ class CalendarAdmin:
             )
         except ValueError as exc:
             raise ValidationError("“类型”不正确，请选择：工作日 / 假期。", field="类型") from exc
-        if normalized not in CALENDAR_DAY_TYPE_STORED_VALUES:
-            raise ValidationError("“类型”不正确，请选择：工作日 / 假期。", field="类型")
         return normalized
 
     @staticmethod
     def _normalize_yesno(value: Any, field: str) -> str:
         try:
             return normalize_yes_no_narrow_value(value, default=YesNo.YES.value, unknown_policy="raise")
-        except Exception as e:
+        except ValueError as e:
             raise ValidationError(
                 f"“{field}”不正确，请选择：是 / 否。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文。",
                 field=field,
@@ -146,10 +134,10 @@ class CalendarAdmin:
         # Explicit periods own the window; legacy single-shift fields are superseded.
         if periods:
             return period_summary(periods)
-        ss = self._normalize_hhmm(shift_start, field="班次开始", allow_none=True) or DEFAULT_SHIFT_START
+        ss = normalize_hhmm(shift_start, field="班次开始", allow_none=True) or DEFAULT_SHIFT_START
         if periods is not None:
             return ss, None, 0.0
-        se = self._normalize_hhmm(shift_end, field="班次结束", allow_none=True)
+        se = normalize_hhmm(shift_end, field="班次结束", allow_none=True)
         if se:
             st_t = datetime.strptime(ss, "%H:%M")
             et_t = datetime.strptime(se, "%H:%M")
@@ -157,7 +145,7 @@ class CalendarAdmin:
                 et_t = et_t + timedelta(days=1)
             sh = (et_t - st_t).total_seconds() / 3600.0
         else:
-            sh = self._normalize_float(shift_hours, field="可用工时", allow_none=True)
+            sh = parse_finite_float(shift_hours, field="可用工时", allow_none=True)
             sh = default_hours if sh is None else sh
             if sh < 0:
                 raise ValidationError("“可用工时”不能为负数", field="可用工时")
@@ -170,6 +158,54 @@ class CalendarAdmin:
                 st_t = datetime.strptime(ss, "%H:%M")
                 se = (st_t + timedelta(minutes=whole_minutes)).time().strftime("%H:%M")
         return ss, se, float(sh)
+
+    def _normalize_calendar_common_fields(
+        self,
+        *,
+        date_value: Any,
+        day_type: Any,
+        shift_hours: Any,
+        shift_start: Any,
+        shift_end: Any,
+        efficiency: Any,
+        allow_normal: Any,
+        allow_urgent: Any,
+        remark: Any,
+        periods: Any,
+    ) -> Dict[str, Any]:
+        d = normalize_date(date_value)
+        dt = self._validate_day_type(day_type)
+        eff = parse_finite_float(efficiency, field="效率", allow_none=True)
+        if eff is None:
+            eff = 1.0 if dt == CalendarDayType.WORKDAY.value else self._holiday_efficiency()
+        if eff <= 0:
+            raise ValidationError("“效率”必须大于 0", field="效率")
+        an = self._normalize_yesno(allow_normal, field="允许普通件")
+        au = self._normalize_yesno(allow_urgent, field="允许急件")
+        rmk = normalize_text(remark)
+        if periods is None and all(value is None for value in (shift_start, shift_end, shift_hours)) and dt == CalendarDayType.WORKDAY.value:
+            periods = self._workday_periods()
+        else:
+            periods = normalize_periods(periods)
+        ss, se, sh_value = self._normalize_shift_window(
+            shift_hours=shift_hours,
+            shift_start=shift_start,
+            shift_end=shift_end,
+            periods=periods,
+            default_hours=8.0 if dt == CalendarDayType.WORKDAY.value else 0.0,
+        )
+        return {
+            "date": d,
+            "day_type": dt,
+            "shift_start": ss,
+            "shift_end": se,
+            "shift_hours": sh_value,
+            "efficiency": float(eff),
+            "allow_normal": an,
+            "allow_urgent": au,
+            "remark": rmk,
+            "periods_json": None if periods is None else json.dumps(periods, ensure_ascii=False, separators=(",", ":")),
+        }
 
     def _build_work_calendar(
         self,
@@ -186,46 +222,25 @@ class CalendarAdmin:
         periods: Any = None,
         requested_shift_hours: Optional[float] = None,
     ) -> WorkCalendar:
-        d = self._normalize_date(date_value)
-        dt = self._validate_day_type(day_type)
-
-        eff = self._normalize_float(efficiency, field="效率", allow_none=True)
-        if eff is None:
-            eff = 1.0 if dt == CalendarDayType.WORKDAY.value else self._holiday_efficiency()
-        if eff <= 0:
-            raise ValidationError("“效率”必须大于 0", field="效率")
-
-        an = self._normalize_yesno(allow_normal, field="允许普通件")
-        au = self._normalize_yesno(allow_urgent, field="允许急件")
-        rmk = self._normalize_text(remark)
-        if periods is None and all(value is None for value in (shift_start, shift_end, shift_hours)) and dt == CalendarDayType.WORKDAY.value:
-            periods = self._workday_periods()
-        else:
-            periods = normalize_periods(periods)
-        ss, se, sh_value = self._normalize_shift_window(
+        fields = self._normalize_calendar_common_fields(
+            date_value=date_value,
+            day_type=day_type,
             shift_hours=shift_hours,
             shift_start=shift_start,
             shift_end=shift_end,
+            efficiency=efficiency,
+            allow_normal=allow_normal,
+            allow_urgent=allow_urgent,
+            remark=remark,
             periods=periods,
-            default_hours=8.0 if dt == CalendarDayType.WORKDAY.value else 0.0,
         )
+        d, sh_value = fields["date"], fields["shift_hours"]
         if requested_shift_hours is not None and (
                 sh_value == 0 and requested_shift_hours > 0 or abs(sh_value - requested_shift_hours) > 1e-9):
             raise ValidationError(
                 f"{d} 按原班次起止算出 {sh_value:g} 小时，和你填的 {requested_shift_hours:g} 小时对不上，"
                 "所以没有保存；请先核对原班次。", field="可用工时")
-        return WorkCalendar(
-            date=d,
-            day_type=dt,
-            shift_start=ss,
-            shift_end=se,
-            shift_hours=sh_value,
-            efficiency=float(eff),
-            allow_normal=an,
-            allow_urgent=au,
-            remark=rmk,
-            periods_json=None if periods is None else json.dumps(periods, ensure_ascii=False, separators=(",", ":")),
-        )
+        return WorkCalendar(**fields)
 
     @staticmethod
     def _payload_periods(payload):
@@ -246,7 +261,7 @@ class CalendarAdmin:
     def _build_work_calendar_from_payload(self, calendar_payload: Any, *, requested_shift_hours=None) -> WorkCalendar:
         if isinstance(calendar_payload, WorkCalendar):
             return calendar_payload
-        payload = dict(calendar_payload or {})
+        payload = calendar_payload or {}
         return self._build_work_calendar(
             date_value=payload.get("date"),
             day_type=payload.get("day_type"),
@@ -276,50 +291,25 @@ class CalendarAdmin:
         remark: Any = None,
         periods: Any = None,
     ) -> OperatorCalendar:
-        op_id = self._normalize_text(operator_id)
-        if not op_id:
-            raise ValidationError("“工号”不能为空", field="工号")
-        d = self._normalize_date(date_value)
-        dt = self._validate_day_type(day_type)
-
-        eff = self._normalize_float(efficiency, field="效率", allow_none=True)
-        if eff is None:
-            eff = 1.0 if dt == CalendarDayType.WORKDAY.value else self._holiday_efficiency()
-        if eff <= 0:
-            raise ValidationError("“效率”必须大于 0", field="效率")
-
-        an = self._normalize_yesno(allow_normal, field="允许普通件")
-        au = self._normalize_yesno(allow_urgent, field="允许急件")
-        rmk = self._normalize_text(remark)
-        if periods is None and all(value is None for value in (shift_start, shift_end, shift_hours)) and dt == CalendarDayType.WORKDAY.value:
-            periods = self._workday_periods()
-        else:
-            periods = normalize_periods(periods)
-        ss, se, sh_value = self._normalize_shift_window(
+        op_id = self._require_operator_id(operator_id)
+        fields = self._normalize_calendar_common_fields(
+            date_value=date_value,
+            day_type=day_type,
             shift_hours=shift_hours,
             shift_start=shift_start,
             shift_end=shift_end,
+            efficiency=efficiency,
+            allow_normal=allow_normal,
+            allow_urgent=allow_urgent,
+            remark=remark,
             periods=periods,
-            default_hours=8.0 if dt == CalendarDayType.WORKDAY.value else 0.0,
         )
-        return OperatorCalendar(
-            operator_id=op_id,
-            date=d,
-            day_type=dt,
-            shift_start=ss,
-            shift_end=se,
-            shift_hours=sh_value,
-            efficiency=float(eff),
-            allow_normal=an,
-            allow_urgent=au,
-            remark=rmk,
-            periods_json=None if periods is None else json.dumps(periods, ensure_ascii=False, separators=(",", ":")),
-        )
+        return OperatorCalendar(operator_id=op_id, **fields)
 
     def _build_operator_calendar_from_payload(self, calendar_payload: Any) -> OperatorCalendar:
         if isinstance(calendar_payload, OperatorCalendar):
             return calendar_payload
-        payload = dict(calendar_payload or {})
+        payload = calendar_payload or {}
         return self._build_operator_calendar(
             operator_id=payload.get("operator_id"),
             date_value=payload.get("date"),
@@ -341,8 +331,8 @@ class CalendarAdmin:
         return self.repo.list_all()
 
     def list_range(self, start_date: Any, end_date: Any) -> List[WorkCalendar]:
-        s = self._normalize_date(start_date)
-        e = self._normalize_date(end_date)
+        s = normalize_date(start_date)
+        e = normalize_date(end_date)
         return self.repo.list_range(s, e)
 
     def upsert(
@@ -386,7 +376,7 @@ class CalendarAdmin:
         return c
 
     def delete(self, date_value: Any) -> None:
-        d = self._normalize_date(date_value)
+        d = normalize_date(date_value)
         with self.tx_manager.transaction():
             self.repo.delete(d)
 
@@ -397,16 +387,12 @@ class CalendarAdmin:
     # OperatorCalendar：CRUD（人员专属日历）
     # -------------------------
     def get_operator_calendar(self, operator_id: Any, date_value: Any) -> Optional[OperatorCalendar]:
-        op_id = self._normalize_text(operator_id)
-        if not op_id:
-            raise ValidationError("“工号”不能为空", field="工号")
-        d = self._normalize_date(date_value)
+        op_id = self._require_operator_id(operator_id)
+        d = normalize_date(date_value)
         return self.operator_calendar_repo.get(op_id, d)
 
     def list_operator_calendar(self, operator_id: Any) -> List[OperatorCalendar]:
-        op_id = self._normalize_text(operator_id)
-        if not op_id:
-            raise ValidationError("“工号”不能为空", field="工号")
+        op_id = self._require_operator_id(operator_id)
         return self.operator_calendar_repo.list_by_operator(op_id)
 
     def list_operator_calendar_all(self) -> List[OperatorCalendar]:
@@ -449,10 +435,8 @@ class CalendarAdmin:
         return c
 
     def delete_operator_calendar(self, operator_id: Any, date_value: Any) -> None:
-        op_id = self._normalize_text(operator_id)
-        if not op_id:
-            raise ValidationError("“工号”不能为空", field="工号")
-        d = self._normalize_date(date_value)
+        op_id = self._require_operator_id(operator_id)
+        d = normalize_date(date_value)
         with self.tx_manager.transaction():
             self.operator_calendar_repo.delete(op_id, d)
 

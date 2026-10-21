@@ -9,13 +9,13 @@ from contextlib import contextmanager
 from core.models.workbench_calibration import MAX_OPERATIONS, MAX_TEMPLATES, CalibrationTemplate
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import MAX_FACT_ROWS, public_ref
+from core.services.scheduler.template_lineage_query import TemplateLineageQuery
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from data.repositories.workbench_calibration_query_repo import WorkbenchCalibrationQueryRepository
 
 from .integrity import validate_report_histories
 from .template_lineage_calibration import project_lineage_calibration
-from .template_lineage_query import TemplateLineageQuery
 
 
 def require_calibration_schema(repo):

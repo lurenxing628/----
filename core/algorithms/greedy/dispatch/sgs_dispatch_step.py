@@ -46,11 +46,12 @@ def _dispatch_selected(
         )
         if result and result.start_time and result.end_time:
             state.record_dispatch_success(result)
-            next_idx[batch_id] = int(next_idx.get(batch_id, 0) or 0) + 1
+            next_idx[batch_id] = next_idx.get(batch_id, 0) + 1
             if graph_state is not None:
+                op_id = _op_id(op)
                 if "end_time_by_op_id" in graph_state:
-                    graph_state["end_time_by_op_id"][_op_id(op)] = result.end_time
-                _mark_graph_operation_completed(graph_state, _op_id(op))
+                    graph_state["end_time_by_op_id"][op_id] = result.end_time
+                _mark_graph_operation_completed(graph_state, op_id)
         else:
             extra_failed_count = 0
             if graph_state is None:
@@ -96,6 +97,7 @@ def _dispatch_selected(
 
 
 def _remaining_ops_after(batch_id: str, next_idx: Dict[str, int], ops_by_batch: Dict[str, List[Any]]) -> List[Any]:
-    operations = list(ops_by_batch.get(batch_id) or [])
-    idx0 = int(next_idx.get(batch_id, 0) or 0)
-    return operations[idx0 + 1 :]
+    operations = ops_by_batch.get(batch_id)
+    if not operations:
+        return []
+    return operations[next_idx.get(batch_id, 0) + 1 :]

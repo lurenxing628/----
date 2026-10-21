@@ -14,7 +14,7 @@ def _meta_bool_state(meta: Dict[str, Any], key: str, *, default: bool) -> Tuple[
     value = meta.get(key)
     if isinstance(value, bool):
         return value, False
-    if isinstance(value, int) and not isinstance(value, bool):
+    if isinstance(value, int):
         if value in (0, 1):
             return bool(value), False
         return bool(default), True

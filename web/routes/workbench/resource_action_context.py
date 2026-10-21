@@ -163,22 +163,19 @@ def confirm_body():
 
 def resolve_import_preview(ref, action, write_token):
     """按预检编号取回服务端留存的预检文档，并核对写令牌绑定的正是这一次操作。"""
-    from core.models.workbench_resource_action import ResourceActionPreview
-
-    document, content = resolve_context(PREVIEW_SCOPE, ref, "stale_write")
-    preview = ResourceActionPreview(document)
-    if preview.as_dict()["operation"] != action:
-        raise WorkbenchCommandRejected("stale_write", "预检结果和这次操作对不上，数据没有改动。请点「重新预检」。")
-    validate_preview_confirmation(write_token, ref)
-    return preview, content
+    return _resolve_retained_preview(ref, action, write_token, "预检结果和这次操作对不上，数据没有改动。请点「重新预检」。")
 
 
 def resolve_preview(ref, action, write_token):
+    return _resolve_retained_preview(ref, action, write_token, "预检结果和这次操作或这条记录对不上，数据没有改动。请点「重新预检」。")
+
+
+def _resolve_retained_preview(ref, action, write_token, message):
     from core.models.workbench_resource_action import ResourceActionPreview
 
     document, content = resolve_context(PREVIEW_SCOPE, ref, "stale_write")
     preview = ResourceActionPreview(document)
     if preview.as_dict()["operation"] != action:
-        raise WorkbenchCommandRejected("stale_write", "预检结果和这次操作或这条记录对不上，数据没有改动。请点「重新预检」。")
+        raise WorkbenchCommandRejected("stale_write", message)
     validate_preview_confirmation(write_token, ref)
     return preview, content

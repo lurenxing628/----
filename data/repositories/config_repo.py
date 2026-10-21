@@ -5,16 +5,7 @@ from typing import Iterable, List, Optional, Tuple
 from core.errors import AppError, ErrorCode
 from core.models import ScheduleConfig
 
-from .base_repo import BaseRepository
-
-
-def _strict_non_negative_int(value, *, field: str) -> int:
-    if value is None or isinstance(value, bool) or isinstance(value, float):
-        raise ValueError(f"invalid {field}: {value!r}")
-    number = int(value)
-    if number < 0:
-        raise ValueError(f"invalid {field}: {value!r}")
-    return number
+from .base_repo import BaseRepository, strict_non_negative_int
 
 
 class ConfigRepository(BaseRepository):
@@ -44,7 +35,7 @@ class ConfigRepository(BaseRepository):
     def count_all(self) -> int:
         try:
             value = self.fetchvalue("SELECT COUNT(1) FROM ScheduleConfig", (), default=0)
-            count = _strict_non_negative_int(value, field="config count")
+            count = strict_non_negative_int(value, field="config count")
         except AppError:
             raise
         except (TypeError, ValueError) as exc:

@@ -32,10 +32,7 @@ from .resource_validation import (
     RESOURCE_REASON_MANUAL_MISSING,
     internal_resource_validation_message,
 )
-from .sgs_due_span import _external_candidate_window, _parse_external_days, due_span_inputs
-
-# Keep the historical import surface: callers still read the external window helpers from this module.
-__all__ = ["_external_candidate_window", "_parse_external_days"]
+from .sgs_due_span import _external_candidate_window, due_span_inputs
 
 
 class _ScoringResources(NamedTuple):
@@ -107,7 +104,6 @@ def _dispatch_key(
             avg_proc_hours=float(avg_proc_hours),
             changeover_penalty=int(changeover_penalty),
             batch_order=int(batch_order.get(batch_id, 999999)),
-            batch_id=batch_id,
             seq=int(seq),
             op_id=int(op_id),
             atc_k=spec.atc_k,
@@ -163,7 +159,7 @@ def _score_external_candidate(
     dispatch_key_builder: Callable[[DispatchInputs], Tuple[float, ...]] = build_dispatch_key,
 ) -> Tuple[float, ...]:
     meta = _candidate_meta(op=op, batch=batch, batch_id=batch_id, state=state, strict_mode=strict_mode)
-    window = _external_candidate_window(ctx, state, op=op, batch_id=batch_id, prev_end=meta["prev_end"], strict_mode=strict_mode)
+    window = _external_candidate_window(ctx, state, op=op, prev_end=meta["prev_end"], strict_mode=strict_mode)
     est_start, est_end = window
     proc_hours = max((est_end - est_start).total_seconds() / 3600.0, 0.0)
     slack_hours, time_left_hours = due_span_inputs(
@@ -212,7 +208,6 @@ def _score_internal_candidate(
 ) -> Tuple[float, ...]:
     meta = _candidate_meta(op=op, batch=batch, batch_id=batch_id, state=state, strict_mode=strict_mode)
     total_hours = _scoring_total_hours(
-        ctx,
         op=op,
         batch=batch,
         strict_mode=strict_mode,
@@ -318,18 +313,16 @@ def _candidate_meta(*, op: Any, batch: Any, batch_id: str, state: ScheduleRunSta
 
 
 def _scoring_total_hours(
-    ctx: Any,
     *,
     op: Any,
     batch: Any,
     strict_mode: bool,
     total_hours_by_op_id: Optional[Dict[int, float]] = None,
-    op_id: Optional[int] = None,
+    op_id: int,
 ) -> float:
-    cache_key = _positive_op_id(op_id if op_id is not None else getattr(op, "id", 0))
-    if total_hours_by_op_id is not None and cache_key is not None:
-        if cache_key in total_hours_by_op_id:
-            return float(total_hours_by_op_id[cache_key])
+    cache_key = op_id if op_id > 0 else None
+    if total_hours_by_op_id is not None and cache_key is not None and cache_key in total_hours_by_op_id:
+        return float(total_hours_by_op_id[cache_key])
     try:
         total_hours = validate_internal_hours_for_mode(op, batch, strict_mode=strict_mode)
     except ValueError as exc:
@@ -398,10 +391,7 @@ def _auto_assign_attempt_for_scoring(
         "operator_busy_hours": state.operator_busy_hours,
         "probe_only": True,
     }
-    callback = getattr(ctx, "auto_assign_internal_resources_attempt", None)
-    if callable(callback):
-        return auto_assign_attempt_from_result(callback(**kwargs))
-    return auto_assign_attempt_from_result(ctx.auto_assign_internal_resources(**kwargs))
+    return auto_assign_attempt_from_result(ctx.auto_assign_internal_resources_attempt(**kwargs))
 
 
 def _estimate_scoring_slot(

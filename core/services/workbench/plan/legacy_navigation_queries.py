@@ -76,9 +76,10 @@ class LegacyNavigationQueries:
         locator = WorkbenchPlanLocator(version, resolution.requested_role, scenario_id)
         if resolution.requested_role != resolution.selected_role:
             return LegacyPlanBinding(locator, "", True)
-        ref = self.references.get_plan_ref(locator)
-        if self.references.resolve_plan(ref) != locator:
-            raise WorkbenchPlanReferenceError("plan_binding_invalid", "这份计划的系统编号绑定不一致。")
+        with self.references.read_bindings():
+            ref = self.references.get_plan_ref(locator)
+            if self.references.resolve_plan(ref) != locator:
+                raise WorkbenchPlanReferenceError("plan_binding_invalid", "这份计划的系统编号绑定不一致。")
         return LegacyPlanBinding(locator, ref, False)
 
     def entity(self, kind: str, business_key: str):
@@ -91,8 +92,6 @@ class LegacyNavigationQueries:
         if row is None:
             raise LegacyNavigationSourceMissing("所选明细记录已不存在。")
         identity = self.entities.find_active(kind, business_key)
-        if identity is not None and self.entities.get(identity.ref) != identity:
-            raise WorkbenchPlanReferenceError("identity_missing", "这条记录的系统编号反查不一致。")
         return LegacyEntityReference(identity.ref if identity else None, row["category"] if kind == "op_type" else None)
 
     def get_plan_time_span(self, version: int, plan_role: Optional[str] = None):

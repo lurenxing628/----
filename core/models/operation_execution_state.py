@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from .operation_execution_event import EXECUTION_STATUS_NOT_STARTED
 
@@ -56,9 +56,6 @@ class OperationExecutionState:
     latest_exception_remark: Optional[str] = None
     state_revision: str = ""
     updated_at: Optional[str] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        return dict(self.__dict__)
 
 
 __all__ = ["OperationExecutionState"]

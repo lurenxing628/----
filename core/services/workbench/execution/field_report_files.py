@@ -18,12 +18,12 @@ from .field_report_files_identity import identity_values, matched_task, task_ind
 
 
 class FieldReportFileService:
-    def __init__(self, conn, *, context_factory=None):
+    def __init__(self, conn):
         from .production_report import WorkbenchProductionReportService
 
         self.conn = conn
         self.queries = WorkbenchFieldQueryRepository(conn)
-        self.production = WorkbenchProductionReportService(conn, context_factory=context_factory)
+        self.production = WorkbenchProductionReportService(conn)
 
     def _resource_index(self):
         result = {'codes': {}, 'labels': {}}
@@ -159,6 +159,8 @@ class FieldReportFileService:
 
     def download(self, cohort, template=False, *, resource_codes):
         rows = self.rows(cohort, template, resource_codes=resource_codes)
+        if template:
+            return encode_reports(rows, summaries=(), metadata=(), format_version=2), len(rows)
         summaries: List[List[Optional[Union[str, int, float]]]] = [['批次号', '工序', '应做数量', '累计完成', '剩余数量', '工序状态', '完成依据', '资料完整性']]
         metadata: List[List[Optional[Union[str, int, float]]]] = [['报工编号', '录入时间', '报工来源', '补齐及更正次数']]
         for task in cohort['tasks']:
@@ -171,5 +173,4 @@ class FieldReportFileService:
                 corrections = sum(item['action'] in ('supplement', 'correct') for item in report['correction_history'])
                 metadata.append([report['report_no'], report['recorded_at'], 'Excel' if report['source'] == 'excel' else '手工', corrections])
         # 模板和导出都带说明表，两者的差别只剩要不要另外附汇总与录入信息。
-        return encode_reports(rows, summaries=() if template else summaries,
-                              metadata=() if template else metadata, format_version=2), len(rows)
+        return encode_reports(rows, summaries=summaries, metadata=metadata, format_version=2), len(rows)

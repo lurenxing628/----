@@ -5,10 +5,10 @@ from core.services.process.workflow_state import operation_confirmations
 
 
 def zero_confirmation_required(before, after, confirmation):
-    if after.get("source", before.get("source")) != "internal" or after.get("unit_hours") != 0:
+    if before["source"] != "internal" or after["unit_hours"] != 0:
         return False
     return confirmation.get("hours", {}).get("state") != "confirmed" or any(
-        before.get(key) != after.get(key, before.get(key)) for key in ("setup_hours", "unit_hours"))
+        before[key] != after[key] for key in ("setup_hours", "unit_hours"))
 
 
 def require_zero_confirmation(conn, proposals, acknowledged, *, states=None):
@@ -16,7 +16,7 @@ def require_zero_confirmation(conn, proposals, acknowledged, *, states=None):
         return
     states, pending = {} if states is None else states, []
     for before, after in proposals:
-        if after.get("unit_hours") != 0:
+        if before["source"] != "internal" or after["unit_hours"] != 0:
             continue
         part_no = before["part_no"]
         if part_no not in states:

@@ -225,10 +225,6 @@ class WorkbenchResourceQueryService:
             raise WorkbenchCommandRejected("invalid_input", "列筛选与业务列排序请使用查询服务的 matching_keys 统一入口。", 400)
         return self.repo.toolbar_keys(query)
 
-    def matching_rows(self, query):
-        index = self.table_index(query)
-        return [dict(index.rows[code]) for code in index.matching_keys(query)]
-
     def facets(self, query, column, search="", number=1, size=100):
         return self.table_index(query).facets(query, column, search, number, size)
 

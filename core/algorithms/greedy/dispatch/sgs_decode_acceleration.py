@@ -38,7 +38,6 @@ class DecodeAcceleration:
         self.frontier = make_priority_queue(graph, pruning)
         self.tail = getattr(request, "tail_reuse", None)
         self.check = getattr(request, "check_budget", None)
-        self.pruning = pruning
         self.dispatch_guard = getattr(context, "checkpoint_dispatch_guard", None)
         # Tail reuse compares run state only; the auto-assign demand window is not part of it, so
         # the suffix is only proved for decodes where every operation names its resources.
@@ -51,7 +50,7 @@ class DecodeAcceleration:
         if self.check is not None:
             if self.plan is None:
                 raise RuntimeError("解码预算检查只随已规划的断点计划出现，断点计划不能为空")
-            if position < len(self.plan.order):
+            if position < self.plan.total_ops:
                 self.check(position)
 
     def record(self, op_id, position, *, state, next_idx, graph, native_dispatch):
@@ -62,10 +61,10 @@ class DecodeAcceleration:
         if self.tail is None:
             return False
         guard = self.dispatch_guard
-        eligible = self.tail_eligible and native_dispatch and guard is not None
-        # ``eligible`` already implies a guard; the explicit test only makes that visible to the type checker.
-        if eligible and guard is not None and position in self.tail.checkpoints:
-            eligible = guard()
+        if self.tail_eligible and native_dispatch and guard is not None:
+            eligible = guard() if position in self.tail.checkpoints else True
+        else:
+            eligible = False
         return self.tail.try_complete(position, state=state, next_idx=next_idx, graph_state=graph, eligible=eligible)
 
 

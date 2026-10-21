@@ -1,23 +1,15 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
-
-from .repair_contract import EliteRepairLimits
-
-if TYPE_CHECKING:
-    from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
+from typing import Any, Callable, Dict, Optional
 
 
 class GraphReadySearchBudget:
     """Graph stage deadline and actual profile/repair execution counters."""
 
-    def __init__(self, *, limits: EliteRepairLimits, deadline: float, clock: Callable[[], float],
-                 decode_session: SharedDecodeSession) -> None:
+    def __init__(self, *, deadline: float, clock: Callable[[], float]) -> None:
         self.deadline = deadline
         self.clock = clock
-        self.decode_session = decode_session
-        self.repair_enabled = bool(limits.enabled)
         self.profile_decodes = 0
         self.repair_decodes = 0
         self.profile_cost_samples = 0
@@ -27,9 +19,8 @@ class GraphReadySearchBudget:
     def available(self) -> bool:
         if self.clock() >= self.deadline:
             self.stop_reason = "time_budget"
-        else:
-            return True
-        return False
+            return False
+        return True
 
     def record_profile_cost(self, elapsed_seconds: float) -> None:
         if isinstance(elapsed_seconds, bool) or not math.isfinite(elapsed_seconds) or elapsed_seconds < 0:

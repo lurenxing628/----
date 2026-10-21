@@ -6,8 +6,8 @@ from datetime import date, datetime
 from typing import Any, Dict, Iterable, Optional, Tuple
 
 from core.algorithm_contracts.types import ScheduleResult
-from core.algorithms.objective_specs import objective_metric_keys
 from core.errors import ValidationError
+from core.models.objective import objective_metric_keys
 
 CANDIDATE_FINGERPRINT_SCHEMA_VERSION = 2
 OUTPUT_FINGERPRINT_SCOPE = "decoded_output"
@@ -49,7 +49,24 @@ class CandidateFingerprint:
 
 
 def jsonable_fingerprint_payload(value: Any) -> Any:
-    return _jsonable(value)
+    # 只负责 skipped-phase 等诊断的 JSON 表示；候选判等使用明确字段的不可变 output_key。
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {
+            str(key): jsonable_fingerprint_payload(child)
+            for key, child in sorted(value.items(), key=lambda item: str(item[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        return [jsonable_fingerprint_payload(item) for item in value]
+    if isinstance(value, set):
+        return [jsonable_fingerprint_payload(item) for item in sorted(value, key=lambda item: str(item))]
+    enum_value = getattr(value, "value", None)
+    if enum_value is not None:
+        return jsonable_fingerprint_payload(enum_value)
+    return {"type": value.__class__.__name__}
 
 
 def schedule_content_key(results: Iterable[ScheduleResult]) -> Tuple[Tuple[Any, ...], ...]:
@@ -85,17 +102,19 @@ def build_candidate_fingerprint(
     if identity is not None:
         return identity.with_context(parent_fingerprint=parent_fingerprint,
                                      seen_output_fingerprints=seen_output_fingerprints)
+    output_key = _evaluation_key(candidate, objective_name=objective_name)
+    same_as_parent = bool(parent_fingerprint is not None and output_key == parent_fingerprint.output_key)
     return CandidateFingerprint(
         schema_version=CANDIDATE_FINGERPRINT_SCHEMA_VERSION,
         fingerprint_scope=DISTINCT_FINGERPRINT_SCOPE,
         objective_name=str(objective_name),
         candidate_id=int(candidate_id),
-        output_key=_evaluation_key(candidate, objective_name=objective_name),
-        parent_candidate_id=None,
-        same_as_parent=False,
-        same_as_seen=False,
-        fingerprint_changed=True,
-    ).with_context(parent_fingerprint=parent_fingerprint, seen_output_fingerprints=seen_output_fingerprints)
+        output_key=output_key,
+        parent_candidate_id=parent_fingerprint.candidate_id if parent_fingerprint is not None else None,
+        same_as_parent=same_as_parent,
+        same_as_seen=output_key in (seen_output_fingerprints or ()),
+        fingerprint_changed=not same_as_parent,
+    )
 
 
 def score_strictly_better(candidate_score: Any, parent_score: Any) -> bool:
@@ -114,9 +133,10 @@ def _validate_candidate(candidate: Dict[str, Any]) -> None:
 
 
 def _evaluation_key(candidate: Dict[str, Any], *, objective_name: str) -> Tuple[Any, ...]:
-    metrics = _objective_metric_signature(candidate.get("metrics"), objective_name=objective_name)
+    raw_metrics = candidate.get("metrics")
+    metrics = _objective_metric_signature(raw_metrics, objective_name=objective_name)
     summary = candidate.get("summary")
-    completion = getattr(candidate.get("metrics"), "completion", None)
+    completion = getattr(raw_metrics, "completion", None)
     completion_summary = (None if completion is None else (
         completion.expected_operation_count, completion.missing_operation_count,
         completion.unexpected_result_count, completion.complete_batch_count,
@@ -169,32 +189,6 @@ def _score_tuple(score: Any) -> Tuple[float, ...]:
     if not isinstance(score, (list, tuple)) or not score:
         return ()
     return tuple(_finite_float(item, field_name="score") for item in score)
-
-
-def _time_text(value: Any) -> str:
-    if isinstance(value, datetime):
-        return value.isoformat()
-    if isinstance(value, date):
-        return value.isoformat()
-    return str(value or "")
-
-
-def _jsonable(value: Any) -> Any:
-    # 只负责 skipped-phase 等诊断的 JSON 表示；候选判等使用明确字段的不可变 output_key。
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    if isinstance(value, (date, datetime)):
-        return _time_text(value)
-    if isinstance(value, dict):
-        return {str(key): _jsonable(child) for key, child in sorted(value.items(), key=lambda item: str(item[0]))}
-    if isinstance(value, (list, tuple)):
-        return [_jsonable(item) for item in value]
-    if isinstance(value, set):
-        return [_jsonable(item) for item in sorted(value, key=lambda item: str(item))]
-    enum_value = getattr(value, "value", None)
-    if enum_value is not None:
-        return _jsonable(enum_value)
-    return {"type": value.__class__.__name__}
 
 
 __all__ = [

@@ -178,7 +178,6 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
             return cached[version]
         rows = self.fetchall(f"""SELECT s.*, c.id AS resolved_id, c.candidate_key,
             c.candidate_label,c.candidate_kind,c.status AS candidate_status,c.detail_saved,
-            c.summary_json AS candidate_summary_json,
             CAST(s.id AS TEXT) AS selection_identity_key,CAST(s.candidate_id AS TEXT) AS selection_owner_key,
             m.ref AS selection_ref, m.version AS mapped_version, m.plan_role AS mapped_role,
             m.source_table AS mapped_source, m.owner_key AS mapped_owner,
@@ -330,16 +329,15 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
                                     "WHERE version = ? AND role = ?", (locator.version, locator.plan_role))
             if source is None:
                 return None
-            key = str(source["id"])
+            key, owner_key = str(source["id"]), source["owner_key"]
         else:
-            row = next((row for row in self._role_rows(locator.version) if row["role"] == locator.plan_role), None)
-            if row is None:
+            source = next((row for row in self._role_rows(locator.version) if row["role"] == locator.plan_role), None)
+            if source is None:
                 return None
-            source = dict(row, owner_key=row["selection_owner_key"])
-            key = row["selection_identity_key"]
+            key, owner_key = source["selection_identity_key"], source["selection_owner_key"]
         return "selection", key, {
             "version": source["version"], "plan_role": source["role"],
-            "source_table": source["source_table"], "owner_key": source["owner_key"],
+            "source_table": source["source_table"], "owner_key": owner_key,
         }
 
     def get_catalog_reference(self, locator) -> WorkbenchPlanCatalogReference:

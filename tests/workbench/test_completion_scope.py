@@ -10,7 +10,6 @@ from core.services.workbench.facts.common_completed_delivery import common_compl
 from core.services.workbench.facts.completion_scope import completion_groups, project_completion_scope
 from core.services.workbench.facts.delivery_projection import delivery_summary, project_delivery_batch, task_intervals
 from core.services.workbench.facts.preparation_projection import project_operation_effort
-from core.services.workbench.run.decision_delivery import common_delivery
 
 
 def batch_item(ref, *, arranged=(1,), expected=(1,), deferred=(), finish="2026-10-13T12:00:00", due="2026-10-13"):
@@ -50,7 +49,7 @@ def test_different_partial_results_compare_delivery_only_on_the_nonempty_common_
     assert pair["common_delivery"]["overdue_delta_count"] == -1
     assert pair["common_delivery"]["before"]["batch_count"] == pair["common_delivery"]["after"]["batch_count"] == 1
     assert delivery_summary(before)["total_tardiness_hours"] is delivery_summary(after)["total_tardiness_hours"] is None
-    assert common_delivery(before, after) == pair and (before, after) == original
+    assert (before, after) == original
     groups = completion_groups([
         {"candidate_ref": "first", "persisted_status": "completed", "completion_scope": first},
         {"candidate_ref": "second", "persisted_status": "completed", "completion_scope": second},

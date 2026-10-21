@@ -15,9 +15,9 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import current_app, flash, g, redirect, render_template, request, send_file, url_for
+from flask import current_app, flash, redirect, render_template, request, send_file, url_for
 
-from core.services.workbench.messages import beijing_text
+from core.services.workbench.messages import BEIJING
 from web.manual_src_security import normalize_manual_src_context
 from web.viewmodels.page_manuals_registry import manual_entry
 
@@ -56,17 +56,6 @@ def _resolve_scheduler_manual_md_path() -> Tuple[Optional[str], List[str]]:
         return normalized[0], normalized
 
     return None, normalized
-
-
-def _resolve_manual_back_url(raw_src: Optional[str]) -> Optional[str]:
-    """
-    输入应为已经过 normalize_manual_src() 过滤的站内相对地址。
-    这里只负责把空值折叠为 None，不再重复制造 fallback 语义。
-    """
-    safe_src = (raw_src or "").strip()
-    if not safe_src:
-        return None
-    return safe_src
 
 
 def _build_manual_page_url(raw_src: Optional[str], raw_page: Optional[str]) -> str:
@@ -110,13 +99,7 @@ def _format_manual_mtime(manual_path: str) -> Optional[str]:
         stamp = datetime.fromtimestamp(os.path.getmtime(manual_path), timezone.utc)
     except OSError:
         return None
-    return beijing_text(stamp.isoformat())
-
-
-def _load_manual_text_and_mtime(manual_path: Optional[str], candidates: List[str]) -> Tuple[str, Optional[str]]:
-    """旧签名：只返回 (正文或错误提示, 文件时间)。路由用 ``_load_manual_source``，这里留给既有调用方。"""
-    manual_text, manual_mtime, _available = _load_manual_source(manual_path, candidates)
-    return manual_text, manual_mtime
+    return stamp.astimezone(BEIJING).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _load_manual_source(manual_path: Optional[str], candidates: List[str]) -> Tuple[str, Optional[str], bool]:
@@ -126,7 +109,7 @@ def _load_manual_source(manual_path: Optional[str], candidates: List[str]) -> Tu
             try:
                 current_app.logger.warning("scheduler manual path resolution failed: BASE_DIR missing or empty")
             except Exception:
-                g._aps_scheduler_manual_warning_status = "log_warning_failed"
+                pass
             return (
                 "找不到说明书文件：本机安装信息不完整。请联系维护人员检查安装目录。",
                 None,
@@ -136,7 +119,7 @@ def _load_manual_source(manual_path: Optional[str], candidates: List[str]) -> Tu
         try:
             current_app.logger.warning("系统使用说明文件不存在（candidates=%s）", candidates)
         except Exception:
-            g._aps_scheduler_manual_warning_status = "log_warning_failed"
+            pass
         return "找不到说明书文件，可能安装包里没带或文件被删了。请联系维护人员。", None, False
 
     try:
@@ -166,7 +149,7 @@ def _manual_section_map(manual_text: str) -> Dict[str, Dict[str, Any]]:
     每一段的 source 从该标题起，一直收到下一个同级或更高级标题之前，所以子标题会跟着父章节一起
     显示。同名标题只认第一个；注册表测试保证登记的标题在说明书里唯一。
     """
-    blocks = manual_blocks(manual_text)
+    blocks = manual_blocks(manual_text, render_html=False)
     sections: Dict[str, Dict[str, Any]] = {}
     for index, block in enumerate(blocks):
         title = block["title"]
@@ -192,12 +175,10 @@ def _build_related_manual_links(
         section = sections.get(related["heading"])
         out.append({
             "view": view_id,
-            "manual_id": view_id,
             "title": related["title"],
             "summary": related["summary"],
             "url": _build_manual_page_url(link_src, view_id),
             "full_manual_section_url": _build_full_manual_section_url(link_src, section["anchor"]) if section else "",
-            "preview_sections": [],
         })
     return out
 
@@ -249,7 +230,6 @@ def _build_manual_page_view_state(
         "manual_mode": "page",
         "current_manual": {
             "view": entry["view"],
-            "manual_id": entry["view"],
             "title": entry["title"],
             "summary": entry["summary"],
             "heading": entry["heading"],
@@ -277,7 +257,7 @@ def config_manual_page():
     raw_page = (request.args.get("page") or "").strip()
     safe_src, safe_page, entry, page_warning = _normalize_scheduler_manual_args(raw_src, raw_page)
     link_src = safe_src or ""
-    back_url = _resolve_manual_back_url(safe_src)
+    back_url = safe_src
     manual_path, candidates = _resolve_scheduler_manual_md_path()
     manual_text, manual_mtime, manual_available = _load_manual_source(manual_path, candidates)
     download_url = _build_manual_download_url(manual_path, safe_src, safe_page)

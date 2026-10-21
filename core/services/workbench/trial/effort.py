@@ -7,8 +7,9 @@ from core.services.workbench.facts.operation_effort_evidence import saved_operat
 from .arrangements import same_arrangement
 
 
-def retained_role(row, admission):
-    execution = admission["execution"].get(row["operation_ref"], {})
+def retained_role(row, admission, execution=None):
+    if execution is None:
+        execution = admission["execution"].get(row["operation_ref"], {})
     anchor = (row["original"].get("execution_anchor") or {}).get("basis")
     if anchor == "completed_actuals" or execution.get("execution_state") == "complete":
         return "completed"
@@ -19,7 +20,7 @@ def retained_role(row, admission):
 
 def _retained(value, row, admission):
     execution = admission["execution"].get(row["operation_ref"], {})
-    role = retained_role(row, admission)
+    role = retained_role(row, admission, execution)
     state = ("external" if value["source"] == "external" else "already_completed" if role == "completed"
              else "retained_in_execution" if role == "execution" and value["setup_standard_hours"] is not None
              else value["setup_state"])
@@ -28,10 +29,10 @@ def _retained(value, row, admission):
                 remaining_quantity=execution.get("remaining_quantity"), requirement_role=role, setup_state=state)
 
 
-def operation_effort_ledger(rows, admission):
+def operation_effort_ledger(rows, admission, *, before_efforts=None):
     """Collect source records or actual committed slot records, once per operation."""
     source = admission["source"].get("operation_effort")
-    original = saved_operation_efforts(source)
+    original = saved_operation_efforts(source) if before_efforts is None else before_efforts
     current_items = [row["current"]["operation_effort"] for row in rows if "operation_effort" in row["current"]]
     current = saved_operation_efforts({"effort_basis": RUNTIME_REQUIREMENT_BASIS, "items": current_items},
                                       identities={row["operation_ref"]: row["original"]["operation"]["id"] for row in rows})

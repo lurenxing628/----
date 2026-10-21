@@ -57,16 +57,13 @@ class ExternalGroupRepository(BaseRepository):
         if not updates:
             return
 
-        allowed = {"start_seq", "end_seq", "merge_mode", "total_days", "supplier_id", "remark"}
         set_parts: List[str] = []
         params: List[Any] = []
 
         for key in ("start_seq", "end_seq", "merge_mode", "total_days", "supplier_id", "remark"):
-            if key not in allowed:
-                continue
             if key in updates:
                 set_parts.append(f"{key} = ?")
-                params.append(updates.get(key))
+                params.append(updates[key])
 
         if not set_parts:
             return
@@ -74,7 +71,7 @@ class ExternalGroupRepository(BaseRepository):
         params.append(group_id)
         sql = f"UPDATE ExternalGroups SET {', '.join(set_parts)} WHERE group_id = ?"
         cur = self.execute(sql, tuple(params))
-        if int(getattr(cur, "rowcount", 0) or 0) == 0:
+        if int(cur.rowcount) == 0:
             raise BusinessError(ErrorCode.EXTERNAL_GROUP_ERROR, f"外协工序组“{group_id}”不存在或已被删除")
 
     def delete_for_part(self, part_no: str, group_id: str) -> int:

@@ -32,7 +32,7 @@ def _parent_from_candidate(candidate: Optional[Dict[str, Any]], *, operations: L
     if candidate is None or candidate["summary"].failed_ops or not candidate["summary"].success:
         return None
     prepared = (prepared_parent if prepared_parent is not None else
-                prepare_repair_parent(candidate, operations, resource_pool, graph_context, resource_moves=True))
+                prepare_repair_parent(candidate, operations, resource_pool, graph_context))
     mutable = prepared.mutable_operation_ids
     if not mutable or set(prepared.decoded_rows) != mutable:
         return None
@@ -54,17 +54,17 @@ def _park(order: Tuple[int, ...], removed: Set[int], *, successors: Dict[int, Se
     working = [op_id for op_id in order if op_id not in removed]
     for op_id in reversed(order):
         if op_id in removed:
-            working.insert(_latest_rank(working, op_id, successors=successors[op_id]), op_id)
+            working.insert(_latest_rank(working, successors=successors[op_id]), op_id)
     return working
 
 
-def _latest_rank(working: List[int], op_id: int, *, successors: Set[int]) -> int:
+def _latest_rank(working: List[int], *, successors: Set[int]) -> int:
     """Park a removed operation just before its first successor, or at the end."""
-    index = {item: position for position, item in enumerate(working)}
-    return min((index[item] for item in successors if item in index), default=len(working))
+    return next((position for position, item in enumerate(working) if item in successors), len(working))
 
 
-def _insertion_positions(without: List[int], op_id: int, *, parent: _Parent, anchor: int, window: int) -> List[int]:
+def _insertion_positions(without: List[int], op_id: int, *, parent: _Parent, anchor: int, window: int,
+                         explore: bool = False) -> List[int]:
     """Ranks between the last predecessor and the first successor, nearest to the old rank first."""
     index = {item: position for position, item in enumerate(without)}
     low = max((index[item] + 1 for item in parent.predecessors[op_id] if item in index), default=0)
@@ -77,6 +77,10 @@ def _insertion_positions(without: List[int], op_id: int, *, parent: _Parent, anc
     _extend_insertion_probes(positions, low=low, high=high, centre=centre, window=window, double_distance=True)
     # Wide windows then take the remaining ranks nearest-first, so a small range is covered completely.
     _extend_insertion_probes(positions, low=low, high=high, centre=centre, window=window, double_distance=False)
+    if explore:
+        for position in (low, (low + high) // 2, high):
+            if position not in positions:
+                positions.append(position)
     return positions
 
 

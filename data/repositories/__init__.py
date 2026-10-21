@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from .machine_repo import MachineRepository
     from .material_repo import MaterialRepository
     from .op_type_repo import OpTypeRepository
-    from .operation_execution_event_repo import OperationExecutionEventRepo, OperationExecutionEventRepository
+    from .operation_execution_event_repo import OperationExecutionEventRepo
     from .operation_log_repo import OperationLogRepository
     from .operator_calendar_repo import OperatorCalendarRepository
     from .operator_machine_repo import OperatorMachineRepository
@@ -35,7 +35,6 @@ if TYPE_CHECKING:
     from .part_operation_repo import PartOperationRepository
     from .part_repo import PartRepository
     from .resource_team_repo import ResourceTeamRepository
-    from .schedule_candidate_repo import ScheduleCandidateRepository
     from .schedule_history_repo import ScheduleHistoryRepository
     from .schedule_repo import ScheduleRepository
     from .supplier_repo import SupplierRepository
@@ -62,7 +61,6 @@ _EXPORTS = {
     "OpTypeRepository": ".op_type_repo",
     "OperationLogRepository": ".operation_log_repo",
     "OperationExecutionEventRepo": ".operation_execution_event_repo",
-    "OperationExecutionEventRepository": ".operation_execution_event_repo",
     "OperatorCalendarRepository": ".operator_calendar_repo",
     "OperatorMachineRepository": ".operator_machine_repo",
     "OperatorRepository": ".operator_repo",
@@ -70,7 +68,6 @@ _EXPORTS = {
     "PartRepository": ".part_repo",
     "ResourceTeamRepository": ".resource_team_repo",
     "ScheduleHistoryRepository": ".schedule_history_repo",
-    "ScheduleCandidateRepository": ".schedule_candidate_repo",
     "ScheduleRepository": ".schedule_repo",
     "SupplierRepository": ".supplier_repo",
     "SystemConfigRepository": ".system_config_repo",
@@ -95,7 +92,6 @@ __all__ = [
     "OpTypeRepository",
     "OperationLogRepository",
     "OperationExecutionEventRepo",
-    "OperationExecutionEventRepository",
     "OperatorCalendarRepository",
     "OperatorMachineRepository",
     "OperatorRepository",
@@ -103,7 +99,6 @@ __all__ = [
     "PartRepository",
     "ResourceTeamRepository",
     "ScheduleHistoryRepository",
-    "ScheduleCandidateRepository",
     "ScheduleRepository",
     "SupplierRepository",
     "SystemConfigRepository",

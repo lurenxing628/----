@@ -3,6 +3,7 @@
 from typing import cast
 
 from core.infrastructure.read_evidence import verified_read
+from core.infrastructure.schema_probe import table_exists
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
@@ -14,7 +15,6 @@ from core.services.workbench.facts.adoption_baseline_sources import (
 from core.services.workbench.facts.adoption_baseline_values import (
     AdoptionBaselineUnavailable,
     fail,
-    has_table,
     require,
     same,
     stored,
@@ -31,11 +31,10 @@ def read_adoption_record(conn, *, plan_ref, version, history, receipt=None, rece
     """Verify one recorded adoption and its receipt, retaining its exact official version."""
     raw = history.get("result_summary") if history else None
     return verified_read(conn, ("adoption_record", plan_ref, version, raw), lambda: _read_adoption_record(
-        conn, plan_ref, version, history, receipt=receipt, receipt_result=receipt_result))
+        conn, plan_ref, version, raw, receipt=receipt, receipt_result=receipt_result))
 
 
-def _read_adoption_record(conn, plan_ref, version, history, *, receipt=None, receipt_result=None):
-    raw = history.get("result_summary") if history else None
+def _read_adoption_record(conn, plan_ref, version, raw, *, receipt=None, receipt_result=None):
     if raw is None:
         return None
     audit = stored(raw)
@@ -78,7 +77,7 @@ def _proof_fields(audit, basis):
 
 def _receipt(conn, plan_ref, version, audit, *, receipt=None, result=None):
     _, action, context, parent = _SOURCES[audit["source"]]
-    if not has_table(conn, "WorkbenchCommandReceipts"):
+    if not table_exists(conn, "WorkbenchCommandReceipts"):
         fail("adoption_evidence_missing", "WorkbenchCommandReceipts")
     receipt = WorkbenchCommandRepository(conn).get(audit["request_key"]) if receipt is None else dict(receipt)
     if receipt is None:
@@ -113,14 +112,11 @@ def read_adoption_source(conn, *, plan_ref, version, history, recorded=None, con
         return None
     key = ("adoption_source", plan_ref, version, canonical_json(recorded[1]))
     return verified_read(conn, key, lambda: _read_adoption_source(
-        conn, plan_ref=plan_ref, version=version, history=history, recorded=recorded, context=context,
+        conn, plan_ref=plan_ref, version=version, recorded=recorded, context=context,
     ))
 
 
-def _read_adoption_source(conn, *, plan_ref, version, history, recorded=None, context=None):
-    recorded = read_adoption_record(conn, plan_ref=plan_ref, version=version, history=history) if recorded is None else recorded
-    if recorded is None:
-        return None
+def _read_adoption_source(conn, *, plan_ref, version, recorded, context=None):
     basis, audit, receipt = recorded
     prepared_candidate = prepared_trial = None
     if basis == "candidate_adoption":

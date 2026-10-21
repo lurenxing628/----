@@ -46,7 +46,7 @@ def get_plan_time_span_dates(
     version: int,
     plan_role: Optional[str] = None,
     scenario_id: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+) -> Optional[Dict[str, str]]:
     try:
         if scenario_id:
             span = plan_query_service.get_plan_time_span_for_view(int(version), plan_role, scenario_id)
@@ -69,9 +69,6 @@ def get_plan_time_span_dates(
         return None
 
     return {
-        "version": int(version),
-        "start_time": start_time,
-        "end_time": end_time,
         "start_date": start_date,
         "end_date": end_date,
     }
@@ -89,37 +86,31 @@ def resolve_schedule_result_week_range(
     end_date: Optional[str] = None,
     default_to_version_span: bool,
     max_explicit_date_days: Optional[int] = None,
-) -> Tuple[WeekRange, Optional[Dict[str, Any]], str]:
-    version_span = (
-        get_plan_time_span_dates(
-            plan_query_service,
-            int(version),
-            plan_role=plan_role,
-            scenario_id=scenario_id,
-        )
-        if version is not None
-        else None
-    )
+) -> Tuple[WeekRange, str]:
     effective_offset_weeks = normalize_week_offset_for_explicit_range(
         start_date=start_date,
         end_date=end_date,
         offset_weeks=offset_weeks,
     )
-    explicit_range = has_explicit_display_range(
-        week_start=week_start,
-        offset_weeks=effective_offset_weeks,
-        start_date=start_date,
-        end_date=end_date,
+    explicit_range = bool(
+        _has_text(week_start) or _has_text(start_date) or _has_text(end_date) or effective_offset_weeks != 0
     )
 
-    if default_to_version_span and not explicit_range and version_span:
-        wr = resolve_week_range(
-            week_start=None,
-            offset_weeks=0,
-            start_date=version_span["start_date"],
-            end_date=version_span["end_date"],
+    if default_to_version_span and not explicit_range and version is not None:
+        version_span = get_plan_time_span_dates(
+            plan_query_service,
+            int(version),
+            plan_role=plan_role,
+            scenario_id=scenario_id,
         )
-        return wr, version_span, "version_span"
+        if version_span:
+            wr = resolve_week_range(
+                week_start=None,
+                offset_weeks=0,
+                start_date=version_span["start_date"],
+                end_date=version_span["end_date"],
+            )
+            return wr, "version_span"
 
     wr = resolve_week_range(
         week_start=week_start,
@@ -131,4 +122,4 @@ def resolve_schedule_result_week_range(
         day_count = (wr.week_end_date - wr.week_start_date).days + 1
         if day_count > int(max_explicit_date_days):
             raise ValidationError(f"日期范围不能超过 {int(max_explicit_date_days)} 天", field="date_range")
-    return wr, version_span, "request"
+    return wr, "request"

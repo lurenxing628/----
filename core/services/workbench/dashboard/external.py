@@ -12,7 +12,7 @@ from core.infrastructure.workbench_outsourcing_schema import objects
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import bounded
 from core.models.workbench_outsourcing import STATES
-from core.models.workbench_outsourcing_input import next_values
+from core.models.workbench_outsourcing_input import prepare_values
 from core.services.workbench.outsourcing.projection import values
 from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
 
@@ -41,7 +41,7 @@ def _receipts(reader, now, result, facts, sources):
         try:
             if latest["confirmed_state"] not in STATES:
                 raise WorkbenchCommandRejected("invalid_input", "外协确认状态无效。")
-            next_values(None, values(latest), now)
+            prepare_values(None, values(latest), now)
         except WorkbenchCommandRejected as exc:
             if exc.code != "invalid_input":
                 raise
@@ -50,7 +50,7 @@ def _receipts(reader, now, result, facts, sources):
             snapshots.append({"latest": latest, "issues": issues})
             continue
         item, snapshot = reader.entry_from_facts(header, latest, now, sources=sources)
-        captured[ref].update(header=header, receipt=item, snapshot=snapshot)
+        captured[ref].update(receipt=item, snapshot=snapshot)
         snapshots.append({"source": snapshot, "receipt": item})
         if item["source_state"] != "current":
             title = subject(item["target"]["batch"]["business_code"], "外协原登记")
@@ -95,11 +95,6 @@ def _targets(reader, result, rows, sources):
             title = subject(item["business_code"], "历史外协工序" if legacy_external else "来源未知工序")
             result["evaluation_gaps"].append(gap(item["operation_ref"], title, [issue]))
     return {"targets": targets, "unregistered_sources": snapshots, "source_gaps": source_rows}
-
-
-def external(conn, now):
-    result, source_contents, receipts = load_external(conn, now)
-    return result, source_contents
 
 
 def load_external(conn, now):

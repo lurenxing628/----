@@ -1,12 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List, Optional, Union, overload
-
-try:
-    from typing import Literal
-except ImportError:  # pragma: no cover
-    from typing_extensions import Literal
+from typing import Any, List, Literal, Optional, Union, overload
 
 from core.errors import ValidationError
 from core.models.enums import MergeMode, SourceType
@@ -25,6 +20,9 @@ class _ExternalMergeContext:
     ext_group_id: Optional[str] = None
     ext_merge_mode: Optional[str] = None
     ext_group_total_days: Optional[float] = None
+
+
+_EMPTY_EXTERNAL_CONTEXT = _ExternalMergeContext()
 
 
 def _build_scope(op: Any) -> str:
@@ -130,7 +128,6 @@ def _build_algo_operations_outcome(
     collector = DegradationCollector()
     algo_ops: List[OpForScheduleAlgo] = []
     for op in reschedulable_operations:
-        scope = _build_scope(op)
         source_key = str(getattr(op, "source", "") or "").strip().lower()
 
         if source_key == SourceType.INTERNAL.value:
@@ -144,11 +141,22 @@ def _build_algo_operations_outcome(
                 field="unit_hours",
                 field_label="单件工时",
             )
+            external_context = _EMPTY_EXTERNAL_CONTEXT
         elif source_key == SourceType.EXTERNAL.value:
             # External work uses its calendar cycle and has no internal workload.
             # Keep the raw template's NULL hours intact; these are algorithm fields.
             setup_hours = unit_hours = 0.0
+            external_context = _build_external_merge_context(
+                svc,
+                op,
+                strict_mode=bool(strict_mode),
+                scope=_build_scope(op),
+                collector=collector,
+            )
         else:
+            if strict_mode:
+                raise ValidationError("工序的内制或外协来源不明确。", field="source")
+            scope = _build_scope(op)
             setup_hours = parse_field_float(
                 getattr(op, "setup_hours", None),
                 field="setup_hours",
@@ -169,16 +177,7 @@ def _build_algo_operations_outcome(
                 collector=collector,
                 min_value=0.0,
             )
-
-        external_context = _ExternalMergeContext()
-        if source_key == SourceType.EXTERNAL.value:
-            external_context = _build_external_merge_context(
-                svc,
-                op,
-                strict_mode=bool(strict_mode),
-                scope=scope,
-                collector=collector,
-            )
+            external_context = _EMPTY_EXTERNAL_CONTEXT
         algo_ops.append(
             _make_algo_operation(
                 op,

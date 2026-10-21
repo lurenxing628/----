@@ -135,6 +135,3 @@ class ProductionFactsCapture:
         if self._content is None:
             self._content = content_text(self.archive())
         return self._content
-
-    def captured(self):
-        return self.archive(named=True), None

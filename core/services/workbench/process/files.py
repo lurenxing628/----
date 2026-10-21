@@ -87,15 +87,9 @@ class WorkbenchProcessFileService:
                 raise WorkbenchCommandRejected("group_discard_required", "请逐项核对全部受影响外协组，不能漏选或多选。")
             if extra["zero_review_required"] and not confirm_zero_unit_hours:
                 raise WorkbenchCommandRejected("zero_review_required", "单件工时为 0，排产只计算换型工时，数量增加不会增加加工时长。请按 0 导入。")
-            rows, affected_refs = domain.apply_rows(
-                prepared_rows, discard_group_refs=refs, confirm_zero_unit_hours=confirm_zero_unit_hours)
+            rows, affected_refs = domain.apply_rows(prepared_rows)
             summary = {key: sum(row["result"] == key for row in prepared_rows)
                        for key in ("new", "update", "unchanged", "delete", "rejected")}
             data = {"kind": original["kind"], "rows": rows, "summary": summary, "affected_refs": affected_refs}
-            if original["kind"] == "hours":
-                # This is the existing refresh set, not a count of business changes.
-                data["affected_refs"] = sorted({row["entity_ref"] for row in rows})
-                data["summary"] = {**summary, "update": sum(row["result"] == "committed" for row in rows),
-                                   "unchanged": sum(row["result"] == "unchanged" for row in rows)}
             unchanged = all(row["result"] == "unchanged" for row in rows)
             return WorkbenchCommandOutcome("unchanged" if unchanged else "committed", data)

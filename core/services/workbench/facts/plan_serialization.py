@@ -14,11 +14,11 @@ def plain_plan_facts(value):
     if isinstance(value, (list, tuple)):
         return [plain_plan_facts(item) for item in value]
     if isinstance(value, (date, datetime)):
-        return {"storage_type": type(value).__name__, "iso": value.isoformat()}
+        return {"storage_type": kind.__name__, "iso": value.isoformat()}
     if isinstance(value, bytes):
         return {"storage_type": "blob", "hex": value.hex()}
     if isinstance(value, float) and not math.isfinite(value):
         return {"storage_type": "float", "value": str(value)}
-    if value is None or type(value) in (str, bool, int, float):
+    if kind is float:
         return value
-    raise TypeError("Unsupported private plan fact type: " + type(value).__name__)
+    raise TypeError("Unsupported private plan fact type: " + kind.__name__)

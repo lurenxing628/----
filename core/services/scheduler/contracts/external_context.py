@@ -1,12 +1,14 @@
 """One interpretation of frozen external facts for scheduling, preflight and display."""
 
 import math
+from typing import Any, Mapping, Optional
 
 from core.errors import ValidationError
 from core.models.batch_external_context import context_group_key as context_group_key
 from core.models.enums import BatchExternalContextOrigin
 
 _MISSING_CONTEXT = "批次外协周期记录缺失。请先完成版本升级；已升级的批次请核对来源后从工艺模板更新工序。"
+_VALID_ORIGINS = frozenset(item.value for item in BatchExternalContextOrigin)
 
 
 def _positive_number(value):
@@ -26,7 +28,7 @@ def context_problem(row, *, operation_id, part_no, sequence):
         return "建立批次外协周期记录时没有有效的模板工序。请核对来源后从工艺模板更新工序。"
     if not _reference(row["template_operation_ref"]):
         return "批次外协周期记录缺少模板工序来源编号，请联系维护人员核对。"
-    if row["origin"] not in tuple(item.value for item in BatchExternalContextOrigin):
+    if row["origin"] not in _VALID_ORIGINS:
         return "批次外协周期记录的来源不完整，请联系维护人员核对。"
     return _group_problem(row, part_no, sequence)
 
@@ -49,12 +51,11 @@ def _group_problem(row, part_no, sequence):
     return None
 
 
-def require_context(row, *, operation_id, part_no, sequence):
-    if row is None:
-        raise ValidationError(_MISSING_CONTEXT, field="external_context")
+def require_context(row: Optional[Mapping[str, Any]], *, operation_id, part_no, sequence) -> Mapping[str, Any]:
     problem = context_problem(row, operation_id=operation_id, part_no=part_no, sequence=sequence)
     if problem:
         raise ValidationError(problem, field="external_context")
+    assert row is not None
     return row
 
 

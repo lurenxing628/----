@@ -26,7 +26,7 @@ def internal_resource_validation_message(
     auto_assign_reason: str,
 ) -> Tuple[str, Dict[str, Any]]:
     details = _operation_public_details(batch=batch, op=op, meta=meta)
-    operation_display = _operation_display(op_code=str(details.get("op_code") or ""), seq=int(details.get("seq") or 0))
+    operation_display = _operation_display(op_code=details["op_code"], seq=details["seq"])
     operation_context = _operation_context_from_details(details)
     if reason == RESOURCE_REASON_AUTO_ASSIGN_UNAVAILABLE:
         message, public_reason = _auto_assign_resource_message(
@@ -45,7 +45,7 @@ def internal_resource_validation_message(
         f"缺少{'、'.join(missing_fields)}，"
         "请到批次详情补齐后再排产。"
     )
-    details.update({"user_message": message, "reason": "missing_internal_resource", "missing_fields": list(missing_fields)})
+    details.update({"user_message": message, "reason": "missing_internal_resource", "missing_fields": missing_fields})
     return message, details
 
 
@@ -64,12 +64,12 @@ def _operation_public_details(*, batch: Any, op: Any, meta: Dict[str, Any]) -> D
 
 def _operation_context_from_details(details: Dict[str, Any]) -> str:
     return _operation_context(
-        op_code=str(details.get("op_code") or ""),
-        seq=int(details.get("seq") or 0),
-        op_type_name=str(details.get("op_type_name") or ""),
-        part_no=str(details.get("part_no") or ""),
-        part_name=str(details.get("part_name") or ""),
-        piece_id=str(details.get("piece_id") or ""),
+        op_code=details["op_code"],
+        seq=details["seq"],
+        op_type_name=details["op_type_name"],
+        part_no=details["part_no"],
+        part_name=details["part_name"],
+        piece_id=details["piece_id"],
     )
 
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.algorithm_runtime.calendar_timing_memo import (
@@ -31,7 +30,7 @@ class ExecutionResourceReservation:
 
 
 def build_execution_resource_reservations(
-    svc: Any, *, facts: Dict[int, ExecutionFact], selected_op_ids: Set[int],
+    *, facts: Dict[int, ExecutionFact], selected_op_ids: Set[int],
     start_dt: Optional[datetime] = None,
     capture,
 ) -> List[ExecutionResourceReservation]:
@@ -41,19 +40,17 @@ def build_execution_resource_reservations(
             continue
         saved = capture.index("Schedule", "id").get(fact.schedule_id)
         raw = capture.index("BatchOperations", "id").get(op_id)
-        row = None if saved is None else SimpleNamespace(**saved)
-        op = None if raw is None else SimpleNamespace(**raw)
-        if row is None or op is None or row.op_id != op_id or row.version != fact.schedule_version:
+        if saved is None or raw is None or saved["op_id"] != op_id or saved["version"] != fact.schedule_version:
             raise _execution_conflict("在制工序缺少对应正式计划，本次没有写入新排程。",
                                       reason="missing_previous_schedule_row", op_id=op_id)
-        if op.source == SourceType.EXTERNAL.value:
+        if raw["source"] == SourceType.EXTERNAL.value:
             if fact.actual_machine_id is not None or fact.actual_operator_id is not None:
                 raise _execution_conflict("外协报工不能占用本厂设备或人员，请核对实际资源记录。",
                                           reason="external_actual_resource_conflict", op_id=op_id)
             # Supplier work keeps its execution identity, but reserves no
             # factory machine or operator while this run schedules other work.
             continue
-        if op.source != SourceType.INTERNAL.value:
+        if raw["source"] != SourceType.INTERNAL.value:
             raise _execution_conflict("在制工序的资源占用类型不明确，本次没有写入新排程。",
                                       reason="invalid_execution_resource_source", op_id=op_id)
         machine_id, operator_id = _execution_seed_resources(fact, op_id=op_id)
@@ -64,7 +61,7 @@ def build_execution_resource_reservations(
         if fact.actual_start_time is None:
             raise _execution_conflict("在制工序缺少实际开工时间，本次没有写入新排程。",
                                       reason="missing_actual_start_time", op_id=op_id)
-        end_time = fact.actual_start_time + _planned_duration(row, svc, op_id=op_id)
+        end_time = fact.actual_start_time + _planned_duration(saved, op_id=op_id)
         if start_dt is not None and end_time <= start_dt:
             raise _execution_conflict(
                 "未选中的在制工序已超过预计结束时间，但还没有完工反馈，无法确认资源何时释放。本次没有写入新排程。",

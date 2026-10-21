@@ -1,7 +1,7 @@
 """Resource and lifecycle constraints, rechecked under the outer command lock."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.models.operation_execution_event import parse_operation_event_time
 from core.models.resource_capabilities import machine_types
@@ -100,10 +100,12 @@ def _legacy_link_scope(legacy, legacy_fact_ref):
     return row, [fact for fact in legacy if fact["recorded_against_task_ref"] == row["recorded_against_task_ref"]]
 
 
-def legacy_link_values(legacy: List[Dict[str, Any]], legacy_fact_ref: Optional[str]) -> Dict[str, Any]:
-    """Known facts from the selected historical scope, never from current plan resources."""
+def prepare_legacy_link(
+        legacy: List[Dict[str, Any]], legacy_fact_ref: Optional[str]
+) -> Tuple[Dict[str, Any], Dict[str, Set[Optional[str]]]]:
+    """Prepare known facts and actual resource evidence from the selected historical scope."""
     if legacy_fact_ref is None:
-        return {}
+        return {}, {}
     row, scope = _legacy_link_scope(legacy, legacy_fact_ref)
     try:
         actual_end = parse_operation_event_time(row["event_time"]).isoformat(timespec="seconds")
@@ -116,26 +118,22 @@ def legacy_link_values(legacy: List[Dict[str, Any]], legacy_fact_ref: Optional[s
         reject("原历史记录的开工先后不明确，请先核对历史记录。", "constraint_conflict", 409)
     if starts:
         known["actual_start"] = next(iter(starts))
-    for field in ("actual_machine_ref", "actual_operator_ref"):
-        refs = legacy_resource_refs(scope, field)
+    resource_refs = {field: legacy_resource_refs(scope, field)
+                     for field in ("actual_machine_ref", "actual_operator_ref")}
+    for field, refs in resource_refs.items():
         if len(refs) == 1 and None not in refs:
             known[field] = next(iter(refs))
-    return known
+    return known, resource_refs
 
 
-def validate_legacy_link(legacy, legacy_fact_ref, values, *, known_values=None):
-    if legacy_fact_ref is None:
-        return
-    known = legacy_link_values(legacy, legacy_fact_ref) if known_values is None else known_values
+def validate_legacy_link(values, known, resource_refs):
     for field in ("actual_end", "completed_quantity"):
         if known.get(field) is not None and values.get(field) != known[field]:
             reject("补填内容与原完工记录冲突，请核对后重试。", "constraint_conflict", 409)
     if known.get("actual_start") is not None and values.get("actual_start") != known["actual_start"]:
         reject("补填的实际开工与原历史记录不同，不能覆盖原开工时间。请核对后重试。", "constraint_conflict", 409)
-    _, scope = _legacy_link_scope(legacy, legacy_fact_ref)
-    for field in ("actual_machine_ref", "actual_operator_ref"):
+    for field, refs in resource_refs.items():
         actual_ref = values.get(field)
-        refs = legacy_resource_refs(scope, field)
         if actual_ref is not None and None in refs:
             reject("原历史记录的实际设备或人员身份不明确，不能用补齐改认其他资源。请先核对原始记录。",
                    "constraint_conflict", 409)

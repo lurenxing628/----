@@ -6,7 +6,7 @@ from core.models.workbench_batch import number, object_fields
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_preflight import local_date
 from core.services.material.stage_availability import MaterialAvailability, covers_quantity, quantity
-from core.services.workbench.calibration.template_lineage import TemplateLineageWriter
+from core.services.scheduler.template_lineage import TemplateLineageWriter
 from core.services.workbench.facts.preflight_checks import stored_date
 from data.repositories.batch_material_repo import BatchMaterialRepository
 from data.repositories.batch_material_stage_repo import BatchMaterialStageRepository
@@ -66,7 +66,7 @@ class WorkbenchQuantitySplitService:
     def _plan_normalized(self, ref, payload):
         batch, facts = self.reader.batch(ref), self.reader.load()
         relations = related(facts, batch)
-        require_unreferenced(facts, batch, relations)
+        require_unreferenced(relations)
         _require_splittable_batch(batch, relations["operations"])
         original = batch["quantity"]
         availability = MaterialAvailability(facts)

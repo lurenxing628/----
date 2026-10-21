@@ -10,16 +10,11 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.ordering import (
-    _parse_created_at_for_sort,
-    _parse_due_date_for_sort,
-    _parse_ready_date_for_sort,
     build_batch_sort_inputs,
     build_normalized_batches_map,
     normalize_batch_order_override,
     normalize_text_id,
     operation_sort_key,
-    parse_ready_date_for_sort,
-    resolve_batch_sort_batch_id,
 )
 from core.algorithm_contracts.sort_strategies import SortStrategy, StrategyFactory
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
@@ -34,7 +29,6 @@ from . import internal_operation
 from .auto_assign import (
     auto_assign_internal_resources,
     auto_assign_internal_resources_attempt,
-    eligible_auto_assign_resources,
     native_auto_assign_unchanged,
 )
 from .dispatch import dispatch_batch_order, dispatch_sgs
@@ -55,19 +49,7 @@ from .schedule_params import resolve_schedule_params
 from .schedule_preparation import NativeSchedulePreparation
 from .seed import _identity_int, normalize_seed_results
 
-__all__ = [
-    "GreedyScheduler",
-    "_parse_created_at_for_sort",
-    "_parse_due_date_for_sort",
-    "_parse_ready_date_for_sort",
-    "build_batch_sort_inputs",
-    "build_normalized_batches_map",
-    "normalize_batch_order_override",
-    "normalize_text_id",
-    "operation_sort_key",
-    "parse_ready_date_for_sort",
-    "resolve_batch_sort_batch_id",
-]
+__all__ = ["GreedyScheduler"]
 
 
 class GreedyScheduler:
@@ -80,6 +62,7 @@ class GreedyScheduler:
         self._last_algo_stats = make_algo_stats()
         self._decode_invocations = 0
         self._last_sgs_score_cache_stats = sgs_score_cache_stats(None)
+        self._active_preparation: Optional[NativeSchedulePreparation] = None
 
     def schedule(
         self,
@@ -176,8 +159,7 @@ class GreedyScheduler:
                 warnings=warnings, prepared_inputs=prepared_inputs)
         if decode_resume is not None:
             # Resumed decode: the checkpoint already holds seeds, readiness progress and the prefix picks.
-            if checkpoint_signature is None:
-                raise RuntimeError("断点续排缺少解码输入签名")
+            assert checkpoint_signature is not None
             state = resume_run_state(decode_resume, signature=checkpoint_signature, warnings=warnings,
                                      dispatch_mode_key=params.dispatch_mode_key, graph_ready_context=graph_ready_context)
         else:
@@ -197,16 +179,16 @@ class GreedyScheduler:
         if decode_resume is not None:
             replay_resumed_demand(state)
         if decode_checkpoints is not None:
-            if checkpoint_signature is None:
-                raise RuntimeError("解码断点缺少解码输入签名")
+            assert checkpoint_signature is not None
             decode_checkpoints.arm(signature=checkpoint_signature, warnings=warnings)
         attach_sgs_score_cache(ctx, state=state, params=params, resource_pool=resource_pool)
 
         self._log_start(batches=batches, sorted_ops=sorted_ops, params=params)
-        _run_dispatch(
+        dispatch_run(
             ctx, state=state, sorted_ops=sorted_ops, batches=batches, batch_order=batch_order,
             params=params, machine_downtimes=machine_downtimes, resource_pool=resource_pool,
             graph_ready_context=graph_ready_context, strict_mode=bool(strict_mode),
+            batch_dispatch=dispatch_batch_order, sgs_dispatch=dispatch_sgs,
             decode_resume=decode_resume, decode_checkpoints=decode_checkpoints,
         )
         self._last_sgs_score_cache_stats = sgs_score_cache_stats(ctx.sgs_score_cache)
@@ -214,9 +196,8 @@ class GreedyScheduler:
         self.logger.info(f"排产结束：成功={summary.scheduled_ops}/{summary.total_ops} 失败={summary.failed_ops} 耗时={summary.duration_seconds:.2f}s")
         return state.results, summary, params.strategy, params.used_params
 
-    def _reset_algo_stats(self) -> Dict[str, Any]:
+    def _reset_algo_stats(self) -> None:
         self._last_algo_stats = make_algo_stats()
-        return ensure_algo_stats(self._last_algo_stats)
 
     def _log_start(self, *, batches: Dict[str, Any], sorted_ops: List[Any], params: Any) -> None:
         sorter = StrategyFactory.create(params.strategy, **params.used_params)
@@ -284,7 +265,7 @@ class GreedyScheduler:
             machine_busy_hours=machine_busy_hours,
             operator_busy_hours=operator_busy_hours,
             strict_mode=bool(strict_mode),
-            total_hours_by_op_id=getattr(getattr(self, "_active_preparation", None), "total_hours_by_op_id", None),
+            total_hours_by_op_id=self._active_preparation.total_hours_by_op_id if self._active_preparation is not None else None,
         )
 
     def _auto_assign_internal_resources(
@@ -320,8 +301,8 @@ class GreedyScheduler:
             machine_busy_hours=machine_busy_hours,
             operator_busy_hours=operator_busy_hours,
             probe_only=probe_only,
-            resource_preparation=getattr(self, "_active_preparation", None),
-            total_hours_by_op_id=getattr(getattr(self, "_active_preparation", None), "total_hours_by_op_id", None),
+            resource_preparation=self._active_preparation,
+            total_hours_by_op_id=self._active_preparation.total_hours_by_op_id if self._active_preparation is not None else None,
         )
 
     def _auto_assign_internal_resources_attempt(
@@ -357,8 +338,8 @@ class GreedyScheduler:
             machine_busy_hours=machine_busy_hours,
             operator_busy_hours=operator_busy_hours,
             probe_only=probe_only,
-            resource_preparation=getattr(self, "_active_preparation", None),
-            total_hours_by_op_id=getattr(getattr(self, "_active_preparation", None), "total_hours_by_op_id", None),
+            resource_preparation=self._active_preparation,
+            total_hours_by_op_id=self._active_preparation.total_hours_by_op_id if self._active_preparation is not None else None,
         )
 
 
@@ -387,7 +368,7 @@ def prepare_native_schedule_inputs(
 
     calendar = scheduler.calendar
     stats, warnings = make_algo_stats(), []
-    normalized_batches = build_normalized_batches_map(batches, warnings=warnings)
+    normalized_batches = build_normalized_batches_map(batches)
     normalized_seeds, seed_op_ids = _normalize_seed_inputs(seed_results, operations, warnings=warnings, algo_stats=stats)
     unseeded = operations
     if seed_op_ids:
@@ -501,16 +482,6 @@ def _operation_op_id(op: Any) -> int:
     return op_id
 
 
-def _run_dispatch(ctx: ScheduleRunContext, *, state: ScheduleRunState, sorted_ops: List[Any], batches: Dict[str, Any], batch_order: Dict[str, int], params: Any, machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]], resource_pool: Optional[Dict[str, Any]], graph_ready_context: Optional[Any], strict_mode: bool, decode_resume: Optional[DecodeCheckpoint] = None, decode_checkpoints: Optional[DecodeCheckpointRequest] = None) -> None:
-    dispatch_run(
-        ctx, state=state, sorted_ops=sorted_ops, batches=batches, batch_order=batch_order,
-        params=params, machine_downtimes=machine_downtimes, resource_pool=resource_pool,
-        graph_ready_context=graph_ready_context, strict_mode=strict_mode,
-        batch_dispatch=dispatch_batch_order, sgs_dispatch=dispatch_sgs,
-        decode_resume=decode_resume, decode_checkpoints=decode_checkpoints,
-    )
-
-
 def _build_summary(*, state: ScheduleRunState, warnings: List[str], sorted_ops: List[Any], duration: float) -> ScheduleSummary:
     total_ops = int(len(sorted_ops) + state.seed_count)
     return ScheduleSummary(
@@ -526,7 +497,7 @@ def _build_summary(*, state: ScheduleRunState, warnings: List[str], sorted_ops: 
 
 
 _NATIVE_SGS_SCHEDULER_GUARD = make_class_guard(GreedyScheduler)
-_SGS_AUTO_ASSIGN_PROBE = AutoAssignProbeContract(eligible_auto_assign_resources, native_auto_assign_unchanged)
+_SGS_AUTO_ASSIGN_PROBE = AutoAssignProbeContract(native_auto_assign_unchanged)
 # Freeze the imported context's original methods during module initialization;
 # the dispatch child never imports its parent or certifies a caller-supplied type.
 _NATIVE_SGS_CONTEXT_GUARD = make_class_guard(ScheduleRunContext)

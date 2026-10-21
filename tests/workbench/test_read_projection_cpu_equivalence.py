@@ -15,13 +15,12 @@ from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import (
     operation_labels,
     project_validated_tasks,
-    tasks_projection,
     tasks_projection_with_intervals,
     validate_saved_tasks,
 )
+from core.services.workbench.facts.decision_delivery import project_decision_delivery
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from core.services.workbench.facts.resource_projection import resource_cohort
-from core.services.workbench.run.decision_delivery import project_decision_delivery, project_saved_decision_delivery
 from core.services.workbench.run.decision_source import DecisionSource
 from data.repositories.schedule_time_sql import parse_dt_for_sql
 from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
@@ -131,7 +130,7 @@ def _admission(case):
 def test_admission_decodes_saved_execution_once_without_replaying_disposition_or_history(candidate_case, monkeypatch):
     from collections import Counter
 
-    from core.services.workbench.facts import candidate_facts, execution_projection
+    from core.services.workbench.facts import candidate_facts
     from core.services.workbench.facts.archived_calendar import ArchivedCalendar
 
     scope, capture, accepted_at = _admission(candidate_case)
@@ -144,11 +143,7 @@ def test_admission_decodes_saved_execution_once_without_replaying_disposition_or
         calls[name] += 1
         return decode(archive, name)
 
-    def formula(*args, **kwargs):
-        raise AssertionError("Archived admission must consume its saved execution")
-
     monkeypatch.setattr(candidate_facts, "_table", table)
-    monkeypatch.setattr(execution_projection, "project_execution", formula)
     facts = GenerationFacts(capture)
     first = AdmissionBaseline(capture, facts, scope, accepted_at)
     second = AdmissionBaseline(capture, facts, scope, accepted_at)
@@ -197,15 +192,15 @@ def test_archived_labels_and_arrangements_keep_saved_work_without_formula_replay
         task_probe.setattr(GenerationFacts, "operation", read_operation)
         projected, intervals, scheduled_ids = tasks_projection_with_intervals(rows, candidate, original)
     assert operation_calls == [row["operation_ref"] for row in rows]
-    repeated = tasks_projection(rows, candidate, original)
+    repeated = tasks_projection_with_intervals(rows, candidate, original)[0]
     assert projected == repeated
     validated, saved_intervals, validated_ids = validate_saved_tasks(rows, candidate, original)
     assert validated_ids == scheduled_ids
     assert validated is rows and saved_intervals == intervals
     assert project_validated_tasks(validated, candidate, original, saved_intervals) == repeated
     delivery = project_decision_delivery(original, repeated, capture["input"]["batch_refs"], candidate=candidate)
-    assert project_saved_decision_delivery(original, validated, capture["input"]["batch_refs"],
-                                          candidate=candidate, intervals=saved_intervals) == delivery
+    assert project_decision_delivery(original, repeated, capture["input"]["batch_refs"],
+                                    candidate=candidate, intervals=saved_intervals) == delivery
     source = DecisionSource(store, run_ref)
     assert not source._projected
     assert source.resource_cohort["resources"] == resource_cohort([repeated], task_intervals=[intervals])
@@ -234,7 +229,7 @@ def test_archived_labels_and_arrangements_keep_saved_work_without_formula_replay
     assert repeated[0]["data_gaps"] == []
     traced = {**candidate, "artifact": {**candidate["artifact"], "results": [
         dict(row, op_type_id=None) for row in candidate["artifact"]["results"]]}}
-    actual = tasks_projection(rows, traced, original)
+    actual = tasks_projection_with_intervals(rows, traced, original)[0]
     assert actual[0]["process_type_ref"] is actual[0]["process_type_label"] is None
     assert repeated[0]["process_type_ref"] is not None
     quantity = capture["execution"][0]["target_quantity"] + 1

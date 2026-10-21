@@ -9,9 +9,7 @@ ADOPT_ACTION = "calibration.adopt"
 MAX_EVIDENCE_BYTES = 8 * 1024 * 1024
 
 
-def preview_input(value):
-    if type(value) is not dict or set(value) != {"reason", "declared_operator"}:
-        raise WorkbenchCommandRejected("invalid_input", "预检要填写原因和经办人；建议值、完工记录和记录人由系统自动带出。", 400)
+def _normalize_fields(value):
     result = {}
     for key, limit in (("reason", 2000), ("declared_operator", 100)):
         text = value[key]
@@ -21,12 +19,18 @@ def preview_input(value):
     return result
 
 
+def preview_input(value):
+    if type(value) is not dict or set(value) != {"reason", "declared_operator"}:
+        raise WorkbenchCommandRejected("invalid_input", "预检要填写原因和经办人；建议值、完工记录和记录人由系统自动带出。", 400)
+    return _normalize_fields(value)
+
+
 def adoption_input(value):
     if type(value) is not dict or set(value) != {"reason", "declared_operator", "confirm"}:
         raise WorkbenchCommandRejected("invalid_input", "采用要填写原因和经办人，并勾选确认；不要带其他内容。", 400)
     if value["confirm"] is not True:
         raise WorkbenchCommandRejected("confirmation_required", "请先核对预检结果，再勾选确认采用。", 422)
-    return {**preview_input({key: value[key] for key in ("reason", "declared_operator")}), "confirm": True}
+    return {**_normalize_fields(value), "confirm": True}
 
 
 @dataclass(frozen=True)

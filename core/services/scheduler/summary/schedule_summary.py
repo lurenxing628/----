@@ -1,31 +1,16 @@
 from __future__ import annotations
 
-import logging
 import time
 from dataclasses import replace
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
-from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
+from core.models.schedule_config_runtime import ensure_schedule_config_snapshot
 from core.services.scheduler.contracts.schedule_summary_types import (
     AlgorithmSummaryState,
     SummaryBuildContext,
 )
 
-from .schedule_summary_assembly import (
-    _best_score_schema as best_score_schema,
-)
-from .schedule_summary_assembly import (
-    _build_result_summary_obj,
-)
-from .schedule_summary_assembly import (
-    _comparison_metric as comparison_metric,
-)
-from .schedule_summary_assembly import (
-    _config_snapshot_dict as config_snapshot_dict,
-)
-from .schedule_summary_assembly import (
-    _finish_time_by_batch as finish_time_by_batch,
-)
+from .schedule_summary_assembly import _build_result_summary_obj
 from .schedule_summary_degradation import (
     _compute_downtime_degradation,
     _compute_resource_pool_degradation,
@@ -45,43 +30,10 @@ from .summary_runtime_state import (
     _build_warning_state,
     _degraded_success_state,
     _merge_fallback_warnings,
-    build_overdue_items,
-    due_exclusive,
 )
-from .summary_size_guard import (
-    SUMMARY_SIZE_LIMIT_BYTES,
-    apply_summary_size_guard,
-)
+from .summary_size_guard import apply_summary_size_guard
 
-_LOGGER = logging.getLogger(__name__)
-
-__all__ = [
-    "SUMMARY_SIZE_LIMIT_BYTES",
-    "apply_summary_size_guard",
-    "best_score_schema",
-    "build_overdue_items",
-    "comparison_metric",
-    "config_snapshot_dict",
-    "due_exclusive",
-    "finish_time_by_batch",
-    "serialize_end_date",
-    "build_result_summary",
-]
-
-def serialize_end_date(end_date: Optional[Any]) -> Optional[str]:
-    if end_date is None:
-        return None
-    if isinstance(end_date, str):
-        text = end_date.strip()
-        return text if text else None
-    try:
-        isoformat = getattr(end_date, "isoformat", None)
-        if callable(isoformat):
-            return str(isoformat())
-    except Exception as exc:
-        _LOGGER.warning("排产摘要结束日期 isoformat 失败，将使用字符串兜底：%s", exc)
-    text = str(end_date).strip()
-    return text if text else None
+__all__ = ["build_result_summary"]
 
 
 def build_result_summary(
@@ -127,7 +79,6 @@ def build_result_summary(
         ctx.cfg, resource_pool_meta=ctx.resource_pool_meta
     )
     hard_constraints = _hard_constraints(
-        ctx.cfg,
         downtime_degraded=bool(downtime_state.get("downtime_degraded")),
         freeze_applied=bool(freeze_state.data.get("freeze_applied")),
     )
@@ -183,7 +134,6 @@ def build_result_summary(
         degraded_causes=degraded_causes,
         completion_status=completion_status,
         time_cost_ms=time_cost_ms,
-        serialize_end_date_fn=serialize_end_date,
     )
     result_summary_obj = apply_summary_size_guard(result_summary_obj)
     return runtime_state.overdue_items, result_status, result_summary_obj, time_cost_ms

@@ -1,14 +1,13 @@
 """Read the admission's original official timeline for comparison drill-down."""
 
 from core.infrastructure.read_evidence import read_evidence_scope
-from core.models.workbench_run_candidate import RunCandidateReadScope, reject
+from core.models.workbench_run_candidate import reject
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import operation_labels, task_span
 from core.services.workbench.facts.delivery_projection import delivery_summary
 from core.services.workbench.facts.gantt_graph import candidate_gantt_graph, unavailable_graph
 
 from .candidate_metrics import scoped_rows
-from .decision_reference import reference_delivery
 from .decision_source import DecisionSource
 
 
@@ -43,9 +42,8 @@ def _reference_workspace(source, batch_ref):
                     reason={"code": "material_deferred" if deferred else "official_operation_unscheduled",
                             "message": "原正式来源将这道工序保留为待料暂缓。" if deferred else "受理时的正式安排尚未覆盖这道工序。"})
         unplanned.append(item)
-    scope = RunCandidateReadScope(source.selected_ref, range_start=source.scope["range_start"], range_end=source.scope["range_end"], batch_ref=batch_ref)
-    batches = [batch_ref] if batch_ref is not None else batch_refs + ([None] if full_view else [])
-    tasks = scoped_rows(all_tasks, batches, scope.range_start, scope.range_end)
+    batches = {batch_ref} if batch_ref is not None else set(batch_refs) | ({None} if full_view else set())
+    tasks = scoped_rows(all_tasks, batches, source.scope["range_start"], source.scope["range_end"])
     tasks.sort(key=lambda row: (row["start"] is None, row["start"] or "", row["operation_ref"], row["row_ref"]))
     unplanned = [row for row in unplanned if row["batch_ref"] in batches]
     unplanned.sort(key=lambda row: (row["sequence"] is None, row["sequence"] or 0, row["operation_ref"]))
@@ -55,7 +53,7 @@ def _reference_workspace(source, batch_ref):
         from core.services.workbench.facts.decision_delivery import project_decision_delivery
         deliveries = project_decision_delivery(source.facts, all_tasks, batch_refs, deferred_ids=source.reference_deferred_ids)
     else:
-        deliveries = reference_delivery(source)
+        deliveries = source.completion.delivery("reference")
     deliveries = [row for row in deliveries if batch_ref is None or row["batch_ref"] == batch_ref]
     summary = delivery_summary(deliveries)
     timed = [row for row in all_tasks if row["start"] is not None and row["end"] is not None]
@@ -81,7 +79,7 @@ def _reference_workspace(source, batch_ref):
             "tasks": tasks, "task_count": len(tasks), "candidate_task_count": len(all_tasks), "tasks_complete": True,
             "task_span": task_span([row for row in tasks if row["start"] is not None and row["end"] is not None]), "candidate_span": task_span(timed),
             "gantt_graph": graph, "unplanned_operations": unplanned, "unplanned_operation_count": len(unplanned),
-            "batch_ref": batch_ref, "time_scope": {"range_start": scope.range_start, "range_end": scope.range_end,
+            "batch_ref": batch_ref, "time_scope": {"range_start": source.scope["range_start"], "range_end": source.scope["range_end"],
                 "interval": "half_open_overlap", "time_basis": "factory_local", "unplanned_policy": "included_without_time_interval"},
             "capabilities": capabilities, "blocked_reasons": [], "data_gaps": gaps,
             "delivery_risks": {"items": deliveries, "summary": summary, "state": summary["state"], "batch_count": len(deliveries)}}

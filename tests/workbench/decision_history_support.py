@@ -223,7 +223,7 @@ def _save_cloned_read_models(conn, run_ref):
                                                receipt=packet["receipt"], dependencies=dependencies)
     repo.insert_admission_read_model(run_ref, admission["scope"], admission["decision"])
     models = build_decision_read_models(run, packet["capture"], packet["receipt"], packet["rows"],
-        packet["prepared_candidates"], official, facts=packet["facts"], dependencies=dependencies,
+        packet["prepared_candidates"], facts=packet["facts"],
         process=(packet["receipt"] or {}).get("unified_process"), admission=admission["decision"])
     repo.insert_decision_read_models(run_ref, models["run_model"], models["candidate_models"])
 

@@ -1,18 +1,15 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from copy import deepcopy
+from typing import Any, Dict, Mapping, Optional
 
 _COUNTER_BUCKETS = ("fallback_counts", "param_fallbacks")
 _SAMPLE_BUCKETS = ("fallback_samples",)
 _BUCKETS = _COUNTER_BUCKETS + _SAMPLE_BUCKETS
 
 
-def _empty_stats() -> Dict[str, Any]:
-    return {"fallback_counts": {}, "param_fallbacks": {}, "fallback_samples": {}}
-
-
 def make_algo_stats() -> Dict[str, Any]:
-    return _empty_stats()
+    return {"fallback_counts": {}, "param_fallbacks": {}, "fallback_samples": {}}
 
 
 def _strict_int(value: Any, *, label: str) -> int:
@@ -39,7 +36,7 @@ def _strict_int(value: Any, *, label: str) -> int:
 
 def ensure_algo_stats(target: Any) -> Dict[str, Any]:
     if target is None:
-        return _empty_stats()
+        return make_algo_stats()
     if isinstance(target, dict):
         stats = target
     else:
@@ -62,11 +59,57 @@ def increment_counter(target: Any, key: str, amount: int = 1, *, bucket: str = "
     if not key:
         return
     stats = ensure_algo_stats(target)
-    current_bucket = stats.get(bucket)
-    if not isinstance(current_bucket, dict):
-        current_bucket = {}
-        stats[bucket] = current_bucket
+    if bucket in _BUCKETS:
+        current_bucket = stats[bucket]
+    else:
+        current_bucket = stats.get(bucket)
+        if not isinstance(current_bucket, dict):
+            current_bucket = {}
+            stats[bucket] = current_bucket
     delta = _strict_int(amount, label="算法统计增量")
     if delta == 0:
         return
     current_bucket[key] = _strict_int(current_bucket.get(key, 0) or 0, label=f"算法统计已有计数 {key}") + delta
+
+
+def merge_algo_stats(*sources: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+    merged = make_algo_stats()
+    for src in sources:
+        if not isinstance(src, Mapping):
+            continue
+        _merge_counter_buckets(merged, src)
+        _merge_sample_buckets(merged, src)
+    return merged
+
+
+def capture_algo_stats(target: Any, *sources: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+    """Produce independent merged statistics directly from the decoder's current facts."""
+    return merge_algo_stats(*sources, ensure_algo_stats(target))
+
+
+def _merge_counter_buckets(merged: Dict[str, Any], src: Mapping[str, Any]) -> None:
+    for bucket in _COUNTER_BUCKETS:
+        part = src.get(bucket)
+        if not isinstance(part, Mapping):
+            continue
+        bucket_out = merged[bucket]
+        for key, value in part.items():
+            delta = _strict_int(value, label=f"算法统计合并计数 {bucket}.{key}")
+            if delta == 0:
+                continue
+            bucket_out[key] = bucket_out.get(key, 0) + delta
+
+
+def _merge_sample_buckets(merged: Dict[str, Any], src: Mapping[str, Any]) -> None:
+    for bucket in _SAMPLE_BUCKETS:
+        part = src.get(bucket)
+        if not isinstance(part, Mapping):
+            continue
+        bucket_out = merged[bucket]
+        for key, value in part.items():
+            if not isinstance(value, list) or not value:
+                continue
+            existing = bucket_out.get(key)
+            existing_list = existing if isinstance(existing, list) else []
+            existing_list.extend(deepcopy(value))
+            bucket_out[str(key)] = existing_list

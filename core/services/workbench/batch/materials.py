@@ -105,7 +105,7 @@ class WorkbenchBatchMaterialService:
         changed = bool(payload["removed_keys"])
         for key in payload["removed_keys"]:
             self.repo.delete(cast(int, old[key]["id"]))
-        reviewed = {item["requirement_id"]: item["batch_quantity"] for item in facts.get("BatchMaterialReviews", [])}
+        reviewed = {item["requirement_id"]: item["batch_quantity"] for item in facts["BatchMaterialReviews"]}
         touched = {item["row_key"] for item in payload["rows"]}
         changed = self._save_requirements(batch, old, final, touched, reviewed) or changed
         if any(key not in touched and key in old and reviewed.get(row["id"], batch["quantity"]) != batch["quantity"]

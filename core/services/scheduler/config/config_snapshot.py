@@ -2,27 +2,12 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
-from core.errors import ValidationError
-from core.models.schedule_config_runtime_coercion import ensure_schedule_config_snapshot
-from core.models.schedule_config_runtime_read import (
-    coerce_degradation_event as _coerce_degradation_event,
-)
-from core.models.schedule_config_runtime_read import (
-    merge_degradation_counters as _merge_degradation_counters,
-)
-from core.models.schedule_config_runtime_read import (
-    read_runtime_cfg_raw_value as _read_runtime_cfg_raw_value,
-)
-from core.models.schedule_config_runtime_read import (
-    seed_snapshot_degradation_collector as _seed_snapshot_degradation_collector,
-)
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot, snapshot_from_values
 from core.models.schedule_config_runtime_weights import normalize_weight_triplet
 from core.shared.degradation import (
     DegradationCollector,
     degradation_events_to_dicts,
 )
-from core.shared.field_labels import display_field_label
 
 from .config_field_spec import (
     MISSING_POLICY_ERROR,
@@ -31,32 +16,6 @@ from .config_field_spec import (
     default_snapshot_values,
     list_config_fields,
 )
-
-
-def coerce_runtime_config_field(
-    cfg: Any,
-    key: str,
-    *,
-    strict_mode: bool,
-    source: str,
-    collector: Optional[DegradationCollector] = None,
-    missing_policy: str = MISSING_POLICY_FALLBACK_WITH_DEGRADATION,
-) -> Any:
-    default_map = default_snapshot_values()
-    missing, raw = _read_runtime_cfg_raw_value(cfg, key)
-    active_collector = collector if collector is not None else DegradationCollector()
-    return coerce_config_field(
-        key,
-        raw,
-        strict_mode=bool(strict_mode),
-        source=source,
-        collector=active_collector,
-        missing=missing,
-        fallback=default_map[key],
-        missing_policy=missing_policy,
-    )
-
-
 
 
 def build_schedule_config_snapshot(
@@ -112,7 +71,7 @@ def build_schedule_config_snapshot(
                 raw,
                 strict_mode=True,
                 source="scheduler.config_snapshot",
-                collector=DegradationCollector(),
+                collector=collector,
                 missing=False,
                 fallback=default_map[spec.key],
                 missing_policy=MISSING_POLICY_ERROR,

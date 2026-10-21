@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional, Tuple
 
 from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.acceptance import ACCEPTANCE_IMPROVE_ONLY, ACCEPTANCE_SCHEMA_VERSION
-from core.services.scheduler.run.optimizer.candidate_fingerprint import score_strictly_better
 
 
 def build_graph_ready_improve_only_acceptance_event(
@@ -16,7 +15,7 @@ def build_graph_ready_improve_only_acceptance_event(
 ) -> Optional[Dict[str, Any]]:
     candidate = _score_tuple(candidate_score)
     incumbent = _score_tuple(incumbent_score)
-    if not score_strictly_better(candidate, incumbent):
+    if not candidate or not incumbent or tuple(round(x, 6) for x in candidate) >= tuple(round(x, 6) for x in incumbent):
         return None
     return {
         "schema_version": ACCEPTANCE_SCHEMA_VERSION,
@@ -42,6 +41,8 @@ def _score_tuple(score: Any) -> Tuple[float, ...]:
 
 
 def _finite_score_item(value: Any) -> float:
+    if isinstance(value, bool):
+        raise ValidationError("GraphReady 接受事件分数必须是数字。", field="graph_ready_acceptance")
     try:
         number = float(value)
     except (TypeError, ValueError, OverflowError) as exc:

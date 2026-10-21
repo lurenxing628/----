@@ -28,7 +28,6 @@ from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .material_actions_context import (
-    check_source_snapshot,
     issue_preview,
     json_body,
     opaque_ref,
@@ -47,7 +46,7 @@ def material_bulk_preview():
     scope, query_scope, token = scope_input(body)
     reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:
-        snapshot = check_source_snapshot(query_scope, fingerprint, token)
+        snapshot = bind_read_snapshot(query_scope, fingerprint, token)
         preview = WorkbenchMaterialBulkService(g.db, current_app.logger).preview_delete(body["refs"], scope=scope)
         data = issue_preview(preview)
     return query_success(data, snapshot)

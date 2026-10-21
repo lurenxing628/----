@@ -6,12 +6,12 @@ from typing import NoReturn, Optional, Tuple
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import PlanReadScope, local_time, plan_reference
-from core.services.workbench.facts.zero_duration_evidence import overlaps
 
 COHORT_KEYS = ("plan_ref", "source", "range_start", "range_end", "plan_finish_date_from",
                "plan_finish_date_to", "resource_type", "resource_ref", "batch_ids")
 VIEW_KEYS = ("local_query", "late_filter", "selected_task_ref")
 LATE_FILTERS = ("all", "finishLate", "unclosed", "forecastLate")
+_LATE_KEYS = {"finishLate": "finish_late", "unclosed": "unclosed", "forecastLate": "forecast_late"}
 
 
 def invalid(message: str) -> NoReturn:
@@ -90,19 +90,6 @@ class ActualGanttScope:
         return cls(**args)
 
 
-def cohort_match(item, scope):
-    task, execution = item["task"], item["execution"]
-    if scope.range_start is not None and not overlaps(task["start"], task["end"], scope.range_start, scope.range_end):
-        return False
-    if scope.plan_finish_date_from is not None and not scope.plan_finish_date_from <= task["end"][:10] <= scope.plan_finish_date_to:
-        return False
-    if scope.batch_ids and task["batch_id"] not in scope.batch_ids:
-        return False
-    if scope.resource_ref is not None:
-        return matches_execution_resource(task, execution, scope.resource_type, scope.resource_ref)
-    return True
-
-
 def matches_execution_resource(task, execution, kind, ref):
     field = kind + "_ref"
     owners = [task]
@@ -129,12 +116,6 @@ def matches_execution_resource(task, execution, kind, ref):
 def _unresolved_resource_facts(gaps, field):
     return {gap.get("legacy_fact_ref") for gap in gaps if gap["code"] == "legacy_resource_identity_unresolved"
             and (not gap.get("fields") or field in gap["fields"])}
-
-
-def deadlines(item, as_of):
-    deviation = item["deviation"]
-    return dict(finishLate=deviation["finish_late"], unclosed=deviation["unclosed"],
-                forecastLate=deviation["forecast_late"])
 
 
 def search_text(item, names):
@@ -166,9 +147,9 @@ def _view_arguments(data, values):
     return query.strip().lower(), late, selected
 
 
-def view_items(data, as_of, values):
+def view_items(data, values):
     query, late, selected = _view_arguments(data, values)
     names = {row["ref"]: row["label"] or row["business_code"] for row in data["resources"]}
     return [item for item in data["items"] if (not query or query in search_text(item, names))
-            and (late == "all" or deadlines(item, as_of)[late])
+            and (late == "all" or item["deviation"][_LATE_KEYS[late]])
             and (selected is None or item["task"]["task_ref"] == selected)]

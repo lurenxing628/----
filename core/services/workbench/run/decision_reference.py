@@ -4,15 +4,11 @@
 from core.services.workbench.facts.decision_metrics import project_official_core_metrics
 
 
-def reference_delivery(source):
-    return source.completion.delivery("reference")
-
-
 def official_reference_metrics(source, *, metric_keys=None):
     if not source.official_changed:
-        values = source.memberships.expand(source.official["core_metrics"])
-        if metric_keys is not None:
-            values = {key: value for key, value in values.items() if key in metric_keys}
-        return values, source.memberships.expand(source.official["coverage"])
+        raw_metrics = source.official["core_metrics"] if metric_keys is None else {
+            key: value for key, value in source.official["core_metrics"].items() if key in metric_keys}
+        return source.memberships.expand(raw_metrics), source.memberships.expand(source.official["coverage"])
     return project_official_core_metrics(source.analysis_tasks("reference"), source.scope["operation_refs"],
-        source.reference_deferred_refs, source.baseline["state"] == "available", reference_delivery(source), metric_keys=metric_keys)
+        source.reference_deferred_refs, source.baseline["state"] == "available",
+        source.completion.delivery("reference"), metric_keys=metric_keys)

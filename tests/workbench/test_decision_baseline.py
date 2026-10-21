@@ -11,6 +11,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.scheduler_history_parser import parse_result_summary_payload
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
+from core.services.workbench.facts.adoption_baseline_sources import prepare_trial_adoption_facts
 from core.services.workbench.facts.candidate_facts import _table
 from core.services.workbench.facts.candidate_read_source import read_candidate_source
 from core.services.workbench.facts.candidate_store import CandidateStore
@@ -305,16 +306,17 @@ def test_source_runtime_effort_and_type_keep_saved_context_without_recalculation
                                 {"kind": "op_type", "entity_key": "TURN", "ref": type_ref, "active": 1}],
         "OpTypes": [{"op_type_id": "MILL", "name": "铣削工种"}, {"op_type_id": "TURN", "name": "车削工种"}]}}}}
     rows = [{"operation_ref": op_ref, "original": {"operation": operation, "execution": facts.execution[op_ref]}}]
+    trial_evidence = {"basis": "trial_adoption", "trial_source": prepare_trial_adoption_facts(({}, head, rows))}
     # A base requirement cannot supply a missing saved trial's current ledger.
-    assert _operation_metadata(({}, head, rows), {"basis": "trial_adoption"}) == (None, types, standards)
+    assert _operation_metadata(({}, head, rows), trial_evidence) == (None, types, standards)
     saved = {"operation_effort": ledger}
-    assert _operation_metadata((saved, head, rows), {"basis": "trial_adoption"})[0] is ledger
+    assert _operation_metadata((saved, head, rows), trial_evidence)[0] is ledger
     rows[0]["current"] = {"operation_effort": ledger["items"][0]}
-    assert _operation_metadata((saved, head, rows), {"basis": "trial_adoption"})[1] == old_types
+    assert _operation_metadata((saved, head, rows), trial_evidence)[1] == old_types
     rows[0]["current"] = {}
-    assert _operation_metadata((saved, head, rows), {"basis": "trial_adoption"})[1] == types
+    assert _operation_metadata((saved, head, rows), trial_evidence)[1] == types
     head["admission"]["source"].pop("operation_types")
-    assert _operation_metadata(({}, head, rows), {"basis": "trial_adoption"})[1] == {op_ref: {"ref": None, "label": None}}
+    assert _operation_metadata(({}, head, rows), trial_evidence)[1] == {op_ref: {"ref": None, "label": None}}
 
 
 @pytest.mark.parametrize("captured", [False, True])

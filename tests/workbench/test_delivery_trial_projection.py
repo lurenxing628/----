@@ -288,7 +288,7 @@ def test_saved_legacy_trial_read_reprojects_due_without_rewriting_archive(trial_
 def test_missing_saved_trial_source_is_explicit_unknown_from_saved_tasks(trial_case):
     case = trial_case
     draft = create(case)
-    summary = projection.scenario_comparison(draft, None, [])
+    summary = projection.scenario_comparison(draft, None)
     row, = summary["batches"]
     assert row["completion_state"] == "unknown" and row["risk"] == "unknown"
     assert "trial_source_unavailable" in row["after"]["issues"]

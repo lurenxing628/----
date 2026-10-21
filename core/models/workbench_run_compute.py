@@ -51,5 +51,3 @@ class CandidateRunInputError(ValueError):
         self.code = reason
         self.reason = reason
         self.issues = list(issues or [])
-        self.can_adopt = False
-        self.result_persisted = False

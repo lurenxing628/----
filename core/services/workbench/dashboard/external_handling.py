@@ -49,10 +49,9 @@ def _observation(ref, captured, gap):
 
 class DashboardExternalHandling:
     def __init__(self, conn):
-        self.conn = conn
         self.repo = WorkbenchDashboardExternalRepository(conn)
 
-    def read(self, summary, now, receipts):
+    def read(self, summary, receipts):
         state = self.repo.schema_state()
         if state == "not_connected":
             return [], {}, {}  # v30 remains explicitly unsupported until v31 installs the extension.
@@ -63,16 +62,15 @@ class DashboardExternalHandling:
             return [], {}, {"state": "unavailable"}
         refs = list(receipts)
         mappings = read_receipt_mappings(self.repo, refs)
-        stored, identities = read_external_stored(self.repo, receipts)
+        stored, _ = read_external_stored(self.repo, receipts)
         gaps = {row["source_ref"]: row for row in summary["evaluation_gaps"]}
         observations = []
         for ref in refs:
             mapped = mappings[ref]
-            identity = identities.get(mapped["item_ref"], mapped)
             item, awaiting = _observation(ref, receipts[ref], gaps.get(ref))
-            saved = stored.get(identity["item_ref"])
+            saved = stored.get(mapped["item_ref"])
             if awaiting or saved:
-                observations.append((dict(item, item_ref=identity["item_ref"]), saved, identity))
+                observations.append((dict(item, item_ref=mapped["item_ref"]), saved, mapped))
         summary.update(handling_supported=True, handling_count=len(stored),
                        closed_count=sum(row["handling"]["status"] == "closed" for row in stored.values()))
         return bounded(observations), stored, {"mappings": mappings, "state": state}

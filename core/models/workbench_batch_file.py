@@ -48,7 +48,7 @@ _SAMPLE_ROWS = (
 )
 
 
-def table_descriptor(_kind=None):
+def table_descriptor():
     """模板与填写说明生成器的唯一入口，12 张表统一形状。批次只有一张表，不分 kind。"""
     columns = [{
         "key": key,

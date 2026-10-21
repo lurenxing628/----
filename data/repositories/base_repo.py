@@ -10,12 +10,19 @@ Params = Union[Sequence[Any], Dict[str, Any]]
 
 
 def _row_to_dict(row: Union[sqlite3.Row, Dict[str, Any]]) -> Dict[str, Any]:
-    if row is None:
-        return {}
     if isinstance(row, dict):
         return dict(row)
     # sqlite3.Row 支持 keys()
     return {k: row[k] for k in row.keys()}
+
+
+def strict_non_negative_int(value: Any, *, field: str) -> int:
+    if value is None or isinstance(value, bool) or isinstance(value, float):
+        raise ValueError(f"invalid {field}: {value!r}")
+    number = int(value)
+    if number < 0:
+        raise ValueError(f"invalid {field}: {value!r}")
+    return number
 
 
 class BaseRepository:
@@ -61,9 +68,7 @@ class BaseRepository:
         return _row_to_dict(row) if row else None
 
     def fetchall(self, sql: str, params: Optional[Params] = None) -> List[Dict[str, Any]]:
-        cur = self.execute(sql, params)
-        rows = cur.fetchall() or []
-        return [_row_to_dict(r) for r in rows]
+        return [_row_to_dict(r) for r in self.execute(sql, params).fetchall()]
 
     def iter_rows(self, sql: str, params: Optional[Params] = None) -> Iterator[Dict[str, Any]]:
         """逐行流式读取：语句在调用时立即执行（错误立即翻译），行只在迭代时物化，整表读取不再一次装进内存。"""
@@ -122,12 +127,11 @@ class BaseRepository:
         if not self.logger:
             return
         def _truncate(s: str, max_len: int = 200) -> str:
-            s = "" if s is None else str(s)
             s = s.replace("\r", "\\r").replace("\n", "\\n")
             return s if len(s) <= max_len else (s[: max_len - 3] + "...")
 
         def _is_sensitive_key(k: str) -> bool:
-            kk = (k or "").lower()
+            kk = k.lower()
             return any(x in kk for x in ("password", "passwd", "token", "secret", "apikey", "api_key", "cookie", "session"))
 
         def _safe_value(v: Any) -> Any:
@@ -166,8 +170,6 @@ class BaseRepository:
             except Exception:
                 return "<unloggable params>"
 
-        if self.logger is None:
-            return
         try:
             self.logger.error("数据库错误：%s；SQL=%s；params=%s", e, sql, _safe_params(params))
         except Exception as log_exc:

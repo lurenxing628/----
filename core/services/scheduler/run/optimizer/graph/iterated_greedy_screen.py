@@ -16,11 +16,11 @@ class InsertionScreen:
         self.due = {}
         self.weights = {}
         self.predecessors = search.parent.predecessors
-        for row in reference.candidate.get("results", ()):
+        for row in reference.candidate["results"]:
             if row.op_id not in self.predecessors:
                 continue
             duration = (row.end_time - row.start_time).total_seconds() / 3600.0
-            if not math.isfinite(duration) or duration < 0:
+            if duration < 0:
                 continue
             self.rows[row.op_id] = (str(row.batch_id), row.machine_id, row.operator_id, duration, row.op_type_name)
             metric = search.metrics.get(row.op_id, {})
@@ -49,34 +49,37 @@ class InsertionScreen:
             if operator:
                 operators[operator] = finish
             batches[batch] = max(batches.get(batch, 0.0), finish)
-        return self._objective_key(ends, batches, switches)
+        return self._objective_key(batches, switches)
 
-    def _objective_key(self, ends, batches, switches):
-        tardiness = [max(end - self.due[batch], 0.0) for batch, end in batches.items() if batch in self.due]
-        overdue, total = sum(value > 0 for value in tardiness), sum(tardiness)
-        makespan = max(ends.values(), default=0.0)
+    def _objective_key(self, batches, switches):
+        tardiness = [(batch, max(end - self.due[batch], 0.0)) for batch, end in batches.items() if batch in self.due]
+        overdue, total = sum(value > 0 for _, value in tardiness), sum(value for _, value in tardiness)
+        makespan = max(batches.values(), default=0.0)
         objective = self.search.report["objective_name"]
         if objective == "min_overdue":
             return overdue, total, makespan
         if objective == "min_tardiness":
             return total, overdue, makespan
         if objective == "min_weighted_tardiness":
-            weighted = sum(max(end - self.due[batch], 0.0) * self.weights[batch]
-                           for batch, end in batches.items() if batch in self.due)
+            weighted = sum(value * self.weights[batch] for batch, value in tardiness)
             return weighted, total, overdue, makespan
         if objective == "min_changeover":
             return switches, overdue, total, makespan
         return makespan, overdue, total
 
-    def ranked_positions(self, without, op_id, positions, *, anchor, diversify=False):
+    def ranked_positions(self, without, op_id, positions, *, anchor, diversify):
         """Retain the queue after its first item; an estimate never rejects a move."""
         ranked = []
+        best_position, best_score = None, None
         for position in positions:
             self.search._require_budget()
             order = tuple(without[:position] + [op_id] + without[position:])
-            if order in self.search.scores:
+            known = self.search.scores.get(order)
+            if known is not None:
                 self.search.report["duplicate_decision_pruned"] += 1
                 self.search._record_local_reuse("local_trial_reused")
+                if known[1] and (best_score is None or known[0] < best_score):
+                    best_position, best_score = position, known[0]
                 continue
             ranked.append((self._estimate(order), abs(position - anchor), position))
         if diversify:
@@ -88,13 +91,7 @@ class InsertionScreen:
             ranked.sort()
         report = self.search.report["local_search"]
         report["screened_positions"] += len(ranked)
-        return [row[-1] for row in ranked]
-
-    def select(self, without, op_id, positions, *, anchor, limit):
-        ranked = self.ranked_positions(without, op_id, positions, anchor=anchor)
-        report = self.search.report["local_search"]
-        report["shortlisted_positions"] += min(len(ranked), limit)
-        return ranked[:limit]
+        return [row[-1] for row in ranked], best_position, best_score
 
 
 __all__ = ["InsertionScreen"]

@@ -7,21 +7,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
-from ._helpers import RowLike, as_dict, get, parse_int
+from ._helpers import RowLike, get, parse_int
 
 SCENARIO_STATUS_ACTIVE = "active"
-SCENARIO_STATUS_DISCARDED = "discarded"
-SCENARIO_STATUS_PUBLISHED = "published"
-SCENARIO_STATUS_EXPIRED = "expired"
-
-VALID_SCENARIO_STATUSES = (
-    SCENARIO_STATUS_ACTIVE,
-    SCENARIO_STATUS_DISCARDED,
-    SCENARIO_STATUS_PUBLISHED,
-    SCENARIO_STATUS_EXPIRED,
-)
 
 
 def _text_or_none(value: Any) -> Optional[str]:
@@ -83,6 +73,3 @@ class ScheduleAdjustmentScenario:
             created_at=_text_or_none(get(row, "created_at")),
             updated_at=_text_or_none(get(row, "updated_at")),
         )
-
-    def to_dict(self) -> Dict[str, Any]:
-        return as_dict(self.__dict__)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import fields
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -10,6 +10,8 @@ from core.algorithm_contracts.value_domains import EXTERNAL
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.errors import ValidationError
 
+_RESULT_FIELDS = tuple(f.name for f in fields(ScheduleResult))
+
 
 class _SeedScheduleResult(ScheduleResult):
     # Internal transport only: not a dataclass field or part of the public result schema.
@@ -17,7 +19,7 @@ class _SeedScheduleResult(ScheduleResult):
 
     def __init__(self, result: ScheduleResult, identity: Optional[Tuple[int, str, str, Optional[str]]] = None,
                  segments: Any = None) -> None:
-        super().__init__(**asdict(result))
+        super().__init__(**{name: getattr(result, name) for name in _RESULT_FIELDS})
         self._external_group_identity = identity
         self._resource_segments = segments
 
@@ -74,7 +76,7 @@ def seed_external_group_keys(seed_results: List[ScheduleResult]) -> Dict[int, Tu
 
 def seed_result_for_output(result: ScheduleResult) -> ScheduleResult:
     if isinstance(result, (_SeedScheduleResult, PointSeedResult)):
-        return ScheduleResult(**asdict(result))
+        return ScheduleResult(**{name: getattr(result, name) for name in _RESULT_FIELDS})
     return result
 
 
@@ -104,15 +106,11 @@ def normalize_seed_results(
 
     for seed_result in seed_results:
         original_oid = _identity_int(getattr(seed_result, "op_id", 0))
-        result, reason = _normalize_one_seed_result(seed_result, lookup=lookup)
+        result, oid, reason = _normalize_one_seed_result(seed_result, original_oid=original_oid, lookup=lookup)
         if reason:
             counters[reason] += 1
             continue
         if result is None:
-            continue
-        oid = _identity_int(getattr(result, "op_id", 0))
-        if oid <= 0:
-            counters["dropped_invalid"] += 1
             continue
         if oid in seed_op_ids:
             counters["dropped_dup"] += 1
@@ -153,25 +151,25 @@ def _build_operation_lookup(operations: List[Any]) -> Dict[str, Any]:
     return {"op_id_by_code": op_id_by_code, "op_id_by_batch_seq": by_batch_seq}
 
 
-def _normalize_one_seed_result(seed_result: Any, *, lookup: Dict[str, Any]) -> Tuple[Optional[ScheduleResult], Optional[str]]:
+def _normalize_one_seed_result(
+    seed_result: Any, *, original_oid: int, lookup: Dict[str, Any],
+) -> Tuple[Optional[ScheduleResult], int, Optional[str]]:
     if not seed_result or getattr(seed_result, "start_time", None) is None or getattr(seed_result, "end_time", None) is None:
-        return None, None
+        return None, 0, None
     invalid_time_reason = _invalid_time_window_reason(seed_result)
     if invalid_time_reason:
-        return None, invalid_time_reason
+        return None, 0, invalid_time_reason
 
-    raw_oid = getattr(seed_result, "op_id", 0)
-    oid = _identity_int(raw_oid)
     if _invalid_identity_supplied(getattr(seed_result, "seq", 0)):
-        return None, "dropped_invalid"
-    if oid > 0:
-        return seed_result, None
-    if _invalid_identity_supplied(raw_oid):
-        return None, "dropped_invalid"
+        return None, 0, "dropped_invalid"
+    if original_oid > 0:
+        return seed_result, original_oid, None
+    if _invalid_identity_supplied(getattr(seed_result, "op_id", 0)):
+        return None, 0, "dropped_invalid"
     new_oid = _resolve_seed_op_id(seed_result, lookup=lookup)
     if new_oid <= 0:
-        return None, "dropped_invalid"
-    return _backfill_seed_op_id(seed_result, new_oid), None
+        return None, 0, "dropped_invalid"
+    return _backfill_seed_op_id(seed_result, new_oid), new_oid, None
 
 
 def _invalid_time_window_reason(seed_result: Any) -> Optional[str]:
@@ -238,7 +236,7 @@ def _invalid_identity_supplied(value: Any) -> bool:
         return False
     if text.startswith("-"):
         return True
-    digits = text[1:] if text[:1] in {"+", "-"} else text
+    digits = text[1:] if text.startswith("+") else text
     return not digits.isdecimal()
 
 

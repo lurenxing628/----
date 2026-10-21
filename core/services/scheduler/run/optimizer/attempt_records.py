@@ -24,13 +24,17 @@ def _comparison_snapshot(candidate: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     completion = getattr(metrics, "completion", None)
     known = bool(completion is not None and completion.components_known)
     summary = (candidate or {}).get("summary")
-    values = {key: _finite_value(getattr(summary if key == "failed_ops" else metrics, key, None))
-              for key in _COMPARISON_METRICS}
-    if not known:
-        values.update({key: None for key in _COMPARISON_METRICS if key != "failed_ops"})
-    score = [_finite_value(value) for value in (candidate or {}).get("score", ())]
-    if not known:
-        score = [score[0] if score else None] + [None for _ in score[1:]]
+    values = {
+        key: _finite_value(
+            getattr(summary, key, None) if key == "failed_ops" else (getattr(metrics, key, None) if known else None)
+        )
+        for key in _COMPARISON_METRICS
+    }
+    raw_score = (candidate or {}).get("score", ())
+    if known:
+        score = [_finite_value(value) for value in raw_score]
+    else:
+        score = [_finite_value(raw_score[0]) if raw_score else None] + [None for _ in raw_score[1:]]
     counts = {key: getattr(completion, key, None) for key in (
         "expected_operation_count", "missing_operation_count", "unexpected_result_count", "complete_batch_count")}
     counts["incomplete_batch_count"] = len(completion.incomplete_batch_ids) if completion is not None else None

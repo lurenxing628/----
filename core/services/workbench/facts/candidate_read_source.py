@@ -72,22 +72,16 @@ def read_candidate_source(store, candidate_ref, *, prepared=None):
     else:
         run, rows, receipt = prepared["run"], prepared["rows"], prepared["receipt"]
         run_ref = reference(run.get("run_ref"), stored=True)
-        candidate = prepared.get("candidate")
-        if candidate is None:
-            candidate = store.candidate(candidate_ref)
-        if candidate is None or candidate.get("candidate_ref") != candidate_ref or candidate.get("run_ref") != run_ref:
+        candidate = prepared["candidate"]
+        if candidate.get("candidate_ref") != candidate_ref or candidate.get("run_ref") != run_ref:
             corrupt()
         saved = next((row for row in rows if row["candidate_ref"] == candidate_ref), None)
         if (saved is None or saved.get("run_ref", run_ref) != run_ref or
                 any(saved.get(key) != candidate.get(key) for key in ("status", "task_count", "sequence"))):
             corrupt()
-        capture = prepared.get("capture")
-        if capture is None:
-            capture = store.capture(run_ref)
-        facts = prepared.get("facts")
-        if facts is None:
-            facts = GenerationFacts(capture)
-        disposition = prepared["disposition"] if "disposition" in prepared else dispositions(receipt)
+        capture = prepared["capture"]
+        facts = prepared["facts"]
+        disposition = prepared["disposition"]
         raw_tasks = prepared.get("raw_tasks")
         tasks = prepared.get("tasks")
         ids = prepared["scheduled_op_ids"] if tasks is not None else None
@@ -99,9 +93,6 @@ def read_candidate_source(store, candidate_ref, *, prepared=None):
         if len(raw_tasks) != candidate["task_count"]:
             corrupt()
         tasks, _, ids = tasks_projection_with_intervals(raw_tasks, candidate, facts)
-    if prepared is not None and "unplanned" in prepared:
-        unplanned = prepared["unplanned"]
-    else:
-        unplanned = unplanned_projection(disposition, tasks, facts)
+    unplanned = unplanned_projection(disposition, tasks, facts)
     return CandidateReadSource(run, candidate, disposition, capture, facts, raw_tasks, tasks, unplanned, rows, ids,
                                receipt=receipt)

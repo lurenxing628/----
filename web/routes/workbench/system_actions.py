@@ -21,13 +21,16 @@ from .system_context import command_body, journal, query_payload, resolve_contex
 def system_config_save():
     body = command_body()
     service = SystemConfigWorkspace(g.db, current_app.logger, current_app.config.get("BACKUP_KEEP_DAYS", 7))
-    def guard():
-        if current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"):
-            journal().assert_ready()
-        return service.check(resolve_context("config", body["write_token"]))
     with maintenance_window(current_app.config["DATABASE_PATH"], logger=current_app.logger, action="workbench_config"):
-        if current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR") and journal().lookup(body["request_key"]):
+        records = journal() if current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR") else None
+        entries = records.records() if records is not None else ()
+        if any(row["request_key"] == body["request_key"] for row in entries):
             raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号已经用在文件维护上了，这次没有重复执行。请点「查询结果」核对上次的结果。")
+        def guard():
+            if records is not None:
+                records.assert_ready(entries)
+                return service.check(resolve_context("config", body["write_token"], database=records.scope_from_records(entries)))
+            return service.check(resolve_context("config", body["write_token"]))
         return json_response(service.save(request_key=body["request_key"], values=body["input"], guard=guard))
 
 
@@ -35,9 +38,10 @@ def system_config_save():
 def system_result(request_key):
     validate_request_key(request_key)
     if current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"):
-        row = journal().lookup(request_key)
+        records = journal()
+        row = records.lookup(request_key)
         if row:
-            return query_payload({"kind": "file_operation", "operation": journal().public(row, True)})
+            return query_payload({"kind": "file_operation", "operation": records.public(row, True)})
     commands = WorkbenchCommandService(g.db, current_app.logger)
     stored = commands.repo.get(request_key)
     if stored is not None:
@@ -89,7 +93,7 @@ def system_file_action(action):
     if action == "restore":
         # No maintenance window may be held while the host waits for other
         # admitted requests: their existing maintenance/write work must finish.
-        if journal().lookup(body["request_key"]) is None and commands.repo.get(body["request_key"]) is not None:
+        if commands.repo.get(body["request_key"]) is not None and journal().lookup(body["request_key"]) is None:
             raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号已经用在数据库维护上了，这次没有重复执行。请点「查询结果」核对上次的结果。")
         return _execute_file_action(action, body)
     with maintenance_window(current_app.config["DATABASE_PATH"], logger=current_app.logger, action="workbench_file"):
@@ -107,14 +111,13 @@ def _execute_file_action(action, body):
         if resolve_context("file", body["write_token"]) != body["input"]["backup_ref"]:
             raise WorkbenchCommandRejected("stale_write", "本页数据已过期，所选备份和确认内容对不上，备份没有改动。请刷新页面后重新选择备份。")
         return resolve_context("backup", body["input"]["backup_ref"])
+    host = restore_host(current_app)
     if action == "restore":
-        host = restore_host(current_app)
         if host is None:
             raise WorkbenchCommandRejected("maintenance_unavailable", RESTORE_DISABLED, 503)
         result = host.execute(service, request_key=body["request_key"], intent=body["input"], guard=guard,
                               audit=host.audit_restore_result, restore_runner=_restore_runner)
         return query_payload({"kind": "file_operation", "operation": result, "host": host.status})
-    host = restore_host(current_app)
     values = {"request_key": body["request_key"], "action": action, "intent": body["input"], "guard": guard,
               "audit": _audit_file}
     result = host.execute_file(service, **values) if host is not None else service.execute(**values)

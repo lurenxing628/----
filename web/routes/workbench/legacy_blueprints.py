@@ -75,7 +75,6 @@ LEGACY_PAGE_RULES: Dict[str, str] = {
 
 # 仍由真实处理器提供的旧命名空间端点（说明书页、运行时健康接口），不登记占位规则。
 LEGACY_BLUEPRINTS: Dict[str, Blueprint] = {name: Blueprint(name, __name__) for name in LEGACY_BLUEPRINT_NAMES}
-dashboard_bp = LEGACY_BLUEPRINTS["dashboard"]
 scheduler_bp = LEGACY_BLUEPRINTS["scheduler"]
 system_bp = LEGACY_BLUEPRINTS["system"]
 
@@ -113,5 +112,5 @@ def register_legacy_blueprints(app) -> None:
 
 __all__ = [
     "LEGACY_BLUEPRINTS", "LEGACY_BLUEPRINT_NAMES", "LEGACY_PAGE_RULES",
-    "dashboard_bp", "scheduler_bp", "system_bp", "register_legacy_blueprints",
+    "scheduler_bp", "system_bp", "register_legacy_blueprints",
 ]

@@ -27,53 +27,6 @@ def _event_identity(event: Dict[str, Any]) -> Tuple[str, str, str, str, str, int
     )
 
 
-def _dedupe_event_dicts(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
-    seen = set()
-    for event in events:
-        if not isinstance(event, dict):
-            continue
-        identity = _event_identity(event)
-        if identity in seen:
-            continue
-        seen.add(identity)
-        out.append(dict(event))
-    return out
-
-
-def _iter_build_outcome_values(value: Any) -> List[Any]:
-    if value is None:
-        return []
-    if isinstance(value, dict):
-        return [value]
-    if isinstance(value, (list, tuple)):
-        return list(value)
-    try:
-        return list(value)
-    except Exception:
-        return [value]
-
-
-def _value_flag(item: Any, key: str) -> Any:
-    if isinstance(item, dict):
-        return item.get(key)
-    return getattr(item, key, None)
-
-
-def _builder_merge_context_state(value: Any) -> Tuple[bool, List[Dict[str, Any]]]:
-    degraded = False
-    merge_context_events: List[Dict[str, Any]] = []
-    for item in _iter_build_outcome_values(value):
-        degraded = degraded or bool(_value_flag(item, "merge_context_degraded"))
-        raw_events = _value_flag(item, "merge_context_events")
-        if not isinstance(raw_events, (list, tuple)):
-            continue
-        for raw_event in raw_events:
-            if isinstance(raw_event, dict):
-                merge_context_events.append(dict(raw_event))
-    return bool(degraded), _dedupe_event_dicts(merge_context_events)
-
-
 def _legacy_merge_context_events(event_dicts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [
         dict(event)
@@ -95,13 +48,8 @@ def _input_build_state(input_build_outcome: Optional[BuildOutcome[Any]]) -> Dict
         }
 
     event_dicts = degradation_events_to_dicts(input_build_outcome.events)
-    builder_merge_context_degraded, builder_merge_context_events = _builder_merge_context_state(input_build_outcome.value)
-    merge_context_events = (
-        list(builder_merge_context_events)
-        if builder_merge_context_degraded or builder_merge_context_events
-        else _legacy_merge_context_events(event_dicts)
-    )
-    merge_context_degraded = bool(builder_merge_context_degraded or merge_context_events)
+    merge_context_events = _legacy_merge_context_events(event_dicts)
+    merge_context_degraded = bool(merge_context_events)
     merge_context_event_ids = {_event_identity(event) for event in merge_context_events}
     input_fallback_events = [
         event
@@ -118,35 +66,6 @@ def _input_build_state(input_build_outcome: Optional[BuildOutcome[Any]]) -> Dict
         "merge_context_events": merge_context_events,
         "input_fallback": bool(input_fallback_events),
     }
-
-
-def _metric_int(metrics: Any, key: str) -> int:
-    if metrics is None:
-        return 0
-    try:
-        return max(0, int(getattr(metrics, key, 0) or 0))
-    except Exception:
-        return 0
-
-
-def _metric_sample(metrics: Any, key: str, *, limit: int) -> List[str]:
-    if metrics is None:
-        return []
-    raw = getattr(metrics, key, None)
-    if not isinstance(raw, (list, tuple)):
-        return []
-    out: List[str] = []
-    for item in raw:
-        try:
-            text = str(item).strip()
-        except Exception:
-            continue
-        if not text or text in out:
-            continue
-        out.append(text)
-        if len(out) >= limit:
-            break
-    return out
 
 
 def _optional_text(value: Any) -> Optional[str]:
@@ -248,7 +167,7 @@ def _summary_degradation_state(
     _add_existing_degradation_events(collector, getattr(cfg, "degradation_events", None))
     _add_state_event(
         collector,
-        enabled=bool(tuple(getattr(cfg, "degradation_events", ()) or ())),
+        enabled=bool(getattr(cfg, "degradation_events", ())),
         code="config_fallback",
         scope="schedule.summary.config_snapshot",
         field="config_snapshot",
@@ -353,7 +272,7 @@ def _compute_resource_pool_degradation(cfg: Any, *, resource_pool_meta: Optional
     return bool(auto_assign_enabled), bool(degraded), reason, bool(attempted)
 
 
-def _hard_constraints(cfg: Any, *, downtime_degraded: bool, freeze_applied: bool) -> List[str]:
+def _hard_constraints(*, downtime_degraded: bool, freeze_applied: bool) -> List[str]:
     hard_constraints: List[str] = ["precedence", "calendar", "resource_machine_operator"]
     if not downtime_degraded:
         hard_constraints.append("downtime_avoid")

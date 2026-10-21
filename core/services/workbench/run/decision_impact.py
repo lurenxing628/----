@@ -7,12 +7,10 @@ from typing import Any, Dict
 
 from core.models.workbench_run_candidate import local_time
 from core.services.workbench.facts.candidate_tasks import operation_labels, unplanned_projection
-from core.services.workbench.facts.decision_delivery import common_delivery
+from core.services.workbench.facts.common_completed_delivery import common_completed_delivery
 from core.services.workbench.facts.decision_metrics import operation_change_metrics
 from core.services.workbench.facts.delivery_projection import delivery_batch_delta, delivery_summary
 from core.services.workbench.facts.operation_effort_evidence import archived_standard_effort
-
-from .decision_reference import reference_delivery
 
 BATCH_CHANGES = ("all", "changed", "earlier", "later", "new_overdue", "relieved_overdue", "completion_improved", "completion_worsened", "operation_changed", "unchanged", "unknown")
 OPERATION_CHANGES = ("all", "changed", "added", "removed", "moved", "machine_changed", "operator_changed", "supplier_changed", "source_changed", "status_changed", "unchanged", "unknown")
@@ -22,16 +20,16 @@ DELIVERY_FILTERS = ("all", "attention", "overdue", "deferred", "unplanned", "on_
 
 
 def batch_impact_summary(source):
-    before = reference_delivery(source)
+    before = source.completion.delivery("reference")
     after = source.completion.delivery(source.selected_ref)
     changes = operation_change_metrics(source.operation_comparisons.values(), source.scope["operation_refs"],
         source.baseline["state"] == "available", selected_available=source.result_available(source.selected_ref))
-    return {"before": delivery_summary(before), "after": delivery_summary(after), **common_delivery(before, after),
+    return {"before": delivery_summary(before), "after": delivery_summary(after), **common_completed_delivery(before, after),
             "operation_changes": changes}
 
 
 def batch_impacts(source):
-    before = reference_delivery(source)
+    before = source.completion.delivery("reference")
     tasks = source.tasks(source.selected_ref)
     after = source.completion.delivery(source.selected_ref)
     old, new = ({row["batch_ref"]: row for row in rows} for rows in (before, after))

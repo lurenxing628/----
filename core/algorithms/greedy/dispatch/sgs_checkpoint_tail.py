@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 _STATE_FIELDS = ("base_time", "external_group_cache", "machine_timeline", "operator_timeline",
                  "machine_busy_hours", "operator_busy_hours", "last_end_by_machine", "errors",
-                 "blocked_batches", "failed_count", "seed_count", "initial_scheduled_count",
+                 "blocked_batches", "failed_count", "seed_count",
                  "missing_seed_machine_count", "missing_seed_operator_count", "missing_seed_machine_samples",
                  "missing_seed_operator_samples", "failure_details", "batch_failure_sources")
 _PROGRESS_FIELDS = ("completed_or_fixed_op_ids", "blocked_op_ids", "ready_op_ids",

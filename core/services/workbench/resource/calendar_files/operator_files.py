@@ -53,26 +53,9 @@ from ..operator_calendars import WorkbenchOperatorCalendarService, engine_read_r
 from ..queries import WorkbenchResourceQueryService
 from .file_codec import read_calendar_file, read_clock, read_date, read_number
 from .file_writer import check_capacity, number_text, percent_text, write_calendar_file
+from .files import _DAY_TYPE_TEXT, _YES_NO_TEXT, _blocked, check_range
 
 KIND = "operator_calendar"
-_DAY_TYPE_TEXT = {"workday": "工作日", "holiday": "假期"}
-_YES_NO_TEXT = {"yes": "是", "no": "否"}
-
-
-def _blocked(row) -> bool:
-    return bool(row["errors"])
-
-
-def check_range(start_date: str, end_date: str) -> None:
-    try:
-        start, end = date.fromisoformat(start_date), date.fromisoformat(end_date)
-    except (TypeError, ValueError) as exc:
-        raise WorkbenchCommandRejected("invalid_input", "日期范围必须填成 2026-10-01 这样的年月日，没有开始下载。", 400) from exc
-    if end < start:
-        raise WorkbenchCommandRejected("invalid_input", "结束日期不能早于开始日期，没有开始下载。请重新选择范围。", 400)
-    if (end - start).days + 1 > MAX_RANGE_DAYS:
-        raise WorkbenchCommandRejected(
-            "invalid_input", "一次最多处理 " + str(MAX_RANGE_DAYS) + " 天，没有开始下载。请把范围缩小后重试。", 400)
 
 
 class WorkbenchOperatorCalendarFileService:
@@ -87,10 +70,11 @@ class WorkbenchOperatorCalendarFileService:
     def _calendar(self, operator_code: str) -> WorkbenchOperatorCalendarService:
         if operator_code not in self._calendars:
             self._calendars[operator_code] = (
-                WorkbenchOperatorCalendarService(self.conn, operator_code, self.logger, clock=self._clock)
+                WorkbenchOperatorCalendarService(self.conn, operator_code, self.logger, clock=self._clock,
+                                                 calendar_service=self._domain_calendar)
                 if self._clock is not None
-                else WorkbenchOperatorCalendarService(self.conn, operator_code, self.logger))
-            self._calendars[operator_code]._calendar = self._domain_calendar
+                else WorkbenchOperatorCalendarService(self.conn, operator_code, self.logger,
+                                                      calendar_service=self._domain_calendar))
         return self._calendars[operator_code]
 
     def _reader(self):

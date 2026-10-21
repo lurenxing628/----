@@ -6,7 +6,6 @@ DEFAULT_PRIORITY = "normal"
 
 # 约定：越小越优先（critical > urgent > normal）
 PRIORITY_RANK: Dict[str, int] = {"critical": 0, "urgent": 1, "normal": 2}
-PRIORITY_ORDER = PRIORITY_RANK  # alias（排序策略使用 order 这个名字）
 
 # 用于 ATC 等规则（越大越紧急）
 PRIORITY_WEIGHT: Dict[str, float] = {"critical": 3.0, "urgent": 2.0, "normal": 1.0}
@@ -21,14 +20,13 @@ def normalize_priority(value: Any, *, default: str = DEFAULT_PRIORITY) -> str:
 
     未知值回退到 default（default 若非法则回退到 DEFAULT_PRIORITY）。
     """
-    d = str(default or DEFAULT_PRIORITY).strip().lower() or DEFAULT_PRIORITY
-    if d not in PRIORITY_RANK:
-        d = DEFAULT_PRIORITY
-
+    if isinstance(value, str) and value in PRIORITY_RANK:
+        return value
     s = str(value or "").strip().lower()
-    if not s:
-        return d
-    return s if s in PRIORITY_RANK else d
+    if s in PRIORITY_RANK:
+        return s
+    d = str(default or DEFAULT_PRIORITY).strip().lower() or DEFAULT_PRIORITY
+    return d if d in PRIORITY_RANK else DEFAULT_PRIORITY
 
 
 def priority_weight_scaled(value: Any, *, scale: int = 100, default: str = DEFAULT_PRIORITY) -> int:
@@ -37,5 +35,5 @@ def priority_weight_scaled(value: Any, *, scale: int = 100, default: str = DEFAU
         scale_i = max(1, int(scale))
     except Exception:
         scale_i = 100
-    weight = float(PRIORITY_WEIGHT.get(pr, PRIORITY_WEIGHT[DEFAULT_PRIORITY]))
+    weight = PRIORITY_WEIGHT[pr]
     return int(round(weight * scale_i))

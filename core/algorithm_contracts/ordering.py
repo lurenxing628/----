@@ -26,7 +26,7 @@ def resolve_batch_sort_batch_id(batch_key: Any, batch: Any) -> str:
     return normalize_text_id(getattr(batch, "batch_id", None))
 
 
-def build_normalized_batches_map(batches: Optional[Dict[str, Any]], *, warnings: Optional[List[str]] = None) -> Dict[str, Any]:
+def build_normalized_batches_map(batches: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     normalized: Dict[str, Any] = {}
     for raw_key, batch in (batches or {}).items():
         batch_id = resolve_batch_sort_batch_id(raw_key, batch)
@@ -60,12 +60,8 @@ def _parse_due_date_for_sort(value: Any, *, strict_mode: bool) -> Optional[Any]:
     return parse_optional_date(value, field="due_date") if strict_mode else parse_date(value)
 
 
-def _parse_ready_date_for_sort(value: Any, *, strict_mode: bool) -> Optional[Any]:
-    return parse_optional_date(value, field="ready_date") if strict_mode else parse_date(value)
-
-
 def parse_ready_date_for_sort(value: Any, *, strict_mode: bool) -> Optional[Any]:
-    return _parse_ready_date_for_sort(value, strict_mode=bool(strict_mode))
+    return parse_optional_date(value, field="ready_date") if strict_mode else parse_date(value)
 
 
 def _parse_created_at_for_sort(value: Any, *, strict_mode: bool, strategy: SortStrategy) -> Optional[datetime]:
@@ -91,13 +87,8 @@ def build_batch_sort_inputs(
                 batch_id=batch_id,
                 priority=str(getattr(batch, "priority", "") or "normal"),
                 due_date=_parse_due_date_for_sort(getattr(batch, "due_date", None), strict_mode=bool(strict_mode)),
-                ready_status=(
-                    str(getattr(batch, "ready_status", "") or "yes")
-                    if bool(readiness_gate_enabled)
-                    else "yes"
-                ),
                 ready_date=(
-                    _parse_ready_date_for_sort(getattr(batch, "ready_date", None), strict_mode=bool(strict_mode))
+                    parse_ready_date_for_sort(getattr(batch, "ready_date", None), strict_mode=bool(strict_mode))
                     if bool(readiness_gate_enabled)
                     else None
                 ),

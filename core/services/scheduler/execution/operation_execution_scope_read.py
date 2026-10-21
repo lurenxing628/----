@@ -3,9 +3,6 @@ from __future__ import annotations
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from core.models.operation_execution_scope import OperationExecutionScope, parse_positive_execution_int
-from core.models.operation_execution_state import OperationExecutionState
-
-from .resource_dispatch_execution_enrichment import apply_execution_state_to_row, row_op_id
 
 
 def _value(source: Any, name: str) -> Any:
@@ -107,72 +104,8 @@ def scope_from_feedback_context(context: Any) -> OperationExecutionScope:
     )
 
 
-def scope_from_task_ref(task: Any) -> OperationExecutionScope:
-    return OperationExecutionScope.from_values(
-        schedule_version=getattr(task, "schedule_version", None),
-        schedule_id=getattr(task, "schedule_id", None),
-        op_id=getattr(task, "op_id", None),
-        batch_id=getattr(task, "batch_id", None),
-        source_table=getattr(task, "source_table", None),
-        effective_plan_role=getattr(task, "effective_plan_role", None),
-        scenario_id=getattr(task, "scenario_id", None),
-    )
-
-
-def states_by_op_id_for_plan_rows(
-    feedback_service: Any,
-    rows: Sequence[Any],
-    plan_fields: Mapping[str, Any],
-) -> Dict[int, OperationExecutionState]:
-    scopes_by_op_id = scopes_by_op_id_for_plan_rows(rows, plan_fields)
-    states_by_scope = feedback_service.get_execution_state_for_scopes(list(scopes_by_op_id.values()))
-    return {
-        op_id: states_by_scope[scope]
-        for op_id, scope in scopes_by_op_id.items()
-        if scope in states_by_scope
-    }
-
-
-def apply_scoped_execution_state_to_rows(
-    feedback_service: Any,
-    rows: List[Dict[str, Any]],
-    plan_fields: Mapping[str, Any],
-) -> None:
-    states = states_by_op_id_for_plan_rows(feedback_service, rows, plan_fields)
-    for row in rows:
-        op_id = row_op_id(row)
-        state = states.get(op_id) if op_id is not None else None
-        if state is not None:
-            apply_execution_state_to_row(row, state)
-
-
-def state_for_feedback_context(feedback_service: Any, context: Any) -> OperationExecutionState:
-    scope = scope_from_feedback_context(context)
-    return feedback_service.get_execution_state_for_scopes([scope])[scope]
-
-
-def state_for_task_ref(feedback_service: Any, task: Any) -> OperationExecutionState:
-    scope = scope_from_task_ref(task)
-    return feedback_service.get_execution_state_for_scopes([scope])[scope]
-
-
-def events_for_scope(feedback_service: Any, scope: OperationExecutionScope) -> List[Any]:
-    return feedback_service.list_execution_events_for_scope(scope)
-
-
-def events_for_task_ref(feedback_service: Any, task: Any) -> List[Any]:
-    return events_for_scope(feedback_service, scope_from_task_ref(task))
-
-
 __all__ = [
-    "apply_scoped_execution_state_to_rows",
-    "events_for_scope",
-    "events_for_task_ref",
     "scope_from_feedback_context",
     "scope_from_plan_row",
-    "scope_from_task_ref",
     "scopes_by_op_id_for_plan_rows",
-    "state_for_feedback_context",
-    "state_for_task_ref",
-    "states_by_op_id_for_plan_rows",
 ]

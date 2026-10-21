@@ -5,8 +5,4 @@
 {% if decision.public_context %}
 <dl>{% for label, value in decision.public_context.items() %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}</dl>
 {% endif %}
-{% if decision.option_ids %}<p class="muted">对应选项：{{ decision.option_ids|join("、") }}</p>{% endif %}
-{% if decision.links %}
-<nav class="actions">{% for link in decision.links %}<a href="{{ link.url }}">{{ link.label }}</a>{% endfor %}</nav>
-{% endif %}
 {% endblock %}

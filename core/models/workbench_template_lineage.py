@@ -12,6 +12,8 @@ OWNER_COLUMNS = ("batch_ref", "part_ref", "quantity")
 STATE_COLUMNS = OPERATION_COLUMNS + OWNER_COLUMNS
 COPY_COLUMNS = OPERATION_COLUMNS[1:-1]
 EVIDENCE_VERSION = "template-copy-v1"
+_DECODERS = {"null": lambda _: None, "blob": bytes.fromhex, "real": float.fromhex,
+             "integer": int, "text": lambda item: item}
 
 
 def typed_value(value):
@@ -39,9 +41,7 @@ def restore_snapshot(text):
         raise ValueError("Lineage snapshot must be a typed row.")
     result = {}
     for key, (kind, value) in values.items():
-        decoders = {"null": lambda _: None, "blob": bytes.fromhex, "real": float.fromhex,
-                    "integer": int, "text": lambda item: item}
-        result[key] = decoders[kind](value)
+        result[key] = _DECODERS[kind](value)
     if snapshot(result) != text:
         raise ValueError("Noncanonical lineage snapshot.")
     return result

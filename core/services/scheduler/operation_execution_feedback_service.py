@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence
 
 from core.errors import AppError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
@@ -26,6 +26,7 @@ from core.models.operation_execution_labels import (
 from core.models.operation_execution_scope import OperationExecutionScope
 from core.models.operation_execution_state import OperationExecutionState
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
+from core.services.common.plan_query import SchedulePlanQueryService
 from core.shared.field_labels import display_field_label
 from data.repositories.batch_operation_repo import BatchOperationRepository
 from data.repositories.machine_repo import MachineRepository
@@ -56,14 +57,12 @@ from .operation_execution_feedback_support import (
     _text,
     _validate_known_value,
 )
-from .schedule_plan_query_service import SchedulePlanQueryService
 
 
 class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
-    def __init__(self, conn: sqlite3.Connection, logger=None, op_logger=None):
+    def __init__(self, conn: sqlite3.Connection, logger=None):
         self.conn = conn
         self.logger = logger
-        self.op_logger = op_logger
         self.tx_manager = TransactionManager(conn)
         self.event_repo = OperationExecutionEventRepo(conn, logger=logger)
         self.schedule_repo = ScheduleRepository(conn, logger=logger)
@@ -72,23 +71,11 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
         self.operator_repo = OperatorRepository(conn, logger=logger)
         self.plan_query_service = SchedulePlanQueryService(conn, logger=logger)
 
-    def get_execution_state(self, op_ids: Sequence[int]) -> Dict[int, OperationExecutionState]:
-        raise ValidationError("现场执行状态必须按完整计划身份读取，不能只按 op_id 聚合。", field="operation_execution_scope")
-
     def get_execution_state_for_scopes(self, scopes: Sequence[OperationExecutionScope]) -> Dict[OperationExecutionScope, OperationExecutionState]:
         return self.event_repo.aggregate_states_by_scopes(scopes)
 
-    def list_execution_events_for_scope(self, scope: OperationExecutionScope) -> List[OperationExecutionEvent]:
-        return self.event_repo.list_events_by_scope(scope)
-
     def get_event_by_idempotency_key(self, idempotency_key: str) -> Optional[OperationExecutionEvent]:
         return self.event_repo.get_by_idempotency_key(idempotency_key)
-
-    def has_event_by_idempotency_key(self, idempotency_key: str) -> bool:
-        return self.get_event_by_idempotency_key(idempotency_key) is not None
-
-    def list_execution_events(self, op_id: int) -> List[OperationExecutionEvent]:
-        raise ValidationError("现场执行事件必须按完整计划身份读取，不能只按 op_id 查询。", field="operation_execution_scope")
 
     def record_event(self, context: ExecutionFeedbackContext, *, action: str, **payload: Any) -> ExecutionFeedbackResult:
         normalized_context = self._normalize_context(context)
@@ -131,7 +118,6 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
             )
             event_payload = self._build_event_payload(
                 context=normalized_context,
-                schedule=schedule,
                 batch_id=str(batch_op.batch_id or ""),
                 action=normalized_action,
                 payload=normalized_payload,
@@ -206,11 +192,10 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
         action: str,
         payload: Dict[str, Any],
     ) -> ExecutionFeedbackResult:
-        schedule, batch_op = self._load_current_official_schedule(context)
+        _schedule, batch_op = self._load_current_official_schedule(context)
         expected_event = OperationExecutionEvent.from_row(
             self._build_event_payload(
                 context=context,
-                schedule=schedule,
                 batch_id=str(batch_op.batch_id or ""),
                 action=action,
                 payload=payload,
@@ -287,8 +272,7 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
             out["reason_code"] = _required_text(out.get("reason_code"), "reason_code")
             if not out.get("remark") and out.get("reason_detail"):
                 out["remark"] = out.get("reason_detail")
-            if not (_optional_text(out.get("reason_detail")) or _optional_text(out.get("remark"))):
-                _required_text(out.get("remark"), "remark")
+            out["remark"] = _required_text(out.get("remark"), "remark")
         if action == EXECUTION_ACTION_REPORT_EXCEPTION:
             out["severity"] = _required_text(out.get("severity"), "severity")
         _validate_known_value(out.get("reason_code"), "reason_code", REASON_LABELS)
@@ -399,8 +383,8 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
             self._validate_exception_payload_against_plan(payload=payload)
 
     def _validate_start_payload_against_plan(self, *, payload: Dict[str, Any], schedule: Any) -> None:
-        operator_id = _required_text(payload.get("actual_operator_id"), "operator_id")
-        machine_id = _required_text(payload.get("actual_machine_id"), "machine_id")
+        operator_id = payload["actual_operator_id"]
+        machine_id = payload["actual_machine_id"]
         if not self.operator_repo.exists(operator_id):
             raise _invalid_field_value("operator_id", "请选择有效的操作人员。")
         if not self.machine_repo.exists(machine_id):
@@ -410,8 +394,8 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
             raise _invalid_field_value("machine_id", "请选择当前正式排程记录里的设备。")
 
     def _validate_exception_payload_against_plan(self, *, payload: Dict[str, Any]) -> None:
-        affected_machine_id = _optional_text(payload.get("affected_machine_id"))
-        affected_operator_id = _optional_text(payload.get("affected_operator_id"))
+        affected_machine_id = payload["affected_machine_id"]
+        affected_operator_id = payload["affected_operator_id"]
         if affected_machine_id and not self.machine_repo.exists(affected_machine_id):
             raise _invalid_field_value("affected_machine_id", "请选择有效的影响设备。")
         if affected_operator_id and not self.operator_repo.exists(affected_operator_id):
@@ -421,7 +405,6 @@ class OperationExecutionFeedbackService(OperationExecutionFeedbackActionsMixin):
         self,
         *,
         context: ExecutionFeedbackContext,
-        schedule: Any,
         batch_id: str,
         action: str,
         payload: Dict[str, Any],

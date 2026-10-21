@@ -28,18 +28,10 @@ def public_sequence(value):
     return value if type(value) is int and abs(value) <= (1 << 53) - 1 else str(value)
 
 
-def legacy_workflow(has_operations):
-    return {"origin": "legacy", "stage": "source" if has_operations else "route", "ready": False,
-            "route": {"state": "present" if has_operations else "missing", "confirmed_at": None, "confirmed_by": None},
-            "source": {"state": "unconfirmed" if has_operations else "locked", "confirmed_at": None, "confirmed_by": None},
-            "hours": {"state": "locked", "confirmed_at": None, "confirmed_by": None}}
-
-
-def project_part(row, operations, workflow=None):
+def project_part(row, operations, workflow):
     active = [op for op in operations if op["status"] == "active"]
     internal = sum(op["source"] == "internal" for op in active)
     external = sum(op["source"] == "external" for op in active)
-    workflow = legacy_workflow(bool(active)) if workflow is None else workflow
     issues = []
     if workflow["origin"] == "managed" and not workflow["ready"]:
         stage = {"route": "请保存工艺路线。", "source": "请补齐并保存工序归属。", "hours": "请补齐并保存工时定额。"}

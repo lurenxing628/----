@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Tuple, Union
 
 from core.infrastructure.read_evidence import verified_read
+from core.infrastructure.schema_probe import table_exists
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate
 from core.services.workbench.facts.candidate_baseline import AdmissionBaseline, _blob
 from core.services.workbench.facts.candidate_facts import GenerationFacts
@@ -13,7 +14,7 @@ from core.services.workbench.facts.candidate_values import gap
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 
-from .adoption_baseline_values import fail, has_table, require, same
+from .adoption_baseline_values import fail, require, same
 
 _TABLES = ("Schedule", "ScheduleHistory", "WorkbenchPlanSourceRefs", "WorkbenchTaskRefs",
            "WorkbenchEntityRefs", "BatchOperations", "Batches")
@@ -28,15 +29,13 @@ class CandidateAdmissionProof:
 
 
 def _source_exists(conn, table, field, ref):
-    if not has_table(conn, table):
-        fail("adoption_evidence_missing", table)
     if not WorkbenchPlanBaselineRepository(conn).source_exists(table, field, ref):
         fail("adoption_source_archived", table + "." + field)
 
 
 def _tables_exist(conn, names):
     for name in names:
-        if not has_table(conn, name):
+        if not table_exists(conn, name):
             fail("adoption_evidence_missing", name)
 
 
@@ -200,10 +199,10 @@ def read_adoption_operation_facts(conn, evidence):
     audit = evidence["audit"]
     source_ref = audit["candidate_ref"] if evidence["basis"] == "candidate_adoption" else audit["scenario_ref"]
     key = ("adoption_operation_facts", evidence["basis"], audit["version"], source_ref)
-    return verified_read(conn, key, lambda: _adoption_operation_facts(conn, evidence))
+    return verified_read(conn, key, lambda: _adoption_operation_facts(evidence))
 
 
-def _adoption_operation_facts(conn, evidence):
+def _adoption_operation_facts(evidence):
     if evidence["basis"] == "candidate_adoption":
         resources = evidence["generation_facts"]
         assigned_resources = resources

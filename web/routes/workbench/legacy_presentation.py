@@ -132,10 +132,10 @@ def manual_outline(blocks):
     """Group the anchors by heading level so the reader sees chapters, not one long row."""
     outline = []
     for block in blocks:
-        if not block.get("anchor"):
+        if not block["anchor"]:
             continue
         entry = {"title": block["title"], "anchor": block["anchor"], "children": []}
-        if block.get("level", 2) > 2 and outline:
+        if block["level"] > 2 and outline:
             outline[-1]["children"].append(entry)
         else:
             outline.append(entry)
@@ -152,13 +152,14 @@ def _heading_anchor(text):
     return re.sub(r"-+", "-", text).strip("-") or "section"
 
 
-def _closed_block(title, anchor, level, body, source):
-    text = "".join(body)
-    return {"title": title, "anchor": anchor, "level": level, "body": text,
-            "html": render_manual_markdown(text), "source": "".join(source)}
+def _closed_block(title, anchor, level, body, source, *, render_html):
+    block = {"title": title, "anchor": anchor, "level": level, "source": "".join(source)}
+    if render_html:
+        block["html"] = render_manual_markdown("".join(body))
+    return block
 
 
-def manual_blocks(text):
+def manual_blocks(text, *, render_html=True):
     if not isinstance(text, str):
         raise ValueError("Manual source must be the existing public text.")
     blocks, body, title, anchor, source, fenced = [], [], "", "", [], False
@@ -170,7 +171,7 @@ def manual_blocks(text):
         match = None if fenced else re.match(r"^(#{1,6})\s+(.+?)\s*$", line)
         if match:
             if source:
-                blocks.append(_closed_block(title, anchor, level, body, source))
+                blocks.append(_closed_block(title, anchor, level, body, source, render_html=render_html))
             title = match.group(2)
             level = len(match.group(1))
             base = _heading_anchor(title)
@@ -178,10 +179,11 @@ def manual_blocks(text):
             anchor = base if used[base] == 1 else base + "-" + str(used[base])
             body, source = [], [line]
         else:
-            body.append(line)
+            if render_html:
+                body.append(line)
             source.append(line)
     if source:
-        blocks.append(_closed_block(title, anchor, level, body, source))
+        blocks.append(_closed_block(title, anchor, level, body, source, render_html=render_html))
     return blocks
 
 

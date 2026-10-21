@@ -108,7 +108,7 @@ def _load_projections(ledger, refs, execution_projections):
     return projections, plan, ledger_revision
 
 
-def _adapt_scope_facts(legacy_facts, tasks, projections, plan, ledger_revision, resources):
+def _adapt_scope_facts(legacy_facts, tasks, projections, plan, ledger_revision, resources, refs_by_op):
     result = dict(legacy_facts)
     for scope, task in tasks.items():
         projection = projections[task["operation_ref"]]
@@ -116,17 +116,17 @@ def _adapt_scope_facts(legacy_facts, tasks, projections, plan, ledger_revision, 
             projection.current_task_ref != task["task_ref"]
         ):
             raise _unavailable("execution_ledger_current_task_mismatch", op_id=scope.op_id)
-        fact = replace(legacy_facts[scope], target_quantity=projection.target_quantity, quantity_basis=projection.target_basis)
-        result[scope] = fact
+        fact = legacy_facts[scope]
         changes = ledger_fact_changes(fact, projection, resources, source=task["source"])
         if changes is None:
+            result[scope] = replace(fact, target_quantity=projection.target_quantity, quantity_basis=projection.target_basis)
             continue
-        projection_resources = {ref: resources.get(ref) for ref in _projection_resource_refs(projection)}
+        projection_resources = {ref: resources.get(ref) for ref in refs_by_op[task["operation_ref"]]}
         protection = {"scope_task": task, "ledger_revision": ledger_revision,
                       "projection": _snapshot_projection(projection), "resources": projection_resources}
         revision = fact.state_revision + ":ledger-v2:" + str(ledger_revision)
-        result[scope] = replace(fact, state_revision=revision,
-                               execution_protection_content=protection, **changes)
+        result[scope] = replace(fact, target_quantity=projection.target_quantity, quantity_basis=projection.target_basis,
+                               state_revision=revision, execution_protection_content=protection, **changes)
     return result
 
 
@@ -142,9 +142,10 @@ def adapt_ledger_facts(ledger, legacy_facts, *, execution_projections=None):
         tasks = _scope_tasks(ledger, scopes)
         refs = list(dict.fromkeys(task["operation_ref"] for task in tasks.values()))
         projections, plan, ledger_revision = _load_projections(ledger, refs, execution_projections)
-        resource_refs = {ref for row in projections.values() for ref in _projection_resource_refs(row)}
+        refs_by_op = {op_ref: _projection_resource_refs(row) for op_ref, row in projections.items()}
+        resource_refs = {ref for refs_set in refs_by_op.values() for ref in refs_set}
         resources = {row["ref"]: row for row in ledger.resources(resource_refs)}
-        return _adapt_scope_facts(legacy_facts, tasks, projections, plan, ledger_revision, resources)
+        return _adapt_scope_facts(legacy_facts, tasks, projections, plan, ledger_revision, resources, refs_by_op)
     except WorkbenchCommandRejected as exc:
         raise _unavailable(exc.code) from exc
 

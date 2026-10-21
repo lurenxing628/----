@@ -45,33 +45,42 @@ def _source_text(value: Any) -> str:
 
 
 def _raise_invalid_schedule_rows_error(validation_errors: List[str]) -> None:
-    exc = ValidationError("优化结果里有填写不对的排程记录，已拒绝写入。", field="schedule_results")
-    exc.details = dict(exc.details or {})
-    exc.details["reason"] = "invalid_schedule_rows"
-    exc.details["validation_errors"] = list(validation_errors)
-    exc.details["invalid_schedule_row_count"] = int(len(validation_errors))
-    raise exc
+    raise ValidationError(
+        "优化结果里有填写不对的排程记录，已拒绝写入。",
+        field="schedule_results",
+        details={
+            "reason": "invalid_schedule_rows",
+            "validation_errors": list(validation_errors),
+            "invalid_schedule_row_count": len(validation_errors),
+        },
+    )
 
 
 def _raise_out_of_scope_schedule_rows_error(out_of_scope_op_ids: List[int]) -> None:
-    normalized_ids = sorted({int(op_id) for op_id in list(out_of_scope_op_ids or []) if int(op_id) > 0})
-    exc = ValidationError("优化结果包含超出本次可重排范围的工序，已拒绝写入", field="schedule_results")
-    exc.details = dict(exc.details or {})
-    exc.details["reason"] = "out_of_scope_schedule_rows"
-    exc.details["count"] = int(len(normalized_ids))
-    exc.details["sample_op_ids"] = normalized_ids[:10]
-    exc.details["allowed_scope_kind"] = "reschedulable_op_ids"
-    raise exc
+    normalized_ids = sorted(set(out_of_scope_op_ids))
+    raise ValidationError(
+        "优化结果包含超出本次可重排范围的工序，已拒绝写入",
+        field="schedule_results",
+        details={
+            "reason": "out_of_scope_schedule_rows",
+            "count": len(normalized_ids),
+            "sample_op_ids": normalized_ids[:10],
+            "allowed_scope_kind": "reschedulable_op_ids",
+        },
+    )
 
 
 def _raise_duplicate_schedule_rows_error(duplicate_op_ids: List[int]) -> None:
-    normalized_ids = sorted({int(op_id) for op_id in list(duplicate_op_ids or []) if int(op_id) > 0})
-    exc = ValidationError("优化结果包含重复工序排程，已拒绝写入", field="schedule_results")
-    exc.details = dict(exc.details or {})
-    exc.details["reason"] = "duplicate_schedule_rows"
-    exc.details["count"] = int(len(normalized_ids))
-    exc.details["sample_op_ids"] = normalized_ids[:10]
-    raise exc
+    normalized_ids = sorted(set(duplicate_op_ids))
+    raise ValidationError(
+        "优化结果包含重复工序排程，已拒绝写入",
+        field="schedule_results",
+        details={
+            "reason": "duplicate_schedule_rows",
+            "count": len(normalized_ids),
+            "sample_op_ids": normalized_ids[:10],
+        },
+    )
 
 
 def _result_identity(result: Any, *, index: int) -> str:
@@ -79,11 +88,7 @@ def _result_identity(result: Any, *, index: int) -> str:
         return f"results[{index}]"
     parts: List[str] = [f"index={index}"]
     for field_name in ("op_id", "op_code", "batch_id", "seq"):
-        try:
-            value = getattr(result, field_name, None)
-        except Exception as exc:
-            parts.append(f"{field_name}=<unreadable:{type(exc).__name__}>")
-            continue
+        value = getattr(result, field_name, None)
         if value in (None, ""):
             continue
         parts.append(f"{field_name}={value}")
@@ -93,7 +98,7 @@ def _result_identity(result: Any, *, index: int) -> str:
 def _operation_sources(operations: Optional[List[Any]]) -> Tuple[Dict[int, str], List[str]]:
     out: Dict[int, str] = {}
     errors: List[str] = []
-    for index, op in enumerate(list(operations or [])):
+    for index, op in enumerate(operations or ()):
         try:
             op_id = _strict_positive_int(getattr(op, "id", None))
         except (TypeError, ValueError, ValidationError):
@@ -208,7 +213,7 @@ def build_validated_schedule_payload(
                                                else operation_sources)
     validation_errors.extend(operation_source_errors)
 
-    for index, result in enumerate(list(results or [])):
+    for index, result in enumerate(results or ()):
         row, out_of_scope_op_id, validation_error = _build_validated_schedule_row(
             result,
             index=index,
@@ -223,13 +228,14 @@ def build_validated_schedule_payload(
             validation_errors.append(validation_error)
             continue
         validated_row = cast(ValidatedScheduleRow, row)
-        if int(validated_row.op_id) in scheduled_op_ids:
-            duplicate_op_ids.append(int(validated_row.op_id))
+        op_id = validated_row.op_id
+        if op_id in scheduled_op_ids:
+            duplicate_op_ids.append(op_id)
             continue
         schedule_rows.append(validated_row)
-        scheduled_op_ids.add(int(validated_row.op_id))
+        scheduled_op_ids.add(op_id)
         if validated_row.source == SourceType.INTERNAL.value:
-            assigned_by_op_id[int(validated_row.op_id)] = {
+            assigned_by_op_id[op_id] = {
                 "machine_id": validated_row.machine_id,
                 "operator_id": validated_row.operator_id,
             }
@@ -257,14 +263,21 @@ def build_validated_schedule_payload(
 
 
 def _allowed_operation_ids(reschedulable_operations: List[Any]) -> Tuple[Set[int], Dict[int, str], List[str]]:
-    op_source_by_id, operation_source_errors = _operation_sources(reschedulable_operations)
-    allowed_op_ids = set(op_source_by_id.keys())
-    for op in list(reschedulable_operations or []):
+    allowed_op_ids: Set[int] = set()
+    op_source_by_id: Dict[int, str] = {}
+    errors: List[str] = []
+    for index, op in enumerate(reschedulable_operations or ()):
         try:
-            allowed_op_ids.add(_strict_positive_int(getattr(op, "id", None)))
+            op_id = _strict_positive_int(getattr(op, "id", None))
         except (TypeError, ValueError, ValidationError):
             continue
-    return allowed_op_ids, op_source_by_id, list(operation_source_errors)
+        allowed_op_ids.add(op_id)
+        source = _source_text(getattr(op, "source", ""))
+        if source not in _ALLOWED_RESULT_SOURCES:
+            errors.append(f"operations[{index}],op_id={op_id}: source 必须是 internal 或 external")
+            continue
+        op_source_by_id[op_id] = source
+    return allowed_op_ids, op_source_by_id, errors
 
 
 def _validate_payload_row(
@@ -300,19 +313,11 @@ def _validate_payload_row(
     if source != op_source:
         errors.append(f"{identity}: source 与原工序不一致")
         return int(op_id), errors
-    resource_error = _validate_schedule_row_resources(
-        ValidatedScheduleRow(
-            op_id=int(op_id),
-            machine_id=getattr(row, "machine_id", None),
-            operator_id=getattr(row, "operator_id", None),
-            start_time=start_time,
-            end_time=end_time,
-            source=source,
-        ),
-        identity=identity,
-    )
-    if resource_error is not None:
-        errors.append(resource_error)
+    if source == SourceType.INTERNAL.value and (
+        not _resource_text(getattr(row, "machine_id", None))
+        or not _resource_text(getattr(row, "operator_id", None))
+    ):
+        errors.append(f"{identity}: internal 工序必须有设备和人员")
     return int(op_id), errors
 
 

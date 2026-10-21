@@ -90,7 +90,6 @@ def _load_runtime_resource_inputs(
     algo_ops: List[Any],
     resource_pool_ops: List[Any],
     start_dt_norm: datetime,
-    algo_warnings: List[str],
     load_machine_downtimes_fn: Any,
     build_resource_pool_fn: Any,
     extend_downtime_map_for_resource_pool_fn: Any,
@@ -98,27 +97,21 @@ def _load_runtime_resource_inputs(
     downtime_meta: Dict[str, Any] = {}
     resource_pool_meta: Dict[str, Any] = {}
     downtime_map = load_machine_downtimes_fn(
-        svc,
         algo_ops=algo_ops,
         start_dt=start_dt_norm,
-        warnings=algo_warnings,
         meta=downtime_meta,
     )
-    resource_pool, pool_warnings = build_resource_pool_fn(
+    resource_pool = build_resource_pool_fn(
         svc,
         cfg=cfg,
         algo_ops=resource_pool_ops,
         meta=resource_pool_meta,
     )
-    if pool_warnings:
-        algo_warnings.extend(list(pool_warnings or []))
     downtime_map = extend_downtime_map_for_resource_pool_fn(
-        svc,
         cfg=cfg,
         resource_pool=resource_pool,
         downtime_map=downtime_map,
         start_dt=start_dt_norm,
-        warnings=algo_warnings,
         meta=downtime_meta,
     )
     return downtime_meta, resource_pool_meta, downtime_map, resource_pool
@@ -170,13 +163,14 @@ def _build_runtime_support_inputs(
         strict_mode=bool(strict_mode),
     )
 
+    actual_op_ids = set(execution_fixed_op_ids or ()) | set(execution_completed_op_ids or ())
     seed_results = _merge_execution_and_freeze_seed_results(
-        execution_seed_results=list(execution_seed_results or []),
-        freeze_seed_results=list(seed_results or []),
+        execution_seed_results=execution_seed_results,
+        freeze_seed_results=seed_results,
     )
     seed_results, derived_group_ids = with_merged_actual_group_seeds(seed_results, algo_ops=algo_ops,
-        actual_op_ids=set(execution_fixed_op_ids or set()) | set(execution_completed_op_ids or set()))
-    frozen_op_ids = set(frozen_op_ids) | derived_group_ids
+        actual_op_ids=actual_op_ids)
+    frozen_op_ids = frozen_op_ids | derived_group_ids
     seed_results = with_external_seed_metadata(seed_results, algo_ops=algo_ops)
     validate_seeds = validate_completed_seed_constraints_fn or _validate_completed_downstream_seed_constraints
     validate_seeds(
@@ -187,8 +181,8 @@ def _build_runtime_support_inputs(
     )
     algo_ops_to_schedule = _resolve_algo_ops_to_schedule(
         algo_ops=algo_ops,
-        frozen_op_ids=set(frozen_op_ids),
-        execution_fixed_op_ids=set(execution_fixed_op_ids or set()) | set(execution_completed_op_ids or set()),
+        frozen_op_ids=frozen_op_ids,
+        execution_fixed_op_ids=actual_op_ids,
         run_label=run_label,
         raise_schedule_empty_result_fn=raise_schedule_empty_result_fn,
         derived_group_op_ids=derived_group_ids,
@@ -201,7 +195,6 @@ def _build_runtime_support_inputs(
         algo_ops=algo_ops,
         resource_pool_ops=algo_ops_to_schedule,
         start_dt_norm=start_dt_norm,
-        algo_warnings=algo_warnings,
         load_machine_downtimes_fn=load_machine_downtimes_fn,
         build_resource_pool_fn=build_resource_pool_fn,
         extend_downtime_map_for_resource_pool_fn=extend_downtime_map_for_resource_pool_fn,
@@ -210,9 +203,9 @@ def _build_runtime_support_inputs(
     downtime_map = reserve_execution_machines(downtime_map, execution_reservations)
 
     return (
-        set(frozen_op_ids),
-        list(seed_results or []),
-        list(algo_warnings or []),
+        frozen_op_ids,
+        seed_results,
+        algo_warnings,
         freeze_meta,
         algo_ops_to_schedule,
         downtime_meta,
@@ -241,8 +234,8 @@ def _seed_batch_id(seed: Dict[str, Any]) -> str:
 def _seed_seq(seed: Dict[str, Any]) -> int:
     try:
         return int(seed.get("seq") or 0)
-    except (TypeError, ValueError):
-        return 0
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"工序 seq 值无效（无法转为整数）：{seed.get('seq')!r}") from exc
 
 
 def _seed_end(seed: Dict[str, Any]) -> Any:

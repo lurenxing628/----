@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import bisect
-import math
 import operator
-from datetime import datetime, timedelta
+from datetime import datetime
 from itertools import accumulate, islice
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -53,11 +52,11 @@ class SegmentOverlapIndex:
 
     def __init__(self, segments: Optional[Sequence[Tuple[datetime, datetime]]]) -> None:
         self._segments = segments or ()
-        self._starts: Optional[Sequence[datetime]] = None
-        self._prefix_max_ends: Sequence[datetime] = ()
+        self._starts: Optional[Tuple[datetime, ...]] = None
+        self._prefix_max_ends: Tuple[datetime, ...] = ()
         self._scanned_once = False
-        self._covered_starts: Optional[Sequence[datetime]] = None
-        self._covered_ends: Sequence[datetime] = ()
+        self._covered_starts: Optional[Tuple[datetime, ...]] = None
+        self._covered_ends: Tuple[datetime, ...] = ()
         self._append_native: Optional[bool] = None if type(segments) is tuple else False
         self._coverage_native: Optional[bool] = None
 
@@ -115,9 +114,10 @@ class SegmentOverlapIndex:
         derived._append_native = True
         derived._coverage_native = True
         if end > start:
-            derived._starts = tuple(self._starts or ()) + (start,)
+            assert self._starts is not None
+            derived._starts = self._starts + (start,)
             previous_end = self._prefix_max_ends[-1] if self._prefix_max_ends else end
-            derived._prefix_max_ends = tuple(self._prefix_max_ends) + (max(previous_end, end),)
+            derived._prefix_max_ends = self._prefix_max_ends + (max(previous_end, end),)
             derived._append_covered_segment(start, end)
         return derived
 
@@ -137,14 +137,14 @@ class SegmentOverlapIndex:
         return end <= start or not self._starts or start >= self._starts[-1]
 
     def _append_covered_segment(self, start: datetime, end: datetime) -> None:
-        if self._covered_starts is None:
+        if self._covered_starts is None or self._covered_ends is None:
             return
         if self._covered_ends and start <= self._covered_ends[-1]:
             if end > self._covered_ends[-1]:
-                self._covered_ends = tuple(self._covered_ends[:-1]) + (end,)
+                self._covered_ends = self._covered_ends[:-1] + (end,)
         else:
-            self._covered_starts = tuple(self._covered_starts) + (start,)
-            self._covered_ends = tuple(self._covered_ends) + (end,)
+            self._covered_starts = self._covered_starts + (start,)
+            self._covered_ends = self._covered_ends + (end,)
 
     def covered_end(self, instant: datetime) -> Optional[datetime]:
         """End of the continuous occupied block containing this instant.
@@ -206,38 +206,6 @@ def _unsorted_segments_message(starts: Sequence[datetime]) -> str:
         if cur < prev:
             return f"重叠索引要求段按起点升序：{cur!r} 出现在 {prev!r} 之后"
     return "重叠索引要求段按起点升序"
-
-
-def find_earliest_available_start(
-    segments: List[Tuple[datetime, datetime]],
-    base_time: datetime,
-    duration_hours: float,
-) -> datetime:
-    """segments 必须按起点升序（乱序输入在避让进入第二次查询时抛 ValueError，见 SegmentOverlapIndex）。"""
-    try:
-        dur = float(duration_hours)
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise ValueError(f"排产时长必须是数字：{duration_hours!r}") from exc
-    if not math.isfinite(dur):
-        raise ValueError(f"排产时长必须是有限数字：{duration_hours!r}")
-    if dur <= 0:
-        return base_time
-
-    cur = base_time
-    index = SegmentOverlapIndex(segments)
-    if not len(index):
-        return cur
-
-    duration = timedelta(hours=dur)
-    guard = 0
-    while True:
-        guard += 1
-        if guard > (len(index) + 1):
-            return cur
-        shift = index.shift_end(cur, cur + duration)
-        if shift is None or shift <= cur:
-            return cur
-        cur = shift
 
 
 def find_overlap_shift_end(

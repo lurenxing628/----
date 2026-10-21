@@ -8,9 +8,7 @@ from flask import current_app, g, redirect, render_template, request
 from werkzeug.exceptions import BadRequest
 
 from web.routes.workbench.legacy_navigation import build_legacy_destination, resolve_legacy_get
-from web.routes.workbench.legacy_page_contract import PAGE_POLICIES as PAGE_POLICIES
-from web.routes.workbench.legacy_page_contract import LegacyGetDecision as LegacyGetDecision
-from web.routes.workbench.legacy_page_contract import LegacyGetRequest as LegacyGetRequest
+from web.routes.workbench.legacy_page_contract import PAGE_POLICIES, LegacyGetDecision, LegacyGetRequest
 from web.routes.workbench.legacy_presentation import install_legacy_presentation
 
 
@@ -38,7 +36,9 @@ def _validate_decision(decision, policy):
 
 
 def _destination_response(decision, build_destination):
-    destination = build_destination(decision)
+    destination = (decision.destination
+                   if build_destination is build_legacy_destination and decision.destination is not None
+                   else build_destination(decision))
     if not isinstance(destination, str):
         raise RuntimeError("The canonical navigation destination must be a string.")
     parts = urlsplit(destination)

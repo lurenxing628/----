@@ -13,7 +13,7 @@ import pytest
 
 from core.algorithms import GreedyScheduler, ScheduleResult, ScheduleSummary, SortStrategy
 from core.errors import ValidationError
-from core.services.scheduler.config.config_snapshot import ScheduleConfigSnapshot
+from core.models.schedule_config_runtime import ScheduleConfigSnapshot
 from core.services.scheduler.run.optimizer.outcome import OptimizationOutcome
 from core.services.scheduler.run.optimizer.runtime import _default_runtime
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
@@ -103,6 +103,12 @@ def _schedule_input(mode: str, *, block_on_cycle: str) -> SimpleNamespace:
         operations=[SimpleNamespace(id=1, batch_id="B001", source="internal")],
         reschedulable_operations=[SimpleNamespace(id=1, batch_id="B001", source="internal")],
         reschedulable_op_ids={1},
+        schedule_output_allowed_op_ids={1},
+        payload_validation_operations=[SimpleNamespace(id=1, batch_id="B001", source="internal")],
+        execution_snapshot_revision="rev-0",
+        execution_snapshot_op_ids=[1],
+        execution_snapshot_op_count=1,
+        run_time_budget_seconds=None,
         normalized_batch_ids=["B001"],
         freeze_meta={"loaded": True},
         algo_input_outcome=SimpleNamespace(value=[]),
@@ -112,9 +118,7 @@ def _schedule_input(mode: str, *, block_on_cycle: str) -> SimpleNamespace:
         frozen_op_ids=set(),
         t0=0.0,
         optimizer_seed_version=6,
-        run_label="schedule",
         prev_version=5,
-        created_by_text="tester",
         missing_internal_resource_op_ids=set(),
     )
 
@@ -382,6 +386,22 @@ def _analysis_graph(durations: List[Tuple[str, int]], edges: List[Tuple[str, str
     return graph
 
 
+def _build_duration_weighted_graph(graph: Any) -> Any:
+    from core.services.scheduler.graph.nx_runtime import import_networkx
+
+    weighted = import_networkx().DiGraph()
+    source_node_id = "__GRAPH_METRICS_SOURCE__"
+    weighted.add_node(source_node_id)
+    for node_id, data in graph.nodes(data=True):
+        weighted.add_node(node_id, **data)
+    for node_id in graph.nodes:
+        if graph.in_degree(node_id) == 0:
+            weighted.add_edge(source_node_id, node_id, weight=int(graph.nodes[node_id]["duration_minutes"]))
+    for parent, child, data in graph.edges(data=True):
+        weighted.add_edge(parent, child, weight=int(graph.nodes[child]["duration_minutes"]) + int(data["lag_minutes"]))
+    return weighted
+
+
 @pytest.mark.parametrize(
     ("durations", "edges", "expected"),
     [
@@ -400,10 +420,21 @@ def test_critical_path_keeps_original_networkx_order_and_zero_semantics(
     from core.services.scheduler.graph.nx_runtime import import_networkx
 
     graph = _analysis_graph(durations, edges)
-    weighted = metrics.build_duration_weighted_graph(graph)
-    raw_path = import_networkx().dag_longest_path(
-        weighted, weight="weight", topo_order=metrics.get_topological_order(weighted),
-    )
+    weighted = _build_duration_weighted_graph(graph)
+
+    def _node_sort_key(node_id: str) -> Tuple[str, int, str, str]:
+        if node_id == "__GRAPH_METRICS_SOURCE__":
+            return "", -1, "", node_id
+        data = weighted.nodes[node_id]
+        return str(data["batch_id"]), int(data["seq"]), str(data["op_code"]), node_id
+
+    nx = import_networkx()
+    weighted_order = [
+        node_id
+        for group in nx.topological_generations(weighted)
+        for node_id in sorted(group, key=_node_sort_key)
+    ]
+    raw_path = nx.dag_longest_path(weighted, weight="weight", topo_order=weighted_order)
     oracle = (
         [node_id for node_id in raw_path if node_id != "__GRAPH_METRICS_SOURCE__"],
         sum(weighted.edges[parent, child]["weight"] for parent, child in zip(raw_path, raw_path[1:])),
@@ -420,7 +451,7 @@ def test_graph_analysis_reuses_one_topology_without_success_path_cycle_scan(
 ) -> None:
     from unittest.mock import Mock
 
-    from core.services.scheduler.graph import analysis_service, metrics
+    from core.services.scheduler.graph import analysis_service
     from core.services.scheduler.graph.nx_runtime import import_networkx
 
     graph = _analysis_graph([("a", 3), ("b", 4)], [("a", "b", 2)])
@@ -429,7 +460,6 @@ def test_graph_analysis_reuses_one_topology_without_success_path_cycle_scan(
     cycle = Mock(wraps=nx.find_cycle)
     monkeypatch.setattr(nx, "topological_generations", topology)
     monkeypatch.setattr(nx, "find_cycle", cycle)
-    monkeypatch.setattr(metrics, "build_duration_weighted_graph", Mock(side_effect=AssertionError("weighted copy")))
 
     summary = analysis_service.ScheduleGraphAnalysisService()._analyze_graph(graph, metrics_mode=metrics_mode)
     assert summary.is_dag is True

@@ -5,9 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 from functools import partial
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
-
-from core.algorithms import ScheduleResult
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from .attempt_records import evaluate_optional_local_candidate
 from .local_search_candidate_eval import evaluate_local_search_candidate
@@ -69,11 +67,6 @@ def _restart_shake_move(
     changed = sum(1 for left, right in zip(base_order, shaken_order) if left != right)
     changed += abs(len(base_order) - len(shaken_order))
     mode = str(dispatch_mode or "")
-    # Batch-order decodes are identified by the order alone, like the order-only neighborhoods;
-    # under sgs the rule takes part in the decode, so the key carries it.
-    decision_key: Tuple[Any, ...] = tuple(shaken_order)
-    if mode == "sgs":
-        decision_key = (RESTART_SHAKE, str(dispatch_rule or ""), tuple(shaken_order))
     return NeighborhoodMove(
         schema_version=NEIGHBORHOOD_MOVE_SCHEMA_VERSION,
         neighborhood_name=RESTART_SHAKE,
@@ -84,7 +77,6 @@ def _restart_shake_move(
         expected_effect="diversify_after_stall",
         dispatch_mode=mode,
         dispatch_rule=str(dispatch_rule or ""),
-        decision_key=decision_key,
         reason="restart_after_stall",
     )
 
@@ -98,20 +90,13 @@ def _evaluate_restart_candidate(
     params: Dict[str, Any],
     dispatch_mode: str,
     dispatch_rule: str,
-    scheduler: Any,
     strict_mode: bool,
-    algo_ops_to_schedule: List[Any],
-    batches: Dict[str, Any],
     start_dt: datetime,
     end_date: Optional[date],
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
-    seed_sr_list: List[ScheduleResult],
     resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
     optimizer_algo_stats: Optional[Dict[str, Any]],
-    schedule_fn: Callable[..., Any],
     readiness_gate_enabled: bool,
-    graph_ready_context: Optional[Any],
     attempts: List[Dict[str, Any]],
     search_report_state: Optional[OptimizationSearchReportState],
     clock: Callable[[], float],
@@ -130,26 +115,19 @@ def _evaluate_restart_candidate(
     decode_started = clock()
     evaluate = partial(
         evaluate_local_search_candidate,
-        scheduler=scheduler,
         strict_mode=bool(strict_mode),
-        algo_ops_to_schedule=algo_ops_to_schedule,
-        batches=batches,
         strategy=strategy,
         params=params,
         start_dt=start_dt,
         end_date=end_date,
-        downtime_map=downtime_map,
-        order=list(shaken_order),
-        seed_sr_list=seed_sr_list,
+        order=shaken_order,
         dispatch_mode=dispatch_mode,
         dispatch_rule=dispatch_rule,
         resource_pool=candidate_resource_pool,
         resource_pair_rank=local_state.best.get("resource_pair_rank") or {},
         objective_name=objective_name,
         optimizer_algo_stats=optimizer_algo_stats,
-        schedule_fn=schedule_fn,
         readiness_gate_enabled=bool(readiness_gate_enabled),
-        graph_ready_context=graph_ready_context,
         neighborhood_move=move,
         decode_session=decode_session,
     )
@@ -186,13 +164,13 @@ def restart_after_stall(
     and records any skipped request.
     """
     vns_state.mark_shake()
-    shaken_order = _shake_order(list(local_state.best.get("order") or local_state.current_order), rnd)
+    shaken_order = _shake_order(local_state.best.get("order") or local_state.current_order, rnd)
     best_strat, best_params, best_dispatch_mode, best_dispatch_rule = resolve_current_strategy_state(
         local_state.best, dispatch_mode_cfg=dispatch_mode_cfg, dispatch_rule_cfg=dispatch_rule_cfg
     )
     move = _restart_shake_move(
-        base_order=list(local_state.best.get("order") or []),
-        shaken_order=list(shaken_order),
+        base_order=local_state.best.get("order") or [],
+        shaken_order=shaken_order,
         dispatch_mode=best_dispatch_mode,
         dispatch_rule=best_dispatch_rule,
     )

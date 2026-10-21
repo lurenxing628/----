@@ -20,11 +20,11 @@ _ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrst
 _ASCII_LOWER_BYTES = bytes.maketrans(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ", b"abcdefghijklmnopqrstuvwxyz")
 
 
-def _matches_query(value, needle):
+def _matches_query(value, needle, needle_bytes):
     if value is None:
         return False
     if isinstance(value, bytes):
-        return needle.encode("utf-8") in value.translate(_ASCII_LOWER_BYTES)
+        return needle_bytes in value.translate(_ASCII_LOWER_BYTES)
     return needle in value.translate(_ASCII_LOWER)
 
 
@@ -132,25 +132,29 @@ class WorkbenchResourceRelationService:
     def _page(self, parent, query, rows, qualifications, facts):
         # rows already use SQLite's business_code ASC order; preserve its ASCII-only lower rule.
         needle = query.query.translate(_ASCII_LOWER)
+        needle_bytes = needle.encode("utf-8")
         matching = [row for row in rows if not needle
-                    or _matches_query(row["business_code"], needle)
-                    or _matches_query(row["name"], needle)]
+                    or _matches_query(row["business_code"], needle, needle_bytes)
+                    or _matches_query(row["name"], needle, needle_bytes)]
         total = len(matching)
         pages = max(1, (total + query.size - 1) // query.size)
         if query.number > pages:
             raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
-        machine_types = defaultdict(set)
-        for row in facts.get("machine_capabilities", []):
-            machine_types[row["machine_id"]].add(row["op_type_id"])
-        authorizations = defaultdict(list)
-        for row in facts.get("authorizations", []):
-            authorizations[row["operator_id"]].append(dict(row, op_type_ids=sorted(machine_types[row["machine_id"]])))
-        entities = []
         start = (query.number - 1) * query.size
-        for row in matching[start:start + query.size]:
+        page_rows = matching[start:start + query.size]
+        if query.relation == "operators" and page_rows:
+            machine_types = defaultdict(set)
+            for row in facts["machine_capabilities"]:
+                machine_types[row["machine_id"]].add(row["op_type_id"])
+            authorizations = defaultdict(list)
+            for row in facts["authorizations"]:
+                authorizations[row["operator_id"]].append(dict(row, op_type_ids=sorted(machine_types[row["machine_id"]])))
+        entities = []
+        for row in page_rows:
             code = row["business_code"]
             identity = WorkbenchEntityIdentity(row["ref"], RELATION_KINDS[query.relation], code, row["revision"], True)
-            entities.append(relation_entity(identity, row, query.relation, parent.entity_key, qualifications, authorizations[code]))
+            entities.append(relation_entity(identity, row, query.relation, parent.entity_key, qualifications,
+                                            authorizations[code] if query.relation == "operators" else ()))
         return {"parent_ref": parent.ref, "parent_kind": "op_type", "relation": query.relation,
                 "basis": dict(RELATION_BASIS[query.relation]), "entities": entities,
                 "page": {"number": query.number, "size": query.size, "total": total, "pages": pages,

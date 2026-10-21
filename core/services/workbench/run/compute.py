@@ -104,8 +104,6 @@ def _compute_in_read_snapshot(conn, schedule_input, version, on_progress: Option
     if not conn.in_transaction or not is_query_only(conn):
         fail("candidate_read_snapshot_lost", "Candidate computation requires its active read-only snapshot.")
     compare = run_candidate_comparison
-    if callable(on_progress):
-        compare = partial(compare, on_progress=on_progress)
     if any(op.piece_id is not None for op in schedule_input.operations):
         compare = partial(compare, prepare_graph_fn=piece_graph_preparer(schedule_input))
     orchestration = orchestrate_schedule_run(

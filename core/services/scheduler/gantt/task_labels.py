@@ -13,18 +13,19 @@ def detail_part_label(row: Mapping[str, Any]) -> str:
     part_no = _text(row.get("part_no"))
     part_name = _text(row.get("part_name"))
     piece_id = _text(row.get("piece_id"))
-    label = " ".join(item for item in (part_no, part_name) if item).strip()
+    label = " ".join(item for item in (part_no, part_name) if item)
     return label or piece_id or "-"
 
 
 def detail_operation_label(row: Mapping[str, Any]) -> str:
     seq = row.get("seq")
+    seq_text = _text(seq)
     op_type = _text(row.get("op_type_name"))
-    if seq is not None and _text(seq) and op_type:
+    if seq is not None and seq_text and op_type:
         return f"{seq}（{op_type}）"
     if op_type:
         return op_type
-    return _text(seq) or "-"
+    return seq_text or "-"
 
 
 def public_task_label(row: Mapping[str, Any]) -> str:
@@ -43,4 +44,4 @@ def public_task_label(row: Mapping[str, Any]) -> str:
     return "未命名工序"
 
 
-__all__ = ["detail_operation_label", "detail_part_label", "public_task_label"]
+__all__ = ["public_task_label"]

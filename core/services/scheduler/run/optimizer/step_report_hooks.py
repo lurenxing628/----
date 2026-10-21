@@ -17,17 +17,17 @@ def _append_ortools_attempt(
     decision_evidence: Optional[Dict[str, Any]] = None,
 ) -> None:
     metrics = candidate["metrics"]
-    dispatch_mode = str(candidate.get("dispatch_mode") or "")
-    dispatch_rule = str(candidate.get("dispatch_rule") or "")
+    dispatch_mode = candidate["dispatch_mode"]
+    dispatch_rule = candidate["dispatch_rule"]
     attempt = {
         "tag": f"ortools:bottleneck|{dispatch_mode}:{dispatch_rule}",
         "source": "ortools_warmstart",
         "strategy": candidate["strategy"].value,
         "dispatch_mode": dispatch_mode,
         "dispatch_rule": dispatch_rule,
-        "used_params": dict(candidate["params"] or {}),
+        "used_params": dict(candidate["params"]),
         "score": list(candidate["score"]),
-        "failed_ops": int(candidate["summary"].failed_ops),
+        "failed_ops": candidate["summary"].failed_ops,
         "metrics": metrics.to_dict(),
         "algo_stats": candidate["algo_stats"],
     }
@@ -44,8 +44,8 @@ def _append_ortools_trace(
     t_begin: float,
 ) -> None:
     metrics = candidate["metrics"]
-    dispatch_mode = str(candidate.get("dispatch_mode") or "")
-    dispatch_rule = str(candidate.get("dispatch_rule") or "")
+    dispatch_mode = candidate["dispatch_mode"]
+    dispatch_rule = candidate["dispatch_rule"]
     improvement_trace.append(
         {
             "elapsed_ms": int((now() - t_begin) * 1000),
@@ -59,63 +59,15 @@ def _append_ortools_trace(
     )
 
 
-def _record_ortools_failure(*, optimizer_algo_stats: Optional[Dict[str, Any]], scheduler: Any, logger: Any, exc: Exception) -> None:
-    increment_counter(optimizer_algo_stats if isinstance(optimizer_algo_stats, dict) else scheduler, "ortools_warmstart_failed_count")
-    if not logger:
-        return
-    tb = traceback.format_exc(limit=10)
-    try:
-        logger.warning(f"OR-Tools 预热失败（已忽略）：{exc}", exc_info=True)
-    except TypeError:
-        logger.warning(f"OR-Tools 预热失败（已忽略）：{exc}\n{tb}")
-
-
-def _record_ortools_rejection_attempt(
-    *,
-    attempts: List[Dict[str, Any]],
-    strategy: SortStrategy,
-    dispatch_mode: str,
-    dispatch_rule: str,
-    reason: str,
-    message: str,
-) -> Dict[str, Any]:
-    return append_rejected_reason_attempt(
-        attempts=attempts,
-        tag=f"ortools:bottleneck|{dispatch_mode}:{dispatch_rule}",
-        strategy=strategy.value,
-        dispatch_mode=dispatch_mode,
-        dispatch_rule=dispatch_rule,
-        reason=reason,
-        message=message,
-    )
-
-
 def _mark_report_phase_skipped(search_report_state: Optional[OptimizationSearchReportState], phase: str, reason: str) -> None:
     if search_report_state is not None:
         search_report_state.mark_phase_skipped(phase, reason)
-
-
-def _mark_report_deadline(search_report_state: Optional[OptimizationSearchReportState]) -> None:
-    if search_report_state is not None:
-        search_report_state.mark_deadline_reached()
 
 
 def _mark_report_deadline_skip(search_report_state: Optional[OptimizationSearchReportState], phase: str) -> None:
     if search_report_state is not None:
         search_report_state.mark_deadline_reached()
         search_report_state.mark_phase_skipped(phase, "time_budget")
-
-
-def _mark_report_evaluated(search_report_state: Optional[OptimizationSearchReportState], candidate: Dict[str, Any], origin: str) -> Any:
-    if search_report_state is not None:
-        return search_report_state.mark_candidate_evaluated(candidate, origin=origin)
-    return None
-
-
-def _mark_report_accepted(search_report_state: Optional[OptimizationSearchReportState], candidate: Dict[str, Any], origin: str,
-                          fingerprint: Any = None) -> None:
-    if search_report_state is not None:
-        search_report_state.mark_candidate_accepted(candidate, origin=origin, fingerprint=fingerprint)
 
 
 def _record_ortools_optional_failure(
@@ -130,17 +82,25 @@ def _record_ortools_optional_failure(
     logger: Any,
     exc: Exception,
 ) -> None:
-    _record_ortools_rejection_attempt(
+    append_rejected_reason_attempt(
         attempts=attempts,
-        strategy=strategy,
+        tag=f"ortools:bottleneck|{dispatch_mode}:{dispatch_rule}",
+        strategy=strategy.value,
         dispatch_mode=dispatch_mode,
         dispatch_rule=dispatch_rule,
         reason="optional_warmstart_failed",
         message=str(exc),
     )
     if search_report_state is not None:
-        search_report_state.mark_optional_warmstart_failed(reason="optional_warmstart_failed")
-    _record_ortools_failure(optimizer_algo_stats=optimizer_algo_stats, scheduler=scheduler, logger=logger, exc=exc)
+        search_report_state.mark_optional_warmstart_failed()
+    increment_counter(optimizer_algo_stats if isinstance(optimizer_algo_stats, dict) else scheduler, "ortools_warmstart_failed_count")
+    if not logger:
+        return
+    try:
+        logger.warning(f"OR-Tools 预热失败（已忽略）：{exc}", exc_info=True)
+    except TypeError:
+        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__, limit=10))
+        logger.warning(f"OR-Tools 预热失败（已忽略）：{exc}\n{tb}")
 
 
 def _record_ortools_candidate(
@@ -153,7 +113,9 @@ def _record_ortools_candidate(
     now: Callable[[], float],
     t_begin: float,
 ) -> Optional[Dict[str, Any]]:
-    fingerprint = _mark_report_evaluated(search_report_state, candidate, "ortools_warmstart")
+    fingerprint = None
+    if search_report_state is not None:
+        fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin="ortools_warmstart")
     accepted = not (best is not None and candidate["score"] >= best["score"])
     _append_ortools_attempt(
         attempts=attempts, candidate=candidate,
@@ -164,7 +126,8 @@ def _record_ortools_candidate(
     )
     if not accepted:
         return best
-    _mark_report_accepted(search_report_state, candidate, "ortools_warmstart", fingerprint)
+    if search_report_state is not None:
+        search_report_state.mark_candidate_accepted(candidate, origin="ortools_warmstart", fingerprint=fingerprint)
     _append_ortools_trace(improvement_trace=improvement_trace, candidate=candidate, now=now, t_begin=t_begin)
     return candidate
 
@@ -174,7 +137,8 @@ def _multi_start_deadline_reached(
 ) -> bool:
     current = now()
     if current >= deadline:
-        _mark_report_deadline(search_report_state)
+        if search_report_state is not None:
+            search_report_state.mark_deadline_reached()
         return True
     return False
 
@@ -189,15 +153,17 @@ def _append_multi_start_attempt(
     decision_evidence: Optional[Dict[str, Any]] = None,
 ) -> None:
     metrics = candidate["metrics"]
+    dispatch_mode = candidate["dispatch_mode"]
+    dispatch_rule = candidate["dispatch_rule"]
     attempt = {
         "tag": candidate_tag(strategy_key, dispatch_mode, dispatch_rule),
         "source": "multi_start",
         "strategy": candidate["strategy"].value,
         "dispatch_mode": dispatch_mode,
         "dispatch_rule": dispatch_rule,
-        "used_params": dict(candidate["params"] or {}),
+        "used_params": dict(candidate["params"]),
         "score": list(candidate["score"]),
-        "failed_ops": int(candidate["summary"].failed_ops),
+        "failed_ops": candidate["summary"].failed_ops,
         "metrics": metrics.to_dict(),
         "algo_stats": candidate["algo_stats"],
     }
@@ -217,6 +183,8 @@ def _append_multi_start_trace(
     t_begin: float,
 ) -> None:
     metrics = candidate["metrics"]
+    dispatch_mode = candidate["dispatch_mode"]
+    dispatch_rule = candidate["dispatch_rule"]
     improvement_trace.append(
         {
             "elapsed_ms": int((now() - t_begin) * 1000),
@@ -243,7 +211,9 @@ def _record_multi_start_candidate(
     now: Callable[[], float],
     t_begin: float,
 ) -> Optional[Dict[str, Any]]:
-    fingerprint = _mark_report_evaluated(search_report_state, candidate, "multi_start")
+    fingerprint = None
+    if search_report_state is not None:
+        fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin="multi_start")
     accepted = not (best is not None and candidate["score"] >= best["score"])
     _append_multi_start_attempt(
         attempts=attempts,
@@ -258,7 +228,8 @@ def _record_multi_start_candidate(
     )
     if not accepted:
         return best
-    _mark_report_accepted(search_report_state, candidate, "multi_start", fingerprint)
+    if search_report_state is not None:
+        search_report_state.mark_candidate_accepted(candidate, origin="multi_start", fingerprint=fingerprint)
     _append_multi_start_trace(
         improvement_trace=improvement_trace,
         candidate=candidate,

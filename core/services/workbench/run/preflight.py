@@ -137,7 +137,6 @@ class PreflightService:
                 config = self.facts.configuration()
             except ValidationError as exc:
                 config_error = exc
-            self.facts.config_snapshot, self.facts.config_error = config, config_error
             options = run_options(settings, config) if config is not None else None
             if options is not None:
                 settings = {**settings, "time_budget_seconds": options["time_budget_seconds"]}
@@ -156,7 +155,7 @@ class PreflightService:
                 ops = grouped[batch["batch_id"]]
                 if not ops:
                     no_route.append(batch)
-                if checks.readiness(batch, True):
+                if checks.readiness(batch):
                     unready.append({"batch_ref": batch["ref"], "batch_id": batch["batch_id"]})
                 batch_rows = []
                 for op in ops:
@@ -171,14 +170,14 @@ class PreflightService:
                     batch_rows.append(row)
                 dependency_reasons.extend(batch_dependencies(batch, ops, batch_rows, settings))
                 rows.extend(batch_rows)
+            hold = (None, "default") if config_error is not None else hold_window(self.facts.conn, settings, snapshot=config)
             held, notes, marks = self._arrangement_reasons(settings, batches, operations, rows, projections, ledger_reasons,
-                                                           checks, cycles)
+                                                           checks, cycles, hold_window_bounds=hold[0])
             for row in rows:
                 row["held"] = marks.get(row["op_id"])
             data = summarize(settings, batches, rows, no_route, unready, ledger_reasons,
                              dependency_reasons + arrangement_reasons + held, notes,
-                             hold=((None, "default") if config_error is not None
-                                   else hold_window(self.facts.conn, settings, snapshot=config)))
+                             hold=hold)
             data["run_options"] = options
             return PreparedPreflight(data, fingerprint, settings, self.facts.capture, self.facts,
                                      config, prepared_projections, config_error=config_error, run_options=options)
@@ -190,16 +189,17 @@ class PreflightService:
             # 周期核对不了是这次排产的阻断，不是报工台账没开通；具体原因（如外协报工带本厂资源）另行列出。
             return {}, [issue("external_execution_cycle_unproven", "合并外协组的实际周期无法核对，请检查现场记录和原安排后重新检查。")]
 
-    def _arrangement_reasons(self, settings, batches, operations, rows, projections, ledger_reasons, checks, cycles):
+    def _arrangement_reasons(self, settings, batches, operations, rows, projections, ledger_reasons, checks, cycles,
+                             *, hold_window_bounds):
         """排产计算或采用才会发现、却在开始前就能看出的冲突：外协记录占了本厂资源，
         不重排时段保留的原安排按现在的资料已不成立。返回 (阻断原因, 提醒, {工序: 保留标记})。"""
         svc = build_schedule_repository_bundle(self.facts.conn)
         capture = cast("ProductionFactsCapture", self.facts.capture)
         version = max((row["version"] for row in capture.table("ScheduleHistory")), default=0)
         ledger_ready = not any(item["code"] == "execution_ledger_unavailable" for item in ledger_reasons)
-        reasons = external_resource_issues(self.facts, svc, operations, projections, version) if ledger_ready else []
+        reasons = external_resource_issues(self.facts, svc, operations, version) if ledger_ready else []
         # 与排产计算查不重排时段的范围一致：这次要重排的工序，加上合并外协组按实际周期派生保留的成员。
         held_ids = {row["op_id"] for row in rows if row["status"] in ("eligible", "auto_assign_required")} | set(cycles)
         held, notes, marks = held_arrangement_reasons(self.facts, svc, checks, settings, version, batches, operations,
-                                                      held_ids, cycles, projections)
+                                                      held_ids, cycles, projections, hold_window_bounds=hold_window_bounds)
         return reasons + held, notes, marks

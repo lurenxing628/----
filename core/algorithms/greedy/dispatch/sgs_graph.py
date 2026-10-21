@@ -24,7 +24,6 @@ class PreparedGraphReadyTopology:
     predecessors: Mapping[int, FrozenSet[int]]
     successors: Mapping[int, FrozenSet[int]]
     sort_keys: Mapping[int, Tuple[int, int, int]]
-    fixed_sources: Optional[Mapping[int, str]]
 
 
 
@@ -38,13 +37,11 @@ def prepare_graph_ready_topology(context, operations) -> PreparedGraphReadyTopol
     state = _prepare_graph_ready_state(raw, ops_by_batch=grouped)
     if state is None:
         raise ValidationError("图 ready 队列上下文无效，不能启用图排产候选。", field="graph_ready_context")
-    sources = context.get("fixed_op_sources_by_op_id")
     return PreparedGraphReadyTopology(
         frozenset(state["op_by_id"]), state["input_fixed_op_ids"],
         MappingProxyType({key: frozenset(value) for key, value in state["predecessor_op_ids_by_op_id"].items()}),
         MappingProxyType({key: frozenset(value) for key, value in state["successor_op_ids_by_op_id"].items()}),
         MappingProxyType(dict(state["sort_key_by_op_id"])),
-        MappingProxyType(dict(sources)) if sources is not None else None,
     )
 
 
@@ -298,7 +295,7 @@ def _detect_graph_ready_cycle(*, schedulable_ids: set, predecessor_map: Dict[int
     # 算法本体收敛到 core/algorithm_runtime/graph_cycle.py 的共享实现
     # （审计 A09：optimizer 侧第二份拷贝曾漏修，双拷贝已发生一次语义漂移）。
     if kahn_unreachable_op_ids(
-        schedulable_ids=set(schedulable_ids),
+        schedulable_ids=schedulable_ids,
         predecessor_map=predecessor_map,
         successor_map=successor_map,
     ):
@@ -368,7 +365,7 @@ def _collect_candidates(
 
 def _ensure_graph_ready_complete(*, graph_state: Dict[str, Any], ops_by_batch: Dict[str, List[Any]], blocked_batches: set) -> None:
     expected = set(graph_state["op_by_id"])
-    finished = set(graph_state["completed_or_fixed_op_ids"])
+    finished = graph_state["completed_or_fixed_op_ids"]
     blocked = set(graph_state["blocked_op_ids"])
     for batch_id in blocked_batches:
         blocked.update(_op_id(op) for op in ops_by_batch.get(batch_id, []))
@@ -504,12 +501,12 @@ def _record_graph_fixed_order_conflict(
     # 后继 op_id，业务侧据此核对报工顺序；渲染文案见
     # core/models/scheduler_public_errors._structured_failure_message。
     _failed_batch_id, failed_op = graph_state["op_by_id"].get(failed_op_id, ("", None))
-    if failed_op is None or not hasattr(state, "record_graph_fixed_order_conflict"):
+    if failed_op is None:
         return
     state.record_graph_fixed_order_conflict(
         failed_op,
         batch_id,
-        fixed_successor_op_ids=list(fixed_conflict_op_ids),
+        fixed_successor_op_ids=fixed_conflict_op_ids,
     )
 
 
@@ -522,16 +519,13 @@ def _record_graph_blocked_operations(
     already_counted_op_ids: set,
 ) -> int:
     extra_failed_count = 0
-    for blocked_op_id in sorted(set(newly_blocked_op_ids)):
+    _failed_batch_id, failed_op = graph_state["op_by_id"].get(failed_op_id, ("", None))
+    for blocked_op_id in sorted(newly_blocked_op_ids):
         if blocked_op_id == failed_op_id or blocked_op_id not in graph_state["op_by_id"]:
             continue
-        blocked_batch_id, blocked_op = graph_state["op_by_id"][blocked_op_id]
-        _failed_batch_id, failed_op = graph_state["op_by_id"].get(failed_op_id, ("", None))
-        # 只走结构化 record_graph_blocked_after_failure；不再 append 原始串到 state.errors，
-        # 否则会回落成 generic_scheduler_error 与具体文案双发（与 missing_batch/异常路径同源问题）。
         if blocked_op_id in already_counted_op_ids:
             continue
-        if hasattr(state, "record_graph_blocked_after_failure"):
-            state.record_graph_blocked_after_failure(blocked_op, blocked_batch_id, failed_op=failed_op)
+        blocked_batch_id, blocked_op = graph_state["op_by_id"][blocked_op_id]
+        state.record_graph_blocked_after_failure(blocked_op, blocked_batch_id, failed_op=failed_op)
         extra_failed_count += 1
     return extra_failed_count

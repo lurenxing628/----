@@ -81,9 +81,6 @@ def decide_acceptance(
 ) -> AcceptanceDecision:
     name = validate_acceptance_name(acceptance_name)
     better_than_current = score_strictly_better(candidate_score, current_score)
-    progress = _progress(iteration=iteration, max_iterations=max_iterations)
-    threshold = DEFAULT_THRESHOLD * (1.0 - progress)
-    temperature = max(threshold, MIN_TEMPERATURE)
 
     if name == ACCEPTANCE_IMPROVE_ONLY:
         return _decision(
@@ -97,6 +94,9 @@ def decide_acceptance(
             random_seed=random_seed,
             random_draw=None,
         )
+    progress = _progress(iteration=iteration, max_iterations=max_iterations)
+    threshold = DEFAULT_THRESHOLD * (1.0 - progress)
+    temperature = max(threshold, MIN_TEMPERATURE)
     if name == ACCEPTANCE_THRESHOLD:
         return _threshold_decision(
             name=name,

@@ -46,9 +46,8 @@ def build_precedence_graph(
 
     _validate_node_objects(node_list)
     _validate_edge_objects(edge_list)
-    _validate_unique_node_ids(node_list)
+    node_ids = _validate_unique_node_ids(node_list)
 
-    node_ids = {node.node_id for node in node_list}
     for edge in edge_list:
         _validate_edge(edge, node_ids)
 
@@ -80,7 +79,7 @@ def _validate_edge_objects(edges: List[OperationGraphEdge]) -> None:
             raise GraphBuildContractError("edges 只能包含 OperationGraphEdge。")
 
 
-def _validate_unique_node_ids(nodes: List[OperationGraphNode]) -> None:
+def _validate_unique_node_ids(nodes: List[OperationGraphNode]) -> Set[str]:
     seen: Dict[str, OperationGraphNode] = {}
     for node in nodes:
         previous = seen.get(node.node_id)
@@ -89,6 +88,7 @@ def _validate_unique_node_ids(nodes: List[OperationGraphNode]) -> None:
                 f"重复 node_id：{node.node_id}，样本 op_code：{previous.op_code} / {node.op_code}"
             )
         seen[node.node_id] = node
+    return set(seen)
 
 
 def _validate_edge(edge: OperationGraphEdge, node_ids: Set[str]) -> None:
@@ -111,26 +111,9 @@ def _node_attrs(node: OperationGraphNode) -> Dict[str, Any]:
         "batch_id": node.batch_id,
         "op_code": node.op_code,
         "seq": node.seq,
-        "name": node.name,
         "duration_minutes": node.duration_minutes,
-        "part_no": node.part_no,
-        "priority": node.priority,
-        "source": node.source,
-        "status": node.status,
-        "is_frozen": node.is_frozen,
-        "fixed_source": node.fixed_source,
-        "due_date": node.due_date,
-        "op_type_id": node.op_type_id,
         "machine_id": node.machine_id,
-        "operator_id": node.operator_id,
-        "supplier_id": node.supplier_id,
-        "ext_group_id": node.ext_group_id,
-        "ext_merge_mode": node.ext_merge_mode,
-        "ext_group_total_days": node.ext_group_total_days,
-        "merge_context_degraded": node.merge_context_degraded,
-        "candidate_machine_ids": list(node.candidate_machine_ids),
-        "candidate_operator_ids": list(node.candidate_operator_ids),
-        "raw": dict(node.raw),
+        "candidate_machine_ids": node.candidate_machine_ids,
     }
 
 

@@ -68,7 +68,7 @@ _SAMPLE_ROWS = (
 )
 
 
-def table_descriptor(_kind=None):
+def table_descriptor():
     """模板与填写说明生成器的唯一入口，12 张表统一形状。物料只有一张表，不分 kind。"""
     columns = []
     for index, key in enumerate(COLUMNS):
@@ -114,7 +114,7 @@ def normalize_refs(refs: Any, *, allow_empty: bool = False):
         raise ValidationError("物料选择已失效，请刷新后重新选择。", field="refs")
     if len(set(refs)) != len(refs):
         raise ValidationError("物料选择里有重复，请重新选择。", field="refs")
-    return list(refs)
+    return refs
 
 
 def file_request(content: Any, file_format: str, mode: str, scope: Any):

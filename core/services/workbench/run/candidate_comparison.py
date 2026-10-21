@@ -87,10 +87,6 @@ def _analysis_state(source):
             "candidate_ref": source.selected_ref, "official_sources": source.official["source_states"]}
 
 
-def _delivery_summary(rows):
-    return delivery_summary(rows)
-
-
 def _delivery_rows(before, after, refs):
     old, new = ({row["batch_ref"]: row for row in rows} for rows in (before, after))
     if not set(refs) <= set(old) or not set(refs) <= set(new):
@@ -143,8 +139,8 @@ def _projection(source, scope):
     result = {"candidate": source.saved_candidate_catalog(source.selected_ref), "generation": generation,
             "baseline": baseline, "time_scope": time_scope, "batch_ref": scope.batch_ref, "batch_refs": refs,
             "batches": batches, "resources": resources, "resource_common": resource_common,
-            "summary": {"before": {**_delivery_summary(before_delivery), "changeovers": old_cost},
-                        "after": {**_delivery_summary(after_delivery), "changeovers": new_cost},
+            "summary": {"before": {**delivery_summary(before_delivery), "changeovers": old_cost},
+                        "after": {**delivery_summary(after_delivery), "changeovers": new_cost},
                         "changeover_delta": None if old_cost["value"] is None or new_cost["value"] is None else new_cost["value"] - old_cost["value"]},
             "machine_changes": _machine_changes(rows, refs),
             "resource_scope_complete": not bool(missing_resources), "resource_scope_unknown_rows": missing_resources,
@@ -153,7 +149,8 @@ def _projection(source, scope):
                       "changeovers": "same_range_scheduled_operation_type_changes", "current_entities_consulted": False},
             "capabilities": {"view": True, "adopt": False, "edit_draft": False, "report_actual": False}}
     result["tradeoffs"] = candidate_tradeoffs(result, before_delivery, after_delivery, before_tasks, after_tasks,
-        subject_operation_refs={row["operation_ref"] for row in before + after})
+        subject_operation_refs={row["operation_ref"] for row in before + after},
+        before_intervals=old_intervals, after_intervals=new_intervals)
     return result
 
 

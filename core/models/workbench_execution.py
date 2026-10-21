@@ -1,7 +1,6 @@
 """Public execution ledger DTOs. No database keys or internal revision numbers."""
 
-from copy import deepcopy
-from dataclasses import dataclass, field, fields, is_dataclass
+from dataclasses import dataclass, field, fields
 from operator import attrgetter
 from typing import Any, Dict, List, Optional
 
@@ -16,7 +15,7 @@ def _snapshot_value(value: Any) -> Any:
     # guards and response; these scalars need no copying. Mutable children still
     # receive independent snapshots, including report histories and write tokens.
     # Plain dicts, plain lists and the DTOs here are built in one pass that takes
-    # scalar children as they are; any other type keeps the generic path.
+    # scalar children as they are; unsupported value types are rejected.
     kind = type(value)
     if kind in _IMMUTABLE_SCALARS:
         return value
@@ -30,19 +29,7 @@ def _snapshot_value(value: Any) -> Any:
         names, read = dto
         return {name: item if type(item) in _IMMUTABLE_SCALARS else _snapshot_value(item)
                 for name, item in zip(names, read(value))}
-    return _snapshot_other(value)
-
-
-def _snapshot_other(value: Any) -> Any:
-    if is_dataclass(value) and not isinstance(value, type):
-        return {item.name: _snapshot_value(getattr(value, item.name)) for item in fields(value)}
-    if isinstance(value, tuple) and hasattr(value, "_fields"):
-        return type(value)(*(_snapshot_value(item) for item in value))
-    if isinstance(value, (list, tuple)):
-        return type(value)(_snapshot_value(item) for item in value)
-    if isinstance(value, dict):
-        return type(value)((_snapshot_value(key), _snapshot_value(item)) for key, item in value.items())
-    return deepcopy(value)
+    raise TypeError(f"Unsupported execution DTO value: {kind!r}")
 
 
 @dataclass(frozen=True)

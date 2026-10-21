@@ -13,12 +13,8 @@ from core.services.scheduler.run.schedule_input_seed_metadata import (
 )
 from core.services.workbench.facts.preflight_checks import stored_date
 from core.services.workbench.facts.zero_duration import candidate_point_validator
-from data.repositories.workbench_run_input_repo import ADOPTION_CHECK_TABLES
 
 from .input_runtime import runtime_resource_facts
-
-# piece_adoption 仍按这份表清单读主数据；清单本体归输入仓储维护。
-_TABLES = ADOPTION_CHECK_TABLES
 
 
 def _block(code, message):

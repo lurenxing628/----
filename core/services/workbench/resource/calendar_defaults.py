@@ -5,7 +5,7 @@ import json
 from core.errors import ValidationError
 from core.infrastructure.transaction import in_transaction_context
 from core.models.calendar_periods import normalize_periods, period_hours
-from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
+from core.models.workbench_command import WorkbenchCommandOutcome
 from core.services.scheduler.calendar.defaults import default_periods_from_row
 from data.repositories.calendar_defaults_repo import CalendarDefaultsRepository
 
@@ -27,14 +27,6 @@ class WorkbenchCalendarDefaultsService:
         row = self.repo.get()
         periods = default_periods_from_row(row)
         return {"row": row, "periods": periods, "hours": period_hours(periods)}
-
-    def apply(self, payload, checked):
-        if not self.conn.in_transaction or not in_transaction_context(self.conn):
-            raise RuntimeError("Default calendar writes require a workbench command transaction.")
-        current = self.snapshot()
-        if current != checked:
-            raise WorkbenchCommandRejected("stale_write", "默认工作时间已变化，请刷新后重新核对。")
-        return self._apply_checked(self.normalize(payload), current)
 
     def _apply_checked(self, payload, current):
         if not self.conn.in_transaction or not in_transaction_context(self.conn):

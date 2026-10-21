@@ -4,7 +4,6 @@ import json
 from typing import Any, Dict
 
 from core.models.public_identifier_redaction import (
-    REDACTED_INTERNAL_TEXT,
     is_forbidden_internal_key,
     redact_internal_text,
 )
@@ -46,13 +45,6 @@ def public_operation_log_detail_text(detail: Any) -> str:
     return str(projected)
 
 
-def public_operation_log_error_message(message: Any) -> str:
-    if isinstance(message, (int, float)) and not isinstance(message, bool):
-        return REDACTED_INTERNAL_TEXT
-    return redact_internal_text(message)
-
-
 __all__ = [
     "public_operation_log_detail_text",
-    "public_operation_log_error_message",
 ]

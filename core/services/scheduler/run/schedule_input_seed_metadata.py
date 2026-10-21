@@ -54,15 +54,13 @@ def _enrich_external_seed(seed: Dict[str, Any], by_id: Dict[int, Any]) -> Dict[s
     if op is None:
         raise _metadata_error(op_id, "missing_operation")
     batch_id = _validated_batch_identity(seed, op, op_id)
-    if not all(hasattr(op, field) for field in ("ext_merge_mode", "ext_group_id")):
-        raise _metadata_error(op_id, "missing_merge_context")
     mode = str(getattr(op, "ext_merge_mode", None) or "").strip().lower()
     if mode not in ("", MergeMode.SEPARATE.value, MergeMode.MERGED.value):
         raise _metadata_error(op_id, "invalid_merge_mode")
     if mode != MergeMode.MERGED.value:
         return seed
     group_id = str(getattr(op, "ext_group_id", None) or "").strip()
-    if not group_id or bool(getattr(op, "merge_context_degraded", False)):
+    if not group_id:
         raise _metadata_error(op_id, "invalid_merged_group")
     metadata = {"op_id": op_id, "batch_id": batch_id, "ext_group_id": group_id}
     piece = getattr(op, "piece_id", None)
@@ -153,7 +151,7 @@ def with_merged_actual_group_seeds(seed_results, *, algo_ops, actual_op_ids):
     by_id = {seed["op_id"]: seed for seed in seed_results}
     for op_id, seed in by_id.items():
         identity = groups.get(op_id)
-        if identity in intervals and (seed["start_time"], seed["end_time"]) != intervals[identity]:
+        if op_id not in actual_op_ids and identity in intervals and (seed["start_time"], seed["end_time"]) != intervals[identity]:
             raise _actual_group_conflict(op_id)
     result, derived = list(seed_results), set()
     for op in algo_ops:

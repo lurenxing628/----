@@ -8,14 +8,6 @@ from typing import Any, Dict, Optional, Union
 RowLike = Union[sqlite3.Row, Dict[str, Any]]
 
 
-def as_dict(row: Optional[RowLike]) -> Dict[str, Any]:
-    if row is None:
-        return {}
-    if isinstance(row, dict):
-        return dict(row)
-    return {k: row[k] for k in row.keys()}
-
-
 def get(row: Optional[RowLike], key: str, default: Any = None) -> Any:
     if row is None:
         return default
@@ -42,12 +34,7 @@ def parse_int(value: Any, default: Optional[int] = None) -> Optional[int]:
     if isinstance(value, int):
         return value
     if isinstance(value, float):
-        try:
-            if math.isfinite(value) and value.is_integer():
-                return int(value)
-        except (TypeError, ValueError, OverflowError):
-            return default
-        return default
+        return int(value) if math.isfinite(value) and value.is_integer() else default
     try:
         if isinstance(value, (bytes, bytearray)):
             value = value.decode("utf-8", errors="ignore")

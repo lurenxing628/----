@@ -1,7 +1,6 @@
 """Bound large IG neighbourhood enumeration under common decode admission."""
 from __future__ import annotations
 
-from .iterated_greedy_diversify import extended_positions
 from .iterated_greedy_iteration import IGIteration
 from .iterated_greedy_joint import joint_orders, joint_removed
 from .iterated_greedy_moves import _insertion_positions, _park
@@ -24,28 +23,24 @@ class LargeIGIteration(IGIteration):
     def _repair(self, reference, removed):
         search = self.search
         budget = NeighborhoodBudget(search, len(removed))
-        search.local_budget = budget
+        self.local_budget = budget
         report = search.report["local_search"]
         report["neighborhoods"] += 1
         report["last_budget_ms"] = int(budget.seconds * 1000)
-        try:
-            removed = removed[:budget.size]
-            joint = search.rotation.selected.name == "resource_window" and budget.size >= 2
-            if joint:
-                removed = joint_removed(search, reference, removed, budget.size)
-            report["last_destroy_size"] = len(removed)
-            if joint:
-                improved = yield from self._joint_repair(reference, removed)
-                if improved is not None:
-                    return improved
-            return (yield from self._screened_repair(reference, removed))
-        finally:
-            search.local_budget = None
+        joint = search.rotation.selected.name == "resource_window" and budget.size >= 2
+        if joint:
+            removed = joint_removed(search, reference, removed, budget.size)
+        report["last_destroy_size"] = len(removed)
+        if joint:
+            improved = yield from self._joint_repair(reference, removed)
+            if improved is not None:
+                return improved
+        return (yield from self._screened_repair(reference, removed))
 
     def _joint_repair(self, reference, removed):
         search, report = self.search, self.search.report["local_search"]
         for order in joint_orders(search, reference, removed):
-            if not search.local_budget.can_try():
+            if not self.local_budget.can_try():
                 report["queue_budget_stops"] += 1
                 break
             if order in search.scores:
@@ -54,7 +49,7 @@ class LargeIGIteration(IGIteration):
             report["joint_candidates"] += 1
             before = search.report["decodes"]
             scored = search._score_trial(order, reference)
-            if search.report["decodes"] > before or getattr(search, "last_decode_skip", None) is not None:
+            if search.report["decodes"] > before or search.last_decode_skip is not None:
                 yield
             if scored is not None and scored[1] and scored[0] < reference.score:
                 report["joint_improvements"] += 1
@@ -70,28 +65,26 @@ class LargeIGIteration(IGIteration):
         pending = list(removed)
         search.rnd.shuffle(pending)
         self.pending_insertions = len(pending)
+        anchors = {op_id: idx for idx, op_id in enumerate(order)}
         for op_id in pending:
             self.pending_insertions -= 1
-            working = yield from self._insert(screen, reference, working, op_id, explore)
+            working = yield from self._insert(screen, reference, working, op_id, explore, anchor=anchors[op_id])
         final = tuple(working)
         if explore and final == reference.order and self.walk is not None:
             search.report["local_search"]["exploratory_walks"] += 1
             return self.walk[1]
         return final
 
-    def _insert(self, screen, reference, working, op_id, explore):
+    def _insert(self, screen, reference, working, op_id, explore, *, anchor):
         search, report = self.search, self.search.report["local_search"]
         without = [item for item in working if item != op_id]
-        anchor = reference.order.index(op_id)
         positions = _insertion_positions(without, op_id, parent=search.parent, anchor=anchor,
-                                         window=search.limits.insertion_window)
-        if explore:
-            positions = extended_positions(without, op_id, positions, search.parent)
-        queue = screen.ranked_positions(without, op_id, positions, anchor=anchor, diversify=explore)
-        best_position, best_score = _best_cached(search, without, op_id, positions)
+                                         window=search.limits.insertion_window, explore=explore)
+        queue, best_position, best_score = screen.ranked_positions(
+            without, op_id, positions, anchor=anchor, diversify=explore)
         # A rejection or non-improvement can advance the bounded queue.
         for index, position in enumerate(queue[:3]):
-            if not search.local_budget.can_try():
+            if not self.local_budget.can_try():
                 report["queue_budget_stops"] += 1
                 break
             report["queue_continuations"] += int(index > 0)
@@ -104,7 +97,7 @@ class LargeIGIteration(IGIteration):
                 score = scored[0]
                 if best_score is None or score < best_score:
                     best_position, best_score = position, score
-            if search.report["decodes"] > before or getattr(search, "last_decode_skip", None) is not None:
+            if search.report["decodes"] > before or search.last_decode_skip is not None:
                 yield
             if self._position_finished(scored, best_score, reference, explore):
                 break
@@ -127,17 +120,6 @@ class LargeIGIteration(IGIteration):
         # spending extra trials on a feasible position, unless diversifying.
         return (not explore and self.pending_insertions > 0
                 and scored is not None and scored[1])
-
-
-def _best_cached(search, without, op_id, positions):
-    best_position, best_score = None, None
-    for position in positions:
-        known = search.scores.get(tuple(without[:position] + [op_id] + without[position:]))
-        if known is not None:
-            search._record_local_reuse("local_trial_reused")
-        if known is not None and known[1] and (best_score is None or known[0] < best_score):
-            best_position, best_score = position, known[0]
-    return best_position, best_score
 
 
 __all__ = ["LargeIGIteration", "NeighborhoodBudget"]

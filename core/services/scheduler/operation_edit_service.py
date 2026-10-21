@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models import BatchOperation
@@ -11,14 +11,6 @@ from core.services.personnel.operator_qualification import OperatorQualification
 _OPERATION_NOT_FOUND_MESSAGE = "这道工序不存在或已被删除，请刷新批次详情后重试。"
 
 
-def list_batch_operations(svc, batch_id: Any) -> List[BatchOperation]:
-    bid = svc._normalize_text(batch_id)
-    if not bid:
-        raise ValidationError("“批次号”不能为空", field="批次号")
-    svc._get_batch_or_raise(bid)
-    return svc.op_repo.list_by_batch(bid)
-
-
 def get_operation(svc, op_id: Any) -> BatchOperation:
     try:
         oid = int(op_id)
@@ -27,34 +19,11 @@ def get_operation(svc, op_id: Any) -> BatchOperation:
     return svc._get_op_or_raise(oid)
 
 
-def get_external_merge_hint_for_op(svc, op: BatchOperation) -> Dict[str, Any]:
-    """
-    返回外部工序“合并周期”提示信息（供页面展示）。
-    """
-    if not op.is_external():
-        return {"is_external": False}
-
-    tmpl, grp = svc._get_template_and_group_for_op(op)
-    if not tmpl or not grp:
-        return {"is_external": True, "merge_mode": None}
-    return {
-        "is_external": True,
-        "template_ext_group_id": tmpl.ext_group_id,
-        "merge_mode": grp.merge_mode,
-        "group_total_days": grp.total_days,
-    }
-
-
-def get_external_merge_hint(svc, op_id: Any) -> Dict[str, Any]:
-    op = get_operation(svc, op_id)
-    return get_external_merge_hint_for_op(svc, op)
-
-
 def _normalize_batch_op_status(svc, value: Any) -> Optional[str]:
     st = svc._normalize_text(value)
     if st is None:
         return None
-    st = str(st).strip().lower()
+    st = st.lower()
     allowed = (
         BatchOperationStatus.PENDING.value,
         BatchOperationStatus.SCHEDULED.value,
@@ -67,11 +36,12 @@ def _normalize_batch_op_status(svc, value: Any) -> Optional[str]:
     return st
 
 
-def _ensure_internal_operation_editable(op: BatchOperation, *, op_id: Any) -> None:
+def _ensure_internal_operation_editable(op: BatchOperation) -> int:
     if op.id is None:
         raise BusinessError(ErrorCode.NOT_FOUND, _OPERATION_NOT_FOUND_MESSAGE)
     if not op.is_internal():
         raise ValidationError("只能编辑内部工序的设备/人员/工时信息", field="source")
+    return int(op.id)
 
 
 def _validate_machine_available(svc, mc_id: Optional[str]) -> None:
@@ -207,11 +177,7 @@ def update_internal_operation(
     - setup_hours/unit_hours 非负（允许为空，空视为 0）
     """
     op = get_operation(svc, op_id)
-    _ensure_internal_operation_editable(op, op_id=op_id)
-    if op.id is None:
-        raise BusinessError(ErrorCode.NOT_FOUND, _OPERATION_NOT_FOUND_MESSAGE)
-
-    op_id_int = int(op.id)
+    op_id_int = _ensure_internal_operation_editable(op)
 
     mc_id = svc._normalize_text(machine_id)
     operator_id_text = svc._normalize_text(operator_id)

@@ -1,7 +1,6 @@
 """Snapshot-only route-file preparation; only parser references need database reads."""
 
 from collections import defaultdict
-from copy import deepcopy
 
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -80,7 +79,7 @@ class RouteFilePreview:
 
     def row(self, source):
         row = action_row(source["row"])
-        row.update(errors=deepcopy(source["errors"]), related={"route": None, "affected_groups": []},
+        row.update(errors=list(source["errors"]), related={"route": None, "affected_groups": []},
                    route_summary=None)
         try:
             values = resource_object(source["values"], set(COLUMNS["route"]), "input")
@@ -180,9 +179,11 @@ class RouteFilePreview:
             row["after"]["route_raw"] = row["before"]["route_raw"]
             return []
         operations, groups = self._check_template(code) if part is not None else ([], [])
-        if changed is None:
-            changed = changed_route_sequences({op["seq"]: op for op in operations}, preview["operations"])
-        affected = affected_group_rows(groups, operations, changed)
+        if not groups:
+            affected = []
+        else:
+            affected = affected_group_rows(
+                groups, operations, {op["sequence"] for op in preview["operations"]} if changed is None else changed)
         row["related"] = {"route": preview, "affected_groups": [{"ref": group["ref"], "group_id": group["group_id"]}
                                                                for group in affected]}
         if part is not None:

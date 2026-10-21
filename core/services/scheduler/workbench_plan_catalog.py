@@ -116,14 +116,17 @@ def _role_entry(
     identity = None
     resolution = None
     try:
-        if raw_option is not None:
-            option = query._role_option_from_row(raw_option)
         resolution = query.resolve_existing_plan(version, role)
         option = next(item for item in resolution.available_roles if item.role == role)
         _check_role_binding(resolution, option)
         _check_detail_times(query, resolution)
         identity = resolution.plan_identity
     except (ValueError, TypeError, OverflowError) as exc:
+        if option is None and raw_option is not None:
+            try:
+                option = query._role_option_from_row(raw_option)
+            except (ValueError, TypeError, OverflowError):
+                pass
         issues += (PlanCatalogIssue("plan_unavailable", str(exc)),)
         completeness = "invalid"
     if role != ROLE_ADOPTED and not issues:
@@ -158,9 +161,9 @@ def _scenario_resolution(query: SchedulePlanQueryService, scenario: ScheduleAdju
     )
     if span is None:
         raise ValueError("模拟方案没有可查看的有效时间明细。")
+    _check_detail_times(query, resolution)
     if resolution.plan_identity is None:
         raise ValueError("模拟方案没有可确认的计划身份。")
-    _check_detail_times(query, resolution)
     # Existing scenario resolution has no role detail_saved flag for its own rows.
     return replace(resolution, plan_identity=replace(resolution.plan_identity, detail_saved=True))
 

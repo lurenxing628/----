@@ -37,10 +37,10 @@ from core.services.common.excel_instruction_sheet import (
     append_instruction_sheet,
     close_write_only_sheets,
 )
+from core.services.workbench.facts.file_codec import NUMBER
 from core.services.workbench.facts.file_source import FileReadMessages, source_rows
 from core.services.workbench.facts.table_cells import number_text
 
-_NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?\Z")
 _ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _CLEARABLE = ("spec", "unit", "remark")
 # Excel worksheet capacity includes the header. Neither limit belongs to CSV.
@@ -87,7 +87,7 @@ def _decode_value(value, field, file_format):
             raise ValidationError("这一格只填了空格。留空表示保持原样，要清除请填 \\N。", field=field)
         # 导出的 XLSX 把库存写成文本格（保住全部有效数字），所以 XLSX 里的文本数字和 CSV 一样按数字读。
         if field == "stock_qty":
-            if _NUMBER.fullmatch(value) is None:
+            if NUMBER.fullmatch(value) is None:
                 raise ValidationError("库存数量只填数字，不要带单位、「是/否」或千分位逗号。", field="stock_qty")
             value = float(value)
     return STATUS_VALUES.get(value, value) if field == "status" and type(value) is str else value

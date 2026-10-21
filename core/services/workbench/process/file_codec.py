@@ -39,10 +39,11 @@ __all__ = ["decode_process_file", "encode_process_file", "public_columns", "file
 
 
 def _headers(kind, values):
-    names = {LABELS[field]: field for field in file_columns(kind)}
+    columns = file_columns(kind)
+    names = {LABELS[field]: field for field in columns}
     if kind == "route":
         names["工艺路线字符串"] = "route_raw"
-    names.update({field: field for field in file_columns(kind)})
+    names.update({field: field for field in columns})
     fields = []
     for value in values:
         if type(value) is not str or value not in names:

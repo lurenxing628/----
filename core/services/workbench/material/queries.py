@@ -172,9 +172,6 @@ class WorkbenchMaterialQueryService:
             cache[key] = material_table_index(self._toolbar_rows(query), self._record)
         return cache[key]
 
-    def matching_keys(self, query):
-        return self.table_index(query).matching_keys(query)
-
     def matching_rows(self, query):
         index = self.table_index(query)
         return [{"business_code": code, "ref": index.rows[code].identity.ref, "revision": index.rows[code].identity.revision}

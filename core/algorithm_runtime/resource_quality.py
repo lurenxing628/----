@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Mapping, MutableSequence, Optional, Tuple
 
 from core.algorithm_contracts.changeover_events import type_transition
 
-from .owned_timeline import OwnedTypeEntries, owned_type_certificate
+from .owned_timeline import OwnedTypeEntries
 from .resource_demand import ResourceDemand
 from .static_attribute import static_attribute, static_class_attribute
 
@@ -41,7 +41,7 @@ class MachineTypeState(Dict[str, str]):
         """Bring a freshly initialised demand up to the recorded lifecycle point."""
         if self.demand is None:
             return
-        for kind, key in list(self.demand_events):
+        for kind, key in self.demand_events:
             if kind == "complete":
                 self.demand.complete(key)
             elif kind == "block_batch":
@@ -58,15 +58,6 @@ class MachineTypeState(Dict[str, str]):
         """O(1) change witness for one machine: recorded neighbor count plus the tail type."""
         entries = self._entries.get(machine_id)
         return (len(entries) if entries is not None else 0), self.get(machine_id)
-
-    def certificate(self, machine_id: str) -> Tuple[TypeEntry, ...]:
-        """Content certificate for consumers whose cached scores depend on neighbors."""
-        return tuple(self._entries.get(machine_id, ()))
-
-    def score_certificate(self, machine_id: str):
-        """Only a run-owned sequence with a complete mutation protocol earns a version."""
-        entries = self._entries.get(machine_id)
-        return () if entries is None else owned_type_certificate(entries)
 
     def insertion_penalty(self, machine_id: str, start: datetime, end: datetime, op_id: int, op_type: str) -> int:
         if not op_type or start == end:

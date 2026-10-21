@@ -7,13 +7,14 @@ from typing import Mapping, cast
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
+from core.models.workbench_resource_status import public_resource_status
 from core.models.workbench_resource_table_query import table_columns
 from core.services.workbench.facts.table_cells import number_cell, relation_cell, status_cell, text_cell
 from core.services.workbench.facts.table_index import ResourceTableIndex
 from data.repositories.workbench_resource_dependencies import DEPENDENCIES
 from data.repositories.workbench_resource_table_repo import WorkbenchResourceTableRepository
 
-from .metrics import _KEYS, _READ_FACTS, _index, _status
+from .metrics import _KEYS, _READ_FACTS, _index
 
 _OP_TYPE_DEPENDENCIES = {
     "machine_capabilities": "MachineOpTypes.op_type_id", "machines": "Machines.op_type_id",
@@ -187,11 +188,11 @@ class ResourceTableFacts:
     def related(self, kind, code):
         if code is None:
             return None
-        identity = self.identity(kind, code)
+        self.identity(kind, code)
         raw = self.records(kind).get(code)
         if raw is None:
             raise WorkbenchCommandRejected("storage_failure", "这条资源的关联指向一条已经不存在的记录。请到资料总览核对后重试。", 500)
-        return {"identity": asdict(identity), "record": raw}
+        return raw
 
     def supplier_types(self, code):
         legacy = self.records("supplier")[code]["op_type_id"]
@@ -215,21 +216,19 @@ class ResourceTableFacts:
                     "shift_profile_ref": ("shift_profile", [shift] if shift is not None else [])}
         return {"op_type_refs": ("op_type", self.supplier_types(code))} if kind == "supplier" else {}
 
-    def cells(self, kind, code, category):
-        raw = self.records(kind)[code]
+    def cells(self, kind, code, category, *, raw, status):
         result = {"business_code": text_cell(code), "label": text_cell(raw["name"])}
         if kind == "op_type":
             result.update(self._op_type_cells(code, raw, category))
         else:
-            profiles = self.mapped(kind + "_profiles", kind + "_id") if kind in ("operator", "supplier") else {}
-            result["status"] = status_cell(kind, _status(kind, raw, profiles.get(code)))
+            result["status"] = status_cell(kind, status)
             for column, (related_kind, codes) in self._relation_labels(kind, code, raw).items():
                 labels = []
                 for key in codes:
                     related = self.related(related_kind, key)
                     if related is None:
                         raise WorkbenchCommandRejected("storage_failure", "这条资源的关联缺少编号。请到资料总览核对后重试。", 500)
-                    labels.append(related["record"]["name"])
+                    labels.append(related["name"])
                 result[column] = relation_cell(labels)
             if kind == "supplier":
                 result["default_days"] = number_cell(raw["default_days"], "天")
@@ -250,14 +249,15 @@ class ResourceTableFacts:
 
     def index(self, query, codes):
         rows, cells, legacy_values = {}, {}, {}
+        required_columns = set(table_columns(query.kind, query.category))
         for code in codes:
             identity = self.identity(query.kind, code)
             rows[code] = {"ref": identity.ref, "revision": identity.revision, "business_code": code}
-            cells[code] = self.cells(query.kind, code, query.category)
             raw = self.records(query.kind)[code]
             profiles = self.mapped(query.kind + "_profiles", query.kind + "_id") if query.kind in ("operator", "supplier") else {}
-            status = None if query.kind == "op_type" else _status(query.kind, raw, profiles.get(code))
+            status = None if query.kind == "op_type" else public_resource_status(query.kind, raw["status"], profiles.get(code))
+            cells[code] = self.cells(query.kind, code, query.category, raw=raw, status=status)
             legacy_values[code] = {"business_code": code, "label": raw["name"], "status": status, "default_days": raw.get("default_days")}
-            if not set(table_columns(query.kind, query.category)).issubset(cells[code]):
+            if not required_columns.issubset(cells[code]):
                 raise WorkbenchCommandRejected("invalid_input", "当前视图和这些列对不上，列表没有打开。请刷新页面后重试。", 400)
         return ResourceTableIndex(rows, cells, legacy_values)

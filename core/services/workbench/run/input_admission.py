@@ -7,14 +7,15 @@ from core.models.workbench_run_compute import CandidateRunInputError
 from .jobs_facts import run_baseline, run_execution_projections
 
 
-def candidate_admission_issues(conn, settings, *, prepared):
+def candidate_admission_issues(conn, *, prepared):
     from .input import prepare_candidate_run_input
 
+    settings = prepared.settings
     try:
         if prepared.config_error is not None:
             raise prepared.config_error
         prepared.execution_projections = run_execution_projections(conn, settings, capture=prepared.capture,
-            existing=prepared.execution_projections, service=getattr(prepared.preflight_facts, "execution_service", None))
+            existing=prepared.execution_projections, service=prepared.preflight_facts.execution_service)
         prepared.baseline = run_baseline(conn, capture=prepared.capture)
         result = prepare_candidate_run_input(conn, settings, prepared.execution_projections,
             capture_fingerprint=False, facts=prepared.preflight_facts, config_snapshot=prepared.config_snapshot,
@@ -22,7 +23,7 @@ def candidate_admission_issues(conn, settings, *, prepared):
             validated_projections={row.operation_ref: row for row in prepared.execution_projections})
         prepared.prepared_input = result
     except (CandidateRunInputError, CandidateAdoptionBlocked) as exc:
-        return None, [{"code": exc.code, "message": str(exc)}]
+        return [{"code": exc.code, "message": str(exc)}]
     except AppError as exc:
-        return None, [{"code": (exc.details or {}).get("reason", "candidate_input_unproven"), "message": exc.message}]
-    return result, []
+        return [{"code": (exc.details or {}).get("reason", "candidate_input_unproven"), "message": exc.message}]
+    return []

@@ -232,7 +232,7 @@ def prepare_base(conn, intent, *, execution_service):
     issues.extend(_date_issues(rows))
     _predecessors(rows, all_ops, operation_refs, issues)
     live = live_context(conn, [row["operation_ref"] for row in rows], capture, execution_service=execution_service)
-    admission = {"input": intent, "source": source, "facts": live["facts"], "facts_hash": live["facts_hash"],
+    admission = {"input": intent, "source": source, "facts": live["facts"],
                  "baseline": live["baseline"], "execution": live["execution"], "base_issues": issues}
     _attach_original_context(rows, source, key, live, source_facts)
     issues.extend(attach_execution_anchors(conn, rows, live))
@@ -260,7 +260,7 @@ def _attach_original_context(rows, source, key, live, facts=None):
     for row in rows:
         original = row["original"]
         original.setdefault("execution", original_execution.get(row["operation_ref"]))
-        original["template"], original["external_group"] = None, None
+        original["external_group"] = None
         op = original["operation"]
         if op["source"] == "external":
             context = by_operation.get(op["id"])

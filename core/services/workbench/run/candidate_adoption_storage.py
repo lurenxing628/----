@@ -5,14 +5,12 @@ from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_run_job import durable_value
-from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.facts.run_input_codec import execution_snapshots_match
 
 from .jobs_facts import production_facts_match, run_baseline, run_execution_projections
 
 
-def check_admission_current(conn, capture, *, current_capture=None):
-    current_capture = ProductionFactsCapture(conn) if current_capture is None else current_capture
+def check_admission_current(conn, capture, *, current_capture):
     text = capture["facts_text"]
     if type(text) is not str:
         raise CandidateAdoptionBlocked("candidate_artifact_invalid", "排产时记下的数据校验不通过，不能采用，正式计划没有改动。请重新排产后再试。")
@@ -28,7 +26,7 @@ def check_admission_current(conn, capture, *, current_capture=None):
     if not production_facts_match(conn, text, capture=current_capture):
         raise WorkbenchCommandRejected("snapshot_stale", "排产之后，排产范围、报工记录、设备人员或班表有变化，这次没有采用，正式计划没有改动。请重新排产后再试。")
     projections = run_execution_projections(conn, capture["input"], capture=current_capture,
-        service=getattr(current_capture, "execution_service", None))
+        service=current_capture.execution_service)
     _require_official_baseline(baseline, projections)
     if not execution_snapshots_match(durable_value(projections), capture["execution"]):
         raise WorkbenchCommandRejected("snapshot_stale", "排产时记下的报工记录已经变了，这次没有采用，正式计划没有改动。请重新排产后再试。")

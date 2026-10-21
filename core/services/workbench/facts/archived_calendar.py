@@ -156,9 +156,10 @@ class _DowntimeIndex:
 def _aggregate(days, basis, source):
     known = [day for day in days if day["state"] == "available"]
     complete = len(known) == len(days)
+    known_windows = [window for day in known for window in day["windows"]]
     result = {"state": "available" if complete else "partial" if known else "unavailable", "basis": basis,
-              "windows": [window for day in known for window in day["windows"]] if complete else None,
-              "known_windows": [window for day in known for window in day["windows"]],
+              "windows": list(known_windows) if complete else None,
+              "known_windows": known_windows,
               "days": days, "known_days": len(known), "unknown_days": len(days) - len(known), "source": source}
     result.update({key: sum(day[key] for day in known) if complete else None for key in _MEASURES})
     issues, seen = [], set()
@@ -301,10 +302,3 @@ class ArchivedCalendar:
 
     def for_resources(self, resources, start, end):
         return dict(self.iter_resources(resources, start, end))
-
-
-def archived_resource_calendars(archive, resources, start, end, *, source_ref=None, coverage=None,
-                                metadata_basis="saved_archive"):
-    """Convenience projection; large cohorts reuse ``ArchivedCalendar`` streaming."""
-    return ArchivedCalendar(archive, source_ref=source_ref, coverage=coverage,
-                            metadata_basis=metadata_basis).for_resources(resources, start, end)

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Optional
 
-from ._helpers import RowLike, as_dict, get, parse_float_or_default, parse_int
+from ._helpers import RowLike, get, parse_float_or_default, parse_int
 from .enums import YesNo
 
 
@@ -26,16 +26,4 @@ class BatchMaterial:
             required_qty=parse_float_or_default(get(row, "required_qty"), 0.0, field="required_qty"),
             available_qty=parse_float_or_default(get(row, "available_qty"), 0.0, field="available_qty"),
             ready_status=(str(get(row, "ready_status") or YesNo.NO.value).strip().lower() or YesNo.NO.value),
-        )
-
-    def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "id": self.id,
-                "batch_id": self.batch_id,
-                "material_id": self.material_id,
-                "required_qty": self.required_qty,
-                "available_qty": self.available_qty,
-                "ready_status": self.ready_status,
-            }
         )

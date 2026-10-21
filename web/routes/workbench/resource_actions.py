@@ -55,12 +55,10 @@ def _upload(kind):
 def resource_import_preview(kind):
     action_kind(kind)
     content, fmt, mode, scope = _upload(kind)
-    reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
-    service = WorkbenchResourceFileService(g.db, kind, current_app.logger, reader=reader)
-    with reader.read_snapshot(capture_fingerprint=False):
-        preview = service.preview_import(content, file_format=fmt, mode=mode, scope=scope)
-        data = issue_preview(kind, preview, preview.source)
-        snapshot = bind_read_snapshot({"kind": kind, "operation": kind + ".import", "preview_ref": data["preview_ref"], **scope}, data["preview_ref"])
+    service = WorkbenchResourceFileService(g.db, kind, current_app.logger)
+    preview = service.preview_import(content, file_format=fmt, mode=mode, scope=scope)
+    data = issue_preview(kind, preview, preview.source)
+    snapshot = bind_read_snapshot({"kind": kind, "operation": kind + ".import", "preview_ref": data["preview_ref"], **scope}, data["preview_ref"])
     return query_success(data, snapshot, preview.as_dict()["notices"])
 
 

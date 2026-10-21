@@ -94,7 +94,7 @@ def _resource_rows(facts):
     return rows, source_rows
 
 
-def catalog_workspace(reader, facts, snapshot, page):
+def catalog_workspace(facts, snapshot, page):
     scope, rep = facts["scope"], facts["report"]
     rows, source_rows = _overdue_rows(facts, snapshot) if scope.kind == "overdue" else _resource_rows(facts)
     source_by_key = {}
@@ -110,7 +110,7 @@ def catalog_workspace(reader, facts, snapshot, page):
             "summary": {"rows": len(ordered)}, "page": pagination,
             "provenance": provenance, "data_gaps": [gap]}
     if scope.kind == "utilization":
-        data["scope"].update(metric_source=rep.get("metric_source", "planned"), metric_version=rep.get("metric_version"))
+        data["scope"].update(metric_source=rep["metric_source"], metric_version=rep["metric_version"])
     if rep and rep.get("report_degraded"):
         data["data_gaps"].append("有一部分原始数据不可用，没有参与本表计算，请核对原始记录。")
     return data, ordered, selected

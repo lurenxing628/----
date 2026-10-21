@@ -1,7 +1,5 @@
 """Explicit registration only. The host must connect and enable its worker dispatcher."""
 
-import json
-import re
 from datetime import datetime
 from functools import wraps
 from uuid import uuid4
@@ -16,7 +14,7 @@ from core.models.workbench_command import (
 )
 from core.models.workbench_run_job import valid_data_context_ref
 from core.services.workbench.facts.run_data_context import RunDataContext
-from web.api_responses import failure, json_response, query_success
+from web.api_responses import failure, failure_payload, json_response, query_success
 
 from .preflight import evaluate_preflight_input
 from .write_context import issue_write_context, validate_write_context
@@ -42,11 +40,10 @@ def _boundary(function):
             response = failure(exc.code, str(exc), exc.status)
         except WorkbenchCommandUncertain as exc:
             current_app.logger.exception("排产受理结果待核实")
-            response = failure("storage_failure", str(exc), 500, committed="unknown")
-            data = response.get_json()
+            data = failure_payload("storage_failure", str(exc), 500, committed="unknown")
             data["error"].update(request_key=exc.request_key,
                                  result_target="/api/workbench/v1/scheduling/requests/" + exc.request_key)
-            response.set_data(json.dumps(data, ensure_ascii=False))
+            response = json_response(data, status=500)
         except HTTPException as exc:
             response = failure("invalid_input", "提交的内容格式不正确，这次排产没有开始。请刷新页面后重新点「确认开始排产」。", exc.code or 400)
         except Exception:

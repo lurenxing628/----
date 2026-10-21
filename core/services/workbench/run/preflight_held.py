@@ -11,7 +11,7 @@ from datetime import datetime
 from types import SimpleNamespace
 
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
-from core.errors import AppError, ValidationError
+from core.errors import AppError
 from core.models.operation_execution_event import parse_operation_event_time
 from core.models.workbench_preflight import issue, local_date
 from core.models.workbench_run_compute import CandidateRunInputError
@@ -21,7 +21,7 @@ from core.services.workbench.facts.table_cells import number_text
 from core.services.workbench.facts.zero_duration import PointEventError, estimate_point_event, internal_duration_hours
 
 from .candidate_adoption_constraints import arrangement_problem, calendar_duration_conflict, external_holds_resources
-from .input_config import candidate_config, hold_window, window_label
+from .input_config import candidate_config, window_label
 from .input_runtime import downtime_overlap, held_arrangements, held_machine_downtimes
 
 _KEEP = "排产会原样保留这个安排，排出的方案都不能采用。"
@@ -59,13 +59,13 @@ class _Held:
 
 
 class _Context:
-    def __init__(self, checks, calendar, downtimes, settings, batches, operations, contexts, finished):
+    def __init__(self, checks, calendar, downtimes, settings, batches, operations, finished):
         self.checks, self.calendar, self.downtimes, self.settings = checks, calendar, downtimes, settings
         self.finished = finished
         self.batches = {row["batch_id"]: row for row in batches}
         # 分件批次与分件采用同口径：分件工序按 1 件、共同工序按整批数量算工时。
         self.piece_batches = {op["batch_id"] for op in operations if op["piece_id"] is not None}
-        self.external_contexts = contexts
+        self.external_contexts = checks.external_contexts
 
     def quantity(self, op, batch):
         return 1 if op["piece_id"] is not None else batch["quantity"]
@@ -167,8 +167,8 @@ def _completed(facts, operations, projections):
     """{批次: [(已完工工序, 实际完工)]}：排产计算以实际完工为准，同批后道的保留安排不能早于它开工。"""
     result = defaultdict(list)
     for op in operations:
-        projection = projections.get(facts.operation_ref(op)) or {}
-        if projection.get("execution_state") != "complete" or projection.get("confirmed_finish") is None:
+        projection = projections[facts.operation_ref(op)]
+        if projection["execution_state"] != "complete" or projection["confirmed_finish"] is None:
             continue
         try:
             result[op["batch_id"]].append((op, parse_operation_event_time(projection["confirmed_finish"])))
@@ -235,20 +235,14 @@ def _skipped_freeze(meta, batches):
 _FREEZE_OFF = SimpleNamespace(freeze_window_enabled="no", freeze_window_days=0, degradation_events=())
 
 
-def _held(facts, svc, settings, version, operations, held_ids):
+def _held(facts, svc, settings, version, operations, held_ids, *, hold_window_bounds):
     models = [SimpleNamespace(**op) for op in operations]
-    try:
-        if getattr(facts, "config_error", None) is not None:
-            raise facts.config_error
-        cfg = candidate_config(facts.conn, settings, snapshot=getattr(facts, "config_snapshot", None))
-    except ValidationError:
-        cfg = _FREEZE_OFF
+    cfg = _FREEZE_OFF if facts.config_error is not None else candidate_config(facts.conn, settings, snapshot=facts.config_snapshot)
     seeds, meta = held_arrangements(
         svc, cfg=cfg, prev_version=version, facts=facts,
         start_dt=datetime.combine(local_date(settings["start_date"]), datetime.min.time()),
         operations=models, reschedulable_operations=[op for op in models if op.id in held_ids],
-        hold_window=(None if getattr(facts, "config_error", None) is not None
-                     else hold_window(facts.conn, settings, snapshot=getattr(facts, "config_snapshot", None))[0]))
+        hold_window=hold_window_bounds)
     return seeds, meta
 
 
@@ -258,7 +252,8 @@ def _marks(seeds):
                             "start": seed["start_time"].isoformat(), "end": seed["end_time"].isoformat()} for seed in seeds}
 
 
-def held_arrangement_reasons(facts, svc, checks, settings, version, batches, operations, held_ids, cycles, projections):
+def held_arrangement_reasons(facts, svc, checks, settings, version, batches, operations, held_ids, cycles, projections,
+                             *, hold_window_bounds):
     """返回 (阻断原因, 提醒, {工序: 保留标记})。
 
     held_ids 是这次要重排的工序（资料有效、自动分配待补）加上合并外协组派生保留的成员，与排产计算查不重排时段的范围一致；
@@ -269,14 +264,13 @@ def held_arrangement_reasons(facts, svc, checks, settings, version, batches, ope
         return [], [], {}
     by_id = {op["id"]: op for op in operations}
     try:
-        seeds, meta = _held(facts, svc, settings, version, operations, held_ids)
+        seeds, meta = _held(facts, svc, settings, version, operations, held_ids, hold_window_bounds=hold_window_bounds)
     except CandidateRunInputError as exc:
         return [facts.public_issue(item, by_id[item["op_id"]]) if item.get("op_id") in by_id else item for item in exc.issues], [], {}
     except AppError:
         return [_unreadable()], [], {}
-    contexts = {row["operation_id"]: row for row in facts.tables.get("BatchExternalContexts", [])}
     context = _Context(checks, CalendarService(facts.conn), held_machine_downtimes(svc, seeds, facts=facts), settings, batches, operations,
-                       contexts, _completed(facts, operations, projections))
+                       _completed(facts, operations, projections))
     blockers = _seed_blockers(facts, context, seeds, by_id, meta.get("hold_window"), cycles)
     # 合并外协组成员只在不在保留安排里时才由排产按实际周期派生、排产照常出结果；全都在保留安排里排产会直接停下。
     if held_ids <= {seed["op_id"] for seed in seeds}:

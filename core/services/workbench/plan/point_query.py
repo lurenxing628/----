@@ -60,15 +60,12 @@ class PointPlanCatalogRepository(WorkbenchPlanCatalogRepository):
             self._prepared_rows[key] = rows
         return self._prepared_rows[key]
 
-    def _validated_rows(self, version, source_table, candidate_id, scenario_id=None):
-        return self.prepared_rows(version, source_table, candidate_id, scenario_id)
-
     def parsed_intervals(self, version, source_table, candidate_id, scenario_id=None):
         self.prepared_rows(version, source_table, candidate_id, scenario_id)
         return self._parsed_intervals[self._source_key(version, source_table, candidate_id, scenario_id)]
 
     def validate_detail_times(self, resolution):
-        self._validated_rows(resolution.version, resolution.source_table, resolution.candidate_id, resolution.scenario_id)
+        self.prepared_rows(resolution.version, resolution.source_table, resolution.candidate_id, resolution.scenario_id)
 
     def get_first_plan_identity_row(self, *, version, source_table, candidate_id, scenario_id=None):
         rows = self.source_rows(version, source_table, candidate_id, scenario_id)

@@ -3,6 +3,7 @@
 旧报表导出接口已随旧路由层删除（2026-09-18），退役页不再提供“按原条件下载旧报表”链接。
 """
 
+from dataclasses import replace
 from urllib.parse import urlencode
 
 from werkzeug.exceptions import NotFound
@@ -17,7 +18,6 @@ from core.services.workbench.plan.legacy_navigation_queries import (
 
 from .legacy_navigation_plan import (
     IDENTITY_KEYS,
-    RESOURCE_KEYS,
     gantt_context,
     invalid_plan_input,
     report_dates,
@@ -59,8 +59,7 @@ def build_legacy_destination(decision):
 
 def _redirect(view, context):
     decision = LegacyGetDecision("redirect", view=view, context=context)
-    build_legacy_destination(decision)
-    return decision
+    return replace(decision, destination=build_legacy_destination(decision))
 
 
 def _unsupported(code="unsupported_scope", message=None, public=None, *, conditions=True):

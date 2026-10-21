@@ -3,7 +3,7 @@
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_query import ProcessPageRequest
-from core.models.workbench_process_route import check_route_text
+from core.models.workbench_process_route import MAX_ROUTE_TEXT_BYTES
 from core.models.workbench_process_table_query import process_table_scope
 from core.models.workbench_resource_action import ResourceActionPreview, resource_refs
 from core.models.workbench_resource_input import resource_object, resource_text
@@ -16,9 +16,9 @@ def normalize_process_part_create(input):
         result[field] = resource_text(input.get(field), field, nullable=field == "remark")
         _check_text(result[field], label, field)
     route = input.get("route_raw")
-    _check_text(route, "路线文字", "route_raw")
-    if route is not None:
-        check_route_text(route)
+    encoded = _check_text(route, "路线文字", "route_raw")
+    if encoded is not None and len(encoded) > MAX_ROUTE_TEXT_BYTES:
+        raise WorkbenchCommandRejected("route_too_large", "路线文字不能超过256 KiB（UTF-8），未截断。", 413)
     result["route_raw"] = route
     return result
 
@@ -29,7 +29,7 @@ def _check_text(value, label, field):
     if type(value) is not str:
         raise ValidationError(label + "必须是文字或留空。", field=field)
     try:
-        value.encode("utf-8")
+        return value.encode("utf-8")
     except UnicodeEncodeError as exc:
         raise ValidationError(label + "包含无法保存的字符，请核对。", field=field) from exc
 

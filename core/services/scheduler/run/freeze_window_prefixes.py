@@ -46,7 +46,7 @@ def prefix_op_ids_for_anchors(operations: List[Any], bid: str, anchors: Dict[Opt
     return result
 
 
-def rows_in_window(svc, start: Optional[datetime], end: Optional[datetime],
+def rows_in_window(start: Optional[datetime], end: Optional[datetime],
                    schedule_map: Dict[int, Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
     """指定时段时，和时段重叠的原安排（开工即完工的按时刻落在时段内）才决定一批要保留到第几道。
 

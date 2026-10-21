@@ -1,6 +1,5 @@
 """One standard-work formula shared by input accounting and internal slots."""
 
-import inspect
 import math
 from typing import Any, Optional, Tuple
 
@@ -8,14 +7,13 @@ from core.algorithm_contracts.operation_effort import OperationEffort
 from core.models.enums import MergeMode, OperationQuantityBasis, OperationSetupState, SourceType
 
 from .piece_input import operation_batch
+from .static_attribute import static_attribute
 
 _MISSING = object()
 
 
 def _read_legacy_field(obj: Any, field: str) -> Any:
-    try:
-        inspect.getattr_static(obj, field)
-    except AttributeError:
+    if static_attribute(obj, field, _MISSING) is _MISSING:
         return _MISSING
     return getattr(obj, field)
 

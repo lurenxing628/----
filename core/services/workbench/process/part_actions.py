@@ -1,15 +1,16 @@
 """Part create/delete actions inside the caller's command and receipt transaction.
 
-normalize_create(input) -> dict; create(input) -> WorkbenchCommandOutcome.
-preview_delete(refs, *, scope) -> ResourceActionPreview is read-only.
+normalize_create(input) -> dict; prepare_create(payload, *, parts) -> Part.
+apply_create(part) -> WorkbenchCommandOutcome persists the prepared part.
+preview_delete_normalized(refs, *, scope) -> ResourceActionPreview is read-only.
 confirm_delete(preview, refs, *, scope) -> WorkbenchCommandOutcome rechecks the
 whole selection before mutation. A one-ref selection is single-part deletion.
 scope binds the original filters but never expands or trims explicit refs.
 
 The host retains the original preview server-side and validates its write token.
 Use the normalized create input / original preview.intent() for command replay.
-create and confirm_delete require the host's BEGIN IMMEDIATE transaction; their
-savepoints cannot commit it and undo all local writes even if the host catches.
+apply_create and confirm_delete require the host's BEGIN IMMEDIATE transaction;
+their savepoints cannot commit it and undo local writes even if the host catches.
 """
 
 from core.errors import BusinessError, ErrorCode, ValidationError
@@ -53,14 +54,8 @@ class WorkbenchProcessPartActionService:
         if not self.conn.in_transaction:
             raise RuntimeError("零件保存和删除必须在外层工作台写事务中执行。")
 
-    def create(self, input):
-        self._require_transaction()
-        payload = self.normalize_create(input)
-        return self.apply_create(self.prepare_create(payload))
-
-    def prepare_create(self, payload, *, parts=None, route_parsed="no"):
-        existing = PartRepository(self.conn).get(payload["business_code"]) if parts is None else parts.get(payload["business_code"])
-        if existing is not None:
+    def prepare_create(self, payload, *, parts, route_parsed="no"):
+        if payload["business_code"] in parts:
             raise BusinessError(ErrorCode.PART_ALREADY_EXISTS, "图号“{}”已存在，这次没有保存。请改用别的图号，或去修改已有的那个零件。".format(payload["business_code"]))
         return Part(payload["business_code"], payload["label"], payload["route_raw"], route_parsed, payload["remark"])
 
@@ -79,9 +74,6 @@ class WorkbenchProcessPartActionService:
                 raise WorkbenchCommandRejected("storage_failure", "新零件没有完整保存。请刷新重试；仍不行请联系维护人员。", 500)
             return WorkbenchCommandOutcome("committed", {"entity_ref": identity.ref,
                 "business_code": part.part_no, "workflow": workflow})
-
-    def preview_delete(self, refs, *, scope):
-        return self.preview_delete_normalized(refs, scope=process_part_scope(scope))
 
     def preview_delete_normalized(self, refs, *, scope):
         request = {"refs": process_part_refs(refs), "scope": scope}

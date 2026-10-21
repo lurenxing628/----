@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
 
-from core.algorithms import ScheduleResult, SortStrategy
+from core.algorithms import SortStrategy
 from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.graph_ready_feature_basis import (
     BASELINE_ORDERING_FIELD,
@@ -32,14 +32,12 @@ from .v2_keys import (
 if TYPE_CHECKING:
     from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
-GRAPH_READY_V2_NORMALIZATION_VERSION = "rank_percentile_v1"
 _V2_COMMON_RANK_FIELDS = (
     ("due_deadline_hours", lambda metric: _required_finite_metric(metric, "due_deadline_hours")),
-    ("due_budget_hours", lambda metric: _v2_due_budget_hours(metric)),
+    ("due_budget_hours", lambda metric: _required_finite_metric(metric, "due_budget_hours")),
     ("due_pressure", lambda metric: _required_non_negative_metric(metric, "due_pressure")),
     ("slack_hours", lambda metric: _required_finite_metric(metric, "slack_hours")),
-    ("remaining_work_hours", lambda metric: _required_positive_metric(metric, "remaining_work_hours")),
-    ("remaining_due_burden_hours", lambda metric: _v2_remaining_due_burden_hours(metric)),
+    ("remaining_due_burden_hours", lambda metric: _required_positive_metric(metric, "remaining_due_burden_hours")),
     ("saveability", lambda metric: _required_non_negative_metric(metric, "saveability")),
     ("processing_time_rank", lambda metric: _required_non_negative_metric(metric, "processing_time_rank")),
     ("sacrifice_penalty", lambda metric: _required_non_negative_metric(metric, "sacrifice_penalty")),
@@ -55,15 +53,22 @@ class PreparedDecisionFeatures:
                  v2_common_rank_cache: Optional[Dict[str, Dict[int, float]]]) -> None:
         self.metrics_by_op_id = metrics_by_op_id
         self.v2_common_rank_cache = v2_common_rank_cache
-        self._validated_profiles: List[Tuple[Any, ...]] = []
+        self._validated_profiles: Set[Tuple[Any, ...]] = set()
+        self._baseline_metrics: Optional[Dict[int, Dict[str, Any]]] = None
 
     def validate(self, profile: GraphReadyWeightProfile) -> None:
         identity = (profile.formula_version, profile.formula_slug, profile.feature_basis,
-                    dict(profile.effective_weights), profile.jitter_seed)
+                    tuple(sorted(profile.effective_weights.items())), profile.jitter_seed)
         if identity not in self._validated_profiles:
+            profile_metrics = None
+            if _uses_v2_formula(profile) and profile.feature_basis == BATCH_WORKLOAD_BASIS:
+                if self._baseline_metrics is None:
+                    self._baseline_metrics = select_profile_metrics(self.metrics_by_op_id, profile=profile)
+                profile_metrics = self._baseline_metrics
             _validate_decision_features(self.metrics_by_op_id, profile=profile,
-                                        v2_common_rank_cache=self.v2_common_rank_cache)
-            self._validated_profiles.append(identity)
+                                        v2_common_rank_cache=self.v2_common_rank_cache,
+                                        profile_metrics=profile_metrics)
+            self._validated_profiles.add(identity)
 
 
 def evaluate_graph_ready_candidate(
@@ -78,7 +83,6 @@ def evaluate_graph_ready_candidate(
     start_dt: datetime,
     end_date: Optional[date],
     order: List[str],
-    seed_sr_list: List[ScheduleResult],
     dispatch_rule: str,
     resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
@@ -113,7 +117,7 @@ def evaluate_graph_ready_candidate(
             _validate_decision_features(metrics_by_op_id, profile=profile, v2_common_rank_cache=v2_common_rank_cache)
         else:
             prepared_decision_features.validate(profile)
-        candidate_context = _profile_context(graph_ready_context, profile)
+        candidate_context = dict(graph_ready_context, score_enabled=True)
     else:
         candidate_context = context_for_profile(
             graph_ready_context=graph_ready_context, metrics_by_op_id=metrics_by_op_id,
@@ -137,6 +141,7 @@ def evaluate_graph_ready_candidate(
         decode_kwargs["decode_checkpoints"] = decode_checkpoints
     from core.services.scheduler.run.optimizer.shared_decode import decode_and_metrics
 
+    full_profile_payload = profile_payload(profile, version=version)
     decoded = decode_and_metrics(
         decode_session=decode_session, objective_name=objective_name,
         optimizer_algo_stats=optimizer_algo_stats,
@@ -144,7 +149,7 @@ def evaluate_graph_ready_candidate(
         redecode_reason=redecode_reason,
         strict_mode=bool(strict_mode),
         operation_resources=operation_resources,
-        strategy=strategy, strategy_params=_candidate_params(params, profile=profile, version=version), start_dt=start_dt,
+        strategy=strategy, strategy_params=_candidate_params(params, profile_dict=full_profile_payload), start_dt=start_dt,
         end_date=end_date, batch_order_override=list(order),
         dispatch_mode="sgs", dispatch_rule=dispatch_rule,
         readiness_gate_enabled=bool(readiness_gate_enabled), graph_enabled=True,
@@ -164,10 +169,10 @@ def evaluate_graph_ready_candidate(
         objective_name=objective_name,
         algo_stats=decoded.algo_stats,
         resource_pool=resource_pool,
-        seed_sr_list=seed_sr_list,
         version=version,
         runtime_ms=runtime_ms,
         repair_decision=repair_decision,
+        profile_dict=full_profile_payload,
     )
     candidate["_shared_entry_id"] = decoded.entry_id
     candidate["_archive_observation"] = decoded.archive_observation
@@ -203,7 +208,7 @@ def context_for_profile(
     profile: GraphReadyWeightProfile,
     v2_common_rank_cache: Optional[Dict[str, Dict[int, float]]] = None,
 ) -> Dict[str, Any]:
-    context = _profile_context(graph_ready_context, profile)
+    context = dict(graph_ready_context, score_enabled=True)
     metrics_for_profile = _metrics_for_profile(
         metrics_by_op_id,
         profile=profile,
@@ -216,42 +221,40 @@ def context_for_profile(
     return context
 
 
-def _profile_context(graph_ready_context, profile):
-    context = dict(graph_ready_context)
-    context["score_enabled"] = True
-    context["graph_ready_optimization_profile"] = profile_payload(profile, version=None)
-    if _uses_v2_formula(profile):
-        context["graph_ready_v2_normalization_version"] = GRAPH_READY_V2_NORMALIZATION_VERSION
-    return context
-
-
-def _validate_decision_features(metrics_by_op_id, *, profile, v2_common_rank_cache):
+def _validate_decision_features(metrics_by_op_id, *, profile, v2_common_rank_cache, profile_metrics=None):
     """Keep feature admission, without ranks or jitter that explicit decisions replace."""
     if not _uses_v2_formula(profile):
-        metrics = {int(op_id): dict(metric) for op_id, metric in metrics_by_op_id.items()}
-        for _op_id, metric in sorted(metrics.items()):
+        for _op_id, metric in sorted(metrics_by_op_id.items()):
             priority_key_for_metric(metric, profile=profile)
         return
-    metrics = select_profile_metrics(metrics_by_op_id, profile=profile)
+    metrics = profile_metrics if profile_metrics is not None else select_profile_metrics(metrics_by_op_id, profile=profile)
     cache = _profile_rank_cache(v2_common_rank_cache, profile)
-    metrics = {int(op_id): dict(metric) for op_id, metric in metrics.items()}
     _prepare_v2_decision_rank_sources(metrics, cache)
     _validate_v2_profile_features(metrics, profile)
-    _validate_v2_decision_priority_shape(metrics, profile, cached=cache is not None)
+    _validate_v2_decision_priority_shape(metrics, profile, cache=cache)
 
 
 def _prepare_v2_decision_rank_sources(metrics, cache):
-    """Admit raw sources or apply supplied cache values to the owned metric copies."""
+    """Admit raw sources or require supplied cache values for every operation."""
     if cache is None:
         for _, getter in _V2_COMMON_RANK_FIELDS:
             for metric in metrics.values():
                 getter(metric)
     else:
-        _attach_common_rank_cache(metrics, cache)
+        for rank_field, ranks_by_op_id in cache.items():
+            for op_id in metrics:
+                if op_id not in ranks_by_op_id:
+                    raise ValidationError(
+                        f"GraphReady v2 图指标缺少 {rank_field} 缓存。",
+                        field="graph_ready_v2_features",
+                        details={"reason": "graph_ready_missing_v2_feature"},
+                    )
 
 
 def _validate_v2_profile_features(metrics, profile):
     """Admit bonus, formula-specific sources and seed without constructing ranks."""
+    if metrics:
+        int(profile.jitter_seed)
     for metric in metrics.values():
         _v2_metric_bonus(metric, weights=profile.effective_weights)
     for field in _extra_rank_fields(profile):
@@ -259,18 +262,24 @@ def _validate_v2_profile_features(metrics, profile):
             _required_non_negative_metric(metric, field)
     for op_id in metrics:
         int(op_id)
-        int(profile.jitter_seed)
 
 
-def _validate_v2_decision_priority_shape(metrics, profile, *, cached):
+def _validate_v2_decision_priority_shape(metrics, profile, *, cache):
     """Check consumed cached ranks and formula even when an explicit order replaces them."""
-    for _op_id, metric in sorted(metrics.items()):
-        if cached:
-            for field, _ in _V2_COMMON_RANK_FIELDS:
-                if field == "remaining_work_hours":
-                    continue  # This rank is prepared, but no priority formula consumes it.
-                _required_non_negative_metric(metric, field + "_rank01")
-        validate_v2_formula(str(profile.formula_slug or "").strip())
+    if not metrics:
+        return
+    validate_v2_formula(str(profile.formula_slug or "").strip())
+    if cache is not None:
+        for field, _ in _V2_COMMON_RANK_FIELDS:
+            rank_field = field + "_rank01"
+            if rank_field not in cache:
+                raise ValidationError(
+                    f"GraphReady v2 图指标缺少 {rank_field} 缓存。",
+                    field="graph_ready_v2_features",
+                    details={"reason": "graph_ready_missing_v2_feature"},
+                )
+            for op_id in metrics:
+                _required_non_negative_metric({rank_field: cache[rank_field][op_id]}, rank_field)
 
 
 def priority_key_for_metric(metric: Dict[str, Any], *, profile: GraphReadyWeightProfile) -> Tuple[float, ...]:
@@ -315,7 +324,7 @@ def _metrics_for_profile(
     v2_common_rank_cache: Optional[Dict[str, Dict[int, float]]] = None,
 ) -> Dict[int, Dict[str, Any]]:
     if not _uses_v2_formula(profile):
-        return {int(op_id): dict(metric) for op_id, metric in metrics_by_op_id.items()}
+        return {int(op_id): metric for op_id, metric in metrics_by_op_id.items()}
     selected = select_profile_metrics(metrics_by_op_id, profile=profile)
     v2_common_rank_cache = _profile_rank_cache(v2_common_rank_cache, profile)
     return _normalized_v2_metrics_by_op_id(
@@ -353,9 +362,11 @@ def _normalized_v2_metrics_by_op_id(
     _attach_rank01(out, field="graph_bonus", value_getter=lambda metric: _v2_metric_bonus(metric, weights=profile.effective_weights))
     for field in _extra_rank_fields(profile):
         _attach_rank01(out, field=field, value_getter=lambda metric, field=field: _required_non_negative_metric(metric, field))
+    if not out:
+        return out
+    jitter_seed = int(profile.jitter_seed)
     for op_id, metric in out.items():
-        metric["graph_ready_v2_jitter"] = _seeded_jitter(op_id=op_id, seed=int(profile.jitter_seed))
-        metric["graph_ready_v2_normalization_version"] = GRAPH_READY_V2_NORMALIZATION_VERSION
+        metric["graph_ready_v2_jitter"] = _seeded_jitter(op_id=op_id, seed=jitter_seed)
     return out
 
 
@@ -369,7 +380,7 @@ def _extra_rank_fields(profile):
 
 
 def build_v2_common_rank_cache(metrics_by_op_id: Dict[int, Dict[str, Any]]) -> Dict[str, Dict[int, float]]:
-    metrics = {int(op_id): dict(metric) for op_id, metric in metrics_by_op_id.items()}
+    metrics = {int(op_id): metric for op_id, metric in metrics_by_op_id.items()}
     cache: Dict[str, Dict[int, float]] = {}
     for field, value_getter in _V2_COMMON_RANK_FIELDS:
         values = {op_id: float(value_getter(metric)) for op_id, metric in metrics.items()}
@@ -445,20 +456,12 @@ def _v2_metric_bonus(metric: Dict[str, Any], *, weights: Dict[str, float]) -> fl
 
 
 def _v2_feature_details(exc: ValidationError) -> Dict[str, Any]:
-    details = dict(getattr(exc, "details", None) or {})
+    details = dict(exc.details or {})
     details["reason"] = "graph_ready_bad_v2_feature"
     return details
 
 
-def _v2_due_budget_hours(metric: Dict[str, Any]) -> float:
-    return _required_finite_metric(metric, "due_budget_hours")
-
-
-def _v2_remaining_due_burden_hours(metric: Dict[str, Any]) -> float:
-    return _required_positive_metric(metric, "remaining_due_burden_hours")
-
-
-def _candidate_params(params: Dict[str, Any], *, profile: GraphReadyWeightProfile, version: int) -> Dict[str, Any]:
+def _candidate_params(params: Dict[str, Any], *, profile_dict: Dict[str, Any]) -> Dict[str, Any]:
     candidate_params = dict(params or {})
-    candidate_params["graph_ready_profile"] = profile_payload(profile, version=version)
+    candidate_params["graph_ready_profile"] = profile_dict
     return candidate_params

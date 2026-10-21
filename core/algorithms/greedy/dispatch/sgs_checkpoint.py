@@ -95,8 +95,17 @@ class CheckpointPlan:
             _invalid("解码断点请求尚未绑定本次解码的输入签名。", reason="decode_checkpoint_not_armed")
         self.request = request
         self.signature = request.signature
-        self.order = graph_key_order(graph_state)
-        self.position_of = {op_id: index for index, op_id in enumerate(self.order)}
+        if request.tail_reuse is not None:
+            keys = graph_state.get("graph_priority_key_by_op_id") or {}
+            if not graph_state.get("score_enabled") or not keys:
+                _invalid("解码断点只支持启用图评分键的图模式派工。", reason="decode_checkpoint_requires_graph_keys")
+            self.order: List[int] = []
+            self.total_ops = len(keys)
+            self.position_of: Dict[int, int] = {}
+        else:
+            self.order = graph_key_order(graph_state)
+            self.total_ops = len(self.order)
+            self.position_of = {op_id: index for index, op_id in enumerate(self.order)}
         self.picked: List[int] = []
         self.furthest = -1
 

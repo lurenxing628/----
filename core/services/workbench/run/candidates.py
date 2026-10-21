@@ -4,6 +4,7 @@ from datetime import date
 
 from core.models.workbench_preflight import stored_hold_window_valid
 from core.models.workbench_run_candidate import blocked_reasons, read_capabilities
+from core.services.workbench.facts.candidate_delivery import candidate_delivery_risks
 from core.services.workbench.facts.candidate_projection import (
     algorithm_facts,
     baseline_capture,
@@ -15,8 +16,6 @@ from core.services.workbench.facts.candidate_tasks import (
     task_span,
 )
 from core.services.workbench.facts.candidate_values import gap
-
-from .candidate_delivery import candidate_delivery_risks
 
 
 class WorkbenchRunCandidateQueryService:

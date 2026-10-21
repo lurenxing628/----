@@ -8,7 +8,6 @@ from core.services.scheduler.contracts.optimizer_public_safety import (
     public_float,
     public_int,
     safe_attempt_text,
-    safe_bool,
     safe_metric_key,
 )
 from core.services.scheduler.run.schedule_candidate_summary import is_unified_generation
@@ -189,7 +188,7 @@ def _add_candidate_score(out: Dict[str, Any], candidate: Dict[str, Any]) -> None
 def _add_candidate_booleans_and_weights(out: Dict[str, Any], candidate: Dict[str, Any]) -> None:
     for key in ("graph_enabled", "detail_saved"):
         if key in candidate:
-            out[key] = safe_bool(candidate.get(key))
+            out[key] = bool(candidate.get(key))
     for key in ("critical_weight", "impact_weight", "downstream_weight", "elapsed_ms"):
         number = public_int(candidate.get(key))
         if number is not None:

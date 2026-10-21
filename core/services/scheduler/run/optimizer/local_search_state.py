@@ -56,9 +56,9 @@ def candidate_can_update_best(
     candidate: Dict[str, Any],
     best: Dict[str, Any],
     fingerprint: Optional[CandidateFingerprint],
-    candidate_origin: str = "local_search",
-    incumbent_origin: str = "baseline",
-    incumbent_fingerprint_changed: bool = False,
+    candidate_origin: str,
+    incumbent_origin: str,
+    incumbent_fingerprint_changed: bool,
 ) -> bool:
     if fingerprint is None:
         return False

@@ -1,7 +1,7 @@
 """Guarded downtime maintenance; cancellation retains the original record."""
 
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
-from core.models.workbench_downtime import REASONS, normalize_downtime
+from core.models.workbench_downtime import REASONS
 from data.repositories.machine_downtime_repo import MachineDowntimeRepository
 from data.repositories.workbench_downtime_repo import WorkbenchDowntimeRepository
 
@@ -27,9 +27,6 @@ class WorkbenchDowntimeService:
     def public(state):
         keys = ("ref", "start_time", "end_time", "reason_code", "reason_detail", "status")
         return {"rows": [{key: row[key] for key in keys} for row in state["rows"]], "reasons": REASONS}
-
-    def apply(self, ref, action, payload, state):
-        return self.apply_normalized(ref, action, normalize_downtime(action, payload), state)
 
     def apply_normalized(self, ref, action, payload, state):
         if not self.conn.in_transaction:

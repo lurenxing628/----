@@ -10,8 +10,10 @@ from types import SimpleNamespace
 import pytest
 from openpyxl import load_workbook
 
+from core.services.workbench.facts.decision_metrics import metric_definitions
+from core.services.workbench.facts.decision_selection_explanation import selection_explanation
 from core.services.workbench.facts.resource_intervals import task_interval
-from core.services.workbench.run.decision_metrics import metric_definitions, operation_changes
+from core.services.workbench.run.decision_impact import operation_changes
 from core.services.workbench.run.decision_recommendation import RecommendationSupport
 from core.services.workbench.run.decision_recommendation_export import (
     COMPLETION_HEADERS,
@@ -21,7 +23,6 @@ from core.services.workbench.run.decision_recommendation_export import (
     _definition_values,
     _explanations,
 )
-from core.services.workbench.run.decision_selection_explanation import selection_explanation
 from core.services.workbench.run.decision_tradeoffs import aggregate_tradeoffs, tradeoff_entry
 from tests.workbench.legacy_run_archive_support import install_complete_legacy_archive
 from tests.workbench.run_candidate_support import BASE, api, compute, corrupt_update, edit_artifact

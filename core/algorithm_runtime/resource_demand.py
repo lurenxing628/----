@@ -44,7 +44,6 @@ class ResourceDemand:
 
     def __init__(self, claims: Any) -> None:
         self.revision = 0
-        self.fallback_reason = ""
         self._groups = {}  # type: Dict[Tuple[str, Optional[str]], Any]
         self._by_id = {}  # type: Dict[Any, Any]
         self._by_token = {}  # type: Dict[int, ResourceClaim]
@@ -59,15 +58,12 @@ class ResourceDemand:
             self._by_token[record.token] = record
             self._by_batch.setdefault(record.batch_id, set()).add(record.group)
 
-    def penalty(self, op: Any, machine_id: str, operator_id: str) -> float:
-        return self.penalties(op, ((machine_id, operator_id),))[0]
-
     def comparison_is_neutral(self, op: Any, first: Tuple[str, str], second: Tuple[str, str]) -> bool:
         """Skip equal reservation hints before forming the tie-break score."""
         if not _native_pair(first) or not _native_pair(second):
             return True
         current = self._by_token.get(id(op))
-        if self.fallback_reason or current is None:
+        if current is None:
             return True
         self._refresh_window()
         return self._score(current, *first) == self._score(current, *second)
@@ -80,7 +76,7 @@ class ResourceDemand:
         if not all(_native_pair(pair) for pair in pairs):
             return zeroes
         current = self._by_token.get(id(op))
-        if self.fallback_reason or current is None:
+        if current is None:
             return zeroes
         self._refresh_window()
         return tuple(self._score(current, mid, oid) for mid, oid in pairs)

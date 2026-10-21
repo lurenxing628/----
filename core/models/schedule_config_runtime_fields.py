@@ -145,7 +145,7 @@ _FIELD_SPEC_BY_KEY: Dict[str, RuntimeConfigFieldSpec] = {spec.key: spec for spec
 
 
 def list_runtime_config_fields() -> Tuple[RuntimeConfigFieldSpec, ...]:
-    return tuple(_FIELD_SPECS)
+    return _FIELD_SPECS
 
 
 def get_field_spec(key: str) -> RuntimeConfigFieldSpec:

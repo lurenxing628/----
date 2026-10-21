@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 UNIFIED_GENERATION_VERSION = "unified_search_v1"
 ROLE_RECOMMENDED = "recommended"
+_UNSET = object()
 
 _PUBLIC_FAILURE_REASON_CODES = {
     "candidate_failed",
@@ -41,24 +42,19 @@ def candidate_score_summary(candidate: Any) -> Optional[List[Any]]:
     return [float(item) for item in tuple(score)]
 
 
-def _metric_value(metrics: Any, name: str) -> Optional[Any]:
-    if metrics is None:
-        return None
-    if isinstance(metrics, dict):
-        return metrics.get(name)
-    if hasattr(metrics, "to_dict"):
-        data = metrics.to_dict()
-        if isinstance(data, dict):
-            return data.get(name)
-    return getattr(metrics, name, None)
-
-
-def candidate_metrics_summary(candidate: Any) -> Dict[str, Any]:
+def candidate_metrics_summary(candidate: Any, *, score: Any = _UNSET) -> Dict[str, Any]:
     metrics = getattr(candidate, "metrics", None)
-    score = candidate_score_summary(candidate)
+    score = candidate_score_summary(candidate) if score is _UNSET else score
     out: Dict[str, Any] = {}
     if score and score[0] is not None:
         out["failed_ops"] = int(score[0])
+    metrics_data: Optional[Dict[str, Any]] = None
+    if isinstance(metrics, dict):
+        metrics_data = metrics
+    elif metrics is not None and hasattr(metrics, "to_dict"):
+        raw = metrics.to_dict()
+        if isinstance(raw, dict):
+            metrics_data = raw
     for key in (
         "overdue_count",
         "total_tardiness_hours",
@@ -66,7 +62,7 @@ def candidate_metrics_summary(candidate: Any) -> Dict[str, Any]:
         "makespan_hours",
         "changeover_count",
     ):
-        value = _metric_value(metrics, key)
+        value = metrics_data.get(key) if metrics_data is not None else getattr(metrics, key, None)
         if value is not None:
             out[key] = value
     return out
@@ -145,17 +141,17 @@ def _candidate_text(candidate: Any, name: str) -> str:
     return str(getattr(candidate, name, "") or "")
 
 
-def _candidate_weight(candidate: Any, name: str) -> Optional[int]:
+def _candidate_weight(candidate: Any, name: str, *, unified: bool) -> Optional[int]:
     """新版保留真实图参数的未知值；旧记录保持原数值口径。"""
-    if is_unified_generation(candidate):
+    if unified:
         value = getattr(candidate, name, None)
         return None if value is None else int(value)
     return int(getattr(candidate, name, 0) or 0)
 
 
-def _candidate_elapsed_ms(candidate: Any) -> Optional[int]:
+def _candidate_elapsed_ms(candidate: Any, *, unified: bool) -> Optional[int]:
     """候选耗时（秒）换算成整毫秒。"""
-    if is_unified_generation(candidate):
+    if unified:
         return None
     return int(round(float(getattr(candidate, "elapsed_seconds", 0.0) or 0.0) * 1000))
 
@@ -193,24 +189,26 @@ def _candidate_dispatch_rule_fields(candidate: Any) -> Dict[str, str]:
 
 
 def candidate_public_summary(candidate: Any, *, roles: Optional[List[str]] = None) -> Dict[str, Any]:
+    unified = is_unified_generation(candidate)
+    score = candidate_score_summary(candidate)
     role_list = list(roles or [])
     health = candidate_health_summary(candidate)
     summary: Dict[str, Any] = {
         "label": _candidate_text(candidate, "label"),
         "kind": _candidate_text(candidate, "kind"),
         "status": _candidate_text(candidate, "status"),
-        "score": candidate_score_summary(candidate),
-        "metrics": candidate_metrics_summary(candidate),
+        "score": score,
+        "metrics": candidate_metrics_summary(candidate, score=score),
         "health": health,
         "graph_enabled": candidate_graph_enabled(candidate),
-        "critical_weight": _candidate_weight(candidate, "graph_critical_weight"),
-        "impact_weight": _candidate_weight(candidate, "graph_impact_weight"),
-        "downstream_weight": _candidate_weight(candidate, "graph_downstream_weight"),
-        "elapsed_ms": _candidate_elapsed_ms(candidate),
+        "critical_weight": _candidate_weight(candidate, "graph_critical_weight", unified=unified),
+        "impact_weight": _candidate_weight(candidate, "graph_impact_weight", unified=unified),
+        "downstream_weight": _candidate_weight(candidate, "graph_downstream_weight", unified=unified),
+        "elapsed_ms": _candidate_elapsed_ms(candidate, unified=unified),
         "detail_saved": candidate_detail_saved(candidate, role_list),
         "roles": role_list,
     }
-    if is_unified_generation(candidate):
+    if unified:
         summary.update(_business_candidate_fields(candidate))
     failure_reason = _public_failure_reason(getattr(candidate, "failure_reason", ""))
     if failure_reason:

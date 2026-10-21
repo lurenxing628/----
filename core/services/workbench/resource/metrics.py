@@ -1,6 +1,7 @@
 """Static enabled-resource counts, not calendar capacity or scheduled utilization."""
 
 from collections import Counter, defaultdict
+from itertools import chain
 from types import SimpleNamespace
 from typing import Dict
 
@@ -60,10 +61,6 @@ def _relation(value, records, label, *, nullable=False):
         _invalid(label + "指向的记录已经不存在")
 
 
-def _status(kind, raw, profile=None):
-    return public_resource_status(kind, raw["status"], profile)
-
-
 class WorkbenchResourceMetricsService:
     def __init__(self, conn, logger=None):
         self.conn, self.logger = conn, logger
@@ -101,7 +98,7 @@ class WorkbenchResourceMetricsService:
             if kind in ("operator", "supplier"):
                 self._load([kind + "_profiles"])
                 self.profiles[kind] = _index(self.facts[kind + "_profiles"], kind + "_id")
-            self.statuses[kind] = {code: _status(kind, row, self.profiles.get(kind, {}).get(code))
+            self.statuses[kind] = {code: public_resource_status(kind, row["status"], self.profiles.get(kind, {}).get(code))
                                    for code, row in self._records(kind).items()}
         return self.statuses[kind]
 
@@ -175,7 +172,7 @@ class WorkbenchResourceMetricsService:
         self._records("supplier")
         self._statuses("supplier")
         self._validate_suppliers()
-        for row in list(self.records["supplier"].values()) + self.facts["capabilities"]:
+        for row in chain(self.records["supplier"].values(), self.facts["capabilities"]):
             if row["op_type_id"] is not None and self.statuses["supplier"][row["supplier_id"]] == "active":
                 self.available_suppliers[row["op_type_id"]].add(row["supplier_id"])
         self._computed.add("external")
@@ -246,7 +243,8 @@ class WorkbenchResourceMetricsService:
         counts["total"] = len(codes)
         if kind == "machine":
             self._load(["groups", "machine_group"])
-            self.groups = _index(self.facts["groups"], "machine_id")
+            if not self.groups:
+                self.groups = _index(self.facts["groups"], "machine_id")
             groups = self._records("machine_group")
             for code in codes:
                 if code in self.groups:

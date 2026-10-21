@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy
 
@@ -27,7 +27,6 @@ class OptimizationOutcome:
     # because multi-start and the rule neighborhood search the whole rule pool.
     dispatch_mode: str = ""
     dispatch_rule: str = ""
-    process_evidence: Optional[Dict[str, Any]] = None
 
 
 def _record_decoder_invocations(report: Dict[str, Any], scheduler: Any) -> None:

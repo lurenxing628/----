@@ -14,8 +14,6 @@ from core.models.workbench_resource_file import (
     MULTI_CODES,
     NUMERIC_FIELDS,
     ResourceFileDownload,
-    file_columns,
-    public_columns,
     table_descriptor,
 )
 from core.models.workbench_table_descriptor import cell_notes
@@ -88,18 +86,20 @@ def write_resource_file(kind, rows, fmt, *, template=False, category=None):
     filename = ((_CATEGORY_NAMES[category] if category else "") + descriptor["file_stem"]
                 + ("导入模板" if template else "清单"))
     if fmt == "csv":
-        return _csv(kind, rows, filename)
+        return _csv(kind, rows, filename, descriptor)
     return _xlsx(kind, rows, filename, template, descriptor)
 
 
-def _csv(kind, rows, filename):
+def _csv(kind, rows, filename, descriptor):
+    columns = descriptor["columns"]
+    fields = [item["key"] for item in columns]
     count = 0
     with SpooledTemporaryFile(max_size=4 * 1024 * 1024, mode="w+b") as buffer:
         text = codecs.getwriter("utf-8-sig")(buffer)
         writer = csv.writer(text, lineterminator="\r\n")
-        writer.writerow([item["label"] for item in public_columns(kind)])
+        writer.writerow([item["label"] for item in columns])
         for count, row in enumerate(rows, 1):
-            values = [_value(row[field], field, count + 1, "csv", kind) for field in file_columns(kind)]
+            values = [_value(row[field], field, count + 1, "csv", kind) for field in fields]
             # 文字前加撇号防公式和自动转换；数字不加，回导照样认。
             writer.writerow(["'" + value if type(value) is str else _cell_text(value) for value in values])
         text.flush()
@@ -107,13 +107,14 @@ def _csv(kind, rows, filename):
         return ResourceFileDownload(filename + ".csv", "text/csv; charset=utf-8", buffer.read(), count)
 
 
-def _headers(kind, ws, template, descriptor):
+def _headers(ws, template, descriptor):
     from openpyxl.cell import WriteOnlyCell
     from openpyxl.comments import Comment
     from openpyxl.styles import Font
 
+    columns = descriptor["columns"]
     cells, notes = [], cell_notes(descriptor)
-    for index, item in enumerate(public_columns(kind)):
+    for index, item in enumerate(columns):
         cell = WriteOnlyCell(ws, value=item["label"])
         cell.font = Font(bold=True)
         if template:
@@ -127,25 +128,27 @@ def _xlsx(kind, rows, filename, template, descriptor):
     from openpyxl.cell import WriteOnlyCell
     from openpyxl.utils import get_column_letter
 
+    columns = descriptor["columns"]
+    fields = [item["key"] for item in columns]
     wb = openpyxl.Workbook(write_only=True)
     ws = wb.create_sheet(descriptor["sheet_name"])
     sheets, count = [ws], 0
     try:
         ws.freeze_panes = "A2"
-        for index, column in enumerate(public_columns(kind), 1):
+        for index, column in enumerate(columns, 1):
             ws.column_dimensions[get_column_letter(index)].width = max(24, len(column["label"]) * 2 + 4)
-        ws.append(_headers(kind, ws, template, descriptor))
+        ws.append(_headers(ws, template, descriptor))
         for count, row in enumerate(rows, 1):
             check_capacity(count, "xlsx")
             cells = []
-            for field in file_columns(kind):
+            for field in fields:
                 value = _cell_text(_value(row[field], field, count + 1, "xlsx", kind))
                 cell = WriteOnlyCell(ws, value=value)
                 if type(value) is str:
                     cell.data_type, cell.number_format = "s", "@"
                 cells.append(cell)
             ws.append(cells)
-        ws.auto_filter.ref = "A1:" + get_column_letter(len(file_columns(kind))) + str(count + 1)
+        ws.auto_filter.ref = "A1:" + get_column_letter(len(fields)) + str(count + 1)
         add_enum_dropdowns(ws, descriptor, count, write_only=True)
         preserve_carriage_returns(ws)
         sheets.append(append_instruction_sheet(wb, descriptor))

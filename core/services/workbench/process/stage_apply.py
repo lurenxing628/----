@@ -44,8 +44,6 @@ def source_catalog(conn, logger=None, facts=None):
     repo = WorkbenchProcessQueryRepository(conn, logger)
     types = {row["op_type_id"]: row for row in repo.op_type_reference_rows()}
     suppliers = {row["supplier_id"]: row for row in repo.supplier_status_rows()}
-    for row in repo.supplier_reference_rows():
-        suppliers[row["supplier_id"]]["name"] = row["name"]
     capabilities = {(row["supplier_id"], row["op_type_id"]) for row in
                     SupplierRepository(conn, logger).list_capabilities(status="active") if not row["missing_supplier"]}
     return types, suppliers, capabilities

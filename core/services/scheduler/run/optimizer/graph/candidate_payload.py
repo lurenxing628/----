@@ -2,13 +2,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from core.algorithms import ScheduleResult
-from core.algorithms.evaluation import objective_score
+from core.algorithms import ScheduleResult, ScheduleSummary, SortStrategy
+from core.algorithms.evaluation import ScheduleMetrics, objective_score
 from core.services.scheduler.run.optimizer.graph_ready_profiles import (
-    GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
-    GRAPH_READY_V2_REPAIRED_ORIGIN,
     GraphReadyWeightProfile,
     profile_payload,
 )
@@ -16,55 +14,54 @@ from core.services.scheduler.run.optimizer.graph_ready_profiles import (
 from .reporting import public_params
 
 
-def build_graph_ready_candidate_payload(**kwargs: Any) -> Dict[str, Any]:
-    profile = kwargs["profile"]
-    metrics = kwargs["metrics"]
-    decision_order = list(kwargs["order"])
-    decoded_batch_order = _decoded_batch_order(kwargs["res"])
-    result_order = _result_batch_order(decoded_batch_order, decision_order=decision_order)
+def build_graph_ready_candidate_payload(
+    *, res: List[ScheduleResult], summ: ScheduleSummary, used_strat: SortStrategy,
+    used_params: Dict[str, Any], metrics: ScheduleMetrics, profile: GraphReadyWeightProfile,
+    order: List[str], dispatch_rule: str, objective_name: str, algo_stats: Dict[str, Any],
+    resource_pool: Optional[Dict[str, Any]], version: int, runtime_ms: int,
+    repair_decision: Optional[Any] = None, profile_dict: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    decoded_order = decoded_batch_order(res)
+    result_order = _result_batch_order(decoded_order, decision_order=order)
     payload = {
-        "results": kwargs["res"],
-        "summary": kwargs["summ"],
-        "strategy": kwargs["used_strat"],
-        "params": public_params(kwargs["used_params"]),
+        "results": res,
+        "summary": summ,
+        "strategy": used_strat,
+        "params": public_params(used_params),
         "dispatch_mode": "sgs",
-        "dispatch_rule": str(kwargs["dispatch_rule"] or ""),
+        "dispatch_rule": str(dispatch_rule or ""),
         "order": result_order,
-        "decision_batch_order": decision_order,
-        "decoded_batch_order": decoded_batch_order,
+        "decoded_batch_order": decoded_order,
         "metrics": metrics,
-        "score": (float(kwargs["summ"].failed_ops),) + objective_score(kwargs["objective_name"], metrics),
-        "algo_stats": kwargs["algo_stats"],
-        "resource_pool": kwargs["resource_pool"] or {},
-        "seed_result_count": len(kwargs["seed_sr_list"] or []),
-        "mutable_scope": _mutable_scope(profile, version=int(kwargs["version"])),
+        "score": (float(summ.failed_ops),) + objective_score(objective_name, metrics),
+        "algo_stats": algo_stats,
+        "resource_pool": resource_pool or {},
         "candidate_origin": profile.candidate_origin,
-        "runtime_ms": int(kwargs["runtime_ms"]),
-        "graph_ready_profile": profile_payload(profile, version=int(kwargs["version"])),
+        "runtime_ms": int(runtime_ms),
+        "graph_ready_profile": profile_dict if profile_dict is not None else profile_payload(profile, version=int(version)),
     }
-    decision = kwargs.get("repair_decision")
+    decision = repair_decision
     if decision is not None:
         payload["repair_decision"] = {
             "batch_order": list(decision.batch_order), "operation_order": list(decision.operation_order),
             "resource_overrides": [list(item) for item in decision.resource_overrides],
         }
-        payload["mutable_scope"].update({key: payload["repair_decision"][key] for key in ("operation_order", "resource_overrides")})
     return payload
 
 
-def _decoded_batch_order(results: List[ScheduleResult]) -> List[str]:
+def decoded_batch_order(results: List[ScheduleResult]) -> List[str]:
     order: List[str] = []
     seen = set()
     for result in sorted(
-        list(results or []),
+        results,
         key=lambda item: (
-            getattr(item, "start_time", None) or datetime.max,
-            getattr(item, "end_time", None) or datetime.max,
-            int(getattr(item, "seq", 0) or 0),
-            int(getattr(item, "op_id", 0) or 0),
+            item.start_time or datetime.max,
+            item.end_time or datetime.max,
+            int(item.seq or 0),
+            int(item.op_id or 0),
         ),
     ):
-        batch_id = str(getattr(result, "batch_id", "") or "").strip()
+        batch_id = str(result.batch_id or "").strip()
         if not batch_id or batch_id in seen:
             continue
         seen.add(batch_id)
@@ -72,30 +69,12 @@ def _decoded_batch_order(results: List[ScheduleResult]) -> List[str]:
     return order
 
 
-# Public name for stages that rebuild a decision from decoded results (elite repair, iterated greedy).
-decoded_batch_order = _decoded_batch_order
-
-
 def _result_batch_order(decoded_batch_order: List[str], *, decision_order: List[str]) -> List[str]:
-    out = list(decoded_batch_order or [])
+    out = list(decoded_batch_order)
     seen = set(out)
-    for batch_id in list(decision_order or []):
+    for batch_id in decision_order:
         text = str(batch_id or "").strip()
         if text and text not in seen:
             seen.add(text)
             out.append(text)
     return out
-
-
-_SCOPE_BY_ORIGIN = {GRAPH_READY_V2_REPAIRED_ORIGIN: "graph_ready_elite_repair",
-                    GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN: "graph_ready_iterated_greedy"}
-
-
-def _mutable_scope(profile: GraphReadyWeightProfile, *, version: int) -> Dict[str, Any]:
-    return {
-        "scope": _SCOPE_BY_ORIGIN.get(profile.candidate_origin, "graph_ready_priority"),
-        "weight_profile_slug": profile.slug,
-        "raw_weights": dict(profile.raw_weights),
-        "candidate_policy": profile.candidate_policy,
-        "seed": int(version),
-    }

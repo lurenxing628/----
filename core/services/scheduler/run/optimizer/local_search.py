@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, cast
 
 from core.algorithm_contracts.dispatch_rules import dispatch_rule_search_pool
-from core.algorithms import ScheduleResult
 
 from .acceptance import ACCEPTANCE_IMPROVE_ONLY
 from .candidate_fingerprint import score_strictly_better
@@ -19,7 +17,7 @@ from .local_search_limits import (
     derive_local_search_limits,
     local_search_stop_reason,
 )
-from .local_search_restart import RESTART_SHAKE, RestartOutcome, _evaluate_restart_candidate, restart_after_stall
+from .local_search_restart import RestartOutcome, _evaluate_restart_candidate, restart_after_stall
 from .local_search_round import LocalSearchRoundResult, run_local_search_candidate_round
 from .local_search_state import LocalSearchState, resolve_current_strategy_state
 from .neighborhood_moves import BUSINESS_NEIGHBORHOODS, DEFAULT_SGS_DISPATCH_RULES, SGS_DISPATCH_RULE
@@ -30,7 +28,7 @@ if TYPE_CHECKING:
     from .search_report import OptimizationSearchReportState
     from .shared_decode import SharedDecodeSession
 
-__all__ = ["RESTART_SHAKE", "LocalSearchStage"]
+__all__ = ["LocalSearchStage"]
 
 
 def _local_search_skip_reason(
@@ -53,21 +51,13 @@ def _mark_local_search_skipped(search_report_state: Optional[OptimizationSearchR
         search_report_state.mark_phase_skipped("local_search", reason, **extra)
 
 
-def _local_search_limits_report(limits: LocalSearchLimits) -> Dict[str, Any]:
-    report = limits.to_report_dict()
-    if limits.source == "shared_round_limit":
-        report["policy"] = "shared_algorithm_rounds_v1"
-        report["round_limit"] = report.pop("decode_limit")
-    return report
-
-
 def _mark_local_search_stop(
     search_report_state: Optional[OptimizationSearchReportState],
     reason: str,
     *,
     counters: LocalSearchCounters,
     limits: LocalSearchLimits,
-    rounds: Optional[int] = None,
+    rounds: int,
 ) -> None:
     if search_report_state is None:
         return
@@ -77,16 +67,14 @@ def _mark_local_search_stop(
         search_report_state.mark_iteration_limit_reached()
     elif reason == STOP_SEARCH_EXHAUSTED:
         search_report_state.mark_search_exhausted()
-    stop = dict(counters.to_report_dict(), reason=str(reason), limits=_local_search_limits_report(limits))
-    if rounds is not None:
-        stop["rounds"] = rounds
+    stop = dict(counters.to_report_dict(), reason=str(reason), limits=limits.to_report_dict(), rounds=rounds)
     search_report_state.update_candidate_profile(local_search_stop=stop)
 
 
 def _mark_local_search_entered(search_report_state: Optional[OptimizationSearchReportState], limits: LocalSearchLimits) -> None:
     if search_report_state is not None:
         search_report_state.local_search_entered = True
-        search_report_state.update_candidate_profile(local_search_limits=_local_search_limits_report(limits))
+        search_report_state.update_candidate_profile(local_search_limits=limits.to_report_dict())
 
 
 def _active_neighborhoods(
@@ -157,13 +145,11 @@ class _LocalSearchRun:
                       dispatch_mode: str, dispatch_rule: str) -> Optional[Dict[str, Any]]:
             return _evaluate_restart_candidate(
                 shaken_order=shaken_order, move=move, local_state=local_state, strategy=strategy, params=params,
-                dispatch_mode=dispatch_mode, dispatch_rule=dispatch_rule, scheduler=inputs["scheduler"],
-                strict_mode=inputs["strict_mode"], algo_ops_to_schedule=inputs["algo_ops_to_schedule"],
-                batches=inputs["batches"], start_dt=inputs["start_dt"], end_date=inputs["end_date"],
-                downtime_map=inputs["downtime_map"], seed_sr_list=inputs["seed_sr_list"],
+                dispatch_mode=dispatch_mode, dispatch_rule=dispatch_rule,
+                strict_mode=inputs["strict_mode"], start_dt=inputs["start_dt"], end_date=inputs["end_date"],
                 resource_pool=inputs["resource_pool"], objective_name=inputs["objective_name"],
-                optimizer_algo_stats=inputs["optimizer_algo_stats"], schedule_fn=inputs["schedule_fn"],
-                readiness_gate_enabled=inputs["readiness_gate_enabled"], graph_ready_context=inputs["graph_ready_context"],
+                optimizer_algo_stats=inputs["optimizer_algo_stats"],
+                readiness_gate_enabled=inputs["readiness_gate_enabled"],
                 attempts=inputs["attempts"], search_report_state=inputs["search_report_state"], clock=inputs["clock"],
                 decode_session=inputs["decode_session"],
             )
@@ -186,15 +172,10 @@ class LocalSearchStage(SearchStage):
         algo_mode: str,
         best: Optional[Dict[str, Any]],
         version: int,
-        time_budget_seconds: int,
         deadline: float,
-        scheduler: Any,
-        algo_ops_to_schedule: List[Any],
         batches: Dict[str, Any],
         start_dt: datetime,
         end_date: Optional[date],
-        downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
-        seed_sr_list: List[ScheduleResult],
         dispatch_mode_cfg: str,
         dispatch_rule_cfg: str,
         resource_pool: Optional[Dict[str, Any]],
@@ -207,8 +188,6 @@ class LocalSearchStage(SearchStage):
         strict_mode: bool,
         clock: Callable[[], float],
         rng_factory: Callable[[int], Any],
-        schedule_fn: Callable[..., Any],
-        graph_ready_context: Optional[Any] = None,
         search_report_state: Optional[OptimizationSearchReportState] = None,
         neighborhoods: Optional[Tuple[str, ...]] = None,
         valid_dispatch_rules: Optional[List[str]] = None,
@@ -227,16 +206,10 @@ class LocalSearchStage(SearchStage):
         self.pending_restart = False
         self.finished = False
         self.rounds = 0
-        self.last_skip: Optional[Dict[str, Any]] = None
-        del time_budget_seconds
         skip_reason, skip_extra = _local_search_skip_reason(algo_mode=algo_mode, best=best)
         self._skip_reason = skip_reason
         if skip_reason:
             _mark_local_search_skipped(search_report_state, skip_reason, skip_extra)
-            return
-        if graph_ready_context is not None:
-            self._skip_reason = "graph_ready_uses_graph_candidate_phase"
-            _mark_local_search_skipped(search_report_state, self._skip_reason, {})
             return
         best = cast(Dict[str, Any], best)
         local_state = LocalSearchState.from_best(best, resource_pool=resource_pool)
@@ -245,22 +218,18 @@ class LocalSearchStage(SearchStage):
             neighborhoods=neighborhoods, cur_dispatch_mode=strategy_state[2], search_report_state=search_report_state,
         )
         # Size limits once; each task measures only its own work after the queue resumes it.
-        entered_at = clock()
-        limits = derive_local_search_limits(
-            remaining_seconds=float("inf"), decode_cost_seconds=0.0, neighborhood_count=len(active_neighborhoods),
-        )
-        limits = replace(limits, source="shared_round_limit")
+        limits = derive_local_search_limits(neighborhood_count=len(active_neighborhoods))
+        self._now_value: Optional[float] = None
         _mark_local_search_entered(search_report_state, limits)
         vns_state = VnsState(active_neighborhoods)
         counters = LocalSearchCounters()
         run = _LocalSearchRun(
             attempts=attempts, improvement_trace=improvement_trace, rnd=rng_factory(int(version)),
-            search_report_state=search_report_state, acceptance=acceptance, version=version, scheduler=scheduler,
-            strict_mode=strict_mode, algo_ops_to_schedule=algo_ops_to_schedule, batches=batches, start_dt=start_dt,
-            end_date=end_date, downtime_map=downtime_map, seed_sr_list=seed_sr_list, resource_pool=resource_pool,
+            search_report_state=search_report_state, acceptance=acceptance, version=version,
+            strict_mode=strict_mode, batches=batches, start_dt=start_dt,
+            end_date=end_date, resource_pool=resource_pool,
             objective_name=objective_name, optimizer_algo_stats=optimizer_algo_stats,
-            schedule_fn=schedule_fn,
-            readiness_gate_enabled=readiness_gate_enabled, graph_ready_context=graph_ready_context,
+            readiness_gate_enabled=readiness_gate_enabled,
             valid_dispatch_rules=_resolve_sgs_dispatch_rules(valid_dispatch_rules, strategy_state[3]),
             fingerprint_tracker=LocalSearchFingerprintTracker(
                 objective_name=objective_name, initial_best=best,
@@ -273,7 +242,6 @@ class LocalSearchStage(SearchStage):
         self.counters = counters
         self.limits = limits
         self.strategy_state = strategy_state
-        self._now_value: Optional[float] = entered_at
 
     @property
     def best(self) -> Optional[Dict[str, Any]]:
@@ -290,9 +258,9 @@ class LocalSearchStage(SearchStage):
         tracker = self._run.inputs["fingerprint_tracker"]
         tracker.mark_best(tracker.mark_evaluated(candidate))
         if self.search_report_state is not None:
-            sync_reference = getattr(self.search_report_state, "sync_best_reference", None)
-            if sync_reference is not None:
-                sync_reference(candidate, origin=str(candidate.get("candidate_origin") or "shared_archive_reference"))
+            self.search_report_state.sync_best_reference(
+                candidate, origin=str(candidate.get("candidate_origin") or "shared_archive_reference"),
+            )
 
     def available(self) -> bool:
         if self.finished or self._skip_reason is not None or self.stop_reason is not None:
@@ -319,7 +287,6 @@ class LocalSearchStage(SearchStage):
         if not self.available():
             return 0
         local_state = cast(LocalSearchState, self.local_state)
-        self.last_skip = None
         self.rounds += 1
         if self.pending_restart:
             self.pending_restart = False
@@ -331,7 +298,6 @@ class LocalSearchStage(SearchStage):
             self._now_value = None
             self.counters.record_round(decode_attempted=restart.decode_attempted)
             self.strategy_state = (restart.strategy, restart.params, restart.dispatch_mode, restart.dispatch_rule)
-            self._remember_skip(restart)
             self._publish_iterations()
             return 0
         before_score = local_state.best.get("score")
@@ -351,15 +317,9 @@ class LocalSearchStage(SearchStage):
             local_state.current, dispatch_mode_cfg=self.dispatch_mode_cfg, dispatch_rule_cfg=self.dispatch_rule_cfg,
         )
         _mark_vns_round(self.search_report_state, self.vns_state, best_improved=outcome.best_improved, move=outcome.move)
-        self._remember_skip(outcome)
         if self.stop_reason is None and self.counters.no_improve >= self.limits.restart_after:
             self.pending_restart = True
         return int(score_strictly_better(local_state.best.get("score"), before_score))
-
-    def _remember_skip(self, outcome: Any) -> None:
-        if outcome.skip_reason is not None:
-            self.last_skip = {"reason": outcome.skip_reason, "request_id": outcome.request_id,
-                              "receipt": outcome.decode_receipt}
 
     def _publish_iterations(self) -> None:
         if self.search_report_state is not None:

@@ -62,9 +62,7 @@ def _intersects_changed_range(group, changed):
     return any(type(seq) is int and group["start_seq"] <= seq <= group["end_seq"] for seq in changed)
 
 
-def _discarded_groups(existing, proposed, context, *, changed=None):
-    if changed is None:
-        changed = changed_route_sequences(existing, proposed)
+def _discarded_groups(existing, context, changed):
     linked = {old["ext_group_id"] for seq, old in existing.items() if seq in changed and old["ext_group_id"]}
     return linked | {key for key, group in context["group_rows"].items() if _intersects_changed_range(group, changed)}
 
@@ -125,11 +123,11 @@ def _preview_existing_operation(row, old, result, context, discarded):
     return replace
 
 
-def preview_existing_route(preview, operations, context, *, changed=None):
+def preview_existing_route(preview, operations, context, *, changed):
     existing = {row["seq"]: row for row in operations}
     if not existing:
         return preview
-    discarded = _discarded_groups(existing, preview["operations"], context, changed=changed)
+    discarded = _discarded_groups(existing, context, changed)
     for row in preview["operations"]:
         old = existing.get(row["sequence"])
         if old is not None:

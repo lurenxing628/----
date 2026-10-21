@@ -16,10 +16,10 @@ from core.infrastructure.workbench_plan_identity_schema import install_plan_iden
 from core.infrastructure.workbench_template_lineage_schema import install, objects
 from core.models.workbench_calibration import CalibrationQuery
 from core.services.batch.service import BatchService
+from core.services.scheduler.template_lineage import TemplateLineageWriter
+from core.services.scheduler.template_lineage_query import TemplateLineageQuery
 from core.services.workbench.batch.operations import WorkbenchBatchOperationService
 from core.services.workbench.calibration.service import WorkbenchCalibrationService
-from core.services.workbench.calibration.template_lineage import TemplateLineageWriter
-from core.services.workbench.calibration.template_lineage_query import TemplateLineageQuery
 from core.services.workbench.commands import WorkbenchCommandService
 from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
 from tests.workbench.execution_ledger_support import NOW, LedgerCase, install_current_content_storage
@@ -85,7 +85,9 @@ def create(case, code="COPY-001", *, quantity=10, rebuild=False):
 
 def origin(case, op_id):
     ref = case.lineage_repo.instance(op_id)["operation_ref"]
-    return case.lineage_repo.origins([ref])[ref]
+    row = next(case.lineage_repo.origin_rows([ref]))
+    row.pop("_lineage_bytes", None)
+    return row
 
 
 def lineage(case, op_id):

@@ -15,7 +15,6 @@ def dispatch_run(ctx, *, state, sorted_ops, batches, batch_order, params, machin
     common = dict(
         sorted_ops=sorted_ops,
         batches=batches,
-        base_time=params.base_time,
         end_dt_exclusive=params.end_dt_exclusive,
         machine_downtimes=machine_downtimes,
         state=state,
@@ -24,7 +23,7 @@ def dispatch_run(ctx, *, state, sorted_ops, batches, batch_order, params, machin
         strict_mode=strict_mode,
     )
     if params.dispatch_mode_key != "sgs":
-        return batch_dispatch(ctx, **common)
+        return batch_dispatch(ctx, **common, base_time=params.base_time)
     return sgs_dispatch(ctx, **common, batch_order=batch_order, dispatch_rule=params.dispatch_rule_spec,
                         graph_ready_context=graph_ready_context,
                         decode_resume=decode_resume, decode_checkpoints=decode_checkpoints)

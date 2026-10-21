@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from core.errors import ValidationError
 from core.models.content import same
+from core.models.workbench_action_values import AtomicActionPreview
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 
 
@@ -30,10 +31,10 @@ class PreparedImportSource:
     def confirmation(cls, preview, content):
         if isinstance(content, cls):
             return content
-        source = getattr(preview, "source", None)
-        if not isinstance(source, cls) or type(content) is not bytes or source.content != content:
+        if (not isinstance(preview, AtomicActionPreview) or not isinstance(preview.source, cls)
+                or type(content) is not bytes or preview.source.content != content):
             raise WorkbenchCommandRejected("stale_write", "原文件内容已变化，请重新预检。")
-        return source
+        return preview.source
 
     def request_for(self, operation, file_format, mode, scope=None):
         request = json.loads(self.request_document)

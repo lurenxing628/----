@@ -98,7 +98,7 @@ def _conflicts(ordered):
 
 
 def project_changeover_events(arrangements, *, start=None, end=None, work_available=True,
-                             machine_ref=None, next_operation_refs=None):
+                             next_operation_refs=None):
     """Confirmed sorted events plus completeness over the actual saved sequence."""
     if not work_available:
         return {"events": [], "count": None, "known_count": None, "changed_machine_count": None,
@@ -111,8 +111,6 @@ def project_changeover_events(arrangements, *, start=None, end=None, work_availa
     for row in arrangements:
         if row.source == EXTERNAL or row.point_event and row.start is not None and row.start == row.end:
             continue
-        if machine_ref is not None and row.machine_ref is not None and row.machine_ref != machine_ref:
-            continue
         ordinal = len(rows)
         rows[ordinal] = row
         problems[ordinal] = _problems(row)
@@ -122,13 +120,17 @@ def project_changeover_events(arrangements, *, start=None, end=None, work_availa
             unplaced.append((ordinal, row))
     relevant, conflicted, scoped_conflicts, events = set(), set(), [], []
     ordered_machines = {}
+    all_selected, machines_with_selected = set(), set()
     for ref, values in machines.items():
         ordered = sorted(values, key=lambda item: (item[1].start, item[1].end, item[1].sort_key))
         ordered_machines[ref] = ordered
         selected = {ordinal for ordinal, row in ordered if _selected(row, start, end, operations)}
+        if selected:
+            all_selected.update(selected)
+            machines_with_selected.add(ref)
         relevant.update(selected)
-        for (previous_ordinal, _previous), (_current_ordinal, current) in zip(ordered, ordered[1:]):
-            if _selected(current, start, end, operations):
+        for (previous_ordinal, _previous), (_current_ordinal, _current) in zip(ordered, ordered[1:]):
+            if _current_ordinal in selected:
                 relevant.add(previous_ordinal)
         conflicts = _conflicts(ordered)
         for previous, current in conflicts:
@@ -140,8 +142,7 @@ def project_changeover_events(arrangements, *, start=None, end=None, work_availa
         # A timed future row cannot precede any next.start inside this window.
         if row.start is not None and end is not None and row.start >= end:
             continue
-        selected_machine = row.machine_ref is None or any(
-            _selected(item, start, end, operations) for _, item in ordered_machines.get(row.machine_ref, []))
+        selected_machine = row.machine_ref is None or row.machine_ref in machines_with_selected
         if _selected(row, start, end, operations) or selected_machine:
             relevant.add(ordinal)
             blocked.add(row.machine_ref)
@@ -165,7 +166,7 @@ def project_changeover_events(arrangements, *, start=None, end=None, work_availa
         for sequence, (previous_entry, current_entry) in enumerate(zip(ordered, ordered[1:]), 1):
             previous_ordinal, previous = previous_entry
             current_ordinal, current = current_entry
-            if not _selected(current, start, end, operations):
+            if current_ordinal not in all_selected:
                 continue
             if problems[previous_ordinal] or problems[current_ordinal]:
                 continue

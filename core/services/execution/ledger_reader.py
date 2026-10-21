@@ -102,9 +102,9 @@ class ExecutionLedgerReader:
         return row
 
     def task_map(self, operation_refs, plan_ref, *, cohort=False):
-        refs = list(operation_refs)
         if plan_ref is None:
             return {}
+        refs = list(operation_refs)
         stored = None if self._snapshot_task_maps is None else self._snapshot_task_maps.setdefault(plan_ref, {})
         missing = refs if stored is None else [ref for ref in refs if ref not in stored]
         result = {}

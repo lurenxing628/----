@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Optional
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, get
 from .enums import YesNo
 
 
@@ -28,17 +28,3 @@ class Part:
             created_at=get(row, "created_at"),
             updated_at=get(row, "updated_at"),
         )
-
-    def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "part_no": self.part_no,
-                "part_name": self.part_name,
-                "route_raw": self.route_raw,
-                "route_parsed": self.route_parsed,
-                "remark": self.remark,
-                "created_at": self.created_at,
-                "updated_at": self.updated_at,
-            }
-        )
-

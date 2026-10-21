@@ -89,29 +89,24 @@ def _drop_token(state: Dict[str, Any], token: str) -> None:
             index.attached = False
 
 
-def _expires_at(entry: Dict[str, Any]) -> float:
-    return float(entry.get("expires_at") or 0)
-
-
 def _cleanup_scope(state: Dict[str, Any], now: float) -> None:
     tokens = state["tokens"]
     # 摊销清理:还没到最早到期时刻、也没超上限时不可能有可清的项,不逐条扫描整个作用域
     # (每签发一个 token 都全量扫描,一次签发几千个就是平方级)。过期即拒由 resolve 现查,不受影响。
     if len(tokens) <= _MAX_SCOPE_TOKENS and now < float(state.get("next_expiry", 0.0)):
         return
-    expired = [token for token, entry in tokens.items() if _expires_at(entry) <= now]
+    expired = [token for token, entry in tokens.items() if entry["expires_at"] <= now]
     for token in expired:
         _drop_token(state, token)
-    state["next_expiry"] = min(map(_expires_at, tokens.values()), default=float("inf"))
+    state["next_expiry"] = min((entry["expires_at"] for entry in tokens.values()), default=float("inf"))
     overflow = len(tokens) - _MAX_SCOPE_TOKENS
     if overflow <= 0:
         return
     # 上限淘汰是最后防线:过期项已在上面清掉,剩余按“最久未使用”淘汰
-    # (last_used_at,兜底 created_at),避免把旧页面仍在活跃使用的入口挤出。
     ordered = heapq.nsmallest(
         overflow,
         tokens.items(),
-        key=lambda item: float(item[1].get("last_used_at") or item[1].get("created_at") or 0),
+        key=lambda item: item[1]["last_used_at"],
     )
     for token, _entry in ordered:
         _drop_token(state, token)
@@ -165,9 +160,9 @@ class PublicTokenIssuer:
             existing_token = index.get(index_key)
             if existing_token:
                 entry = tokens.get(existing_token)
-                if entry is not None and _expires_at(entry) - now >= self._ttl * _REUSE_MIN_REMAINING_RATIO:
+                if entry is not None and entry["expires_at"] - now >= self._ttl * _REUSE_MIN_REMAINING_RATIO:
                     entry["last_used_at"] = now
-                    return existing_token, _expires_at(entry)
+                    return existing_token, entry["expires_at"]
             value = binding(index.group)
             if new_index:
                 state["by_value"][index.group] = index
@@ -178,7 +173,7 @@ class PublicTokenIssuer:
                     expires = now + self._ttl
                     tokens[token] = {
                         "value": value, "index": index, "index_key": index_key,
-                        "created_at": now, "last_used_at": now, "expires_at": expires,
+                        "last_used_at": now, "expires_at": expires,
                     }
                     index[index_key] = token
                     state["next_expiry"] = min(float(state.get("next_expiry", float("inf"))), expires)
@@ -203,7 +198,7 @@ def resolve_public_token(scope: str, token: Any, *, message: str, field: str) ->
         entry = state["tokens"].get(token_text)
         if not entry:
             raise ValidationError(message, field=field)
-        if float(entry.get("expires_at") or 0) <= now:
+        if entry["expires_at"] <= now:
             _drop_token(state, token_text)
             raise ValidationError(message, field=field)
         entry["last_used_at"] = now

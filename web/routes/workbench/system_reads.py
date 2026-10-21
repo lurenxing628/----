@@ -22,15 +22,16 @@ def restore_available():
     return callable(current_app.extensions.get("workbench_system_restore_guard"))
 
 
-def file_capabilities(journal_records=None):
+def file_capabilities(journal_records=None, *, event_journal=None):
     try:
-        journal().assert_ready(journal_records)
+        (event_journal or journal()).assert_ready(journal_records)
         reason = ""
     except Exception as exc:
         reason = str(exc) if isinstance(exc, WorkbenchCommandRejected) else "维护记录读不出来，数据没有改动。请刷新重试；仍不行请联系维护人员，并告知下方编号。"
+    can_restore = restore_available()
     return {"create": not bool(reason), "delete": not bool(reason),
-            "restore": not bool(reason) and restore_available(), "blocked_reason": reason,
-            "restore_reason": reason or ("" if restore_available() else RESTORE_DISABLED)}
+            "restore": not bool(reason) and can_restore, "blocked_reason": reason,
+            "restore_reason": reason or ("" if can_restore else RESTORE_DISABLED)}
 
 
 def collection(kind, *, event_journal=None, journal_records=None):
@@ -81,7 +82,8 @@ def system_collection(kind):
     data = {"rows": public, "page": {"number": page, "size": size, "total": count, "pages": pages},
             "sources": sources, "scope": "backup-files-and-maintenance-events" if kind == "backups" else "bounded-log-windows"}
     if kind == "backups":
-        data.update({"capabilities": file_capabilities(records), "create_context": {"write_token": issue_context("create", {}, database=database)}})
+        data.update({"capabilities": file_capabilities(records, event_journal=event_journal),
+                     "create_context": {"write_token": issue_context("create", {}, database=database)}})
     return query_success(data, snapshot)
 
 

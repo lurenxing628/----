@@ -18,11 +18,12 @@ def legacy_times(op, rows):
     validate_operation_execution_event_sequence(parsed)
     if any(row.batch_id != op["batch_id"] for row in parsed):
         raise ValueError("wrong batch identity")
+    timed = [(row, parse_operation_event_time(row.event_time)) for row in parsed]
     now = datetime.now()
-    if any(parse_operation_event_time(row.event_time) > now for row in parsed):
+    if any(when > now for _, when in timed):
         raise ValueError("future legacy event")
-    return ([parse_operation_event_time(row.event_time).isoformat() for row in parsed if row.event_type == "start"],
-            [parse_operation_event_time(row.event_time).isoformat() for row in parsed if row.event_type == "finish"])
+    return ([when.isoformat() for row, when in timed if row.event_type == "start"],
+            [when.isoformat() for row, when in timed if row.event_type == "finish"])
 
 
 def legacy_guard(op, events):

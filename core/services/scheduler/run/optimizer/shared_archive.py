@@ -48,7 +48,6 @@ class ScheduleArchiveEntry:
     evaluations: Mapping[str, ScheduleEvaluation]
     evidence_origin: Dict[str, Any]
     first_found_elapsed_ms: int
-    validation_state: str
 
 
 @dataclass(frozen=True)
@@ -106,6 +105,9 @@ class SharedScheduleArchive:
         self.target_objectives = tuple(target_objectives)
         if self.target_objectives != target_objectives_for(self.primary_objective):
             raise ValueError("Target objectives must be the fixed set for the primary objective.")
+        self._field_orders = {
+            objective: ("failed_ops",) + objective_metric_keys(objective) for objective in self.target_objectives
+        }
         if retention_limit < 1:
             raise ValueError("The schedule payload retention limit must be positive.")
         self.expected_operation_ids = frozenset(expected_operation_ids)
@@ -143,6 +145,9 @@ class SharedScheduleArchive:
     def retained_entry_ids(self) -> Tuple[int, ...]:
         return tuple(self._entries)
 
+    def __contains__(self, entry_id: object) -> bool:
+        return entry_id in self._entries
+
     @property
     def partial_groups(self) -> Dict[PartialScopeKey, PartialScheduleGroup]:
         return {key: PartialScheduleGroup(tuple(self._partial_entry_ids[key]), dict(best))
@@ -153,7 +158,7 @@ class SharedScheduleArchive:
         identity = stored.identity
         return ScheduleArchiveEntry(
             entry_id, identity.content_key, stored.score_scope, dict(stored.evaluations),
-            stored.evidence_origin, identity.first_found_elapsed_ms, "valid",
+            stored.evidence_origin, identity.first_found_elapsed_ms,
         )
 
     def view(self, entry_id: int, *, objective: Optional[str] = None) -> Dict[str, Any]:
@@ -200,31 +205,32 @@ class SharedScheduleArchive:
 
     def _register_verified(self, candidate: Dict[str, Any], *, elapsed_ms: int,
                            content_key: ContentKey) -> ArchiveObservation:
+        identity = self._identities.get(content_key)
+        if identity is not None and identity.entry_id in self._entries:
+            stored = self._entries[identity.entry_id]
+            if stored.score_scope.is_complete:
+                return ArchiveObservation(entry_id=identity.entry_id, reused=True)
+            scope = self._score_scope(candidate)
+            if not self._evidence_can_upgrade(stored.score_scope, scope):
+                return ArchiveObservation(entry_id=identity.entry_id, reused=True)
+            evaluations = self._objective_evaluations(candidate)
+            payload = dict(candidate, results=stored.payload["results"])
+            self._remove_partial_entry(stored, keep_empty_scope=not scope.is_complete)
+            stored.payload = payload
+            stored.score_scope = scope
+            stored.evaluations = evaluations
+            stored.evidence_origin = {}
+            initialized, improved = self._update_best(stored)
+            self._evict_unreferenced()
+            return ArchiveObservation(identity.entry_id, reused=True, evidence_updated=True,
+                                      initialized_objectives=initialized, improved_objectives=improved)
         scope = self._score_scope(candidate)
         evaluations = self._objective_evaluations(candidate)
-        key = content_key
-        identity = self._identities.get(key)
-        restored = False
+        restored = identity is not None
         if identity is None:
-            identity = _ContentIdentity(self._next_entry_id, key, elapsed_ms)
+            identity = _ContentIdentity(self._next_entry_id, content_key, elapsed_ms)
             self._next_entry_id += 1
-            self._identities[key] = identity
-        elif identity.entry_id in self._entries:
-            stored = self._entries[identity.entry_id]
-            if self._evidence_can_upgrade(stored.score_scope, scope):
-                payload = dict(candidate, results=stored.payload["results"])
-                self._remove_partial_entry(stored, keep_empty_scope=not scope.is_complete)
-                stored.payload = payload
-                stored.score_scope = scope
-                stored.evaluations = evaluations
-                stored.evidence_origin = {}
-                initialized, improved = self._update_best(stored)
-                self._evict_unreferenced()
-                return ArchiveObservation(identity.entry_id, reused=True, evidence_updated=True,
-                                          initialized_objectives=initialized, improved_objectives=improved)
-            return ArchiveObservation(entry_id=identity.entry_id, reused=True)
-        else:
-            restored = True
+            self._identities[content_key] = identity
         payload = dict(candidate)
         stored = _StoredSchedule(identity, payload, scope, evaluations, {})
         self._entries[identity.entry_id] = stored
@@ -236,7 +242,7 @@ class SharedScheduleArchive:
     def _objective_evaluations(self, candidate: Dict[str, Any]) -> Dict[str, ScheduleEvaluation]:
         return {
             objective: ScheduleEvaluation(
-                ("failed_ops",) + objective_metric_keys(objective),
+                self._field_orders[objective],
                 (candidate["summary"].failed_ops,) + objective_score(objective, candidate["metrics"]),
             ) for objective in self.target_objectives
         }

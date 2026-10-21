@@ -14,10 +14,6 @@ from core.shared.local_datetime import parse_local_datetime
 from .task_labels import public_task_label as _public_task_label
 
 
-def _parse_dt(value: Any) -> Optional[datetime]:
-    return parse_local_datetime(value)
-
-
 def _clean_text(value: Any) -> str:
     return str(value or "").strip()
 
@@ -28,17 +24,13 @@ def _public_node_label(nodes: Dict[str, Dict[str, Any]], node_id: str) -> str:
 
 
 def _node_dt(node: Dict[str, Any], key: str) -> Optional[datetime]:
-    value = node.get(key)
-    return value if isinstance(value, datetime) else None
+    return node.get(key)
 
 
 def _minutes_between(a: Optional[datetime], b: Optional[datetime]) -> Optional[int]:
     if not a or not b:
         return None
-    try:
-        return (b - a) // timedelta(minutes=1)
-    except Exception:
-        return None
+    return (b - a) // timedelta(minutes=1)
 
 
 def _dropped_count(value: Any) -> int:
@@ -61,37 +53,6 @@ def _empty_result(*, dropped_count: int = 0) -> Dict[str, Any]:
     }
 
 
-def _normalize_critical_chain_result(raw: Any) -> Dict[str, Any]:
-    if not isinstance(raw, dict):
-        raw = {}
-    available = raw.get("available")
-    is_available = available if isinstance(available, bool) else True
-    reason = _clean_text(raw.get("reason"))
-    reason_code = _clean_text(raw.get("reason_code") or raw.get("reason"))
-    if is_available:
-        reason = ""
-        reason_code = ""
-    dropped = _dropped_count(raw.get("dropped_count"))
-    return {
-        "ids": list(raw.get("ids") or []),
-        "edges": [dict(edge) if isinstance(edge, dict) else edge for edge in list(raw.get("edges") or [])],
-        "makespan_end": raw.get("makespan_end"),
-        "edge_type_stats": dict(
-            raw.get("edge_type_stats") or {"process": 0, "machine": 0, "operator": 0, "unknown": 0}
-        ),
-        "edge_count": int(raw.get("edge_count") or 0),
-        "dropped_count": dropped,
-        "critical_chain_partial": bool(raw.get("critical_chain_partial")) or dropped > 0,
-        "available": bool(is_available),
-        "reason": reason,
-        "reason_code": reason_code or ("unknown" if not is_available else ""),
-    }
-
-
-def _load_rows(schedule_repo, version: int) -> List[Dict[str, Any]]:
-    return schedule_repo.list_by_version_with_details(int(version))
-
-
 def _unavailable_result(reason: str) -> Dict[str, Any]:
     result = _empty_result()
     result["available"] = False
@@ -104,11 +65,11 @@ def _build_nodes(rows: List[Dict[str, Any]], *, collector: Optional[DegradationC
                  include_points: bool = False) -> Dict[str, Dict[str, Any]]:
     nodes: Dict[str, Dict[str, Any]] = {}
     for r in rows:
-        st = _parse_dt(r.get("start_time"))
-        et = _parse_dt(r.get("end_time"))
+        st = parse_local_datetime(r.get("start_time"))
+        et = parse_local_datetime(r.get("end_time"))
         if not st or not et or st > et or (st == et and not include_points):
             if collector is not None:
-                _record_bad_time_row(collector, scope="gantt.critical_chain", row=dict(r))
+                _record_bad_time_row(collector, scope="gantt.critical_chain", row=r)
             continue
         op_code = (r.get("op_code") or "").strip()
         task_id = op_code or _public_task_id(r)
@@ -173,80 +134,12 @@ def _build_prev_by_resource(nodes: Dict[str, Dict[str, Any]], *, resource_key: s
 
 def _eligible_process_edge(pn: Dict[str, Any], n: Dict[str, Any]) -> bool:
     # 工艺前驱：允许“merged 外协组”导致的同起止时间（pn.start==n.start 且 pn.end==n.end）
-    pn_end = _node_dt(pn, "end")
-    n_start = _node_dt(n, "start")
-    pn_start = _node_dt(pn, "start")
-    n_end = _node_dt(n, "end")
-    if pn_end is None or n_start is None or pn_start is None or n_end is None:
-        raise ValueError("关键链工艺前驱时间字段缺失。")
-    return (pn_end <= n_start) or (pn_start == n_start and pn_end == n_end)
+    return (pn["end"] <= n["start"]) or (pn["start"] == n["start"] and pn["end"] == n["end"])
 
 
 def _eligible_resource_edge(pn: Dict[str, Any], n: Dict[str, Any]) -> bool:
     # 资源前驱：必须满足 pn.end <= n.start（不允许重叠）
-    pn_end = _node_dt(pn, "end")
-    n_start = _node_dt(n, "start")
-    if pn_end is None or n_start is None:
-        raise ValueError("关键链资源前驱时间字段缺失。")
-    return pn_end <= n_start
-
-
-def _process_prev_candidate(
-    nodes: Dict[str, Dict[str, Any]], tid: str, n: Dict[str, Any], *, predecessor: str
-) -> Optional[Dict[str, Any]]:
-    pid_proc = predecessor
-    if not pid_proc:
-        return None
-    pn = nodes.get(pid_proc)
-    if not pn or not _eligible_process_edge(pn, n):
-        return None
-    return {
-        "from": pid_proc,
-        "from_label": _public_node_label(nodes, pid_proc),
-        "to_label": _public_node_label(nodes, tid),
-        "edge_type": "process",
-        "reason": "工艺前驱",
-        "from_end": pn.get("end"),
-        "from_order": pn.get("order", 0),
-        "to_start": n.get("start"),
-    }
-
-
-def _resource_prev_candidate(
-    nodes: Dict[str, Dict[str, Any]],
-    tid: str,
-    n: Dict[str, Any],
-    *,
-    edge_type: str,
-    prev_map: Dict[str, str],
-) -> Optional[Dict[str, Any]]:
-    pid = prev_map.get(tid)
-    if not pid:
-        return None
-    pn = nodes.get(pid)
-    if not pn or not _eligible_resource_edge(pn, n):
-        return None
-    return {
-        "from": pid,
-        "from_label": _public_node_label(nodes, pid),
-        "to_label": _public_node_label(nodes, tid),
-        "edge_type": edge_type,
-        "reason": "资源前驱（设备）" if edge_type == "machine" else "资源前驱（人员）",
-        "from_end": pn.get("end"),
-        "from_order": pn.get("order", 0),
-        "to_start": n.get("start"),
-    }
-
-
-def _pick_latest_candidate(cands: List[Dict[str, Any]]) -> Optional[Tuple[str, Dict[str, Any]]]:
-    if not cands:
-        return None
-    cands.sort(key=lambda x: (x.get("from_end"), int(x.get("from_order") or 0), str(x.get("from") or "")))
-    chosen = cands[-1]
-    from_id = str(chosen.get("from") or "")
-    if not from_id:
-        return None
-    return from_id, chosen
+    return pn["end"] <= n["start"]
 
 
 def _choose_control_prev(
@@ -255,40 +148,25 @@ def _choose_control_prev(
     proc_prev: Dict[str, List[str]],
     mach_prev: Dict[str, str],
     op_prev: Dict[str, str],
-) -> Tuple[Dict[str, str], Dict[str, Dict[str, Any]]]:
-    ctrl_prev: Dict[str, str] = {}
-    ctrl_prev_edge: Dict[str, Dict[str, Any]] = {}
-
+) -> Dict[str, Tuple[str, str]]:
+    ctrl_prev: Dict[str, Tuple[str, str]] = {}
     for tid, n in nodes.items():
-        cands: List[Dict[str, Any]] = []
-
-        for predecessor in proc_prev.get(tid, []):
-            proc_cand = _process_prev_candidate(nodes, tid, n, predecessor=predecessor)
-            if proc_cand:
-                cands.append(proc_cand)
-
+        cands: List[Tuple[datetime, int, str, str]] = []
+        for pid in proc_prev.get(tid, []):
+            pn = nodes[pid]
+            if _eligible_process_edge(pn, n):
+                cands.append((pn["end"], int(pn.get("order") or 0), pid, "process"))
         for edge_type, prev_map in (("machine", mach_prev), ("operator", op_prev)):
-            rc = _resource_prev_candidate(nodes, tid, n, edge_type=edge_type, prev_map=prev_map)
-            if rc:
-                cands.append(rc)
-
-        picked = _pick_latest_candidate(cands)
-        if not picked:
-            continue
-        from_id, chosen = picked
-
-        ctrl_prev[tid] = from_id
-        ctrl_prev_edge[tid] = {
-            "from": from_id,
-            "to": tid,
-            "from_label": _clean_text(chosen.get("from_label")) or _public_node_label(nodes, from_id),
-            "to_label": _clean_text(chosen.get("to_label")) or _public_node_label(nodes, tid),
-            "edge_type": str(chosen.get("edge_type") or "unknown"),
-            "reason": str(chosen.get("reason") or "控制前驱"),
-            "gap_minutes": _minutes_between(chosen.get("from_end"), chosen.get("to_start")),
-        }
-
-    return ctrl_prev, ctrl_prev_edge
+            pid = prev_map.get(tid)
+            if pid:
+                pn = nodes[pid]
+                if _eligible_resource_edge(pn, n):
+                    cands.append((pn["end"], int(pn.get("order") or 0), pid, edge_type))
+        if cands:
+            cands.sort(key=lambda candidate: candidate[:3])
+            _, _, from_id, edge_type = cands[-1]
+            ctrl_prev[tid] = from_id, edge_type
+    return ctrl_prev
 
 
 def _sink_id(nodes: Dict[str, Dict[str, Any]]) -> str:
@@ -299,8 +177,7 @@ def _sink_id(nodes: Dict[str, Dict[str, Any]]) -> str:
 def _backtrace_chain(
     sink_id: str,
     *,
-    ctrl_prev: Dict[str, str],
-    ctrl_prev_edge: Dict[str, Dict[str, Any]],
+    ctrl_prev: Dict[str, Tuple[str, str]],
     nodes: Dict[str, Dict[str, Any]],
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
     chain_rev: List[str] = []
@@ -313,21 +190,23 @@ def _backtrace_chain(
         guard += 1
         seen.add(cur)
         chain_rev.append(cur)
-        pred = ctrl_prev.get(cur)
-        if pred:
-            edge_meta = ctrl_prev_edge.get(cur) or {}
+        control = ctrl_prev.get(cur)
+        if control:
+            pred, edge_type = control
             edges_rev.append(
                 {
                     "from": pred,
                     "to": cur,
-                    "from_label": _clean_text(edge_meta.get("from_label")) or _public_node_label(nodes, pred),
-                    "to_label": _clean_text(edge_meta.get("to_label")) or _public_node_label(nodes, cur),
-                    "edge_type": str(edge_meta.get("edge_type") or "unknown"),
-                    "reason": str(edge_meta.get("reason") or "控制前驱"),
-                    "gap_minutes": edge_meta.get("gap_minutes"),
+                    "from_label": _public_node_label(nodes, pred),
+                    "to_label": _public_node_label(nodes, cur),
+                    "edge_type": edge_type,
+                    "reason": "工艺前驱" if edge_type == "process" else ("资源前驱（设备）" if edge_type == "machine" else "资源前驱（人员）"),
+                    "gap_minutes": _minutes_between(nodes[pred]["end"], nodes[cur]["start"]),
                 }
             )
-        cur = pred or ""
+            cur = pred
+        else:
+            cur = ""
 
     return list(reversed(chain_rev)), list(reversed(edges_rev))
 
@@ -338,7 +217,7 @@ def _edge_type_stats(edges: List[Dict[str, Any]]) -> Dict[str, int]:
         k = str(e.get("edge_type") or "unknown")
         if k not in stats:
             k = "unknown"
-        stats[k] = int(stats.get(k, 0)) + 1
+        stats[k] = stats[k] + 1
     return stats
 
 
@@ -375,10 +254,10 @@ def _chain_result(nodes, proc_prev, *, dropped_count=0, sink_id=""):
     mach_prev = _build_prev_by_resource(nodes, resource_key="machine_id")
     op_prev = _build_prev_by_resource(nodes, resource_key="operator_id")
 
-    ctrl_prev, ctrl_prev_edge = _choose_control_prev(nodes, proc_prev=proc_prev, mach_prev=mach_prev, op_prev=op_prev)
+    ctrl_prev = _choose_control_prev(nodes, proc_prev=proc_prev, mach_prev=mach_prev, op_prev=op_prev)
     if not sink_id:
         sink_id = _sink_id(nodes)
-    chain, edges = _backtrace_chain(sink_id, ctrl_prev=ctrl_prev, ctrl_prev_edge=ctrl_prev_edge, nodes=nodes)
+    chain, edges = _backtrace_chain(sink_id, ctrl_prev=ctrl_prev, nodes=nodes)
     sink_end = _node_dt(nodes[sink_id], "end") if sink_id in nodes else None
     makespan_end = _fmt_dt(sink_end) if sink_end is not None else None
 
@@ -432,21 +311,3 @@ def compute_critical_chain_from_rows(rows: List[Dict[str, Any]], *, target_id: O
         return _compute_critical_chain_from_loaded_rows(list(rows or []), target_id=target_id)
     except Exception:
         return _unavailable_result("rows_exception")
-
-
-def compute_critical_chain(schedule_repo, version: int) -> Dict[str, Any]:
-    """
-    关键链识别（可解释，近似 CC/CP 语义）：
-    - 输入：某一 version 的全量排程（不按周截断）
-    - 前驱集合：工艺前驱 + 设备资源前驱 + 人员资源前驱
-    - 控制前驱：从候选前驱里选“end_time 最晚且 <= 当前 start_time”的那个
-    - 从 makespan 结束的任务回溯控制前驱，得到关键链
-    """
-    try:
-        rows = _load_rows(schedule_repo, version=int(version))
-    except Exception:
-        return _unavailable_result("repo_exception")
-    try:
-        return _compute_critical_chain_from_loaded_rows(rows)
-    except Exception:
-        return _unavailable_result("calc_exception")

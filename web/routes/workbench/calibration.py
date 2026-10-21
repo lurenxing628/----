@@ -42,7 +42,7 @@ def _arguments(*, export, detail):
 def _read(*, export=False, suggestion_ref=None):
     query, token = _arguments(export=export, detail=suggestion_ref is not None)
     binding = resolve_read_snapshot(token) if token is not None else None
-    as_of = _as_of(token, binding)
+    as_of = _as_of(token, binding) if token is not None else None
     service = WorkbenchCalibrationService(g.db, as_of=as_of)
     with service.read_snapshot(clock=(lambda: _as_of(None)) if token is None else None) as as_of:
         facts = service.read(query, bind_snapshot=lambda content: _bind(query, content, token, as_of, binding=binding))

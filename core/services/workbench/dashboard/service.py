@@ -22,7 +22,6 @@ from .external import load_external
 from .external_handling import DashboardExternalHandling
 from .facts import DashboardFacts, typed
 from .policy import (
-    found_identity,
     mapped_anchors,
     read_history,
     read_stored,
@@ -125,7 +124,7 @@ class WorkbenchDashboardService:
         # 齐套要按批次查来源编号，留在读快照里判断；交期、报工、停机在 project() 里只用已读出的事实。
         material = safe_material(facts)
         external_summary, facts.raw["external"], receipts = load_external(self.conn, now)
-        external_items, external_stored, facts.raw["external_handling"] = self.external_handling.read(external_summary, now, receipts)
+        external_items, external_stored, facts.raw["external_handling"] = self.external_handling.read(external_summary, receipts)
         stored, identities = read_stored(self.repo)
         return DashboardSources(facts, material, (external_summary, external_items, external_stored), stored,
                                 self._anchor_mappings(facts, material[0]), identities)
@@ -180,7 +179,7 @@ class WorkbenchDashboardService:
                         "message": "原来源当前未评估或已非当前正式，不能认定风险已消除。"},
                         _facts={"origin": origin, "evaluation": {"state": evaluation["state"], "issues": evaluation["issues"]}})
             item["navigation"] = navigation(item, current=False)
-            identity = found_identity(sources.identities[reference(ref)])
+            identity = sources.identities[reference(ref)]
             items.append(self._decorate(item, saved, identity, now))
         return items
 

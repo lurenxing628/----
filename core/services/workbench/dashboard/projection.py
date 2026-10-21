@@ -72,8 +72,8 @@ class _MaterialChecks(PreflightChecks):
             self.materials[row["batch_id"]].append(row)
         self.marks = {row["batch_id"]: row["ready_status"] for row in stored_batches}
 
-    def readiness(self, batch, enabled):
-        reasons = super().readiness(batch, enabled)
+    def readiness(self, batch):
+        reasons = super().readiness(batch)
         # 看板传进来的批次齐套是按当前到料算出的结果。批次管理里的维护标记已经是"齐套"、只是料没到够时，
         # 缺口由逐条物料说明；不再说"这批还没确认齐套"，免得用户去批次管理看到标记明明是齐套。
         if self.marks.get(batch["batch_id"]) == "yes" and len(reasons) > 1:
@@ -93,7 +93,7 @@ def _material_requirement(row, value, material_refs):
 
 
 def _material_batch(batch, checks, refs, by_material, material_refs, source_facts):
-    reasons = checks.readiness(batch, True)
+    reasons = checks.readiness(batch)
     rows = checks.materials[batch["batch_id"]]
     projected = [_material_requirement(row, by_material.get(row["material_id"]), material_refs) for row in rows]
     status = batch["ready_status"] if batch["ready_status"] in ("yes", "no", "partial") else None

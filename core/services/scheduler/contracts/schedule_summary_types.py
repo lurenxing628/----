@@ -79,6 +79,7 @@ class RuntimeState:
     invalid_due_batch_ids_sample: List[str]
     unscheduled_batch_count: int
     unscheduled_batch_ids_sample: List[str]
+    incomplete_batch_ids: Set[str] = field(default_factory=set)
 
 
 @dataclass(frozen=True)
@@ -98,9 +99,7 @@ class FreezeState:
 
 @dataclass(frozen=True)
 class FallbackState:
-    raw_stats: Dict[str, Any]
     fallback_counts: Dict[str, int]
-    fallback_samples: Dict[str, List[Dict[str, Any]]]
     param_fallbacks: Dict[str, int]
     legacy_external_days_defaulted_count: int
     ortools_warmstart_failed_count: int
@@ -130,7 +129,6 @@ class TruncationTier:
     trace_limit: int
     warning_limit: int
     attempt_limit: int
-    best_order_limit: Optional[int] = None
     selected_ids_limit: Optional[int] = None
     overdue_items_limit: Optional[int] = None
     near_due_items_limit: Optional[int] = None
@@ -143,9 +141,9 @@ DEFAULT_TRUNCATION_TIERS: Tuple[TruncationTier, ...] = (
     TruncationTier(20, 20, 12, errors_limit=200, missing_resource_limit=200),
     TruncationTier(0, 20, 12, errors_limit=100, missing_resource_limit=100),
     TruncationTier(0, 10, 6, errors_limit=50, missing_resource_limit=50),
-    TruncationTier(0, 0, 6, 2000, 2000, 500, near_due_items_limit=500, errors_limit=50, missing_resource_limit=50),
-    TruncationTier(0, 0, 6, 500, 1000, 200, near_due_items_limit=200, errors_limit=30, missing_resource_limit=30),
-    TruncationTier(0, 0, 6, 100, 200, 50, near_due_items_limit=50, errors_limit=20, missing_resource_limit=20),
-    TruncationTier(0, 0, 6, 0, 50, 20, near_due_items_limit=20, errors_limit=10, missing_resource_limit=10),
-    TruncationTier(0, 0, 0, 0, 0, 0, near_due_items_limit=0, errors_limit=10, missing_resource_limit=10),
+    TruncationTier(0, 0, 6, 2000, 500, near_due_items_limit=500, errors_limit=50, missing_resource_limit=50),
+    TruncationTier(0, 0, 6, 1000, 200, near_due_items_limit=200, errors_limit=30, missing_resource_limit=30),
+    TruncationTier(0, 0, 6, 200, 50, near_due_items_limit=50, errors_limit=20, missing_resource_limit=20),
+    TruncationTier(0, 0, 6, 50, 20, near_due_items_limit=20, errors_limit=10, missing_resource_limit=10),
+    TruncationTier(0, 0, 0, 0, 0, near_due_items_limit=0, errors_limit=10, missing_resource_limit=10),
 )

@@ -5,7 +5,7 @@ from datetime import timedelta
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_candidate import local_time
 
-from .resource_projection import ResourceTaskIndex, resource_summary
+from .resource_projection import resource_summary
 
 MAX_DAYS = 3660
 MAX_RESOURCE_DAYS = 40000
@@ -37,10 +37,6 @@ def pressure_from_index(index, resource, calendar, *, include_days=True):
             "reason": window["issues"][0]["code"] if window["issues"] else None,
             "zero_capacity_days": window["zero_capacity_days"], "unknown_days": window["unknown_days"],
             "window_metrics": window}
-
-
-def daily_resource_pressure(tasks, calendar, start, end, *, resource, source="current_transaction_snapshot", work_available=True):
-    return pressure_from_index(ResourceTaskIndex(tasks, start, end, source=source, work_available=work_available), resource, calendar)
 
 
 def pressure_summary(resources):

@@ -82,10 +82,14 @@ def resource_command(kind, action, ref=None):
 
     def guard():
         preparation = reader.preparation_for(action, normalized, ref=ref)
-        identity = None if action == "create" else preparation.identity(kind, ref)
-        state = reader.create_snapshot() if identity is None else preparation.state(kind, identity.entity_key)
+        if action == "create":
+            state = reader.create_snapshot()
+            checked = None
+        else:
+            identity = preparation.identity(kind, ref)
+            state = checked = preparation.state(kind, identity.entity_key)
         validate_write_context(body["write_token"], subject, command, state)
-        return reader.domain.prepare(action, normalized, state if identity is not None else None, preparation)
+        return reader.domain.prepare(action, normalized, checked, preparation)
 
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=command, context_ref=subject, normalized_input=normalized,
@@ -98,9 +102,9 @@ def resource_summary():
     if request.args:
         raise WorkbenchCommandRejected("invalid_input", "这个汇总不需要其他条件。请刷新页面后重试。", 400)
     reader = WorkbenchResourceQueryService(g.db, "op_type", current_app.logger)
-    with reader.read_snapshot() as state:
+    with reader.read_snapshot(capture_fingerprint=False):
         data = reader.summary_projection()
-        snapshot = bind_read_snapshot({"kind": "resource_summary"}, {"resources": state, "summary": data})
+        snapshot = bind_read_snapshot({"kind": "resource_summary"}, data)
     return query_success(data, snapshot)
 
 

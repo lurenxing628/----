@@ -20,9 +20,10 @@ import pytest
 from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy, evaluation_completion
 from core.algorithms.evaluation import compute_metrics, objective_score, prepare_evaluation_context
 from core.algorithms.evaluation_completion import UNKNOWN_OBJECTIVE_VALUE
-from core.algorithms.objective_specs import objective_metric_keys
+from core.models.objective import objective_metric_keys
 from core.services.scheduler.contracts.optimizer_public_safety import project_attempt_metrics, project_public_metrics
-from core.services.scheduler.run.optimizer.proof_oracle import _ContinuousCalendar, _default_config
+from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar as _ContinuousCalendar
+from tests._support.optimizer_graph_ready_benchmark import _default_config
 
 OBJECTIVES = ("min_overdue", "min_tardiness", "min_weighted_tardiness", "min_changeover")
 START = datetime(2026, 1, 1, 8)

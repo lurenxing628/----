@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass
@@ -28,7 +28,5 @@ class OpForScheduleAlgo:
     ext_group_id: Optional[str]
     ext_merge_mode: Optional[str]
     ext_group_total_days: Optional[float]
-    merge_context_degraded: bool = False
-    merge_context_events: List[Dict[str, Any]] = field(default_factory=list)
 
     material_ready_date: Optional[str] = None

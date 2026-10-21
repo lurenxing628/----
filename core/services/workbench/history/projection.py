@@ -58,8 +58,6 @@ def project_entry(reader, descriptor, query):
     read_query = {**query, "metric_keys": list(dict.fromkeys(query["metric_keys"] + list(capacity_keys)))}
     raw = project_history_metrics(reader, descriptor, read_query)
     projected = {**raw, "metrics": {key: raw["metrics"][key] for key in query["metric_keys"]}}
-    if not hasattr(reader, "history_range_facts"):
-        reader.history_range_facts = {}
     reader.history_range_facts[descriptor["entry_ref"]] = {key: {field: raw["metrics"][key][field]
         for field in ("value", "known_subtotal", "state", "known_count", "unknown_count", "total_count", "covered_resource_refs")}
         for key in capacity_keys}

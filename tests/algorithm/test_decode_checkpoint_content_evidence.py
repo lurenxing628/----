@@ -26,7 +26,6 @@ from core.services.scheduler.run.optimizer.graph_ready_profiles import default_w
 from core.services.scheduler.run.optimizer.shared_archive import SharedScheduleArchive
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget
 from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession, decode_and_metrics
-from core.services.scheduler.run.optimizer.signature_support import schedule_with_optional_strict_mode
 from core.services.scheduler.run.schedule_execution_reservations import (
     ExecutionResourceCalendar,
     ExecutionResourceReservation,
@@ -238,7 +237,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
     search.checkpoints = CheckpointStore(1)
     monkeypatch.setattr(search.checkpoints, "best_for", lambda *args, **kwargs: SimpleNamespace(position=1))
     search.solution_pool = SimpleNamespace(size=3)
-    search.clock, search.t_begin, search.decode_seconds = lambda: 0.0, 0.0, []
+    search.clock, search.t_begin, search.decode_seconds_total, search.decode_count = lambda: 0.0, 0.0, 0.0, 0
     oracle_targets = target_objectives_for("min_overdue")
     oracle_archive = SharedScheduleArchive("min_overdue", oracle_targets, (), {})
     oracle_budget = SharedSearchBudget(clock=search.clock, started_at=0.0, deadline=10.0,
@@ -368,10 +367,10 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         owner.decode_session = session
         report = OptimizationSearchReportState(
             algorithm_profile="graph_ready", seed=0, time_budget_seconds=10, objective_name="min_overdue",
-            started_at=started, strict_mode=True, candidate_clock=clock,
+            started_at=started, candidate_clock=clock,
             candidate_observer=lambda **kw: owner.observe("min_overdue", **kw),
             candidate_acceptance_observer=lambda **kw: owner.accept("min_overdue", **kw))
-        view = _GoalView("min_overdue", OptimizerSearchState(shared_archive=archive), report)
+        view = _GoalView("min_overdue", OptimizerSearchState(), report)
         owner.views["min_overdue"] = view
         decode_profile = ig_module.ig_decode_profile(profile)
 
@@ -379,7 +378,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
             return evaluate_graph_ready_candidate(
                 graph_ready_context=context, metrics_by_op_id=metrics, strict_mode=True,
                 algo_ops_to_schedule=operations, strategy=SortStrategy.PRIORITY_FIRST, params={}, start_dt=case["start_dt"],
-                end_date=None, seed_sr_list=case["seed_results"],
+                end_date=None,
                 dispatch_rule="slack", resource_pool=None, objective_name="min_overdue", optimizer_algo_stats=None,
                 readiness_gate_enabled=False, version=0, clock=clock, **kwargs)
 

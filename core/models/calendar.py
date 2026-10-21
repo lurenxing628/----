@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
-from ._helpers import RowLike, as_dict, get, parse_float_or_default
-from .calendar_periods import decode_periods, encode_periods
+from ._helpers import RowLike, get, parse_float_or_default
+from .calendar_periods import decode_periods
 from .enums import CalendarDayType, YesNo
+
+
+def _decode_and_encode_periods(raw):
+    periods = decode_periods(raw)
+    return None if periods is None else json.dumps(periods, ensure_ascii=False, separators=(",", ":"))
 
 
 def _validate_calendar_numbers(*, shift_hours: float, efficiency: float, scope: str) -> Tuple[float, float]:
@@ -56,24 +62,22 @@ class WorkCalendar:
             allow_normal=(str(get(row, "allow_normal") or YesNo.YES.value).strip().lower() or YesNo.YES.value),
             allow_urgent=(str(get(row, "allow_urgent") or YesNo.YES.value).strip().lower() or YesNo.YES.value),
             remark=get(row, "remark"),
-            periods_json=encode_periods(decode_periods(get(row, "periods_json"))),
+            periods_json=_decode_and_encode_periods(get(row, "periods_json")),
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "date": self.date,
-                "day_type": self.day_type,
-                "shift_start": self.shift_start,
-                "shift_end": self.shift_end,
-                "shift_hours": self.shift_hours,
-                "efficiency": self.efficiency,
-                "allow_normal": self.allow_normal,
-                "allow_urgent": self.allow_urgent,
-                "remark": self.remark,
-                "periods_json": self.periods_json,
-            }
-        )
+        return {
+            "date": self.date,
+            "day_type": self.day_type,
+            "shift_start": self.shift_start,
+            "shift_end": self.shift_end,
+            "shift_hours": self.shift_hours,
+            "efficiency": self.efficiency,
+            "allow_normal": self.allow_normal,
+            "allow_urgent": self.allow_urgent,
+            "remark": self.remark,
+            "periods_json": self.periods_json,
+        }
 
 
 @dataclass
@@ -126,22 +130,20 @@ class OperatorCalendar:
             allow_normal=(str(get(row, "allow_normal") or YesNo.YES.value).strip().lower() or YesNo.YES.value),
             allow_urgent=(str(get(row, "allow_urgent") or YesNo.YES.value).strip().lower() or YesNo.YES.value),
             remark=get(row, "remark"),
-            periods_json=encode_periods(decode_periods(get(row, "periods_json"))),
+            periods_json=_decode_and_encode_periods(get(row, "periods_json")),
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "operator_id": self.operator_id,
-                "date": self.date,
-                "day_type": self.day_type,
-                "shift_start": self.shift_start,
-                "shift_end": self.shift_end,
-                "shift_hours": self.shift_hours,
-                "efficiency": self.efficiency,
-                "allow_normal": self.allow_normal,
-                "allow_urgent": self.allow_urgent,
-                "remark": self.remark,
-                "periods_json": self.periods_json,
-            }
-        )
+        return {
+            "operator_id": self.operator_id,
+            "date": self.date,
+            "day_type": self.day_type,
+            "shift_start": self.shift_start,
+            "shift_end": self.shift_end,
+            "shift_hours": self.shift_hours,
+            "efficiency": self.efficiency,
+            "allow_normal": self.allow_normal,
+            "allow_urgent": self.allow_urgent,
+            "remark": self.remark,
+            "periods_json": self.periods_json,
+        }

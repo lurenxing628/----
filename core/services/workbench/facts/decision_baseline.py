@@ -12,7 +12,7 @@ from core.models.scheduler_history_parser import parse_result_summary_payload
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_run_candidate import MAX_TASKS, local_time, reference
 from core.services.workbench.facts.adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
-from core.services.workbench.facts.material_deferral_evidence import archived_deferred_operation_evidence
+from core.services.workbench.facts.material_deferral_evidence import archived_deferred_payload_evidence
 
 from .candidate_baseline import AdmissionBaseline, ArchivedAdmissionPlan, invalid_baseline
 from .candidate_facts import _index
@@ -121,8 +121,8 @@ def _resolved_source(source, audit, resolver, saved):
             "issue": value.get("issue") or missing}
 
 
-def _deferred_source(source, resolved):
-    ids, issues = archived_deferred_operation_evidence({"summary": source["history_record"]["result_summary"]})
+def _deferred_source(source, audit, resolved):
+    ids, issues = archived_deferred_payload_evidence(audit)
     original, source_issues = resolved.get("deferred_operation_ids"), resolved.get("deferred_issues", [])
     if "deferred_operation_evidence_invalid" in issues + source_issues:
         ids, issues = set(), ["deferred_operation_evidence_invalid"]
@@ -211,9 +211,9 @@ def _task(admission, row, operation_type):
 
 def _effort_source(source, audit):
     value = {"plan_ref": source["plan_ref"], "version": source["version"]}
-    if type(audit) is dict and audit.get("source") == "workbench_candidate_adoption":
+    if audit is not None and audit.get("source") == "workbench_candidate_adoption":
         return {**value, "kind": "run", "run_ref": source["source_run_ref"], "candidate_ref": source["source_candidate_ref"]}
-    if type(audit) is dict and audit.get("source") == "workbench_trial_adoption":
+    if audit is not None and audit.get("source") == "workbench_trial_adoption":
         return {**value, "kind": "trial", "scenario_ref": audit.get("scenario_ref")}
     return {**value, "kind": "admission_official"}
 
@@ -281,12 +281,12 @@ def read_decision_baseline(capture, facts, disposition, accepted_at, *, source_r
         saved = [row for row in schedule if row["version"] == selected_version]
         resolved = _resolved_source(source, audit, source_resolver, saved)
         source_states.append({"plan_ref": source["plan_ref"], "version": selected_version,
-            "source_kind": audit.get("source") if isinstance(audit, dict) else "legacy_official",
+            "source_kind": audit.get("source") if audit is not None else "legacy_official",
             "source_candidate_ref": source.get("source_candidate_ref"), "source_run_ref": source.get("source_run_ref"),
-            "source_scenario_ref": audit.get("scenario_ref") if isinstance(audit, dict) else None,
-            "source_draft_ref": audit.get("draft_ref") if isinstance(audit, dict) else None,
+            "source_scenario_ref": audit.get("scenario_ref") if audit is not None else None,
+            "source_draft_ref": audit.get("draft_ref") if audit is not None else None,
             "available": resolved["available"], "issue_code": None if resolved["available"] else resolved["issue"]["code"]})
-        deferred_ids.update(_deferred_source(source, resolved))
+        deferred_ids.update(_deferred_source(source, audit, resolved))
         admission._origins, admission._origin_issue = resolved["origins"], resolved["issue"]
         work = resolved["point_work"]
         admission._point_work_loader = work if callable(work) else lambda work=work: work or {}

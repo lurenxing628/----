@@ -2,14 +2,18 @@ from __future__ import annotations
 
 from dataclasses import replace
 from decimal import Decimal
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from core.models.operation_execution_event import (
     OperationExecutionEvent,
     normalize_operation_execution_event_values,
     validate_operation_execution_event_sequence,
 )
-from core.models.operation_execution_scope import OperationExecutionScope, validate_current_official_execution_scope
+from core.models.operation_execution_scope import (
+    OperationExecutionScope,
+    operation_execution_scope_from_event,
+    validate_current_official_execution_scope,
+)
 from core.models.operation_execution_state import OperationExecutionState
 
 from .base_repo import BaseRepository
@@ -62,22 +66,6 @@ _REQUIRED_TEXT_FIELDS = (
 
 def _columns_sql() -> str:
     return ", ".join(_EVENT_COLUMNS)
-
-
-def _positive_ids(values: Iterable[Any]) -> List[int]:
-    # _batch_ids_by_op_ids 只做 SQL IN 查询并落 dict，结果顺序无关；保留 repo 本地 helper，避免 data 层依赖 service。
-    seen: Set[int] = set()
-    out: List[int] = []
-    for raw in values or []:
-        try:
-            value = int(raw)
-        except (TypeError, ValueError):
-            continue
-        if value <= 0 or value in seen:
-            continue
-        seen.add(value)
-        out.append(value)
-    return out
 
 
 def _unscoped_execution_read_error() -> ValueError:
@@ -166,35 +154,16 @@ def _scope_where(scope: OperationExecutionScope) -> Tuple[str, Tuple[Any, ...]]:
     return f"({sql} AND scenario_id = ?)", params + (scope.scenario_id,)
 
 
-def _event_scope(event: OperationExecutionEvent) -> OperationExecutionScope:
-    return OperationExecutionScope.from_values(
-        schedule_version=event.schedule_version,
-        schedule_id=event.schedule_id,
-        op_id=event.op_id,
-        batch_id=event.batch_id,
-        source_table=event.source_table,
-        effective_plan_role=event.effective_plan_role,
-        scenario_id=event.scenario_id,
-    )
-
-
 def _validate_events_by_scope(events: Sequence[OperationExecutionEvent]) -> None:
     grouped: Dict[OperationExecutionScope, List[OperationExecutionEvent]] = {}
     for event in events:
-        grouped.setdefault(_event_scope(event), []).append(event)
+        grouped.setdefault(operation_execution_scope_from_event(event), []).append(event)
     for scoped_events in grouped.values():
         validate_operation_execution_event_sequence(scoped_events)
 
 
 class OperationExecutionEventRepo(OperationExecutionStateAggregationMixin, BaseRepository):
     """现场执行事件仓库。事件只追加，当前状态由事件流聚合。"""
-
-    def get_event_by_id(self, event_id: int) -> Optional[OperationExecutionEvent]:
-        row = self.fetchone(
-            f"SELECT {_columns_sql()} FROM OperationExecutionEvents WHERE id = ?",
-            (int(event_id),),
-        )
-        return self._validated_event_from_row(row) if row else None
 
     def get_by_idempotency_key(self, idempotency_key: str) -> Optional[OperationExecutionEvent]:
         key = str(idempotency_key or "").strip()
@@ -225,19 +194,19 @@ class OperationExecutionEventRepo(OperationExecutionStateAggregationMixin, BaseR
             reported_status=required_text["reported_status"],
             event_time=required_text["event_time"],
         )
-        scope = OperationExecutionScope.from_values(
-            schedule_version=schedule_version,
-            schedule_id=schedule_id,
-            op_id=op_id,
-            batch_id=required_text["batch_id"],
+        source_table, effective_plan_role, scenario_id = validate_current_official_execution_scope(
             source_table=required_text["source_table"],
             effective_plan_role=required_text["effective_plan_role"],
             scenario_id=payload.get("scenario_id"),
         )
-        source_table, effective_plan_role, scenario_id = validate_current_official_execution_scope(
-            source_table=scope.source_table,
-            effective_plan_role=scope.effective_plan_role,
-            scenario_id=scope.scenario_id,
+        scope = OperationExecutionScope(
+            schedule_version=schedule_version,
+            schedule_id=schedule_id,
+            op_id=op_id,
+            batch_id=required_text["batch_id"],
+            source_table=source_table,
+            effective_plan_role=effective_plan_role,
+            scenario_id=scenario_id,
         )
         self._ensure_schedule_identity_matches(schedule_version, schedule_id, op_id, required_text["batch_id"])
         event_to_insert = OperationExecutionEvent(
@@ -405,22 +374,5 @@ class OperationExecutionEventRepo(OperationExecutionStateAggregationMixin, BaseR
 
     def state_revision_for_op(self, op_id: int) -> str: raise _unscoped_execution_read_error()
 
-    def _batch_ids_by_op_ids(self, op_ids: Sequence[int]) -> Dict[int, str]:
-        ids = _positive_ids(op_ids)
-        if not ids:
-            return {}
-        out: Dict[int, str] = {}
-        for i in range(0, len(ids), 900):
-            chunk = ids[i : i + 900]
-            placeholders = ",".join(["?"] * len(chunk))
-            rows = self.fetchall(
-                f"SELECT id, batch_id FROM BatchOperations WHERE id IN ({placeholders})",
-                tuple(chunk),
-            )
-            for row in rows:
-                out[int(row.get("id") or 0)] = str(row.get("batch_id") or "")
-        return out
 
-OperationExecutionEventRepository = OperationExecutionEventRepo
-
-__all__ = ["OperationExecutionEventRepo", "OperationExecutionEventRepository"]
+__all__ = ["OperationExecutionEventRepo"]

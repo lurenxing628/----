@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Optional
 
-from ._helpers import RowLike, as_dict, get, parse_int
+from ._helpers import RowLike, get, parse_int
 from .enums import DowntimeScopeType, MachineDowntimeStatus
 
 
@@ -52,21 +52,3 @@ class MachineDowntime:
             created_at=get(row, "created_at"),
             updated_at=get(row, "updated_at"),
         )
-
-    def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "id": self.id,
-                "machine_id": self.machine_id,
-                "scope_type": self.scope_type,
-                "scope_value": self.scope_value,
-                "start_time": self.start_time,
-                "end_time": self.end_time,
-                "reason_code": self.reason_code,
-                "reason_detail": self.reason_detail,
-                "status": self.status,
-                "created_at": self.created_at,
-                "updated_at": self.updated_at,
-            }
-        )
-

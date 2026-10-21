@@ -31,17 +31,8 @@ from .neighborhood_moves import ALLOWED_NEIGHBORHOODS, BUSINESS_NEIGHBORHOODS
 CANDIDATE_PROFILE_SCHEMA_VERSION = 1
 
 PROFILE_BASELINE = "baseline"
-PROFILE_MULTI_START_LOCAL_SEARCH = "multi_start_local_search"
-PROFILE_GRASP_IG = "grasp_ig"
 PROFILE_VNS_SA = "vns_sa"
 PROFILE_GRAPH_READY = "graph_ready"
-ALLOWED_PROFILES: Tuple[str, ...] = (
-    PROFILE_BASELINE,
-    PROFILE_MULTI_START_LOCAL_SEARCH,
-    PROFILE_GRASP_IG,
-    PROFILE_VNS_SA,
-    PROFILE_GRAPH_READY,
-)
 
 ALLOWED_REPAIRS: Tuple[str, ...] = ("sgs",)
 
@@ -67,12 +58,9 @@ SYSTEM_LIMIT_REASON_CEILING = "iteration_ceiling"
 SEED_SOURCE_OPTIMIZER_VERSION = "optimizer_version"
 
 _PROFILE_FIELD_LABELS = {
-    "profile": "搜索方案",
     "repair": "修复策略",
     "acceptance": "接受准则",
     "neighborhood": "邻域算子",
-    "time_budget_seconds": "找更好排法先试多久",
-    "seed": "随机种子",
 }
 
 
@@ -306,10 +294,12 @@ def build_candidate_profile(
     if configured_budget < 1:
         raise ValidationError("时间预算必须为不小于 1 的整数。", field="time_budget_seconds")
 
-    enabled = profile in (PROFILE_MULTI_START_LOCAL_SEARCH, PROFILE_GRASP_IG, PROFILE_VNS_SA, PROFILE_GRAPH_READY)
+    enabled = profile in (PROFILE_VNS_SA, PROFILE_GRAPH_READY)
     effective_dispatch_mode = "sgs" if graph_sgs_required else str(dispatch_mode or "").strip().lower()
-    resolved_neighborhoods = _resolved_neighborhoods(profile, enabled=enabled, neighborhoods=neighborhoods)
-    validated_neighborhoods = _require_neighborhoods(resolved_neighborhoods)
+    validated_neighborhoods = (
+        _require_neighborhoods(tuple(neighborhoods)) if neighborhoods is not None
+        else _resolved_neighborhoods(profile, enabled=enabled, neighborhoods=None)
+    )
     ortools_warmstart_enabled = bool(ortools_enabled) and enabled
 
     if enabled:
@@ -383,13 +373,10 @@ def build_candidate_profile(
 __all__ = [
     "ALLOWED_ACCEPTANCES",
     "ALLOWED_NEIGHBORHOODS",
-    "ALLOWED_PROFILES",
     "ALLOWED_REPAIRS",
     "CANDIDATE_PROFILE_SCHEMA_VERSION",
     "CandidateProfile",
     "PROFILE_BASELINE",
-    "PROFILE_GRASP_IG",
-    "PROFILE_MULTI_START_LOCAL_SEARCH",
     "PROFILE_GRAPH_READY",
     "PROFILE_VNS_SA",
     "build_candidate_profile",

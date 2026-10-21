@@ -5,12 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-# Historical stored kinds and states remain readable after their execution path retires.
-CANDIDATE_KIND_BASELINE = "baseline"
 CANDIDATE_KIND_CRITICAL_CHAIN = "critical_chain"
-CANDIDATE_STATUS_COMPLETED = "completed"
-CANDIDATE_STATUS_FAILED = "failed"
-CANDIDATE_STATUS_SKIPPED = "skipped"
 UNCERTIFIED = "uncertified"
 UNCERTIFIED_PREFIX = UNCERTIFIED + ": "
 
@@ -90,7 +85,6 @@ class CandidateComparisonOutcome:
 
 
 __all__ = [
-    "CANDIDATE_KIND_BASELINE", "CANDIDATE_KIND_CRITICAL_CHAIN",
-    "CANDIDATE_STATUS_COMPLETED", "CANDIDATE_STATUS_FAILED", "CANDIDATE_STATUS_SKIPPED",
+    "CANDIDATE_KIND_CRITICAL_CHAIN",
     "UNCERTIFIED", "UNCERTIFIED_PREFIX", "CandidateComparisonOutcome", "CandidatePlan",
 ]

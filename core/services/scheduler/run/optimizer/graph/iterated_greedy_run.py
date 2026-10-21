@@ -7,15 +7,11 @@ from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphRead
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
 from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
-from .iterated_greedy import (
-    _BudgetExhausted,
-    _IteratedGreedySearch,
-    _parent_from_candidate,
-    _publish,
-)
-from .iterated_greedy_contract import IteratedGreedyLimits, new_iterated_greedy_report
+from .iterated_greedy import _IteratedGreedySearch, _publish
+from .iterated_greedy_contract import IteratedGreedyLimits, _BudgetExhausted, new_iterated_greedy_report
 from .iterated_greedy_iteration import IGIteration
 from .iterated_greedy_large import iteration_for, search_type_for
+from .iterated_greedy_moves import _parent_from_candidate
 
 
 class IteratedGreedyRun:
@@ -59,8 +55,7 @@ class IteratedGreedyRun:
     def available(self) -> bool:
         if self.stopped or self.state.best is None:
             return False
-        deadline = self.deadline if self.search is None else self.search.deadline
-        return self.clock() < deadline
+        return self.clock() < self.deadline
 
     def step(self) -> None:
         started = self.clock()
@@ -96,8 +91,6 @@ class IteratedGreedyRun:
             self.report["status"] = "skipped_no_parent"
             self.stopped = True
             return
-        self.report["parent_origin"] = str((best or {}).get("candidate_origin") or "baseline")
-        self.report["parent_score"] = list((best or {}).get("score") or [])
         self.search = search_type_for(parent)(
             limits=self.limits, parent=parent, profile=profile, pool=self.pool, evaluate=self.evaluate,
             metrics_by_op_id=self.metrics_by_op_id, start_dt=self.start_dt, seed=self.seed,
@@ -110,8 +103,7 @@ class IteratedGreedyRun:
 
     def _advance(self) -> None:
         search = self.search
-        if search is None:
-            raise RuntimeError("Iterated greedy trial advanced before its search was created.")
+        assert search is not None
         if self.state.best is not search.best:
             # Share the improved incumbent immediately, but finish the trial's fixed decode context.
             self.pending_adoption = self.state.best
@@ -124,7 +116,7 @@ class IteratedGreedyRun:
             if self.pending_adoption is self.state.best and self.pending_adoption is not None:
                 search.adopt_incumbent(self.state.best, self.parent_profile(self.state.best))
             self.pending_adoption = None
-            self.iteration = iteration_for(search, IGIteration)
+            self.iteration = iteration_for(search)
         if not self.iteration.step():
             self.iteration = None
 
@@ -139,8 +131,7 @@ class IteratedGreedyRun:
         self._finish_status(report)
         report["runtime_ms"] = int(self.task_seconds * 1000)
         last = self.last_task_end if self.last_task_end is not None else self.clock()
-        stage_deadline = self.search.deadline if self.search is not None else self.deadline
-        report["deadline_overrun_ms"] = max(int((last - stage_deadline) * 1000), 0) if self.started_at is not None else 0
+        report["deadline_overrun_ms"] = max(int((last - self.deadline) * 1000), 0) if self.started_at is not None else 0
         report["best_score"] = list((self.state.best or {}).get("score") or [])
         _publish(report, report_state=self.report_state, attempts=self.attempts)
         if self.report_state is not None and last >= self.deadline:
@@ -149,7 +140,7 @@ class IteratedGreedyRun:
     def _finish_status(self, report: Dict[str, Any]) -> None:
         if self.search is not None:
             if report["stop_reason"] is None:
-                report["stop_reason"] = "time_budget" if self.clock() >= self.search.deadline else "rotation_ended"
+                report["stop_reason"] = "time_budget" if self.clock() >= self.deadline else "rotation_ended"
             self.search._finish_report()
         elif self.limits.enabled and report["status"] == "not_run":
             if self.clock() >= self.deadline:

@@ -69,11 +69,12 @@ def _date_key(value: Any) -> str:
 
 
 class WorkbenchOperatorCalendarService:
-    def __init__(self, conn, operator_code: str, logger=None, *, clock: Callable[[], datetime] = datetime.now):
+    def __init__(self, conn, operator_code: str, logger=None, *, clock: Callable[[], datetime] = datetime.now,
+                 calendar_service: Optional[CalendarService] = None):
         self.conn = conn
         self.operator_code = operator_code
         self._clock = clock
-        self._calendar = CalendarService(conn, logger=logger)
+        self._calendar = CalendarService(conn, logger=logger) if calendar_service is None else calendar_service
         self._query = WorkbenchCalendarQueryRepository(conn, logger=logger)
         self._tx = TransactionManager(conn)
 
@@ -203,18 +204,6 @@ class WorkbenchOperatorCalendarService:
         if not self.conn.in_transaction or not in_transaction_context(self.conn):
             raise RuntimeError("个人日历写入必须由外层 WorkbenchCommandService 持有写事务。")
 
-    def apply(self, action: str, normalized_input: Dict[str, Any], checked: Any) -> WorkbenchCommandOutcome:
-        self._require_write_transaction()
-        payload = self.normalize(action, normalized_input)
-        if action == "range_clear":
-            return self._clear_range(payload, checked)
-        if action not in ("upsert", "delete"):
-            raise ValidationError("不支持的个人日历操作。", field="action")
-        before = self.snapshot(payload["date"])
-        if checked != before:
-            raise WorkbenchCommandRejected("stale_write", "这一天的个人日历已变化，请刷新后重新核对。")
-        return self._apply_day(action, payload, before)
-
     def _apply_checked(self, action, normalized_input, checked):
         """The guard has already read and bound these facts under this command lock."""
         self._require_write_transaction()
@@ -271,12 +260,6 @@ class WorkbenchOperatorCalendarService:
         days = [self._state(day, states) for day in operator_range_dates(request["start_date"], request["end_date"])
                 if states.get(day, {}).get("row") is not None]
         return {"request": request, "days": days, "count": len(days)}
-
-    def _clear_range(self, payload: Dict[str, Any], checked: Any) -> WorkbenchCommandOutcome:
-        current = self.preview_range_clear(payload)
-        if checked is not None and checked != current:
-            raise WorkbenchCommandRejected("stale_write", "这段日期里的个人日历已变化，请重新点「预检要清除的日期」。")
-        return self._clear_checked_range(current)
 
     def _clear_checked_range(self, current):
         results = self.write_days([(state, None) for state in current["days"]])

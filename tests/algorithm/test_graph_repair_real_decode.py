@@ -141,7 +141,7 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
         return evaluate_graph_ready_candidate(
             profile=profile, graph_ready_context=context, metrics_by_op_id=metrics, strict_mode=True,
             algo_ops_to_schedule=decoder_operations, strategy=SortStrategy.PRIORITY_FIRST, params={},
-            start_dt=START_DT, end_date=None, order=list(decision.batch_order), seed_sr_list=seed_results,
+            start_dt=START_DT, end_date=None, order=list(decision.batch_order),
             dispatch_rule="slack", resource_pool=pool, objective_name="min_overdue", optimizer_algo_stats=None,
             readiness_gate_enabled=False, version=0, clock=lambda: 0.0,
             repair_decision=decision, decode_session=session,
@@ -192,7 +192,7 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
         assert sum(left != right for left, right in zip(decision.resource_overrides, inherited)) == 1
 
     # Both basis variants consume the same decoded parent facts, including qualified selections.
-    from core.services.scheduler.run.optimizer.graph import repair_decisions, repair_neighbors
+    from core.services.scheduler.run.optimizer.graph import repair_decisions
 
     counts = {}
     with monkeypatch.context() as patch:
@@ -205,11 +205,6 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
                 return _helper(*args, **kwargs)
 
             patch.setattr(repair_decisions, name, counted)
-
-        def repeated_changeover_scan(*args, **kwargs):
-            raise AssertionError("Prepared basis variants must reuse the machine projection")
-
-        patch.setattr(repair_neighbors, "_add_changeover_signals", repeated_changeover_scan)
 
         def repeated_qualification(*args, **kwargs):
             raise AssertionError("A decoded parent's inherited selections must not be qualified again")
@@ -328,10 +323,10 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
     )
     elite = {"neighborhood": parent, "candidate": {}, "prepared_parent": None, "decision_offset": 0, "stream_offsets": {}, "portfolio_id": 1}
     visit_kwargs = dict(
-        elite=elite, elite_index=0, state=SimpleNamespace(best=None), evaluate=None,
+        elite=elite, state=SimpleNamespace(best=None), evaluate=None,
         clock=lambda: 0,
         t_begin=0, attempts=[], improvement_trace=[], report_state=None, strict_mode=True,
-        before_decode=lambda: None, improved_elites=[], accounting=RepairWorkAccounting(), decode_session=session,
+        before_decode=lambda: None, improved_elites=[], accounting=RepairWorkAccounting(),
     )
     with monkeypatch.context() as patch:
         patch.setattr(repair, "_evaluate_neighbor", lambda *args, **kwargs: None)

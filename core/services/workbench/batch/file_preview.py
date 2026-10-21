@@ -127,12 +127,11 @@ class BatchImportPreview:
         relations = self._relations(batch)
         quantity_changed = fields.get("quantity", batch["quantity"]) != batch["quantity"]
         if quantity_changed:
-            require_unreferenced(self.facts, batch, relations)
+            require_unreferenced(relations)
             if relations["materials"]:
                 fields["ready_status"] = "no"
-        if "ready_status" in fields and fields["ready_status"] != batch["ready_status"] and relations["materials"]:
-            if not quantity_changed:
-                raise ValidationError("此批次的齐套按物料需求计算，请在物料需求中核对后保存。")
+        elif "ready_status" in fields and fields["ready_status"] != batch["ready_status"] and relations["materials"]:
+            raise ValidationError("此批次的齐套按物料需求计算，请在物料需求中核对后保存。")
         return fields
 
     def deleted(self):
@@ -144,7 +143,7 @@ class BatchImportPreview:
         before = self._entity(batch)
         item = {"entity_ref": before["ref"], "before": before, "errors": []}
         try:
-            require_deletable(self.facts, batch, self._relations(batch))
+            require_deletable(self._relations(batch))
         except WorkbenchCommandRejected as exc:
             item["errors"].append(str(exc))
         return item

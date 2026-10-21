@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional
 
 from ._helpers import (
     RowLike,
-    as_dict,
     get,
     parse_int,
     parse_int_or_default,
@@ -39,18 +38,6 @@ class PartOperation:
     def is_active(self) -> bool:
         return str(self.status or "").strip().lower() == PartOperationStatus.ACTIVE.value
 
-    def is_deleted(self) -> bool:
-        return str(self.status or "").strip().lower() == PartOperationStatus.DELETED.value
-
-    def has_supplier(self) -> bool:
-        return bool(str(self.supplier_id or "").strip())
-
-    def has_external_group(self) -> bool:
-        return bool(str(self.ext_group_id or "").strip())
-
-    def processing_hours(self) -> float:
-        return float(self.setup_hours or 0.0) + float(self.unit_hours or 0.0)
-
     @classmethod
     def from_row(cls, row: RowLike) -> PartOperation:
         raw_id = get(row, "id")
@@ -83,20 +70,18 @@ class PartOperation:
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "id": self.id,
-                "part_no": self.part_no,
-                "seq": self.seq,
-                "op_type_id": self.op_type_id,
-                "op_type_name": self.op_type_name,
-                "source": self.source,
-                "supplier_id": self.supplier_id,
-                "ext_days": self.ext_days,
-                "ext_group_id": self.ext_group_id,
-                "setup_hours": self.setup_hours,
-                "unit_hours": self.unit_hours,
-                "status": self.status,
-                "created_at": self.created_at,
-            }
-        )
+        return {
+            "id": self.id,
+            "part_no": self.part_no,
+            "seq": self.seq,
+            "op_type_id": self.op_type_id,
+            "op_type_name": self.op_type_name,
+            "source": self.source,
+            "supplier_id": self.supplier_id,
+            "ext_days": self.ext_days,
+            "ext_group_id": self.ext_group_id,
+            "setup_hours": self.setup_hours,
+            "unit_hours": self.unit_hours,
+            "status": self.status,
+            "created_at": self.created_at,
+        }

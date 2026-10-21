@@ -29,8 +29,6 @@
 <article>
 <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
 {% if item.summary %}<p>{{ item.summary }}</p>{% endif %}
-{% for section in item.preview_sections %}<h4>{{ section.title }}</h4>
-<div class="manual-source">{{ section.body_md|legacy_manual_markdown|safe }}</div>{% endfor %}
 {% if item.full_manual_section_url %}<a href="{{ item.full_manual_section_url }}">阅读对应章节</a>{% endif %}
 </article>
 {% endfor %}

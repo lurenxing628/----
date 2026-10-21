@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models.batch import Batch
-from core.models.workbench_batch import normalize_batch_input, public_ref
+from core.models.workbench_batch import public_ref
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.services.batch.service import BatchService
 from data.repositories.batch_repo import BatchRepository
@@ -25,13 +25,13 @@ class BatchChange:
 class BatchChangePreparation:
     """Current rows, identities and relations shared by every change before the first write."""
 
-    def __init__(self, facts, relations=None):
+    def __init__(self, facts):
         self.facts = facts
         self.identities = {row["ref"]: row for row in facts["WorkbenchEntityRefs"] if row["active"]}
         self.batches = {row["batch_id"]: row for row in facts["Batches"]}
         self.parts = {row["part_no"]: row for row in facts["Parts"]}
         self.used_codes = set(self.batches)
-        self._relations = relations
+        self._relations = None
 
     @property
     def relations(self):
@@ -68,14 +68,14 @@ class BatchChangePreparation:
         batch = self.batch(ref)
         code = batch["batch_id"]
         if action == "delete":
-            require_deletable(None, batch, self.relations[code])
+            require_deletable(self.relations[code])
             self.used_codes.remove(code)
             return BatchChange(action, code, ref, {})
         changes = {key: value for key, value in payload["fields"].items() if batch[key] != value}
         if "quantity" in changes or "ready_status" in changes:
             relations = self.relations[code]
             if "quantity" in changes:
-                require_unreferenced(None, batch, relations)
+                require_unreferenced(relations)
             if relations["materials"]:
                 if "ready_status" in changes and ("quantity" not in changes or changes["ready_status"] != "no"):
                     raise WorkbenchCommandRejected("constraint_conflict", "此批次的齐套按物料需求计算，请在物料需求中核对需求量和到料量。")
@@ -111,16 +111,8 @@ class WorkbenchBatchService:
         self.facts = facts if facts is not None else BatchFacts(conn, logger)
         self.repo = BatchRepository(conn, logger=logger)
 
-    @staticmethod
-    def normalize(action, payload):
-        return normalize_batch_input(action, payload)
-
-    def preparation(self, facts=None, relations=None):
-        return BatchChangePreparation(self.facts.load() if facts is None else facts, relations)
-
-    def apply(self, action, payload, ref=None):
-        normalized = self.normalize(action, payload)
-        return self.apply_prepared(self.preparation().prepare(action, normalized, ref))
+    def preparation(self, facts=None):
+        return BatchChangePreparation(self.facts.load() if facts is None else facts)
 
     def apply_prepared(self, change):
         if not self.conn.in_transaction:

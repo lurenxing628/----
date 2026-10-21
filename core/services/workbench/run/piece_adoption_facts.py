@@ -7,10 +7,10 @@ from core.services.workbench.facts.preflight_dependencies import material_deferr
 
 
 def current_piece_scope(conn, prepared):
-    return verified_read(conn, ("piece_scope", id(prepared)), lambda: _current_piece_scope(conn, prepared))
+    return verified_read(conn, ("piece_scope", id(prepared)), lambda: _current_piece_scope(prepared))
 
 
-def _current_piece_scope(conn, prepared):
+def _current_piece_scope(prepared):
     ids = prepared.normalized_batch_ids
     if not ids or len(ids) != len(set(ids)) or set(ids) != set(prepared.batches):
         block("piece_scope_incomplete", "这次排产的批次范围为空或有重复，本次没有采用。请回「执行排产」重新排一次。")

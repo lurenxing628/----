@@ -132,8 +132,9 @@ class WorkbenchOutsourcingService:
         for facts in captured.values():
             item, snapshot = self.entry_from_facts(facts["header"], self.latest_from_row(facts["latest"]), now, sources=sources)
             snapshots.append(snapshot)
-            matches = {"all": True, "awaiting": item["awaiting_return"], "overdue": item["overdue"], "returned": not item["awaiting_return"]}
-            if matches[status]:
+            if (status == "all" or (status == "awaiting" and item["awaiting_return"])
+                    or (status == "overdue" and item["overdue"])
+                    or (status == "returned" and not item["awaiting_return"])):
                 rows.append(item)
         return {**page(rows, number, size), "content": snapshots,
                 "as_of": now.isoformat(timespec="seconds"), "tracking_basis": "manual_receipt_facts"}

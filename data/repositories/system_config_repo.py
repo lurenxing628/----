@@ -1,21 +1,12 @@
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
-
-from core.models import SystemConfig
+from typing import Optional, Tuple
 
 from .base_repo import BaseRepository
 
 
 class SystemConfigRepository(BaseRepository):
     """系统配置仓库（SystemConfig）。用于系统管理：自动备份/自动清理等设置项。"""
-
-    def get(self, config_key: str) -> Optional[SystemConfig]:
-        row = self.fetchone(
-            "SELECT id, config_key, config_value, description, updated_at FROM SystemConfig WHERE config_key = ?",
-            (str(config_key),),
-        )
-        return SystemConfig.from_row(row) if row else None
 
     def get_value(self, config_key: str, default: Optional[str] = None) -> Optional[str]:
         val = self.fetchvalue(
@@ -32,12 +23,8 @@ class SystemConfigRepository(BaseRepository):
         )
         if row is None:
             return False, None
-        raw = row.get("config_value")
+        raw = row["config_value"]
         return True, (None if raw is None else str(raw))
-
-    def list_all(self) -> List[SystemConfig]:
-        rows = self.fetchall("SELECT id, config_key, config_value, description, updated_at FROM SystemConfig ORDER BY config_key")
-        return [SystemConfig.from_row(r) for r in rows]
 
     def read_values(self):
         return {row["config_key"]: None if row["config_value"] is None else str(row["config_value"])
@@ -57,6 +44,3 @@ class SystemConfigRepository(BaseRepository):
             """,
             (str(config_key), str(config_value), description),
         )
-
-    def delete(self, config_key: str) -> None:
-        self.execute("DELETE FROM SystemConfig WHERE config_key = ?", (str(config_key),))

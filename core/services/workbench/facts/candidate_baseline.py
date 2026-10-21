@@ -209,7 +209,7 @@ class AdmissionBaseline(ArchivedAdmissionPlan):
             gaps.append({"field": "supplier", **self._origin_issue})
         return {"row_ref": row["row_ref"], "start": start, "end": end, **point,
                 "elapsed_hours": elapsed_hours(start, end) if start is not None and end is not None else None,
-                "interval_comparable": bool(point) or start is not None and end is not None and local_time(start) < local_time(end),
+                "interval_comparable": bool(point) or start is not None and end is not None and start != end,
                 "machine": _resource(self.facts, "machine", row.get("machine_id"), gaps),
                 "operator": _resource(self.facts, "operator", row.get("operator_id"), gaps),
                 "source": source, "supplier": origin.get("supplier"), "effective_processing_hours": None, "data_gaps": gaps}
@@ -245,7 +245,7 @@ def _blob(value):
 
 
 def _baseline_interval(row, gaps):
-    values = []
+    values, parsed_values = [], []
     for field in ("start_time", "end_time"):
         value = row.get(field)
         try:
@@ -254,10 +254,11 @@ def _baseline_interval(row, gaps):
                 raise ValueError("Not a saved timestamp")
             parsed = local_time(value.replace(" ", "T", 1))
             values.append(parsed.isoformat())
+            parsed_values.append(parsed)
         except (TypeError, ValueError):
             gaps.append(gap(field, "blob_metadata" if type(value) is dict and "sqlite_blob_base64" in value else "invalid_stored_value"))
             values.append(None)
-    if all(value is not None for value in values) and local_time(values[0]) > local_time(values[1]):
+    if len(parsed_values) == 2 and parsed_values[0] > parsed_values[1]:
         gaps.append(gap("interval", "invalid_stored_value"))
         return None, None
     return tuple(values)

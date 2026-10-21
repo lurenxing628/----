@@ -76,7 +76,8 @@ def _schedule_completion(rows, operations, intervals, incomplete, uncertain, def
     ordinary_missing = missing - deferred
     missing_count, invalid_count = len(missing), len(rows) - len(valid)
     reasons = list(uncertain)
-    reasons.extend(row["point_evidence_issue"] for row in rows if row.get("point_evidence_issue"))
+    point_issues = [row["point_evidence_issue"] for row in rows if row.get("point_evidence_issue")]
+    reasons.extend(point_issues)
     if ordinary_missing:
         reasons.append("operations_unscheduled")
     if deferred:
@@ -90,7 +91,7 @@ def _schedule_completion(rows, operations, intervals, incomplete, uncertain, def
     complete = bool(expected) and not reasons
     if complete:
         state = DeliveryCompletionState.COMPLETE.value
-    elif deferred and not ordinary_missing and not invalid_count and not uncertain and not any(row.get("point_evidence_issue") for row in rows):
+    elif deferred and not ordinary_missing and not invalid_count and not uncertain and not point_issues:
         state = DeliveryCompletionState.DEFERRED.value
     elif ordinary_missing or incomplete:
         state = DeliveryCompletionState.INCOMPLETE.value

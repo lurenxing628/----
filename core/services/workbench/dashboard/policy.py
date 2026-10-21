@@ -83,13 +83,8 @@ def read_external_stored(repo, receipts):
 
 
 def require_identity(repo, item_ref):
-    return found_identity(repo.identity(reference(item_ref)))
-
-
-def found_identity(row):
-    if row is None:
+    if not repo.has_item(reference(item_ref)):
         raise WorkbenchCommandRejected("entity_not_found", "这条处置记录已失效，请刷新后重新选择。", 404)
-    return row
 
 
 def read_history(repo, item_ref, number, size):

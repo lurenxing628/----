@@ -122,7 +122,6 @@ class OwnedTimeline(SlotReuseTimeline):
 
 
 _SEGMENTS_GUARD = make_class_guard(OwnedSegments)
-_TYPE_ENTRIES_GUARD = make_class_guard(OwnedTypeEntries)
 _SEGMENT_PROTOCOL_NAMES = frozenset(
     key for base in OwnedSegments.__mro__ for key, value in vars(base).items()
     if callable(value) or isinstance(value, (property, staticmethod, classmethod))
@@ -152,12 +151,6 @@ def owned_segment_round_reader(values):
         return _NATIVE_SEGMENT_CERTIFICATE(values)
 
     return read
-
-
-def owned_type_certificate(values):
-    if type(values) is not OwnedTypeEntries or not _TYPE_ENTRIES_GUARD(values):
-        return None
-    return values.certificate()
 
 
 def clone_timeline(mapping):

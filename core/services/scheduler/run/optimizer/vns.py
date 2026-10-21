@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Tuple
+from dataclasses import dataclass
+from typing import Any, Dict, Tuple
 
 from core.errors import ValidationError
 
@@ -16,7 +16,6 @@ class VnsState:
     no_improve_count: int = 0
     noop_count: int = 0
     fallback_count: int = 0
-    switch_events: List[Dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.neighborhoods:
@@ -57,23 +56,10 @@ class VnsState:
             "fallback_count": int(self.fallback_count),
             "best_improved": bool(best_improved),
         }
-        if len(self.switch_events) < 50:
-            self.switch_events.append(event)
         return event
 
     def mark_shake(self) -> None:
         self.shake_count += 1
-
-    def to_summary_dict(self) -> Dict[str, Any]:
-        return {
-            "schema_version": VNS_SCHEMA_VERSION,
-            "current_neighborhood": self.current_neighborhood(),
-            "neighborhood_index": int(self.neighborhood_index),
-            "shake_count": int(self.shake_count),
-            "no_improve_count": int(self.no_improve_count),
-            "noop_count": int(self.noop_count),
-            "fallback_count": int(self.fallback_count),
-        }
 
 
 __all__ = ["VNS_SCHEMA_VERSION", "VnsState"]

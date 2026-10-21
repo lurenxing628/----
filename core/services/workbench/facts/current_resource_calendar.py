@@ -26,6 +26,4 @@ def calendar_from_sources(sources, *, schema_version, identities, plan_ref, scop
 
 
 def current_resource_calendar(facts, scope):
-    if facts._calendar_factory is not None:
-        return facts._calendar_factory
-    return None
+    return facts._calendar_factory

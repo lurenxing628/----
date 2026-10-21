@@ -38,11 +38,11 @@ def validate_facet(column, search, number, size):
         raise WorkbenchCommandRejected("invalid_input", "页码或每页数量填写不对，列表没有变化。", 400)
 
 
-def facet_data(rows, column, search, number, size, *, selection=False, cell_cache=None):
+def facet_data(rows, column, search, number, size, *, selection=False, cell_cache):
     indexed = {row["suggestion_ref"]: row for row in rows}
     if len(indexed) != len(rows):
         raise WorkbenchCommandRejected("projection_invalid", "同一个模板在筛选结果里出现了多次。数据可能已更新，请刷新后重试。")
-    indexed_cells = {ref: cell_cache[ref] if cell_cache and ref in cell_cache else cells(row) for ref, row in indexed.items()}
+    indexed_cells = {ref: cell_cache[ref] for ref in indexed} if cell_cache else {ref: cells(row) for ref, row in indexed.items()}
     options = ResourceTableIndex(indexed, indexed_cells)._options(column, search)
     if selection:
         return {"column": column, "basis": "toolbar_scope", "keys": [row["key"] for row in options], "total": len(options)}

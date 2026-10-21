@@ -159,9 +159,6 @@ class DecisionResources:
     def prepare_keys(self, keys):
         self._ensure_windows(keys, self.resources)
 
-    def prepare_overview(self):
-        self.prepare_keys(self._available)
-
     def summary(self, key, kind):
         key = self.source.computation_key(key)
         if (key, kind) not in self._summaries:
@@ -318,10 +315,9 @@ class DecisionResources:
                 for key, side in (("reference", previous), (self.source.selected_ref, selected)):
                     lookup = {row["row_ref"]: row for row in side["tasks"]}
                     for task in side["tasks"]:
-                        original = lookup[task["row_ref"]]
-                        task["drill"] = self.drill(key, resource, tasks=[original], start=value["start"], end=value["end"])
+                        task["drill"] = self.drill(key, resource, tasks=[task], start=value["start"], end=value["end"])
                         if task["drill"] is not None:
-                            task["drill"].update(operation_ref=original["operation_ref"], selected_row_ref=original["row_ref"])
+                            task["drill"].update(operation_ref=task["operation_ref"], selected_row_ref=task["row_ref"])
                     for conflict in side["conflicts"]:
                         rows = [lookup[ref] for ref in conflict["row_refs"]]
                         conflict["drill"] = self.drill(key, resource, tasks=rows, start=conflict["start"], end=conflict["end"])
@@ -415,8 +411,7 @@ def resource_details(source, filters, *, page: Union[int, str] = 1, size: Union[
     section, kind, ref = (filters[key] for key in ("section", "resource_kind", "resource_ref"))
     engine = source.resources
     engine.configure(filters["pressure_threshold"])
-    if ref is not None:
-        engine.resource(ref, kind)
+    selected_resource: Any = engine.resource(ref, kind) if ref is not None else None
     page, size = _page(page), _page(size, size=True)
     offset = (page - 1) * size
     start, end = source.scope["range_start"], source.scope["range_end"]
@@ -431,7 +426,7 @@ def resource_details(source, filters, *, page: Union[int, str] = 1, size: Union[
               "filters": filters, "coverage": {"before": engine.coverage("reference", details=True), "after": engine.coverage(source.selected_ref, details=True)},
               "metric_version": RESOURCE_METRIC_VERSION}
     if section == "resource-days":
-        resource = engine.resource(ref, kind)
+        resource = selected_resource
         row = engine.pair(resource)
         if filters["bucket_start"] is not None:
             low, high = filters["bucket_start"], filters["bucket_end"]
@@ -467,8 +462,7 @@ def resource_details(source, filters, *, page: Union[int, str] = 1, size: Union[
     shown_buckets = buckets if all_rows else buckets[bucket_offset:bucket_offset + heatmap_size]
     if not shown_buckets:
         reject("invalid_input", "资源热力图页码超出当前时段范围，请重新选择。", 422)
-    display_start = shown_buckets[0]["start"] if shown_buckets else None
-    display_end = shown_buckets[-1]["end"] if shown_buckets else None
+    display_start, display_end = shown_buckets[0]["start"], shown_buckets[-1]["end"]
     pressure_start, pressure_end = (display_start, display_end) if grain == "hour" else (start, end)
     if grain == "hour":
         filters.update(display_start=display_start, display_end=display_end)
@@ -477,7 +471,7 @@ def resource_details(source, filters, *, page: Union[int, str] = 1, size: Union[
         if ref is not None and row["resource_ref"] != ref:
             continue
         resource = engine.resource(row["resource_ref"], kind)
-        if grain == "hour" and pressure_start is not None:
+        if grain == "hour":
             calendar = engine.resource_calendar(resource)
             pressure_window = engine.index(source.selected_ref).window(resource, calendar, start=pressure_start, end=pressure_end)
             daily_peak = pressure_window["daily_peak_utilization"]
@@ -497,12 +491,15 @@ def resource_details(source, filters, *, page: Union[int, str] = 1, size: Union[
             resource = engine.resource(row["resource_ref"], kind)
             row["drill"] = {"selected": engine.drill(source.selected_ref, resource), "reference": engine.drill("reference", resource)}
     shown_keys = {bucket["key"] for bucket in shown_buckets}
-    heatmap_rows = [{"resource_ref": row["resource_ref"], "resource_kind": kind, "label": row["label"],
-                     "cells": engine.periods(engine.resource(row["resource_ref"], kind), grain=grain,
-                         start=pressure_start, end=pressure_end, group_keys=shown_keys),
-                     "continuations": _continuations(engine.period_facts(engine.resource(row["resource_ref"], kind),
-                         grain=grain, start=pressure_start, end=pressure_end), shown_buckets) if grain == "shift" else []}
-                    for row in visible] if not all_rows else []
+    heatmap_rows = []
+    if not all_rows:
+        for row in visible:
+            resource = engine.resource(row["resource_ref"], kind)
+            heatmap_rows.append({
+                "resource_ref": row["resource_ref"], "resource_kind": kind, "label": row["label"],
+                "cells": engine.periods(resource, grain=grain, start=pressure_start, end=pressure_end, group_keys=shown_keys),
+                "continuations": _continuations(engine.period_facts(resource, grain=grain,
+                    start=pressure_start, end=pressure_end), shown_buckets) if grain == "shift" else []})
     previous, selected = engine.summary("reference", kind), engine.summary(source.selected_ref, kind)
     summary_fields = DELTA_FIELDS + ("high_pressure_count", "zero_capacity_task_count", "conflict_resource_count", "unknown_day_resource_count", "balance_cv", "used_resource_count")
     return {**common, "items": visible, "page": {"number": page, "size": size, "total": len(rows), "has_more": offset + size < len(rows)},

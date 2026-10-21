@@ -27,7 +27,6 @@ from core.services.workbench.resource.calendar_files.operator_files import (
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
-from .calendars_preview import calendar_now
 from .read_context import bind_read_snapshot, resolve_read_snapshot
 from .resource_action_context import (
     EXPORT_SCOPE,
@@ -49,8 +48,8 @@ BASE = "/api/workbench/v1/calendar-files"
 
 def _service(kind):
     if kind == OPERATOR_KIND:
-        return WorkbenchOperatorCalendarFileService(g.db, current_app.logger, clock=calendar_now)
-    return WorkbenchCalendarFileService(g.db, kind, current_app.logger, clock=calendar_now)
+        return WorkbenchOperatorCalendarFileService(g.db, current_app.logger)
+    return WorkbenchCalendarFileService(g.db, kind, current_app.logger)
 
 
 def _operator_refs(kind, body):

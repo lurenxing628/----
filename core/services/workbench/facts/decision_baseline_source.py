@@ -7,13 +7,12 @@ from core.models.scheduler_history_parser import parse_result_summary_payload
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 
 from .adoption_baseline_sources import (
-    prepare_trial_adoption_facts,
     read_adoption_operation_facts,
     trial_adoption_facts,
 )
 from .candidate_read_source import read_candidate_source
 from .candidate_store import CandidateStore
-from .material_deferral_evidence import archived_deferred_operation_evidence
+from .material_deferral_evidence import archived_deferred_operation_evidence, archived_deferred_payload_evidence
 from .preflight_dependencies import material_deferred_ids
 from .zero_duration import PointEventError
 from .zero_duration_evidence import CandidatePointReader, trial_point_evidence
@@ -97,7 +96,7 @@ def _deferred_evidence(source, evidence):
         else:
             settings = original.get("capture", {}).get("input", original.get("material_policy", {}))
             ids, issues = _source_deferred(original.get("dispositions"), settings)
-    recorded, recorded_issues = archived_deferred_operation_evidence({"summary": audit})
+    recorded, recorded_issues = archived_deferred_payload_evidence(audit)
     if "deferred_operation_evidence_invalid" in recorded_issues:
         return [], recorded_issues
     if audit.get("deferred_operation_ids") is not None:
@@ -137,9 +136,7 @@ def _operation_metadata(source, evidence):
         return (source.receipt or {}).get("operation_effort"), types, standards
     saved, head, rows = source
     original = head["admission"]["source"]
-    prepared = evidence.get("trial_source")
-    if prepared is None:
-        prepared = prepare_trial_adoption_facts(source)
+    prepared = evidence["trial_source"]
     refs = prepared.resources.entity_refs
     names = {key: row.get("name") for key, row in prepared.resources.tables["OpTypes"].items()}
     names_by_ref = _type_names_by_ref(refs, names)

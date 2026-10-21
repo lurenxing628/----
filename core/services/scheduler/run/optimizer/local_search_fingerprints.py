@@ -15,14 +15,16 @@ class LocalSearchFingerprintTracker:
         self.best_identity: Optional[CandidateFingerprint] = None
         self._candidate_sequence = 1
         self.seen_output_fingerprints: Set[Tuple[Any, ...]] = set()
-        initial = build_candidate_fingerprint(
-            initial_best,
-            objective_name=self.objective_name,
-            parent_fingerprint=None,
-            seen_output_fingerprints=set(),
-            identity=initial_fingerprint,
-            candidate_id=self._candidate_sequence,
-        )
+        if initial_fingerprint is not None:
+            initial = initial_fingerprint.with_context(parent_fingerprint=None, seen_output_fingerprints=())
+        else:
+            initial = build_candidate_fingerprint(
+                initial_best,
+                objective_name=self.objective_name,
+                parent_fingerprint=None,
+                seen_output_fingerprints=set(),
+                candidate_id=self._candidate_sequence,
+            )
         self.best_identity = initial
         self.seen_output_fingerprints.add(initial.output_key)
 

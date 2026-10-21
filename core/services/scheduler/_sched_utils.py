@@ -12,6 +12,8 @@ def _safe_int(value: Any, *, default: int = 0) -> int:
     """
     if value is None or isinstance(value, bool):
         return default
+    if isinstance(value, int):
+        return value
     try:
         if isinstance(value, str):
             s = value.strip()
@@ -24,6 +26,6 @@ def _safe_int(value: Any, *, default: int = 0) -> int:
         if f != i:
             return default
         return i
-    except Exception:
+    except (ValueError, TypeError, OverflowError):
         return default
 

@@ -61,11 +61,7 @@ def _deviation(old, raw_suggested):
     basis = "old_unknown" if old is None else "old_zero" if not old else "suggestion_unavailable" if raw_suggested is None else "relative"
     if deviation is not None and not finite_deviation:
         basis = "not_representable"
-    percent = None
-    if finite_deviation and deviation is not None:
-        rounded_deviation = quantize(deviation)
-        if rounded_deviation is not None:
-            percent = float(rounded_deviation)
+    percent = float(quantize(deviation)) if deviation is not None and finite_deviation else None
     return {"deviation_percent": percent, "absolute_deviation_percent": abs(percent) if percent is not None else None,
             "deviation_basis": basis, "over_20_percent": bool(deviation is not None and abs(deviation) > 20)}
 
@@ -73,7 +69,7 @@ def _deviation(old, raw_suggested):
 def build_suggestion(template, summary, *, generated_at):
     public_summary = {key: value for key, value in summary.items() if key != _RAW_SUGGESTION}
     old, suggested = number(template.old_unit_hours), number(public_summary["suggested_unit_hours"])
-    raw_suggested = summary.get(_RAW_SUGGESTION, suggested)
+    raw_suggested = summary[_RAW_SUGGESTION]
     reasons = write_blockers()
     if suggested is None:
         reasons.append(issue("insufficient_samples", "这个模板版本下可用的完工记录不足 5 条，暂时不给建议值。"))

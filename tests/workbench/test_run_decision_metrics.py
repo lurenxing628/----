@@ -6,22 +6,22 @@ from types import SimpleNamespace
 
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.common_completed_delivery import common_completed_delivery
-from core.services.workbench.facts.preparation_projection import project_operation_effort
-from core.services.workbench.run.decision import read_run_decision
-from core.services.workbench.run.decision_delivery import project_decision_delivery
-from core.services.workbench.run.decision_impact import (
-    _arrangement,
-    _by_operation,
-    _operation_delta,
-    iter_operation_comparisons,
-)
-from core.services.workbench.run.decision_metrics import (
+from core.services.workbench.facts.decision_delivery import project_decision_delivery
+from core.services.workbench.facts.decision_metrics import (
     METRIC_VERSION,
     delivery_coverage,
     metric_definitions,
     metric_deltas,
     metric_value,
     operation_change_metrics,
+)
+from core.services.workbench.facts.preparation_projection import project_operation_effort
+from core.services.workbench.run.decision import read_run_decision
+from core.services.workbench.run.decision_impact import (
+    _arrangement,
+    _by_operation,
+    _operation_delta,
+    iter_operation_comparisons,
     operation_changes,
 )
 from core.services.workbench.run.decision_queries import read_decision_details

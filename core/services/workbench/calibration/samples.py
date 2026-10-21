@@ -3,6 +3,7 @@
 import math
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, localcontext
+from typing import Optional, overload
 
 from core.models.content import content_text
 from core.models.workbench_calibration import issue
@@ -21,7 +22,17 @@ def number(value):
     return Decimal(str(value))
 
 
-def quantize(value):
+@overload
+def quantize(value: Decimal) -> Decimal:
+    ...
+
+
+@overload
+def quantize(value: None) -> None:
+    ...
+
+
+def quantize(value: Optional[Decimal]) -> Optional[Decimal]:
     """把 Decimal 除法结果按 3 位小数四舍五入（ROUND_HALF_UP），None 原样返回。
 
     精度放宽到 400 位，保证 float 能表示的任何量级都能整形，不会因为默认 28 位精度抛错。
@@ -117,11 +128,12 @@ def _processing_values(projection):
 
 def _sample_origin(candidate, *, lineage_origin=None, lineage_events=()):
     projection, lineage = candidate.execution, candidate.lineage
+    revision_refs = [row.revision_ref for row in projection.reports]
     reports = [report.to_dict() for report in projection.reports]
     for report in reports:
         report.pop("write_context")
     state = {"source_ref": projection.operation_ref,
-             "report_revision_refs": [report.revision_ref for report in projection.reports],
+             "report_revision_refs": revision_refs,
              "legacy_fact_refs": [row["legacy_fact_ref"] for row in projection.legacy_facts],
              "data_gaps": projection.data_gaps,
              "quantity": projection.known_completed_quantity, "finish": projection.confirmed_finish,
@@ -135,7 +147,7 @@ def _sample_origin(candidate, *, lineage_origin=None, lineage_events=()):
             "template_revision": lineage.template_revision if lineage else None,
             "lineage_evidence_ref": lineage.evidence_ref if lineage else None,
             "sample_revision": content_text(state), "report_refs": [row.report_ref for row in projection.reports],
-            "report_revision_refs": [row.revision_ref for row in projection.reports],
+            "report_revision_refs": revision_refs,
             "confirmed_finish": projection.confirmed_finish,
             "reports": reports, "legacy_facts": projection.legacy_facts, "data_gaps": projection.data_gaps}
 

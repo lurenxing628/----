@@ -70,8 +70,9 @@ def static_attribute(obj: Any, name: str, default: Any = None) -> Any:
         try:
             instance_dict = object.__getattribute__(obj, "__dict__")
         except AttributeError:
-            instance_dict = {}
-        instance_result = dict.get(instance_dict, name, _MISSING)
+            pass
+        else:
+            instance_result = dict.get(instance_dict, name, _MISSING)
     klass_result = _MISSING
     for entry in mro:
         entry_dict = entry.__dict__

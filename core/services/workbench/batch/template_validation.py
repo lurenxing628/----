@@ -5,7 +5,6 @@ from core.models.workbench_batch import number
 from core.services.process.template_source import source_issues, valid_external_group, valid_supplier
 
 from .projection import issue
-from .resource_choices import BatchResourceFacts
 
 
 def template_diagnostics(rows, facts, batch, resources):
@@ -56,7 +55,6 @@ def _source_catalogs(rows, facts, batch, resources):
     groups = {group["group_id"]: dict(group, valid=valid_external_group(
         group, batch["part_no"], members.get(group["group_id"], []))) for group in facts["ExternalGroups"]}
     profiles = {row["supplier_id"]: row for row in facts["WorkbenchSupplierProfiles"]}
-    resources = resources if resources is not None else BatchResourceFacts(facts)
     suppliers = {row["supplier_id"]: dict(row, capabilities=resources.supplier_types.get(row["supplier_id"], set()),
         inactive_reason=profiles.get(row["supplier_id"], {}).get("inactive_reason")) for row in facts["Suppliers"]}
     return groups, suppliers

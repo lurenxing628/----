@@ -118,10 +118,6 @@ def decoded_topological_order(rows: Dict[int, Any], predecessors: Dict[int, set]
     return tuple(order)
 
 
-def resource_timelines(results: List[Any]) -> List[List[Any]]:
-    return list(resource_timeline_groups(results).values())
-
-
 def resource_timeline_groups(results: List[Any]) -> Dict[Tuple[str, str], List[Any]]:
     timelines: Dict[Tuple[str, str], List[Any]] = defaultdict(list)
     for row in results:
@@ -196,14 +192,15 @@ def iter_resource_decisions(
         by_id = _operations_by_id(operations)
         current = _current_resources(candidate, by_id)
         prior, prepared_pool = _decoded_resource_facts(current, by_id, resource_pool, resource_moves=True)
+        base = RepairDecision(tuple(batch_order), tuple(operation_order), prior)
+        repair_priority_context({}, operations=operations, order=list(base.batch_order))
+        if base.operation_order and set(base.operation_order) != set(by_id):
+            _invalid("operation_order", reason="graph_ready_repair_scope_mismatch")
+        batch_order_tuple, op_order_tuple = base.batch_order, base.operation_order
     else:
-        by_id = prepared_parent.operations_by_id
         current = prepared_parent.current_resources
         prior, prepared_pool = prepared_parent.inherited_resources, prepared_parent.pool_maps
-    base = RepairDecision(tuple(batch_order), tuple(operation_order), prior)
-    repair_priority_context({}, operations=operations, order=list(base.batch_order))
-    if base.operation_order and set(base.operation_order) != set(by_id):
-        _invalid("operation_order", reason="graph_ready_repair_scope_mismatch")
+        batch_order_tuple, op_order_tuple = tuple(batch_order), tuple(operation_order)
     inherited = {op_id: (machine, operator) for op_id, machine, operator in prior}
     resource_pairs_for = prepared_parent.resource_pairs_for if prepared_parent is not None else None
     pool = prepared_pool
@@ -224,7 +221,7 @@ def iter_resource_decisions(
             overrides = dict(inherited)
             overrides[op.id] = pair
             rows = tuple((op_id, values[0], values[1]) for op_id, values in sorted(overrides.items()))
-            yield RepairDecision(base.batch_order, base.operation_order, rows)
+            yield RepairDecision(batch_order_tuple, op_order_tuple, rows)
             generated += 1
             if generated >= max_decisions:
                 return
@@ -245,11 +242,8 @@ def _unique_ids(values: Any, *, field: str) -> None:
 
 def decoded_resource_overrides(
     candidate: Dict[str, Any], operations: List[Any], resource_pool: Optional[Dict[str, Any]],
-    *, prepared_parent: Optional[RepairParentPreparation] = None,
 ) -> Tuple[Tuple[int, str, str], ...]:
     """Inherit actual mutable resource selections, independently of the parent's decision record."""
-    if prepared_parent is not None:
-        return prepared_parent.inherited_resources
     by_id = _operations_by_id(operations)
     current = _current_resources(candidate, by_id)
     return _decoded_resource_facts(current, by_id, resource_pool)[0]

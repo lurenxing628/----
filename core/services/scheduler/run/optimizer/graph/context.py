@@ -16,7 +16,7 @@ def validate_graph_ready_context(
     *,
     algo_ops_to_schedule: List[Any],
     seed_sr_list: Optional[List[Any]] = None,
-) -> None:
+) -> set:
     if not isinstance(graph_ready_context, dict) or not graph_ready_context.get("enabled"):
         _raise("图 ready 候选缺少可用图上下文。", "graph_ready_unavailable")
     for field in GRAPH_READY_REQUIRED_CONTEXT_FIELDS:
@@ -28,7 +28,7 @@ def validate_graph_ready_context(
     _validate_schedulable_ids(schedulable_ids, fixed_ids, algo_ops_to_schedule=algo_ops_to_schedule)
     _validate_fixed_sources(graph_ready_context, fixed_ids=fixed_ids, seed_sr_list=seed_sr_list)
 
-    known_ids = set(schedulable_ids).union(fixed_ids)
+    known_ids = schedulable_ids | fixed_ids
     predecessor_map = _link_map(graph_ready_context.get("predecessor_op_ids_by_op_id"), field="predecessor_op_ids_by_op_id")
     successor_map = _link_map(graph_ready_context.get("successor_op_ids_by_op_id"), field="successor_op_ids_by_op_id")
     _complete_link_maps(predecessor_map, successor_map, known_ids=known_ids)
@@ -38,19 +38,23 @@ def validate_graph_ready_context(
     _detect_cycle(schedulable_ids=schedulable_ids, predecessor_map=predecessor_map, successor_map=successor_map)
     _validate_sort_keys(graph_ready_context.get("sort_key_by_op_id"), schedulable_ids=schedulable_ids)
     _validate_priority_keys(graph_ready_context.get("graph_priority_key_by_op_id"), schedulable_ids=schedulable_ids)
+    return schedulable_ids
 
 
-def graph_node_metrics_by_op_id(graph_ready_context: Dict[str, Any]) -> Dict[int, Dict[str, Any]]:
+def graph_node_metrics_by_op_id(
+    graph_ready_context: Dict[str, Any], *, schedulable_ids: Optional[set] = None,
+) -> Dict[int, Dict[str, Any]]:
     value = graph_ready_context.get("node_metrics_by_op_id")
     if not isinstance(value, dict):
         _raise("图 ready 候选缺少 node_metrics_by_op_id，无法按多组图权重重新评分。", "graph_ready_missing_node_metrics")
-    schedulable_ids = _op_id_set(graph_ready_context.get("schedulable_op_ids"), field="schedulable_op_ids")
+    if schedulable_ids is None:
+        schedulable_ids = _op_id_set(graph_ready_context.get("schedulable_op_ids"), field="schedulable_op_ids")
     out: Dict[int, Dict[str, Any]] = {}
     for op_id in sorted(schedulable_ids):
         metric = value.get(op_id)
         if not isinstance(metric, dict):
             _raise(f"图 ready 候选缺少待排工序 {op_id} 的图指标。", "graph_ready_missing_node_metrics")
-        out[op_id] = dict(cast(Dict[str, Any], metric))
+        out[op_id] = cast(Dict[str, Any], metric)
     return out
 
 
@@ -81,9 +85,8 @@ def optional_non_negative_number(value: Any, *, field: str) -> Optional[float]:
 
 
 def reason_from_validation(exc: ValidationError) -> str:
-    details = getattr(exc, "details", None)
-    if isinstance(details, dict):
-        reason = str(details.get("reason") or "").strip()
+    if isinstance(exc.details, dict):
+        reason = str(exc.details.get("reason") or "").strip()
         if reason:
             return reason
     return "graph_ready_candidate_rejected"
@@ -92,7 +95,7 @@ def reason_from_validation(exc: ValidationError) -> str:
 def _validate_schedulable_ids(schedulable_ids: set, fixed_ids: set, *, algo_ops_to_schedule: List[Any]) -> None:
     if schedulable_ids.intersection(fixed_ids):
         _raise("图 ready 候选的待排工序和固定工序有重叠。", "graph_ready_schedulable_fixed_overlap")
-    expected_ids = {_positive_op_id(getattr(op, "id", None), field="id") for op in list(algo_ops_to_schedule or [])}
+    expected_ids = {_positive_op_id(getattr(op, "id", None), field="id") for op in algo_ops_to_schedule or ()}
     if schedulable_ids != expected_ids:
         _raise("图 ready 候选的待排工序和本次输入不一致。", "graph_ready_schedulable_mismatch")
 
@@ -104,9 +107,9 @@ def _validate_fixed_sources(graph_ready_context: Dict[str, Any], *, fixed_ids: s
     if not isinstance(sources, dict):
         _raise("图 ready 候选固定工序来源必须是映射。", "graph_ready_bad_fixed_sources")
     source_ids = {_positive_op_id(raw_id, field="fixed_op_sources_by_op_id") for raw_id in sources}
-    if source_ids != set(fixed_ids):
+    if source_ids != fixed_ids:
         _raise("图 ready 候选固定工序来源和固定工序集合不一致。", "graph_ready_fixed_source_mismatch")
-    seed_ids = {_positive_op_id(getattr(item, "op_id", None), field="seed_results") for item in list(seed_sr_list or [])}
+    seed_ids = {_positive_op_id(getattr(item, "op_id", None), field="seed_results") for item in seed_sr_list or ()}
     for op_id in seed_ids:
         if op_id not in fixed_ids:
             _raise("图 ready 候选没有把种子工序标为固定。", "graph_ready_seed_fixed_mismatch")
@@ -135,7 +138,7 @@ def _detect_cycle(*, schedulable_ids: set, predecessor_map: Dict[int, set], succ
     # 写法（D13 同款），同时终结两份环检测拷贝"修一漏一"的语义漂移。
     # successor_map 已在上方 _validate_bidirectional_links 校验双向一致。
     if kahn_unreachable_op_ids(
-        schedulable_ids=set(schedulable_ids),
+        schedulable_ids=schedulable_ids,
         predecessor_map=predecessor_map,
         successor_map=successor_map,
     ):
@@ -179,7 +182,7 @@ def _priority_key_tuple(value: Any) -> tuple:
 
 def _validate_exact_key_set(value: Dict[Any, Any], *, schedulable_ids: set, reason: str) -> None:
     actual_ids = {_positive_op_id(raw_id, field="graph_ready_context") for raw_id in value}
-    if actual_ids != set(schedulable_ids):
+    if actual_ids != schedulable_ids:
         _raise("图 ready 候选 key 集合必须和待排工序完全一致。", reason)
 
 
@@ -190,9 +193,10 @@ def _op_id_set(value: Any, *, field: str) -> set:
         ids = [_positive_op_id(item, field=field) for item in value]
     except TypeError as exc:
         raise ValidationError(f"图 ready 候选字段 {field} 必须是 op_id 集合。", field="graph_ready_context", details={"reason": _missing_reason(field)}) from exc
-    if len(ids) != len(set(ids)):
+    unique = set(ids)
+    if len(ids) != len(unique):
         _raise(f"图 ready 候选字段 {field} 不能有重复 op_id。", "graph_ready_duplicate_op_id")
-    return set(ids)
+    return unique
 
 
 def _link_map(value: Any, *, field: str) -> Dict[int, set]:

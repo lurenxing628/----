@@ -1,117 +1,35 @@
 from __future__ import annotations
 
-from dataclasses import replace
-from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithms import ScheduleResult
 from core.errors import ValidationError
-from core.models.objective import normalize_objective_name
-from core.services.scheduler.run.optimizer.graph_ready_feature_basis import BATCH_WORKLOAD_BASIS
 from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     GraphReadyWeightProfile,
-    default_weight_profiles,
-    graph_ready_v2_profile_summary,
-    graph_ready_v2_profiles,
-    graph_ready_weight_profile_summary,
+    resolve_v2_profiles_and_summary,
+    resolve_weight_grid_profiles_and_summary,
 )
-
-from .v2_features import enrich_graph_ready_v2_metrics
 
 
 def resolve_graph_ready_profiles_and_metrics(
-    metrics_by_op_id: Dict[int, Dict[str, Any]],
     *,
     max_weight_profiles: int,
-    profiles_override: Optional[List[GraphReadyWeightProfile]],
-    profile_summary_override: Optional[Dict[str, Any]],
-    candidate_construction: Optional[Dict[str, Any]],
-    version: int,
-    scheduler: Any,
-    algo_ops_to_schedule: List[Any],
-    batches: Dict[str, Any],
-    start_dt: datetime,
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
-    seed_sr_list: List[ScheduleResult],
-    resource_pool: Optional[Dict[str, Any]],
-    strict_mode: bool,
-    objective_name: str = "min_overdue",
-    graph_ready_context: Optional[Dict[str, Any]] = None,
-    before_metrics: Optional[Callable[[], None]] = None,
-    prepared_metrics: Optional[Dict[int, Dict[str, Any]]] = None,
-) -> Tuple[List[GraphReadyWeightProfile], Dict[str, Any], Dict[int, Dict[str, Any]]]:
-    profiles, profile_summary = _resolve_profiles(
-        max_weight_profiles=max_weight_profiles,
-        profiles_override=profiles_override,
-        profile_summary_override=profile_summary_override,
-        candidate_construction=candidate_construction,
-        version=version,
-        objective_name=objective_name,
-        shared_search=prepared_metrics is not None,
-    )
-    objective_name = normalize_objective_name(objective_name)
-    profiles = [replace(profile, objective_name=objective_name) for profile in profiles]
-    profile_summary = dict(profile_summary, objective_name=objective_name)
-    # 空交期由 v2 特征层做 per-op 占位降级；非空坏交期始终 fail-loud，不能伪装成无交期。
-    # 其它坏特征一律 fail-loud，不存在"v2 整池跳过"中间态。
-    # _metrics_for_profiles 抛出的 ValidationError 直接上抛,由 run_graph_ready_candidates 主链按 strict/feature-error 统一处理。
-    if before_metrics is not None:
-        before_metrics()
-    metrics = prepared_metrics if prepared_metrics is not None else _metrics_for_profiles(
-        metrics_by_op_id,
-        profiles=profiles,
-        scheduler=scheduler,
-        algo_ops_to_schedule=algo_ops_to_schedule,
-        batches=batches,
-        start_dt=start_dt,
-        downtime_map=downtime_map,
-        seed_sr_list=seed_sr_list,
-        resource_pool=resource_pool,
-        strict_mode=bool(strict_mode),
-        objective_name=objective_name,
-        graph_ready_context=graph_ready_context,
-    )
-    return profiles, profile_summary, metrics
-
-
-def _resolve_profiles(
-    *,
-    max_weight_profiles: int,
-    profiles_override: Optional[List[GraphReadyWeightProfile]],
-    profile_summary_override: Optional[Dict[str, Any]],
     candidate_construction: Optional[Dict[str, Any]],
     version: int,
     objective_name: str = "min_overdue",
-    shared_search: bool = False,
+    shared_search: bool = True,
 ) -> Tuple[List[GraphReadyWeightProfile], Dict[str, Any]]:
-    if profiles_override is not None:
-        profiles = list(profiles_override)
-        summary = profile_summary_override or _profile_summary_for_profiles(
-            profiles,
-            max_weight_profiles=max_weight_profiles,
-            version=version,
-            objective_name=objective_name,
-            shared_search=shared_search,
-        )
-        return profiles, summary
-
     optimization = _graph_ready_optimization(candidate_construction)
     policy = str(optimization.get("candidate_policy") or "weight_grid").strip().lower()
     if policy == "weight_grid":
-        profiles, _truncated, _reason = default_weight_profiles(max_weight_profiles=max_weight_profiles)
-        return profiles, graph_ready_weight_profile_summary(max_weight_profiles=max_weight_profiles)
+        return resolve_weight_grid_profiles_and_summary(
+            max_weight_profiles=max_weight_profiles, objective_name=objective_name,
+        )
     if policy == "objective_aware_portfolio":
         max_candidate_profiles = _positive_profile_limit(
             optimization.get("max_candidate_profiles", 60),
             field="max_candidate_profiles",
         )
-        profiles, _truncated, _reason = graph_ready_v2_profiles(
-            max_candidate_profiles=max_candidate_profiles,
-            seed=int(version),
-            objective_name=objective_name,
-            shared_search=shared_search,
-        )
-        return profiles, graph_ready_v2_profile_summary(
+        return resolve_v2_profiles_and_summary(
             max_candidate_profiles=max_candidate_profiles,
             seed=int(version),
             objective_name=objective_name,
@@ -161,57 +79,6 @@ def _raise_bad_limit(field: str) -> None:
         field="graph_ready_candidate_policy",
         details={"reason": "graph_ready_bad_candidate_policy"},
     )
-
-
-def _profile_summary_for_profiles(
-    profiles: List[GraphReadyWeightProfile],
-    *,
-    max_weight_profiles: int,
-    version: int,
-    objective_name: str = "min_overdue",
-    shared_search: bool = False,
-) -> Dict[str, Any]:
-    if any(_uses_v2_profile(profile) for profile in profiles):
-        return graph_ready_v2_profile_summary(max_candidate_profiles=max(len(profiles), 1), seed=int(version),
-                                             objective_name=objective_name, shared_search=shared_search)
-    return graph_ready_weight_profile_summary(max_weight_profiles=max_weight_profiles)
-
-
-def _metrics_for_profiles(
-    metrics_by_op_id: Dict[int, Dict[str, Any]],
-    *,
-    profiles: List[GraphReadyWeightProfile],
-    scheduler: Any,
-    algo_ops_to_schedule: List[Any],
-    batches: Dict[str, Any],
-    start_dt: datetime,
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
-    seed_sr_list: List[ScheduleResult],
-    resource_pool: Optional[Dict[str, Any]],
-    strict_mode: bool,
-    objective_name: str = "min_overdue",
-    graph_ready_context: Optional[Dict[str, Any]] = None,
-) -> Dict[int, Dict[str, Any]]:
-    if not any(_uses_v2_profile(profile) for profile in profiles):
-        return metrics_by_op_id
-    return enrich_graph_ready_v2_metrics(
-        metrics_by_op_id,
-        operations=algo_ops_to_schedule,
-        batches=batches,
-        start_dt=start_dt,
-        calendar_service=getattr(scheduler, "calendar", None),
-        downtime_map=downtime_map,
-        seed_results=seed_sr_list,
-        resource_pool=resource_pool,
-        strict_mode=bool(strict_mode),
-        objective_name=objective_name,
-        graph_ready_context=graph_ready_context,
-        include_baseline_ordering=any(profile.feature_basis == BATCH_WORKLOAD_BASIS for profile in profiles),
-    )
-
-
-def _uses_v2_profile(profile: GraphReadyWeightProfile) -> bool:
-    return str(profile.formula_version or "").startswith("graph_ready_v2")
 
 
 __all__ = ["resolve_graph_ready_profiles_and_metrics"]

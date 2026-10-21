@@ -4,7 +4,7 @@ import random
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import zip_longest
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 from core.errors import ValidationError
 
@@ -17,30 +17,19 @@ class RepairNeighborhood:
     order: Tuple[str, ...]
     moves: Tuple[Tuple[str, int, int], ...]
 
-    def neighbors(self) -> Iterator[Tuple[str, List[str]]]:
-        for kind, source, target in self.moves:
-            order = list(self.order)
-            if kind == "adjacent_swap":
-                order[source], order[target] = order[target], order[source]
-            else:
-                order.insert(target, order.pop(source))
-            yield kind, order
-
 
 def build_repair_neighborhood(
-    candidate: Dict[str, Any], *, operations: List[Any], metrics_by_op_id: Dict[int, Dict[str, Any]],
-    start_dt: datetime, seed: int, objective_name: str = "min_overdue",
-    prepared_parent: Optional[RepairParentPreparation] = None,
+    *, operations: List[Any], metrics_by_op_id: Dict[int, Dict[str, Any]],
+    start_dt: datetime, seed: int, prepared_parent: RepairParentPreparation, objective_name: str = "min_overdue",
 ) -> RepairNeighborhood:
-    mutable_batches = (prepared_parent.mutable_batch_ids if prepared_parent is not None
-                       else {str(op.batch_id) for op in operations})
-    order = tuple(batch for batch in candidate["decoded_batch_order"] if batch in mutable_batches)
+    mutable_batches = prepared_parent.mutable_batch_ids
+    order = tuple(batch for batch in prepared_parent.decoded_batch_order if batch in mutable_batches)
     if len(order) != len(set(order)) or set(order) != mutable_batches:
         raise ValidationError(
             "GraphReady repair 的已解码批次与可变范围不一致。", field="graph_ready_elite_repair",
             details={"reason": "graph_ready_repair_scope_mismatch"},
         )
-    signals = _batch_signals(candidate, operations=operations, metrics_by_op_id=metrics_by_op_id, start_dt=start_dt,
+    signals = _batch_signals(operations=operations, metrics_by_op_id=metrics_by_op_id, start_dt=start_dt,
                             prepared_parent=prepared_parent)
     risky = _risky_batch_indices(order, signals, objective_name=objective_name)
     swaps = _adjacent_swap_moves(len(order), risky, seed=seed)
@@ -92,50 +81,29 @@ def repair_priority_context(context: Dict[str, Any], *, operations: List[Any], o
 
 
 def _batch_signals(
-    candidate: Dict[str, Any], *, operations: List[Any], metrics_by_op_id: Dict[int, Dict[str, Any]], start_dt: datetime,
-    prepared_parent: Optional[RepairParentPreparation] = None,
+    *, operations: List[Any], metrics_by_op_id: Dict[int, Dict[str, Any]], start_dt: datetime,
+    prepared_parent: RepairParentPreparation,
 ) -> Dict[str, Dict[str, float]]:
-    ends: Dict[str, float] = {}
-    if prepared_parent is not None:
-        ends = {batch: max((end - start_dt).total_seconds() / 3600.0, 0.0)
-                for batch, end in prepared_parent.batch_end_times.items()}
-    else:
-        for result in candidate["results"]:
-            batch = str(result.batch_id)
-            ends[batch] = max(ends.get(batch, 0.0), (result.end_time - start_dt).total_seconds() / 3600.0)
+    ends = {batch: max((end - start_dt).total_seconds() / 3600.0, 0.0)
+            for batch, end in prepared_parent.batch_end_times.items()}
     signals: Dict[str, Dict[str, float]] = {}
     for op in operations:
         batch = str(op.batch_id)
         metric = metrics_by_op_id[int(op.id)]
-        row = signals.setdefault(batch, {key: 0.0 for key in (
-            "tardy", "due_pressure", "critical", "saveability", "sacrifice", "weighted_due_pressure", "changeovers")})
+        row = signals.get(batch)
+        if row is None:
+            row = {key: 0.0 for key in (
+                "tardy", "due_pressure", "critical", "saveability", "sacrifice", "weighted_due_pressure", "changeovers")}
+            signals[batch] = row
         row["tardy"] = max(row["tardy"], ends.get(batch, 0.0) - float(metric["due_deadline_hours"]))
         for target, source in (("due_pressure", "due_pressure"), ("saveability", "saveability"), ("sacrifice", "sacrifice_penalty")):
             row[target] = max(row[target], float(metric[source]))
         row["critical"] = max(row["critical"], float(metric["is_on_critical_path"]))
         row["weighted_due_pressure"] = max(row["weighted_due_pressure"],
                                             float(metric.get("weighted_due_pressure", metric["due_pressure"])))
-    if prepared_parent is not None:
-        for batch, row in signals.items():
-            row["changeovers"] = prepared_parent.changeovers_by_batch.get(batch, 0.0)
-    else:
-        _add_changeover_signals(candidate["results"], signals)
+    for batch, row in signals.items():
+        row["changeovers"] = prepared_parent.changeovers_by_batch.get(batch, 0.0)
     return signals
-
-
-def _add_changeover_signals(results: List[Any], signals: Dict[str, Dict[str, float]]) -> None:
-    by_machine: Dict[str, List[Any]] = {}
-    for row in results:
-        machine = str(getattr(row, "machine_id", "") or "")
-        if machine and str(getattr(row, "op_type_name", "") or "").strip():
-            by_machine.setdefault(machine, []).append(row)
-    for rows in by_machine.values():
-        rows.sort(key=lambda row: (row.start_time, row.end_time, row.op_id))
-        for left, right in zip(rows, rows[1:]):
-            if str(left.op_type_name).strip() != str(right.op_type_name).strip():
-                for row in (left, right):
-                    if str(row.batch_id) in signals:
-                        signals[str(row.batch_id)]["changeovers"] += 1.0
 
 
 def _boundary_moves(order: Tuple[str, ...], signals: Dict[str, Dict[str, float]]) -> List[Tuple[str, int, int]]:

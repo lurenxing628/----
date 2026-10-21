@@ -26,10 +26,6 @@ _CALLBACK_CACHE_LIMIT = 256
 _CALL_SHAPE_CACHE_LIMIT = 128
 
 
-def clear_dispatch_callback_binding_cache_for_tests() -> None:
-    _CALLBACK_BINDING_CACHE.clear()
-
-
 def _dispatch_callback_binding(callback: Any, *, slot: str) -> _CallbackBinding:
     bound = isinstance(callback, MethodType)
     function = callback.__func__ if bound else callback
@@ -128,12 +124,6 @@ class _LegacyDispatchContext:
             check_dispatch_callback_binding(callback, args, kwargs, slot="auto_assign_internal_resources")
             return auto_assign_attempt_from_result(callback(*args, **kwargs))
         raise DispatchContextContractError("legacy dispatch context does not provide auto-assign callback")
-
-    def auto_assign_internal_resources(self, *args: Any, **kwargs: Any):
-        attempt = self.auto_assign_internal_resources_attempt(*args, **kwargs)
-        if attempt.machine_id and attempt.operator_id:
-            return attempt.machine_id, attempt.operator_id
-        return None
 
 
 def ensure_dispatch_context(candidate: Any) -> Any:

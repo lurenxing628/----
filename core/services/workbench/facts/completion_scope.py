@@ -88,7 +88,7 @@ def project_completion_summary(
 def attach_remaining_operations(summary, work_items):
     """Expand only requested remaining details using the same admission membership."""
     missing = defaultdict(list)
-    batch_refs = set(summary["complete_batch_refs"]) | set(summary["incomplete_batch_refs"])
+    batch_refs = set(summary["incomplete_batch_refs"])
     for row in _pending_operations(work_items, batch_refs, available=summary["source_available"]):
         missing[row["batch_ref"]].append(row)
     batches = [{**{key: value for key, value in batch.items() if key not in ("operation_count", "metrics", "reasons")},
@@ -99,12 +99,12 @@ def attach_remaining_operations(summary, work_items):
 
 def project_completion_scope(
     delivery_items: Sequence[Mapping[str, Any]], work_items: Sequence[Mapping[str, Any]], *, available: bool = True,
-    schedulable_coverage: Optional[Mapping[str, Any]] = None, details: bool = True,
+    schedulable_coverage: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Independent callers retain full details; read-model builders request the summary."""
     summary = project_completion_summary(delivery_items, work_items, available=available,
                                          schedulable_coverage=schedulable_coverage)
-    return attach_remaining_operations(summary, work_items) if details else summary
+    return attach_remaining_operations(summary, work_items)
 
 
 def completion_groups(candidates: Sequence[Mapping[str, Any]]) -> Sequence[Dict[str, Any]]:

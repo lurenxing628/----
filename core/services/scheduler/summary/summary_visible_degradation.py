@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.models.scheduler_public_errors import build_public_error_records
-from core.services.scheduler.contracts.graph_public_summary import project_public_graph_analysis
 from core.services.scheduler.contracts.schedule_summary_types import FreezeState, SummaryBuildContext
 from core.services.scheduler.contracts.summary_count_parse import parse_summary_count
 
@@ -22,7 +21,6 @@ def safe_metrics_dict(metrics: Any) -> Tuple[Optional[Dict[str, Any]], Optional[
             "parse_failed": True,
             "error_type": type(exc).__name__,
             "message": OPTIMIZER_METRICS_INVALID_WARNING,
-            "detail": str(exc)[:300],
         }
 
 
@@ -142,23 +140,21 @@ def apply_summary_count_degradation(
     return bool(degraded_success or str(completion_status or "") == "success")
 
 
-def graph_analysis_summary_warning(ctx: SummaryBuildContext) -> Optional[str]:
-    public = ctx.graph_analysis_public if isinstance(ctx.graph_analysis_public, dict) else None
-    if not public:
+def graph_analysis_summary_warning(graph_analysis_public: Optional[Dict[str, Any]]) -> Optional[str]:
+    if not graph_analysis_public:
         return None
-    public = project_public_graph_analysis(public)
-    status = str(public.get("status") or "").strip().lower()
+    status = str(graph_analysis_public.get("status") or "").strip().lower()
     if not status or status == "available":
         return None
-    reason = str(public.get("reason") or "").strip()
-    message = str(public.get("message") or "").strip()
+    reason = str(graph_analysis_public.get("reason") or "").strip()
+    message = str(graph_analysis_public.get("message") or "").strip()
     detail = message or reason or status
     return f"工序图分析没有生成可用报告：{detail}"
 
 
-def warnings_with_graph(freeze_state: FreezeState, ctx: SummaryBuildContext) -> List[str]:
+def warnings_with_graph(freeze_state: FreezeState, graph_analysis_public: Optional[Dict[str, Any]]) -> List[str]:
     warnings = list(freeze_state.all_warnings)
-    graph_warning = graph_analysis_summary_warning(ctx)
+    graph_warning = graph_analysis_summary_warning(graph_analysis_public)
     if graph_warning and graph_warning not in warnings:
         warnings.append(graph_warning)
     return warnings

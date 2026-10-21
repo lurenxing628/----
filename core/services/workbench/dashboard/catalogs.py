@@ -4,12 +4,6 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_history import RunHistoryScope
 from core.services.workbench.run.history import WorkbenchRunHistoryQueryService
 
-from .calendar_capture import capture_resource_pressure
-
-
-def resource_pressure(conn, arguments, *, captured_calendar):
-    return capture_resource_pressure(conn, captured_calendar=captured_calendar, **arguments)
-
 
 def candidate_catalog(conn):
     try:

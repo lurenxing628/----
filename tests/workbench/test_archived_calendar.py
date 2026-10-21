@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.workbench.facts.archived_calendar import ArchivedCalendar, archived_resource_calendars
+from core.services.workbench.facts.archived_calendar import ArchivedCalendar
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.plan.occupancy import _resource_occupancy
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
@@ -38,7 +38,7 @@ def day(key, start="08:00", end="16:00", *, hours=8, efficiency=1, normal="yes",
 
 
 def project(saved, start="2026-10-12T00:00:00", end="2026-10-13T00:00:00", resources=RESOURCES, **kwargs):
-    return archived_resource_calendars(saved, resources, start, end, source_ref="saved-calendar-ref", **kwargs)
+    return ArchivedCalendar(saved, source_ref="saved-calendar-ref", **kwargs).for_resources(resources, start, end)
 
 
 def test_saved_schema_defaults_keep_old_hours_and_modern_periods():

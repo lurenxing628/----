@@ -88,9 +88,11 @@ class MasterOverviewService:
                 return False
             if any(value.casefold() not in cell(row, key).casefold() for key, value in scope.column_filters.items()):
                 return False
+            if not needle:
+                return True
             searchable = [row.get(key) for key in ("business_code", "label", "title", "evidence", "summary", "rule")]
             searchable.extend(field["value"] for field in row.get("fields", []))
-            return not needle or any(needle in text(value).casefold() for value in searchable if value is not None)
+            return any(needle in text(value).casefold() for value in searchable if value is not None)
         matched = [row for row in rows if match(row)]
         matched.sort(key=lambda row: (row["business_code"], row["key"]))
         known = [row for row in matched if row.get(scope.sort) is not None]

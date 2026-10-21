@@ -7,7 +7,6 @@ from core.services.personnel.operator_qualification import OperatorQualification
 from core.services.scheduler import resource_pool_builder
 from core.services.workbench.run.input_runtime import runtime_resource_facts
 from core.services.workbench.run.preflight_facts import PreflightFacts
-from data.repositories import MachineDowntimeRepository
 
 START = datetime(2026, 10, 14, 8)
 
@@ -16,7 +15,7 @@ def _service(conn):
     return SimpleNamespace(conn=conn, logger=None)
 
 
-def test_empty_downtime_is_read_once_when_extending_pool(schema_conn, monkeypatch):
+def test_empty_downtime_is_read_once_when_extending_pool(schema_conn):
     conn = schema_conn
     conn.executemany("INSERT INTO Machines(machine_id, name) VALUES (?, ?)", [("M_A", "A"), ("M_B", "B")])
     conn.execute(
@@ -24,12 +23,7 @@ def test_empty_downtime_is_read_once_when_extending_pool(schema_conn, monkeypatc
         ("2026-10-14 09:00:00", "2026-10-14 10:00:00"),
     )
     conn.commit()
-    def read(*args):
-        raise AssertionError("downtime was already captured for this transaction")
-
-    monkeypatch.setattr(MachineDowntimeRepository, "list_active_after", read)
-    svc = _service(conn)
-    meta, warnings = {}, []
+    meta = {}
     sql = []
     conn.set_trace_callback(sql.append)
     facts = PreflightFacts(conn)
@@ -38,23 +32,22 @@ def test_empty_downtime_is_read_once_when_extending_pool(schema_conn, monkeypatc
             resources = runtime_resource_facts(facts)
             assert runtime_resource_facts(facts) is resources
             downtime = resource_pool_builder.load_machine_downtimes(
-                svc, algo_ops=[SimpleNamespace(source="internal", machine_id="M_A")],
-                start_dt=START, downtimes=resources.downtimes, meta=meta, warnings=warnings,
+                algo_ops=[SimpleNamespace(source="internal", machine_id="M_A")],
+                start_dt=START, downtimes=resources.downtimes, meta=meta,
             )
             assert downtime == {"M_A": []}
             pool = {"operators_by_machine": {"M_A": ["O1"], "M_B": ["O1"]}}
             for _ in range(2):
                 assert resource_pool_builder.extend_downtime_map_for_resource_pool(
-                    svc, cfg=SimpleNamespace(auto_assign_enabled="yes"), resource_pool=pool,
+                    cfg=SimpleNamespace(auto_assign_enabled="yes"), resource_pool=pool,
                     downtime_map=downtime, start_dt=START, downtimes=resources.downtimes,
-                    meta=meta, warnings=warnings,
+                    meta=meta,
                 ) is downtime
     finally:
         conn.set_trace_callback(None)
     assert sum(' FROM "MachineDowntimes" ' in statement for statement in sql) == 1
     assert downtime == {"M_A": [], "M_B": [(datetime(2026, 10, 14, 9), datetime(2026, 10, 14, 10))]}
     assert meta["downtime_load_ok"] is True and meta["downtime_extend_ok"] is True
-    assert warnings == []
 
 
 def _seed_multi_work_type_pool(conn):
@@ -107,7 +100,7 @@ def test_multi_work_type_pool_loads_qualifications_once_and_keeps_selection(sche
             resources.validate_fixed(conn, [SimpleNamespace(source="internal", op_type_id="OT_B",
                                                            machine_id="M_A", operator_id="O_SKILLED")])
             for _ in range(2):
-                pool, warnings = resource_pool_builder.build_resource_pool(
+                pool = resource_pool_builder.build_resource_pool(
                     _service(conn), cfg=SimpleNamespace(auto_assign_enabled="yes"),
                     algo_ops=[SimpleNamespace(source="internal", op_type_id=code, machine_id=None, operator_id=None)
                               for code in ("OT_A", "OT_B")], meta=meta, resource_facts=resources,
@@ -125,4 +118,4 @@ def test_multi_work_type_pool_loads_qualifications_once_and_keeps_selection(sche
         "pair_rank": {("O_LEGACY", "M_A"): 11, ("O_SKILLED", "M_A"): 0, ("O_LEGACY", "M_B"): 12},
         "operator_skills": {"O_EMPTY": [], "O_LEGACY": None, "O_SKILLED": ["OT_B"]},
     }
-    assert warnings == [] and meta["resource_pool_build_ok"] is True
+    assert meta["resource_pool_build_ok"] is True

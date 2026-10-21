@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.schedule_point_evidence import PointSeedResult, SchedulePointEvidence
+from core.algorithm_contracts.value_domains import INTERNAL
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithms import ScheduleResult
 from core.algorithms.greedy.seed import (
@@ -13,17 +14,19 @@ from core.algorithms.greedy.seed import (
     with_seed_external_group_metadata,
     with_seed_resource_segments,
 )
-from core.algorithms.value_domains import INTERNAL
 from core.errors import ValidationError
 
 
 def _raise_invalid_seed_results_error(*, invalid_seed_count: int, invalid_seed_samples: List[Dict[str, Any]]) -> None:
-    exc = ValidationError("本次排产引用的已有排产记录无效，系统已停止排产，没有写入新结果。请刷新排产数据后重试。", field="seed_results")
-    exc.details = dict(exc.details or {})
-    exc.details["reason"] = "invalid_seed_results"
-    exc.details["invalid_seed_count"] = int(invalid_seed_count)
-    exc.details["invalid_seed_samples"] = list(invalid_seed_samples)
-    raise exc
+    raise ValidationError(
+        "本次排产引用的已有排产记录无效，系统已停止排产，没有写入新结果。请刷新排产数据后重试。",
+        field="seed_results",
+        details={
+            "reason": "invalid_seed_results",
+            "invalid_seed_count": int(invalid_seed_count),
+            "invalid_seed_samples": invalid_seed_samples,
+        },
+    )
 
 
 def _seed_result_sample(item: Any) -> Dict[str, Any]:
@@ -120,7 +123,7 @@ def coerce_seed_results(
     increment_counter(optimizer_algo_stats, "optimizer_seed_result_invalid_count", invalid_seed_count)
     if invalid_seed_count > 0:
         optimizer_algo_stats.setdefault("fallback_samples", {})
-        optimizer_algo_stats["fallback_samples"]["optimizer_seed_result_invalid_samples"] = list(invalid_seed_samples)
+        optimizer_algo_stats["fallback_samples"]["optimizer_seed_result_invalid_samples"] = invalid_seed_samples
         _raise_invalid_seed_results_error(
             invalid_seed_count=invalid_seed_count,
             invalid_seed_samples=invalid_seed_samples,

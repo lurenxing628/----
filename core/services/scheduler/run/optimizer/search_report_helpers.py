@@ -13,6 +13,9 @@ from .candidate_fingerprint import (
 )
 from .neighborhood_moves import ALLOWED_NEIGHBORHOODS
 
+_ALLOWED_NEIGHBORHOOD_SET = frozenset(ALLOWED_NEIGHBORHOODS)
+_ALLOWED_ACCEPTANCE_SET = frozenset(ALLOWED_ACCEPTANCES)
+
 
 def safe_text(value: Any) -> str:
     return str(value or "").strip()
@@ -54,7 +57,7 @@ def safe_neighborhood_move(move: Dict[str, Any]) -> Dict[str, Any]:
     name = safe_text(move.get("neighborhood_name"))
     move_kind = safe_text(move.get("move_kind"))
     input_scope = safe_text(move.get("input_scope"))
-    if name not in set(ALLOWED_NEIGHBORHOODS):
+    if name not in _ALLOWED_NEIGHBORHOOD_SET:
         raise ValidationError(f"非法邻域移动：未知邻域“{name or move.get('neighborhood_name')}”。", field="neighborhood_move")
     if not move_kind or not input_scope:
         raise ValidationError("非法邻域移动：缺少 move_kind 或 input_scope。", field="neighborhood_move")
@@ -70,7 +73,7 @@ def safe_neighborhood_move(move: Dict[str, Any]) -> Dict[str, Any]:
 
 def safe_acceptance_event(event: Dict[str, Any]) -> Dict[str, Any]:
     name = safe_text(event.get("acceptance_name"))
-    if name not in set(ALLOWED_ACCEPTANCES):
+    if name not in _ALLOWED_ACCEPTANCE_SET:
         raise ValidationError(f"非法接受事件：未知接受准则“{name or event.get('acceptance_name')}”。", field="acceptance")
     return {
         "schema_version": int(event.get("schema_version") or 1),
@@ -92,7 +95,7 @@ def safe_acceptance_event(event: Dict[str, Any]) -> Dict[str, Any]:
 def safe_vns_event(event: Dict[str, Any]) -> Dict[str, Any]:
     current = safe_text(event.get("current_neighborhood"))
     next_name = safe_text(event.get("next_neighborhood"))
-    if current not in set(ALLOWED_NEIGHBORHOODS) or next_name not in set(ALLOWED_NEIGHBORHOODS):
+    if current not in _ALLOWED_NEIGHBORHOOD_SET or next_name not in _ALLOWED_NEIGHBORHOOD_SET:
         raise ValidationError("非法 VNS 事件：未知业务邻域。", field="vns")
     return {
         "schema_version": int(event.get("schema_version") or 1),
@@ -162,12 +165,7 @@ def empty_acceptance_counter() -> Dict[str, int]:
 
 
 def optional_float(value: Any) -> Optional[float]:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError, OverflowError):
-        return None
+    return None if value is None else float(value)
 
 
 def list_copy(value: Any) -> List[Any]:

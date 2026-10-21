@@ -81,14 +81,13 @@ class ResourceTeamRepository(BaseRepository):
         if not updates:
             return
 
-        allowed = {"name", "status", "remark"}
         set_parts: List[str] = []
         params: List[Any] = []
 
         for key in ("name", "status", "remark"):
-            if key in allowed and key in updates:
+            if key in updates:
                 set_parts.append(f"{key} = ?")
-                params.append(updates.get(key))
+                params.append(updates[key])
 
         if not set_parts:
             return

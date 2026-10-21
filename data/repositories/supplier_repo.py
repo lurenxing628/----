@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Union
 from core.models import Supplier
 
 from .base_repo import BaseRepository
+from .reference_checks import exists_any_nonblank_reference, exists_value_reference
 
 
 class SupplierRepository(BaseRepository):
@@ -68,16 +69,13 @@ class SupplierRepository(BaseRepository):
         if not updates:
             return
 
-        allowed = {"name", "op_type_id", "default_days", "status", "remark"}
         set_parts: List[str] = []
         params: List[Any] = []
 
         for key in ("name", "op_type_id", "default_days", "status", "remark"):
-            if key not in allowed:
-                continue
             if key in updates:
                 set_parts.append(f"{key} = ?")
-                params.append(updates.get(key))
+                params.append(updates[key])
 
         if not set_parts:
             return
@@ -106,58 +104,19 @@ class SupplierRepository(BaseRepository):
     # 引用检查（给 Service 层做删除/清空保护）
     # -------------------------
     def has_part_operation_reference(self, supplier_id: str) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM PartOperations WHERE supplier_id IS NOT NULL AND TRIM(supplier_id) <> '' AND supplier_id = ? LIMIT 1",
-                (supplier_id,),
-                default=None,
-            )
-            is not None
-        )
+        return exists_value_reference(self, table="PartOperations", column="supplier_id", value=supplier_id)
 
     def has_batch_operation_reference(self, supplier_id: str) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM BatchOperations WHERE supplier_id IS NOT NULL AND TRIM(supplier_id) <> '' AND supplier_id = ? LIMIT 1",
-                (supplier_id,),
-                default=None,
-            )
-            is not None
-        )
+        return exists_value_reference(self, table="BatchOperations", column="supplier_id", value=supplier_id)
 
     def has_external_group_reference(self, supplier_id: str) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM ExternalGroups WHERE supplier_id IS NOT NULL AND TRIM(supplier_id) <> '' AND supplier_id = ? LIMIT 1",
-                (supplier_id,),
-                default=None,
-            )
-            is not None
-        )
+        return exists_value_reference(self, table="ExternalGroups", column="supplier_id", value=supplier_id)
 
     def has_any_part_operation_reference(self) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM PartOperations WHERE supplier_id IS NOT NULL AND TRIM(supplier_id) <> '' LIMIT 1",
-                default=None,
-            )
-            is not None
-        )
+        return exists_any_nonblank_reference(self, table="PartOperations", column="supplier_id")
 
     def has_any_batch_operation_reference(self) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM BatchOperations WHERE supplier_id IS NOT NULL AND TRIM(supplier_id) <> '' LIMIT 1",
-                default=None,
-            )
-            is not None
-        )
+        return exists_any_nonblank_reference(self, table="BatchOperations", column="supplier_id")
 
     def has_any_external_group_reference(self) -> bool:
-        return (
-            self.fetchvalue(
-                "SELECT 1 FROM ExternalGroups WHERE supplier_id IS NOT NULL AND TRIM(supplier_id) <> '' LIMIT 1",
-                default=None,
-            )
-            is not None
-        )
+        return exists_any_nonblank_reference(self, table="ExternalGroups", column="supplier_id")

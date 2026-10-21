@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from core.errors import AppError, BusinessError, ErrorCode
 from core.models import Material
@@ -35,24 +35,6 @@ class WorkbenchMaterialService:
     def normalize_input(action: str, payload: Any) -> Dict[str, Any]:
         return normalize_material_input(action, payload)
 
-    def _current_material(self, identity: Optional[WorkbenchEntityIdentity], material=None) -> Tuple[WorkbenchEntityIdentity, Dict[str, Any]]:
-        if not isinstance(identity, WorkbenchEntityIdentity) or identity.kind != "material":
-            raise WorkbenchCommandRejected("invalid_input", "要先选中一条已核对过的物料。", 400)
-        if not identity.active:
-            raise WorkbenchCommandRejected("entity_not_found", "这条物料记录已失效，请刷新后重新选择。", 404)
-        current = self._identities.get(identity.ref)
-        if current is None or not current.active or current.kind != "material":
-            raise WorkbenchCommandRejected("entity_not_found", "这条物料记录已失效，请刷新后重新选择。", 404)
-        if current != identity:
-            raise WorkbenchCommandRejected("stale_write", "物料已变化，请刷新后重新核对。")
-        material = self._query.get_by_ref(current.ref) if material is None else material
-        if material is None:
-            raise WorkbenchCommandRejected("entity_not_found", "该物料已不存在，请刷新。", 404)
-        if (material["material_id"], material["ref"], material["revision"]) != (
-                current.entity_key, current.ref, current.revision):
-            raise WorkbenchCommandRejected("stale_write", "物料和选中的记录对不上，请刷新后重新核对。")
-        return current, material
-
     @staticmethod
     def _snapshot_from_current(identity, material):
         """Project an identity and full material row already read in this transaction."""
@@ -60,25 +42,6 @@ class WorkbenchMaterialService:
                 identity.entity_key, identity.ref, identity.revision):
             raise WorkbenchCommandRejected("stale_write", "物料和选中的记录对不上，请刷新后重新核对。")
         return {"identity": asdict(identity), "material": material}
-
-    def apply(self, action: str, normalized_input: Dict[str, Any],
-              identity: Optional[WorkbenchEntityIdentity] = None) -> WorkbenchCommandOutcome:
-        """Use the outer WorkbenchCommandService transaction and its checked identity.
-
-        The outcome is provisional until that owner saves the receipt and commits.
-        No token, revision or mutable snapshot belongs in the immutable receipt.
-        """
-        if not self.conn.in_transaction:
-            raise RuntimeError("物料操作必须在外层工作台命令事务中执行。")
-        payload = self.normalize_input(action, normalized_input)
-        if action == "create":
-            if identity is not None:
-                raise WorkbenchCommandRejected("invalid_input", "新增物料时不能指定一条已有记录。", 400)
-            checked = None
-        else:
-            current, material = self._current_material(identity)
-            checked = {"identity": asdict(current), "material": material}
-        return self.apply_prepared(self.prepare_checked(action, payload, checked))
 
     def prepare_checked(self, action, payload, checked):
         """Turn normalized input and this transaction's facts into the actual write."""
@@ -93,6 +56,8 @@ class WorkbenchMaterialService:
         current = WorkbenchEntityIdentity(**checked["identity"])
         if current.entity_key != current.entity_key.strip():
             raise WorkbenchCommandRejected("constraint_conflict", "这个物料编号首尾有空格，现在改不了。请先核对原记录。")
+        if action == "delete":
+            return PreparedMaterialChange(action, current, current.entity_key, {})
         changes = dict(payload.get("fields", {}))
         if "label" in payload:
             changes["name"] = payload["label"]

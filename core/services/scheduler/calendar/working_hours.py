@@ -15,7 +15,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from core.errors import ValidationError
 
-Window = Optional[Tuple[datetime, datetime]]
+Window = Tuple[datetime, datetime]
 WindowResolver = Callable[[date], Sequence[Tuple[datetime, datetime]]]
 # Same magnitude bound as add_calendar_days: spans beyond a century are input errors, not schedules.
 MAX_SPAN_DAYS = 36500
@@ -23,8 +23,6 @@ MAX_SPAN_DAYS = 36500
 
 def clip_window_hours(window: Window, limit: datetime) -> float:
     """Hours of ``window`` that lie strictly before ``limit``."""
-    if window is None:
-        return 0.0
     start, end = window
     end = min(end, limit)
     if end <= start:

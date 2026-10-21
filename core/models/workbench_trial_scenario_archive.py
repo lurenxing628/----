@@ -34,13 +34,14 @@ def encode_scenario(snapshot):
     """Encode each persisted fragment once; the physical wrapper has its own cap."""
     metadata = {key: value for key, value in snapshot.items() if key != "tasks"}
     metadata_text, metadata_encoded = _encoded(metadata)
+    metadata_len, has_metadata = len(metadata_encoded), bool(metadata)
+    logical_bytes = logical_snapshot_bytes(metadata_len, 0, 0, has_metadata=has_metadata)
     tasks, bodies = [], 0
     for row in snapshot["tasks"]:
         text, encoded = _encoded(row)
         tasks.append(text)
         bodies += len(encoded)
-        logical_snapshot_bytes(len(metadata_encoded), bodies, len(tasks), has_metadata=bool(metadata))
-    logical_bytes = logical_snapshot_bytes(len(metadata_encoded), bodies, len(tasks), has_metadata=bool(metadata))
+        logical_bytes = logical_snapshot_bytes(metadata_len, bodies, len(tasks), has_metadata=has_metadata)
     refs_text, refs_encoded = _encoded([row["row_ref"] for row in snapshot["tasks"]])
     header = _HEADER_PREFIX + metadata_text + _HEADER_ROWS + refs_text + "}"
     _bounded(len(_HEADER_PREFIX) + len(metadata_encoded) + len(_HEADER_ROWS) + len(refs_encoded) + 1)

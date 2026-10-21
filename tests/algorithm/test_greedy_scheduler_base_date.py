@@ -13,8 +13,8 @@ if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
 import core.algorithms.greedy.scheduler as greedy_scheduler_module
+from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithms.greedy.scheduler import GreedyScheduler
-from core.algorithms.sort_strategies import SortStrategy
 
 
 class _DummyCalendar:

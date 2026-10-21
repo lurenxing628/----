@@ -12,11 +12,11 @@ from core.services.workbench.facts.adoption_baseline_values import REASONS, Adop
 from core.services.workbench.facts.candidate_baseline import AdmissionBaseline, invalid_baseline
 from core.services.workbench.facts.candidate_projection import baseline_capture, candidate_summary
 from core.services.workbench.facts.candidate_read_source import read_candidate_source
+from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import operation_labels
+from core.services.workbench.facts.zero_duration_evidence import overlaps
 from core.services.workbench.plan.adoption_baseline import read_adoption_source
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
-
-from .candidates import WorkbenchRunCandidateQueryService
 
 
 def _candidate_interval(task):
@@ -61,16 +61,15 @@ def _comparison_row(ref, task, admission, disposition):
 
 def _rows(tasks, admission, disposition):
     by_ref = {task["operation_ref"]: task for task in tasks}
-    if not set(by_ref) <= admission.selected | set(admission.by_operation):
+    refs = admission.selected | set(admission.by_operation)
+    if not set(by_ref) <= refs:
         invalid_baseline()
     _check_task_window(tasks, admission, disposition)
     return [_comparison_row(ref, by_ref.get(ref), admission, disposition)
-            for ref in sorted(admission.selected | set(admission.by_operation) | set(by_ref))]
+            for ref in sorted(refs)]
 
 
 def _in_time(row, start, end):
-    from core.services.workbench.facts.zero_duration_evidence import overlaps
-
     if row["candidate"] is None:
         return True
     intervals = [row["candidate"]] + row["baseline_segments"]
@@ -120,10 +119,10 @@ def _baseline_origins(conn, baseline):
 
 class WorkbenchRunCandidateBaselineQueryService:
     def __init__(self, conn):
-        self.reader = WorkbenchRunCandidateQueryService(conn)
+        self.store = CandidateStore(conn)
 
     def baseline(self, scope):
-        store = self.reader.store
+        store = self.store
         with store.snapshot():
             source = read_candidate_source(store, scope.candidate_ref)
             admission, rows = self._source(source)
@@ -132,7 +131,7 @@ class WorkbenchRunCandidateBaselineQueryService:
     def _source(self, source):
         from core.services.workbench.plan.point_evidence import official_point_work
 
-        conn, baseline = self.reader.store.conn, source.capture["baseline"]
+        conn, baseline = self.store.conn, source.capture["baseline"]
         with read_evidence_scope(conn):
             origins, evidence, origin_issue = _baseline_origins(conn, baseline)
             admission = AdmissionBaseline(source.capture, source.facts, source.disposition, source.run["accepted_at"],

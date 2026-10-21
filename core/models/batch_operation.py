@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from ._helpers import (
     RowLike,
-    as_dict,
     get,
     parse_float_or_default,
     parse_int,
@@ -54,27 +53,6 @@ class BatchOperation:
     def is_internal(self) -> bool:
         return str(self.source or "").strip().lower() == SourceType.INTERNAL.value
 
-    def is_pending(self) -> bool:
-        return str(self.status or "").strip().lower() == BatchOperationStatus.PENDING.value
-
-    def is_scheduled(self) -> bool:
-        return str(self.status or "").strip().lower() == BatchOperationStatus.SCHEDULED.value
-
-    def is_processing(self) -> bool:
-        return str(self.status or "").strip().lower() == BatchOperationStatus.PROCESSING.value
-
-    def is_completed(self) -> bool:
-        return str(self.status or "").strip().lower() == BatchOperationStatus.COMPLETED.value
-
-    def is_skipped(self) -> bool:
-        return str(self.status or "").strip().lower() == BatchOperationStatus.SKIPPED.value
-
-    def has_supplier(self) -> bool:
-        return bool(str(self.supplier_id or "").strip())
-
-    def processing_hours(self) -> float:
-        return float(self.setup_hours or 0.0) + float(self.unit_hours or 0.0)
-
     @classmethod
     def from_row(cls, row: RowLike) -> BatchOperation:
         # cls(...) 关键字实参从上到下求值——顺序即多坏字段时 ValueError 的先后契约，禁重排。
@@ -95,26 +73,4 @@ class BatchOperation:
             ext_days=parse_optional_float(get(row, "ext_days"), field="ext_days"),
             status=_normalize_enum(get(row, "status"), BatchOperationStatus.PENDING.value),
             created_at=get(row, "created_at"),
-        )
-
-    def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "id": self.id,
-                "op_code": self.op_code,
-                "batch_id": self.batch_id,
-                "piece_id": self.piece_id,
-                "seq": self.seq,
-                "op_type_id": self.op_type_id,
-                "op_type_name": self.op_type_name,
-                "source": self.source,
-                "machine_id": self.machine_id,
-                "operator_id": self.operator_id,
-                "supplier_id": self.supplier_id,
-                "setup_hours": self.setup_hours,
-                "unit_hours": self.unit_hours,
-                "ext_days": self.ext_days,
-                "status": self.status,
-                "created_at": self.created_at,
-            }
         )

@@ -69,7 +69,7 @@ class PlanReadContext:
     def selected(self, plan_ref):
         from .queries import _selected_plan
         if plan_ref not in self._selected:
-            self._selected[plan_ref] = _selected_plan(self, plan_ref, self.resolve(plan_ref))
+            self._selected[plan_ref] = _selected_plan(self, self.resolve(plan_ref))
         return self._selected[plan_ref]
 
     @staticmethod
@@ -230,9 +230,6 @@ class PlanReadContext:
             cache.update((row["schedule_id"], task) for row, task in zip(missing, tasks))
             self._task_resources.setdefault(plan_ref, []).extend(facts["resource_directory"])
         return [cache[row["schedule_id"]] for row in rows], {"resource_directory": list(self._task_resources.get(plan_ref, ()))}, resources, state
-
-    def scoped_tasks(self, plan_ref, entry, scope):
-        return self.projected_tasks(plan_ref, entry, self.scoped_rows(entry, scope))
 
     def row_times(self, plan_ref, row):
         if plan_ref not in self._plan_time_maps:

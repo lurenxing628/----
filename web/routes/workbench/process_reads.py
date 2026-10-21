@@ -41,7 +41,7 @@ def _list_query():
                                        number=values["page"], size=values["size"], sort=sort,
                                        direction=request.args.get("direction", "asc"), column_filters=filters)
     return ProcessPageRequest(query=request.args.get("query", ""), stage=request.args.get("stage") or None,
-                              number=values["page"], size=values["size"], sort=request.args.get("sort", "business_code"),
+                              number=values["page"], size=values["size"], sort=ordering,
                               direction=request.args.get("direction", "asc"))
 
 

@@ -127,6 +127,3 @@ __all__ = [
     "read_runtime_cfg_raw_value",
     "seed_snapshot_degradation_collector",
 ]
-
-# Preserve the historical private import while the implementation has one owner.
-_coerce_degradation_event = coerce_degradation_event

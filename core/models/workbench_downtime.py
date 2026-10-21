@@ -8,7 +8,7 @@ from core.models.workbench_command import WorkbenchCommandRejected
 REASONS = {"maintenance": "计划维护", "breakdown": "故障停机", "power": "停电/能耗", "tooling": "换刀/工装", "other": "其他"}
 
 
-def _time(value, field):
+def _time(value):
     if type(value) is not str or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2})?", value) is None:
         raise WorkbenchCommandRejected("invalid_input", "停机起止须填写年月日和时分。", 422)
     try:
@@ -35,12 +35,15 @@ def normalize_downtime(action, value):
 
 
 def _window_fields(value):
-    result = {}
-    result.update({key: _time(value.get(key), key) for key in ("start_time", "end_time")})
-    if result["end_time"] <= result["start_time"]:
+    start_time, end_time = _time(value.get("start_time")), _time(value.get("end_time"))
+    if end_time <= start_time:
         raise WorkbenchCommandRejected("invalid_input", "停机结束必须晚于开始。", 422)
     reason, detail = value.get("reason_code"), value.get("reason_detail")
     if type(reason) is not str or reason not in REASONS or detail is not None and type(detail) is not str:
         raise WorkbenchCommandRejected("invalid_input", "请选择停机原因，并使用文字填写说明。", 422)
-    result.update(reason_code=reason, reason_detail=(detail.strip() or None) if detail is not None else None)
-    return result
+    return {
+        "start_time": start_time,
+        "end_time": end_time,
+        "reason_code": reason,
+        "reason_detail": (detail.strip() or None) if detail is not None else None,
+    }

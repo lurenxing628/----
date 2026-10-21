@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import asdict
 from math import isfinite
 from typing import Any, Dict, List
 
@@ -13,10 +12,13 @@ UNIFIED_PROCESS_VERSION = "unified-optimization-process-v1"
 
 
 def score_scope_payload(scope: Any) -> Dict[str, Any]:
-    values = asdict(scope)
-    values["scheduled_operation_ids"] = sorted(values["scheduled_operation_ids"])
-    values["complete_batch_ids"] = sorted(values["complete_batch_ids"])
-    return values
+    return {
+        "scheduled_operation_ids": sorted(scope.scheduled_operation_ids),
+        "complete_batch_ids": sorted(scope.complete_batch_ids),
+        "objective_scope": scope.objective_scope,
+        "components_known": scope.components_known,
+        "is_complete": scope.is_complete,
+    }
 
 
 def _numeric_score(score: Any, *, components_known: bool) -> List[Any]:
@@ -43,28 +45,31 @@ def build_shared_process(search: Any, *, runtime_ms: int, stop_reason: str,
     # the other fields without materializing its full members for every event.
     events = []
     for row in search.events:
-        event = {key: deepcopy(value) for key, value in row.items() if key != "score_scope"}
+        event = {key: deepcopy(value) for key, value in row.items() if key not in ("score_scope", "evaluations")}
         if "score_scope" in row:
             scope = row["score_scope"]
             event["scope_ref"] = scope_reference(scope)
             event["evaluations"] = {
-                objective: {**evaluation,
-                    "score": _numeric_score(evaluation["score"], components_known=scope.components_known)}
-                for objective, evaluation in event.get("evaluations", {}).items()
+                objective: {
+                    **evaluation,
+                    "field_order": list(evaluation["field_order"]),
+                    "score": _numeric_score(evaluation["score"], components_known=scope.components_known),
+                }
+                for objective, evaluation in row.get("evaluations", {}).items()
             }
         events.append(event)
     event_by_id = {event["event_id"]: event for event in events}
 
     targets = {}
+    improvement_counts = search.archive.improvement_counts
     for objective in search.archive.target_objectives:
         points, previous_scope, segment = [], None, 0
         first_known, first_complete = False, False
         for row in search.trajectories[objective]:
             scope = row["score_scope"]
-            context = scope
-            if previous_scope is not None and context != previous_scope:
+            if previous_scope is not None and scope != previous_scope:
                 segment += 1
-            previous_scope = context
+            previous_scope = scope
             flags = []
             if scope.components_known and not first_known:
                 flags.append("first_valid")
@@ -79,7 +84,7 @@ def build_shared_process(search: Any, *, runtime_ms: int, stop_reason: str,
                     and source["entry_id"] == row["entry_id"] and source["elapsed_ms"] == row["elapsed_ms"]
                     and source.get("scope_ref") == scope_ref and objective in source.get(improvement_key, ())):
                 flags.append("strict_improvement")
-            point = {key: deepcopy(value) for key, value in row.items() if key != "score_scope"}
+            point = {key: value for key, value in row.items() if key not in ("score_scope", "score")}
             point.update(scope_ref=scope_ref,
                          score=_numeric_score(row["score"], components_known=scope.components_known),
                          segment=segment, flags=flags)
@@ -90,8 +95,7 @@ def build_shared_process(search: Any, *, runtime_ms: int, stop_reason: str,
             selected = search.archive.entry(selected_id)
             evaluation = selected.evaluations[objective]
             scope = selected.score_scope
-            context = scope
-            if previous_scope is not None and context != previous_scope:
+            if previous_scope is not None and scope != previous_scope:
                 segment += 1
             points.append({
                 "elapsed_ms": runtime_ms, "entry_id": selected_id,
@@ -105,7 +109,7 @@ def build_shared_process(search: Any, *, runtime_ms: int, stop_reason: str,
         sampled, sampling = sample_elapsed_points(points, elapsed_ms=runtime_ms, limit=200)
         targets[objective] = {
             **deepcopy(budget_stats["objectives"][objective]),
-            "archive_improvement_count": search.archive.improvement_counts[objective],
+            "archive_improvement_count": improvement_counts[objective],
             "first_improvement_elapsed_ms": improvements[0] if improvements else None,
             "last_improvement_elapsed_ms": improvements[-1] if improvements else None,
             "best_entry_id": selected_id, "points": sampled, "sampling": sampling,

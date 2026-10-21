@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Optional
 
-from ._helpers import RowLike, as_dict, get, parse_int
+from ._helpers import RowLike, get, parse_int
 from .enums import SkillLevel, YesNo
 
 
@@ -29,16 +29,3 @@ class OperatorMachine:
             is_primary=(str(get(row, "is_primary") or YesNo.NO.value).strip().lower() or YesNo.NO.value),
             created_at=get(row, "created_at"),
         )
-
-    def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "id": self.id,
-                "operator_id": self.operator_id,
-                "machine_id": self.machine_id,
-                "skill_level": self.skill_level,
-                "is_primary": self.is_primary,
-                "created_at": self.created_at,
-            }
-        )
-

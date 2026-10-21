@@ -7,9 +7,6 @@ from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.models.workbench_execution import ExecutionProjection
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact, ExecutionFactProvider
 from core.services.scheduler.execution.execution_snapshot import (
-    RESOURCE_SNAPSHOT_PREFIX as RESOURCE_SNAPSHOT_PREFIX,
-)
-from core.services.scheduler.execution.execution_snapshot import (
     ExecutionSnapshot,
     build_execution_snapshot,
 )
@@ -34,7 +31,6 @@ def _validate_event_plan_identities(capture) -> None:
         if (row is None or op is None or event["schedule_version"] != row["version"]
                 or event["op_id"] != row["op_id"] or event["batch_id"] != op["batch_id"]):
             raise _conflict("execution_scope_missing")
-    return
 
 
 def resource_execution_snapshot(

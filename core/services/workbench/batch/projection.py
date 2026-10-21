@@ -59,7 +59,7 @@ class BatchProjection:
         self.parts = {row["part_no"]: row for row in facts["Parts"]}
         self.resources = BatchResourceFacts(facts)
         self.catalogs = self.resources.catalogs
-        self.external_contexts = {row["operation_id"]: row for row in facts.get("BatchExternalContexts", [])}
+        self.external_contexts = {row["operation_id"]: row for row in facts["BatchExternalContexts"]}
         self.external_members = member_index(self.external_contexts, facts["BatchOperations"])
         self.machine_types = self.resources.machine_types
         self.links = self.resources.links
@@ -187,7 +187,7 @@ class BatchProjection:
                 "fields": fields, "display_ready_status": display_ready, "relationships": {"part_ref": self.ref("part", row["part_no"]),
                     "part_no": row["part_no"], "part_name": part["part_name"], "operation_count": len(ops), "completed_count": done,
                     "gap_count": sum(bool(op["issues"]) for op in ops), "plan_reference_count": facts["plan_reference_count"],
-                    "outsourcing_reference_count": len(facts.get("outsourcing_receipts", [])),
+                    "outsourcing_reference_count": len(facts["outsourcing_receipts"]),
                     "quantity_split_reference_count": len(facts["quantity_splits"]),
                     "execution_reference_count": len(facts["events"]) + len(facts["reports"]),
                     "report_count": len(facts["reports"]), "legacy_fact_count": len(facts["events"]),
@@ -202,10 +202,11 @@ class BatchProjection:
         from core.models.workbench_batch_material import material_row_key, numbered_material_requirements
         availability = self.material_availability
         rows = []
+        batch_ref = self.ref("batch", batch["batch_id"])
         for ordinal, row in numbered_material_requirements(self.relations[batch["batch_id"]]["materials"]):
             material = self.catalogs["material"].get(row["material_id"])
             issues = []
-            rows.append({"row_key": material_row_key(self.ref("batch", batch["batch_id"]), ordinal),
+            rows.append({"row_key": material_row_key(batch_ref, ordinal),
                          "material_ref": self.ref("material", row["material_id"]), "business_code": row["material_id"],
                          "label": material["name"] if material else None, "unit": material["unit"] if material else None,
                          "required_quantity": numeric(row["required_qty"], issues, "需求数量", positive=True),

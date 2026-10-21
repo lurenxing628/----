@@ -22,7 +22,7 @@ from .operation_execution_scope_read import scopes_by_op_id_for_plan_rows
 def positive_op_ids(values: Sequence[int]) -> List[int]:
     seen = set()
     out: List[int] = []
-    for raw in list(values or []):
+    for raw in values or ():
         try:
             op_id = int(raw)
         except (TypeError, ValueError):
@@ -94,10 +94,6 @@ def _fact_from_state(
     )
 
 
-def _positive_op_ids(values: Sequence[int]) -> List[int]:
-    return positive_op_ids(values)
-
-
 def _parse_execution_time(value: Any) -> Optional[datetime]:
     if value is None:
         return None
@@ -118,12 +114,6 @@ class ExecutionFactProvider:
         self.event_repo = OperationExecutionEventRepo(conn, logger=logger)
         self.capture: Any = capture
         self.ledger = ledger
-
-    def list_by_op_ids(self, op_ids: Sequence[int]) -> List[ExecutionFact]:
-        raise ValueError("现场执行事实必须按完整计划身份读取，不能只按 op_id 聚合。")
-
-    def facts_by_op_id(self, op_ids: Sequence[int]) -> Dict[int, ExecutionFact]:
-        raise ValueError("现场执行事实必须按完整计划身份读取，不能只按 op_id 聚合。")
 
     def facts_by_scope(
         self, scopes: Sequence[OperationExecutionScope], *,
@@ -202,7 +192,7 @@ class ExecutionFactProvider:
                 raise ValueError(f"工序 {op_id} 对应多个现场执行身份，不能按 op_id 合并读取。")
             scopes_by_op_id[op_id] = scope
             out[op_id] = fact
-        missing = [op_id for op_id in _positive_op_ids(include_op_ids) if op_id not in out]
+        missing = [op_id for op_id in positive_op_ids(include_op_ids) if op_id not in out]
         if missing:
             raise ValueError(f"现场执行事实缺少完整计划身份：op_id={missing[0]}")
         return out
@@ -216,11 +206,15 @@ class ExecutionFactProvider:
         execution_projections: Optional[Sequence[ExecutionProjection]] = None,
     ) -> Dict[int, ExecutionFact]:
         scopes_by_op_id = scopes_by_op_id_for_plan_rows(rows, plan_fields)
-        return self.facts_by_op_id_for_scopes(
+        facts_by_scope = self.facts_by_scope(
             list(scopes_by_op_id.values()),
-            include_op_ids=include_op_ids,
             execution_projections=execution_projections,
         )
+        out = {op_id: facts_by_scope[scope] for op_id, scope in scopes_by_op_id.items()}
+        missing = [op_id for op_id in positive_op_ids(include_op_ids) if op_id not in out]
+        if missing:
+            raise ValueError(f"现场执行事实缺少完整计划身份：op_id={missing[0]}")
+        return out
 
 
 __all__ = ["ExecutionFact", "ExecutionFactProvider"]

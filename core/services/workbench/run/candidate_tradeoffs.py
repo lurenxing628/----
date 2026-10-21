@@ -1,7 +1,7 @@
 """Dashboard's existing viewing scope consumes the same tradeoff projection."""
 
 from core.services.workbench.facts.changeovers import subject_arrangements
-from core.services.workbench.facts.decision_delivery import common_delivery
+from core.services.workbench.facts.common_completed_delivery import common_completed_delivery
 from core.services.workbench.facts.decision_metrics import (
     delivery_metric_values,
     metric_definitions,
@@ -13,17 +13,23 @@ from .decision_recommendation import RECOMMENDATION_VERSION
 from .decision_tradeoffs import aggregate_tradeoffs, tradeoff_entry
 
 
-def candidate_tradeoffs(data, before_delivery, after_delivery, before_tasks, after_tasks, *, subject_operation_refs):
+def candidate_tradeoffs(data, before_delivery, after_delivery, before_tasks, after_tasks, *, subject_operation_refs,
+                        before_intervals=None, after_intervals=None):
     candidate_ref, run_ref = data["candidate"]["candidate_ref"], data["generation"]["run_ref"]
-    common = common_delivery(before_delivery, after_delivery)
+    common = common_completed_delivery(before_delivery, after_delivery)
     refs, pair = common["common_completed_batch_refs"], common["common_delivery"]
     delivery_values = {side: delivery_metric_values(pair[side]) for side in ("before", "after")}
     definitions = [item for item in metric_definitions() if item["group"] == "delivery" or item["source"] == "archived_resource_calendar"
                    or item["key"] in ("type_changeover_count", "machine_change_count")]
     entries = []
+    resource_support = {
+        kind: [{"kind": "resource", "ref": row["resource_ref"],
+                "query": {"resource_kind": kind, "resource_ref": row["resource_ref"]}, "tab": "resources"}
+               for row in data["resources"] if row["kind"] == kind and row["delta"] is not None and row["delta"] != 0][:3]
+        for kind in ("machine", "operator")
+    }
     for definition in definitions:
         name, scope, support = definition["key"], definition["scope"], []
-        previous, selected = {}, {}
         if definition["group"] == "delivery":
             scope = "common_completed_batches"
             previous, selected = delivery_values["before"][name], delivery_values["after"][name]
@@ -33,14 +39,13 @@ def candidate_tradeoffs(data, before_delivery, after_delivery, before_tasks, aft
             values = [data["resource_common"][side][kind] for side in ("before", "after")]
             previous, selected = [metric_value(row[field], total=row["resource_count"], unknown=int(row[field] is None),
                                                 scope=scope, metric_version=definition["metric_version"]) for row in values]
-            resources = [row for row in data["resources"] if row["kind"] == kind]
-            support = [{"kind": "resource", "ref": row["resource_ref"], "query": {"resource_kind": kind, "resource_ref": row["resource_ref"]}, "tab": "resources"}
-                       for row in resources if row["delta"] is not None and row["delta"] != 0][:3]
+            support = resource_support[kind]
         elif name == "type_changeover_count":
             previous, selected = [metric_value(data["summary"][side]["changeovers"]["value"], scope=scope,
                                                unknown=int(data["summary"][side]["changeovers"]["value"] is None)) for side in ("before", "after")]
-            for value, tasks in ((previous, before_tasks), (selected, after_tasks)):
-                value["covered_operation_refs"] = sorted({row["operation_ref"] for row in subject_arrangements(tasks, subject_operation_refs)})
+            for value, tasks, intervals in ((previous, before_tasks, before_intervals), (selected, after_tasks, after_intervals)):
+                value["covered_operation_refs"] = sorted({row["operation_ref"] for row in subject_arrangements(
+                    tasks, subject_operation_refs, task_intervals=intervals)})
         else:
             changes = data["machine_changes"]
             previous, selected = metric_value(0, scope=scope), metric_value(changes["count"], scope=scope, unknown=changes["unknown_count"])

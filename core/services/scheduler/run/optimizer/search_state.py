@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
-
-if TYPE_CHECKING:
-    from .shared_archive import SharedScheduleArchive
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def score_tuple(score: Any) -> Tuple[float, ...]:
@@ -14,7 +11,7 @@ def score_tuple(score: Any) -> Tuple[float, ...]:
     for item in score:
         try:
             out.append(float(item))
-        except Exception:
+        except (TypeError, ValueError, OverflowError):
             out.append(float("inf"))
     return tuple(out)
 
@@ -54,38 +51,6 @@ def append_unique_rejected_attempt(attempts: List[Dict[str, Any]], attempt: Dict
     attempts.append(attempt)
 
 
-def _sorted_attempts_by_score(attempts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return sorted(list(attempts or []), key=lambda item: score_tuple(item.get("score")))
-
-
-def _best_attempts_by_dispatch_mode(attempts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    best_by_mode: Dict[str, Dict[str, Any]] = {}
-    for item in attempts or []:
-        mode = _attempt_dispatch_mode(item)
-        current = best_by_mode.get(mode)
-        if current is None or score_tuple(item.get("score")) < score_tuple(current.get("score")):
-            best_by_mode[mode] = item
-    return list(best_by_mode.values())
-
-
-def _append_unique_best_attempts(
-    selected: List[Dict[str, Any]],
-    attempts: List[Dict[str, Any]],
-    *,
-    limit: int,
-) -> List[Dict[str, Any]]:
-    selected_tags = {_attempt_tag(item) for item in selected}
-    for item in _sorted_attempts_by_score(attempts):
-        if len(selected) >= limit:
-            break
-        tag = _attempt_tag(item)
-        if tag in selected_tags:
-            continue
-        selected.append(item)
-        selected_tags.add(tag)
-    return selected
-
-
 def _unique_rejected_attempts(attempts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     selected: List[Dict[str, Any]] = []
     for item in attempts or []:
@@ -95,10 +60,24 @@ def _unique_rejected_attempts(attempts: List[Dict[str, Any]]) -> List[Dict[str, 
 
 
 def _compact_scored_attempts(attempts: List[Dict[str, Any]], *, limit: int) -> List[Dict[str, Any]]:
-    selected = _best_attempts_by_dispatch_mode(attempts)
-    selected = _append_unique_best_attempts(selected, attempts, limit=limit)
-    selected.sort(key=lambda item: score_tuple(item.get("score")))
-    return selected[:limit]
+    scored = [(score_tuple(item.get("score")), index, item) for index, item in enumerate(attempts)]
+    best_by_mode: Dict[str, Tuple[Tuple[float, ...], Dict[str, Any]]] = {}
+    for sc, _idx, item in scored:
+        mode = _attempt_dispatch_mode(item)
+        if mode not in best_by_mode or sc < best_by_mode[mode][0]:
+            best_by_mode[mode] = (sc, item)
+    selected = list(best_by_mode.values())
+    selected_tags = {_attempt_tag(item) for _sc, item in selected}
+    for sc, _idx, item in sorted(scored, key=lambda row: (row[0], row[1])):
+        if len(selected) >= limit:
+            break
+        tag = _attempt_tag(item)
+        if tag in selected_tags:
+            continue
+        selected.append((sc, item))
+        selected_tags.add(tag)
+    selected.sort(key=lambda pair: pair[0])
+    return [item for _sc, item in selected[:limit]]
 
 
 def _rejected_attempt_limit(*, scored_count: int, rejected_count: int, limit: int) -> int:
@@ -123,7 +102,6 @@ class OptimizerSearchState:
     best: Optional[Dict[str, Any]] = None
     attempts: List[Dict[str, Any]] = field(default_factory=list)
     improvement_trace: List[Dict[str, Any]] = field(default_factory=list)
-    shared_archive: Optional[SharedScheduleArchive] = None
 
     def compact_attempts(self, *, limit: int = 12) -> List[Dict[str, Any]]:
         return compact_attempts(self.attempts, limit=limit)

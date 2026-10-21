@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.ordering import normalize_text_id
-from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import EXTERNAL, INTERNAL
 from core.algorithm_runtime.dispatch_context import DispatchContextContractError, ensure_dispatch_context
 from core.algorithm_runtime.run_state import ScheduleRunState
@@ -19,46 +18,16 @@ def dispatch_batch_order(
     base_time: datetime,
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-    state: Optional[ScheduleRunState] = None,
-    batch_progress: Optional[Dict[str, datetime]] = None,
-    external_group_cache: Optional[Dict[Tuple[str, ...], Tuple[datetime, datetime]]] = None,
-    machine_timeline: Optional[Dict[str, List[Tuple[datetime, datetime]]]] = None,
-    operator_timeline: Optional[Dict[str, List[Tuple[datetime, datetime]]]] = None,
-    machine_busy_hours: Optional[Dict[str, float]] = None,
-    operator_busy_hours: Optional[Dict[str, float]] = None,
-    last_op_type_by_machine: Optional[Dict[str, str]] = None,
-    last_end_by_machine: Optional[Dict[str, datetime]] = None,
+    state: ScheduleRunState,
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
-    results: Optional[List[ScheduleResult]] = None,
-    errors: Optional[List[str]] = None,
-    blocked_batches: Optional[set] = None,
-    scheduled_count: int = 0,
-    failed_count: int = 0,
     strict_mode: bool = False,
 ) -> Tuple[int, int]:
     ctx = ensure_dispatch_context(context)
-    run_state = _coerce_state(
-        state=state,
-        base_time=base_time,
-        batch_progress=batch_progress,
-        external_group_cache=external_group_cache,
-        machine_timeline=machine_timeline,
-        operator_timeline=operator_timeline,
-        machine_busy_hours=machine_busy_hours,
-        operator_busy_hours=operator_busy_hours,
-        last_op_type_by_machine=last_op_type_by_machine,
-        last_end_by_machine=last_end_by_machine,
-        results=results,
-        errors=errors,
-        blocked_batches=blocked_batches,
-        scheduled_count=scheduled_count,
-        failed_count=failed_count,
-    )
     for op in sorted_ops:
         _dispatch_one(
             ctx,
-            state=run_state,
+            state=state,
             op=op,
             batches=batches,
             base_time=base_time,
@@ -68,45 +37,7 @@ def dispatch_batch_order(
             resource_pool=resource_pool,
             strict_mode=bool(strict_mode),
         )
-    return run_state.scheduled_count, run_state.failed_count
-
-
-def _coerce_state(
-    *,
-    state: Optional[ScheduleRunState],
-    base_time: datetime,
-    batch_progress: Optional[Dict[str, datetime]],
-    external_group_cache: Optional[Dict[Tuple[str, ...], Tuple[datetime, datetime]]],
-    machine_timeline: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-    operator_timeline: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-    machine_busy_hours: Optional[Dict[str, float]],
-    operator_busy_hours: Optional[Dict[str, float]],
-    last_op_type_by_machine: Optional[Dict[str, str]],
-    last_end_by_machine: Optional[Dict[str, datetime]],
-    results: Optional[List[ScheduleResult]],
-    errors: Optional[List[str]],
-    blocked_batches: Optional[set],
-    scheduled_count: int,
-    failed_count: int,
-) -> ScheduleRunState:
-    if state is not None:
-        return state
-    return ScheduleRunState.from_legacy(
-        base_time=base_time,
-        batch_progress=batch_progress if batch_progress is not None else {},
-        external_group_cache=external_group_cache if external_group_cache is not None else {},
-        machine_timeline=machine_timeline if machine_timeline is not None else {},
-        operator_timeline=operator_timeline if operator_timeline is not None else {},
-        machine_busy_hours=machine_busy_hours if machine_busy_hours is not None else {},
-        operator_busy_hours=operator_busy_hours if operator_busy_hours is not None else {},
-        last_op_type_by_machine=last_op_type_by_machine if last_op_type_by_machine is not None else {},
-        last_end_by_machine=last_end_by_machine if last_end_by_machine is not None else {},
-        results=results if results is not None else [],
-        errors=errors if errors is not None else [],
-        blocked_batches=blocked_batches if blocked_batches is not None else set(),
-        scheduled_count=scheduled_count,
-        failed_count=failed_count,
-    )
+    return state.scheduled_count, state.failed_count
 
 
 def _dispatch_one(

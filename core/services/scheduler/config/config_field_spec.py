@@ -1,38 +1,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from core.models.objective import objective_choice_labels as _objective_choice_labels
+from core.models.schedule_config_runtime_coercion import coerce_config_field as coerce_runtime_value
 from core.models.schedule_config_runtime_fields import RuntimeConfigFieldSpec
 from core.models.schedule_config_runtime_fields import get_field_spec as runtime_field_spec
 from core.shared.degradation import DegradationCollector
 
 MISSING_POLICY_ERROR = "error"
 MISSING_POLICY_FALLBACK_WITH_DEGRADATION = "fallback_with_degradation"
-MISSING_POLICY_INHERIT_LEGACY_OMISSION = "inherit_legacy_omission"
-
-
-@dataclass(frozen=True)
-class ConfigFieldPageMetadata:
-    key: str
-    label: str
-    hint: str = ""
-    unit: str = ""
-    choices: Tuple[Dict[str, str], ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
 class ConfigFieldSpec:
-    """Page metadata decorates the common runtime field semantics."""
+    """Service labels decorate the common runtime field semantics."""
 
     key: str
     label: str
     description: str
-    allow_blank: bool = False
     choice_labels: Dict[str, str] = field(default_factory=dict)
-    page_metadata: Optional[ConfigFieldPageMetadata] = None
-    hidden: bool = False
     runtime: RuntimeConfigFieldSpec = field(init=False, repr=False)
 
     def __post_init__(self):
@@ -45,14 +33,6 @@ class ConfigFieldSpec:
     @property
     def default(self):
         return self.runtime.default
-
-    @property
-    def min_value(self):
-        return self.runtime.min_value
-
-    @property
-    def min_inclusive(self):
-        return self.runtime.min_inclusive
 
     @property
     def choices(self):
@@ -77,10 +57,6 @@ _FIELD_LABEL_ALIASES = {
 }
 
 
-def _choice_pairs(choice_labels: Dict[str, str]) -> Tuple[Dict[str, str], ...]:
-    return tuple({"value": key, "label": value} for key, value in choice_labels.items())
-
-
 _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
     ConfigFieldSpec(
         key="sort_strategy",
@@ -97,21 +73,11 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         key="priority_weight",
         label="优先级权重",
         description="权重模式-优先级权重",
-        page_metadata=ConfigFieldPageMetadata(
-            key="priority_weight",
-            label="优先级权重",
-            hint="可以填 0 到 1 的小数；也可以填百分比，比如 40 表示 40%。数值越大，越优先照顾急件和特急件。",
-        ),
     ),
     ConfigFieldSpec(
         key="due_weight",
         label="交期权重",
         description="权重模式-交期权重",
-        page_metadata=ConfigFieldPageMetadata(
-            key="due_weight",
-            label="交期权重",
-            hint="可以填 0 到 1 的小数；也可以填百分比，比如 50 表示 50%。数值越大，越优先照顾交期更近的批次。",
-        ),
     ),
     ConfigFieldSpec(
         key="ready_weight",
@@ -143,16 +109,6 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
             "batch_order": "按批次顺序排",
             "sgs": "智能派工（系统自动挑选当前更合适的任务）",
         },
-        page_metadata=ConfigFieldPageMetadata(
-            key="dispatch_mode",
-            label="派工方式",
-            choices=_choice_pairs(
-                {
-                    "batch_order": "按批次顺序排",
-                    "sgs": "智能派工（系统自动挑选当前更合适的任务）",
-                }
-            ),
-        ),
     ),
     ConfigFieldSpec(
         key="dispatch_rule",
@@ -163,18 +119,6 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
             "cr": "交期更紧、剩余时间更吃紧的先做",
             "atc": "综合判断更紧急的先做",
         },
-        page_metadata=ConfigFieldPageMetadata(
-            key="dispatch_rule",
-            label="智能派工策略",
-            hint="仅智能派工时生效",
-            choices=_choice_pairs(
-                {
-                    "slack": "时间余量少的先做",
-                    "cr": "交期更紧、剩余时间更吃紧的先做",
-                    "atc": "综合判断更紧急的先做",
-                }
-            ),
-        ),
     ),
     ConfigFieldSpec(
         key="auto_assign_enabled",
@@ -187,29 +131,17 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         label="保存系统补齐的设备和人员",
         description="系统帮你补上的设备和人员，是否保存回这道工序，方便下次排产继续用",
         choice_labels=_YES_NO_LABELS,
-        hidden=True,
     ),
     ConfigFieldSpec(
         key="ortools_enabled",
         label="深度优化",
         description="只在精细计算时尝试多找一个更好的起点；需要本机已安装对应的深度优化组件",
         choice_labels=_YES_NO_LABELS,
-        page_metadata=ConfigFieldPageMetadata(
-            key="ortools_enabled",
-            label="深度优化",
-            hint="只在精细计算时生效；系统会多花几秒尝试找更好的排法，优化目标就是当前页面选择的目标。",
-        ),
     ),
     ConfigFieldSpec(
         key="ortools_time_limit_seconds",
         label="深度优化尝试时间",
         description="深度优化最多额外尝试多少秒；只在精细计算且深度优化开启时生效",
-        page_metadata=ConfigFieldPageMetadata(
-            key="ortools_time_limit_seconds",
-            label="深度优化尝试时间",
-            hint="最多多试几秒。不保证每次一定更好，但超过这个时间就会停下。",
-            unit="秒",
-        ),
     ),
     ConfigFieldSpec(
         key="algo_mode",
@@ -219,27 +151,11 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
             "greedy": "快速计算",
             "improve": "精细计算（较慢，结果通常更好）",
         },
-        page_metadata=ConfigFieldPageMetadata(
-            key="algo_mode",
-            label="计算模式",
-            choices=_choice_pairs(
-                {
-                    "greedy": "快速计算",
-                    "improve": "精细计算（较慢，结果通常更好）",
-                }
-            ),
-        ),
     ),
     ConfigFieldSpec(
         key="time_budget_seconds",
         label="找更好排法先试多久",
         description="一次共同优化的总计算预算，默认 10 秒",
-        page_metadata=ConfigFieldPageMetadata(
-            key="time_budget_seconds",
-            label="找更好排法先试多久",
-            hint="预算用于一次共同优化；结果有1—3份，实际相同方案会合并。常规10秒，深入30秒，也可填写自定义秒数。",
-            unit="秒",
-        ),
     ),
     ConfigFieldSpec(
         key="objective",
@@ -252,75 +168,39 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
         label="锁定近期排程",
         description="锁定近期排程：复用上一版本近期排程，减少波动",
         choice_labels=_YES_NO_LABELS,
-        page_metadata=ConfigFieldPageMetadata(
-            key="freeze_window_enabled",
-            label="锁定近期排程",
-            hint="指定天数内的排程保持不变，不重新计算",
-        ),
     ),
     ConfigFieldSpec(
         key="freeze_window_days",
         label="锁定天数",
         description="锁定近期排程的天数；未开启锁定时不生效",
-        page_metadata=ConfigFieldPageMetadata(
-            key="freeze_window_days",
-            label="锁定天数",
-            unit="天",
-        ),
     ),
     ConfigFieldSpec(
         key="graph_analysis_mode",
         label="工序图分析",
         description="工序先后关系分析：关闭 / 只看分析报告 / 检查通过后参与排产",
         choice_labels=dict(_GRAPH_ANALYSIS_MODE_LABELS),
-        page_metadata=ConfigFieldPageMetadata(
-            key="graph_analysis_mode",
-            label="工序图分析",
-            hint="默认选择“参与排产”。这样每次排产都会先排普通方案，再试几档重点工序优先方案，最后自动采用更合适的一版。",
-            choices=_choice_pairs(_GRAPH_ANALYSIS_MODE_LABELS),
-        ),
     ),
     ConfigFieldSpec(
         key="graph_block_on_cycle",
         label="工序关系互相卡住时停止排产",
         description="工序先后关系互相卡住时是否停止排产；默认不停止",
         choice_labels=_YES_NO_LABELS,
-        page_metadata=ConfigFieldPageMetadata(
-            key="graph_block_on_cycle",
-            label="工序关系互相卡住时停止排产",
-            hint="一般保持关闭。打开后，如果发现工序先后关系互相卡住，本次排产会直接停下，让你先修资料；关闭时会在结果里提醒问题，排产继续走可用的方案。",
-        ),
     ),
     ConfigFieldSpec(
         key="graph_critical_weight",
         label="重点工序提前权重",
         description="选择“参与排产”且工序关系可用时，影响完工时间的工序会更靠前；填 0 表示不按这项加分",
-        page_metadata=ConfigFieldPageMetadata(
-            key="graph_critical_weight",
-            label="重点工序提前权重",
-            hint="选择“参与排产”且工序关系可用时生效。数值越大，越影响完工时间的工序越容易提前；填 0 表示不使用这项加分。",
-        ),
     ),
     ConfigFieldSpec(
         key="graph_impact_weight",
         label="后续影响权重",
         description="选择“参与排产”且工序关系可用时，会影响更多后续工序的当前工序会更靠前；填 0 表示不按影响范围加分",
-        page_metadata=ConfigFieldPageMetadata(
-            key="graph_impact_weight",
-            label="后续影响权重",
-            hint="选择“参与排产”且工序关系可用时生效。数值越大，后面牵着更多工序的当前工序越容易提前；填 0 表示不使用这项加分。",
-        ),
     ),
     ConfigFieldSpec(
         key="graph_debug_export",
         label="导出工序图排查文件",
         description="是否导出工序先后关系排查文件",
         choice_labels=_YES_NO_LABELS,
-        page_metadata=ConfigFieldPageMetadata(
-            key="graph_debug_export",
-            label="导出工序图排查文件",
-            hint="默认关闭。一般调度员不用打开；需要排查工序前后关系问题时，再由维护人员开启。",
-        ),
     ),
 )
 
@@ -330,10 +210,6 @@ _UNSET = object()
 
 def list_config_fields() -> Tuple[ConfigFieldSpec, ...]:
     return tuple(_FIELD_SPECS)
-
-
-def has_config_field(key: str) -> bool:
-    return str(key or "").strip() in _FIELD_SPEC_BY_KEY
 
 
 def get_field_spec(key: str) -> ConfigFieldSpec:
@@ -366,27 +242,6 @@ def choice_label_map_for(key: str) -> Dict[str, str]:
     return {value: value for value in choices_for(key)}
 
 
-def page_metadata_for(keys: List[str]) -> Dict[str, ConfigFieldPageMetadata]:
-    out: Dict[str, ConfigFieldPageMetadata] = {}
-    for key in list(keys or []):
-        spec = get_field_spec(key)
-        metadata = spec.page_metadata
-        if metadata is None:
-            metadata = ConfigFieldPageMetadata(
-                key=spec.key,
-                label=spec.label,
-                choices=_choice_pairs(choice_label_map_for(spec.key)),
-            )
-        out[spec.key] = metadata
-    return out
-
-
-def normalize_text_field(key: str, value: Any) -> str:
-    from .config_field_coercion import normalize_text_field as _normalize_text_field
-
-    return _normalize_text_field(key, value)
-
-
 def coerce_config_field(
     key: str,
     value: Any,
@@ -398,18 +253,19 @@ def coerce_config_field(
     fallback: Any = _UNSET,
     missing_policy: str = MISSING_POLICY_FALLBACK_WITH_DEGRADATION,
 ) -> Any:
-    from .config_field_coercion import coerce_config_field as _coerce_config_field
-
-    kwargs = {
-        "strict_mode": strict_mode,
-        "source": source,
-        "collector": collector,
-        "missing": missing,
-        "missing_policy": missing_policy,
-    }
-    if fallback is not _UNSET:
-        kwargs["fallback"] = fallback
-    return _coerce_config_field(key, value, **kwargs)
+    spec = get_field_spec(key)
+    effective_fallback = spec.default if fallback is _UNSET else fallback
+    return coerce_runtime_value(
+        key,
+        value,
+        strict_mode=strict_mode,
+        source=source,
+        collector=collector,
+        missing=missing,
+        fallback=effective_fallback,
+        missing_policy=missing_policy,
+        field_label=spec.label,
+    )
 
 
 def default_snapshot_values() -> Dict[str, Any]:

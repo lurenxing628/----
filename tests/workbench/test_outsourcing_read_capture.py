@@ -88,7 +88,7 @@ def test_snapshot_capture_preserves_instance_rules_and_single_registered_evaluat
     with reader.read_snapshot():
         changed = conn.total_changes
         result, contents, receipts = load_external(conn, NOW)
-        DashboardExternalHandling(conn).read(result, NOW, receipts)
+        DashboardExternalHandling(conn).read(result, receipts)
         assert conn.total_changes == changed
         assert calls[tuple(registered["operation_refs"])] == 1
         assert len(calls) == 2  # One merged receipt and one remaining unregistered operation.
@@ -143,4 +143,4 @@ def test_snapshot_capture_preserves_instance_rules_and_single_registered_evaluat
         assert receipts[ref]["header"]["outsourcing_ref"] == ref
         assert result["evaluation_gaps"][0]["code"] == "outsourcing_fact_invalid"
         monkeypatch.setattr(type(reader), "header", lambda *_: pytest.fail("Handling must use the captured header"))
-        DashboardExternalHandling(conn).read(result, NOW, receipts)
+        DashboardExternalHandling(conn).read(result, receipts)

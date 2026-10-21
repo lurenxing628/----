@@ -8,7 +8,6 @@ from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchComm
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_process_commands import normalize_process_input
 from data.repositories.external_group_repo import ExternalGroupRepository
-from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 
 from .group_apply import apply_groups, group_changes, prepare_groups
 from .group_defaults import apply_default_groups
@@ -38,7 +37,6 @@ class PreparedProcessChange:
 class WorkbenchProcessMutationService:
     def __init__(self, conn, logger=None):
         self.conn, self.logger = conn, logger
-        self.identities = WorkbenchIdentityRepository(conn, logger)
 
     @staticmethod
     def normalize(action, input):
@@ -71,24 +69,23 @@ class WorkbenchProcessMutationService:
             current = reader.resolve(identity.ref)
             if current != identity:
                 raise WorkbenchCommandRejected("stale_write", "零件资料已经变了。请刷新后重新核对。")
-            checked = self.checked_facts(current, reader.facts())
-            prepared = self.prepare_checked(action, payload, checked, facts=reader.facts())
+            facts = reader.facts()
+            checked = self.checked_facts(current, facts)
+            prepared = self.prepare_checked(action, payload, checked, facts=facts)
         return self.apply_prepared(prepared)
 
     def _identities(self, facts):
-        if facts is None:
-            return self.identities
         return {row["ref"]: WorkbenchEntityIdentity(row["ref"], row["kind"], row["entity_key"],
                 row["revision"], bool(row["active"])) for row in facts["identities"]}
 
-    def prepare_checked(self, action, payload, checked, *, facts=None):
+    def prepare_checked(self, action, payload, checked, *, facts):
         """Own the actual change prepared from this command's current facts."""
         prepared = self.prepare_review(action, payload, checked, facts=facts)
         if action in ("route_confirm", "source_confirm"):
             require_group_ack(payload, prepared.affected)
         return prepared
 
-    def prepare_review(self, action, payload, checked, *, facts=None):
+    def prepare_review(self, action, payload, checked, *, facts):
         """The review projects the same domain change applied on confirmation."""
         _, part, operations, groups, workflow = checked
         identities = self._identities(facts)
@@ -103,7 +100,7 @@ class WorkbenchProcessMutationService:
             names = {key: row["name"] for key, row in catalog[1].items()}
             auxiliary = group_changes(changes, affected, operations, names=names)
         elif stage == "hours":
-            confirmations = {code: state["operations"] for code, state in facts["workflow"].items()} if facts else None
+            confirmations = {code: state["operations"] for code, state in facts["workflow"].items()}
             changes = prepare_hours(self.conn, payload, operations, groups, confirmations=confirmations)
             affected, auxiliary = [], None
         elif stage == "route":

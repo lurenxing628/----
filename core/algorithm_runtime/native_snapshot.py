@@ -7,20 +7,6 @@ from typing import Any
 
 UNSUPPORTED = object()
 _SCALARS = (type(None), bool, int, str, date, datetime, time)
-_RECORD_SCALARS = frozenset(_SCALARS + (float,))
-
-
-def scalar_tuple_snapshot(values, previous=None) -> Any:
-    if previous is not None and len(values) == len(previous[0]) and all(map(operator.is_, values, previous[0])):
-        # Every previous element was proved to be an exact immutable native scalar.
-        return previous
-    kinds = tuple(map(type, values))
-    if any(type(kind) is not type for kind in kinds) or not set(kinds).issubset(_RECORD_SCALARS):
-        return UNSUPPORTED
-    for value, kind in zip(values, kinds):
-        if (kind is float and not math.isfinite(value)) or (kind in (datetime, time) and value.tzinfo is not None):
-            return UNSUPPORTED
-    return values, kinds
 
 
 def scalar_snapshot(value) -> Any:
@@ -52,22 +38,6 @@ def content_snapshot(value, _depth=0) -> Any:
     if any(item is UNSUPPORTED for item in items):
         return UNSUPPORTED
     return kind, frozenset(items) if kind in (set, frozenset) else tuple(items)
-
-
-def native_record_snapshot(record, allowed_types) -> Any:
-    record_type = type(record)
-    if type(record_type) is not type or record_type not in allowed_types:
-        return UNSUPPORTED
-    data = vars(record)
-    items = tuple(data.items())
-    kinds = tuple(map(type, data.values()))
-    if (any(type(kind) is not type for kind in kinds) or not set(kinds).issubset(_RECORD_SCALARS)
-            or any(type(key) is not str for key, _ in items)):
-        return UNSUPPORTED
-    for (_, value), kind in zip(items, kinds):
-        if (kind is float and not math.isfinite(value)) or (kind in (datetime, time) and value.tzinfo is not None):
-            return UNSUPPORTED
-    return type(record), items, kinds
 
 
 def make_class_guard(cls):

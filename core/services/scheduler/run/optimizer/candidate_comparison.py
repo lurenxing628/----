@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
 
-from .candidate_fingerprint import CandidateFingerprint, build_candidate_fingerprint
+from .candidate_fingerprint import CandidateFingerprint
 
 CANDIDATE_ORIGIN_ORDER = (
     "baseline",
@@ -58,21 +58,6 @@ def candidate_runtime_ms(candidate: Optional[Dict[str, Any]]) -> int:
     return max(value, 0)
 
 
-def candidate_fingerprint_for_comparison(
-    candidate: Dict[str, Any],
-    *,
-    objective_name: str,
-    parent_fingerprint: Optional[CandidateFingerprint],
-    seen_output_fingerprints: Any,
-) -> CandidateFingerprint:
-    return build_candidate_fingerprint(
-        candidate,
-        objective_name=objective_name,
-        parent_fingerprint=parent_fingerprint,
-        seen_output_fingerprints=seen_output_fingerprints,
-    )
-
-
 def candidate_is_preferred(
     *,
     candidate: Dict[str, Any],
@@ -108,7 +93,6 @@ def candidate_is_preferred(
 
 __all__ = [
     "CANDIDATE_ORIGIN_ORDER",
-    "candidate_fingerprint_for_comparison",
     "candidate_is_preferred",
     "candidate_origin_rank",
     "candidate_runtime_ms",

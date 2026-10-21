@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
-from core.algorithms.greedy.run_state import ScheduleRunState
+from core.algorithm_runtime.run_state import ScheduleRunState
 
 
 @dataclass
@@ -176,7 +176,6 @@ def test_dispatch_sgs_missing_batch_records_structured_failure_detail() -> None:
         batches={},
         batch_order={},
         dispatch_rule="slack",
-        base_time=state.base_time,
         end_dt_exclusive=None,
         machine_downtimes={},
         state=state,

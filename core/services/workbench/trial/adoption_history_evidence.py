@@ -9,9 +9,7 @@ from core.models.content import content_text
 from core.models.workbench_command import validate_request_key
 from core.models.workbench_trial import reference, reject
 from core.models.workbench_trial_codec import load_object, require_object, same
-from core.services.workbench.facts.trial_policy import load_scenario_record, require_trial_schema
-from data.repositories.workbench_command_repo import WorkbenchCommandRepository
-from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
+from core.services.workbench.facts.trial_policy import load_scenario_record
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
 from .adoption_history_policy import MAX_SCENARIO_BYTES, bound, load_history, load_receipt
@@ -37,11 +35,8 @@ def json_object(raw):
     return value
 
 
-def scenario_evidence(conn, scenario_ref):
-    reference(scenario_ref)
-    repo = TrialAdoptionHistoryRepository(conn)
+def scenario_evidence(conn, scenario_ref, repo):
     trial_repo = WorkbenchTrialRepository(conn)
-    require_trial_schema(trial_repo)
     header, saved = load_scenario_record(trial_repo, scenario_ref, row_limit=10000,
                                           byte_limit=MAX_SCENARIO_BYTES, size_check=bound)
     draft = trial_repo.draft_header(header["draft_ref"])
@@ -133,7 +128,7 @@ def _audit_lineage(audit, row, plan, saved, header, draft):
         raise ValueError("Audit lineage mismatch")
 
 
-def audit_fields(repo, row, plan, saved, header, draft, *, context=None):
+def audit_fields(repo, row, plan, saved, header, draft, *, command_repo, context=None):
     empty = {"reason": None, "declared_operator": None, "application_operator": None, "adopted_at": None}
     history = load_history(repo, plan["version"], context=context)
     if history is None:
@@ -144,7 +139,7 @@ def audit_fields(repo, row, plan, saved, header, draft, *, context=None):
         if history["result_status"] != "success":
             raise ValueError("Not a successful history record")
         intent = {"confirm": True, "reason": audit["reason"], "declared_operator": audit["declared_operator"]}
-        if content_text(intent) != WorkbenchCommandRepository(repo.conn).input_content(row):
+        if content_text(intent) != command_repo.input_content(row):
             raise ValueError("Audit intent does not match immutable receipt")
         fields = {key: audit[key] for key in empty}
         if any(type(value) is not str or not value.strip() for value in fields.values()):

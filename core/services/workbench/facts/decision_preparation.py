@@ -1,6 +1,7 @@
 """Pure admission and official work projections shared by saved models and details."""
 
 from collections import defaultdict
+from typing import Any
 
 from core.models.enums import OperationRequirementRole, SourceType
 
@@ -39,7 +40,7 @@ def _allocation_state(ref, runtime, tasks, *, available, deferred_refs):
 
 
 def project_decision_preparation_row(facts, operation_ref, tasks, operation_efforts, *, run_ref,
-                                     available=True, deferred_refs=(), official=None, standards=None):
+                                     available=True, deferred_refs=(), official=None, standards: Any = None):
     """Project one actual allocation, keeping official and admission evidence distinct."""
     formal = official is not None
     operation = facts.tables["BatchOperations"].get(facts.operations.get(operation_ref), {})
@@ -51,8 +52,6 @@ def project_decision_preparation_row(facts, operation_ref, tasks, operation_effo
         runtime, evidence_source = original.get("effort"), original.get("evidence_source")
     else:
         runtime = operation_efforts.get(operation_ref)
-        if standards is None:
-            standards = admission_operation_standards(facts, [operation_ref], run_ref)
         standard = standards[operation_ref]
         evidence_source = {"kind": "run", "run_ref": run_ref}
     original_source = runtime.get("source") if runtime is not None else (

@@ -30,7 +30,7 @@ def common_prefix_length(first: Sequence[int], second: Sequence[int]) -> int:
 
 class CheckpointStore:
     def __init__(self, count: int) -> None:
-        self.count = int(count)
+        self.count = count
         self.full_decodes = 0
         self.resumed_decodes = 0
         self.picks_total = 0
@@ -43,7 +43,7 @@ class CheckpointStore:
         return self.count > 0 and self.disabled_reason is None
 
     def disable(self, reason: str) -> None:
-        self.disabled_reason = str(reason)
+        self.disabled_reason = reason
 
     def request_for(self, size: int) -> Tuple[Optional[DecodeCheckpointRequest], List[DecodeCheckpoint]]:
         captured: List[DecodeCheckpoint] = []
@@ -57,18 +57,16 @@ class CheckpointStore:
         if not self.enabled or not checkpoints:
             return None
         shared = common_prefix_length(base_order, trial_order)
-        usable = [item for item in checkpoints if item.prefix_length <= shared]
-        if not usable:
-            return None
-        return max(usable, key=lambda item: item.position)
+        return max((item for item in checkpoints if item.prefix_length <= shared),
+                   key=lambda item: item.position, default=None)
 
     def note_decode(self, size: int, *, resumed_from: Optional[DecodeCheckpoint]) -> None:
-        self.picks_total += int(size)
+        self.picks_total += size
         if resumed_from is None:
             self.full_decodes += 1
         else:
             self.resumed_decodes += 1
-            self.picks_saved += int(resumed_from.position)
+            self.picks_saved += resumed_from.position
 
     def summary(self) -> Dict[str, Any]:
         result: Dict[str, Any] = {"count": self.count, "full_decodes": self.full_decodes, "resumed_decodes": self.resumed_decodes,

@@ -50,6 +50,11 @@ FORBIDDEN_INTERNAL_KEYS = frozenset(
     }
 )
 
+_FORBIDDEN_KEY_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(key) for key in sorted(FORBIDDEN_INTERNAL_KEYS, key=len, reverse=True)) + r")\b",
+    re.IGNORECASE,
+)
+
 # 内部调试容器名(并集)。
 FORBIDDEN_INTERNAL_VALUE_TOKENS = (
     "adjustment_scenario_rows",
@@ -119,9 +124,7 @@ def redact_internal_text(value: Any) -> str:
     text = OP_CODE_TOKEN_RE.sub(REDACTED_INTERNAL_TEXT, text)
     text = CANDIDATE_KEY_TOKEN_RE.sub(REDACTED_INTERNAL_TEXT, text)
     text = _VALUE_TOKEN_RE.sub(REDACTED_INTERNAL_TEXT, text)
-    for key in sorted(FORBIDDEN_INTERNAL_KEYS, key=len, reverse=True):
-        text = re.sub(r"\b" + re.escape(key) + r"\b", REDACTED_INTERNAL_FIELD, text, flags=re.IGNORECASE)
-    return text
+    return _FORBIDDEN_KEY_RE.sub(REDACTED_INTERNAL_FIELD, text)
 
 
 __all__ = [

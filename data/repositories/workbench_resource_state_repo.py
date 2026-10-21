@@ -55,12 +55,6 @@ class WorkbenchResourceStateRepository(BaseRepository):
                     f"SELECT COUNT(*) FROM {table} WHERE {column}=?", (code,), default=0))
                 for table, column in DEPENDENCIES[kind]}
 
-    def catalog_by_name(self, kind, name):
-        if kind not in ("machine_group", "shift_profile"):
-            raise ValueError("Unsupported resource catalog")
-        table, key = RESOURCE_KEYS[kind]
-        return self.fetchone(f"SELECT {key} AS business_code FROM {table} WHERE name=?", (name,))
-
     def set_machine_group(self, machine_id, group_id):
         if group_id is None:
             self.execute("DELETE FROM WorkbenchMachineGroupMembers WHERE machine_id=?", (machine_id,))

@@ -11,8 +11,7 @@ from data.repositories.workbench_trial_query_repo import BOOKKEEPING_TABLES
 
 
 def capture_facts(conn, capture=None):
-    facts, legacy_hash = (capture if capture is not None else ProductionFactsCapture(conn)).captured()
-    return facts, legacy_hash
+    return (capture if capture is not None else ProductionFactsCapture(conn)).archive(named=True)
 
 
 def facts_unchanged(admission, live):
@@ -52,7 +51,7 @@ def execution_facts(conn, tables, selected_refs, *, service, prepared=None):
 
 def live_context(conn, selected_refs, capture=None, *, execution_service, prepared_execution=None):
     capture = capture if capture is not None else ProductionFactsCapture(conn)
-    facts, legacy_hash = capture_facts(conn, capture)
+    facts = capture_facts(conn, capture)
     capture.execution_service = execution_service
     preflight = PreflightFacts(conn, capture=capture)
     preflight.bind_capture(capture)
@@ -61,7 +60,7 @@ def live_context(conn, selected_refs, capture=None, *, execution_service, prepar
     if prepared_execution is not None:
         prepared_execution.extend(prepared)
     preflight.execution_projections.update((row.operation_ref, row) for row in prepared)
-    return {"facts": facts, "facts_hash": legacy_hash, "execution": projections,
+    return {"facts": facts, "execution": projections,
             "resource_facts": CapturedResourceFacts(preflight.tables, {}),
             "baseline": run_baseline(conn, capture=capture), "preflight_facts": preflight}
 

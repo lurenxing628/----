@@ -35,7 +35,7 @@ def _report_segments(projection):
     )
 
 
-def _actual_intervals(projection, reasons, report_segments):
+def _actual_intervals(projection, reasons, report_segments, first_start, confirmed_finish):
     intervals = []
     for start, end, _ in report_segments:
         if start is None or end is None or end <= start:
@@ -43,16 +43,14 @@ def _actual_intervals(projection, reasons, report_segments):
         else:
             intervals.append((start, end))
     if not projection.reports and projection.completion_basis == "legacy_finish_event":
-        start, end = _actual_time(projection.first_actual_start), _actual_time(projection.confirmed_finish)
-        if start is not None and end is not None and end > start:
-            intervals.append((start, end))
+        if first_start is not None and confirmed_finish is not None and confirmed_finish > first_start:
+            intervals.append((first_start, confirmed_finish))
         else:
             reasons.append("execution_ledger_actual_interval_missing")
     return tuple(intervals)
 
 
-def _requires_ledger_projection(fact, projection):
-    gap_codes = [gap["code"] for gap in projection.data_gaps]
+def _requires_ledger_projection(fact, projection, gap_codes):
     identity_invalid = bool(_IDENTITY_GAPS.intersection(gap_codes))
     # Report intervals and completed legacy evidence use the strict ledger
     # contract; in-progress event-only evidence keeps legacy plan duration.
@@ -60,8 +58,7 @@ def _requires_ledger_projection(fact, projection):
     return bool(projection.reports or identity_invalid or old_finish)
 
 
-def _protected_status(projection, reasons):
-    gap_codes = [gap["code"] for gap in projection.data_gaps]
+def _protected_status(projection, reasons, gap_codes):
     status = _STATUSES.get(projection.execution_state)
     if status is None:
         reasons.append("execution_ledger_protection_flags_missing")
@@ -77,8 +74,8 @@ def _protected_status(projection, reasons):
     return status
 
 
-def _protected_intervals(projection, status, reasons, report_segments):
-    intervals = _actual_intervals(projection, reasons, report_segments)
+def _protected_intervals(projection, status, reasons, report_segments, first_start, confirmed_finish):
+    intervals = _actual_intervals(projection, reasons, report_segments, first_start, confirmed_finish)
     if status == "completed" and (not intervals or any(
         left[1] != right[0] for left, right in zip(intervals, intervals[1:])
     )):
@@ -119,10 +116,10 @@ def _actual_resources(projection, resources, *, source, reasons, report_segments
     return machine, operator
 
 
-def _legacy_in_progress_changes(fact, projection, resources, *, source):
+def _legacy_in_progress_changes(fact, projection, resources, gap_codes, *, source):
     if not projection.legacy_facts or projection.execution_state not in ("started", "paused", "exception"):
         return None
-    reasons = [gap["code"] for gap in projection.data_gaps] if projection.data_quality == "invalid" else []
+    reasons = gap_codes if projection.data_quality == "invalid" else []
     machine, operator = _actual_resources(projection, resources, source=source, reasons=reasons)
     start = _actual_time(projection.first_actual_start)
     if start is None:
@@ -137,16 +134,19 @@ def _legacy_in_progress_changes(fact, projection, resources, *, source):
 
 
 def ledger_fact_changes(fact, projection, resources, *, source):
-    if not _requires_ledger_projection(fact, projection):
-        return _legacy_in_progress_changes(fact, projection, resources, source=source)
+    gap_codes = [gap["code"] for gap in projection.data_gaps]
+    if not _requires_ledger_projection(fact, projection, gap_codes):
+        return _legacy_in_progress_changes(fact, projection, resources, gap_codes, source=source)
     reasons = []
-    status = _protected_status(projection, reasons)
+    status = _protected_status(projection, reasons, gap_codes)
     report_segments = _report_segments(projection)
-    intervals = _protected_intervals(projection, status, reasons, report_segments)
+    first_start = _actual_time(projection.first_actual_start)
+    confirmed_finish = _actual_time(projection.confirmed_finish)
+    intervals = _protected_intervals(projection, status, reasons, report_segments, first_start, confirmed_finish)
     machine, operator = _actual_resources(projection, resources, source=source, reasons=reasons,
                                           report_segments=report_segments)
-    return {"actual_status": status, "actual_start_time": _actual_time(projection.first_actual_start),
-            "actual_end_time": _actual_time(projection.confirmed_finish), "actual_machine_id": machine,
+    return {"actual_status": status, "actual_start_time": first_start,
+            "actual_end_time": confirmed_finish, "actual_machine_id": machine,
             "actual_operator_id": operator, "ledger_operation_ref": projection.operation_ref,
             "ledger_execution_state": projection.execution_state, "remaining_quantity": projection.remaining_quantity,
             "execution_effective_intervals": intervals, "execution_protection_reasons": tuple(dict.fromkeys(reasons))}

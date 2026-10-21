@@ -10,14 +10,13 @@ from datetime import date, datetime
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from core.algorithm_contracts.ordering import normalize_batch_order_override
+from core.algorithm_runtime.algo_stats import capture_algo_stats, merge_algo_stats
 from core.algorithms.evaluation import compute_metrics, prepare_evaluation_context
-from core.algorithms.greedy.algo_stats import capture_algo_stats, merge_algo_stats
 from core.algorithms.greedy.schedule_params import resolve_schedule_params
 from core.errors import ValidationError
 
 from .shared_archive import ArchiveObservation
 from .shared_budget import SharedSearchSkip
-from .signature_support import schedule_with_optional_strict_mode
 
 _REDECODE_KINDS = {
     "capture_checkpoints": "capture_checkpoints", "validate_trial": "validation_decode",
@@ -103,6 +102,7 @@ class SharedDecodeSession:
         graph_ready_context: Optional[Dict[str, Any]] = None, clock: Callable[[], float],
         started_at: float, deadline: float, start_dt: Any = None,
         schedule_fn: Optional[Callable[..., Any]] = None, event_sink: Optional[Callable[[Dict[str, Any]], Optional[int]]] = None,
+        evaluation_context: Optional[Any] = None,
     ) -> None:
         from core.algorithms.greedy.scheduler import prepare_native_schedule_inputs
 
@@ -117,8 +117,12 @@ class SharedDecodeSession:
             seed_results=seed_results, resource_pool=resource_pool, graph_ready_context=graph_ready_context,
         )
         self._normalized_batches = self.native_preparation.batches
-        self.evaluation_context = prepare_evaluation_context(
-            batches=batches, expected_operations=operations, seed_results=seed_results,
+        self.evaluation_context = (
+            evaluation_context
+            if evaluation_context is not None
+            else prepare_evaluation_context(
+                batches=batches, expected_operations=operations, seed_results=seed_results,
+            )
         )
         self._graph_context = self.native_preparation.graph_ready_context
         self._base_operation_resources = {
@@ -127,7 +131,7 @@ class SharedDecodeSession:
         }
         self._operations_by_id = {op.id: op for op in operations}
         self._select_decoder(schedule_fn)
-        self._operation_ids = frozenset(op.id for op in operations)
+        self._operation_ids = {op.id for op in operations}
         self._records: Dict[DecodeRequest, _RequestRecord] = {}
         self._by_id: Dict[int, _RequestRecord] = {}
         self.actual_decoder_calls = 0
@@ -141,11 +145,10 @@ class SharedDecodeSession:
         from core.algorithms.greedy.scheduler import GreedyScheduler
 
         method = self.scheduler.schedule
-        native_method = (getattr(method, "__func__", None) is GreedyScheduler.schedule
-                                           and schedule_fn in (None, schedule_with_optional_strict_mode))
+        native_method = getattr(method, "__func__", None) is GreedyScheduler.schedule and schedule_fn is None
         self._native_decode = self.scheduler.schedule_prepared if native_method else None
         self._schedule_method = method
-        self._schedule_adapter = schedule_fn if schedule_fn is not schedule_with_optional_strict_mode else None
+        self._schedule_adapter = schedule_fn
         signature = inspect.signature(method)
         self._schedule_keywords = None if any(p.kind == inspect.Parameter.VAR_KEYWORD
                                              for p in signature.parameters.values()) else set(signature.parameters)
@@ -190,10 +193,9 @@ class SharedDecodeSession:
                 raise ValidationError("图评分开关 score_enabled 必须是 bool。", field="graph_ready_context")
             keys = kwargs.get("graph_priority_key_by_op_id")
             if score_enabled:
-                if (not isinstance(keys, dict) or set(keys) != self._operation_ids
-                        or any(type(op_id) is not int for op_id in keys)):
+                if not isinstance(keys, dict) or any(type(op_id) is not int for op_id in keys):
                     raise ValidationError("图评分 key 必须覆盖全部待排工序。", field="graph_ready_context")
-                keys = _graph_priority_key_map(keys, schedulable_ids=set(self._operation_ids))
+                keys = _graph_priority_key_map(keys, schedulable_ids=self._operation_ids)
                 preorder = graph_priority_preorder(keys)
             context = dict(self._graph_context, score_enabled=score_enabled, graph_priority_key_by_op_id=keys)
         resource_changes = kwargs.get("operation_resources") or {}
@@ -304,7 +306,7 @@ class SharedDecodeSession:
         needs_capture = (redecode_reason == "capture_checkpoints"
                          or (not resumed and schedule_kwargs.get("decode_checkpoints") is not None))
         if record.verified and record.entry_id is not None and not needs_capture:
-            if record.entry_id in self.archive.retained_entry_ids:
+            if record.entry_id in self.archive:
                 candidate = self.archive.view(record.entry_id, objective=objective_name)
                 candidate["summary"] = copy(candidate["summary"])
                 source_receipt = candidate.get("decode_receipt") or {}
@@ -381,7 +383,7 @@ class SharedDecodeSession:
         )
         entry_id = observation.entry_id
         receipt["entry_id"] = entry_id
-        if entry_id in self.archive.retained_entry_ids:
+        if entry_id in self.archive:
             res = self.archive.view(entry_id, objective=objective_name)["results"]
             if not resumed:
                 record.entry_id, record.verified = entry_id, True
@@ -411,7 +413,7 @@ class SharedDecodeSession:
                            request_id: Optional[int] = None, entry_id: Optional[int] = None) -> Dict[str, Any]:
         receipt = {"request_id": request_id, "entry_id": entry_id, "execution_kind": execution_kind,
                    "actual_decoder_calls": 0,
-                   "verified": execution_kind == "reference_reused" and entry_id in self.archive.retained_entry_ids,
+                   "verified": execution_kind == "reference_reused" and entry_id in self.archive,
                    "current_elapsed_ms": 0.0}
         if self.event_sink is not None:
             event_id = self.event_sink(dict(receipt, event_type="local_reuse", search_objective=objective_name,
@@ -425,8 +427,6 @@ class SharedDecodeSession:
                 "decision_reuses": self.reused_decisions, "skipped_requests": self.skipped_requests,
                 "failed_decoder_calls": self.failed_decoder_calls, "request_count": len(self._records),
                 "execution_counts": dict(self._execution_counts)}
-
-    summary = stats
 
 
 def decode_and_metrics(

@@ -142,10 +142,6 @@ class WorkbenchOutsourcingSourceService:
         public = source["public"][kind]
         return {"ref": ref, "business_code": _target_text(public["business_code"]), "label": _target_text(public["label"])}
 
-    def targets(self, batch_ref=None, query=""):
-        """Add nullable batch/supplier {ref, business_code, label}; unknown text stays null."""
-        return [item for item, source in self.load_targets(batch_ref, query)]
-
     def load_targets(self, batch_ref=None, query=""):
         """Capture source dependencies once, then project the original target contract."""
         rows, captured = self.capture_targets(batch_ref, query)

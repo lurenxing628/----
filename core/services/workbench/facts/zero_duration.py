@@ -20,16 +20,17 @@ def point_work_quantity(operation, batch, execution, operation_ref):
     """Use the original single-piece target, never the enclosing batch quantity."""
     _point_work_identity(operation, batch, execution, operation_ref)
     piece, quantity = operation.get("piece_id"), batch.get("quantity")
-    if type(quantity) is not int or not number(quantity, integer=True):
+    if not number(quantity, integer=True):
         raise PointEventError("quantity_unknown", "零工时工序没有读到原批次数量，不能核对。请先补好批次数量。")
     if piece is not None:
         if not _canonical_identity(piece) or quantity == 0:
             raise PointEventError("point_identity_unproven", "分件的零工时工序必须有明确的分件号，而且批次数量要大于 0。")
         quantity = 1
-    if (type(execution.get("target_quantity")) is not int or execution["target_quantity"] != quantity
+    target = execution.get("target_quantity")
+    if (type(target) is not int or target != quantity
             or execution.get("target_basis") != ("piece" if piece is not None else "batch")):
         raise PointEventError("quantity_unknown", "零工时工序的数量或计数方式与原报工记录不一致，不能核对。")
-    return quantity
+    return target
 
 
 def _point_work_identity(operation, batch, execution, operation_ref):

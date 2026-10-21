@@ -78,23 +78,22 @@ def _items(keys, facts, rows, tasks, intervals, incomplete, uncertain, deferred)
     for row in rows:
         schedules[row["batch_id"]].append(row)
     result, missing = [], []
+    uncertain_list = sorted(uncertain)
     for key in keys:
         batch, ref = facts.tables["Batches"].get(key), facts.entity_refs.get(("batch", key))
         if batch is None or ref is None:
             missing.append(key)
             continue
         item = project_delivery_batch(batch, ref, schedules[key], operations.get(key, ()), intervals,
-                                      key in incomplete, sorted(uncertain), deferred_operation_ids=deferred)
+                                      key in incomplete, uncertain_list, deferred_operation_ids=deferred)
         item["last_operations"] = _last_operations(item, tasks.get(key, []))
         result.append(item)
     return result, missing
 
 
 def _project_items(candidate, facts, tasks, disposition, settings, *, scope=None, visible=(), unplanned=None,
-                   intervals=None, prepared_groups=None, deferred_ids=None):
-    rows, by_batch, original_uncertain = (prepare_candidate_delivery_groups(tasks, facts)
-                                          if prepared_groups is None else prepared_groups)
-    uncertain = set(original_uncertain)
+                   intervals=None, deferred_ids=None):
+    rows, by_batch, uncertain = prepare_candidate_delivery_groups(tasks, facts)
     keys = _selected_keys(settings, facts, by_batch, visible, unplanned, scope, uncertain)
     incomplete, negative = _negative_completion(candidate, disposition)
     uncertain.update(negative)
@@ -104,17 +103,16 @@ def _project_items(candidate, facts, tasks, disposition, settings, *, scope=None
     return items, missing, uncertain, len(keys)
 
 
-def project_legacy_delivery_detail(candidate, facts, tasks, disposition, settings, *, intervals=None, prepared_groups=None, deferred_ids=None):
+def project_legacy_delivery_detail(candidate, facts, tasks, disposition, settings, *, intervals=None, deferred_ids=None):
     """Keep all whole-candidate batch rows and every tied last operation for saved detail."""
     return _project_items(candidate, facts, tasks, disposition, settings,
-                          intervals=intervals, prepared_groups=prepared_groups, deferred_ids=deferred_ids)[0]
+                          intervals=intervals, deferred_ids=deferred_ids)[0]
 
 
-def candidate_delivery_risks(candidate, facts, tasks, disposition, scope, settings, visible, unplanned, *,
-                             intervals=None, prepared_groups=None):
+def candidate_delivery_risks(candidate, facts, tasks, disposition, scope, settings, visible, unplanned):
     """Select by display scope, but calculate every selected batch in full."""
     items, missing, uncertain, batch_count = _project_items(candidate, facts, tasks, disposition, settings,
-        scope=scope, visible=visible, unplanned=unplanned, intervals=intervals, prepared_groups=prepared_groups)
+        scope=scope, visible=visible, unplanned=unplanned)
     issues = [{"code": code, "message": "排产时记下的依据不完整，交付结论算不出来；系统没有拿当前资料凑。"}
               for code in sorted(uncertain)]
     if missing:

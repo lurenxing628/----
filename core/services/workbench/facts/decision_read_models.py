@@ -15,6 +15,11 @@ _BATCH_MEMBERS = frozenset(("batch_refs", "covered_batch_refs", "complete_batch_
     "ordinary_incomplete_batch_refs", "deferred_batch_refs", "unknown_batch_refs", "common_completed_batch_refs"))
 _PREPARATION_ALLOCATION_MEMBERS = frozenset(("new_schedule", "retained", "execution", "completed", "external",
                                           "unplanned", "deferred", "unknown"))
+ARRANGEMENT_COLUMNS = (
+    "row_ref", "operation_ref", "batch_ref", "batch_label", "process_label", "process_type_ref", "process_type_label",
+    "start", "end", "machine_resource_index", "operator_resource_index", "supplier_resource_index", "source", "locked", "interval_comparable",
+    "event_kind", "occupies_resources", "data_gaps",
+)
 
 
 class Memberships:
@@ -87,10 +92,7 @@ def analysis_arrangements(value):
             type(value.get("rows")) is not list or type(value.get("resource_values")) is not list):
         corrupt()
     columns = value["columns"]
-    expected = ("row_ref", "operation_ref", "batch_ref", "batch_label", "process_label", "process_type_ref", "process_type_label",
-        "start", "end", "machine_resource_index", "operator_resource_index", "supplier_resource_index", "source", "locked", "interval_comparable",
-        "event_kind", "occupies_resources", "data_gaps")
-    if columns != list(expected):
+    if columns != list(ARRANGEMENT_COLUMNS):
         corrupt()
     result = []
     resources = value["resource_values"]

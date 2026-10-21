@@ -21,6 +21,7 @@ from core.services.workbench.facts.file_source import source_rows
 from .file_lists import decode_code_list
 
 NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?\Z")
+_ENUM_CODES = {field: {label: code for code, label in items.items()} for field, items in ENUM_LABELS.items()}
 
 
 def file_error(message, row=1, field="file"):
@@ -29,8 +30,9 @@ def file_error(message, row=1, field="file"):
 
 def _headers(kind, values):
     names = {column["label"]: column["key"] for column in public_columns(kind)}
-    names.update({key: key for key in file_columns(kind)})
-    names.update({label: field for label, field in LEGACY_LABELS.items() if field in file_columns(kind)})
+    columns = file_columns(kind)
+    names.update({key: key for key in columns})
+    names.update({label: field for label, field in LEGACY_LABELS.items() if field in columns})
     fields = []
     for value in values:
         if type(value) is not str or value not in names:
@@ -69,7 +71,7 @@ def _decode_field(value, field):
     if field in JSON_FIELDS:
         return _decode_json(value, field)
     if field in ENUM_LABELS and type(value) is str:
-        return {label: code for code, label in ENUM_LABELS[field].items()}.get(value, value)
+        return _ENUM_CODES[field].get(value, value)
     return value
 
 

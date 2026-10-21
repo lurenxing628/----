@@ -2,7 +2,7 @@
 
 from flask import current_app, g, request
 
-from core.models.workbench_batch import normalize_operation_input, object_fields, public_ref
+from core.models.workbench_batch import normalize_batch_input, normalize_operation_input, object_fields, public_ref
 from core.models.workbench_batch_material import normalize_material_changes
 from core.models.workbench_batch_query import batch_scope, snapshot_scope
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -34,7 +34,7 @@ def entity_context(entity, issue_context):
     blocked = []
     if not entity["protected"]:
         actions.extend(("batch.sync_confirm", "batch.operation_update"))
-        if entity["relationships"].get("quantity_split_reference_count", 0):
+        if entity["relationships"]["quantity_split_reference_count"]:
             blocked.append({"action": "batch.delete", "message": "这个批次有数量拆分记录，需保留原批与子批以核对数量，不能删除。"})
         elif not entity["relationships"]["material_requirement_count"]:
             actions.append("batch.delete")
@@ -42,7 +42,7 @@ def entity_context(entity, issue_context):
             blocked.append({"action": "batch.delete", "message": "批次还挂着物料需求，不能删除。请先清除这个批次的物料需求，再删除批次。"})
     else:
         reason = ("已有外协发出或回厂登记，不能删除、重建或编辑工序，以免原登记无法继续核对回厂。"
-                  if entity["relationships"].get("outsourcing_reference_count", 0)
+                  if entity["relationships"]["outsourcing_reference_count"]
                   else "已有排产、报工或执行状态记录，暂不能删除、替换或编辑工序。")
         for action in ("delete", "sync_confirm", "operation_update"):
             blocked.append({"action": "batch." + action, "message": reason})
@@ -121,7 +121,7 @@ def batch_command(action, ref=None):
     if action == "materials_update":
         normalized = normalize_material_changes(body["input"])
     else:
-        normalized = normalize_operation_input(body["input"]) if action == "operation_update" else domain.normalize(action, body["input"])
+        normalized = normalize_operation_input(body["input"]) if action == "operation_update" else normalize_batch_input(action, body["input"])
     subject = COLLECTION if action == "create" else public_ref(ref)
 
     def guard():
@@ -170,8 +170,7 @@ def batch_preview(action, ref=None):
             data = WorkbenchBatchBulkService(g.db, current_app.logger, reader=reader).plan_normalized(payload)
         preview, expires_at = save_preview(action, ref, payload, fingerprint, with_expiry=True)
         data.update(preview_ref=preview, expires_at=expires_at,
-                    write_context=preview_write_context(preview, expires_at, ["batch." + action]),
-                    warnings=data.get("warnings", []))
+                    write_context=preview_write_context(preview, expires_at, ["batch." + action]))
         snapshot = bind_read_snapshot({"kind": "batch_preview", "preview_ref": preview}, fingerprint)
     return query_success(data, snapshot)
 
@@ -200,7 +199,7 @@ def batch_facets():
 @api_endpoint
 def batch_confirm(action, ref=None):
     body = command_body()
-    normalized = dict(object_fields(body["input"], ("preview_ref",), ("preview_ref",)))
+    normalized = object_fields(body["input"], ("preview_ref",), ("preview_ref",))
     token = normalized["preview_ref"]
     if not isinstance(token, str) or not token:
         raise WorkbenchCommandRejected("invalid_input", retry_message(action, "预检结果编号缺失"), 400)

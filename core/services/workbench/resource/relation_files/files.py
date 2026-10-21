@@ -95,9 +95,8 @@ class WorkbenchRelationFileService:
     def _build_rows(self, source, preparation) -> List[Dict[str, Any]]:
         rows = [self._parse_row(item) for item in source]
         self._reject_duplicate_pairs(rows)
-        entities = self._load_entities(rows, preparation)
         for row in rows:
-            self._resolve_entities(row, entities)
+            self._resolve_entities(row, preparation)
         current = self._load_current_links(rows, preparation)
         primaries = self._final_primaries(rows, current)
         for row in rows:
@@ -148,35 +147,20 @@ class WorkbenchRelationFileService:
                     reject_action_row(item, "文件里有重复的工号和设备编号组合，这些行都没有导入：第 " + numbers
                                       + " 行。请去掉重复项后重新上传。", field="machine_code", code="duplicate_entry")
 
-    def _load_entities(self, rows, preparation) -> Dict[str, Dict[str, Any]]:
-        """按去重后的编号取实体，避免逐行查库。"""
-        wanted: Dict[str, set] = {"operator": set(), "machine": set()}
-        for row in rows:
-            for key, entity in _ENTITY_OF.items():
-                code = row["values"].get(key)
-                if code is not None:
-                    wanted[entity].add(code)
-        loaded: Dict[str, Dict[str, Any]] = {"operator": {}, "machine": {}}
-        for entity, codes in wanted.items():
-            for code in sorted(codes):
-                raw = preparation.raw(entity, code)
-                loaded[entity][code] = raw
-        return loaded
-
-    def _resolve_entities(self, row, entities) -> None:
+    def _resolve_entities(self, row, preparation) -> None:
         if _blocked(row):
             return
+        expected = {}
         for key, entity in _ENTITY_OF.items():
-            code = row["values"].get(key)
-            raw = entities[entity].get(code)
+            code = row["values"][key]
+            raw = preparation.raw(entity, code)
             if raw is None:
                 reject_action_row(row, "系统里找不到这个编号，这一行没有导入。请先在基础资料里维护好再导入。", field=key)
                 return
-        operator = entities["operator"][row["values"]["operator_code"]]
-        machine = entities["machine"][row["values"]["machine_code"]]
-        row["expected"] = {"operator": operator, "machine": machine}
-        row["values"]["operator_label"] = operator.get("name")
-        row["values"]["machine_label"] = machine.get("name")
+            expected[entity] = raw
+        row["expected"] = expected
+        row["values"]["operator_label"] = expected["operator"]["name"]
+        row["values"]["machine_label"] = expected["machine"]["name"]
 
     def _load_current_links(self, rows, preparation) -> Dict[str, Dict[str, Dict[str, str]]]:
         """一次取回涉及人员的全部现有关联；连带影响要看整组，不能只看文件里这几行。"""
@@ -200,17 +184,15 @@ class WorkbenchRelationFileService:
             if not _blocked(row):
                 by_operator.setdefault(row["values"]["operator_code"], []).append(row)
         kept = {operator for operator, links in current.items()
-                if self._unchanged_operator(operator, links, by_operator.get(operator, []))}
+                if self._unchanged_operator(links, by_operator.get(operator, []))}
         claimed = self._claimed_primaries(rows, kept)
         return {operator: self._primary_for(operator, links, by_operator.get(operator, []), claimed, operator in kept)
                 for operator, links in current.items()}
 
     @staticmethod
-    def _unchanged_operator(operator, links, rows) -> bool:
+    def _unchanged_operator(links, rows) -> bool:
         """文件里这个人的每一行都和现有关系一样：技能等级、主操标记要么没填，要么就是原值。"""
         for row in rows:
-            if _blocked(row) or row["values"].get("operator_code") != operator:
-                continue
             before = links.get(row["values"]["machine_code"])
             if before is None or any(row["values"].get(key) not in (None, before[key]) for key in ("skill_level", "is_primary")):
                 return False
@@ -249,7 +231,7 @@ class WorkbenchRelationFileService:
             return {items[0]["values"]["machine_code"]}
         # 多行抢主操的那一组已经整批拒绝，主操保持原样；没人抢时只看原主操有没有被显式取消。
         dropped = not items and any(row["values"].get("is_primary") == "no" and row["values"]["machine_code"] == existing
-                                    for row in rows if not _blocked(row) and row["values"].get("operator_code") == operator)
+                                    for row in rows if not _blocked(row))
         return set() if dropped or existing is None else {existing}
 
     def _classify(self, row, current, primaries) -> None:
@@ -349,7 +331,6 @@ class WorkbenchRelationFileService:
     def _rows_for(self, codes) -> List[Dict[str, Any]]:
         if not codes:
             return []
-        names = {"operator": {}, "machine": {}}
         rows = []
         for link in self.links.list_simple_rows_for_operators(codes):
             # 导出写中文：文件里的下拉和填写说明都是中文，格子里却留英文代号的话，
@@ -362,14 +343,13 @@ class WorkbenchRelationFileService:
                 "skill_level": EXPORT_LABELS["skill_level"][normalize_skill_level_stored(link.get("skill_level"))],
                 "is_primary": EXPORT_LABELS["is_primary"][normalize_yes_no_stored(link.get("is_primary"))],
             })
+        operators = self.repo.raw_many("operator", (row["operator_code"] for row in rows))
+        machines = self.repo.raw_many("machine", (row["machine_code"] for row in rows))
         for row in rows:
-            for key, entity in _ENTITY_OF.items():
-                code = row[key]
-                if code not in names[entity]:
-                    raw = self.repo.raw(entity, code)
-                    names[entity][code] = raw.get("name") if raw is not None else None
-            row["operator_label"] = names["operator"][row["operator_code"]]
-            row["machine_label"] = names["machine"][row["machine_code"]]
+            operator = operators.get(row["operator_code"])
+            machine = machines.get(row["machine_code"])
+            row["operator_label"] = operator["name"] if operator is not None else None
+            row["machine_label"] = machine["name"] if machine is not None else None
         return rows
 
     def export_rows(self, file_format, *, scope, selected_refs=None):

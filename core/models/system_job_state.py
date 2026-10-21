@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Optional
 
-from ._helpers import RowLike, as_dict, get, parse_int
+from ._helpers import RowLike, get, parse_int
 
 
 @dataclass
@@ -24,15 +24,3 @@ class SystemJobState:
             last_run_detail=get(row, "last_run_detail"),
             updated_at=get(row, "updated_at"),
         )
-
-    def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "id": self.id,
-                "job_key": self.job_key,
-                "last_run_time": self.last_run_time,
-                "last_run_detail": self.last_run_detail,
-                "updated_at": self.updated_at,
-            }
-        )
-

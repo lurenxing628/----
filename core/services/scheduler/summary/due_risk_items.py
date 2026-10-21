@@ -116,6 +116,7 @@ def incomplete_batches_payload(
     finish_by_batch: Dict[str, datetime],
     batches: Dict[str, Any],
     results: List[Any],
+    incomplete_batch_ids: Optional[Set[str]] = None,
 ) -> Dict[str, Any]:
     """result_summary["incomplete_batches"] 桶：排产未完成批次风险清单。
 
@@ -123,8 +124,10 @@ def incomplete_batches_payload(
     items 上限 50 条防摘要膨胀，count 为全量。
     """
     details = [item for item in list(failure_details or []) if isinstance(item, dict)]
+    if incomplete_batch_ids is None:
+        incomplete_batch_ids = incomplete_batch_ids_from_failure_details(details, finish_by_batch)
     items = build_incomplete_batch_items(
-        incomplete_batch_ids=incomplete_batch_ids_from_failure_details(details, finish_by_batch),
+        incomplete_batch_ids=incomplete_batch_ids,
         batches=batches,
         finish_by_batch=finish_by_batch,
         results=results,
@@ -204,20 +207,19 @@ def _build_overdue_items(
         )
 
     if invalid_due_count > 0:
-        sample_ids = "，".join(invalid_due_ids_sample[:10])
+        sample_ids = "，".join(invalid_due_ids_sample)
         message = f"存在 {invalid_due_count} 个批次交期写法不对，已忽略超期与临期判断（示例批次：{sample_ids}）"
         warning_appended = append_summary_warning_fn(summary, message)
         if logger is not None:
-            raw_sample = "；".join(invalid_due_raw_sample[:5])
+            raw_sample = "；".join(invalid_due_raw_sample)
             detail = f"{message}；示例原始交期：{raw_sample}"
             if not warning_appended:
                 detail += "；且 summary.warnings 追加失败"
             logger.warning(detail)
 
     return overdue_items, {
-        "invalid_due_count": int(invalid_due_count),
-        "invalid_due_batch_ids_sample": list(invalid_due_ids_sample),
-        "invalid_due_raw_sample": list(invalid_due_raw_sample),
+        "invalid_due_count": invalid_due_count,
+        "invalid_due_batch_ids_sample": invalid_due_ids_sample,
         "near_due_items": near_due_items,
     }
 

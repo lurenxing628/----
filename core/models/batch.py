@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, as_dict, get, parse_int_or_default
+from ._helpers import RowLike, get, parse_int_or_default
 from .enums import BatchPriority, BatchStatus, ReadyStatus
 
 
@@ -45,19 +45,17 @@ class Batch:
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "batch_id": self.batch_id,
-                "part_no": self.part_no,
-                "part_name": self.part_name,
-                "quantity": self.quantity,
-                "due_date": self.due_date,
-                "priority": self.priority,
-                "ready_status": self.ready_status,
-                "ready_date": self.ready_date,
-                "status": self.status,
-                "remark": self.remark,
-                "created_at": self.created_at,
-                "updated_at": self.updated_at,
-            }
-        )
+        return {
+            "batch_id": self.batch_id,
+            "part_no": self.part_no,
+            "part_name": self.part_name,
+            "quantity": self.quantity,
+            "due_date": self.due_date,
+            "priority": self.priority,
+            "ready_status": self.ready_status,
+            "ready_date": self.ready_date,
+            "status": self.status,
+            "remark": self.remark,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }

@@ -103,9 +103,8 @@ def _preview_input():
 
 @api_endpoint
 def calendar_range_preview():
-    payload = WorkbenchCalendarService.normalize("preview", _preview_input())
     try:
-        return _build_preview(_service(), payload)
+        return _build_preview(_service(), _preview_input())
     except (AppError, WorkbenchCommandRejected):
         raise
     except Exception:
@@ -137,7 +136,7 @@ def calendar_range_confirm():
 
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action="calendar.confirm", context_ref=ref, normalized_input=payload,
-        guard=guard, mutate=lambda preview: domain.apply("confirm", payload, preview))
+        guard=guard, mutate=lambda preview: domain._apply_checked("confirm", payload, preview))
     release_preview(ref)
     return json_response(outcome)
 

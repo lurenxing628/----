@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
-from core.services.scheduler.schedule_history_query_service import ScheduleHistoryQueryService
+from data.repositories import ScheduleHistoryRepository
 
 
 def _mem_conn() -> sqlite3.Connection:
@@ -103,7 +103,7 @@ def test_schedule_history_query_service_versions_and_latest() -> None:
     )
     conn.commit()
 
-    q = ScheduleHistoryQueryService(conn)
+    q = ScheduleHistoryRepository(conn)
 
     assert q.get_latest_version() == 2
 

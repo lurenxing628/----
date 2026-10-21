@@ -76,16 +76,20 @@ def preparation_summary(rows, *, available=True, requirements_available=None):
     internal = [row for row in rows if row.get("source") != SourceType.EXTERNAL.value]
     requirements_available = available if requirements_available is None else requirements_available
     by_allocation = {name: [row for row in internal if row["allocation_state"] == name] for name in _ALLOCATIONS}
+    selected_by_group = {}
+    for group, allocations in _GROUPS.items():
+        if not available and group in ("scheduled", "unplanned"):
+            selected_by_group[group] = [row for row in internal if row.get("requirement_role") in ("new_schedule", "unknown")]
+        else:
+            selected = [row for name in allocations for row in by_allocation[name]]
+            # A missing old runtime role cannot prove that an arranged operation was
+            # newly scheduled; its unknown contribution remains in the scheduled view.
+            if group == "scheduled":
+                selected = [row for row in selected if row["allocation_state"] != "unknown" or row.get("arranged")]
+            selected_by_group[group] = selected
     values = {}
     for key, _label, field, group, _common in PREPARATION_METRICS:
-        selected = [row for name in _GROUPS[group] for row in by_allocation[name]]
-        # A missing old runtime role cannot prove that an arranged operation was
-        # newly scheduled; its unknown contribution remains in the scheduled view.
-        if group == "scheduled":
-            selected = [row for row in selected if row["allocation_state"] != "unknown" or row.get("arranged")]
-        if not available and group in ("scheduled", "unplanned"):
-            selected = [row for row in internal if row.get("requirement_role") in ("new_schedule", "unknown")]
-        values[key] = _metric(selected, field, available=requirements_available if group == "pending" else available)
+        values[key] = _metric(selected_by_group[group], field, available=requirements_available if group == "pending" else available)
         values[key]["coverage_groups"] = list(_GROUPS[group])
     roles = {}
     for role in _ROLES:

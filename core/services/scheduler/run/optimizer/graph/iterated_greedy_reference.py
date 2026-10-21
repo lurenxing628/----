@@ -16,14 +16,12 @@ from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphRead
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
 
 from .iterated_greedy_acceptance import PoolEntry
-from .iterated_greedy_contract import _BudgetExhausted, ig_decode_profile
+from .iterated_greedy_contract import _BudgetExhausted
 from .iterated_greedy_moves import _parent_from_candidate
 
 
 def seed_solution_pool(search: Any) -> None:
     """Offer the incumbent and every current elite to the bounded start pool (decision-key deduplicated)."""
-    if search.operations is None or search.graph_context is None:
-        return
     best = search._require_best()
     sources = [best]
     sources.extend(elite["candidate"] for elite in search.pool.elites)
@@ -59,7 +57,7 @@ def capture_reference(search: Any, entry: PoolEntry) -> Optional[PoolEntry]:
 
 def decode_reference(search: Any, order: Any, *, before: Dict[str, Any], reference_kind: str) -> Optional[PoolEntry]:
     """Record a real SGS reference decode, including the due-date starting proposal."""
-    observer = getattr(getattr(search, "report_state", None), "reference_capture_observer", None)
+    observer = search.report_state.reference_capture_observer if search.report_state is not None else None
     started_at = search.clock() if observer is not None else None
     session = search.decode_session
     before_actual = session.actual_decoder_calls
@@ -86,6 +84,11 @@ def reference_for_iteration(search: Any) -> PoolEntry:
     if search.non_improving < search.limits.stagnation_iterations:
         return reference
     search.non_improving = 0
+    return restart_from_pool(search, reference)
+
+
+def restart_from_pool(search: Any, reference: PoolEntry) -> PoolEntry:
+    """Capture another pool entry, rolling back the walk context if its capture is unavailable."""
     seed_solution_pool(search)
     restart = search.solution_pool.pick(search.pool_rnd, exclude_entry=reference)
     if restart is None or restart.decision_key() == reference.decision_key():
@@ -104,8 +107,7 @@ def reference_for_iteration(search: Any) -> PoolEntry:
         search.solution_pool.refresh(decoded)
     search.report["pool"]["restarts"] += 1
     search.rotation.reset_sizes()
-    search.idle_iterations = 0
-    search.rejected_iterations = 0
+    search.idle_iterations = search.rejected_iterations = 0
     search.reference = decoded
     return decoded
 
@@ -113,15 +115,13 @@ def reference_for_iteration(search: Any) -> PoolEntry:
 def adopt_incumbent(search: Any, candidate: Dict[str, Any], profile: Optional[GraphReadyWeightProfile]) -> None:
     """Another stage improved the incumbent: base the walk on it, or keep the old walk when its capture fails."""
     search.best = candidate
-    if search.operations is None or search.graph_context is None:
-        return
     parent = _parent_from_candidate(candidate, operations=search.operations, graph_context=search.graph_context,
                                     resource_pool=candidate.get("resource_pool"), prepared_parent=search.pool.prepare_parent(candidate))
     if parent is None:
         return
     search.report["incumbent_adoptions"] += 1
     previous_parent, previous_profile, previous_reference = search.parent, search.profile, search.reference
-    search._set_parent(parent, ig_decode_profile(profile or search.profile))
+    search._set_parent(parent, profile or search.profile)
     entry = PoolEntry(order=parent.order, score=tuple(candidate["score"]), candidate=candidate,
                       batch_order=parent.batch_order, resource_overrides=parent.inherited, profile=search.profile)
     try:
@@ -146,4 +146,4 @@ def _roll_back(search: Any, parent: Any, profile: GraphReadyWeightProfile, refer
 
 
 __all__ = ["activate_entry", "adopt_incumbent", "capture_reference", "decode_reference",
-           "reference_for_iteration", "seed_solution_pool"]
+           "reference_for_iteration", "restart_from_pool", "seed_solution_pool"]

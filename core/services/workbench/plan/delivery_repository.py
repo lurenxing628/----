@@ -54,17 +54,16 @@ class PlanDeliveryRepository(WorkbenchPlanDeliveryRepository):
 
     def task_rows(self, identity, *, context, entry=None):
         query = _task_query(identity)
-        raw = context.source_rows(**query)
         if entry is None:
             # Standalone delivery keeps bad time rows visible for its own projection.
+            raw = context.source_rows(**query)
             details = context.repo.enrich_arrangements(raw, version=identity.version)
         else:
             details = context.detail_rows(entry)
-        raw_by_id = {row["id"]: row for row in raw}
         fields = ("schedule_id", "version", "op_id", "machine_id", "operator_id", "batch_id")
         rows = [{**{key: row[key] for key in fields},
-                 "start_time": raw_by_id[row["schedule_id"]]["start_time"],
-                 "end_time": raw_by_id[row["schedule_id"]]["end_time"],
+                 "start_time": row["start_time"],
+                 "end_time": row["end_time"],
                  **({"_point_work": row["_point_work"]} if row.get("_point_work") else {})}
                 for row in sorted(details, key=lambda row: row["schedule_id"])]
         if any(row["batch_id"] is None for row in rows):

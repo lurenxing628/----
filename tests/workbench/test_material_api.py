@@ -108,7 +108,6 @@ def test_material_file_holds_one_batch_preparation_and_export_skips_write_snapsh
     from core.models.workbench_command import WorkbenchCommandUncertain
     from core.services.workbench.material.bulk import WorkbenchMaterialBulkService
     from core.services.workbench.material.files import WorkbenchMaterialFileService
-    from core.services.workbench.material.service import WorkbenchMaterialService
     from data.repositories.material_repo import MaterialRepository
     from data.repositories.workbench_material_file_repo import WorkbenchMaterialFileRepository
     from tests.workbench.material_file_support import confirm_delete, confirm_import
@@ -137,7 +136,6 @@ def test_material_file_holds_one_batch_preparation_and_export_skips_write_snapsh
         service = WorkbenchMaterialFileService(conn)
         preview = service.preview_import(content, file_format="csv", scope={})
         monkeypatch.setattr(WorkbenchMaterialFileRepository, "capture", captured)
-        monkeypatch.setattr(WorkbenchMaterialService, "_current_material", reread)
         monkeypatch.setattr(MaterialRepository, "exists", reread)
         with monkeypatch.context() as patch:
             patch.setattr(MaterialRepository, "update", fail_second)

@@ -7,9 +7,11 @@ from core.services.workbench.process.mutations import WorkbenchProcessMutationSe
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from tests.workbench.process_commands_support import (
     group_rows,
+    hours_input,
     identity_for,
     op_ref,
     op_rows,
+    prepare_stages,
     ref_for,
     route_input,
     run_stage,
@@ -50,7 +52,6 @@ def test_route_review_reuses_current_facts_for_parser_and_choices(stage_conn, mo
 def test_catalog_workflow_reuses_operation_states_and_preserves_stage_results(stage_conn, monkeypatch):
     from core.infrastructure.transaction import TransactionManager
     from core.services.process import workflow_state
-    from tests.workbench.process_commands_support import prepare_stages
 
     prepare_stages(stage_conn)
     with TransactionManager(stage_conn).transaction():
@@ -100,3 +101,20 @@ def test_group_impact_is_readonly_and_exact_ack_is_required(stage_conn, change):
     assert op_rows(stage_conn)[20] == {**old[20], "ext_group_id": None,
         **({"status": "deleted"} if change == "remove" else {"op_type_name": "改名"} if change == "rename" else {})}
     assert op_ref(stage_conn, 20) == old_ref
+
+
+def test_hours_confirm_with_external_and_zero_unit_hours_acknowledgement(stage_conn):
+    prepare_stages(stage_conn)
+    payload = hours_input(stage_conn)
+    unacknowledged = {**payload, "confirm_zero_unit_hours": False}
+    with pytest.raises(WorkbenchCommandRejected) as exc:
+        run_stage(stage_conn, "hours_confirm", unacknowledged, key="hours-zero-unconfirmed")
+    assert exc.value.code == "zero_unit_hours_confirmation_required"
+    assert exc.value.status == 422
+    assert exc.value.operation_refs == [op_ref(stage_conn, 30)]
+
+    confirmed = run_stage(stage_conn, "hours_confirm", payload, key="hours-zero-confirmed")
+    assert confirmed["result"] == "committed"
+
+    repeated = run_stage(stage_conn, "hours_confirm", unacknowledged, key="hours-zero-unchanged")
+    assert repeated["result"] == "unchanged"

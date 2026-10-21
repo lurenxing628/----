@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Optional
 
-from ._helpers import RowLike, as_dict, get, parse_int
+from ._helpers import RowLike, get, parse_int
 
 
 @dataclass
@@ -36,19 +36,3 @@ class ScheduleHistory:
             result_summary=get(row, "result_summary"),
             created_by=get(row, "created_by"),
         )
-
-    def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "id": self.id,
-                "schedule_time": self.schedule_time,
-                "version": self.version,
-                "strategy": self.strategy,
-                "batch_count": self.batch_count,
-                "op_count": self.op_count,
-                "result_status": self.result_status,
-                "result_summary": self.result_summary,
-                "created_by": self.created_by,
-            }
-        )
-

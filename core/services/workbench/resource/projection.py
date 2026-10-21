@@ -15,8 +15,9 @@ def _related(value):
 
 def project_resource(kind, identity, state, *, availability=None, availability_issues=()):
     raw = state["supplier"] if kind == "supplier" else state["record"]
+    profile = raw["profile"] if kind == "supplier" else state.get("profile")
     entity = {"ref": identity.ref, "business_code": identity.entity_key, "label": raw["name"],
-              "status": public_resource_status(kind, raw.get("status"), state.get("profile")),
+              "status": public_resource_status(kind, raw.get("status"), profile),
               "fields": {"remark": raw.get("remark")}, "relationships": {}, "issues": []}
     if kind == "supplier":
         return _supplier(entity, raw)
@@ -84,7 +85,6 @@ def _shift_profile(entity, raw, state):
 
 
 def _supplier(entity, raw):
-    entity["status"] = public_resource_status("supplier", raw["status"], raw["profile"])
     entity["fields"]["default_days"] = raw["default_days"]
     refs = []
     for row in raw["op_types"]:

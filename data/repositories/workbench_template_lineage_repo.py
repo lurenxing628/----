@@ -120,14 +120,6 @@ class WorkbenchTemplateLineageRepository(BaseRepository):
             yield from self.iter_rows("SELECT *, " + EVIDENCE_SIZE_SQL["origins"] +
                 " AS _lineage_bytes FROM WorkbenchTemplateLineageOrigins WHERE operation_ref IN (" + marks + ")", chunk)
 
-    def origins(self, refs):
-        result = {}
-        for chunk in chunks(refs):
-            marks = ",".join("?" for _ in chunk)
-            for row in self.fetchall("SELECT * FROM WorkbenchTemplateLineageOrigins WHERE operation_ref IN (" + marks + ")", chunk):
-                result[row["operation_ref"]] = row
-        return result
-
     def event_chunks(self, refs, limit):
         """Stream body rows, with one global budget across all ref chunks."""
         total = 0

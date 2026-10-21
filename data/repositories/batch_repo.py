@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Union
 
 from core.models import Batch
 
@@ -16,32 +16,6 @@ class BatchRepository(BaseRepository):
             (batch_id,),
         )
         return Batch.from_row(row) if row else None
-
-    def get_ready_snapshot(self, batch_id: str) -> Optional[Dict[str, Any]]:
-        return self.fetchone(
-            """
-            SELECT batch_id, ready_status, ready_date
-            FROM Batches
-            WHERE batch_id = ?
-            """,
-            (str(batch_id),),
-        )
-
-    def list_ready_status_by_batch_ids(self, batch_ids: Sequence[str]) -> Dict[str, str]:
-        ids = sorted({str(batch_id or "").strip() for batch_id in batch_ids if str(batch_id or "").strip()})
-        if not ids:
-            return {}
-        out: Dict[str, str] = {}
-        for i in range(0, len(ids), 900):  # SQLite 默认变量上限约 999，分块留余量
-            chunk = ids[i : i + 900]
-            placeholders = ", ".join("?" for _ in chunk)
-            rows = self.fetchall(
-                f"SELECT batch_id, ready_status FROM Batches WHERE batch_id IN ({placeholders})",
-                tuple(chunk),
-            )
-            for row in rows:
-                out[str(row.get("batch_id") or "")] = str(row.get("ready_status") or "").strip()
-        return out
 
     def list(
         self,
@@ -103,9 +77,6 @@ class BatchRepository(BaseRepository):
             params.append(ready_status)
         return where, params
 
-    def list_pending(self) -> List[Batch]:
-        return self.list(status="pending")
-
     def create(self, batch: Union[Batch, Dict[str, Any]]) -> Batch:
         b = batch if isinstance(batch, Batch) else Batch.from_row(batch)
         self.execute(
@@ -138,17 +109,6 @@ class BatchRepository(BaseRepository):
         if not updates:
             return
 
-        allowed = {
-            "part_no",
-            "part_name",
-            "quantity",
-            "due_date",
-            "priority",
-            "ready_status",
-            "ready_date",
-            "status",
-            "remark",
-        }
         set_parts: List[str] = []
         params: List[Any] = []
 
@@ -163,9 +123,9 @@ class BatchRepository(BaseRepository):
             "status",
             "remark",
         ):
-            if key not in allowed or key not in updates:
+            if key not in updates:
                 continue
-            val = updates.get(key)
+            val = updates[key]
             if key == "quantity" and val is not None:
                 val = int(val)
             set_parts.append(f"{key} = ?")
@@ -184,6 +144,3 @@ class BatchRepository(BaseRepository):
 
     def delete_all(self) -> None:
         self.execute("DELETE FROM Batches")
-
-    def has_any(self) -> bool:
-        return self.fetchvalue("SELECT 1 FROM Batches LIMIT 1", default=None) is not None

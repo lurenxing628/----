@@ -73,26 +73,19 @@ class LegacyGetRequest:
 
 
 @dataclass(frozen=True)
-class LegacyDownloadLink:
-    label: str
-    url: str
-
-
-@dataclass(frozen=True)
 class LegacyGetDecision:
     kind: str
     view: Optional[str] = None
     context: Mapping[str, Any] = field(default_factory=dict)
-    option_ids: Tuple[str, ...] = ()
     reason_code: Optional[str] = None
     message: Optional[str] = None
     public_context: Mapping[str, str] = field(default_factory=dict)
-    links: Tuple[LegacyDownloadLink, ...] = ()
+    destination: Optional[str] = None
 
 
-def retired(code, message, *, public_context=None, links=()):
+def retired(code, message, *, public_context=None):
     return LegacyGetDecision("retired", reason_code=code, message=message,
-                             public_context=public_context or {}, links=links)
+                             public_context=public_context or {})
 
 
 def unique_query(pairs):

@@ -1,18 +1,14 @@
-"""预检事实读仓储：固定白名单整表快照，以及按 sqlite_master 校验后的整表原始元组读取（指纹用）。
-
-read_whole_table 只接受当前库 sqlite_master 里实际存在的表，表名在本模块内引号化；不做任何裁决。
-"""
+"""预检事实读仓储：从共享捕获读取业务行，并保留整表原始值和转换器输入。"""
 
 from __future__ import annotations
 
 import re
 import sqlite3
-from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 from core.infrastructure.connection_guards import schema_contract_memo
 
 from .base_repo import BaseRepository
-from .batch_external_context_repo import BatchExternalContextRepository
 from .sqlite_rows import raw_projection
 
 PREFLIGHT_TABLES = ("Batches", "BatchOperations", "BatchExternalContexts", "Parts", "PartOperations", "ExternalGroups", "BatchMaterials", "BatchMaterialReviews", "BatchMaterialStages", "BatchMaterialArrivals", "BatchQuantitySplits",
@@ -39,22 +35,9 @@ class WorkbenchPreflightFactsRepository(BaseRepository):
             self._present = {name for name, (kind, _table, _sql) in schema_contract_memo(self.conn).structure.objects.items() if kind == "table"}
         return self._present
 
-    def _optional_legacy_rows(self, name):
-        introduced = {"MachineOpTypes": 35, "BatchMaterialReviews": 36, "BatchMaterialStages": 36,
-                      "BatchMaterialArrivals": 36, "BatchQuantitySplits": 36}
-        if name in introduced and name not in self._present_tables():
-            version = self.fetchvalue("SELECT version FROM SchemaVersion WHERE id=1")
-            if type(version) is int and version < introduced[name]:
-                return []
-        return self.fetchall("SELECT * FROM " + _quote(name) + " ORDER BY rowid")
-
-    def preflight_tables(self, *, capture=None) -> Dict[str, List[Dict[str, Any]]]:
+    def preflight_tables(self, capture) -> Dict[str, List[Dict[str, Any]]]:
         """按 PREFLIGHT_TABLES 顺序整表读取（rowid 序），返回 {表名: [行 dict]}。"""
-        if capture is not None:
-            return {name: self._captured_business_rows(name, capture) for name in PREFLIGHT_TABLES}
-        return {name: (BatchExternalContextRepository(self.conn).rows_for_readonly_preflight()
-                       if name == "BatchExternalContexts" else self._optional_legacy_rows(name))
-                for name in PREFLIGHT_TABLES}
+        return {name: self._captured_business_rows(name, capture) for name in PREFLIGHT_TABLES}
 
     def _captured_business_rows(self, name, capture):
         introduced = {"BatchExternalContexts": 33, "MachineOpTypes": 35, "BatchMaterialReviews": 36,
@@ -102,14 +85,3 @@ class WorkbenchPreflightFactsRepository(BaseRepository):
         if not checks:
             return "", ()
         return " WHERE NOT (typeof(\"action\")='text' AND (" + " OR ".join(checks) + "))", tuple(params)
-
-    def read_whole_table(self, name: str) -> Iterator[Tuple[Any, ...]]:
-        """整表按 rowid 序流式产出原始值元组；表名必须真实存在于 sqlite_master（本实例内缓存一次）。
-
-        表名校验与语句执行在调用时完成（未知表立即 ValueError），行只在迭代时物化，指纹计算不整表装内存。"""
-        if name not in self._present_tables():
-            raise ValueError("unknown table: " + repr(name))
-        quoted = _quote(name)
-        _, projection = raw_projection(self.conn, name)
-        cursor = self.execute("SELECT " + projection + " FROM " + quoted + " ORDER BY rowid")
-        return (tuple(row) for row in cursor)

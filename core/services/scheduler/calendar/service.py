@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Set
 from core.algorithm_runtime.calendar_timing_memo import register_calendar_timing_guard
 from core.algorithm_runtime.checkpoint_calendar import register_checkpoint_calendar
 from core.models import OperatorCalendar, WorkCalendar
+from core.services.common.datetime_normalize import normalize_date
 from core.services.common.excel_import_executor import execute_preview_rows_transactional
 from core.services.common.excel_service import ImportMode
 from core.services.common.normalize import to_str_or_blank
@@ -25,38 +26,17 @@ class CalendarService:
     - 内部按职责拆分：管理侧（CRUD/标准化）与引擎侧（时间推进/效率）
     """
 
-    def __init__(self, conn, logger=None, op_logger=None, *, capture=None):
+    def __init__(self, conn, logger=None, *, capture=None):
         self.conn = conn
         self.logger = logger
-        self.op_logger = op_logger
-        self._admin = CalendarAdmin(conn, logger=logger, op_logger=op_logger)
-        self._engine = CalendarEngine(conn, logger=logger, op_logger=op_logger, capture=capture)
-
-    # -------------------------
-    # Backward compatibility
-    # -------------------------
-    @staticmethod
-    def _normalize_date(value: Any) -> str:
-        """
-        兼容历史调用：路由层/旧脚本曾直接调用 CalendarService._normalize_date(...)。
-
-        当前实现已拆分为 CalendarAdmin（管理侧）与 CalendarEngine（引擎侧），
-        这里保留一个轻量代理，避免出现 AttributeError 导致页面 500。
-        """
-        return CalendarAdmin._normalize_date(value)
-
-    @staticmethod
-    def _normalize_hhmm(value: Any, field: str, allow_none: bool = True) -> Optional[str]:
-        """
-        兼容历史调用：路由层曾直接调用 CalendarService._normalize_hhmm(...)。
-        """
-        return CalendarAdmin._normalize_hhmm(value, field=field, allow_none=allow_none)
+        self._admin = CalendarAdmin(conn, logger=logger)
+        self._engine = CalendarEngine(conn, logger=logger, capture=capture)
 
     # -------------------------
     # CRUD（给页面/Excel用）
     # -------------------------
     def get(self, date_value: Any) -> WorkCalendar:
-        d = self._admin._normalize_date(date_value)
+        d = normalize_date(date_value)
         row = self._admin.repo.get(d)
         return row if row else self._engine._default_for_date(d)
 
@@ -178,7 +158,7 @@ class CalendarService:
         )
 
         def _replace_existing_no_tx() -> None:
-            self.delete_operator_calendar_all_no_tx()
+            self._admin.delete_operator_calendar_all_no_tx()
 
         def _row_id_getter(pr: Any) -> str:
             rid = to_str_or_blank(pr.data.get("__id"))
@@ -189,7 +169,7 @@ class CalendarService:
             return f"{op_id}|{date_str}"
 
         def _apply_row_no_tx(pr: Any, _existed: bool) -> None:
-            self.upsert_operator_calendar_no_tx(
+            self._admin.upsert_operator_calendar_no_tx(
                 {
                     "operator_id": to_str_or_blank(pr.data.get("工号")),
                     "date": to_str_or_blank(pr.data.get("日期")),
@@ -267,15 +247,8 @@ class CalendarService:
 
     def certified_slot_window(self, dt: datetime, *, priority=None, operator_id=None):
         """Constant native policy span; adapted or instrumented timing stays legacy."""
-        if type(self) is not CalendarService or type(self._engine) is not CalendarEngine:
-            return None
         if not _NATIVE_METHODS_UNCHANGED(self):
-            for name, original in _NATIVE_SERVICE_TIMING.items():
-                if getattr(getattr(self, name), "__func__", None) is not original:
-                    return None
-            for name, original in _NATIVE_ENGINE_TIMING.items():
-                if getattr(getattr(self._engine, name), "__func__", None) is not original:
-                    return None
+            return None
         policy = self._engine.policy_for_datetime(dt, operator_id=operator_id)
         if policy.date_str != dt.date().isoformat() or not policy.is_priority_allowed(priority):
             return None
@@ -297,11 +270,6 @@ class CalendarService:
         return calendar_checkpoint_snapshot(self)
 
 
-_NATIVE_SERVICE_TIMING = {name: getattr(CalendarService, name) for name in
-                          ("get_efficiency", "adjust_to_working_time", "add_working_hours", "add_effective_hours")}
-_NATIVE_ENGINE_TIMING = {name: getattr(CalendarEngine, name) for name in
-                         ("get_efficiency", "adjust_to_working_time", "add_working_hours", "add_effective_hours", "_add_hours",
-                          "policy_for_datetime", "_policy_for_datetime", "_policy_for_date", "_effective_segments", "_allowed_segments")}
 _NATIVE_METHODS_UNCHANGED = make_native_method_guard(CalendarService)
 register_calendar_timing_guard(CalendarService, make_timing_memo_guard(CalendarService),
                                calendar_days_guard=make_calendar_days_guard(CalendarService))

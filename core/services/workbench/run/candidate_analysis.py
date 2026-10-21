@@ -3,6 +3,7 @@
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_run_analysis import delivery_deltas, delivery_metrics, operation_metrics
 from core.services.workbench.facts.candidate_store import CandidateStore
+from core.services.workbench.facts.delivery_projection import delivery_summary
 
 from .candidate_comparison import (
     _analysis_source,
@@ -10,7 +11,6 @@ from .candidate_comparison import (
     _comparison_metadata,
     _comparison_rows,
     _delivery_rows,
-    _delivery_summary,
 )
 
 
@@ -22,8 +22,8 @@ def read_candidate_analysis(conn, candidate_ref):
         before = source.delivery("reference")
         after = [row for row in source.legacy_delivery(candidate_ref) if row["batch_ref"] in refs]
         batches = _delivery_rows(before, after, refs)
-        old_metrics = delivery_metrics(before, _delivery_summary(before))
-        metrics = delivery_metrics(after, _delivery_summary(after))
+        old_metrics = delivery_metrics(before, delivery_summary(before))
+        metrics = delivery_metrics(after, delivery_summary(after))
         rows = _comparison_rows(source)
         changes, operations = operation_metrics({"comparisons": rows, "rows_complete": True,
             "operation_count": len(rows), "full_operation_count": len(rows)}, refs)

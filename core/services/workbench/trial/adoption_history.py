@@ -8,6 +8,7 @@ from core.services.common.bounded_plan_query import _PagePlanQueryService
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.plan.read_context import PlanReadContext
+from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
 
 from .adoption_history_evidence import audit_fields, gap, invalid, receipt_plan, scenario_evidence
@@ -41,8 +42,8 @@ class WorkbenchTrialAdoptionHistoryService:
                 invalid()
 
     def _read(self, scope, page, context):
-        saved, header, draft = scenario_evidence(self.conn, scope["scenario_ref"])
         repo = TrialAdoptionHistoryRepository(self.conn)
+        saved, header, draft = scenario_evidence(self.conn, scope["scenario_ref"], repo)
         refs = context.references
         revision = refs.read_revision()
         # Same catalog repository as the public plan catalog, so detail validation cannot diverge.
@@ -53,12 +54,14 @@ class WorkbenchTrialAdoptionHistoryService:
         reader = WorkbenchPlanQueryService(self.conn)
         reader.references = refs
         rows, all_items, seen = adoption_receipts(repo, scope["scenario_ref"]), [], set()
+        command_repo = WorkbenchCommandRepository(self.conn)
         for row in rows:
             plan = receipt_plan(row, saved)
             if plan["plan_ref"] in seen:
                 invalid()
             seen.add(plan["plan_ref"])
-            audit, audit_gaps = audit_fields(repo, row, plan, saved, header, draft, context=context)
+            audit, audit_gaps = audit_fields(repo, row, plan, saved, header, draft,
+                                            command_repo=command_repo, context=context)
             identity, issues = self._identity(context, reader, query, plan)
             state = "unavailable" if identity is None or not identity["capabilities"]["view"] else (
                 "current" if identity["is_current_official"] else "historical")

@@ -34,6 +34,7 @@ class ScheduleRunContext:
     # Per-decode SGS dispatch-key cache owned by the scheduler; None keeps every candidate re-scored.
     sgs_score_cache: Any = None
     native_preparation: Any = None
+    native_scoring: Optional[bool] = None
     _callback_bindings: Any = field(default_factory=dict)
     # Native checkpoint dispatch adaptation is selected with this context's callbacks at preparation.
     checkpoint_dispatch_guard: Optional[Callable[[], bool]] = None
@@ -70,17 +71,16 @@ class ScheduleRunContext:
         if callable(self.external_callback):
             self._check_callback(self.external_callback, args, kwargs, slot="schedule_external")
             return self.external_callback(*args, **kwargs)
-        call_kwargs = dict(kwargs)
         facade = _ScheduleFacade(self.calendar, self.algo_stats)
-        self._check_callback(schedule_external, (facade,) + args, call_kwargs, slot="schedule_external fallback")
-        return schedule_external(facade, *args, **call_kwargs)
+        self._check_callback(schedule_external, (facade,) + args, kwargs, slot="schedule_external fallback")
+        return schedule_external(facade, *args, **kwargs)
 
     def schedule_internal(self, *args: Any, **kwargs: Any):
         call_kwargs = dict(kwargs)
         strict_mode = bool(call_kwargs.pop("strict_mode", False))
         hours = self.native_preparation.total_hours_by_op_id if self.native_preparation is not None else {}
         if "op" not in call_kwargs or getattr(call_kwargs["op"], "id", None) not in hours:
-            _validate_strict_internal_input(call_kwargs, strict_mode=strict_mode)
+            validate_dispatch_internal_input(call_kwargs, strict_mode=strict_mode)
         if callable(self.internal_callback):
             self._check_callback(self.internal_callback, args, call_kwargs, slot="schedule_internal")
             return self.internal_callback(*args, **call_kwargs)
@@ -115,16 +115,6 @@ class ScheduleRunContext:
         call_kwargs.setdefault("algo_stats", self.algo_stats)
         self._check_callback(auto_assign_internal_resources_attempt, args, call_kwargs, slot="auto_assign_internal_resources_attempt fallback")
         return auto_assign_internal_resources_attempt(*args, **call_kwargs)
-
-
-def ensure_run_context(candidate: Any) -> ScheduleRunContext:
-    if isinstance(candidate, ScheduleRunContext):
-        return candidate
-    return ScheduleRunContext.from_legacy_scheduler(candidate)
-
-
-def _validate_strict_internal_input(call_kwargs: dict, *, strict_mode: bool) -> None:
-    validate_dispatch_internal_input(call_kwargs, strict_mode=strict_mode)
 
 
 class _ScheduleFacade:

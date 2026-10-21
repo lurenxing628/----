@@ -42,21 +42,21 @@ def annotate_plan_points(conn, rows, *, source_table="schedule", context=None, i
 
     result, versions = [], {}
     for index, original in enumerate(rows):
-        row = dict(original)
-        start, end = row["start_time"], row["end_time"]
+        row = original
+        start, end = original["start_time"], original["end_time"]
         low, high = intervals[index] if intervals is not None else (parse_dt_for_sql(start), parse_dt_for_sql(end))
         if low is not None and low == high:
             if source_table != "schedule":
                 raise WorkbenchCommandRejected("point_evidence_unproven", "旧候选方案或试调行没有零工时工序的采用记录，读不出来。请刷新后重试。")
-            version = row["version"]
+            version = original["version"]
             if version not in versions:
                 versions[version] = context.point_work(version) if context is not None else official_point_work(conn, version)
-            work = versions[version].get(row["op_id"])
-            check = SimpleNamespace(op_id=row["op_id"], source="internal", machine_id=row["machine_id"],
-                operator_id=row["operator_id"], start_time=datetime.fromisoformat(start), end_time=datetime.fromisoformat(end))
+            work = versions[version].get(original["op_id"])
+            check = SimpleNamespace(op_id=original["op_id"], source="internal", machine_id=original["machine_id"],
+                operator_id=original["operator_id"], start_time=datetime.fromisoformat(start), end_time=datetime.fromisoformat(end))
             if work is None or not work["witness"].matches(check):
                 raise WorkbenchCommandRejected("point_evidence_unproven", "零工时工序和原采用记录对不上。请刷新后重试。")
             # Keep only a plain immutable-work projection in read fingerprints.
-            row["_point_work"] = {key: value for key, value in work.items() if key != "witness"}
+            row = dict(original, _point_work={key: value for key, value in work.items() if key != "witness"})
         result.append(row)
     return result

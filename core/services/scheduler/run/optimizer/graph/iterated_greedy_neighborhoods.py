@@ -18,8 +18,6 @@ import math
 import random
 from typing import Any, Dict, List, Sequence, Tuple
 
-from core.errors import ValidationError
-
 from .iterated_greedy_contract import IG_GENERATORS
 
 # Beyond this many changes the OR-Tools step factor would keep shrinking towards 1: a run of failures
@@ -130,8 +128,7 @@ class TimeWindowGenerator(DestroyGenerator):
         if count <= 0:
             return ()
         starts = features["starts"]
-        position = {op_id: index for index, op_id in enumerate(order)}
-        by_start = sorted(order, key=lambda op_id: (starts.get(op_id, math.inf), position[op_id]))
+        by_start = sorted(order, key=lambda op_id: starts.get(op_id, math.inf))
         return _window(by_start, size=count, rnd=rnd)
 
 
@@ -143,7 +140,6 @@ class ResourceWindowGenerator(DestroyGenerator):
         if count <= 0:
             return ()
         starts, machines = features["starts"], features["machines"]
-        position = {op_id: index for index, op_id in enumerate(order)}
         loaded = [op_id for op_id in order if machines.get(op_id)]
         by_machine: Dict[str, List[int]] = {}
         for op_id in loaded:
@@ -152,10 +148,10 @@ class ResourceWindowGenerator(DestroyGenerator):
         if not candidates:
             # No machine carries two operations: the window degenerates to a time window (reported).
             self.degenerate += 1
-            by_start = sorted(order, key=lambda op_id: (starts.get(op_id, math.inf), position[op_id]))
+            by_start = sorted(order, key=lambda op_id: starts.get(op_id, math.inf))
             return _window(by_start, size=count, rnd=rnd)
         machine = machines[rnd.choice(candidates)]  # proportional to the machine's load
-        on_machine = sorted(by_machine[machine], key=lambda op_id: (starts.get(op_id, math.inf), position[op_id]))
+        on_machine = sorted(by_machine[machine], key=lambda op_id: starts.get(op_id, math.inf))
         return _window(on_machine, size=count, rnd=rnd)
 
 
@@ -190,13 +186,7 @@ if tuple(_GENERATOR_TYPES) != IG_GENERATORS:
 
 
 def build_generators(names: Sequence[str], *, initial_size: int, max_size: int) -> List[DestroyGenerator]:
-    generators = []
-    for name in names:
-        if name not in _GENERATOR_TYPES:
-            raise ValidationError("GraphReady 迭代贪心配置无效：generators", field="graph_ready_iterated_greedy",
-                                  details={"reason": "graph_ready_bad_iterated_greedy_config"})
-        generators.append(_GENERATOR_TYPES[name](initial_size=initial_size, max_size=max_size))
-    return generators
+    return [_GENERATOR_TYPES[name](initial_size=initial_size, max_size=max_size) for name in names]
 
 
 class GeneratorRotation:

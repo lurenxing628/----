@@ -49,12 +49,12 @@ def project_unified_process(process, *, objective=None, candidate=None, candidat
     if len(target["points"]) > 200:
         corrupt()
     points = []
+    key = descriptor["primary_metric_key"]
     for point in target["points"]:
         source = events.get(point["source_event_id"])
         if source is None:
             corrupt()
         field_order = point["field_order"]
-        key = descriptor["primary_metric_key"]
         if key not in field_order or len(field_order) != len(point["score"]):
             corrupt()
         points.append({**point, "phase": source["phase"], "verified": source["verified"],

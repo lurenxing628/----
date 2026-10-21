@@ -18,7 +18,8 @@ from core.services.workbench.plan.projection import project_plan
 from core.services.workbench.plan.read_context import PlanReadContext
 from data.repositories.workbench_dashboard_source_repo import DashboardSourceRepository
 
-from .catalogs import candidate_catalog, resource_pressure
+from .calendar_capture import capture_resource_pressure
+from .catalogs import candidate_catalog
 from .policy import entity_refs_from_rows
 
 UNAVAILABLE = {"identity_missing", "plan_binding_invalid", "task_binding_invalid", "plan_unavailable",
@@ -162,9 +163,9 @@ class DashboardFacts:
             self.raw["plan_identity_revision"] = context.references.read_revision()
             self.plan_state = "loaded"
             self._capture_calendar_inputs(resource_ids(original_rows, "machine"))
-            self.pressure, self.raw["resource_pressure"], self._calendar_factory = resource_pressure(self.conn, {
-                "entry": entry, "scope": scope, "resources": resources, "identities": resource_state, "plan_span": span,
-                "context": context, "facts": self}, captured_calendar=self.calendar_inputs)
+            self.pressure, self.raw["resource_pressure"], self._calendar_factory = capture_resource_pressure(
+                self.conn, entry=entry, scope=scope, resources=resources, identities=resource_state, plan_span=span,
+                context=context, facts=self, captured_calendar=self.calendar_inputs)
         except WorkbenchPlanReferenceError as exc:
             self._plan_failure("plan_binding_invalid", "正式计划记录已失效，请刷新重试。")
             self.raw["plan_reference_failure"] = exc.code

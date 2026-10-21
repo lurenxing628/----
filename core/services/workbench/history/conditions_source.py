@@ -52,26 +52,23 @@ class ConditionSource:
         self.kind, self.ref, self.entry_ref = packet["kind"], packet["ref"], packet["entry_ref"]
         self.issue = packet.get("source_issue")
         self.available = self.kind != "legacy"
-        self.archive = self.input = self.execution = self.baseline = self.ledger = None
+        self.archive = self.input = self.execution = self.baseline = None
         self.artifact = self.raw_tasks = self.trial_rows = self.saved = self.calendar = None
         self.original_archive = self._original_calendar = None
         self.operations, self.batches, self.entity_refs = {}, {}, {}
         self.original_entity_refs = {}
-        self.input_sources, self._input_paths = {}, {}
+        self._input_paths = {}
         self._operation_paths, self._batch_paths, self._origins = {}, {}, {}
         if self.kind == "run":
             self._origins = {"environment": "capture.facts_text", "original": "capture.facts_text",
-                             "input": "capture.input", "execution": "capture.execution",
-                             "baseline": "capture.baseline", "ledger": "receipt.operation_effort",
-                             "artifact": "candidate.artifact", "tasks": "raw_tasks"}
+                             "input": "capture.input", "execution": "capture.execution", "tasks": "raw_tasks"}
             if self._missing_source(packet, ("capture", "facts")):
                 return
             self._run(packet)
         elif self.kind == "trial":
             self._origins = {"environment": "head.admission.facts", "input": "head.admission.input",
                              "original": "head.admission.source.capture.facts_text",
-                             "execution": "head.admission.execution", "baseline": "head.admission.baseline",
-                             "ledger": "saved.operation_effort", "tasks": "rows", "saved": "saved"}
+                             "execution": "head.admission.execution", "tasks": "rows", "saved": "saved"}
             if self._missing_source(packet, ("head", "saved")):
                 return
             self._trial(packet)
@@ -80,7 +77,6 @@ class ConditionSource:
             self._origins["environment"] = "parsed_summary"
         else:
             raise ValueError("Unknown saved condition source")
-        self.input_sources = {key: self.source(path) for key, path in self._input_paths.items()}
 
     def _missing_source(self, packet, required):
         if self.issue is None and all(packet.get(key) is not None for key in required):
@@ -92,14 +88,12 @@ class ConditionSource:
 
     def _run(self, packet):
         facts, capture = packet["facts"], packet["capture"]
-        receipt, candidate = packet["receipt"], packet["candidate"]
-        self.archive, self.input = facts.archive, dict(capture["input"])
+        candidate = packet["candidate"]
+        self.archive, self.input = facts.archive, capture["input"]
         self.execution, self.baseline = facts.execution, capture["baseline"]
-        self.ledger = receipt.get("operation_effort") if receipt is not None else None
         self.artifact = candidate["artifact"] if candidate is not None else None
         self.raw_tasks = packet["raw_tasks"]
-        self.entity_refs = dict(facts.entity_refs)
-        self.original_entity_refs = dict(facts.entity_refs)
+        self.entity_refs = self.original_entity_refs = facts.entity_refs
         self.calendar = ArchivedCalendar(self.archive, source_ref=self.ref, facts=facts)
         self.original_archive, self._original_calendar = self.archive, self.calendar
         self._work_indexes(facts.tables["BatchOperations"], facts.tables["Batches"], facts.operations,
@@ -120,7 +114,6 @@ class ConditionSource:
         self.saved, self.trial_rows = packet["saved"], packet["rows"]
         admission = packet["head"]["admission"]
         self.archive, self.execution, self.baseline = admission["facts"], admission["execution"], admission["baseline"]
-        self.ledger = self.saved.get("operation_effort")
         self.calendar = ArchivedCalendar(self.archive, source_ref=self.ref)
         self.entity_refs = _entity_refs(self.table("WorkbenchEntityRefs"))
         for index, row in enumerate(self.trial_rows):
@@ -152,7 +145,7 @@ class ConditionSource:
             operations, batches = _index(self.table("BatchOperations"), "id"), _index(self.table("Batches"), "batch_id")
             refs, entity_refs = _operation_refs(self.table("WorkbenchPlanSourceRefs")), self.entity_refs
             prefix = self._origins["environment"]
-        self.original_entity_refs = dict(entity_refs)
+        self.original_entity_refs = entity_refs
         self._origins["original"] = prefix
         op_paths = _table_paths(operations.values(), "id", prefix + ".tables.BatchOperations")
         batch_paths = _table_paths(batches.values(), "batch_id", prefix + ".tables.Batches")

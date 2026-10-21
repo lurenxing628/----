@@ -56,7 +56,7 @@ def kahn_unreachable_op_ids(
             predecessor_ids.discard(current)
             if not predecessor_ids and op_id not in visited:
                 ready.append(op_id)
-    return set(schedulable_ids) - visited
+    return schedulable_ids - visited
 
 
 __all__ = ["kahn_unreachable_op_ids"]

@@ -64,8 +64,8 @@ def test_scheduler_reject_nonfinite_and_invalid_status(db_path) -> None:
         op_in = next(o for o in ops if (o.source or "").strip() == "internal")
         op_ex = next(o for o in ops if (o.source or "").strip() == "external")
 
-        cal_svc = CalendarService(conn, logger=None, op_logger=None)
-        sch_svc = ScheduleService(conn, logger=None, op_logger=None)
+        cal_svc = CalendarService(conn, logger=None)
+        sch_svc = ScheduleService(conn, logger=None)
 
         # 2) CalendarService：拒绝非有限效率
         _expect_validation_error(

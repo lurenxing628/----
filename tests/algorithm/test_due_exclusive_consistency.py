@@ -9,12 +9,12 @@ import pytest
 
 def test_due_exclusive_consistency() -> None:
 
+    from core.algorithm_contracts.date_parsers import due_exclusive
+    from core.algorithm_contracts.types import ScheduleResult
     from core.algorithms.evaluation import compute_metrics, prepare_evaluation_context
-    from core.algorithms.greedy.date_parsers import due_exclusive
-    from core.algorithms.types import ScheduleResult
     from core.services.report.calculations import compute_overdue_buckets
+    from core.services.scheduler.contracts.schedule_summary_types import SummaryBuildContext
     from core.services.scheduler.summary.schedule_summary import build_result_summary
-    from core.services.scheduler.summary.schedule_summary_types import SummaryBuildContext
 
     due_d = date(2026, 2, 1)
     finish_dt = datetime(2026, 2, 2, 0, 0, 0)
@@ -93,8 +93,8 @@ def test_due_exclusive_max_due_sentinel_end_to_end_not_overdue() -> None:
     """端到端回归：交期填 9999-12-31（ERP 常用"无交期"哨兵）时，排产评估与逾期报表
     都不得抛 OverflowError，且口径与 None→datetime.max 一致——永远判为不逾期。"""
 
+    from core.algorithm_contracts.types import ScheduleResult
     from core.algorithms.evaluation import compute_metrics, prepare_evaluation_context
-    from core.algorithms.types import ScheduleResult
     from core.services.common.overdue_calculations import compute_overdue_bucket_groups
 
     finish_dt = datetime(2026, 2, 2, 0, 0, 0)
@@ -130,9 +130,9 @@ def test_due_exclusive_max_due_sentinel_end_to_end_not_overdue() -> None:
 
 
 def test_prepared_due_sources_keep_order_and_standalone_uses_current_inputs() -> None:
+    from core.algorithm_contracts.types import ScheduleResult
     from core.algorithms.evaluation import compute_metrics, prepare_evaluation_context
     from core.algorithms.evaluation_completion import collect_batch_completion
-    from core.algorithms.types import ScheduleResult
 
     batches = {
         " B1 ": SimpleNamespace(due_date="2026-01-01", priority="critical"),

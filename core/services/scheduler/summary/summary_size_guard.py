@@ -46,7 +46,7 @@ def _diagnostic_context(result_summary_obj: Dict[str, Any]) -> Tuple[Dict[str, A
     diagnostics_dict = diagnostics if isinstance(diagnostics, dict) else {}
     optimizer_value = diagnostics_dict.get("optimizer")
     optimizer_diagnostics = optimizer_value if isinstance(optimizer_value, dict) else {}
-    diagnostic_attempts = optimizer_diagnostics.get("attempts") if isinstance(optimizer_diagnostics, dict) else None
+    diagnostic_attempts = optimizer_diagnostics.get("attempts")
     return diagnostics_dict, optimizer_diagnostics, diagnostic_attempts
 
 
@@ -103,12 +103,6 @@ def _trim_attempts(algo_dict: Dict[str, Any], limit: int) -> None:
         algo_dict["attempts"] = attempts[:limit]
 
 
-def _trim_best_batch_order(algo_dict: Dict[str, Any], limit: int) -> None:
-    best_batch_order = algo_dict.get("best_batch_order")
-    if isinstance(best_batch_order, list):
-        algo_dict["best_batch_order"] = best_batch_order[:limit]
-
-
 def _trim_selected_batch_ids(result_summary_obj: Dict[str, Any], limit: int) -> None:
     selected_batch_ids = result_summary_obj.get("selected_batch_ids")
     if isinstance(selected_batch_ids, list):
@@ -163,8 +157,6 @@ def _apply_truncation_tiers(
             diagnostic_attempts=diagnostic_attempts,
             limit=tier.attempt_limit,
         )
-        if tier.best_order_limit is not None:
-            _trim_best_batch_order(algo_dict, tier.best_order_limit)
         if tier.selected_ids_limit is not None:
             _trim_selected_batch_ids(obj, tier.selected_ids_limit)
         if tier.overdue_items_limit is not None:
@@ -183,7 +175,7 @@ def _apply_truncation_tiers(
 
 
 def _drop_diagnostic_fallback_samples(state: _SizeGuardState, *, optimizer_diagnostics: Dict[str, Any]) -> None:
-    attempts_value = optimizer_diagnostics.get("attempts") if isinstance(optimizer_diagnostics, dict) else None
+    attempts_value = optimizer_diagnostics.get("attempts")
     if not isinstance(attempts_value, list):
         return
     changed = False
@@ -205,7 +197,7 @@ def _drop_diagnostic_field(
     diagnostics_dict: Dict[str, Any],
     field: str,
 ) -> None:
-    attempts_value = optimizer_diagnostics.get("attempts") if isinstance(optimizer_diagnostics, dict) else None
+    attempts_value = optimizer_diagnostics.get("attempts")
     if not isinstance(attempts_value, list):
         return
     changed = False

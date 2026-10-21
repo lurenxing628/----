@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from core.models.workbench_run_candidate import RunCandidateReadScope
+from core.services.workbench.facts.decision_metrics import metric_definitions
 from core.services.workbench.run.candidate_comparison import read_candidate_comparison
-from core.services.workbench.run.decision_metrics import metric_definitions
 from tests.workbench.dashboard_support import api
 from tests.workbench.dashboard_support import dashboard_case as dashboard_case  # noqa: F401
 from tests.workbench.node_runtime_support import node_runtime

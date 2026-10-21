@@ -13,14 +13,11 @@ from core.errors import ValidationError
 
 def is_capture_failure(exc: ValidationError, *, resumed: bool) -> bool:
     """Checkpoint errors of a decode that resumed nothing are capture failures; resumed mismatches stay loud."""
-    if str(getattr(exc, "field", "") or "") != CHECKPOINT_FIELD:
-        return False
-    return not resumed
+    return exc.field == CHECKPOINT_FIELD and not resumed
 
 
 def capture_failure_reason(exc: ValidationError) -> str:
-    details = getattr(exc, "details", None)
-    reason = str((details or {}).get("reason") or "").strip() if isinstance(details, dict) else ""
+    reason = str((exc.details or {}).get("reason") or "").strip()
     return reason or "decode_checkpoint_capture_failed"
 
 

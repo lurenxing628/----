@@ -19,10 +19,10 @@ def accumulate_busy_hours(
         raise TypeError("start_time/end_time 必须是 datetime")
     duration_hours = (end_time - start_time).total_seconds() / 3600.0
     if machine_id:
-        machine_busy_hours[machine_id] = float(machine_busy_hours.get(machine_id, 0.0) or 0.0) + float(duration_hours)
+        machine_busy_hours[machine_id] = float(machine_busy_hours.get(machine_id, 0.0) or 0.0) + duration_hours
     if operator_id:
-        operator_busy_hours[operator_id] = float(operator_busy_hours.get(operator_id, 0.0) or 0.0) + float(duration_hours)
-    return float(duration_hours)
+        operator_busy_hours[operator_id] = float(operator_busy_hours.get(operator_id, 0.0) or 0.0) + duration_hours
+    return duration_hours
 
 
 def update_machine_last_state(

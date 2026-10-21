@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
 
 
 def _text(value: Any) -> str:
@@ -24,15 +24,6 @@ class ResourceIdentity:
     display_label: str = ""
     identity_label: str = ""
     label: str = ""
-
-    def to_dict(self, prefix: str = "") -> Dict[str, str]:
-        return {
-            f"{prefix}id": self.id,
-            f"{prefix}name": self.name,
-            f"{prefix}display_label": self.display_label,
-            f"{prefix}identity_label": self.identity_label,
-            f"{prefix}label": self.label,
-        }
 
 
 def build_resource_identity(

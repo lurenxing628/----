@@ -73,12 +73,6 @@ _PUBLIC_METRICS_STATE_TEXT_KEYS = (
     "error_type",
     "message",
 )
-_PUBLIC_INPUT_CONTRACT_KEYS = (
-    "degraded",
-    "degradation_events",
-    "degradation_counters",
-    "empty_reason",
-)
 
 
 def _copy_text_fields(source: Dict[str, Any], keys: Tuple[str, ...]) -> Dict[str, Any]:
@@ -176,7 +170,7 @@ def project_input_contract(value: Any) -> Dict[str, Any]:
     empty_reason = str(value.get("empty_reason") or "").strip()
     if empty_reason:
         public_contract["empty_reason"] = empty_reason
-    return {key: public_contract[key] for key in _PUBLIC_INPUT_CONTRACT_KEYS if key in public_contract}
+    return public_contract
 
 
 def project_improvement_trace(value: Any) -> List[Dict[str, Any]]:

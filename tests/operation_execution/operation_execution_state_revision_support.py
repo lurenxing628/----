@@ -6,8 +6,8 @@ import sqlite3
 from pathlib import Path
 
 from core.infrastructure.database import ensure_schema, get_connection
+from core.models.schedule_plan_role import ROLE_ADOPTED
 from core.services.scheduler.operation_execution_feedback_service import ExecutionFeedbackContext
-from core.services.scheduler.schedule_plan_query_service import ROLE_ADOPTED
 from data.repositories.schedule_plan_query_repo import SOURCE_SCHEDULE
 from tests._support.paths import REPO_ROOT
 

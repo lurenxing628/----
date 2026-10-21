@@ -37,7 +37,8 @@ def input_record(record: Any, *, field: str) -> Any:
     if type(kind) is not type or static_class_attribute(kind, "__getattribute__") not in (
             object.__getattribute__, SimpleNamespace.__getattribute__):
         unsupported_input(field)
-    if (kind is not SimpleNamespace and not is_dataclass(record)) or static_class_attribute(kind, "__getattr__") is not None:
+    is_dc = kind is not SimpleNamespace and is_dataclass(record)
+    if (kind is not SimpleNamespace and not is_dc) or static_class_attribute(kind, "__getattr__") is not None:
         unsupported_input(field)
     try:
         values = vars(record)
@@ -48,12 +49,14 @@ def input_record(record: Any, *, field: str) -> Any:
     # A descriptor must not override the dictionary value used by this certificate.
     if any(static_attribute(record, key) is not value for key, value in values.items()):
         unsupported_input(field)
-    if is_dataclass(record):
-        values = dict(values)
-        for member in fields(record):
-            values[member.name] = static_attribute(record, member.name)
-    ordered = {key: values[key] for key in sorted(values)}
-    return kind.__module__, kind.__qualname__, input_value(ordered, field=field)
+    if is_dc:
+        missing = [member.name for member in fields(record) if member.name not in values]
+        if missing:
+            values = dict(values)
+            for name in missing:
+                values[name] = static_attribute(record, name)
+    encoded_dict = "dict", tuple((("str", key), input_value(values[key], field=field, depth=1)) for key in sorted(values))
+    return kind.__module__, kind.__qualname__, encoded_dict
 
 
 def unsupported_input(field: str) -> None:

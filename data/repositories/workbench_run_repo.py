@@ -58,8 +58,13 @@ class WorkbenchRunRepository:
             "LEFT JOIN WorkbenchRunReceipts r ON r.run_ref=j.run_ref WHERE j.run_ref=?", (run_ref,)).fetchone()
         return dict(row) if row else None
 
-    def by_request_head(self, request_key):
-        row = self.conn.execute("SELECT " + _HEAD_COLUMNS + " FROM WorkbenchRunJobs WHERE request_key=?", (request_key,)).fetchone()
+    def status_by_request(self, request_key):
+        columns = ",".join("j." + column for column in _HEAD_COLUMNS.split(","))
+        row = self.conn.execute("SELECT " + columns + ",a.projection_version AS scope_version,a.scope_json,"
+            "d.projection_version AS header_version,d.header_json,r.receipt_ref FROM WorkbenchRunJobs j "
+            "LEFT JOIN WorkbenchRunAdmissionReadModels a ON a.run_ref=j.run_ref "
+            "LEFT JOIN WorkbenchRunDecisionReadModels d ON d.run_ref=j.run_ref "
+            "LEFT JOIN WorkbenchRunReceipts r ON r.run_ref=j.run_ref WHERE j.request_key=?", (request_key,)).fetchone()
         return dict(row) if row else None
 
     def claim_head(self, run_ref):

@@ -1,8 +1,7 @@
 """Adapt a batch's frozen context to scheduling; never query live templates."""
 
-from dataclasses import dataclass, field
-from types import MappingProxyType
-from typing import Any, List, Mapping, Optional
+from dataclasses import dataclass
+from typing import Any, Dict, Mapping, Optional
 
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models import ExternalGroup, PartOperation
@@ -12,16 +11,7 @@ from core.services.scheduler.contracts.external_context import (
     merged_supplier_problem,
     require_context,
 )
-from core.shared.degradation import DegradationEvent
 from data.repositories.batch_external_context_repo import BatchExternalContextRepository
-
-
-@dataclass
-class TemplateGroupLookupOutcome:
-    template: Optional[PartOperation]
-    group: Optional[ExternalGroup]
-    merge_context_degraded: bool = False
-    events: List[DegradationEvent] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -30,9 +20,8 @@ class FrozenExternalContext:
     group_key: Optional[str]
 
 
-def _stored_context(svc, operation_id):
-    cache = getattr(svc, "_aps_schedule_input_cache", None)
-    if isinstance(cache, dict) and "external_contexts" in cache:
+def _stored_context(svc, operation_id, *, cache: Dict[str, Any]):
+    if "external_contexts" in cache:
         return cache["external_contexts"].get(operation_id)
     repo = BatchExternalContextRepository(svc.conn)
     if not repo.available():
@@ -52,7 +41,7 @@ def verified_external_context_for_op(svc, op: Any) -> FrozenExternalContext:
         if batch is None:
             raise BusinessError(ErrorCode.BATCH_NOT_FOUND, f"批次“{op.batch_id}”不存在")
         batches[op.batch_id] = batch
-    row = require_context(_stored_context(svc, op.id), operation_id=op.id,
+    row = require_context(_stored_context(svc, op.id, cache=cache), operation_id=op.id,
                           part_no=batch.part_no, sequence=op.seq)
     group_key = context_group_key(row)
     if row["merge_mode"] == "merged":
@@ -66,11 +55,11 @@ def verified_external_context_for_op(svc, op: Any) -> FrozenExternalContext:
         problem = merged_supplier_problem(row, getattr(op, "supplier_id", None), checks.get(key))
         if problem:
             raise ValidationError(problem, field="external_context")
-    return FrozenExternalContext(MappingProxyType(dict(row)), group_key)
+    return FrozenExternalContext(row, group_key)
 
 
-def lookup_template_group_context_for_op(svc, op: Any, *, strict_mode=False, scope=None):
-    """Legacy template-shaped view; frozen facts reject invalid context in both modes."""
+def get_template_and_group_for_op(svc, op):
+    """Adapt verified frozen facts to the template-shaped scheduling view."""
     facts = verified_external_context_for_op(svc, op)
     row, group_key = facts.row, facts.group_key
     # The permanent group identity prevents a reused business code merging unrelated groups.
@@ -82,9 +71,4 @@ def lookup_template_group_context_for_op(svc, op: Any, *, strict_mode=False, sco
                               start_seq=row["start_sequence"], end_seq=row["end_sequence"],
                               merge_mode=row["merge_mode"], total_days=row["total_days"],
                               supplier_id=row["supplier_id"], created_at=row["captured_at"])
-    return TemplateGroupLookupOutcome(template, group)
-
-
-def get_template_and_group_for_op(svc, op):
-    outcome = lookup_template_group_context_for_op(svc, op)
-    return outcome.template, outcome.group
+    return template, group

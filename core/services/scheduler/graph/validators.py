@@ -16,11 +16,6 @@ def _node_sort_key(graph: Any, node_id: str) -> Tuple[str, int, str, str]:
     )
 
 
-def is_dag(graph: Any) -> bool:
-    nx = import_networkx()
-    return bool(nx.is_directed_acyclic_graph(graph))
-
-
 def find_cycle_edges(graph: Any) -> List[Dict[str, Any]]:
     nx = import_networkx()
 
@@ -47,11 +42,14 @@ def find_cycle_edges(graph: Any) -> List[Dict[str, Any]]:
 
 
 def find_isolated_nodes(graph: Any) -> List[str]:
-    return [
-        node_id
-        for node_id in sorted(graph.nodes, key=lambda item: _node_sort_key(graph, item))
-        if graph.in_degree(node_id) == 0 and graph.out_degree(node_id) == 0
-    ]
+    return sorted(
+        (
+            node_id
+            for node_id in graph.nodes
+            if graph.in_degree(node_id) == 0 and graph.out_degree(node_id) == 0
+        ),
+        key=lambda item: _node_sort_key(graph, item),
+    )
 
 
 def find_duplicate_seq_warnings(graph: Any) -> List[GraphWarning]:
@@ -66,9 +64,9 @@ def find_duplicate_seq_warnings(graph: Any) -> List[GraphWarning]:
     warnings: List[GraphWarning] = []
     for key in sorted(grouped):
         batch_id, seq = key
-        node_ids = sorted(grouped[key], key=lambda item: _node_sort_key(graph, item))
-        if len(node_ids) <= 1:
+        if len(grouped[key]) <= 1:
             continue
+        node_ids = sorted(grouped[key], key=lambda item: _node_sort_key(graph, item))
         op_codes = [str(graph.nodes[node_id]["op_code"]) for node_id in node_ids]
         warnings.append(
             GraphWarning(
@@ -109,10 +107,4 @@ def collect_graph_warnings(graph: Any) -> List[GraphWarning]:
     return warnings
 
 
-__all__ = [
-    "collect_graph_warnings",
-    "find_cycle_edges",
-    "find_duplicate_seq_warnings",
-    "find_isolated_nodes",
-    "is_dag",
-]
+__all__ = ["collect_graph_warnings", "find_cycle_edges"]

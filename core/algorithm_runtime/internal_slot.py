@@ -11,9 +11,6 @@ from core.shared.field_labels import display_field_label
 
 from .busy_block_skip import advance_busy_block
 from .downtime import SegmentOverlapIndex
-from .operation_effort import _MISSING as _MISSING
-from .operation_effort import _coerce_legacy_hours_value as _coerce_legacy_hours_value
-from .operation_effort import _read_legacy_field as _read_legacy_field
 from .operation_effort import internal_requirement_parts
 from .resource_quality import slot_changeover_penalty
 from .sgs_estimate_reuse import current_sgs_handoff
@@ -214,12 +211,12 @@ def _estimate_attempt(calendar: Any, *, earliest: datetime, total_base: float, p
         return _SlotAttempt(earliest, end, float(hours), False)
     # Continuous adapters and older test calendars expose only a fixed-efficiency clock.
     eff, used_fallback = _resolve_efficiency(calendar, start_time=earliest, operator_id=operator_id)
-    total_hours = float(total_base) / float(eff) if float(eff) != 1.0 else float(total_base)
+    total_hours = total_base / eff if eff != 1.0 else total_base
     return _SlotAttempt(
         start_time=earliest,
         end_time=calendar.add_working_hours(earliest, total_hours, priority=priority, operator_id=operator_id),
-        total_hours=float(total_hours),
-        efficiency_fallback_used=bool(used_fallback),
+        total_hours=total_hours,
+        efficiency_fallback_used=used_fallback,
     )
 
 
@@ -228,9 +225,12 @@ def _latest_overlap_shift_end(
     earliest: datetime,
     end_time: datetime,
 ) -> Optional[datetime]:
-    candidates = [index.shift_end(earliest, end_time) for index in segment_groups]
-    valid_candidates = [candidate for candidate in candidates if candidate is not None]
-    return max(valid_candidates) if valid_candidates else None
+    latest: Optional[datetime] = None
+    for index in segment_groups:
+        candidate = index.shift_end(earliest, end_time)
+        if candidate is not None and (latest is None or candidate > latest):
+            latest = candidate
+    return latest
 
 
 def _shifted_start(calendar: Any, *, earliest: datetime, shift_to: datetime, priority: Any, operator_id: str) -> datetime:
@@ -251,7 +251,7 @@ def _build_slot_estimate(
         operator_id=operator_id,
         start_time=attempt.start_time,
         end_time=attempt.end_time,
-        total_hours=float(attempt.total_hours),
+        total_hours=attempt.total_hours,
         changeover_penalty=changeover_penalty,
         blocked_by_window=bool(end_dt_exclusive is not None and attempt.end_time >= end_dt_exclusive),
         abort_after_hit=False,

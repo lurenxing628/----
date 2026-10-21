@@ -7,7 +7,6 @@ from core.services.workbench.facts.resource_pressure import pressure_from_index
 from core.services.workbench.facts.resource_projection import (
     RESOURCE_METRIC_VERSION,
     ResourceTaskIndex,
-    resource_cohort,
     resource_summary,
 )
 
@@ -31,16 +30,15 @@ def scoped_rows(rows, batch_refs, start, end):
     return result
 
 
-def changeovers(rows, available=True, *, start=None, end=None, next_operation_refs=None, task_intervals=None):
+def changeovers(rows, available=True, *, start, end, next_operation_refs, task_intervals):
     projected = changeover_projection(rows, start=start, end=end, work_available=available,
                                      next_operation_refs=next_operation_refs, task_intervals=task_intervals)
     reason = "；".join(item["message"] for item in projected["issues"]) if projected["count"] is None and projected["issues"] else None
     return {"value": projected["count"], "reason": reason}
 
 
-def resource_comparison(before, after, start, end, baseline_available, cohort=None, *, calendar_archive,
-                        task_intervals=None, reference_task_intervals=None):
-    resources = cohort if cohort is not None else resource_cohort([before, after])
+def resource_comparison(before, after, start, end, baseline_available, resources, *, calendar_archive,
+                        task_intervals, reference_task_intervals):
     factory = ArchivedCalendar(calendar_archive)
     specs = [dict(resource, saved_id=factory.bindings.get((resource["kind"], resource["ref"]))) for resource in resources]
     indexes = [ResourceTaskIndex(tasks, start, end, work_available=enabled, task_intervals=intervals)

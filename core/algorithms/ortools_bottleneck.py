@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
 from core.algorithm_contracts.priority_constants import priority_weight_scaled
-from core.algorithms.value_domains import INTERNAL
+from core.algorithm_contracts.value_domains import INTERNAL
 from core.infrastructure.logging import safe_log
 
 
@@ -163,7 +163,6 @@ def try_solve_bottleneck_batch_order(
 
     model = cp_model.CpModel()
     starts: Dict[str, Any] = {}
-    ends: Dict[str, Any] = {}
     intervals = []
     tardies = []
     weights = []
@@ -173,14 +172,12 @@ def try_solve_bottleneck_batch_order(
         e = model.NewIntVar(0, horizon, f"e_{idx}")
         itv = model.NewIntervalVar(s, int(dur), e, f"itv_{idx}")
         starts[bid] = s
-        ends[bid] = e
         intervals.append(itv)
 
         due_min = int(due_min_by_batch.get(bid, 10**9))
         # tardy >= end - due ; tardy >= 0
         t = model.NewIntVar(0, int(tardy_ub), f"tardy_{idx}")
         model.Add(t >= e - int(due_min))
-        model.Add(t >= 0)
         tardies.append(t)
         weights.append(int(w))
 
@@ -198,17 +195,14 @@ def try_solve_bottleneck_batch_order(
     status = solver.Solve(model)
     success_statuses = {_status_value(cp_model, "OPTIMAL"), _status_value(cp_model, "FEASIBLE")}
     invalid_statuses = {_status_value(cp_model, "MODEL_INVALID"), _status_value(cp_model, "INFEASIBLE")}
-    unknown_status = _status_value(cp_model, "UNKNOWN")
     if int(status) not in {int(item) for item in success_statuses if item is not None}:
-        status_name = _status_name(cp_model, int(status))
         if int(status) in {int(item) for item in invalid_statuses if item is not None}:
+            status_name = _status_name(cp_model, int(status))
             raise OrtoolsWarmstartError(f"OR-Tools 预热模型不可用：status={status_name}")
-        if unknown_status is not None and int(status) == int(unknown_status):
-            return None
         return None
 
     # 4) 读取顺序：按 start 升序
-    ordered = sorted(list(starts.keys()), key=lambda bid: int(solver.Value(starts[bid])))
+    ordered = sorted(starts, key=lambda bid: int(solver.Value(starts[bid])))
 
     # 将未参与求解的批次追加在后（保持稳定）
     rest = [bid for bid in batches.keys() if bid not in keep_ids]
@@ -228,4 +222,4 @@ def try_solve_bottleneck_batch_order(
         f"OR-Tools bottleneck warm-start: op_type_id={bottleneck_ot} jobs={len(jobs)} total_batches={len(batches)} time_limit={time_limit_seconds}s",
     )
 
-    return list(ordered) + rest
+    return ordered + rest

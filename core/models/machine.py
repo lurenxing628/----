@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Optional, Tuple
 
-from ._helpers import RowLike, as_dict, get
+from ._helpers import RowLike, get
 from .enums import MachineStatus
 
 
@@ -39,19 +39,4 @@ class Machine:
             created_at=get(row, "created_at"),
             updated_at=get(row, "updated_at"),
             op_type_ids=tuple(get(row, "op_type_ids") or ()),
-        )
-
-    def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "machine_id": self.machine_id,
-                "name": self.name,
-                "op_type_id": self.op_type_id,
-                "category": self.category,
-                "status": self.status,
-                "remark": self.remark,
-                "team_id": self.team_id,
-                "created_at": self.created_at,
-                "updated_at": self.updated_at,
-            }
         )

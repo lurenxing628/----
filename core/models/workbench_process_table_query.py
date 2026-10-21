@@ -69,22 +69,24 @@ class ProcessTablePageRequest:
     sort: Union[str, List[Dict[str, str]]] = "business_code"
     direction: str = "asc"
     column_filters: Dict = field(default_factory=dict)
+    _ordering: List[Dict[str, str]] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self):
         ProcessPageRequest(query=self.query, stage=self.stage, number=self.number, size=self.size)
         ordering = normalize_process_sort(self.sort, self.direction)
+        object.__setattr__(self, "_ordering", ordering)
         if type(self.sort) is list:
             object.__setattr__(self, "sort", ordering)
         object.__setattr__(self, "column_filters", normalize_process_column_filters(self.column_filters))
 
     def ordering(self):
         """An empty list clears header sorting; the stable identity tie remains."""
-        return normalize_process_sort(self.sort, self.direction)
+        return [dict(item) for item in self._ordering]
 
     def scope(self):
         return {"kind": "part", "query": self.query, "stage": self.stage, "size": self.size,
                 "sort": self.ordering(),
-                **({"column_filters": normalize_process_column_filters(self.column_filters)} if self.column_filters else {})}
+                **({"column_filters": self.column_filters} if self.column_filters else {})}
 
 
 def process_table_request(value):
@@ -118,5 +120,5 @@ def process_facet_scope(query, column, search="", size=100):
     validate_process_facet_request(column, search, 1, size)
     filters = {key: value for key, value in query.column_filters.items() if key != column}
     scope = {"kind": "part", "query": query.query, "stage": query.stage,
-             **({"column_filters": normalize_process_column_filters(filters)} if filters else {})}
+             **({"column_filters": filters} if filters else {})}
     return {"kind": "process_table_facets", "scope": scope, "column": column, "query": search, "size": size}

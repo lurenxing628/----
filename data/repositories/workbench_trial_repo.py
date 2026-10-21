@@ -103,10 +103,6 @@ class WorkbenchTrialRepository:
         row = self.conn.execute("SELECT * FROM WorkbenchTrialScenarios WHERE scenario_ref=?", (ref,)).fetchone()
         return None if row is None else dict(row)
 
-    def scenario_rows(self, ref):
-        """(row_ref, payload_json) of every permanent scenario row, payload undecoded."""
-        return list(self.iter_scenario_rows(ref))
-
     def iter_scenario_rows(self, ref):
         cursor = self.conn.execute("SELECT row_ref,payload_json FROM WorkbenchTrialScenarioRows WHERE scenario_ref=?", (ref,))
         return (dict(row) for row in cursor)

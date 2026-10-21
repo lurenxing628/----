@@ -128,7 +128,7 @@ def test_copy_eligibility_uses_the_source_event_at_birth_after_change_back_withd
     replacement = case.lineage_repo.instance(source_id)
     assert replacement["operation_ref"] != source["operation_ref"]
     replaced_id = copy("HISTORY-REPLACED")
-    assert not case.lineage_repo.origins([case.lineage_repo.instance(replaced_id)["operation_ref"]])
+    assert not list(case.lineage_repo.origin_rows([case.lineage_repo.instance(replaced_id)["operation_ref"]]))
     for operation_id in (early_first, early_second):
         facts = lineage(case, operation_id)
         ref = case.lineage_repo.instance(operation_id)["operation_ref"]

@@ -80,8 +80,7 @@ def _load_scenario_record(repo, scenario_ref, row_limit, byte_limit, size_check)
     legacy, stored = "tasks" in archive, {}
     metadata_bytes, normalize_task_bytes = (None, False) if legacy else scenario_read_size_basis(raw, archive, header_bytes)
     logical_bodies = 0
-    rows = repo.iter_scenario_rows(scenario_ref) if hasattr(repo, "iter_scenario_rows") else repo.scenario_rows(scenario_ref)
-    for row in rows:
+    for row in repo.iter_scenario_rows(scenario_ref):
         raw = row["payload_json"]
         task, task_bytes = load_object_with_size(raw)
         sizes["rows"] += 1
@@ -91,7 +90,7 @@ def _load_scenario_record(repo, scenario_ref, row_limit, byte_limit, size_check)
             logical_bodies += len(_encoded(task)[1]) if normalize_task_bytes else task_bytes
             logical_snapshot_bytes(metadata_bytes, logical_bodies, sizes["rows"], has_metadata=bool(archive["snapshot"]))
         stored[row["row_ref"]] = task
-    if metadata_bytes is not None:
+    if metadata_bytes is not None and not sizes["rows"]:
         logical_snapshot_bytes(metadata_bytes, logical_bodies, sizes["rows"], has_metadata=bool(archive["snapshot"]))
     result = scenario_snapshot(archive, stored)
     tasks = result.get("tasks")

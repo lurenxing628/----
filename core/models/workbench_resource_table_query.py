@@ -38,18 +38,17 @@ def normalize_column_filters(value, kind, category=None):
 
 
 def table_query_required(query):
-    kind = getattr(query, "kind", "material")
-    legacy = ("business_code", "label", "stock_qty", "status") if kind == "material" else ("business_code", "label", "status", "default_days")
+    legacy = ("business_code", "label", "stock_qty", "status") if query.kind == "material" else ("business_code", "label", "status", "default_days")
     return bool(query.column_filters) or query.sort not in legacy
 
 
 def toolbar_scope(query):
-    return {"kind": getattr(query, "kind", "material"), "query": query.query, "status": query.status,
-            **({"category": query.category} if hasattr(query, "category") else {})}
+    return {"kind": query.kind, "query": query.query, "status": query.status,
+            **({"category": query.category} if query.kind != "material" else {})}
 
 
 def validate_facet_request(query, column, search, number, size):
-    if column not in table_columns(getattr(query, "kind", "material"), getattr(query, "category", None)):
+    if column not in table_columns(query.kind, query.category):
         raise WorkbenchCommandRejected("invalid_input", "该视图不支持此业务列，请核对工种归属。", 400)
     if type(search) is not str or len(search) > 200:
         raise WorkbenchCommandRejected("invalid_input", "筛选值搜索最多200字。", 400)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date, timedelta
+from datetime import date
 from typing import Literal, Optional, overload
 
 from core.errors import ValidationError
@@ -25,6 +25,8 @@ _STATUS = {"machine": ("active", "maintain", "inactive"), "operator": ("active",
 #: 描述符那份在 workbench_resource_file.ENUMS["op_type"]，两份分叉要能被测出来。
 _CATEGORY = OP_TYPE_CATEGORIES
 _MERGE_MODE = ("separate", "merged")
+_SHIFT_BASE_DATE = date(2000, 1, 1)
+_SHIFT_NEXT_DATE = date(2000, 1, 2)
 
 
 def resource_object(value, allowed, path):
@@ -93,14 +95,15 @@ def _pattern_day(row):
 
 
 def _validate_adjacent_shifts(days):
-    for index, day in enumerate(days):
-        following = days[(index + 1) % len(days)]
-        if day["is_rest"] or following["is_rest"]:
+    effective = [None if day["is_rest"] else (
+        day["periods"] if day["periods"] is not None
+        else [{"start": day["shift_start"], "end": day["shift_end"], "day_offset": 0}]
+    ) for day in days]
+    for index, current in enumerate(effective):
+        following = effective[(index + 1) % len(effective)]
+        if current is None or following is None:
             continue
-        base = date(2000, 1, 1)
-        current = day["periods"] if day["periods"] is not None else [{"start": day["shift_start"], "end": day["shift_end"], "day_offset": 0}]
-        following_periods = following["periods"] if following["periods"] is not None else [{"start": following["shift_start"], "end": following["shift_end"], "day_offset": 0}]
-        left, right = period_windows(base, current), period_windows(base + timedelta(days=1), following_periods)
+        left, right = period_windows(_SHIFT_BASE_DATE, current), period_windows(_SHIFT_NEXT_DATE, following)
         if left and right and left[-1][1] > right[0][0]:
             raise ValidationError("相邻轮换日期的班次时间重叠，请核对跨午夜结束时间。", field="fields.pattern")
 

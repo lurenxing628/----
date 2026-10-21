@@ -4,8 +4,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Optional, Sequence, Tuple
 
-from ._helpers import RowLike, as_dict, get, parse_int
-from .operation_execution_scope import OperationExecutionScope, validate_current_official_execution_scope
+from ._helpers import RowLike, get, parse_int
+from .operation_execution_scope import (
+    OperationExecutionScope,
+    operation_execution_scope_from_event,
+    validate_current_official_execution_scope,
+)
 
 EXECUTION_EVENT_START = "start"
 EXECUTION_EVENT_PAUSE = "pause"
@@ -26,14 +30,6 @@ VALID_EXECUTION_EVENT_TYPES = (
     EXECUTION_EVENT_RESUME,
     EXECUTION_EVENT_FINISH,
     EXECUTION_EVENT_EXCEPTION,
-)
-
-VALID_EXECUTION_ACTIONS = (
-    EXECUTION_EVENT_START,
-    EXECUTION_EVENT_PAUSE,
-    EXECUTION_EVENT_RESUME,
-    EXECUTION_EVENT_FINISH,
-    EXECUTION_ACTION_REPORT_EXCEPTION,
 )
 
 VALID_REPORTED_STATUSES = (
@@ -124,14 +120,6 @@ def _event_identity(event: OperationExecutionEvent) -> str:
     return f"type={event.event_type!r}"
 
 
-def _event_scope(event: OperationExecutionEvent) -> OperationExecutionScope:
-    return OperationExecutionScope(
-        schedule_version=event.schedule_version, schedule_id=event.schedule_id,
-        op_id=event.op_id, batch_id=event.batch_id, source_table=event.source_table,
-        effective_plan_role=event.effective_plan_role, scenario_id=event.scenario_id,
-    )
-
-
 def _event_id_for_revision(event: Any, *, index: int, total: int) -> int:
     # 只有序列最后一个新事件允许 id=0 哨兵；前面任何事件缺 id 都必须响亮失败。
     raw = event.id
@@ -189,7 +177,7 @@ def validate_operation_execution_event_sequence(events: Sequence[OperationExecut
     sequence_scope: Optional[OperationExecutionScope] = None
     events_list = list(events or [])
     for index, event in enumerate(events_list, start=1):
-        scope = _event_scope(event)
+        scope = operation_execution_scope_from_event(event)
         if sequence_scope is None:
             sequence_scope = scope
         elif scope != sequence_scope:
@@ -306,7 +294,7 @@ class OperationExecutionEvent:
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return as_dict(self.__dict__)
+        return dict(self.__dict__)
 
 
 __all__ = [
@@ -324,7 +312,6 @@ __all__ = [
     "OperationExecutionEvent",
     "ALLOWED_EXECUTION_EVENTS_BY_STATUS",
     "REPORTED_STATUS_BY_EXECUTION_EVENT_TYPE",
-    "VALID_EXECUTION_ACTIONS",
     "VALID_EXECUTION_EVENT_TYPES",
     "VALID_REPORTED_STATUSES",
     "normalize_operation_execution_event_values",

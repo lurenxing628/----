@@ -66,18 +66,6 @@ def _normalize_remark_token(value: Any) -> str:
     return str(value or "").strip().casefold()
 
 
-# 这一行记录“自己的”结构化字段名。一条说明只有在等于本记录的某个结构化枚举码时，
-# 才说明它是写入链路把内部值错灌进了说明字段；否则即便它恰好等于别的记录用得到的
-# 英文码，也应当原样保留，避免误杀用户真填的内容。
-_INTERNAL_REMARK_EVENT_FIELDS = (
-    "event_type",
-    "reported_status",
-    "reason_code",
-    "severity",
-    "handling_status",
-)
-
-
 def execution_status_label(value: Any) -> str:
     text = str(value or "").strip()
     return STATUS_LABELS.get(text, "状态未识别")
@@ -148,11 +136,8 @@ def public_execution_remark(value: Any, *, internal_tokens: Any = None) -> str:
 
 def internal_remark_tokens_from_event(event: Any) -> frozenset:
     """从一条执行事件里取出它“自己的”结构化枚举码，供 public_execution_remark 判定泄漏。"""
-    return frozenset(
-        str(getattr(event, field, "") or "").strip()
-        for field in _INTERNAL_REMARK_EVENT_FIELDS
-        if str(getattr(event, field, "") or "").strip()
-    )
+    values = (event.event_type, event.reported_status, event.reason_code, event.severity, event.handling_status)
+    return frozenset(text for raw in values for text in (str(raw or "").strip(),) if text)
 
 
 __all__ = [

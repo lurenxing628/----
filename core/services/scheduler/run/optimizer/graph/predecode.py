@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 from itertools import groupby
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.graph_ready_profiles import GRAPH_READY_PHASE, GraphReadyWeightProfile
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
 
 from .budget import GraphReadySearchBudget
-
-if TYPE_CHECKING:
-    from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
 
 def graph_priority_preorder(keys: Dict[int, Tuple[float, ...]]) -> Tuple[Tuple[int, ...], ...]:
@@ -31,13 +28,10 @@ def graph_priority_preorder(keys: Dict[int, Tuple[float, ...]]) -> Tuple[Tuple[i
 class GraphReadyProfileSearch:
     """Profile construction uses the run's shared decode admission and receipts."""
 
-    def __init__(self, *, evaluate: Callable[..., Dict[str, Any]], pool: Any,
-                 budget: GraphReadySearchBudget, profile_count: int,
-                 decode_session: SharedDecodeSession) -> None:
+    def __init__(self, *, evaluate: Callable[..., Dict[str, Any]],
+                 budget: GraphReadySearchBudget, profile_count: int) -> None:
         self._evaluate = evaluate
-        self.pool = pool
         self.budget = budget
-        self.decode_session = decode_session
         self.report: Dict[str, Any] = {
             "proof": "shared_decode_request_v1", "cache_scope": "shared_session", "shared_skip_by_reason": {},
             "configured_profiles": profile_count, "considered_profiles": 0,

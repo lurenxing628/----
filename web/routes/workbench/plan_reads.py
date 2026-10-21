@@ -53,19 +53,14 @@ def _cursor(scope, scope_dict):
         return None, snapshot
     try:
         payload = resolve_public_token(_CURSOR_SCOPE, token, message="翻页位置已失效，请回到第 1 页重新查询。", field="cursor")
-        if payload["scope"] != scope_dict or not isinstance(payload["snapshot_ref"], str):
-            raise ValueError("Cursor scope mismatch")
-        if snapshot is not None and snapshot != payload["snapshot_ref"]:
-            raise ValueError("Cursor snapshot mismatch")
-        seek = payload["seek"]
-        if scope.collection == "history":
-            if type(seek) is not int or not 1 <= seek <= (1 << 63) - 1:
-                raise ValueError("Invalid history seek")
-        elif type(seek) is not str or not seek or "\x00" in seek:
-            raise ValueError("Invalid scenario seek")
-        return seek, payload["snapshot_ref"]
-    except (ValidationError, ValueError, TypeError) as exc:
+    except ValidationError as exc:
         raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。") from exc
+    seek = payload["seek"]
+    valid_seek = (type(seek) is int and 1 <= seek <= (1 << 63) - 1 if scope.collection == "history"
+                  else type(seek) is str and bool(seek) and "\x00" not in seek)
+    if payload["scope"] != scope_dict or (snapshot is not None and snapshot != payload["snapshot_ref"]) or not valid_seek:
+        raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
+    return seek, payload["snapshot_ref"]
 
 
 @api_endpoint

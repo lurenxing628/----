@@ -26,8 +26,8 @@ class WorkbenchBatchFileService:
             raise ValidationError("文件里一行批次数据都没有，不能用空文件清除已有资料。", field="file")
         return parsed, warnings
 
-    def preview(self, content, mode, upload=None):
-        parsed, warnings = upload if upload is not None else self.read(content, mode)
+    def preview(self, mode, upload):
+        parsed, warnings = upload
         preview = BatchImportPreview(self.reader.load(), mode)
         rows = [preview.row(row) for row in parsed]
         deleted = preview.deleted()

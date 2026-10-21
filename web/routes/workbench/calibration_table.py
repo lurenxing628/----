@@ -38,7 +38,7 @@ def calibration_facets(column, selection=False):
     if (selection or number > 1) and not token:
         raise WorkbenchCommandRejected("snapshot_required", messages.STALE, 400)
     binding = resolve_read_snapshot(token) if token is not None else None
-    as_of = _as_of(token, binding)
+    as_of = _as_of(token, binding) if token is not None else None
     service = WorkbenchCalibrationService(g.db, as_of=as_of)
     bound = {"kind": "calibration_table_facets", "scope": query.scope(), "column": column, "query": search, "size": size}
     with service.read_snapshot(clock=(lambda: _as_of(None)) if token is None else None) as as_of:

@@ -13,10 +13,8 @@ from .neighborhood_move_support import (
     latest_result,
     most_tardy_batch,
     pick_resource_pair,
-    positive_count,
     prepare_batch_due_dates,
     prepare_machine_rows,
-    resource_pair_count,
 )
 
 NEIGHBORHOOD_MOVE_SCHEMA_VERSION = 1
@@ -58,7 +56,6 @@ class NeighborhoodMove:
     candidate_rejected: str = ""
     resource_pair_rank: Optional[Dict[Tuple[str, str], int]] = None
     diagnostics: Optional[Dict[str, Any]] = None
-    decision_key: Tuple[Any, ...] = ()
     selected_operation_ids: Tuple[str, ...] = ()
     selected_batch_ids: Tuple[str, ...] = ()
     selected_machine_ids: Tuple[str, ...] = ()
@@ -105,7 +102,6 @@ def noop_move(name: str, *, reason: str, order: List[str], input_scope: str = "b
         noop=True,
         candidate_rejected="noop_neighbor",
         diagnostics={"reason": str(reason or "noop")},
-        decision_key=tuple(order or []),
         reason=str(reason or "noop"),
     )
 
@@ -123,7 +119,7 @@ def critical_chain_move(order: List[str], results: List[Any]) -> NeighborhoodMov
         expected_effect="pull_latest_chain_batch_earlier",
         reason_when_first="critical_chain_batch_already_first",
         reason="critical_path",
-        diagnostics={"chain_node_count": positive_count(results)},
+        diagnostics={"chain_node_count": len(results or ())},
     )
 
 
@@ -212,7 +208,6 @@ def resource_alternative_move(order: List[str], resource_pool: Optional[Dict[str
         expected_effect="try_alternative_resource_assignment",
         resource_pair_rank={(operator_id, machine_id): new_rank},
         diagnostics=diagnostics,
-        decision_key=("resource_alternative", tuple(order or []), resource_pair_count(pool)),
         selected_machine_ids=(machine_id,),
         reason="unmatched_resource",
     )
@@ -259,7 +254,6 @@ def sgs_dispatch_rule_move(order: List[str], current_rule: str, valid_dispatch_r
             "to_dispatch_rule": selected,
             "candidate_rule_count": len(candidates),
         },
-        decision_key=(SGS_DISPATCH_RULE, current, selected, tuple(order or [])),
         reason="sgs_rule_search",
     )
 
@@ -278,7 +272,6 @@ def _with_fallback(move: NeighborhoodMove, *, neighborhood_name: str, fallback_r
         fallback_used=True,
         fallback_reason=fallback_reason,
         diagnostics=dict(move.diagnostics or {}),
-        decision_key=move.decision_key,
         selected_operation_ids=move.selected_operation_ids,
         selected_batch_ids=move.selected_batch_ids,
         selected_machine_ids=move.selected_machine_ids,
@@ -297,7 +290,18 @@ def _order_move(
     diagnostics: Optional[Dict[str, Any]] = None,
     selected_machine_ids: Tuple[str, ...] = (),
 ) -> NeighborhoodMove:
-    changed = _changed_positions(before, after)
+    changed = 0
+    changed_batch_ids: List[str] = []
+    for left, right in zip(before, after):
+        if left == right:
+            continue
+        changed += 1
+        for item in (left, right):
+            text = str(item or "").strip()
+            if text and text not in changed_batch_ids:
+                changed_batch_ids.append(text)
+    if len(before) != len(after):
+        changed = max(len(before), len(after))
     if changed <= 0:
         return noop_move(name, reason="unchanged_batch_order", order=before)
     return NeighborhoodMove(
@@ -309,8 +313,7 @@ def _order_move(
         changed_decision_count=changed,
         expected_effect=str(expected_effect),
         diagnostics=dict(diagnostics or {}),
-        decision_key=tuple(after),
-        selected_batch_ids=tuple(_changed_batch_ids(before, after)),
+        selected_batch_ids=tuple(changed_batch_ids),
         selected_machine_ids=tuple(item for item in selected_machine_ids if item),
         reason=str(reason),
     )
@@ -355,30 +358,16 @@ def _move_before(order: List[str], moving_batch: str, before_batch: str) -> List
     out = list(order or [])
     if not moving_batch or not before_batch or moving_batch == before_batch:
         return out
-    if moving_batch not in out or before_batch not in out:
+    try:
+        moving_index = out.index(moving_batch)
+        before_index = out.index(before_batch)
+    except ValueError:
         return out
-    out.remove(moving_batch)
-    target = out.index(before_batch)
-    out.insert(target, moving_batch)
+    out.pop(moving_index)
+    if moving_index < before_index:
+        before_index -= 1
+    out.insert(before_index, moving_batch)
     return out
-
-
-def _changed_positions(before: List[str], after: List[str]) -> int:
-    if len(before) != len(after):
-        return max(len(before), len(after))
-    return sum(1 for left, right in zip(before, after) if left != right)
-
-
-def _changed_batch_ids(before: List[str], after: List[str]) -> List[str]:
-    changed: List[str] = []
-    for left, right in zip(before, after):
-        if left == right:
-            continue
-        for item in (left, right):
-            text = str(item or "").strip()
-            if text and text not in changed:
-                changed.append(text)
-    return changed
 
 
 def _normalized_sgs_dispatch_rules(valid_dispatch_rules: Optional[List[str]]) -> List[str]:

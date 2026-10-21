@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.errors import ValidationError
 
@@ -10,7 +10,6 @@ from .neighborhood_moves import (
     CHANGEOVER_BLOCK,
     CRITICAL_CHAIN,
     RESOURCE_ALTERNATIVE,
-    SGS_DISPATCH_RULE,
     TARDY_WINDOW,
     TIME_WINDOW,
     NeighborhoodMove,
@@ -23,22 +22,12 @@ from .neighborhood_moves import (
     time_window_move,
 )
 
-NEIGHBORHOOD_REGISTRY_SCHEMA_VERSION = 1
-
-_GENERATOR_NAMES: Tuple[str, ...] = (
-    CRITICAL_CHAIN,
-    TARDY_WINDOW,
-    BOTTLENECK_MACHINE,
-    CHANGEOVER_BLOCK,
-    RESOURCE_ALTERNATIVE,
-    TIME_WINDOW,
-    SGS_DISPATCH_RULE,
-)
+_ALLOWED_SET = frozenset(ALLOWED_NEIGHBORHOODS)
 
 
 def validate_neighborhood_name(name: Any) -> str:
     text = str(name or "").strip().lower()
-    if text not in set(ALLOWED_NEIGHBORHOODS):
+    if text not in _ALLOWED_SET:
         raise ValidationError(
             f"未知业务邻域“{name}”，本阶段只允许：{', '.join(ALLOWED_NEIGHBORHOODS)}。",
             field="neighborhood",
@@ -55,23 +44,6 @@ def validate_neighborhoods(names: Tuple[str, ...]) -> Tuple[str, ...]:
     return tuple(out)
 
 
-def _generators() -> Dict[str, Callable[..., NeighborhoodMove]]:
-    return {
-        CRITICAL_CHAIN: lambda **kwargs: critical_chain_move(kwargs["order"], kwargs["results"]),
-        TARDY_WINDOW: lambda **kwargs: tardy_window_move(kwargs["order"], kwargs["results"], kwargs["batches"]),
-        BOTTLENECK_MACHINE: lambda **kwargs: bottleneck_machine_move(kwargs["order"], kwargs["results"]),
-        CHANGEOVER_BLOCK: lambda **kwargs: changeover_block_move(kwargs["order"], kwargs["results"]),
-        RESOURCE_ALTERNATIVE: lambda **kwargs: resource_alternative_move(kwargs["order"], kwargs["resource_pool"]),
-        TIME_WINDOW: lambda **kwargs: time_window_move(kwargs["order"], kwargs["results"], kwargs["batches"]),
-        SGS_DISPATCH_RULE: lambda **kwargs: sgs_dispatch_rule_move(
-            kwargs["order"],
-            kwargs["current_dispatch_rule"],
-            kwargs["valid_dispatch_rules"],
-            kwargs["rnd"],
-        ),
-    }
-
-
 def build_neighborhood_move(
     name: str,
     *,
@@ -84,21 +56,19 @@ def build_neighborhood_move(
     valid_dispatch_rules: Optional[List[str]] = None,
 ) -> NeighborhoodMove:
     key = validate_neighborhood_name(name)
-    generators = _generators()
-    if key not in generators:
-        raise ValidationError(
-            f"业务邻域“{name}”没有注册生成器。",
-            field="neighborhood",
-        )
-    return generators[key](
-        order=list(order or []),
-        results=list(results or []),
-        batches=batches or {},
-        resource_pool=resource_pool,
-        rnd=rnd,
-        current_dispatch_rule=str(current_dispatch_rule or ""),
-        valid_dispatch_rules=list(valid_dispatch_rules or []),
-    )
+    if key == CRITICAL_CHAIN:
+        return critical_chain_move(order, results)
+    if key == TARDY_WINDOW:
+        return tardy_window_move(order, results, batches)
+    if key == BOTTLENECK_MACHINE:
+        return bottleneck_machine_move(order, results)
+    if key == CHANGEOVER_BLOCK:
+        return changeover_block_move(order, results)
+    if key == RESOURCE_ALTERNATIVE:
+        return resource_alternative_move(order, resource_pool)
+    if key == TIME_WINDOW:
+        return time_window_move(order, results, batches)
+    return sgs_dispatch_rule_move(order, current_dispatch_rule, valid_dispatch_rules, rnd)
 
 
 def choose_neighborhood_move(
@@ -112,7 +82,7 @@ def choose_neighborhood_move(
     current_dispatch_rule: str = "",
     valid_dispatch_rules: Optional[List[str]] = None,
 ) -> NeighborhoodMove:
-    choices = validate_neighborhoods(neighborhoods or ALLOWED_NEIGHBORHOODS)
+    choices = neighborhoods or ALLOWED_NEIGHBORHOODS
     if not choices:
         raise ValidationError("业务邻域列表不能为空。", field="neighborhood")
     index = int(rnd.randrange(len(choices))) if len(choices) > 1 else 0
@@ -128,15 +98,9 @@ def choose_neighborhood_move(
     )
 
 
-def registered_neighborhoods() -> Tuple[str, ...]:
-    return _GENERATOR_NAMES
-
-
 __all__ = [
-    "NEIGHBORHOOD_REGISTRY_SCHEMA_VERSION",
     "build_neighborhood_move",
     "choose_neighborhood_move",
-    "registered_neighborhoods",
     "validate_neighborhood_name",
     "validate_neighborhoods",
 ]

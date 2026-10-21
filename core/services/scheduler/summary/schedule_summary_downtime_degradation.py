@@ -136,35 +136,32 @@ def compute_downtime_degradation(cfg: Any, *, downtime_meta: Optional[Dict[str, 
     auto_assign_enabled = str(snapshot.auto_assign_enabled).strip().lower() == YesNo.YES.value
     meta = downtime_meta if isinstance(downtime_meta, dict) else {}
     state = _downtime_meta_state(meta)
-    flags = _downtime_degraded_flags(state, auto_assign_enabled=bool(auto_assign_enabled))
+    flags = _downtime_degraded_flags(state, auto_assign_enabled=auto_assign_enabled)
 
     return {
-        "auto_assign_enabled": bool(auto_assign_enabled),
-        "downtime_load_ok": bool(state["downtime_load_ok"]),
-        "downtime_degraded": bool(
+        "auto_assign_enabled": auto_assign_enabled,
+        "downtime_load_ok": state["downtime_load_ok"],
+        "downtime_degraded": (
             flags["load_failed"]
             or flags["load_partial_failed"]
             or flags["extend_failed"]
             or flags["extend_partial_failed"]
-            or state["meta_parse_failed"]
         ),
         "downtime_degradation_reason": _downtime_reason(
-            auto_assign_enabled=bool(auto_assign_enabled),
-            downtime_extend_attempted=bool(state["downtime_extend_attempted"]),
-            load_failed=bool(flags["load_failed"]),
-            load_partial_fail_count=int(state["load_partial_fail_count"]),
+            auto_assign_enabled=auto_assign_enabled,
+            downtime_extend_attempted=state["downtime_extend_attempted"],
+            load_failed=flags["load_failed"],
+            load_partial_fail_count=state["load_partial_fail_count"],
             load_partial_fail_machines_sample=state["load_partial_sample"],
-            extend_failed=bool(flags["extend_failed"]),
-            extend_partial_fail_count=int(state["extend_partial_fail_count"]),
+            extend_failed=flags["extend_failed"],
+            extend_partial_fail_count=state["extend_partial_fail_count"],
             extend_partial_fail_machines_sample=state["extend_partial_sample"],
-            meta_parse_failed=bool(state["meta_parse_failed"]),
+            meta_parse_failed=state["meta_parse_failed"],
         ),
-        "downtime_extend_attempted": bool(state["downtime_extend_attempted"]),
-        "load_partial_fail_count": int(state["load_partial_fail_count"]),
-        "load_partial_fail_machines_sample": state["load_partial_sample"],
-        "extend_partial_fail_count": int(state["extend_partial_fail_count"]),
-        "extend_partial_fail_machines_sample": state["extend_partial_sample"],
-        "downtime_meta_parse_failed": bool(state["meta_parse_failed"]),
+        "downtime_extend_attempted": state["downtime_extend_attempted"],
+        "load_partial_fail_count": state["load_partial_fail_count"],
+        "extend_partial_fail_count": state["extend_partial_fail_count"],
+        "downtime_meta_parse_failed": state["meta_parse_failed"],
     }
 
 

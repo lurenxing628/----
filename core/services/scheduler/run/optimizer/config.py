@@ -7,8 +7,8 @@ from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithms import SortStrategy
 from core.errors import ValidationError
 from core.models.enums import YesNo
+from core.models.schedule_config_runtime import ensure_schedule_config_snapshot
 from core.services.scheduler.config.config_field_spec import choices_for
-from core.services.scheduler.config.config_snapshot import ensure_schedule_config_snapshot
 from core.shared.boolean_normalize import to_yes_no
 from core.shared.strict_parse import parse_required_float, parse_required_int
 
@@ -18,19 +18,15 @@ _FIELD_LABELS = {
     "dispatch_rule": "派工规则",
     "objective": "优化目标",
     "algo_mode": "计算模式",
-    "seed_results": "已有排产记录",
     "priority_weight": "优先级权重",
     "due_weight": "交期权重",
-    "ready_weight": "齐套权重",
     "time_budget_seconds": "找更好排法先试多久",
     "ortools_time_limit_seconds": "深度优化尝试时间",
-    "freeze_window_days": "锁定天数",
 }
 
 
 @dataclass(frozen=True)
 class OptimizerConfig:
-    snapshot: Any
     strategy_enum: SortStrategy
     strategy_params: Optional[Dict[str, Any]]
     algo_mode: str
@@ -41,8 +37,6 @@ class OptimizerConfig:
     valid_strategies: Tuple[str, ...]
     valid_dispatch_modes: Tuple[str, ...]
     valid_dispatch_rules: Tuple[str, ...]
-    valid_objectives: Tuple[str, ...]
-    valid_algo_modes: Tuple[str, ...]
 
     def strategy_keys(self) -> List[str]:
         current_key = str(self.strategy_enum.value)
@@ -134,7 +128,7 @@ def ensure_optimizer_config_snapshot(cfg: Any, *, strict_mode: bool) -> Any:
     )
 
 
-def weighted_strategy_params(snapshot: Any, *, strict_mode: bool) -> Dict[str, Any]:
+def weighted_strategy_params(snapshot: Any) -> Dict[str, Any]:
     return {
         "priority_weight": require_float(snapshot.priority_weight, field="priority_weight", min_value=0.0),
         "due_weight": require_float(snapshot.due_weight, field="due_weight", min_value=0.0),
@@ -154,7 +148,6 @@ def resolve_optimizer_config(
     cfg_svc: Any,
     snapshot: Any,
     optimizer_algo_stats: Dict[str, Any],
-    strict_mode: bool,
 ) -> OptimizerConfig:
     valid_strategies = effective_choice_values("sort_strategy", cfg_svc=cfg_svc, allowlist_attr="VALID_STRATEGIES")
     valid_dispatch_modes = effective_choice_values("dispatch_mode", cfg_svc=cfg_svc, allowlist_attr="VALID_DISPATCH_MODES")
@@ -175,10 +168,9 @@ def resolve_optimizer_config(
 
     strategy_params: Optional[Dict[str, Any]] = None
     if strategy_enum == SortStrategy.WEIGHTED:
-        strategy_params = weighted_strategy_params(snapshot, strict_mode=bool(strict_mode))
+        strategy_params = weighted_strategy_params(snapshot)
 
     return OptimizerConfig(
-        snapshot=snapshot,
         strategy_enum=strategy_enum,
         strategy_params=strategy_params,
         algo_mode=require_choice(snapshot.algo_mode, field="algo_mode", valid_values=valid_algo_modes),
@@ -189,6 +181,4 @@ def resolve_optimizer_config(
         valid_strategies=valid_strategies,
         valid_dispatch_modes=valid_dispatch_modes,
         valid_dispatch_rules=valid_dispatch_rules,
-        valid_objectives=valid_objectives,
-        valid_algo_modes=valid_algo_modes,
     )

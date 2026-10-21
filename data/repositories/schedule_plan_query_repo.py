@@ -65,10 +65,10 @@ JOIN ScheduleAdjustmentScenario s ON s.scenario_id = r.scenario_id
 WHERE s.base_version = ? AND r.scenario_id = ? AND s.status = 'active'
 """
 
-def _require_candidate_id(source_table: str, candidate_id: Optional[int]) -> Optional[int]:
-    if source_table == SOURCE_CANDIDATE_ROWS and candidate_id is None:
+def _require_candidate_id(candidate_id: Optional[int]) -> int:
+    if candidate_id is None:
         raise ValueError("candidate_id is required for candidate_rows plan")
-    return candidate_id
+    return int(candidate_id)
 
 
 def _require_scenario_id(source_table: str, scenario_id: Optional[str]) -> str:
@@ -87,30 +87,6 @@ class SchedulePlanQueryRepository(BaseRepository):
 
     def latest_version(self) -> Optional[int]:
         return self.fetchvalue("SELECT MAX(version) FROM ScheduleHistory WHERE version > 0", default=None)
-
-    def list_history_identity_rows(self) -> List[Dict[str, Any]]:
-        return self.fetchall(
-            """
-            SELECT
-                h.version,
-                h.result_status,
-                h.result_summary,
-                (
-                    SELECT COUNT(1)
-                    FROM Schedule s
-                    WHERE s.version = h.version
-                ) AS schedule_row_count
-            FROM ScheduleHistory h
-            WHERE h.id = (
-                SELECT h2.id
-                FROM ScheduleHistory h2
-                WHERE h2.version = h.version
-                ORDER BY h2.schedule_time DESC, h2.id DESC
-                LIMIT 1
-            )
-            ORDER BY h.version DESC
-            """
-        )
 
     def get_history_identity_row(self, version: int) -> Optional[Dict[str, Any]]:
         return self.fetchone(
@@ -152,7 +128,6 @@ class SchedulePlanQueryRepository(BaseRepository):
                 (int(version),),
             )
         if source_table == SOURCE_CANDIDATE_ROWS:
-            _require_candidate_id(source_table, candidate_id)
             return self.fetchone(
                 """
                 SELECT id AS source_row_id, lock_status
@@ -161,7 +136,7 @@ class SchedulePlanQueryRepository(BaseRepository):
                 ORDER BY id ASC
                 LIMIT 1
                 """,
-                (int(version), int(candidate_id or 0)),
+                (int(version), _require_candidate_id(candidate_id)),
             )
         if source_table == SOURCE_ADJUSTMENT_SCENARIO_ROWS:
             scenario_key = _require_scenario_id(source_table, scenario_id)
@@ -259,8 +234,7 @@ class SchedulePlanQueryRepository(BaseRepository):
         if source_table == SOURCE_SCHEDULE:
             return _SCHEDULE_PLAN_ROWS_SQL, []
         if source_table == SOURCE_CANDIDATE_ROWS:
-            _require_candidate_id(source_table, candidate_id)
-            return _CANDIDATE_PLAN_ROWS_SQL, [int(candidate_id or 0)]
+            return _CANDIDATE_PLAN_ROWS_SQL, [_require_candidate_id(candidate_id)]
         if source_table == SOURCE_ADJUSTMENT_SCENARIO_ROWS:
             return _SCENARIO_PLAN_ROWS_SQL, [_require_scenario_id(source_table, scenario_id)]
         raise ValueError(f"未知的排产方案数据来源：{source_table}")
@@ -283,14 +257,13 @@ class SchedulePlanQueryRepository(BaseRepository):
                 (int(version),),
             )
         elif source_table == SOURCE_CANDIDATE_ROWS:
-            _require_candidate_id(source_table, candidate_id)
             row = self.fetchone(
                 f"""
                 SELECT {interval_summary_sql()} AS interval_summary
                 FROM ScheduleCandidateRows
                 WHERE version = ? AND candidate_id = ?
                 """,
-                (int(version), int(candidate_id or 0)),
+                (int(version), _require_candidate_id(candidate_id)),
             )
         elif source_table == SOURCE_ADJUSTMENT_SCENARIO_ROWS:
             scenario_key = _require_scenario_id(source_table, scenario_id)
@@ -307,7 +280,7 @@ class SchedulePlanQueryRepository(BaseRepository):
             raise ValueError(f"未知的排产方案数据来源：{source_table}")
         if not row:
             return None
-        start_time, end_time, _invalid = decode_interval_summary(row.get("interval_summary"))
+        start_time, end_time, _invalid = decode_interval_summary(row["interval_summary"])
         if not start_time or not end_time:
             return None
         return {"version": int(version), "start_time": str(start_time), "end_time": str(end_time)}

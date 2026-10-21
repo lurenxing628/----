@@ -505,7 +505,7 @@ def _production(source, window):
     return projection
 
 
-def _saved_objective(source, packet, artifact, algo):
+def _saved_objective(source, packet, artifact, algo, native):
     receipt = packet.get("receipt") or {}
     selection, candidate = receipt.get("selection") or {}, packet.get("candidate") or {}
     name = artifact.get("objective_name") or artifact.get("objective", _MISSING)
@@ -531,7 +531,6 @@ def _saved_objective(source, packet, artifact, algo):
         order = order.get(saved_name, _MISSING) if type(order) is dict and type(saved_name) is str else _MISSING
     if applicable(saved_name, order):
         return _side(source.source("receipt.selection"), {"name": saved_name, "field_order": order})
-    native = _native_optimization(source)
     if native is not None:
         _, _, selection = native
         saved_name = selection.get("primary_objective", _MISSING)
@@ -644,7 +643,7 @@ def _experiments(source, packet):
     if not any("algorithm_version" in values for values in (artifact, algo)):
         projection.add("algorithm", "version", "实际算法版本", "algorithm_version", _MISSING, "candidate.artifact.algorithm_version", "algorithm",
                        reason=_reason("algorithm_version_not_recorded", "原记录未保存实际算法版本。"))
-    return projection, _saved_objective(source, packet, artifact, algo)
+    return projection, _saved_objective(source, packet, artifact, algo, native)
 
 
 def prepare_history_condition_source(packet):

@@ -10,7 +10,7 @@ from core.services.capacity.plan_calendar_intervals import hours, instant
 from core.services.workbench.facts.candidate_projection import dispositions
 from core.services.workbench.facts.candidate_tasks import task_span
 from core.services.workbench.facts.candidate_values import number
-from core.services.workbench.facts.completion_scope import project_completion_scope
+from core.services.workbench.facts.completion_scope import project_completion_summary
 from core.services.workbench.facts.decision_metrics import (
     admission_operations,
     delivery_metric_values,
@@ -158,13 +158,13 @@ def _demand(rows):
     return effort_metric(pending, "required_standard_hours")["value"]
 
 
-def _admission_count_values(packet, operation_refs, *, reader=None):
+def _admission_count_values(packet, operation_refs, *, reader):
     facts, settings = packet["facts"], packet["capture"]["input"]
     saved = dispositions(packet.get("receipt"))
     deferred = material_deferred_ids((saved or {}).values(), settings)
     reason = None
     if saved is None and settings.get("material_strategy") == "stage" and settings.get("ready_check") is True:
-        condition = reader.condition_source(packet) if reader is not None else ConditionSource(packet)
+        condition = reader.condition_source(packet)
         tables = {name: condition.table(name) for name in PREFLIGHT_TABLES}
         if any(rows is None for rows in tables.values()) or not set(operation_refs) <= set(facts.execution):
             reason = _reason("admission_deferred_scope_missing", "保存的物料、工序或报工资料缺项，应排与待料范围尚待确认。")
@@ -285,12 +285,12 @@ def _trial_resources(packet, projected, window):
         resource_tasks=lambda _key: tasks, computation_key=lambda key: key, task_intervals=lambda key: intervals[key])
     engine = DecisionResources(view)
     values = engine.metrics(packet["ref"])
-    for kind in ("machine", "operator"):
-        summary = engine.summary(packet["ref"], kind)
+    summaries = {kind: engine.summary(packet["ref"], kind) for kind in ("machine", "operator")}
+    for kind, summary in summaries.items():
         for field in ("utilization_ratio", "balance_cv"):
             values[kind + "_" + field].update(numerator_hours=summary["numerator_hours"], denominator_hours=summary["denominator_hours"])
     window["cohort"] = {kind + "_refs": sorted(row["ref"] for row in cohort if row["kind"] == kind) for kind in ("machine", "operator")}
-    if any(engine.summary(packet["ref"], kind)["state"] in ("partial", "unavailable") for kind in ("machine", "operator")):
+    if any(summary["state"] in ("partial", "unavailable") for summary in summaries.values()):
         window.update(state="partial", reason=_reason("resource_evidence_incomplete", "部分归档班表或安排资料缺项。"))
     return values
 
@@ -303,7 +303,7 @@ def _trial(packet, window, *, reader=None):
     comparison = saved.get("comparison") or {}
     if "delivery_summary" not in comparison:
         comparison = (trial_comparison(saved["tasks"], saved["validation"], projected, head["admission"])
-                      if head is not None else scenario_comparison(saved, None, []))
+                      if head is not None else scenario_comparison(saved, None))
     values = delivery_metric_values(comparison["delivery_summary"])
     efforts = _trial_preparation(saved, head, projected)
     if efforts is not None:
@@ -330,7 +330,7 @@ def _trial(packet, window, *, reader=None):
                 missing.append({**effort_by_ref.get(ref, {}), "operation_ref": ref, "sequence": operation["seq"],
                     "batch_ref": condition.original_entity_refs.get(("batch", operation["batch_id"])), "arranged": False,
                     "source": operation["source"], "allocation_state": "deferred" if operation["id"] in deferred_ids else "unplanned"})
-            completion = project_completion_scope([row["after"] for row in comparison["batches"]], missing)
+            completion = project_completion_summary([row["after"] for row in comparison["batches"]], missing)
             deferred, ordinary = set(completion["deferred_operation_refs"]), set(completion["unplanned_operation_refs"])
     else:
         roles = {row["operation_ref"]: (row.get("operation_effort") or {}).get("after", {}).get("allocation_state") for row in unplanned}
@@ -362,7 +362,8 @@ def _trial(packet, window, *, reader=None):
         item["covered_operation_refs"] = sorted(operations - deferred) if key == "expected_operation_count" and deferred is not None else (
             sorted(operations) if value is not None else None)
         values[key] = item
-    valid_tasks = [task for task in tasks if task_interval(task) is not None]
+    timed_tasks = [(task, task_interval(task)) for task in tasks]
+    valid_tasks = [task for task, interval in timed_tasks if interval is not None]
     span = task_span(valid_tasks)
     makespan = hours([(instant(span["start"]), instant(span["end"]))]) if span is not None else None
     missing_times = len(tasks) - len(valid_tasks)
@@ -375,14 +376,15 @@ def _trial(packet, window, *, reader=None):
               if head is not None and window["start"] is not None else None)
     if common is not None:
         after = common["after"]
-        arrangements = [task for task in tasks if task.get("source") != "external"
-                        and not ((interval := task_interval(task)) is not None and interval[0] == interval[1])]
+        arrangements = [task for task, interval in timed_tasks if task.get("source") != "external"
+                        and not (interval is not None and interval[0] == interval[1])]
+        covered_refs = sorted({row["operation_ref"] for row in arrangements})
         for key, field in (("type_changeover_count", "count"), ("changed_machine_count", "changed_machine_count")):
             item = metric_value(after[field], total=max(len(arrangements), after["unknown_count"]), unknown=after["unknown_count"],
                                 subtotal=after["known_" + field], state=after["state"], scope=common["scope"],
                                 metric_version=common["metric_version"], reason=_reason("changeover_sequence_incomplete",
                                     "部分保存安排的工种、时间或实际顺序缺项。") if after["state"] != "complete" else None)
-            item["covered_operation_refs"] = sorted({row["operation_ref"] for row in arrangements}) if head is not None else None
+            item["covered_operation_refs"] = covered_refs
             values[key] = item
     if head is not None and window["start"] is not None:
         values.update(_trial_resources(packet, projected, window))
@@ -472,8 +474,6 @@ def project_history_metrics(reader, descriptor, query):
     candidate = packet.get("candidate")
     cache_key = (packet["kind"], packet["ref"], candidate["candidate_ref"] if candidate else None,
                  window["start"], window["end"], window["days"], tuple(keys))
-    if not hasattr(reader, "history_metrics_cache"):
-        reader.history_metrics_cache = {}
     if cache_key not in reader.history_metrics_cache:
         if packet["kind"] == "run":
             values, scope, state = _run(reader, packet, window)

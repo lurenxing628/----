@@ -52,7 +52,7 @@ class TaskConstraints:
         self.records = {kind: {row[kind + "_id"]: row for row in facts[kind + "s"]}
                         for kind in ("machine", "operator")}
         self.operations = {row["id"]: row for row in facts["operations"]}
-        self.machine_types = machine_type_index(facts["machines"], facts.get("machine_capabilities", []))
+        self.machine_types = machine_type_index(facts["machines"], facts["machine_capabilities"])
         self.work_types = {row["op_type_id"]: row for row in facts["work_types"]}
         self.qualification = OperatorQualificationService(None)
         self.qualification.repo = _SkillFacts(facts)

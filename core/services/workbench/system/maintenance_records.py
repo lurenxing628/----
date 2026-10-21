@@ -32,7 +32,7 @@ def _timestamp(value):
 def _event(kind, source, identity, time, status, summary, detail):
     body = public_system_text(json.dumps(detail, ensure_ascii=False, sort_keys=True), 32768)
     return {"key": canonical_json([source, str(identity)]),
-            "record_kind": kind + "_event", "type": kind, "time": _timestamp(time), "status": status,
+            "record_kind": kind + "_event", "type": kind, "time": time, "status": status,
             "summary": summary, "body": body, "event_ref": str(identity), "event_source": source,
             "file_capabilities": dict(_FILE_ACTIONS)}
 
@@ -63,7 +63,7 @@ def _restore_records(journal, records=None):
             continue
         event = journal.public(record)
         filename = event["filename"] or "文件名未读取"
-        rows.append(_event("restore", "external_maintenance_journal", event["job_ref"], event["updated_at"],
+        rows.append(_event("restore", "external_maintenance_journal", event["job_ref"], _timestamp(event["updated_at"]),
                            event["state"], "恢复 · " + filename, event))
     return rows
 
@@ -87,7 +87,7 @@ def _cleanup_audits(conn):
         detail = {"audit_id": record["id"], "action": record["action"], "level": record["log_level"],
                   "detail": _detail(record["detail"]), "error_message": record["error_message"],
                   "basis": "persisted_operation_audit_not_file_existence"}
-        time = stored_utc_text(record["log_time"]) if record["log_time"] else None
+        time = stored_utc_text(record["log_time"]).replace(" ", "T", 1) if record["log_time"] else None
         rows.append(_event("cleanup", "operation_audit", record["id"], time, state, label, detail))
     return rows, present, len(records) > _AUDIT_LIMIT
 
@@ -100,7 +100,7 @@ def _latest_cleanup(conn, audited_actions):
         if job.last_run_time is None and job.last_run_detail is None:
             continue
         label = "自动备份" if job.job_key == "auto_backup" else _JOBS[job.job_key][1]
-        detail, field_issues = _job_detail(job, label)
+        detail, field_issues, timestamp = _job_detail(job, label)
         issues.extend(field_issues)
         if job.job_key == "auto_backup":
             continue
@@ -111,7 +111,7 @@ def _latest_cleanup(conn, audited_actions):
         known = type(count) is int and count >= 0
         state = "failed" if isinstance(detail.get("error"), str) and detail["error"] else (
             "succeeded" if known else "unknown")
-        rows.append(_event("cleanup", "latest_job_state_only", job.job_key, job.last_run_time, state,
+        rows.append(_event("cleanup", "latest_job_state_only", job.job_key, timestamp, state,
                            label + " · 仅最近状态", {"job_key": job.job_key, "detail": detail,
                            "basis": "latest_job_state_not_complete_history"}))
         issues.append({"code": "cleanup_latest_state_only", "message": label + "没有读到对应的操作记录，这里只有最近一次的状态，不是完整历史。"})
@@ -141,12 +141,13 @@ def maintenance_records(conn, backup_dir, journal, *, journal_records=None):
 def _job_detail(job, label):
     """Report malformed persisted job fields without publishing parser input."""
     issues = []
-    if job.last_run_time not in (None, "") and _timestamp(job.last_run_time) is None:
+    timestamp = _timestamp(job.last_run_time)
+    if job.last_run_time not in (None, "") and timestamp is None:
         issues.append({"code": "maintenance_last_time_invalid", "job_key": job.job_key,
                        "message": label + "：上次执行时间记录异常，系统会在下次执行后重新记录。"})
     raw = job.last_run_detail
     if raw is None or raw == "":
-        return {}, issues
+        return {}, issues, timestamp
     try:
         detail = json.loads(raw)
     except (TypeError, ValueError):
@@ -156,4 +157,4 @@ def _job_detail(job, label):
         issues.append({"code": "maintenance_last_detail_invalid", "job_key": job.job_key,
                        "message": label + "：" + message})
         detail = {"record_error": message}
-    return detail, issues
+    return detail, issues, timestamp

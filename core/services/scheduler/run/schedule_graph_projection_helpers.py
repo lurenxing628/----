@@ -12,7 +12,7 @@ def _truncated(values: List[Any], limit: int) -> bool:
 
 
 def _sample(values: List[Any], limit: int) -> List[Any]:
-    return list(values[: int(limit)])
+    return values[: int(limit)]
 
 
 def _project_warning_data_value(value: Any) -> Tuple[Any, bool]:
@@ -85,11 +85,12 @@ def _project_warning_data(raw_data: Any) -> Tuple[Dict[str, Any], bool]:
 
 def project_graph_warning(warning: Dict[str, Any]) -> Dict[str, Any]:
     data, warning_data_truncated = _project_warning_data(warning.get("data"))
-    message, message_truncated = _project_warning_message(warning["message"])
+    raw_message = str(warning["message"] or "")
+    message, message_truncated = _project_warning_message(raw_message)
     return {
         "code": warning["code"],
         "message": message,
-        "message_length": len(str(warning["message"] or "")),
+        "message_length": len(raw_message),
         "message_truncated": bool(message_truncated),
         "data": data,
         "warning_data_truncated": bool(warning_data_truncated or message_truncated),
@@ -121,6 +122,8 @@ def graph_node_metrics_sample(
 
 
 __all__ = [
+    "_sample",
+    "_truncated",
     "graph_node_metrics_sample",
     "project_graph_warning",
 ]

@@ -10,26 +10,21 @@ from datetime import datetime
 from itertools import chain, zip_longest
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
-from .repair_decisions import RepairDecision, RepairParentPreparation, prepare_repair_parent
-from .repair_decisions import decoded_topological_order as _decoded_topological_order
-from .repair_decisions import resource_timelines as _resource_timelines
+from .repair_decisions import RepairDecision, RepairParentPreparation
 
 
 def operation_repair_decisions(
-    candidate: Dict[str, Any], *, operations: List[Any], graph_context: Dict[str, Any],
-    metrics_by_op_id: Dict[int, Dict[str, Any]], batch_order: Tuple[str, ...],
-    start_dt: datetime, objective_name: str, limit: int = 8, resource_pool: Optional[Dict[str, Any]] = None,
-    prepared_parent: Optional[RepairParentPreparation] = None,
+    *, metrics_by_op_id: Dict[int, Dict[str, Any]], batch_order: Tuple[str, ...],
+    start_dt: datetime, objective_name: str, prepared_parent: RepairParentPreparation, limit: int = 8,
 ) -> Iterator[Tuple[str, RepairDecision]]:
-    prepared = (prepared_parent if prepared_parent is not None
-                else prepare_repair_parent(candidate, operations, resource_pool, graph_context))
-    if not prepared.operation_order:
+    if not prepared_parent.operation_order:
         return
-    moves = _operation_moves(prepared.resource_timelines, prepared.decoded_rows, metrics_by_op_id, start_dt, objective_name,
-                             latest_end_time=prepared.latest_end_time)
+    moves = _operation_moves(
+        prepared_parent.resource_timelines, prepared_parent.decoded_rows, metrics_by_op_id, start_dt, objective_name,
+        latest_end_time=prepared_parent.latest_end_time)
     for kind, decision_order in _bounded_operation_orders(
-            prepared.operation_order, prepared.operation_ranks, prepared.predecessors, moves, limit):
-        yield kind, RepairDecision(batch_order, decision_order, prepared.inherited_resources)
+            prepared_parent.operation_order, prepared_parent.operation_ranks, prepared_parent.predecessors, moves, limit):
+        yield kind, RepairDecision(batch_order, decision_order, prepared_parent.inherited_resources)
 
 
 def _bounded_operation_orders(
@@ -55,19 +50,16 @@ def _bounded_operation_orders(
         considered_moves.add((source, target))
         if source not in ranks or target not in ranks or source == target:
             continue
+        src_idx, tgt_idx = ranks[source], ranks[target]
         changed = list(order)
-        changed.remove(source)
-        changed.insert(changed.index(target), source)
+        changed.pop(src_idx)
+        changed.insert(tgt_idx - int(src_idx < tgt_idx), source)
         decision_order = tuple(changed)
         if decision_order in seen or not _is_topological(decision_order, predecessors):
             continue
         seen.add(decision_order)
         emitted += 1
         yield kind, decision_order
-
-
-# Public names for other decision stages; the internal helpers stay patchable under their old names.
-decoded_topological_order = _decoded_topological_order
 
 
 def _operation_moves(timelines: List[List[Any]], rows: Dict[int, Any], metrics: Dict[int, Dict[str, Any]],

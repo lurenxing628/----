@@ -1,11 +1,15 @@
 """Fixed native inputs owned by one scheduling operation or search session."""
 
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_runtime.checkpoint_calendar import checkpoint_calendar_signature
 from core.algorithm_runtime.checkpoint_inputs import input_record, input_value
+from core.algorithm_runtime.piece_input import operation_batch
+from core.algorithm_runtime.resource_demand import ResourceClaim
+from core.errors import ValidationError
 
 
 @dataclass
@@ -37,9 +41,6 @@ class NativeSchedulePreparation:
     _checkpoint_parts: Any = field(init=False, repr=False, default=None)
 
     def operation_batch(self, op: Any, batch: Any) -> Any:
-        from core.algorithm_runtime.piece_input import operation_batch
-        from core.errors import ValidationError
-
         piece = getattr(op, "piece_id", None)
         if piece is None:
             return batch
@@ -64,10 +65,6 @@ class NativeSchedulePreparation:
         return self.resource_candidates_for(op).eligible_resources
 
     def resource_claim_for(self, op: Any) -> Any:
-        from collections import Counter
-
-        from core.algorithm_runtime.resource_demand import ResourceClaim
-
         token = id(op)
         if token in self.resource_claims:
             return self.resource_claims[token]
@@ -78,7 +75,6 @@ class NativeSchedulePreparation:
             source = str(values.get("source", "internal") or "internal").strip().lower()
             if (type(op_id) is int and op_id > 0 and type(batch_id) in (str, int) and batch_id
                     and source == "internal" and (piece is None or (type(piece) is str and piece and piece.strip() == piece))):
-                from core.errors import ValidationError
                 try:
                     pairs = frozenset(self.qualified_resource_pairs(op))
                 except ValidationError:

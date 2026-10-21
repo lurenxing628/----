@@ -24,13 +24,13 @@ def _require_metric_field(metric: Dict[str, Any], field: str) -> Any:
 def _require_bool(value: Any, *, field: str) -> bool:
     if not isinstance(value, bool):
         raise GraphScoringContractError(f"图评分字段 {field} 必须是 bool。")
-    return bool(value)
+    return value
 
 
 def _require_non_negative_int(value: Any, *, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise GraphScoringContractError(f"图评分字段 {field} 必须是非负整数。")
-    return int(value)
+    return value
 
 
 def _require_optional_non_negative_int(value: Any, *, field: str) -> Optional[int]:
@@ -42,7 +42,7 @@ def _require_optional_non_negative_int(value: Any, *, field: str) -> Optional[in
 def _require_weight(value: Any, *, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise GraphScoringContractError(f"图评分权重 {field} 必须是非负整数。")
-    return int(value)
+    return value
 
 
 def _normalized_metric(metric: Dict[str, Any]) -> Tuple[bool, Optional[int], int, int]:
@@ -87,23 +87,6 @@ def _graph_score_values(
     return bonus, rank
 
 
-def graph_score_bonus(
-    node_metric: Dict[str, Any],
-    *,
-    critical_weight: int,
-    impact_weight: int,
-    downstream_minutes_weight: int = 1,
-) -> int:
-    """Return a positive bonus without converting its exact integer to float."""
-    bonus, _rank = _graph_score_values(
-        node_metric,
-        critical_weight=critical_weight,
-        impact_weight=impact_weight,
-        downstream_minutes_weight=downstream_minutes_weight,
-    )
-    return bonus
-
-
 def graph_score_components(
     node_metric: Dict[str, Any],
     *,
@@ -124,26 +107,7 @@ def graph_score_components(
     )
 
 
-def graph_priority_key_component(
-    node_metric: Dict[str, Any],
-    *,
-    critical_weight: int,
-    impact_weight: int,
-    downstream_minutes_weight: int = 1,
-) -> Tuple[float, ...]:
-    """Return a sortable key component for SGS, where smaller means earlier."""
-    _bonus, key = graph_score_components(
-        node_metric,
-        critical_weight=critical_weight,
-        impact_weight=impact_weight,
-        downstream_minutes_weight=downstream_minutes_weight,
-    )
-    return key
-
-
 __all__ = [
     "GraphScoringContractError",
-    "graph_priority_key_component",
-    "graph_score_bonus",
     "graph_score_components",
 ]

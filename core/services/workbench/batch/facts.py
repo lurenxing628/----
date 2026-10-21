@@ -198,9 +198,8 @@ def related(facts, batch):
     return index_relations(facts)[batch["batch_id"]]
 
 
-def require_unreferenced(facts, batch, relations=None):
+def require_unreferenced(relations):
     """relations 是调用方已按同一份 facts 算好的这一批关联；逐批循环时先 index_relations 一次再传进来。"""
-    relations = related(facts, batch) if relations is None else relations
     if relations["outsourcing_receipts"]:
         raise WorkbenchCommandRejected("constraint_conflict", "这个批次已有外协发出或回厂登记，不能删除、重建工序、改数量或更换工序供应商，以免原登记无法继续核对回厂。")
     if relations["protected"]:
@@ -213,9 +212,8 @@ def group_protected(group, batch):
                 or any(row["status"] != "pending" for row in group["operations"]))
 
 
-def require_deletable(facts, batch, relations=None):
-    relations = related(facts, batch) if relations is None else relations
-    require_unreferenced(facts, batch, relations)
+def require_deletable(relations):
+    require_unreferenced(relations)
     if relations["quantity_splits"]:
         raise WorkbenchCommandRejected("constraint_conflict", "这个批次有数量拆分记录，需保留原批与子批以核对数量，不能删除。")
     if relations["materials"]:

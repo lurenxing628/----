@@ -8,8 +8,7 @@ from .calendar_facts_repo import DOWNTIME_STATUS_SQL
 from .schedule_time_sql import parse_dt_for_sql
 
 TABLES = {"SchemaVersion", "BatchMaterialReviews", "BatchMaterialArrivals", "Batches", "BatchMaterials", "Materials", "MachineDowntimes", "Machines",
-          "WorkbenchDashboardDowntimeRefs", "ScheduleHistory", "Schedule", "BatchOperations"}
-VERSIONED_TABLES = {"Schedule", "ScheduleHistory"}
+          "WorkbenchDashboardDowntimeRefs"}
 # Fixed identifier expansion: caller-supplied names only select an entry, never reach SQL text.
 _QUOTED = {name: '"' + name + '"' for name in TABLES}
 _FROM = {name: ' FROM "' + name + '"' for name in TABLES}
@@ -65,13 +64,12 @@ class DashboardSourceRepository:
             return None
         return bounded(rows(self.conn, "SELECT " + self._select_list(name) + _FROM[name] + " ORDER BY rowid LIMIT ?", (limit + 1,)), limit)
 
-    def downtime_capture(self, *, machine_ids=None, limit=MAX_FACT_ROWS):
+    def downtime_capture(self, *, machine_ids, limit=MAX_FACT_ROWS):
         """Keep raw rowid order and SQLite's time/status/order facts from one SELECT."""
         if "MachineDowntimes" not in self.present:
             return None, None
-        wanted = None if machine_ids is None else frozenset(machine_ids)
-        self.conn.create_function("aps_calendar_machine_selected", 1,
-                                  lambda key: int(wanted is None or key in wanted))
+        wanted = frozenset(machine_ids)
+        self.conn.create_function("aps_calendar_machine_selected", 1, lambda key: int(key in wanted))
         selected = "aps_calendar_machine_selected(md.machine_id) AND " + DOWNTIME_STATUS_SQL
         private = [DOWNTIME_STATUS_SQL + " AS __calendar_admitted",
                    selected + " AS __calendar_selected",
@@ -110,12 +108,6 @@ class DashboardSourceRepository:
             if cursor is not None:
                 cursor.close()
             self.conn.create_function("aps_calendar_machine_selected", 1, None)
-
-    def selected_raw(self, name, version):
-        if name not in VERSIONED_TABLES:
-            raise ValueError("Not a versioned source")
-        return bounded(rows(self.conn, "SELECT " + self._select_list(name) + _FROM[name] + " WHERE version=? ORDER BY rowid LIMIT ?",
-                            (version, MAX_FACT_ROWS + 1)), MAX_FACT_ROWS)
 
     def entity_ref_rows(self, kind, keys):
         """Active WorkbenchEntityRefs rows for the keys, in key order; duplicates are returned as-is."""

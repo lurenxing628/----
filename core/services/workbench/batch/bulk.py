@@ -6,7 +6,7 @@ from collections import defaultdict
 from core.models.workbench_batch import MAX_INTEGER, normalize_batch_input, object_fields, public_ref
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_template_lineage import operation_code
-from core.services.workbench.calibration.template_lineage import TemplateLineageWriter
+from core.services.scheduler.template_lineage import TemplateLineageWriter
 from data.repositories.batch_material_repo import BatchMaterialRepository
 
 from .facts import BatchFacts, require_deletable
@@ -58,7 +58,7 @@ class WorkbenchBatchBulkService:
             before = projection.entity(batch)
             after = None
             if payload["action"] == "delete":
-                require_deletable(facts, batch, projection.relations[batch["batch_id"]])
+                require_deletable(projection.relations[batch["batch_id"]])
             elif payload["action"] == "update":
                 after = {**before, "fields": {**before["fields"], **payload["patch"]}}
             else:

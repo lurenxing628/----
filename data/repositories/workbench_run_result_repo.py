@@ -1,7 +1,5 @@
 """Persist full candidate sets independently from formal Schedule."""
 
-import json
-
 from core.models.workbench_command import canonical_json
 
 
@@ -39,7 +37,3 @@ class WorkbenchRunResultRepository:
         expected = {row["candidate_ref"]: row for row in result["candidates"]}
         return all(row[0] in expected and row[1] == row[3] == expected[row[0]]["task_count"]
                    and row[2] == expected[row[0]]["status"] for row in rows)
-
-    def artifact(self, candidate_ref):
-        row = self.conn.execute("SELECT artifact_json FROM WorkbenchRunCandidates WHERE candidate_ref=?", (candidate_ref,)).fetchone()
-        return json.loads(row[0]) if row else None

@@ -30,10 +30,10 @@ def _allocation(runtime, *, arranged, deferred=False, source=None):
     return "new_schedule" if role == "new_schedule" else "unknown"
 
 
-def preparation_projection(rows, admission, current_ledger, *, current_evidence=None, contexts=None):
+def preparation_projection(rows, admission, current_ledger, *, current_evidence=None, contexts=None, before_efforts=None):
     """The immutable source and the explicit current ledger remain distinct."""
     source = admission["source"]
-    before = saved_operation_efforts(source.get("operation_effort"))
+    before = saved_operation_efforts(source.get("operation_effort")) if before_efforts is None else before_efforts
     after = saved_operation_efforts(current_ledger)
     contexts = operation_contexts(rows, admission) if contexts is None else contexts
     pairs, summary_rows = {}, {"before": [], "after": []}
@@ -55,7 +55,7 @@ def preparation_projection(rows, admission, current_ledger, *, current_evidence=
             if name == "after" and runtime is None and context["arranged"]:
                 row = context["row"]
                 held = row["original"].get("execution_anchor") is not None or same_arrangement(row["current"], row["original"]["arrangement"])
-                role = retained_role(row, admission) if held else "new_schedule"
+                role = retained_role(row, admission, current_execution) if held else "new_schedule"
                 value.update(requirement_role=role, allocation_state="external" if op["source"] == "external" else role,
                     execution_target_quantity=current_execution.get("target_quantity"),
                     execution_quantity_basis=current_execution.get("target_basis", "unknown"),

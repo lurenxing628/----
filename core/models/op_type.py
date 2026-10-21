@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Optional
 
-from ._helpers import RowLike, as_dict, get, parse_optional_float
+from ._helpers import RowLike, get, parse_optional_float
 from .enums import OpTypeCategory
 
 
@@ -26,16 +26,4 @@ class OpType:
             default_hours=parse_optional_float(val, field="default_hours"),
             remark=get(row, "remark"),
             created_at=get(row, "created_at"),
-        )
-
-    def to_dict(self) -> Dict[str, Any]:
-        return as_dict(
-            {
-                "op_type_id": self.op_type_id,
-                "name": self.name,
-                "category": self.category,
-                "default_hours": self.default_hours,
-                "remark": self.remark,
-                "created_at": self.created_at,
-            }
         )

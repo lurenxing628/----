@@ -45,7 +45,7 @@ def add_calendar(graph):
             if not valid_number:
                 graph.issue(entity, "calendar." + key, label + "待核对", "资料里记的是" + text(value) + "，请核对。")
         _window(graph, entity, row)
-        graph.field(entity, "备注", row.get("remark"), "WorkCalendar.remark", required=False)
+        graph.field(entity, "备注", row["remark"], "WorkCalendar.remark", required=False)
 
 
 def _window(graph, entity, row):
