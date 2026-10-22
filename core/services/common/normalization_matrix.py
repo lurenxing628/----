@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, Optional, Sequence, Tuple
+from typing import Any, Dict, Optional, Sequence
 
 from core.models.enums import BatchPriority, CalendarDayType, ReadyStatus, SkillLevel, YesNo
 
@@ -37,8 +37,6 @@ _CALENDAR_DAY_TYPE_ALIAS_MAP: Dict[str, str] = {
 
 _YES_NO_TRUE_NARROW = ("y", YesNo.YES.value, "true", "1")
 _YES_NO_FALSE_NARROW = ("n", YesNo.NO.value, "false", "0")
-_YES_NO_TRUE_WIDE = _YES_NO_TRUE_NARROW + ("on",)
-_YES_NO_FALSE_WIDE = _YES_NO_FALSE_NARROW + ("off", "")
 
 _SKILL_LEVEL_ALIAS_MAP: Dict[str, str] = {
     SkillLevel.BEGINNER.value: SkillLevel.BEGINNER.value,
@@ -57,11 +55,7 @@ _SKILL_LEVEL_ALIAS_MAP: Dict[str, str] = {
     "专家": SkillLevel.EXPERT.value,
 }
 
-SKILL_LEVEL_CANONICAL_VALUES: Tuple[str, ...] = (
-    SkillLevel.BEGINNER.value,
-    SkillLevel.NORMAL.value,
-    SkillLevel.EXPERT.value,
-)
+_SKILL_LEVEL_RANK = {SkillLevel.EXPERT.value: 0, SkillLevel.NORMAL.value: 1, SkillLevel.BEGINNER.value: 2}
 
 
 def _text(value: Any) -> str:
@@ -130,15 +124,6 @@ def normalize_calendar_day_type_value(
     return _enum_alias_lookup(value, alias_map=_CALENDAR_DAY_TYPE_ALIAS_MAP, default=default, unknown_policy=unknown_policy)
 
 
-def _merge_aliases(values: Optional[Sequence[str]]) -> Tuple[str, ...]:
-    out = []
-    for item in list(values or ()):
-        text = _text(item)
-        if text:
-            out.append(text)
-    return tuple(out)
-
-
 def normalize_yes_no_narrow_value(
     value: Any,
     *,
@@ -153,47 +138,16 @@ def normalize_yes_no_narrow_value(
         return default_norm
 
     lowered = text.lower()
-    if text == "是" or lowered in _YES_NO_TRUE_NARROW or lowered in {item.lower() for item in _merge_aliases(true_aliases)}:
+    if text == "是" or lowered in _YES_NO_TRUE_NARROW or lowered in {alias.lower() for item in (true_aliases or ()) if (alias := _text(item))}:
         return YesNo.YES.value
-    if text == "否" or lowered in _YES_NO_FALSE_NARROW or lowered in {item.lower() for item in _merge_aliases(false_aliases)}:
+    if text == "否" or lowered in _YES_NO_FALSE_NARROW or lowered in {alias.lower() for item in (false_aliases or ()) if (alias := _text(item))}:
         return YesNo.NO.value
     return _unknown_result(text, default=default_norm, unknown_policy=unknown_policy)
-
-
-def normalize_yes_no_wide_value(
-    value: Any,
-    *,
-    default: str = YesNo.NO.value,
-    unknown_policy: str = "no",
-    true_aliases: Optional[Sequence[str]] = None,
-    false_aliases: Optional[Sequence[str]] = None,
-) -> str:
-    default_norm = _normalize_default_yes_no(default)
-    if value is None:
-        return default_norm
-    text = _text(value)
-    lowered = text.lower()
-    if text == "":
-        return YesNo.NO.value
-    if text == "是" or lowered in _YES_NO_TRUE_WIDE or lowered in {item.lower() for item in _merge_aliases(true_aliases)}:
-        return YesNo.YES.value
-    if text == "否" or lowered in _YES_NO_FALSE_WIDE or lowered in {item.lower() for item in _merge_aliases(false_aliases)}:
-        return YesNo.NO.value
-
-    policy = str(unknown_policy or "no").strip().lower()
-    if policy == "default":
-        return default_norm
-    if policy == "passthrough":
-        return text
-    if policy == "raise":
-        raise ValueError(text)
-    return YesNo.NO.value
 
 
 def normalize_skill_level_value(
     value: Any,
     *,
-    default: str = SkillLevel.NORMAL.value,
     allow_none: bool = False,
     unknown_policy: str = "raise",
 ) -> Optional[str]:
@@ -201,7 +155,7 @@ def normalize_skill_level_value(
     if text == "":
         if allow_none:
             return None
-        return normalize_skill_level_value(default, default=SkillLevel.NORMAL.value, allow_none=False, unknown_policy="raise")
+        return SkillLevel.NORMAL.value
 
     mapped = _SKILL_LEVEL_ALIAS_MAP.get(text)
     if mapped is not None:
@@ -212,33 +166,11 @@ def normalize_skill_level_value(
 
     policy = str(unknown_policy or "raise").strip().lower()
     if policy == "default":
-        return normalize_skill_level_value(default, default=SkillLevel.NORMAL.value, allow_none=False, unknown_policy="raise")
-    if policy == "passthrough":
-        return text.lower()
+        return SkillLevel.NORMAL.value
     raise ValueError(f"invalid skill_level: {text!r}")
 
 
 def skill_level_rank(value: Any) -> int:
-    try:
-        normalized = normalize_skill_level_value(
-            value,
-            default=SkillLevel.NORMAL.value,
-            allow_none=True,
-            unknown_policy="raise",
-        )
-    except Exception:
-        return 9
-    if normalized is None:
-        return 9
-    if normalized == SkillLevel.EXPERT.value:
-        return 0
-    if normalized == SkillLevel.NORMAL.value:
-        return 1
-    if normalized == SkillLevel.BEGINNER.value:
-        return 2
-    return 9
-
-
-
-def iter_skill_level_values() -> Iterable[str]:
-    return tuple(SKILL_LEVEL_CANONICAL_VALUES)
+    text = _text(value)
+    normalized = _SKILL_LEVEL_ALIAS_MAP.get(text.lower(), "")
+    return _SKILL_LEVEL_RANK.get(normalized, 9)

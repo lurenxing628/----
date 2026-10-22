@@ -20,7 +20,3 @@ def sanitize_export_cell(value: Any) -> Any:
         if value and value[0] in ("=", "+", "-", "@"):
             return "'" + value
     return value
-
-
-# 四个生产用户 import 的都是这个带下划线的旧名字，保留别名，不在退役这一轮顺手改调用点。
-_sanitize_export_cell = sanitize_export_cell

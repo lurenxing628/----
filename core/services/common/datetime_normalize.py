@@ -27,22 +27,22 @@ def normalize_date(value: Any) -> str:
     v = v.replace("/", "-")
     try:
         return datetime.strptime(v, "%Y-%m-%d").date().isoformat()
-    except Exception as e:
+    except ValueError as e:
         raise ValidationError("“日期”格式不合法（期望：YYYY-MM-DD）", field="日期") from e
 
 
-def normalize_hhmm(value: Any, *, field: str, allow_none: bool = True) -> Optional[str]:
+def normalize_hhmm(value: Any, *, field: str) -> Optional[str]:
     """
     时间标准化为 HH:MM（支持 HH:MM / HH:MM:SS）。
     """
     if value is None or (isinstance(value, str) and value.strip() == ""):
-        return None if allow_none else "08:00"
+        return None
     s = str(value).strip().replace("：", ":")
     for fmt in ("%H:%M:%S", "%H:%M"):
         try:
             t = datetime.strptime(s, fmt).time()
             return t.strftime("%H:%M")
-        except Exception:
+        except ValueError:
             continue
     raise ValidationError(f"“{field}”格式不合法（期望：HH:MM）", field=field)
 

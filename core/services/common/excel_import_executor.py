@@ -6,7 +6,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set
 from core.errors import AppError
 from core.infrastructure.transaction import TransactionManager
 
-from .excel_service import ImportMode, RowStatus
+from .excel_service import ImportMode, ImportPreviewRow, RowStatus
 
 
 @dataclass
@@ -19,59 +19,44 @@ class ImportExecutionStats:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "new_count": int(self.new_count),
-            "update_count": int(self.update_count),
-            "skip_count": int(self.skip_count),
-            "error_count": int(self.error_count),
-            "errors_sample": list(self.errors_sample),
+            "new_count": self.new_count,
+            "update_count": self.update_count,
+            "skip_count": self.skip_count,
+            "error_count": self.error_count,
+            "errors_sample": self.errors_sample,
         }
-
-
-def _row_error_reference(row: Any) -> Dict[str, Any]:
-    source_row_num = getattr(row, "source_row_num", None)
-    source_sheet_name = getattr(row, "source_sheet_name", None)
-    row_num = source_row_num if source_row_num is not None else getattr(row, "row_num", None)
-    ref: Dict[str, Any] = {"row": row_num}
-    if source_row_num is not None:
-        ref["source_row_num"] = source_row_num
-    if source_sheet_name:
-        ref["source_sheet_name"] = source_sheet_name
-    return ref
 
 
 def _append_error_sample(
     stats: ImportExecutionStats,
     *,
-    row: Any,
+    row: ImportPreviewRow,
     message: Optional[str],
     max_error_sample: int,
 ) -> None:
     if not message:
         return
-    if len(stats.errors_sample) >= int(max_error_sample):
+    if len(stats.errors_sample) >= max_error_sample:
         return
-    sample = _row_error_reference(row)
-    sample["message"] = str(message)
-    stats.errors_sample.append(sample)
+    stats.errors_sample.append({"row": row.row_num, "message": message})
 
 
 def _should_skip_before_row_id(
     stats: ImportExecutionStats,
     *,
-    pr: Any,
+    pr: ImportPreviewRow,
     mode: ImportMode,
-    process_unchanged: bool,
     max_error_sample: int,
 ) -> bool:
     if pr.status == RowStatus.ERROR:
         stats.error_count += 1
-        _append_error_sample(stats, row=pr, message=getattr(pr, "message", None), max_error_sample=max_error_sample)
+        _append_error_sample(stats, row=pr, message=pr.message, max_error_sample=max_error_sample)
         return True
     if pr.status == RowStatus.SKIP:
         stats.skip_count += 1
         return True
     # REPLACE 已清空历史数据，UNCHANGED 行也必须重写回库，不能直接跳过。
-    if pr.status == RowStatus.UNCHANGED and mode != ImportMode.REPLACE and not process_unchanged:
+    if pr.status == RowStatus.UNCHANGED and mode != ImportMode.REPLACE:
         stats.skip_count += 1
         return True
     return False
@@ -93,7 +78,7 @@ def _should_skip_after_row_id(
 def _apply_one_row(
     stats: ImportExecutionStats,
     *,
-    pr: Any,
+    pr: ImportPreviewRow,
     existed: bool,
     row_id: str,
     existing_row_ids: Set[str],
@@ -122,13 +107,12 @@ def execute_preview_rows_transactional(
     conn,
     *,
     mode: ImportMode,
-    preview_rows: Iterable[Any],
+    preview_rows: Iterable[ImportPreviewRow],
     existing_row_ids: Set[str],
     replace_existing_no_tx: Optional[Callable[[], None]],
     row_id_getter: Callable[[Any], str],
     apply_row_no_tx: Callable[[Any, bool], None],
     max_error_sample: int = 10,
-    process_unchanged: bool = False,
     continue_on_app_error: bool = False,
 ) -> ImportExecutionStats:
     """
@@ -150,7 +134,6 @@ def execute_preview_rows_transactional(
                 stats,
                 pr=pr,
                 mode=mode,
-                process_unchanged=process_unchanged,
                 max_error_sample=max_error_sample,
             ):
                 continue

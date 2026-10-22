@@ -92,12 +92,16 @@ def assign_task_ids(rows: Sequence[Mapping[str, Any]], *, plan_identity: Mapping
     Public IDs use permanent references, or an actual legacy plan and row ordinal.
     Existing issued public IDs remain unchanged.
     """
-    result = [dict(row) for row in rows]
-    keys = [row_identity(row) for row in result]
+    result: List[Dict[str, Any]] = []
+    keys: List[str] = []
+    for source_row in rows:
+        row = dict(source_row)
+        result.append(row)
+        keys.append(row_identity(row))
     if len(set(keys)) != len(keys):
         raise ValueError("The complete plan contains ambiguous task row identities")
-    ordinals = {key: index for index, key in enumerate(sorted(keys), start=1)}
     plan_label = None
+    ordinals: Dict[str, int] = {}
     for row, key in zip(result, keys):
         for field in ("op_code", "batch_id", "piece_id"):
             _text(row.get(field)).encode("utf-8")
@@ -106,6 +110,7 @@ def assign_task_ids(rows: Sequence[Mapping[str, Any]], *, plan_identity: Mapping
             continue
         if plan_label is None:
             plan_label = _plan_label(plan_identity)
+            ordinals = {key: index for index, key in enumerate(sorted(keys), start=1)}
         parts = [_text(row.get(field)) for field in ("op_code", "batch_id", "piece_id", "seq")]
         row["task_id"] = f"task_{_safe_task_id_readable_part(parts)}_{plan_label}_r{ordinals[key]}"
     return result

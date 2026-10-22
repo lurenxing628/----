@@ -7,7 +7,7 @@ import io
 
 from core.models.report_export import ReportExport
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
-from core.services.common.excel_templates import _sanitize_export_cell
+from core.services.common.excel_templates import sanitize_export_cell
 from core.services.report.exporters.xlsx import SUMMARY_IDENTITY_LABELS, _append_write_only_row
 from core.services.workbench.facts.execution_projection import COMPLETION_BASIS_TEXT, DATA_QUALITY_TEXT
 from core.services.workbench.facts.export_names import export_stamp
@@ -44,7 +44,7 @@ def _value(value):
 
 def _csv_cell(value):
     """CSV 里的数字按页面上的最短十进制写（7 不写成 7.0，也不用 1e-07）；文字照旧防公式。"""
-    return number_text(value) if type(value) in (int, float) else _sanitize_export_cell(value)
+    return number_text(value) if type(value) in (int, float) else sanitize_export_cell(value)
 
 
 def _cell(column_key, value):

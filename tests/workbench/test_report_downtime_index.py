@@ -5,8 +5,8 @@ from datetime import datetime, timedelta
 import pytest
 
 from core.services.capacity.plan_calendar_intervals import IntervalIndex
-from core.services.common.degradation import DegradationCollector
 from core.services.report.downtime_impact import compute_downtime_impact
+from core.shared.degradation import DegradationCollector
 
 
 def test_interval_overlap_keeps_touching_windows_and_subsecond_boundaries():

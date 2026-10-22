@@ -31,7 +31,7 @@ from data.repositories.schedule_plan_query_repo import SchedulePlanQueryReposito
 from data.repositories.schedule_rows import ScheduleDetailRow, ScheduleDispatchRow, ScheduleTimeSpanRow
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-from .plan_identity import build_plan_identity, latest_official_version
+from .plan_identity import build_plan_identity
 
 
 def _resolution_status(role: Optional[str], *, source_table: Optional[str] = None) -> str:
@@ -228,6 +228,9 @@ class SchedulePlanQueryService:
             if option.role == resolution.selected_role:
                 return option
         return None
+    def _latest_official_version(self) -> Optional[int]:
+        return self.repo.latest_version()
+
     def _with_plan_identity(self, resolution: SchedulePlanResolution) -> SchedulePlanResolution:
         history_row = self.repo.get_history_identity_row(int(resolution.version)) or {}
         source_row = self.repo.get_first_plan_identity_row(
@@ -250,9 +253,9 @@ class SchedulePlanQueryService:
             scenario_display_name=resolution.scenario_display_name,
             schedule_result_status=history_row.get("result_status"),
             result_summary=history_row.get("result_summary"),
-            latest_official_version=self.repo.latest_version(),
+            latest_official_version=self._latest_official_version(),
             schedule_lock_status=source_row.get("lock_status"),
-            detail_saved=getattr(option, "detail_saved", None),
+            detail_saved=option.detail_saved if option is not None else None,
         )
         return replace(resolution, plan_identity=identity)
     def resolve_plan(self, version: int, role: Optional[str]) -> SchedulePlanResolution:

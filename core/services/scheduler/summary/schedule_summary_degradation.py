@@ -8,8 +8,8 @@ from core.models.scheduler_degradation_messages import (
     public_degradation_event_message,
 )
 from core.services.common.build_outcome import BuildOutcome
-from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
 from core.services.scheduler.contracts.summary_count_parse import _meta_bool_state
+from core.shared.degradation import DegradationCollector, degradation_events_to_dicts
 
 from .schedule_summary_downtime_degradation import compute_downtime_degradation as _compute_downtime_degradation
 

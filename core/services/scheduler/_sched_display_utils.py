@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from core.services.common.degradation import DegradationCollector
+from core.shared.degradation import DegradationCollector
 from core.shared.local_datetime import parse_local_datetime
 
 

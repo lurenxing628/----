@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, Optional, Tuple
+from typing import Any, Optional, Tuple
 
 from core.models.schedule_plan_identity import PlanIdentity
 from core.models.schedule_plan_role import (
@@ -9,7 +9,6 @@ from core.models.schedule_plan_role import (
     SOURCE_ADJUSTMENT_SCENARIO_ROWS,
     SOURCE_CANDIDATE_ROWS,
     SOURCE_SCHEDULE,
-    is_comparison_plan,
     plan_role_label,
 )
 from core.models.scheduler_history_parser import parse_result_summary_payload
@@ -19,21 +18,6 @@ _VALID_PLAN_SOURCE_TABLES = frozenset((SOURCE_SCHEDULE, SOURCE_CANDIDATE_ROWS, S
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
-
-
-def _parsed_summary_flag_is_true(parsed: Any, key: str, *, fail_closed: bool = False) -> bool:
-    # 排产摘要看不懂时必须按 fail-closed 处理；不能把解析失败当成普通 False 放行。
-    if parsed.parse_failed:
-        return bool(fail_closed)
-    return bool((parsed.payload or {}).get(key))
-
-
-def latest_official_version(rows: Iterable[Dict[str, Any]]) -> Optional[int]:
-    for row in rows:
-        version = int(row.get("version") or 0)
-        if version > 0:
-            return version
-    return None
 
 
 def _identity_user_label(
@@ -49,10 +33,8 @@ def _identity_user_label(
         return scenario_display_name or "试调方案（未命名）"
     if requested_role != ROLE_ADOPTED or status in ("resolved_comparison", "fallback_to_adopted", "missing_detail"):
         return "对比参考方案"
-    if is_superseded and source_table == SOURCE_SCHEDULE:
-        return "历史正式方案（已被新版本替代）"
     if source_table == SOURCE_SCHEDULE:
-        return plan_role_label(ROLE_ADOPTED)
+        return "历史正式方案（已被新版本替代）" if is_superseded else plan_role_label(ROLE_ADOPTED)
     return "对比参考方案"
 
 
@@ -85,30 +67,6 @@ def _is_official_plan(
         and not is_preview
         and not is_simulation
     )
-
-
-def _can_write_feedback(
-    *,
-    requested_role: str,
-    effective_role: str,
-    status: str,
-    source_table: str,
-    is_preview: bool,
-    is_current_official: bool,
-    is_superseded: bool,
-) -> bool:
-    if not is_current_official or is_superseded:
-        return False
-    if source_table == SOURCE_CANDIDATE_ROWS:
-        return False
-    if is_comparison_plan(
-        requested_role=requested_role,
-        selected_role=effective_role,
-        source_table=source_table,
-        is_scenario_preview=is_preview,
-    ):
-        return False
-    return status not in ("fallback_to_adopted", "missing_detail", "not_found", "historical_version")
 
 
 def _valid_source(value: Any) -> str:
@@ -184,7 +142,7 @@ def build_plan_identity(
     summary_parse = parse_result_summary_payload(result_summary)
     summary_unavailable, summary_reason = _summary_unavailable(result_summary, summary_parse)
     # is_simulation 是派工/反馈的灵魂线；摘要解析失败时按模拟方案处理，禁止写现场事实。
-    is_simulation = is_preview or _parsed_summary_flag_is_true(summary_parse, "is_simulation", fail_closed=True)
+    is_simulation = is_preview or summary_parse.parse_failed or bool((summary_parse.payload or {}).get("is_simulation"))
     is_current = _is_current_version(version_value, latest_version)
     is_superseded = _is_superseded_version(version_value, latest_version)
     is_official = _is_official_plan(
@@ -212,15 +170,6 @@ def build_plan_identity(
         scenario_display_name=scenario_display_name,
     )
     label = plan_role_label(effective) if not is_preview else user_label
-    can_write = _can_write_feedback(
-        requested_role=requested,
-        effective_role=effective,
-        status=resolution_status,
-        source_table=source,
-        is_preview=is_preview,
-        is_current_official=is_current_official,
-        is_superseded=is_superseded,
-    )
     return PlanIdentity(
         version=version_value,
         requested_plan_role=requested,
@@ -232,18 +181,18 @@ def build_plan_identity(
         candidate_key=candidate_key,
         scenario_id=scenario_id,
         schedule_result_status=result_status,
-        result_summary_parse_failed=bool(summary_unavailable),
+        result_summary_parse_failed=summary_unavailable,
         result_summary_parse_reason=summary_reason,
-        is_simulation=bool(is_simulation),
+        is_simulation=is_simulation,
         label=label,
         user_label=user_label,
-        is_official=bool(is_official),
-        is_preview=bool(is_preview),
-        is_current_executable_version=bool(is_current),
-        is_current_executable_official_version=bool(is_current_official),
-        is_superseded_by_newer_version=bool(is_superseded),
+        is_official=is_official,
+        is_preview=is_preview,
+        is_current_executable_version=is_current,
+        is_current_executable_official_version=is_current_official,
+        is_superseded_by_newer_version=is_superseded,
         schedule_lock_status=schedule_lock_status,
-        can_dispatch=bool(can_write),
-        can_write_feedback=bool(can_write),
+        can_dispatch=is_current_official,
+        can_write_feedback=is_current_official,
         detail_saved=_detail_saved(source, source_row_id, detail_saved),
     )

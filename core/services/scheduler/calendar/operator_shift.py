@@ -101,8 +101,8 @@ class OperatorShiftCalendar:
         day = self._read_pattern(profile_id, offset)
         if day is None:
             raise ValidationError("人员班次缺少当天的轮换规则，不能回退到默认班次。", field="shift_profile")
-        start = normalize_hhmm(day["shift_start"], field="班次开始", allow_none=True)
-        end = normalize_hhmm(day["shift_end"], field="班次结束", allow_none=True)
+        start = normalize_hhmm(day["shift_start"], field="班次开始")
+        end = normalize_hhmm(day["shift_end"], field="班次结束")
         if start is None or end is None:
             raise ValidationError("人员班次缺少开始或结束时间。", field="shift_profile")
         start_time, end_time = datetime.strptime(start, "%H:%M").time(), datetime.strptime(end, "%H:%M").time()

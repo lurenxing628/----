@@ -1,4 +1,4 @@
-"""回归测试：交期判定的“排他下界”口径在三处统计中一致——共享的 due_exclusive() 把交期次日 0 点作为边界，使得完工时间正好落在该边界时，evaluation.compute_metrics、schedule_summary.build_result_summary 与 report.compute_overdue_buckets 都判为逾期 1 单且边界拖期为 0。"""
+"""回归测试：交期判定的“排他下界”口径在三处统计中一致——共享的 due_exclusive() 把交期次日 0 点作为边界，使得完工时间正好落在该边界时，evaluation.compute_metrics、schedule_summary.build_result_summary 与 common.compute_overdue_bucket_groups 都判为逾期 1 单且边界拖期为 0。"""
 
 import time
 from datetime import date, datetime
@@ -12,7 +12,7 @@ def test_due_exclusive_consistency() -> None:
     from core.algorithm_contracts.date_parsers import due_exclusive
     from core.algorithm_contracts.types import ScheduleResult
     from core.algorithms.evaluation import compute_metrics, prepare_evaluation_context
-    from core.services.report.calculations import compute_overdue_buckets
+    from core.services.common.overdue_calculations import compute_overdue_bucket_groups
     from core.services.scheduler.contracts.schedule_summary_types import SummaryBuildContext
     from core.services.scheduler.summary.schedule_summary import build_result_summary
 
@@ -81,7 +81,7 @@ def test_due_exclusive_consistency() -> None:
     overdue_batches = result_summary_obj.get("overdue_batches") or {}
     assert int(overdue_batches.get("count") or 0) == 1, f"schedule_summary overdue_count 应为 1，实际={overdue_batches}"
 
-    scheduled, unscheduled, _as_of = compute_overdue_buckets(
+    scheduled, unscheduled, _invalid_time, _as_of = compute_overdue_bucket_groups(
         [{"batch_id": "B001", "due_date": "2026-02-01", "finish_time": "2026-02-02 00:00:00"}],
         now_dt=finish_dt,
     )

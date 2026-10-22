@@ -6,10 +6,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.shared.local_datetime import parse_local_datetime
 
 
-def parse_dt(value: Any) -> Optional[datetime]:
-    return parse_local_datetime(value)
-
-
 def due_exclusive(due_dt: Optional[date]) -> datetime:
     if due_dt is None:
         return datetime.max
@@ -24,19 +20,14 @@ def due_exclusive(due_dt: Optional[date]) -> datetime:
     return datetime(due_date.year, due_date.month, due_date.day) + timedelta(days=1)
 
 
-def compute_overdue_items(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    scheduled, unscheduled, invalid_time, _as_of = compute_overdue_bucket_groups(rows)
-    return list(scheduled) + list(invalid_time) + list(unscheduled)
-
-
 def _int_value(value: Any) -> int:
     try:
         return int(value or 0)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 
-def _invalid_time_item(row: Dict[str, Any], *, due_s: Any, as_of: str, now0: datetime, due_excl: datetime) -> Dict[str, Any]:
+def _invalid_time_item(row: Dict[str, Any], *, due_s: Any, as_of: str, now0: datetime, due_excl: datetime, invalid_time_count: int) -> Dict[str, Any]:
     delay_sec = (now0 - due_excl).total_seconds()
     return {
         "bucket": "schedule_time_invalid",
@@ -51,12 +42,12 @@ def _invalid_time_item(row: Dict[str, Any], *, due_s: Any, as_of: str, now0: dat
         "finish_time": None,
         "delay_hours": round(delay_sec / 3600.0, 2),
         "delay_days": round(delay_sec / 86400.0, 2),
-        "invalid_time_count": _int_value(row.get("invalid_time_count")) or 1,
+        "invalid_time_count": invalid_time_count or 1,
         "data_issue_message": "有排程记录，但计划完成时间写法不对，不能当作未排程或准时完成。",
     }
 
 
-def _invalid_due_date_item(row: Dict[str, Any], *, due_s: Any, as_of: str) -> Dict[str, Any]:
+def _invalid_due_date_item(row: Dict[str, Any], *, due_s: Any, as_of: str, invalid_time_count: int) -> Dict[str, Any]:
     return {
         "bucket": "due_date_invalid",
         "bucket_label": "交期写法异常",
@@ -70,7 +61,7 @@ def _invalid_due_date_item(row: Dict[str, Any], *, due_s: Any, as_of: str) -> Di
         "finish_time": row.get("finish_time"),
         "delay_hours": None,
         "delay_days": None,
-        "invalid_time_count": _int_value(row.get("invalid_time_count")),
+        "invalid_time_count": invalid_time_count,
         "invalid_due_count": 1,
         "data_issue_message": "批次交期写法不对，系统不能判断它是否超期，请先修正交期。",
     }
@@ -93,13 +84,13 @@ def compute_overdue_bucket_groups(
         finish_s = row.get("finish_time")
         invalid_time_count = _int_value(row.get("invalid_time_count"))
         schedule_row_count = _int_value(row.get("schedule_row_count"))
-        due_d = parse_dt(due_s)
+        due_d = parse_local_datetime(due_s)
         if not due_d:
-            invalid_time.append(_invalid_due_date_item(row, due_s=due_s, as_of=as_of))
+            invalid_time.append(_invalid_due_date_item(row, due_s=due_s, as_of=as_of, invalid_time_count=invalid_time_count))
             continue
         due_excl = due_exclusive(due_d)
 
-        finish_dt = parse_dt(finish_s)
+        finish_dt = parse_local_datetime(finish_s)
         if finish_dt is not None:
             if finish_dt < due_excl:
                 continue
@@ -125,7 +116,7 @@ def compute_overdue_bucket_groups(
         if invalid_time_count > 0 or (schedule_row_count > 0 and finish_s is not None):
             if now0 < due_excl:
                 continue
-            invalid_time.append(_invalid_time_item(row, due_s=due_s, as_of=as_of, now0=now0, due_excl=due_excl))
+            invalid_time.append(_invalid_time_item(row, due_s=due_s, as_of=as_of, now0=now0, due_excl=due_excl, invalid_time_count=invalid_time_count))
             continue
 
         if now0 < due_excl:
@@ -149,33 +140,3 @@ def compute_overdue_bucket_groups(
         )
 
     return scheduled, unscheduled, invalid_time, as_of
-
-
-def compute_overdue_buckets(
-    rows: List[Dict[str, Any]],
-    *,
-    now_dt: Optional[datetime] = None,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], str]:
-    scheduled, unscheduled, _invalid_time, as_of = compute_overdue_bucket_groups(rows, now_dt=now_dt)
-    return scheduled, unscheduled, as_of
-
-
-def collect_bad_time_rows(rows: List[Dict[str, Any]]) -> Tuple[int, List[str]]:
-    """统计所有批次（含已排程/准时/未排程）的坏时间行总数与样本批次号。
-
-    诚实展示的关键：不能只数“排程时间异常”桶。一个批次只要有一条有效完成时间，就会进
-    已排程/准时分支，但它仍可能夹带坏时间行（部分工序时间写法不对）——这些坏行不计入跨度、
-    此前也不计入任何降级提示，属于“消除静默却残留的静默”。这里按批次行聚合的
-    invalid_time_count 汇总全部坏行，让混合批次的不完整也能被用户看见。
-    """
-    total = 0
-    samples: List[str] = []
-    for row in rows:
-        bad = _int_value(row.get("invalid_time_count"))
-        if bad <= 0:
-            continue
-        total += bad
-        batch_id = row.get("batch_id")
-        if batch_id:
-            samples.append(f"批次号={batch_id}")
-    return total, samples

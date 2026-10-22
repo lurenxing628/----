@@ -5,8 +5,9 @@ from __future__ import annotations
 from datetime import date
 
 from core.models.enums import DeliveryCompletionState, DeliveryRisk, DueState
-from core.services.common.overdue_calculations import due_exclusive, parse_dt
+from core.services.common.overdue_calculations import due_exclusive
 from core.services.workbench.facts.zero_duration_evidence import overlaps
+from core.shared.local_datetime import parse_local_datetime as parse_dt
 
 
 def task_intervals(rows):

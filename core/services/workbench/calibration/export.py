@@ -6,7 +6,7 @@ import io
 from core.models.report_export import ReportExport
 from core.models.workbench_calibration import MAX_EXPORT_BYTES
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
-from core.services.common.excel_templates import _sanitize_export_cell
+from core.services.common.excel_templates import sanitize_export_cell
 from core.services.report.exporters.xlsx import _append_write_only_row
 from core.services.workbench.facts.export_names import export_stamp
 from core.services.workbench.facts.table_cells import number_text
@@ -48,7 +48,7 @@ def _csv(values, headers, output):
     writer.writerow(headers)
     for row in values:
         # 数字按页面上的最短十进制写（7 不写成 7.0，也不用 1e-07）；文字照旧防公式。
-        writer.writerow([number_text(value) if type(value) in (int, float) else _sanitize_export_cell(value) for value in row])
+        writer.writerow([number_text(value) if type(value) in (int, float) else sanitize_export_cell(value) for value in row])
     output.write(text.getvalue().encode("utf-8-sig"))
     return "text/csv;charset=utf-8"
 

@@ -290,12 +290,12 @@ class CalendarEngine:
 
     @staticmethod
     def _parse_shift_start(cal: Any) -> time:
-        ss = normalize_hhmm(getattr(cal, "shift_start", None), field="班次开始", allow_none=True) or "08:00"
+        ss = normalize_hhmm(getattr(cal, "shift_start", None), field="班次开始") or "08:00"
         return datetime.strptime(ss, "%H:%M").time()
 
     @staticmethod
     def _override_shift_hours_by_shift_end(cal: Any, *, date_str: str, shift_start_t: time, shift_hours: float) -> float:
-        se = normalize_hhmm(getattr(cal, "shift_end", None), field="班次结束", allow_none=True)
+        se = normalize_hhmm(getattr(cal, "shift_end", None), field="班次结束")
         if not se:
             return shift_hours
         se_t = datetime.strptime(se, "%H:%M").time()

@@ -134,10 +134,10 @@ class CalendarAdmin:
         # Explicit periods own the window; legacy single-shift fields are superseded.
         if periods:
             return period_summary(periods)
-        ss = normalize_hhmm(shift_start, field="班次开始", allow_none=True) or DEFAULT_SHIFT_START
+        ss = normalize_hhmm(shift_start, field="班次开始") or DEFAULT_SHIFT_START
         if periods is not None:
             return ss, None, 0.0
-        se = normalize_hhmm(shift_end, field="班次结束", allow_none=True)
+        se = normalize_hhmm(shift_end, field="班次结束")
         if se:
             st_t = datetime.strptime(ss, "%H:%M")
             et_t = datetime.strptime(se, "%H:%M")

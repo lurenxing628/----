@@ -1,30 +1,23 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 
-def safe_log(logger: Any, level: str, message: str, *, exc_info: Optional[bool] = None) -> bool:
+def safe_log(logger: Any, level: str, message: str) -> None:
     if logger is None:
-        return False
+        return
     method = getattr(logger, str(level or "").strip(), None)
     if not callable(method):
-        return False
+        return
     try:
-        if exc_info is None:
-            method(message)
-        else:
-            try:
-                method(message, exc_info=bool(exc_info))
-            except TypeError:
-                method(message)
-        return True
+        method(message)
     except Exception:
-        return False
+        return
 
 
-def safe_warning(logger: Any, message: str, *, exc_info: Optional[bool] = None) -> bool:
-    return safe_log(logger, "warning", message, exc_info=exc_info)
+def safe_warning(logger: Any, message: str) -> None:
+    safe_log(logger, "warning", message)
 
 
-def safe_info(logger: Any, message: str, *, exc_info: Optional[bool] = None) -> bool:
-    return safe_log(logger, "info", message, exc_info=exc_info)
+def safe_info(logger: Any, message: str) -> None:
+    safe_log(logger, "info", message)
