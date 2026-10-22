@@ -1,8 +1,5 @@
 """回归测试：BatchService.import_from_preview_rows 在 strict_mode=True 且自动补建工序需要 route_parser fallback 时，应抛 BusinessError(ROUTE_PARSE_ERROR) 硬失败，且失败后 Batches/BatchOperations 无残留（原子回滚）。"""
 
-from types import SimpleNamespace
-
-
 def test_batch_excel_import_strict_mode_hardfail_atomic(schema_conn) -> None:
 
     from core.errors import BusinessError, ErrorCode
@@ -21,7 +18,7 @@ def test_batch_excel_import_strict_mode_hardfail_atomic(schema_conn) -> None:
         )
         conn.commit()
 
-        svc = BatchService(conn, logger=None, op_logger=None)
+        svc = BatchService(conn, logger=None)
         preview_rows = [
             ImportPreviewRow(
                 row_num=2,
@@ -44,7 +41,6 @@ def test_batch_excel_import_strict_mode_hardfail_atomic(schema_conn) -> None:
             svc.import_from_preview_rows(
                 preview_rows=preview_rows,
                 mode=ImportMode.OVERWRITE,
-                parts_cache={"P_ROUTE": SimpleNamespace(part_name="路线件")},
                 auto_generate_ops=True,
                 strict_mode=True,
                 existing_ids=set(),

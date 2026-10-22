@@ -90,7 +90,7 @@ class ExecutionLedgerReader:
             if missing:
                 stored.update(self.repo.operation_rows(missing))
             result = {ref: stored[ref] for ref in values if ref in stored}
-        if set(result) != set(values):
+        if len(result) != len(values):
             reject("工序关联资料缺失，请刷新重选；仍无法打开时请联系维护人员。", "entity_not_found", 404)
         return result
 
@@ -155,7 +155,7 @@ class ExecutionLedgerReader:
                             and task["owner_key"] == str(task["version"])):
                         stored[schedule_id].append((schedule_id, task["version"], task["op_id"], operation["batch_id"],
                             operation_ref, task["task_ref"], plan_ref, operation["source"]))
-        missing = sorted(wanted - set(stored))
+        missing = sorted(wanted.difference(stored))
         if missing:
             found = {key: [] for key in missing}
             for row in ExecutionLedgerScopeRepository(self.conn).scope_task_rows(missing):
@@ -314,13 +314,15 @@ class ExecutionLedgerReader:
         evidence_by_operation = self._snapshot_legacy_evidence
         if evidence_by_operation is None:
             evidence_by_operation = {}
+        voids = facts["voids"]
         for ref, op in facts["operations"].items():
             histories = facts["reports"].get(ref, {})
             reports = sorted((report_dto(rows) for rows in histories.values()), key=lambda row: (row.recorded_at, row.report_no))
-            voids = facts["voids"]
-            voided = [{"report": report.to_dict(), "void_fact": {key: value for key, value in voids[report.report_ref].items()
-                       if key != "request_key"}} for report in reports if report.report_ref in voids]
-            reports = [report for report in reports if report.report_ref not in voids]
+            voided = []
+            if voids:
+                voided = [{"report": report.to_dict(), "void_fact": {key: value for key, value in voids[report.report_ref].items()
+                           if key != "request_key"}} for report in reports if report.report_ref in voids]
+                reports = [report for report in reports if report.report_ref not in voids]
             if ref not in evidence_by_operation:
                 evidence_by_operation[ref] = legacy_evidence(facts["legacy"].get(ref, []), now)
             projection = project_execution(op, reports, evidence_by_operation[ref],

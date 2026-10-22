@@ -93,8 +93,8 @@ class BatchChangePreparation:
     def copy(self, source, code, *, quantity=None, ready_status="no", ready_date=None):
         """Copies keep the existing legacy date/text normalization, using the captured part."""
         svc = BatchService
-        quantity = svc._normalize_int(source["quantity"] if quantity is None else quantity, field="数量", allow_none=False)
-        if quantity is None or quantity <= 0:
+        quantity = svc._normalize_int(source["quantity"] if quantity is None else quantity, field="数量")
+        if quantity <= 0:
             raise ValidationError("“数量”必须大于 0", field="数量")
         part_name = svc._normalize_text(source["part_name"]) or self.parts[source["part_no"]]["part_name"]
         priority = svc._normalize_text(source["priority"]) or "normal"

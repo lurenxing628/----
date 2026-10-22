@@ -51,7 +51,7 @@ def test_scheduler_reject_nonfinite_and_invalid_status(db_path) -> None:
         )
         conn.commit()
 
-        batch_svc = BatchService(conn, logger=None, op_logger=None)
+        batch_svc = BatchService(conn, logger=None)
         batch_svc.create_batch_from_template(
             batch_id="B100",
             part_no="P100",

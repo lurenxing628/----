@@ -17,7 +17,7 @@ def hour_totals(records, *, covered_scopes=None):
     included = [row for row in records if row.get("report_ref") or
                 (row.get("operation_ref"), row.get("recorded_against_task_ref")) not in covered]
     values = [row["effective_processing_hours"] for row in included if row["effective_processing_hours"] is not None]
-    unknown = sum(row["effective_processing_hours"] is None for row in included)
+    unknown = len(included) - len(values)
     # Decimal keeps user-entered 0.1 + 0.2 equal to 0.3.
     known = float(sum((Decimal(str(value)) for value in values), Decimal(0))) if values else None
     return {"effective_processing_hours": known if not unknown else None,

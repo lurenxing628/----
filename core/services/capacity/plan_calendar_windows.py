@@ -65,16 +65,17 @@ def policy_projection(engine, first_day, last_day, start, end, operator_id=None)
     basis = "personal_or_operator_shift_calendar" if operator_id is not None else "global_calendar"
     while True:
         try:
-            policy = engine._policy_for_date(day.isoformat(), operator_id)
+            day_str = day.isoformat()
+            policy = engine._policy_for_date(day_str, operator_id)
             if policy.shift_hours > 24:
                 return unavailable(basis, "calendar_window_limit")
             for low, high in policy.work_windows():
                 low, high = max(low, start), min(high, end)
                 if low < high:
-                    windows.append({"start": wire(low), "end": wire(high), "policy_date": day.isoformat(),
+                    windows.append({"start": wire(low), "end": wire(high), "policy_date": day_str,
                                     "allow_normal": policy.is_priority_allowed("normal"),
                                     "allow_urgent": policy.is_priority_allowed("urgent"),
-                                    "efficiency": policy.efficiency, "provenance": engine.provenance(day.isoformat(), operator_id)})
+                                    "efficiency": policy.efficiency, "provenance": engine.provenance(day_str, operator_id)})
         except (ValidationError, ValueError, TypeError, OverflowError):
             failures.append(day)
         if day == last_day:
@@ -139,7 +140,7 @@ def apply_resource(base: Dict[str, Any], raw, kind, downtime_rows, start, end) -
     remaining = _subtract_windows(base["windows"], downtime)
     remaining_measures = measures(remaining)
     windows = remaining if raw["status"] == "active" else []
-    result.update(windows=windows, **(remaining_measures if raw["status"] == "active" else measures([])))
+    result.update(windows=windows, **(remaining_measures if raw["status"] == "active" else dict.fromkeys(_MEASURES, 0.0)))
     result["downtime_scope_hours"] = hours(downtime)
     result["downtime_available_hours"] = base["available_hours"] - remaining_measures["available_hours"]
     return result

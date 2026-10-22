@@ -2,6 +2,7 @@
 
 import math
 from collections import defaultdict
+from typing import Optional
 
 from data.repositories.calendar_facts_repo import CalendarFactsRepository
 from data.repositories.schedule_time_sql import parse_dt_for_sql
@@ -21,9 +22,10 @@ class CapturedCalendarInputs:
         self.machine_rows, self.downtime_rows, self.schema_rows = machines, downtimes, schema_version
         self.downtime_machine_ids = None if downtime_machine_ids is None else frozenset(downtime_machine_ids)
         self._machines, self._downtimes, self._downtime_order = None, None, {}
+        self._version: Optional[int] = None
 
     def schema_version(self):
-        if hasattr(self, "_version"):
+        if self._version is not None:
             return self._version
         if self.schema_rows is None:
             raise ProjectionLimit("calendar_unavailable")
@@ -132,8 +134,6 @@ class CalendarFacts:
         self.keyed("patterns", self.repo.shift_patterns, profile_ids)
 
     def resources(self, machine_ids, operator_ids, operation_ids, start, end):
-        if self.captured is not None:
-            self.repo._read_schema_version = self.captured.schema_version()
         self.keyed("machines", self.captured.machines if self.captured is not None else self.repo.machines, machine_ids)
         self.keyed("machine_capabilities", self.repo.machine_capabilities, machine_ids)
         self.keyed("operators", self.repo.operators, operator_ids)

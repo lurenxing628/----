@@ -8,7 +8,6 @@ from core.models.calendar import OperatorCalendar, WorkCalendar
 from core.models.calendar_periods import encode_periods
 from core.services.scheduler.calendar.defaults import default_periods_from_row
 from core.services.scheduler.calendar.engine import CalendarEngine
-from core.services.scheduler.calendar.operator_shift import OperatorShiftCalendar
 from data.repositories.operator_shift_repo import OperatorShiftRepository
 
 
@@ -78,7 +77,6 @@ class SnapshotCalendarEngine(CalendarEngine):
         self.legacy_defaults = facts.get("legacy_defaults", False)
         self.global_rows = _calendar_index(facts["global"])
         self.personal_rows = _calendar_index(facts["personal"], personal=True)
-        self.operator_shift_calendar = OperatorShiftCalendar(None)
         self._shift_rows = _ShiftRows(facts)
         self.operator_shift_calendar.repo = self._shift_rows
 

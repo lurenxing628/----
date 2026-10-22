@@ -9,7 +9,7 @@ from bisect import bisect_right
 from itertools import tee
 from typing import Optional
 
-from .plan_calendar_intervals import IntervalIndex, _union_sorted, intersection, segments, union
+from .plan_calendar_intervals import IntervalIndex, _union_sorted, intersection, segments
 
 METRIC_VERSION = "available_occupancy_v1"
 
@@ -93,7 +93,8 @@ class ResourceUtilizationMetrics:
         if any(start > end for start, end in intervals):
             raise ValueError("Invalid resource task interval")
         self.source = source
-        occupied, swept = union(intervals), segments(intervals)
+        swept = segments(intervals)
+        occupied = _union_sorted((start, end) for start, end, _ in swept)
         self.segments = swept
         self.span = IntervalIndex.from_normalized(occupied)
         self.span_load = _WeightedIndex(swept)

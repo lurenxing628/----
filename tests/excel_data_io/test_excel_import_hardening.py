@@ -54,7 +54,7 @@ def test_batch_copy_preserves_optional_ext_days_values(tmp_path) -> None:
         )
         conn.commit()
 
-        BatchService(conn, logger=None, op_logger=None).copy_batch("B_SRC", "B_DST")
+        BatchService(conn, logger=None).copy_batch("B_SRC", "B_DST")
 
         rows = conn.execute(
             "SELECT seq, ext_days, status FROM BatchOperations WHERE batch_id=? ORDER BY seq",

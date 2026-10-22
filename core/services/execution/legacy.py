@@ -47,7 +47,8 @@ def _validate_group(group, now):
         raise ValueError("unbound legacy task")
     events = [OperationExecutionEvent.from_row(row) for row in group]
     validate_operation_execution_event_sequence(events)
-    if any(event.event_time > now.isoformat(sep=" ", timespec="seconds") for event in events):
+    now_str = now.isoformat(sep=" ", timespec="seconds")
+    if any(event.event_time > now_str for event in events):
         raise ValueError("future legacy event")
     return events
 
@@ -79,7 +80,7 @@ def _display_gaps(raw, public):
     missing = []
     for kind in ("machine", "operator"):
         field = "actual_" + kind + "_ref"
-        if None in legacy_resource_refs([raw], field):
+        if raw[field] is None and raw.get(f"actual_{kind}_id") is not None:
             missing.append(field)
     if missing:
         result.append(gap("legacy_resource_identity_unresolved", "这条旧记录里的实际设备或人员对不上现在的资料。筛选需要判断这条记录的实际设备或人员时，系统会停止并提示，避免静默漏掉这条记录；请先核对资料。",
@@ -102,9 +103,12 @@ def legacy_evidence(rows, now):
         except ValueError:
             evidence.gaps.append(gap("invalid_legacy_sequence", "这些旧现场记录的归属、先后顺序或时间不对，系统没有采用它们，请核对原始记录。"))
             continue
-        evidence.starts.extend(event.event_time.replace(" ", "T") for event in events if event.event_type == "start")
-        evidence.finishes.extend(row for row, event in zip(group, events) if event.event_type == "finish")
-        evidence.finish_times.extend(event.event_time.replace(" ", "T") for event in events if event.event_type == "finish")
+        for row, event in zip(group, events):
+            if event.event_type == "start":
+                evidence.starts.append(event.event_time.replace(" ", "T"))
+            elif event.event_type == "finish":
+                evidence.finishes.append(row)
+                evidence.finish_times.append(event.event_time.replace(" ", "T"))
         latest = events[-1]
         key = (latest.event_time, latest.id)
         if status is None or key > status:

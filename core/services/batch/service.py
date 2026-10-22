@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
-from core.models import Batch, BatchOperation
+from core.models import Batch, BatchOperation, Part
 from core.models.enums import BatchPriority, BatchStatus, ReadyStatus
 from core.services.common.excel_service import ImportMode
 from core.services.common.normalize import normalize_text
-from core.shared.number_utils import parse_finite_float, parse_finite_int
-from data.repositories import BatchOperationRepository, BatchRepository, PartOperationRepository, PartRepository
+from core.shared.strict_parse import parse_required_int
+from data.repositories import BatchOperationRepository, BatchRepository, PartRepository
+from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
 
 from . import copy_batch as batch_copy
 from . import excel_import as batch_excel_import
@@ -24,25 +25,15 @@ class BatchService:
         self,
         conn,
         logger=None,
-        op_logger=None,
-        template_resolver: Optional[Callable[..., Any]] = None,
     ):
         self.conn = conn
         self.logger = logger
-        self.op_logger = op_logger
         self.tx_manager = TransactionManager(conn)
-        self._user_visible_warnings: List[str] = []
 
         self.batch_repo = BatchRepository(conn, logger=logger)
         self.batch_op_repo = BatchOperationRepository(conn, logger=logger)
         self.part_repo = PartRepository(conn, logger=logger)
-        self.part_op_repo = PartOperationRepository(conn, logger=logger)
-        self._template_resolver = template_resolver or batch_template_ops.default_template_resolver_factory(self)
-
-    def consume_user_visible_warnings(self) -> List[str]:
-        warnings = list(self._user_visible_warnings)
-        self._user_visible_warnings.clear()
-        return warnings
+        self.template_repo = WorkbenchTemplateLineageRepository(conn, logger=logger)
 
     # -------------------------
     # 工具方法 / 校验
@@ -52,12 +43,8 @@ class BatchService:
         return normalize_text(value)
 
     @staticmethod
-    def _normalize_int(value: Any, field: str, allow_none: bool = False) -> Optional[int]:
-        return parse_finite_int(value, field=field, allow_none=allow_none)
-
-    @staticmethod
-    def _safe_float(value: Any) -> Optional[float]:
-        return parse_finite_float(value, field="ext_days", allow_none=True)
+    def _normalize_int(value: Any, field: str) -> int:
+        return parse_required_int(value, field=field)
 
     @staticmethod
     def _normalize_date(value: Any) -> Optional[str]:
@@ -92,7 +79,7 @@ class BatchService:
             text = text.split(" ", 1)[0]
         try:
             return _dt.strptime(text, "%Y-%m-%d").date().isoformat()
-        except Exception as exc:
+        except ValueError as exc:
             raise ValidationError("日期写法不对，请填写类似 2026-05-20 的日期。", field="日期") from exc
 
     @staticmethod
@@ -139,36 +126,6 @@ class BatchService:
             offset=offset,
         )
 
-    def list_page(
-        self,
-        status: Optional[str] = None,
-        priority: Optional[str] = None,
-        part_no: Optional[str] = None,
-        ready_status: Optional[str] = None,
-        page: int = 1,
-        per_page: int = 100,
-    ) -> Tuple[List[Batch], int]:
-        self._validate_list_filters(status=status, priority=priority, ready_status=ready_status)
-        per_page_int = max(1, int(per_page or 100))
-        total = self.batch_repo.count(
-            status=status,
-            priority=priority,
-            part_no=part_no,
-            ready_status=ready_status,
-        )
-        total_pages = max(1, (int(total) + per_page_int - 1) // per_page_int)
-        page_int = min(max(1, int(page or 1)), total_pages)
-        offset = (page_int - 1) * per_page_int
-        rows = self.batch_repo.list(
-            status=status,
-            priority=priority,
-            part_no=part_no,
-            ready_status=ready_status,
-            limit=per_page_int,
-            offset=offset,
-        )
-        return rows, int(total)
-
     def _validate_list_filters(
         self,
         *,
@@ -207,42 +164,6 @@ class BatchService:
             raise ValidationError("“批次号”不能为空", field="批次号")
         return self._get_or_raise(batch_id_text)
 
-    def create(
-        self,
-        batch_id: Any,
-        part_no: Any,
-        quantity: Any,
-        due_date: Any = None,
-        priority: Any = BatchPriority.NORMAL.value,
-        ready_status: Any = ReadyStatus.YES.value,
-        ready_date: Any = None,
-        status: Any = BatchStatus.PENDING.value,
-        remark: Any = None,
-        part_name: Any = None,
-    ) -> Batch:
-        batch_id_text = self._normalize_text(batch_id)
-        if not batch_id_text:
-            raise ValidationError("“批次号”不能为空", field="批次号")
-        if self.batch_repo.get(batch_id_text):
-            raise BusinessError(ErrorCode.BATCH_ALREADY_EXISTS, f"批次号“{batch_id_text}”已存在，这次没有保存。请改用别的批次号，或去修改已有的那个批次。")
-
-        payload = batch_write_rules.build_create_payload(
-            self,
-            batch_id=batch_id_text,
-            part_no=part_no,
-            quantity=quantity,
-            due_date=due_date,
-            priority=priority,
-            ready_status=ready_status,
-            ready_date=ready_date,
-            status=status,
-            remark=remark,
-            part_name=part_name,
-        )
-        with self.tx_manager.transaction():
-            self.create_no_tx(payload)
-        return self._get_or_raise(batch_id_text)
-
     def create_no_tx(self, payload: Dict[str, Any]) -> Batch:
         """
         创建批次（不控制事务）。
@@ -250,9 +171,7 @@ class BatchService:
         说明：
         - 供 Excel 批量导入在“外部已开启事务”时使用，避免嵌套 commit 导致无法整体回滚。
         """
-        batch = payload if isinstance(payload, Batch) else Batch.from_row(payload)
-        self.batch_repo.create(batch.to_dict())
-        return batch
+        return self.batch_repo.create(payload)
 
     def update(
         self,
@@ -273,7 +192,7 @@ class BatchService:
         batch = self._get_or_raise(batch_id_text)
 
         update_kwargs: Dict[str, Any] = {
-            "current_part_no": getattr(batch, "part_no", None),
+            "current_part_no": batch.part_no,
             # 公开更新接口默认不重建工序，因此图号切换保护始终生效
             "auto_generate_ops": False,
         }
@@ -308,14 +227,6 @@ class BatchService:
         """
         self.batch_repo.update(batch_id, updates)
 
-    def delete(self, batch_id: Any) -> None:
-        batch_id_text = self._normalize_text(batch_id)
-        if not batch_id_text:
-            raise ValidationError("“批次号”不能为空", field="批次号")
-        self._get_or_raise(batch_id_text)
-        with self.tx_manager.transaction():
-            self.batch_repo.delete(batch_id_text)
-
     def delete_all_no_tx(self) -> None:
         """
         清空全部批次（不控制事务）。
@@ -331,7 +242,6 @@ class BatchService:
         *,
         preview_rows: List[Any],
         mode: ImportMode,
-        parts_cache: Dict[str, Any],
         auto_generate_ops: bool = False,
         strict_mode: bool = False,
         existing_ids: Optional[Set[str]] = None,
@@ -340,7 +250,6 @@ class BatchService:
             self,
             preview_rows=preview_rows,
             mode=mode,
-            parts_cache=parts_cache,
             auto_generate_ops=bool(auto_generate_ops),
             strict_mode=bool(strict_mode),
             existing_ids=existing_ids,
@@ -371,40 +280,19 @@ class BatchService:
         - 再复制 PartOperations -> BatchOperations
         任意一步失败必须整体回滚，避免“批次有了但工序没生成”的脏数据。
         """
-        self.consume_user_visible_warnings()
-        batch_id_text = self._normalize_text(batch_id)
-        if not batch_id_text:
-            raise ValidationError("“批次号”不能为空", field="批次号")
-
-        part_no_text = self._normalize_text(part_no)
-        if not part_no_text:
-            raise ValidationError("“图号”不能为空", field="图号")
-
-        quantity_value = self._normalize_int(quantity, field="数量", allow_none=False)
-        if quantity_value is None or quantity_value <= 0:
-            raise ValidationError("“数量”必须大于 0", field="数量")
-
-        priority_text = self._normalize_text(priority) or BatchPriority.NORMAL.value
-        ready_status_text = self._normalize_text(ready_status) or ReadyStatus.YES.value
-        ready_date_text = self._normalize_date(ready_date)
-        self._validate_enum(priority_text, (BatchPriority.NORMAL.value, BatchPriority.URGENT.value, BatchPriority.CRITICAL.value), "优先级")
-        self._validate_enum(ready_status_text, (ReadyStatus.YES.value, ReadyStatus.NO.value, ReadyStatus.PARTIAL.value), "齐套")
-
-        if not self.part_repo.get(part_no_text):
-            raise BusinessError(ErrorCode.NOT_FOUND, f"图号“{part_no_text}”不存在，请先在工艺管理中维护零件。")
-
         with self.tx_manager.transaction():
-            self.create_batch_from_template_no_tx(
-                batch_id=batch_id_text,
-                part_no=part_no_text,
-                quantity=int(quantity_value),
-                due_date=self._normalize_date(due_date),
-                priority=priority_text,
-                ready_status=ready_status_text,
-                ready_date=ready_date_text,
-                remark=self._normalize_text(remark),
+            batch_id_text = batch_template_ops.create_batch_from_template_no_tx(
+                self,
+                batch_id=batch_id,
+                part_no=part_no,
+                quantity=quantity,
+                due_date=due_date,
+                priority=priority,
+                ready_status=ready_status,
+                ready_date=ready_date,
+                remark=remark,
                 rebuild_ops=rebuild_ops,
-                strict_mode=bool(strict_mode),
+                strict_mode=strict_mode,
             )
         return self._get_or_raise(batch_id_text)
 
@@ -420,8 +308,11 @@ class BatchService:
         remark: Optional[str],
         rebuild_ops: bool = False,
         strict_mode: bool = False,
-    ) -> None:
-        batch_template_ops.create_batch_from_template_no_tx(
+        *,
+        _prevalidated: bool = False,
+        _part: Optional[Part] = None,
+    ) -> str:
+        return batch_template_ops.create_batch_from_template_no_tx(
             self,
             batch_id=batch_id,
             part_no=part_no,
@@ -433,6 +324,8 @@ class BatchService:
             remark=remark,
             rebuild_ops=rebuild_ops,
             strict_mode=bool(strict_mode),
+            _prevalidated=_prevalidated,
+            _part=_part,
         )
 
     def list_operations(self, batch_id: Any) -> List[BatchOperation]:

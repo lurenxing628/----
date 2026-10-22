@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Tuple
 
 from core.errors import BusinessError, ErrorCode, ValidationError
+from core.models import Part
 from core.models.enums import BatchPriority, BatchStatus, ReadyStatus
 
 _MISSING = object()
 
 
-def _resolve_part(svc, part_no: Any):
+def _resolve_part(svc, part_no: Any) -> Tuple[str, Part]:
     part_no_text = svc._normalize_text(part_no)
     if not part_no_text:
         raise ValidationError("“图号”不能为空", field="图号")
@@ -20,14 +21,14 @@ def _resolve_part(svc, part_no: Any):
 
 def _resolved_part_name(svc, *, part, part_name: Any) -> Any:
     normalized = svc._normalize_text(part_name)
-    return normalized or getattr(part, "part_name", None)
+    return normalized or part.part_name
 
 
 def _validated_quantity(svc, quantity: Any) -> int:
-    normalized = svc._normalize_int(quantity, field="数量", allow_none=False)
-    if normalized is None or normalized <= 0:
+    normalized = svc._normalize_int(quantity, field="数量")
+    if normalized <= 0:
         raise ValidationError("“数量”必须大于 0", field="数量")
-    return int(normalized)
+    return normalized
 
 
 
@@ -59,11 +60,9 @@ def _validated_status(svc, status: Any) -> str:
     return normalized
 
 
-def _ensure_part_switch_allowed(*, current_part_no: Any, next_part_no: str, auto_generate_ops: Any) -> None:
-    if auto_generate_ops is _MISSING:
-        return
+def _ensure_part_switch_allowed(*, current_part_no: Any, next_part_no: str, auto_generate_ops: bool) -> None:
     current = str(current_part_no or "").strip()
-    if current and current != next_part_no and not bool(auto_generate_ops):
+    if current and current != next_part_no and not auto_generate_ops:
         raise ValidationError("已存在批次图号变更，必须开启自动生成工序后再试。", field="图号")
 
 
@@ -71,17 +70,21 @@ def _part_updates(
     svc,
     *,
     current_part_no: Any,
-    auto_generate_ops: Any,
+    auto_generate_ops: bool,
     part_no: Any,
     part_name: Any,
+    part: Optional[Part],
 ) -> Dict[str, Any]:
     updates: Dict[str, Any] = {}
     if part_no is not _MISSING:
-        next_part_no, part = _resolve_part(svc, part_no)
+        if part is None:
+            next_part_no, part = _resolve_part(svc, part_no)
+        else:
+            next_part_no = part_no
         _ensure_part_switch_allowed(current_part_no=current_part_no, next_part_no=next_part_no, auto_generate_ops=auto_generate_ops)
         updates["part_no"] = next_part_no
         if part_name is _MISSING:
-            updates["part_name"] = getattr(part, "part_name", None)
+            updates["part_name"] = part.part_name
     if part_name is not _MISSING:
         updates["part_name"] = svc._normalize_text(part_name)
     return updates
@@ -90,8 +93,8 @@ def _part_updates(
 def build_create_payload(
     svc,
     *,
-    batch_id: Any,
-    part_no: Any,
+    batch_id: str,
+    part: Part,
     quantity: Any,
     due_date: Any = None,
     priority: Any = BatchPriority.NORMAL.value,
@@ -101,13 +104,9 @@ def build_create_payload(
     remark: Any = None,
     part_name: Any = None,
 ) -> Dict[str, Any]:
-    batch_id_text = svc._normalize_text(batch_id)
-    if not batch_id_text:
-        raise ValidationError("“批次号”不能为空", field="批次号")
-    part_no_text, part = _resolve_part(svc, part_no)
     return {
-        "batch_id": batch_id_text,
-        "part_no": part_no_text,
+        "batch_id": batch_id,
+        "part_no": part.part_no,
         "part_name": _resolved_part_name(svc, part=part, part_name=part_name),
         "quantity": _validated_quantity(svc, quantity),
         "due_date": svc._normalize_date(due_date),
@@ -123,7 +122,7 @@ def build_update_payload(
     svc,
     *,
     current_part_no: Any,
-    auto_generate_ops: Any = _MISSING,
+    auto_generate_ops: bool,
     part_no: Any = _MISSING,
     quantity: Any = _MISSING,
     due_date: Any = _MISSING,
@@ -133,6 +132,7 @@ def build_update_payload(
     status: Any = _MISSING,
     remark: Any = _MISSING,
     part_name: Any = _MISSING,
+    _part: Optional[Part] = None,
 ) -> Dict[str, Any]:
     updates = _part_updates(
         svc,
@@ -140,6 +140,7 @@ def build_update_payload(
         auto_generate_ops=auto_generate_ops,
         part_no=part_no,
         part_name=part_name,
+        part=_part,
     )
     if quantity is not _MISSING:
         updates["quantity"] = _validated_quantity(svc, quantity)

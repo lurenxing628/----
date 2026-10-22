@@ -1,96 +1,44 @@
 from __future__ import annotations
 
-import inspect
-from typing import Any, Callable, Optional
+from typing import Any, Optional, cast
 
 from core.errors import BusinessError, ErrorCode, ValidationError
+from core.models import Part
 from core.models.enums import BatchPriority, BatchStatus, ReadyStatus
-from core.services.common.normalize import append_unique_text_messages
 from core.services.process.workflow_state import require_template_ready
 from core.services.scheduler.template_lineage import TemplateLineageWriter
-from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
-
-
-def default_template_resolver_factory(svc) -> Callable[..., Any]:
-    def _resolver(part_no: str, part_name: str, route_raw: str, no_tx: bool, *, strict_mode: bool = False):
-        from core.services.process.part_service import PartService
-
-        part_service = PartService(svc.conn, logger=svc.logger, op_logger=svc.op_logger)
-        if no_tx:
-            return part_service.upsert_and_parse_no_tx(
-                part_no=part_no,
-                part_name=part_name,
-                route_raw=route_raw,
-                strict_mode=strict_mode,
-            )
-        return part_service.reparse_and_save(part_no=part_no, route_raw=route_raw, strict_mode=strict_mode)
-
-    return _resolver
-
-
-def invoke_template_resolver(svc, part_no: str, part_name: str, route_raw: str, no_tx: bool, *, strict_mode: bool):
-    resolver = svc._template_resolver
-    try:
-        signature = inspect.signature(resolver)
-    except (TypeError, ValueError) as exc:
-        if strict_mode:
-            raise BusinessError(
-                ErrorCode.ROUTE_PARSE_ERROR,
-                "当前工艺路线处理组件版本过旧，不支持“资料不完整就停下”，请升级系统后重试。",
-                details={"reason": "strict_mode_unsupported"},
-                cause=exc,
-            ) from exc
-        return resolver(part_no, part_name, route_raw, no_tx)
-
-    supports_strict_mode = any(
-        parameter.kind == inspect.Parameter.VAR_KEYWORD or parameter.name == "strict_mode"
-        for parameter in signature.parameters.values()
-    )
-    if supports_strict_mode:
-        return resolver(part_no, part_name, route_raw, no_tx, strict_mode=strict_mode)
-    if strict_mode:
-        raise BusinessError(
-            ErrorCode.ROUTE_PARSE_ERROR,
-            "当前工艺路线处理组件版本过旧，不支持“资料不完整就停下”，请升级系统后重试。",
-            details={"reason": "strict_mode_unsupported"},
-        )
-    return resolver(part_no, part_name, route_raw, no_tx)
 
 
 def ensure_template_ops_in_tx(
     svc,
     part_no: str,
-    part,
+    part: Part,
     *,
     strict_mode: bool = False,
 ):
     require_template_ready(svc.conn, part_no)
-    templates = WorkbenchTemplateLineageRepository(svc.conn, logger=svc.logger)
-    template_ops = templates.templates_for_part(part_no)
+    template_ops = svc.template_repo.templates_for_part(part_no)
     if template_ops:
         return template_ops
 
-    route_raw = (part.route_raw or "").strip() if getattr(part, "route_raw", None) is not None else ""
+    route_raw = (part.route_raw or "").strip()
     if route_raw:
+        from core.services.process.part_service import PartService
+
         try:
-            parse_result = invoke_template_resolver(
-                svc,
-                part_no,
-                str(getattr(part, "part_name", None) or part_no),
-                route_raw,
-                True,
-                strict_mode=bool(strict_mode),
+            PartService(svc.conn, logger=svc.logger).upsert_and_parse_no_tx(
+                part_no=part_no,
+                part_name=part.part_name or part_no,
+                route_raw=route_raw,
+                strict_mode=strict_mode,
             )
         except BusinessError as exc:
-            if ((getattr(exc, "details", None) or {}).get("reason")) == "strict_mode_unsupported":
-                raise
             raise BusinessError(
                 ErrorCode.ROUTE_PARSE_ERROR,
                 "该零件尚未生成工序清单，且系统无法按路线文字生成。请到【工艺管理-零件工艺模板】中检查路线文字，并重新生成工序清单。",
                 cause=exc,
             ) from exc
-        append_unique_text_messages(svc._user_visible_warnings, getattr(parse_result, "warnings", None))
-        template_ops = templates.templates_for_part(part_no)
+        template_ops = svc.template_repo.templates_for_part(part_no)
 
     if not template_ops:
         raise BusinessError(
@@ -125,11 +73,11 @@ def _ensure_batch_exists_for_template_ops(
             "batch_id": batch_id,
             "part_no": part_no,
             "part_name": part_name,
-            "quantity": int(quantity),
-            "due_date": svc._normalize_date(due_date),
+            "quantity": quantity,
+            "due_date": due_date,
             "priority": priority,
             "ready_status": ready_status,
-            "ready_date": svc._normalize_date(ready_date),
+            "ready_date": ready_date,
             "status": BatchStatus.PENDING.value,
             "remark": remark,
         }
@@ -139,52 +87,64 @@ def _ensure_batch_exists_for_template_ops(
 def create_batch_from_template_no_tx(
     svc,
     *,
-    batch_id: str,
-    part_no: str,
-    quantity: int,
-    due_date: Optional[str],
-    priority: str,
-    ready_status: str,
-    ready_date: Optional[str],
-    remark: Optional[str],
+    batch_id: Any,
+    part_no: Any,
+    quantity: Any,
+    due_date: Any,
+    priority: Any,
+    ready_status: Any,
+    ready_date: Any,
+    remark: Any,
     rebuild_ops: bool = False,
     strict_mode: bool = False,
-) -> None:
-    bid = svc._normalize_text(batch_id)
-    part_no_text = svc._normalize_text(part_no)
-    if not bid:
-        raise ValidationError("“批次号”不能为空", field="批次号")
-    if not part_no_text:
-        raise ValidationError("“图号”不能为空", field="图号")
-    if quantity is None or int(quantity) <= 0:
-        raise ValidationError("“数量”必须大于 0", field="数量")
-
-    priority_text = svc._normalize_text(priority) or BatchPriority.NORMAL.value
-    ready_status_text = svc._normalize_text(ready_status) or ReadyStatus.YES.value
-    svc._validate_enum(priority_text, (BatchPriority.NORMAL.value, BatchPriority.URGENT.value, BatchPriority.CRITICAL.value), "优先级")
-    svc._validate_enum(ready_status_text, (ReadyStatus.YES.value, ReadyStatus.NO.value, ReadyStatus.PARTIAL.value), "齐套")
-
-    part = svc.part_repo.get(part_no_text)
-    if not part:
-        raise BusinessError(ErrorCode.NOT_FOUND, f"图号“{part_no_text}”不存在，请先在工艺管理中维护零件。")
+    _prevalidated: bool = False,
+    _part: Optional[Part] = None,
+) -> str:
+    if _prevalidated:
+        bid, part_no_text = batch_id, part_no
+        part = cast(Part, _part)
+    else:
+        bid = svc._normalize_text(batch_id)
+        if not bid:
+            raise ValidationError("“批次号”不能为空", field="批次号")
+        part_no_text = svc._normalize_text(part_no)
+        if not part_no_text:
+            raise ValidationError("“图号”不能为空", field="图号")
+        quantity = svc._normalize_int(quantity, field="数量")
+        if quantity <= 0:
+            raise ValidationError("“数量”必须大于 0", field="数量")
+        priority = svc._normalize_text(priority) or BatchPriority.NORMAL.value
+        ready_status = svc._normalize_text(ready_status) or ReadyStatus.YES.value
+        ready_date = svc._normalize_date(ready_date)
+        svc._validate_enum(priority, (BatchPriority.NORMAL.value, BatchPriority.URGENT.value, BatchPriority.CRITICAL.value), "优先级")
+        svc._validate_enum(ready_status, (ReadyStatus.YES.value, ReadyStatus.NO.value, ReadyStatus.PARTIAL.value), "齐套")
+        part = svc.part_repo.get(part_no_text)
+        if not part:
+            raise BusinessError(ErrorCode.NOT_FOUND, f"图号“{part_no_text}”不存在，请先在工艺管理中维护零件。")
+        due_date = svc._normalize_date(due_date)
+        remark = svc._normalize_text(remark)
 
     lineage = TemplateLineageWriter(svc.conn)
     lineage.require_ready()
-    template_ops = ensure_template_ops_in_tx(svc, part_no_text, part, strict_mode=bool(strict_mode))
+    template_ops = ensure_template_ops_in_tx(svc, part_no_text, part, strict_mode=strict_mode)
     prepared = lineage.prepare_templates(template_ops)
-    _ensure_batch_exists_for_template_ops(
-        svc,
-        batch_id=bid,
-        part_no=part_no_text,
-        part_name=getattr(part, "part_name", None),
-        quantity=int(quantity),
-        due_date=due_date,
-        priority=priority_text,
-        ready_status=ready_status_text,
-        ready_date=ready_date,
-        remark=remark,
-        rebuild_ops=bool(rebuild_ops),
-    )
-
+    if _prevalidated:
+        # Excel 已在当前事务完成批次写入，直接重建其工序。
+        svc.batch_op_repo.delete_by_batch(bid)
+    else:
+        _ensure_batch_exists_for_template_ops(
+            svc,
+            batch_id=bid,
+            part_no=part_no_text,
+            part_name=part.part_name,
+            quantity=quantity,
+            due_date=due_date,
+            priority=priority,
+            ready_status=ready_status,
+            ready_date=ready_date,
+            remark=remark,
+            rebuild_ops=rebuild_ops,
+        )
     for template in prepared:
         lineage.copy_prepared_template(bid, template)
+    return bid

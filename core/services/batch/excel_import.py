@@ -14,7 +14,6 @@ def import_batches_from_preview_rows(
     *,
     preview_rows: List[Any],
     mode: ImportMode,
-    parts_cache: Dict[str, Any],
     auto_generate_ops: bool = False,
     strict_mode: bool = False,
     existing_ids: Optional[Set[str]] = None,
@@ -27,7 +26,7 @@ def import_batches_from_preview_rows(
     - 计数与错误样本通过通用执行器统一生成，降低多路由漂移风险。
     """
     rows = list(preview_rows or [])
-    existing_row_ids = set(existing_ids or set()) if existing_ids is not None else {b.batch_id for b in svc.list()}
+    existing_row_ids = set(existing_ids) if existing_ids is not None else {b.batch_id for b in svc.list()}
 
     def _replace_existing_no_tx() -> None:
         svc.delete_all_no_tx()
@@ -38,16 +37,16 @@ def import_batches_from_preview_rows(
     def _apply_row_no_tx(pr: Any, existed: bool) -> None:
         batch_id = str(pr.data.get("批次号") or "").strip()
         part_no = str(pr.data.get("图号") or "").strip()
-        part = parts_cache.get(part_no)
-        part_name = getattr(part, "part_name", None) if part is not None else None
         due_date = pr.data.get("交期")
         ready_date = pr.data.get("齐套日期")
         remark = pr.data.get("备注")
 
-        if existed:
-            existing_batch = svc.get(batch_id)
+        existing_batch = svc.get(batch_id) if existed else None
+        part_no, part = batch_write_rules._resolve_part(svc, part_no)
+
+        if existing_batch is not None:
             update_kwargs = {
-                "current_part_no": getattr(existing_batch, "part_no", None),
+                "current_part_no": existing_batch.part_no,
                 "auto_generate_ops": bool(auto_generate_ops),
                 "part_no": part_no,
                 "quantity": pr.data.get("数量"),
@@ -56,14 +55,14 @@ def import_batches_from_preview_rows(
                 "ready_status": pr.data.get("齐套"),
                 "ready_date": ready_date,
                 "remark": remark,
+                "_part": part,
             }
-            if part_name is not None:
-                update_kwargs["part_name"] = part_name
-            svc.update_no_tx(batch_id, batch_write_rules.build_update_payload(svc, **update_kwargs))
+            payload = batch_write_rules.build_update_payload(svc, **update_kwargs)
+            svc.update_no_tx(batch_id, payload)
         else:
             create_kwargs = {
                 "batch_id": batch_id,
-                "part_no": part_no,
+                "part": part,
                 "quantity": pr.data.get("数量"),
                 "due_date": due_date,
                 "priority": pr.data.get("优先级"),
@@ -72,22 +71,23 @@ def import_batches_from_preview_rows(
                 "status": BatchStatus.PENDING.value,
                 "remark": remark,
             }
-            if part_name is not None:
-                create_kwargs["part_name"] = part_name
-            svc.create_no_tx(batch_write_rules.build_create_payload(svc, **create_kwargs))
+            payload = batch_write_rules.build_create_payload(svc, **create_kwargs)
+            svc.create_no_tx(payload)
 
         if auto_generate_ops:
             svc.create_batch_from_template_no_tx(
                 batch_id=batch_id,
                 part_no=part_no,
-                quantity=svc._normalize_int(pr.data.get("数量"), field="数量", allow_none=False),
-                due_date=svc._normalize_date(due_date),
-                priority=pr.data.get("优先级"),
-                ready_status=pr.data.get("齐套"),
-                ready_date=svc._normalize_date(ready_date),
-                remark=(str(remark).strip() if remark is not None and str(remark).strip() else None),
+                quantity=payload["quantity"],
+                due_date=payload["due_date"],
+                priority=payload["priority"],
+                ready_status=payload["ready_status"],
+                ready_date=payload["ready_date"],
+                remark=payload["remark"],
                 rebuild_ops=True,
                 strict_mode=bool(strict_mode),
+                _prevalidated=True,
+                _part=part,
             )
 
     stats = execute_preview_rows_transactional(
@@ -99,7 +99,6 @@ def import_batches_from_preview_rows(
         row_id_getter=_row_id_getter,
         apply_row_no_tx=_apply_row_no_tx,
         max_error_sample=10,
-        process_unchanged=False,
     )
     result = stats.to_dict()
     result["total_rows"] = len(rows)
