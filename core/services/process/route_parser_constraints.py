@@ -64,8 +64,7 @@ class SupplierConstraintResolver:
                 has_default_days=hasattr(supplier, "default_days"),
             )
             current = supplier_map.get(op_type_name)
-            current_supplier_id = None if current is None else str(current[0] or "").strip()
-            if not self._candidate_supplier_should_replace_current(current_supplier_id, supplier_id):
+            if current is not None and supplier_id <= current[0]:
                 continue
             supplier_map[op_type_name] = (supplier_id, float(default_days))
             if issue_messages:
@@ -136,23 +135,3 @@ class SupplierConstraintResolver:
         if not math.isfinite(parsed_default_days) or parsed_default_days <= 0:
             return 1.0, [supplier_invalid_days_warning(supplier_id, op_type_name)]
         return float(parsed_default_days), []
-
-    @staticmethod
-    def _effective_supplier_order_key(supplier_id: str) -> Tuple[str]:
-        return (str(supplier_id or "").strip(),)
-
-    @classmethod
-    def _candidate_supplier_should_replace_current(
-        cls,
-        current_supplier_id: Optional[str],
-        candidate_supplier_id: str,
-    ) -> bool:
-        """
-        当前冻结规则：
-        - 同一工种出现多个候选供应商时，按 supplier_id 字典序取最大者作为“有效供应商”；
-        - 该规则是为了让路线解析、预览基线与确认导入保持同口径；
-        - 它表达的是当前兼容排序规则，不等价于更广义的业务优先级。
-        """
-        if current_supplier_id is None:
-            return True
-        return cls._effective_supplier_order_key(candidate_supplier_id) > cls._effective_supplier_order_key(current_supplier_id)

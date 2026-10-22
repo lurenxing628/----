@@ -5,10 +5,12 @@ from datetime import date
 
 import pytest
 
+from core.infrastructure.transaction import TransactionManager
+from core.models import OpType
 from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected, WorkbenchCommandUncertain
-from core.services.process.op_type_service import OpTypeService
 from core.services.workbench.commands import WorkbenchCommandService
+from data.repositories.op_type_repo import OpTypeRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from web.routes.workbench.read_context import bind_read_snapshot
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
@@ -21,7 +23,8 @@ def create(conn, seen=None):
     def mutate(_context):
         if seen is not None:
             seen.append("create")
-        item = OpTypeService(conn).create(INPUT["code"], INPUT["name"])
+        with TransactionManager(conn).transaction():
+            item = OpTypeRepository(conn).create(OpType(op_type_id=INPUT["code"], name=INPUT["name"], category="internal"))
         identity = WorkbenchIdentityRepository(conn).find_active("op_type", item.op_type_id)
         return WorkbenchCommandOutcome("committed", {"ref": identity.ref, "name": item.name})
     return mutate

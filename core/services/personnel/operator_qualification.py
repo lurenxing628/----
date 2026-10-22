@@ -61,17 +61,24 @@ class OperatorQualificationService:
 
     def load(self, operator_ids: Sequence[str]) -> Dict[str, Optional[Set[str]]]:
         ids = sorted({_identifier(value) for value in operator_ids})
+        return self._load_validated(ids)
+
+    def _load_validated(self, ids):
         try:
             profiles, skills = self.repo.read_skill_facts(ids)
         except AppError as exc:
             raise _invalid_facts("人员技能或登记资料无法读取，请检查数据库；本次不会退回旧授权名单排产。") from exc
-        return self.project_facts(ids, profiles, skills)
+        return self._project_validated_facts(set(ids), profiles, skills)
 
     @staticmethod
     def project_facts(operator_ids: Sequence[str], profiles: List[Dict[str, Any]],
                       skills: List[Dict[str, Any]]) -> Dict[str, Optional[Set[str]]]:
         """Interpret supplied qualification facts using the same rules as planning reads."""
         ids = {_identifier(value) for value in operator_ids}
+        return OperatorQualificationService._project_validated_facts(ids, profiles, skills)
+
+    @staticmethod
+    def _project_validated_facts(ids, profiles, skills):
         qualifications: Dict[str, Optional[Set[str]]] = {}
         for row in profiles:
             oid = _identifier(row["operator_id"])
@@ -95,10 +102,9 @@ class OperatorQualificationService:
             current.add(op_type_id)
         return qualifications
 
-    def eligible_links(self, rows: List[Dict[str, Any]], machines: List[Any], active_operator_ids: Set[str],
-                       operations: Sequence[Any], *,
-                       qualifications: Optional[Dict[str, Optional[Set[str]]]] = None) -> List[Dict[str, Any]]:
-        qualifications = self.load(sorted(active_operator_ids)) if qualifications is None else qualifications
+    @staticmethod
+    def eligible_links(rows: List[Dict[str, Any]], machines: List[Any], operations: Sequence[Any], *,
+                       qualifications: Dict[str, Optional[Set[str]]]) -> List[Dict[str, Any]]:
         _require_explicit_auto_work_types(operations, rows, qualifications)
         capabilities = {machine.machine_id: set(machine_types(machine)) for machine in machines}
         result = []
@@ -115,7 +121,7 @@ class OperatorQualificationService:
                 qualifications: Optional[Dict[str, Optional[Set[str]]]] = None) -> None:
         oid = _identifier(operator_id)
         require_machine_authorization(self.authorizations, oid, machine_id)
-        facts = self.load([oid]) if qualifications is None else qualifications
+        facts = self._load_validated([oid]) if qualifications is None else qualifications
         skills = facts[oid]
         if skills is not None and op_type_id not in skills:
             raise OperatorQualificationError(

@@ -183,7 +183,7 @@ def build_resource_pool(svc, *, cfg, algo_ops, resource_facts, meta=None):
         consumed_ops = {row["operator_id"] for row in rows}
         qualifications = resource_facts.qualifications_for(consumed_ops)
         service = OperatorQualificationService(svc.conn, logger=svc.logger)
-        rows = service.eligible_links(rows, machines, consumed_ops, algo_ops, qualifications=qualifications)
+        rows = service.eligible_links(rows, machines, algo_ops, qualifications=qualifications)
         operators_by_machine, machines_by_operator, pair_rank = _build_operator_machine_maps(
             rows, active_machines=active_machines, active_ops=consumed_ops)
         pool = {"machines_by_op_type": machines_by_op_type, "operators_by_machine": operators_by_machine,

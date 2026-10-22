@@ -76,18 +76,12 @@ def _groups(groups, operations):
         # Store membership once in the part's source document. Each operation
         # owns its supplier facts and refers to this shared group evidence.
         group["members"] = [[op["ref"], op["seq"], op["source"]] for op in current]
-        fact, valid = _group_facts(group, group["part_no"],
+        group["op_source_facts"] = {key: group[key] for key in ("ref", "start_seq", "end_seq", "merge_mode", "supplier_id")}
+        group["source_facts"] = dict(group["op_source_facts"], members=group["members"])
+        group["valid"] = valid_external_group(group, group["part_no"],
             [(op["seq"], op["source"], op["supplier_id"]) for op in current])
-        group["source_facts"], group["valid"] = fact, valid
         result[group["group_id"]] = group
     return result
-
-
-def _group_facts(group, part_no, members):
-    if group is None:
-        return None, True
-    valid = valid_external_group(group, part_no, members)
-    return {key: group[key] for key in ("ref", "start_seq", "end_seq", "merge_mode", "supplier_id", "members")}, valid
 
 
 def _group_source(group, part_no, op_type_id, suppliers):
@@ -98,7 +92,7 @@ def _group_source(group, part_no, op_type_id, suppliers):
     if group["merge_mode"] == "merged" and group["supplier_id"] is not None:
         supplier, supplier_valid = _supplier(suppliers, group["supplier_id"], op_type_id)
         valid = valid and supplier_valid
-    return {key: value for key, value in group["source_facts"].items() if key != "members"}, supplier, valid
+    return group["op_source_facts"], supplier, valid
 
 
 def _source_facts(part, op, group, suppliers):
@@ -302,7 +296,6 @@ def _workflow_inputs_from_tables(tables):
     """Join the caller's captured raw collections; do not read a second catalog."""
     refs = {(row["kind"], row["entity_key"]): row["ref"] for row in tables["WorkbenchEntityRefs"] if row["active"] == 1}
     types = {row["op_type_id"]: row for row in tables["OpTypes"]}
-    policies = {row["op_type_id"]: row for row in tables["WorkbenchOpTypePolicies"]}
     profiles = {row["supplier_id"]: row for row in tables["WorkbenchSupplierProfiles"]}
     operations = []
     for row in tables["PartOperations"]:
@@ -311,8 +304,7 @@ def _workflow_inputs_from_tables(tables):
         kind = types.get(row["op_type_id"], {})
         operations.append(dict(row, ref=refs.get(("template_operation", str(row["id"]))),
             type_name=kind.get("name"), category=kind.get("category"),
-            type_ref=refs.get(("op_type", row["op_type_id"])),
-            default_merge_mode=policies.get(row["op_type_id"], {}).get("default_merge_mode")))
+            type_ref=refs.get(("op_type", row["op_type_id"]))))
     def sql_order(value):
         if value is None:
             return (0, "")
@@ -373,9 +365,8 @@ def start_workflow(conn, part_no, *, contracts=None) -> dict:
         return _view(stored, _facts(part, _load_facts(conn, part_no)))
 
 
-def _save_operations(conn, part_ref, stage, per_op, records, stored, stamp, person):
+def _save_operations(conn, part_ref, stage, per_op, records, states, stamp, person):
     repo = WorkbenchProcessWorkflowRepository(conn)
-    states = _operation_states(per_op, records, stored)
     for ref, values in per_op.items():
         old = records.get((ref, stage))
         if states[ref][stage]["state"] == "confirmed":
@@ -401,7 +392,8 @@ def record_confirmation(conn, part_no, stage, confirmed_by=None, *, contracts=No
         part, stored = _part(conn, part_no, contracts)
         facts = _facts(part, _load_facts(conn, part_no))
         _, contents, per_op, records = facts
-        view = _view(stored, facts)
+        op_states = _operation_states(per_op, records, stored) if stored is not None else None
+        view = _view(stored, facts, operation_states=op_states)
         previous = {"source": "route", "hours": "source"}.get(stage)
         if previous and view[previous]["state"] != "confirmed":
             raise ValidationError("请先确认上一工艺阶段的当前资料。", field="stage", details={"reason": "process_stage_locked"})
@@ -416,7 +408,7 @@ def record_confirmation(conn, part_no, stage, confirmed_by=None, *, contracts=No
         if stage == "route":
             repo.delete_confirmations_outside_active_route(part["ref"], part_no)
         else:
-            _save_operations(conn, part["ref"], stage, per_op, records, stored, stamp, confirmed_by)
+            _save_operations(conn, part["ref"], stage, per_op, records, op_states, stamp, confirmed_by)
         if _confirmation(stored, content, stage + "_")["state"] != "confirmed":
             repo.set_stage_confirmation(part_ref=part["ref"], stage=stage, content_json=content,
                                         confirmed_at=stamp, confirmed_by=confirmed_by)

@@ -3,23 +3,17 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from core.errors import ValidationError
-from core.models import OperatorMachine
 from core.models.enums import SkillLevel, YesNo
 from core.services.common.normalization_matrix import normalize_skill_level_value, normalize_yes_no_narrow_value
-from core.services.common.normalize import normalize_text
 
 _OPERATOR_PRIMARY_TRUE_ALIASES = ("主操", "主", "on")
 _OPERATOR_PRIMARY_FALSE_ALIASES = ("非主操", "非主", "off")
 
 
-def normalize_operator_machine_text(value: Any) -> Optional[str]:
-    return normalize_text(value)
-
-
 def normalize_skill_level_optional(value: Any) -> Optional[str]:
     """规范化技能等级（可选列；空/缺失返回 None）。"""
     try:
-        return normalize_skill_level_value(value, default=SkillLevel.NORMAL.value, allow_none=True, unknown_policy="raise")
+        return normalize_skill_level_value(value, allow_none=True, unknown_policy="raise")
     except ValueError as e:
         raise ValidationError(
             "“技能等级”不正确，可填写：初级 / 普通 / 熟练。以前的 Excel 如果写过英文技能等级，系统会尽量按中文意思读取；新文件请直接填中文。",
@@ -54,9 +48,8 @@ def normalize_skill_level_stored(value: Any) -> str:
         return str(
             normalize_skill_level_value(
                 value,
-                default=SkillLevel.NORMAL.value,
                 allow_none=False,
-                unknown_policy="default",
+                unknown_policy="raise",
             )
         )
     except ValueError:
@@ -74,18 +67,3 @@ def normalize_yes_no_stored(value: Any) -> str:
         )
     except ValueError:
         return YesNo.NO.value
-
-
-def updated_link_values(current, skill_level, is_primary, preserve_unchanged):
-    """Preserve unchanged stored values; normalize only the requested field changes."""
-    skill = (current["skill_level"] if preserve_unchanged and skill_level == current.get("skill_level")
-             else normalize_skill_level_optional(skill_level) or "normal")
-    primary = (current["is_primary"] if preserve_unchanged and is_primary == current.get("is_primary")
-               else normalize_yes_no_optional(is_primary, field="主操设备") or YesNo.NO.value)
-    return skill, primary
-
-
-def normalize_link_record(link: OperatorMachine) -> OperatorMachine:
-    link.skill_level = normalize_skill_level_stored(getattr(link, "skill_level", None))
-    link.is_primary = normalize_yes_no_stored(getattr(link, "is_primary", None))
-    return link

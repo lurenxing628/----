@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Any
 
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import OperatorMachine
+from core.services.common.normalize import normalize_text
 from data.repositories import MachineRepository, OperatorMachineRepository, OperatorRepository
 
 from . import operator_machine_normalizers as om_normalizers
@@ -14,34 +15,19 @@ from .operator_machine_changes import prepare_operator_machine_changes
 class OperatorMachineService:
     """人员-设备关联；所有入口先准备最终关系，再应用实际差异。"""
 
-    def __init__(self, conn, logger=None, op_logger=None):
+    def __init__(self, conn, logger=None):
         self.conn = conn
-        self.logger = logger
-        self.op_logger = op_logger
         self.tx_manager = TransactionManager(conn)
         self.operator_repo = OperatorRepository(conn, logger=logger)
         self.machine_repo = MachineRepository(conn, logger=logger)
         self.repo = OperatorMachineRepository(conn, logger=logger)
 
-    @staticmethod
-    def _normalize_text(value: Any) -> Optional[str]:
-        return om_normalizers.normalize_operator_machine_text(value)
-
-    @staticmethod
-    def _normalize_skill_level_optional(value: Any) -> Optional[str]:
-        return om_normalizers.normalize_skill_level_optional(value)
-
-    @staticmethod
-    def _normalize_yes_no_optional(value: Any, field: str) -> Optional[str]:
-        return om_normalizers.normalize_yes_no_optional(value, field)
-
-    @staticmethod
-    def _normalize_yes_no_stored(value: Any) -> str:
-        return om_normalizers.normalize_yes_no_stored(value)
+    _normalize_skill_level_optional = staticmethod(om_normalizers.normalize_skill_level_optional)
+    _normalize_yes_no_stored = staticmethod(om_normalizers.normalize_yes_no_stored)
 
     def _link_ids(self, operator_id, machine_id):
-        op_id = self._normalize_text(operator_id)
-        mc_id = self._normalize_text(machine_id)
+        op_id = normalize_text(operator_id)
+        mc_id = normalize_text(machine_id)
         if not op_id:
             raise ValidationError("“工号”不能为空", field="工号")
         if not mc_id:
@@ -64,20 +50,12 @@ class OperatorMachineService:
                              skill_level=link.skill_level, is_primary=link.is_primary)
                 for link in changes.added]
 
-    def list_by_machine(self, machine_id: str) -> List[OperatorMachine]:
-        mc_id = self._normalize_text(machine_id)
-        if not mc_id:
-            raise ValidationError("“设备编号”不能为空", field="设备编号")
-        return [om_normalizers.normalize_link_record(link) for link in self.repo.list_by_machine(mc_id)]
-
     def add_link(
         self,
         operator_id: Any,
         machine_id: Any,
         skill_level: str = "normal",
         is_primary: str = "no",
-        *,
-        preserve_unchanged: bool = False,
     ) -> OperatorMachine:
         op_id, mc_id = self._link_ids(operator_id, machine_id)
         with self.tx_manager.transaction():
@@ -89,7 +67,7 @@ class OperatorMachineService:
             if any(row["machine_id"] == mc_id for row in rows):
                 raise BusinessError(ErrorCode.DUPLICATE_ENTRY, "该人员与该设备已有关联，无需重复添加。")
             skill = self._normalize_skill_level_optional(skill_level) or "normal"
-            primary = self._normalize_yes_no_optional(is_primary, field="主操设备") or "no"
+            primary = om_normalizers.normalize_yes_no_optional(is_primary, field="主操设备") or "no"
             changes = self.prepare_changes(rows, [OperatorMachine(None, op_id, mc_id, skill, primary)])
             return self.apply_changes(changes)[0]
 
@@ -106,7 +84,6 @@ class OperatorMachineService:
         *,
         skill_level: Any,
         is_primary: Any,
-        preserve_unchanged: bool = False,
     ) -> None:
         op_id, mc_id = self._link_ids(operator_id, machine_id)
         with self.tx_manager.transaction():
@@ -114,6 +91,7 @@ class OperatorMachineService:
             current = next((row for row in rows if row["machine_id"] == mc_id), None)
             if current is None:
                 raise BusinessError(ErrorCode.NOT_FOUND, "未找到该人员与该设备的关联记录。")
-            skill, primary = om_normalizers.updated_link_values(current, skill_level, is_primary, preserve_unchanged)
+            skill = self._normalize_skill_level_optional(skill_level) or "normal"
+            primary = om_normalizers.normalize_yes_no_optional(is_primary, field="主操设备") or "no"
             changes = self.prepare_changes(rows, [OperatorMachine(None, op_id, mc_id, skill, primary)])
             self.apply_changes(changes)

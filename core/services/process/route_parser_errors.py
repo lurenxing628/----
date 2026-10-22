@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import List
 
-EMPTY_ROUTE_ERROR = "工艺路线为空或格式无效"
 MISSING_START_SEQ_ERROR = "工艺路线格式无效：必须以工序号开头"
 GENERIC_FORMAT_ERROR = "无法识别工艺路线格式，请使用'工序号+工种名'格式，如'5数铣10钳20数车'"
 
@@ -13,10 +12,6 @@ def missing_tail_op_error(seq: str) -> str:
 
 def invalid_seq_warning(seq: str) -> str:
     return f"工序号“{seq}”无法解析，将跳过"
-
-
-def empty_op_warning(seq: int) -> str:
-    return f"工序号 {seq} 的工种为空，将跳过"
 
 
 def duplicate_seq_warning(seq: int) -> str:

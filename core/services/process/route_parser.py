@@ -12,10 +12,8 @@ from core.models.resource_capabilities import supports_source
 from core.services.common.safe_logging import safe_info
 from core.services.process.route_parser_constraints import SupplierConstraintResolver, SupplierGlobalIssue
 from core.services.process.route_parser_errors import (
-    EMPTY_ROUTE_ERROR,
     GENERIC_FORMAT_ERROR,
     duplicate_seq_warning,
-    empty_op_warning,
     invalid_seq_warning,
     relaxed_missing_supplier_warning,
     relaxed_unknown_op_warning,
@@ -25,13 +23,9 @@ from core.services.process.route_parser_errors import (
 )
 from core.services.process.route_parser_segments import ExternalGroup, identify_external_groups
 from core.services.process.route_parser_tokens import (
-    SEPARATORS as ROUTE_SEPARATORS,
-)
-from core.services.process.route_parser_tokens import (
     compact_name_ambiguities,
     parse_explicit_route,
     preprocess_route_string,
-    route_format_errors,
     route_tokens,
     serialize_route_rows,
 )
@@ -57,18 +51,6 @@ class ParsedOperation:
     ext_group_id: Optional[str] = None
     is_recognized: bool = True  # 是否识别的工种
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "seq": self.seq,
-            "op_type_name": self.op_type_name,
-            "source": self.source,
-            "op_type_id": self.op_type_id,
-            "supplier_id": self.supplier_id,
-            "default_days": self.default_days,
-            "ext_group_id": self.ext_group_id,
-            "is_recognized": self.is_recognized,
-        }
-
 
 @dataclass
 class ParseResult:
@@ -83,26 +65,13 @@ class ParseResult:
     original_input: str
     normalized_input: str
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "status": self.status.value,
-            "operations": [x.to_dict() for x in self.operations],
-            "external_groups": [g.to_dict() for g in self.external_groups],
-            "warnings": list(self.warnings),
-            "errors": list(self.errors),
-            "stats": dict(self.stats),
-            "original_input": self.original_input,
-            "normalized_input": self.normalized_input,
-        }
-
 
 @dataclass
 class RouteParseContext:
     """一次解析所需的纯数据快照：工种名映射 + 供应商映射/问题/全局问题。
 
-    供批量解析（Excel 路线预览/导入、批次基线快照）在循环外构建一次、经 parse(context=...) 复用，
-    避免每条路线都重查 OpTypes/Suppliers（消除 N+1）。缓存的是纯数据而非 resolver 实例；
-    要求复用窗口内 OpTypes/Suppliers 不被改动（预览/导入循环只写 Parts/PartOperations，不改这两张表）。
+    工艺预览在批量解释工序前构建一次，复用相同工种与供应商事实；
+    缓存纯数据，不保留 resolver 实例。
     """
 
     op_types: Dict[str, Any]
@@ -162,8 +131,6 @@ class RouteParser:
     - suppliers_repo: 需要支持 list()
     """
 
-    SEPARATORS = ROUTE_SEPARATORS
-
     def __init__(self, op_types_repo, suppliers_repo, logger=None):
         self.op_types_repo = op_types_repo
         self.suppliers_repo = suppliers_repo
@@ -187,20 +154,7 @@ class RouteParser:
             supplier_global_issues=supplier_global_issues,
         )
 
-    def parse(
-        self,
-        route_string: str,
-        part_no: str,
-        *,
-        strict_mode: bool = False,
-        context: Optional[RouteParseContext] = None,
-    ) -> ParseResult:
-        errors: List[str] = []
-        normalized, explicit = self._read_route_input(route_string, errors)
-        return self._parse_input(route_string, part_no, normalized, explicit, errors,
-                                 strict_mode=strict_mode, context=context)
-
-    def parse_with_format_check(self, route_string, part_no, *, strict_mode=False, context=None) -> Tuple[bool, str, Optional[ParseResult]]:
+    def parse_with_format_check(self, route_string, part_no, *, strict_mode=False) -> Tuple[bool, str, Optional[ParseResult]]:
         """Template saves consume the same decoded input as the early format check."""
         errors = []
         normalized, explicit = self._read_route_input(route_string, errors)
@@ -208,18 +162,13 @@ class RouteParser:
         if not ok:
             return False, message, None
         result = self._parse_input(route_string, part_no, normalized, explicit, errors,
-                                   strict_mode=strict_mode, context=context, format_checked=True)
+                                   strict_mode=strict_mode)
         return True, message, result
 
-    def _parse_input(self, route_string, part_no, normalized, explicit, errors, *, strict_mode, context, format_checked=False) -> ParseResult:
+    def _parse_input(self, route_string, part_no, normalized, explicit, errors, *, strict_mode) -> ParseResult:
         warnings: List[str] = []
         original_input = route_string or ""
-        if not normalized and not errors:
-            return _empty_parse_result(original_input, "", [], [EMPTY_ROUTE_ERROR])
-        if not format_checked:
-            errors.extend(route_format_errors(normalized) if explicit is None else _explicit_format_errors(explicit))
-        # 单次解析 context=None → 每次重建（行为与历史逐字一致）；批量解析传入循环外构建的 context 复用，消除 N+1。
-        ctx = context if context is not None else self.build_parse_context()
+        ctx = self.build_parse_context()
         op_types = ctx.op_types
         suppliers = ctx.suppliers
         supplier_issues = ctx.supplier_issues
@@ -263,11 +212,11 @@ class RouteParser:
         except ValueError as exc:
             explicit = []
             errors.append(str(exc))
-        normalized = serialize_route_rows(explicit) if explicit is not None else self._preprocess(route_string)
+        normalized = serialize_route_rows(explicit) if explicit is not None else preprocess_route_string(route_string)
         return normalized, explicit
 
     def _completed_parse(self, part_no, original_input, normalized, operations, stats, warnings, errors):
-        external_groups = self._identify_external_groups(operations, part_no)
+        external_groups = identify_external_groups(operations, part_no)
         if errors:
             status = ParseStatus.FAILED
         elif warnings:
@@ -293,13 +242,6 @@ class RouteParser:
             )
 
         return result
-
-    def _preprocess(self, route_string: str) -> str:
-        return preprocess_route_string(route_string)
-
-    def _build_supplier_map(self) -> Tuple[Dict[str, Tuple[str, float]], Dict[str, List[str]]]:
-        supplier_map, supplier_issues, _global_issues = self._build_supplier_map_with_global_issues()
-        return supplier_map, supplier_issues
 
     def _build_supplier_map_with_global_issues(
         self,
@@ -357,15 +299,11 @@ class RouteParser:
         for seq_str, op_type_name in matches:
             try:
                 seq = int(seq_str)
-            except Exception:
+            except ValueError:
                 warnings.append(invalid_seq_warning(seq_str))
                 continue
 
             op_type_name = (op_type_name or "").strip()
-            if not op_type_name:
-                warnings.append(empty_op_warning(seq))
-                continue
-
             if seq in seen_seqs:
                 warnings.append(duplicate_seq_warning(seq))
                 continue
@@ -450,20 +388,6 @@ class RouteParser:
 
         op.default_days = 1.0
         warnings.append(relaxed_missing_supplier_warning(op.op_type_name))
-
-    def _identify_external_groups(self, operations: List[ParsedOperation], part_no: str) -> List[ExternalGroup]:
-        return identify_external_groups(operations, part_no)
-
-    def validate_format(self, route_string: str) -> Tuple[bool, str]:
-        """
-        快速验证格式是否可解析（不做完整解析）。
-
-        Returns:
-            (是否有效, 提示信息)
-        """
-        errors = []
-        normalized, explicit = self._read_route_input(route_string, errors)
-        return self._input_format(route_string, normalized, explicit, errors)
 
     @staticmethod
     def _input_format(route_string, normalized, explicit, errors):

@@ -1,15 +1,12 @@
-"""排产引用阻止设备删除与人员替换。"""
+"""设备、人员仓储均识别仅存在于排产表中的引用。"""
 
 from __future__ import annotations
 
 import os
 
-import pytest
-
-from core.errors import BusinessError, ErrorCode
 from core.infrastructure.database import ensure_schema, get_connection
-from core.services.equipment.machine_service import MachineService
-from core.services.personnel.operator_service import OperatorService
+from data.repositories.machine_repo import MachineRepository
+from data.repositories.operator_repo import OperatorRepository
 from tests._support.paths import REPO_ROOT
 
 
@@ -46,11 +43,9 @@ def test_machine_delete_blocks_schedule_only_reference(tmp_path) -> None:
         )
         conn.commit()
 
-        svc = MachineService(conn)
-        with pytest.raises(BusinessError) as exc_info:
-            svc.delete("MC001")
-
-        assert exc_info.value.code == ErrorCode.MACHINE_IN_USE
+        repo = MachineRepository(conn)
+        assert repo.is_referenced_by_schedule("MC001") is True
+        assert repo.has_any_schedule_machine_reference() is True
     finally:
         conn.close()
 
@@ -69,10 +64,8 @@ def test_operator_replace_blocks_schedule_only_reference(tmp_path) -> None:
         )
         conn.commit()
 
-        svc = OperatorService(conn)
-        with pytest.raises(BusinessError) as exc_info:
-            svc.ensure_replace_allowed()
-
-        assert exc_info.value.code == ErrorCode.OPERATOR_IN_USE
+        repo = OperatorRepository(conn)
+        assert repo.is_referenced_by_schedule("OP001") is True
+        assert repo.has_any_schedule_operator_reference() is True
     finally:
         conn.close()

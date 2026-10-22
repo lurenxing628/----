@@ -5,8 +5,7 @@ import re
 
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.process.template_source import group_suppliers_consistent
-from core.services.process.workflow_state import _group_facts
+from core.services.process.template_source import group_suppliers_consistent, valid_external_group
 
 
 def capabilities():
@@ -122,8 +121,7 @@ def project_operation(row, confirmation, group=None):
 
 def _group_member_issues(row, members, issues):
     # Reuse the confirmation rule; also retain the command-side cross-part reference guard.
-    facts = dict(row, members=[[op["ref"], op["seq"], op["source"]] for op in members])
-    _, valid = _group_facts(facts, row["part_no"],
+    valid = valid_external_group(row, row["part_no"],
         [(op["seq"], op["source"], op["supplier_id"]) for op in members])
     if any(op["part_no"] != row["part_no"] for op in members):
         issues.append(issue("external_group_part_mismatch", "这个外协组被别的零件的工序用着，这里不拿它当有效合并周期。请到基础资料核对外协组。"))

@@ -121,9 +121,6 @@ class MaterialAvailability:
             self._arrival_data[requirement_id] = entries, [day for day, _amount in entries], prefix
         return self._arrival_data[requirement_id]
 
-    def entries(self, requirement):
-        return list(self._prepared_arrivals(requirement)[0])
-
     def available(self, requirement, day):
         available = self._amount(requirement, "available_qty")
         _entries, days, prefix = self._prepared_arrivals(requirement)
@@ -170,8 +167,7 @@ class MaterialAvailability:
         return ("yes" if all(covers_quantity(available, required) for available, required in amounts) else
                 "partial" if any(available > 0 for available, _required in amounts) else "no"), []
 
-    @staticmethod
-    def _unreviewed_state(batch, rows):
+    def _unreviewed_state(self, batch, rows):
         """未核对（v36 前）的需求与排产检查同一规则：批次标记为齐套，且每条需求都已到齐。
 
         这类需求没有分次到料记录，只看保存的到料数量和需求自身的齐套标记。
@@ -179,7 +175,7 @@ class MaterialAvailability:
         if batch["ready_status"] != "yes" or not rows:
             return batch["ready_status"], []
         try:
-            amounts = [(quantity(row["available_qty"]), quantity(row["required_qty"], positive=True)) for row in rows]
+            amounts = [(self._amount(row, "available_qty"), self._amount(row, "required_qty", positive=True)) for row in rows]
         except WorkbenchCommandRejected as exc:
             return None, [{"code": exc.code, "message": str(exc)}]
         if all(covers_quantity(available, required) and row["ready_status"] == "yes"
@@ -225,9 +221,10 @@ class MaterialAvailability:
         total = quantity(batch["quantity"], positive=True)
         for row in rows:
             self.use_sequence(row)
-        maximum = min(self.available(row, day) * total / self._amount(row, "required_qty", positive=True) for row in rows)
+        amounts = [(self.available(row, day), self._amount(row, "required_qty", positive=True)) for row in rows]
+        maximum = min(available * total / required for available, required in amounts)
         count = min(int(total), int(maximum.to_integral_value(rounding=ROUND_FLOOR)))
-        if count < total and all(covers_quantity(self.available(row, day),
-                self._amount(row, "required_qty", positive=True) * (count + 1) / total) for row in rows):
+        if count < total and all(covers_quantity(available, required * (count + 1) / total)
+                                 for available, required in amounts):
             count += 1
         return count

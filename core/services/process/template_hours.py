@@ -24,12 +24,6 @@ class ProcessTemplateHours:
             raise WorkbenchCommandRejected("stale_write", "原模板工序已失效，这次没有保存。请刷新后重新操作。")
         return result
 
-    def revise(self, ref, values, *, expected_revision):
-        if not self.conn.in_transaction:
-            raise RuntimeError("模板工时修订必须在调用方写事务中执行。")
-        current = self.current([ref])[ref]
-        self.revise_current(current, values, expected_revision=expected_revision)
-
     def revise_current(self, current, values, *, expected_revision):
         """Revise a current row already read in the caller's write transaction."""
         if not self.conn.in_transaction:

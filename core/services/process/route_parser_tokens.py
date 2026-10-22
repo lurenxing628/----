@@ -12,7 +12,8 @@ from core.services.process.route_parser_errors import MISSING_START_SEQ_ERROR, m
 # - 这里用“字符集合”覆盖：'-' 与 '>' 分别移除，即可兼容 "->"。
 SEPARATORS = r"[\s,，、\-—–→>＞]+"
 ROUTE_TOKEN_PATTERN = r"(\d+)([^\d]+)"
-EXPLICIT_ROUTE_PREFIX = re.compile(r"[0-9０-９]+[ \t]*[:：]")
+EXPLICIT_ROUTE_PREFIX = re.compile(r"([0-9０-９]+)[ \t]*[:：]")
+_FULL_TO_HALF_DIGITS = str.maketrans("０１２３４５６７８９", "0123456789")
 
 
 def compact_name_ambiguities(rows, names):
@@ -20,11 +21,11 @@ def compact_name_ambiguities(rows, names):
     for name in names:
         match = re.match(r"([0-9０-９]+)(.+)$", name)
         if match:
-            prefix = match.group(1).translate(str.maketrans("０１２３４５６７８９", "0123456789"))
+            prefix = match.group(1).translate(_FULL_TO_HALF_DIGITS)
             numeric_names.setdefault(match.group(2), []).append((prefix, name))
     issues = []
     for seq, name in rows:
-        digits = str(seq).translate(str.maketrans("０１２３４５６７８９", "0123456789"))
+        digits = str(seq).translate(_FULL_TO_HALF_DIGITS)
         for prefix, registered in numeric_names.get(name, ()):
             remaining = digits[:-len(prefix)]
             if digits.endswith(prefix) and remaining and remaining.strip("0"):
@@ -91,7 +92,7 @@ def parse_explicit_route(text):
         prefix = EXPLICIT_ROUTE_PREFIX.match(text, cursor)
         if prefix is None:
             raise ValueError("请在每道工序号后加冒号，例如“10: 车削；20: 热处理”。原输入已保留。")
-        seq = re.match(r"[0-9０-９]+", prefix.group()).group()
+        seq = prefix.group(1)
         name, cursor = _explicit_route_name(text, prefix.end())
         rows.append((seq, name))
         if cursor < size:
@@ -109,8 +110,7 @@ def preprocess_route_string(route_string: str) -> str:
         return ""
 
     result = re.sub(SEPARATORS, "", result)
-    full_to_half = str.maketrans("０１２３４５６７８９", "0123456789")
-    return result.translate(full_to_half)
+    return result.translate(_FULL_TO_HALF_DIGITS)
 
 
 def route_format_errors(normalized: str) -> List[str]:

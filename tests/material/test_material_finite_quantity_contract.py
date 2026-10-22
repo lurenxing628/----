@@ -4,16 +4,15 @@ from __future__ import annotations
 
 import math
 import sqlite3
-from unittest.mock import Mock
 
 import pytest
 
-from core.errors import ValidationError
-from core.services.material.material_service import MaterialService
+from core.infrastructure.transaction import TransactionManager
+from data.repositories.material_repo import MaterialRepository
 
 
 @pytest.fixture
-def material_service(tmp_path):
+def material_repo(tmp_path):
     conn = sqlite3.connect(str(tmp_path / "materials.db"))
     conn.row_factory = sqlite3.Row
     conn.execute(
@@ -24,18 +23,16 @@ def material_service(tmp_path):
     conn.execute("INSERT INTO Materials (material_id, name, stock_qty) VALUES ('M001', 'original', 5)")
     conn.commit()
     try:
-        yield MaterialService(conn, op_logger=Mock())
+        yield MaterialRepository(conn)
     finally:
         conn.close()
 
 
-def _write(service, path, value):
-    if path == "service_create":
-        return service.create("M002", "new", stock_qty=value)
-    if path == "service_update":
-        return service.update("M001", name="changed", stock_qty=value, remark="changed")
+def _write(repo, path, value):
+    if path == "repo_create":
+        return repo.create({"material_id": "M002", "name": "new", "stock_qty": value})
     if path == "repo_update":
-        return service.repo.update("M001", {"name": "changed", "stock_qty": value, "remark": "changed"})
+        return repo.update("M001", {"name": "changed", "stock_qty": value, "remark": "changed"})
     raise AssertionError(path)
 
 
@@ -43,28 +40,27 @@ def _snapshot(conn):
     return [tuple(row) for row in conn.execute("SELECT *, typeof(stock_qty) FROM Materials ORDER BY material_id")]
 
 
-@pytest.mark.parametrize('path', ["service_create", "repo_update"])
-@pytest.mark.parametrize('value', [12.5])
-def test_finite_numeric_write_contract_is_preserved(material_service, path, value):
-    service = material_service
-    result = _write(service, path, value)
+@pytest.mark.parametrize('path', ["repo_create", "repo_update"])
+def test_finite_numeric_write_contract_is_preserved(material_repo, path):
+    repo = material_repo
+    with TransactionManager(repo.conn).transaction():
+        result = _write(repo, path, 12.5)
     mid = "M001" if path.endswith("update") else "M002"
-    stored = service.get(mid).stock_qty
-    assert stored == float(value)
+    stored = repo.get(mid).stock_qty
+    assert stored == 12.5
     assert math.isfinite(stored)
     if result is not None:
         assert float(result.stock_qty) == stored
-    assert len(service.list()) == (1 if mid == "M001" else 2)
+    assert len(repo.list()) == (1 if mid == "M001" else 2)
 
 
-@pytest.mark.parametrize('path', ["service_update"])
-def test_invalid_quantity_rolls_back_prior_writes_in_outer_transaction(material_service, path):
-    service = material_service
-    before = _snapshot(service.conn)
-    expected_error = ValidationError if path.startswith("service") else ValueError
-    with pytest.raises(expected_error):
-        with service.tx.transaction():
-            service.create("M003", "earlier", stock_qty=3)
-            _write(service, path, "Infinity")
-    assert _snapshot(service.conn) == before
-    assert not service.conn.in_transaction
+@pytest.mark.parametrize('path', ["repo_create", "repo_update"])
+def test_invalid_quantity_rolls_back_prior_writes_in_outer_transaction(material_repo, path):
+    repo = material_repo
+    before = _snapshot(repo.conn)
+    with pytest.raises(ValueError):
+        with TransactionManager(repo.conn).transaction():
+            repo.create({"material_id": "M003", "name": "earlier", "stock_qty": 3})
+            _write(repo, path, "Infinity")
+    assert _snapshot(repo.conn) == before
+    assert not repo.conn.in_transaction

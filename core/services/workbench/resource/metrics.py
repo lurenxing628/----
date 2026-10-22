@@ -156,8 +156,8 @@ class WorkbenchResourceMetricsService:
             if row["status"] == "active":
                 machines.append(SimpleNamespace(machine_id=code, op_type_id=row["op_type_id"], op_type_ids=tuple(capabilities[code])))
         qualification = OperatorQualificationService(self.conn, logger=self.logger)
-        active, skills = self._active_qualifications(qualification)
-        links = qualification.eligible_links(self.facts["authorizations"], machines, active, [], qualifications=skills)
+        _, skills = self._active_qualifications(qualification)
+        links = qualification.eligible_links(self.facts["authorizations"], machines, [], qualifications=skills)
         for link in links:
             for work_type in capabilities[link["machine_id"]]:
                 if skills[link["operator_id"]] is None or work_type in skills[link["operator_id"]]:

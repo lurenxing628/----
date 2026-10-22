@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 
 from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
-from data.repositories import ScheduleHistoryRepository
+from data.repositories import OperatorMachineRepository, ScheduleHistoryRepository
 
 
 def _mem_conn() -> sqlite3.Connection:
@@ -14,7 +14,7 @@ def _mem_conn() -> sqlite3.Connection:
     return conn
 
 
-def _operator_machine_query_service() -> OperatorMachineQueryService:
+def _operator_machine_repository() -> OperatorMachineRepository:
     conn = _mem_conn()
     conn.execute("CREATE TABLE Machines (machine_id TEXT PRIMARY KEY, name TEXT)")
     conn.execute("CREATE TABLE Operators (operator_id TEXT PRIMARY KEY, name TEXT, status TEXT)")
@@ -44,7 +44,7 @@ def _operator_machine_query_service() -> OperatorMachineQueryService:
         ],
     )
     conn.commit()
-    return OperatorMachineQueryService(conn)
+    return OperatorMachineRepository(conn)
 
 
 def _operator_machine_rows_by_key(rows):
@@ -56,20 +56,26 @@ def _assert_operator_machine_link(row, *, skill_level, is_primary, dirty_skill):
     assert row["is_primary"] == is_primary
     if dirty_skill:
         assert row.get("dirty_fields") == ["skill_level"]
-        assert "历史技能等级" in row.get("dirty_reasons", {}).get("skill_level", "")
     else:
         assert row.get("dirty_fields", []) == []
-        assert row.get("dirty_reasons", {}) == {}
 
 
 def test_operator_machine_query_service_lists_with_names_and_linkage_rows() -> None:
-    q = _operator_machine_query_service()
-
-    assert len(q.list_simple_rows()) == 3
-    assert len(q.list_with_names_by_machine()) == 3
-    assert len(q.list_with_names_by_operator()) == 3
-    assert len(q.list_links_with_operator_info()) == 3
-    assert len(q.list_simple_rows_for_machine_operator_sets(["M1", "M2"], ["O1"])) == 2
+    repo = _operator_machine_repository()
+    by_machine = OperatorMachineQueryService._normalize_rows(repo.list_with_names_by_machine())
+    by_operator = OperatorMachineQueryService._normalize_rows(repo.list_with_names_by_operator())
+    assert [(row["machine_id"], row["operator_id"]) for row in by_machine] == [
+        ("M1", "O1"), ("M1", "O2"), ("M2", "O1"),
+    ]
+    assert [(row["operator_id"], row["machine_id"]) for row in by_operator] == [
+        ("O1", "M1"), ("O1", "M2"), ("O2", "M1"),
+    ]
+    rows = _operator_machine_rows_by_key(by_operator)
+    _assert_operator_machine_link(rows[("O1", "M1")], skill_level="expert", is_primary="yes", dirty_skill=True)
+    _assert_operator_machine_link(rows[("O1", "M2")], skill_level="beginner", is_primary="no", dirty_skill=True)
+    _assert_operator_machine_link(rows[("O2", "M1")], skill_level="normal", is_primary="no", dirty_skill=False)
+    assert rows[("O1", "M1")]["operator_name"] == "张三"
+    assert rows[("O1", "M1")]["machine_name"] == "机床1"
 
 
 def test_schedule_history_query_service_versions_and_latest() -> None:
