@@ -126,14 +126,16 @@ def _has_schema_version_table(conn: sqlite3.Connection) -> bool:
     return row is not None
 
 
-def _ensure_no_user_tables_db_can_bootstrap(conn: sqlite3.Connection, initial_version: int) -> None:
-    if int(initial_version) == 0 and not _has_schema_version_table(conn):
+def _ensure_no_user_tables_db_can_bootstrap(
+    conn: sqlite3.Connection, initial_version: int, *, full_data: bool = False
+) -> None:
+    if not full_data and int(initial_version) == 0 and not _has_schema_version_table(conn):
         return
     raise MigrationContractError(
         " ".join(
             [
-                f"检测到数据库只有 SchemaVersion={int(initial_version)}，但没有任何业务表。",
-                "这不是连 SchemaVersion 都不存在的全新空库，系统不会用当前 schema.sql 静默补齐成新库。",
+                f"检测到数据库没有任何业务表（SchemaVersion={int(initial_version)}）。",
+                "只有普通首次启动允许初始化全新空库；恢复校验不会用当前 schema.sql 静默补齐成新库。",
                 "请恢复完整备份，或先用能正确迁移该数据库的程序版本修复结构后再重试。",
             ]
         )
@@ -173,7 +175,7 @@ def ensure_schema(
                 conn.execute("BEGIN")
                 _ensure_current_schema_contract(conn, schema_version=initial_version, schema_sql=sql, full_data=full_data)
             elif _has_no_user_tables(conn):
-                _ensure_no_user_tables_db_can_bootstrap(conn, initial_version)
+                _ensure_no_user_tables_db_can_bootstrap(conn, initial_version, full_data=full_data)
                 conn.executescript(script)
 
             # 确保 SchemaVersion 表存在，并获取当前版本

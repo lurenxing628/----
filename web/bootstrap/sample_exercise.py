@@ -363,11 +363,11 @@ def exercise(client, seed_state, report=None):
         require(dashboard["analysis_error"] is None and dashboard["analysis"]["plan"]["plan_ref"] == artifacts["plan_ref"],
                 "复杂样例的值班台分析没有正常读取：{}".format(dashboard["analysis_error"]))
         require(analysis["plan"]["plan_ref"] == artifacts["plan_ref"]
-                and len(analysis["tasks"]) == seed_state["counts"]["operations"], "全局交付与产能分析没有覆盖当前真实完整正式计划。")
+                and analysis["pagination"]["totals"]["tasks"] == seed_state["counts"]["operations"], "全局交付与产能分析没有覆盖当前真实完整正式计划。")
         require(actual["plan"]["plan_ref"] == artifacts["plan_ref"] and actual["items_complete"] is True
                 and actual["task_count"] == seed_state["counts"]["operations"], "实际甘特没有读取当前正式计划的完整工序范围。")
         return {"plan_ref": artifacts["plan_ref"], "dashboard_items": len(dashboard["items"]), "dashboard_categories": dashboard["categories"],
-                "analysis_task_count": len(analysis["tasks"]), "actual_gantt_summary": {key: actual[key]
+                "analysis_task_count": analysis["pagination"]["totals"]["tasks"], "actual_gantt_summary": {key: actual[key]
                     for key in ("task_count", "items_complete", "report_count", "availability", "scope")},
                 "delivery": analysis["deliveries"], "pressure": analysis["pressure"], "resource_pressure": analysis["resources"],
                 "global_metrics_source": "/api/workbench/v1/dashboard/analysis", "global_analysis_snapshot": analysis_document["meta"]["snapshot_ref"],

@@ -218,6 +218,41 @@ def test_verified_restore_uses_protection_external_result_and_new_connection(sys
     assert_system_maintenance_ready(str(system_api.database), str(system_api.journal_dir))
 
 
+@pytest.mark.parametrize("empty_schema_sql", [
+    None,
+    "PRAGMA user_version = 1",
+    "CREATE TABLE SchemaVersion (version INTEGER)",
+], ids=["zero-bytes", "empty-sqlite", "schema-version-only"])
+def test_empty_backup_restore_preserves_database_and_protection(system_api, empty_schema_sql):
+    with closing(system_api.connect()) as conn, conn:
+        conn.execute("INSERT INTO SystemConfig(config_key,config_value) VALUES('empty_backup_marker','original')")
+    with closing(system_api.connect()) as conn:
+        original = tuple(conn.iterdump())
+
+    backup_path = system_api.backups / "aps_backup_empty.db"
+    if empty_schema_sql is None:
+        backup_path.write_bytes(b"")
+    else:
+        with closing(sqlite3.connect(str(backup_path))) as conn:
+            conn.executescript(empty_schema_sql)
+    selected = system_api.selected()
+    enable_restore(system_api)
+    response = system_api.file_action("restore", selected)
+    assert response.status_code == 200, response.get_json()
+    result = response.get_json()["data"]["operation"]
+    assert result["state"] == "failed"
+    assert result["code"] == "backup_integrity_failed"
+    assert result["database_origin"] == "unchanged"
+    states = [item["state"] for item in result["history"]]
+    assert "verifying" not in states and "rolling_back" not in states
+
+    protection_path = system_api.backups / result["protection_filename"]
+    for path in (system_api.database, protection_path):
+        with closing(sqlite3.connect(str(path))) as conn:
+            assert conn.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
+            assert tuple(conn.iterdump()) == original
+
+
 def test_legacy_journal_lookup_and_new_intent_replay_preserve_original_files(tmp_path, monkeypatch):
     reads, records = [], SystemMaintenanceJournal.records
     def capture(journal, **kwargs):
