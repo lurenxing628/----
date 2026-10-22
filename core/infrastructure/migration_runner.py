@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import gc
 import os
 import sqlite3
 import tempfile
 from typing import Callable, Optional
 
 from .database_bootstrap import cleanup_probe_db, missing_schema_tables
-from .migration_backup import release_sqlite_connection_reference, restore_db_file_from_backup
+from .migration_backup import restore_db_file_from_backup
 from .migration_common import MigrationOutcome, fallback_log, table_exists
 from .migration_state import (
     CURRENT_SCHEMA_VERSION,
@@ -86,16 +87,7 @@ def migrate_with_backup(
                 connection_factory=connection_factory,
             )
         except Exception as migration_exc:
-            try:
-                _rollback_from_backup(db_path, backup_path, logger=logger)
-            except MigrationRollbackError as rollback_exc:
-                if logger:
-                    fallback_log(
-                        logger,
-                        "error",
-                        f"数据库迁移失败，且备份恢复失败；数据库状态不可信：migration={migration_exc}; rollback={rollback_exc}",
-                    )
-                raise MigrationRollbackError("数据库迁移失败，且备份恢复失败；数据库状态不可信") from rollback_exc
+            _rollback_from_backup(db_path, backup_path, migration_exc=migration_exc, logger=logger)
             raise
 
 
@@ -158,8 +150,7 @@ def _resolve_backup_dir(db_path: str, backup_dir: Optional[str], *, logger=None)
     if effective_backup_dir:
         return effective_backup_dir
     default_dir = os.path.join(os.path.dirname(os.path.abspath(db_path)), "backups")
-    if logger:
-        fallback_log(logger, "warning", f"未提供 backup_dir，迁移将使用默认备份目录：{default_dir}")
+    fallback_log(logger, "warning", f"未提供 backup_dir，迁移将使用默认备份目录：{default_dir}")
     return default_dir
 
 
@@ -167,8 +158,7 @@ def _ensure_backup_dir(effective_backup_dir: str, *, logger=None) -> None:
     try:
         os.makedirs(effective_backup_dir, exist_ok=True)
     except Exception as exc:
-        if logger:
-            fallback_log(logger, "error", f"数据库迁移前无法创建备份目录，已阻断迁移：{exc}（dir={effective_backup_dir}）")
+        fallback_log(logger, "error", f"数据库迁移前无法创建备份目录，已阻断迁移：{exc}（dir={effective_backup_dir}）")
         raise
 
 
@@ -185,8 +175,7 @@ def _create_migration_backup(
         manager = backup_manager_cls(db_path=db_path, backup_dir=effective_backup_dir, keep_days=365, logger=logger)
         return manager.backup(suffix=f"before_migrate_v{from_version}_to_v{to_version}")
     except Exception as exc:
-        if logger:
-            fallback_log(logger, "error", f"数据库迁移前备份失败，已阻断迁移：{exc}（dir={effective_backup_dir}）")
+        fallback_log(logger, "error", f"数据库迁移前备份失败，已阻断迁移：{exc}（dir={effective_backup_dir}）")
         raise
 
 
@@ -216,8 +205,7 @@ def _apply_migrations(
             _apply_version_range(conn, current=current, to_version=to_version, schema_sql=schema_sql, logger=logger)
             if to_version == CURRENT_SCHEMA_VERSION:
                 ensure_current_schema_contract(conn, schema_version=to_version, schema_sql=schema_sql, full_data=True)
-        if logger:
-            fallback_log(logger, "info", f"数据库迁移完成：SchemaVersion {current} -> {to_version}")
+        fallback_log(logger, "info", f"数据库迁移完成：SchemaVersion {current} -> {to_version}")
     finally:
         _close_connection(conn, logger=logger)
 
@@ -255,28 +243,25 @@ def _log_incomplete_migration(
     logger=None,
 ) -> None:
     level = "warning" if outcome == MigrationOutcome.SKIPPED else "error"
-    if logger:
-        fallback_log(
-            logger,
-            level,
-            f"数据库迁移 v{version} 未完整完成（outcome={outcome.value}），SchemaVersion 保持在 {applied_upto}。",
-        )
+    fallback_log(
+        logger,
+        level,
+        f"数据库迁移 v{version} 未完整完成（outcome={outcome.value}），SchemaVersion 保持在 {applied_upto}。",
+    )
 
 
-def _rollback_from_backup(db_path: str, backup_path: str, *, logger=None) -> None:
+def _rollback_from_backup(db_path: str, backup_path: str, *, migration_exc: Exception, logger=None) -> None:
     if not backup_path or not os.path.exists(backup_path):
-        message = f"数据库迁移失败，但迁移前备份不存在，无法回滚（backup={backup_path}）"
-        if logger:
-            fallback_log(logger, "error", message)
-        raise MigrationRollbackError(message)
+        message = f"数据库迁移失败，但迁移前备份不存在，无法回滚：migration={migration_exc}（backup={backup_path}）"
+        fallback_log(logger, "error", message)
+        raise MigrationRollbackError(message) from migration_exc
     try:
         restore_db_file_from_backup(backup_path, db_path, logger=logger)
-        if logger:
-            fallback_log(logger, "error", f"数据库迁移失败，已从备份回滚：{backup_path}")
     except Exception as exc:
-        if logger:
-            fallback_log(logger, "error", f"数据库迁移失败且回滚失败：{exc}（backup={backup_path}）")
-        raise MigrationRollbackError(f"数据库迁移失败且回滚失败：{exc}（backup={backup_path}）") from exc
+        message = f"数据库迁移失败且回滚失败；数据库状态不可信：migration={migration_exc}; rollback={exc}（backup={backup_path}）"
+        fallback_log(logger, "error", message)
+        raise MigrationRollbackError(message) from exc
+    fallback_log(logger, "error", f"数据库迁移失败，已从备份回滚：{backup_path}")
 
 
 def _close_connection(conn, logger=None) -> None:
@@ -285,10 +270,9 @@ def _close_connection(conn, logger=None) -> None:
     try:
         conn.close()
     except Exception as exc:
-        if logger:
-            fallback_log(logger, "warning", f"数据库连接关闭失败（可能导致文件锁未释放）：{exc}")
+        fallback_log(logger, "warning", f"数据库连接关闭失败（可能导致文件锁未释放）：{exc}")
     finally:
-        release_sqlite_connection_reference(conn)
+        gc.collect()
 
 
 def run_migration(conn: sqlite3.Connection, target_version: int, logger=None) -> MigrationOutcome:

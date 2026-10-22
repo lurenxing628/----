@@ -20,7 +20,7 @@ from core.services.common.normalization_matrix import (
 )
 from core.services.common.normalize import normalize_text
 from core.services.scheduler.config.config_field_spec import MISSING_POLICY_ERROR, coerce_config_field
-from core.shared.number_utils import parse_finite_float
+from core.shared.strict_parse import parse_optional_float
 from data.repositories import CalendarRepository, OperatorCalendarRepository
 from data.repositories.config_repo import ConfigRepository
 
@@ -145,7 +145,7 @@ class CalendarAdmin:
                 et_t = et_t + timedelta(days=1)
             sh = (et_t - st_t).total_seconds() / 3600.0
         else:
-            sh = parse_finite_float(shift_hours, field="可用工时", allow_none=True)
+            sh = parse_optional_float(shift_hours, field="可用工时")
             sh = default_hours if sh is None else sh
             if sh < 0:
                 raise ValidationError("“可用工时”不能为负数", field="可用工时")
@@ -175,7 +175,7 @@ class CalendarAdmin:
     ) -> Dict[str, Any]:
         d = normalize_date(date_value)
         dt = self._validate_day_type(day_type)
-        eff = parse_finite_float(efficiency, field="效率", allow_none=True)
+        eff = parse_optional_float(efficiency, field="效率")
         if eff is None:
             eff = 1.0 if dt == CalendarDayType.WORKDAY.value else self._holiday_efficiency()
         if eff <= 0:

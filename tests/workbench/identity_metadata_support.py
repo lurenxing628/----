@@ -23,7 +23,7 @@ from core.infrastructure.workbench_metadata_schema import metadata_objects
 from core.infrastructure.workbench_plan_identity_schema import plan_identity_objects
 from core.infrastructure.workbench_process_schema import process_objects
 from core.infrastructure.workbench_process_workflow_schema import WORKFLOW_TABLES, workflow_objects
-from core.infrastructure.workbench_resource_schema import RESOURCE_TABLE_NAMES, resource_objects
+from core.infrastructure.workbench_resource_schema import resource_objects
 from core.infrastructure.workbench_run_schema import RUN_TABLES, workbench_run_contract_issues, workbench_run_objects
 from core.infrastructure.workbench_template_lineage_schema import (
     template_lineage_contract_issues,
@@ -48,6 +48,12 @@ from tests.workbench.plan_identity_support import (
     legacy_schema as remove_plan_identities,
 )
 from tests.workbench.schema29_regression_support import missing_v29_issues
+
+RESOURCE_TABLE_NAMES = (
+    "WorkbenchMachineGroups", "WorkbenchMachineGroupMembers", "WorkbenchShiftProfiles",
+    "WorkbenchShiftPatternDays", "WorkbenchOperatorProfiles", "WorkbenchSupplierOpTypes",
+    "WorkbenchSupplierProfiles", "WorkbenchOpTypePolicies",
+)
 
 RESOURCE_CASES = {
     "part": ("Parts", ("part_no",)),

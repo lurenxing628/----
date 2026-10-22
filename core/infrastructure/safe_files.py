@@ -21,10 +21,7 @@ def _is_regular_mode(mode: int) -> bool:
 
 
 def _has_multiple_links(st: Any) -> bool:
-    try:
-        return int(getattr(st, "st_nlink", 1) or 1) > 1
-    except (TypeError, ValueError):
-        return False
+    return st.st_nlink > 1
 
 
 def _raise_if_hardlinked(st: Any, path_s: str) -> None:
@@ -42,8 +39,6 @@ def _guard_fixed_file_parent(path_s: str, *, ensure_parent: bool = False) -> Non
     或硬链接借壳，另由打开时 O_NOFOLLOW + 打开后 fstat 复核 + 前后 stat 比对兜住。
     """
     parent = os.path.dirname(os.path.abspath(path_s))
-    if not parent:
-        return
     try:
         st = os.lstat(parent)
     except FileNotFoundError:
@@ -89,13 +84,7 @@ def _raise_if_fd_not_regular(fd: int, path_s: str) -> None:
 
 
 def _same_regular_file_stat(left: Any, right: Any) -> bool:
-    try:
-        return os.path.samestat(left, right)
-    except (AttributeError, OSError, TypeError, ValueError):
-        return (
-            getattr(left, "st_dev", None) == getattr(right, "st_dev", None)
-            and getattr(left, "st_ino", None) == getattr(right, "st_ino", None)
-        )
+    return stat.S_ISREG(left.st_mode) and stat.S_ISREG(right.st_mode) and os.path.samestat(left, right)
 
 
 def _fd_regular_stat(fd: int, path_s: str):
@@ -118,18 +107,21 @@ def _raise_if_path_is_not_expected_regular_file(path_s: str, expected_stat: Any)
         raise UnsafeFixedFileError(f"固定文件在处理过程中被替换：{path_s}")
 
 
-def read_fixed_bytes(path: Any) -> bytes:
+def _open_safe_readonly_fd(path: Any) -> int:
     path_s = _path_text(path)
     expected_stat = stat_regular_file(path_s)
     fd = os.open(path_s, os.O_RDONLY | _O_NOFOLLOW)
     try:
         _raise_if_fd_is_not_expected_regular_file(fd, path_s, expected_stat)
-        with os.fdopen(fd, "rb") as f:
-            fd = -1
-            return f.read()
-    finally:
-        if fd >= 0:
-            os.close(fd)
+        return fd
+    except Exception:
+        os.close(fd)
+        raise
+
+
+def read_fixed_bytes(path: Any) -> bytes:
+    with open_fixed_file_for_read_binary(path) as stream:
+        return stream.read()
 
 
 def read_fixed_text(path: Any, *, encoding: str = "utf-8", errors: Optional[str] = None) -> str:
@@ -327,23 +319,9 @@ def create_fixed_file_exclusive(path: Any, *, ensure_parent: bool = True) -> int
         raise
 
 
-def same_regular_file_stat(left: Any, right: Any) -> bool:
-    return _same_regular_file_stat(left, right)
-
-
-def assert_same_regular_file(path: Any, expected_stat: Any) -> None:
-    path_s = _path_text(path)
-    current = stat_regular_file(path_s)
-    if not same_regular_file_stat(current, expected_stat):
-        raise UnsafeFixedFileError(f"固定文件在处理过程中被替换：{path_s}")
-
-
 def open_fixed_file_for_read_binary(path: Any):
-    path_s = _path_text(path)
-    expected_stat = stat_regular_file(path_s)
-    fd = os.open(path_s, os.O_RDONLY | _O_NOFOLLOW)
+    fd = _open_safe_readonly_fd(path)
     try:
-        _raise_if_fd_is_not_expected_regular_file(fd, path_s, expected_stat)
         f = os.fdopen(fd, "rb")
         fd = -1
         return f

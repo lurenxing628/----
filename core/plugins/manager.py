@@ -41,8 +41,8 @@ class PluginStatus:
             "loaded": self.loaded,
             "error": self.error,
             "enabled_source": self.enabled_source,
-            "capabilities": self.capabilities or [],
-            "conflicted_capabilities": self.conflicted_capabilities or [],
+            "capabilities": self.capabilities,
+            "conflicted_capabilities": self.conflicted_capabilities,
         }
 
 
@@ -53,22 +53,19 @@ _STATE: Dict[str, Any] = {
     "plugins_dir": None,
     "statuses": [],
     "registry": PluginRegistry(),
-    "conflicted_capabilities": [],
-    "conflict_policy": PluginRegistry().conflict_policy,
 }
 
 
-def get_plugin_status() -> Dict[str, Any]:
-    registry = _STATE.get("registry") or PluginRegistry()
-    registry_dict = registry.to_dict() if hasattr(registry, "to_dict") else PluginRegistry().to_dict()
+def _get_plugin_status() -> Dict[str, Any]:
+    registry_dict = _STATE["registry"].to_dict()
     return {
-        "loaded_at": _STATE.get("loaded_at"),
-        "vendor_paths": list(_STATE.get("vendor_paths") or []),
-        "plugins_dir": _STATE.get("plugins_dir"),
-        "statuses": [s.to_dict() if hasattr(s, "to_dict") else s for s in (_STATE.get("statuses") or [])],
+        "loaded_at": _STATE["loaded_at"],
+        "vendor_paths": list(_STATE["vendor_paths"]),
+        "plugins_dir": _STATE["plugins_dir"],
+        "statuses": [status.to_dict() for status in _STATE["statuses"]],
         "registry": registry_dict,
-        "conflicted_capabilities": list(_STATE.get("conflicted_capabilities") or registry_dict.get("conflicted_capabilities") or []),
-        "conflict_policy": _STATE.get("conflict_policy") or registry_dict.get("conflict_policy") or PluginRegistry().conflict_policy,
+        "conflicted_capabilities": registry_dict["conflicted_capabilities"],
+        "conflict_policy": registry_dict["conflict_policy"],
     }
 
 
@@ -84,16 +81,9 @@ def reset_plugin_state(base_dir: Optional[str] = None) -> Dict[str, Any]:
             "plugins_dir": plugins_dir,
             "statuses": [],
             "registry": registry,
-            "conflicted_capabilities": [],
-            "conflict_policy": registry.conflict_policy,
         }
     )
-    return get_plugin_status()
-
-
-def get_plugin_registry() -> PluginRegistry:
-    reg = _STATE.get("registry")
-    return reg if isinstance(reg, PluginRegistry) else PluginRegistry()
+    return _get_plugin_status()
 
 
 class PluginManager:
@@ -110,7 +100,6 @@ class PluginManager:
     注意：
     - 插件文件应尽量避免在 import 顶层引入重依赖（pandas/ortools 等），建议在 register 内再 import，
       以便在“禁用/缺失依赖”时也能被管理器读取元信息并展示状态。
-    - conn 参数仅为兼容保留，管理器本身不再直接依赖仓储层读取配置。
     """
 
     @classmethod
@@ -119,7 +108,6 @@ class PluginManager:
         base_dir: str,
         *,
         config_reader: Optional[PluginConfigReader] = None,
-        conn=None,
         logger=None,
     ) -> Dict[str, Any]:
         base = os.path.abspath(base_dir or ".")
@@ -145,11 +133,9 @@ class PluginManager:
                     "plugins_dir": plugins_dir,
                     "statuses": statuses,
                     "registry": registry,
-                    "conflicted_capabilities": list(registry.conflicted_capabilities),
-                    "conflict_policy": registry.conflict_policy,
                 }
             )
-            return get_plugin_status()
+            return _get_plugin_status()
 
         for fn in sorted(os.listdir(plugins_dir)):
             if not fn.endswith(".py") or fn.startswith("_"):
@@ -226,7 +212,7 @@ class PluginManager:
                             finally:
                                 registry.clear_bound_plugin()
                             after = set(registry.capabilities.keys())
-                            cap_keys = sorted(list(after - before))
+                            cap_keys = sorted(after - before)
                             new_conflicts = registry.conflicted_capabilities[before_conflicts:]
                             conflict_keys = [
                                 str(item.get("capability") or "")
@@ -240,10 +226,7 @@ class PluginManager:
                         err = f"{e}\n{tb}"
                         if logger:
                             try:
-                                try:
-                                    logger.error(f"插件注册失败：{plugin_id} err={e}", exc_info=True)
-                                except TypeError:
-                                    logger.error(f"插件注册失败：{plugin_id} err={e}\n{tb}")
+                                logger.error(f"插件注册失败：{plugin_id} err={e}", exc_info=True)
                             except Exception:
                                 pass
 
@@ -285,10 +268,7 @@ class PluginManager:
                 )
                 if logger:
                     try:
-                        try:
-                            logger.error(f"插件加载失败：{fn} err={e}", exc_info=True)
-                        except TypeError:
-                            logger.error(f"插件加载失败：{fn} err={e}\n{tb}")
+                        logger.error(f"插件加载失败：{fn} err={e}", exc_info=True)
                     except Exception:
                         pass
 
@@ -299,9 +279,7 @@ class PluginManager:
                 "plugins_dir": plugins_dir,
                 "statuses": statuses,
                 "registry": registry,
-                "conflicted_capabilities": list(registry.conflicted_capabilities),
-                "conflict_policy": registry.conflict_policy,
             }
         )
 
-        return get_plugin_status()
+        return _get_plugin_status()

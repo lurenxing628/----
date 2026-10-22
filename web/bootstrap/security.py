@@ -41,7 +41,7 @@ def ensure_secret_key(app: Flask) -> None:
             # 拒绝软链接：与日志读取/诊断包同一道锁，挡「固定文件名指向任意文件」借壳；
             # 是软链接则跳过读取、走下方重新生成（诚实降级，不跟随链接读到非预期内容）。
             if is_regular_file(secret_file):
-                key0 = (read_fixed_text(secret_file) or "").strip()
+                key0 = read_fixed_text(secret_file).strip()
                 if len(key0) >= min_len:
                     app.config["SECRET_KEY"] = key0
                     return
@@ -55,7 +55,7 @@ def ensure_secret_key(app: Flask) -> None:
         return
     try:
         write_fixed_text(secret_file, key + "\n", replace_symlink=True)
-        safe_log(getattr(app, "logger", None), "info", "已生成 SECRET_KEY 并写入：%s", secret_file)
+        app.logger.info("已生成 SECRET_KEY 并写入：%s", secret_file)
     except Exception as e:
         safe_log(getattr(app, "logger", None), "warning", "写入 SECRET_KEY 文件失败（将使用进程内随机 SECRET_KEY）：%s", e)
 

@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict
 
-SCHEDULE_INPUT_FIELD_LABELS = {
+_FIELD_LABELS: Dict[str, str] = {
     "default_days": "供应商默认周期",
     "due_date": "交期",
     "ext_days": "外协周期",
     "ext_group_total_days": "合并外协周期",
     "setup_hours": "换型时间",
     "unit_hours": "单件工时",
-}
 
-CONFIG_FIELD_LABELS = {
     "algo_mode": "计算模式",
     "auto_assign_enabled": "未指定设备或人员时，系统自动分配",
     "auto_assign_persist": "保存系统补齐的设备和人员",
@@ -40,9 +38,7 @@ CONFIG_FIELD_LABELS = {
     "sort_strategy": "排产策略",
     "time_budget_seconds": "找更好排法先试多久",
     "run_time_budget_seconds": "这次找更好排法先试多久",
-}
 
-GENERAL_FIELD_LABELS = {
     "batch_id": "批次号",
     "batch_ids": "批次",
     "affected_machine_id": "影响设备",
@@ -80,18 +76,17 @@ GENERAL_FIELD_LABELS = {
     "suggest_reschedule": "是否建议重新排程",
     "time_range": "开始或结束时间",
     "version": "版本",
+    "offset": "偏移周数",
+    "scope_id": "范围",
+    "team_axis": "班组维度",
+    "team_id": "班组",
+    "view": "视图",
+    "week_start": "周起始日期",
 }
 
 
-def user_field_label(field: Any, default: str = "") -> str:
-    key = str(field or "").strip()
-    if not key:
-        return str(default or "").strip()
-    for mapping in (SCHEDULE_INPUT_FIELD_LABELS, CONFIG_FIELD_LABELS, GENERAL_FIELD_LABELS):
-        label = mapping.get(key)
-        if label:
-            return label
-    return str(default or "").strip()
+def user_field_label(field: Any) -> str:
+    return _FIELD_LABELS.get(str(field or "").strip(), "")
 
 
 def display_field_label(field: Any, fallback: str = "字段") -> str:
@@ -100,9 +95,6 @@ def display_field_label(field: Any, fallback: str = "字段") -> str:
 
 
 __all__ = [
-    "CONFIG_FIELD_LABELS",
-    "GENERAL_FIELD_LABELS",
-    "SCHEDULE_INPUT_FIELD_LABELS",
     "display_field_label",
     "user_field_label",
 ]

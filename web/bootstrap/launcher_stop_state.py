@@ -59,4 +59,4 @@ def _runtime_stop_is_complete(status: Dict[str, Any]) -> bool:
     state = str(status.get("state") or "").strip()
     if state == "absent":
         return True
-    return state == "stale" and not bool(status.get("endpoint_up"))
+    return state == "stale"

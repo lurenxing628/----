@@ -95,22 +95,6 @@ def _foreign_key_groups(conn: sqlite3.Connection, table_name: str, *, structure=
     return out
 
 
-def _foreign_key_pairs(conn: sqlite3.Connection, table_name: str, *, structure=None) -> List[tuple]:
-    pairs = []
-    for child_columns, parent_table, parent_columns, _ in _foreign_key_groups(conn, table_name, structure=structure):
-        for child_column, parent_column in zip(child_columns, parent_columns):
-            pairs.append((child_column, parent_table, parent_column))
-    return pairs
-
-
-def _foreign_key_delete_actions(conn: sqlite3.Connection, table_name: str, *, structure=None) -> dict:
-    actions = {}
-    for child_columns, parent_table, parent_columns, delete_actions in _foreign_key_groups(conn, table_name, structure=structure):
-        for child_column, parent_column, delete_action in zip(child_columns, parent_columns, delete_actions):
-            actions[(child_column, parent_table, parent_column)] = delete_action
-    return actions
-
-
 def _table_columns_info(conn: sqlite3.Connection, table_name: str, *, structure=None) -> dict:
     try:
         rows = structure.table_info(table_name) if structure is not None else conn.execute(f"PRAGMA table_info({table_name})").fetchall()
@@ -126,26 +110,6 @@ def _table_columns_info(conn: sqlite3.Connection, table_name: str, *, structure=
             "pk": int(row["pk"] if isinstance(row, sqlite3.Row) else row[5] or 0),
         }
     return out
-
-
-def _column_default_is(conn: sqlite3.Connection, table_name: str, column_name: str, expected: str, *, structure=None) -> bool:
-    info = _table_columns_info(conn, table_name, structure=structure).get(column_name) or {}
-    normalized = str(info.get("default") or "").strip().strip("'\"").lower()
-    return normalized == str(expected or "").strip().lower()
-
-
-def _column_has_no_default(conn: sqlite3.Connection, table_name: str, column_name: str, *, structure=None) -> bool:
-    info = _table_columns_info(conn, table_name, structure=structure).get(column_name) or {}
-    return info.get("default") is None
-
-
-def _required_columns_are_not_null(conn: sqlite3.Connection, table_name: str, columns: List[str], *, structure=None) -> bool:
-    info = _table_columns_info(conn, table_name, structure=structure)
-    for column in columns:
-        item = info.get(column)
-        if not item or int(item.get("notnull") or 0) != 1:
-            return False
-    return True
 
 
 _OPERATION_EXECUTION_REQUIRED_SQL_FRAGMENTS = (
@@ -234,11 +198,15 @@ def operation_execution_event_contract_issues(conn: sqlite3.Connection, *, struc
     normalized_sql = _normalize_sql_contract_text(_table_sql(conn, "OperationExecutionEvents", structure=structure))
     issues = []
     issues.extend(_operation_execution_sql_contract_issues(normalized_sql))
-    issues.extend(_operation_execution_column_contract_issues(conn, normalized_sql, structure=structure))
-    issues.extend(_operation_execution_foreign_key_contract_issues(conn, structure=structure))
+    columns = _table_columns_info(conn, "OperationExecutionEvents", structure=structure)
+    foreign_keys = _foreign_key_groups(conn, "OperationExecutionEvents", structure=structure)
+    version_row = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
+    version = None if version_row is None else int(version_row[0])
+    issues.extend(_operation_execution_column_contract_issues(columns, normalized_sql, version=version))
+    issues.extend(_operation_execution_foreign_key_contract_issues(foreign_keys))
     issues.extend(_operation_execution_index_contract_issues(conn, structure=structure))
     if full_data:
-        issues.extend(_operation_execution_probe_issues(conn))
+        issues.extend(_operation_execution_probe_issues(conn, version=version))
         issues.extend(operation_execution_event_data_issues(conn))
     return issues
 
@@ -260,9 +228,8 @@ def _operation_execution_sql_contract_issues(normalized_sql: str) -> List[str]:
     ]
 
 
-def _operation_execution_column_contract_issues(conn: sqlite3.Connection, normalized_sql: str, *, structure=None) -> List[str]:
+def _operation_execution_column_contract_issues(info: dict, normalized_sql: str, *, version: Optional[int]) -> List[str]:
     issues = []
-    info = _table_columns_info(conn, "OperationExecutionEvents", structure=structure)
     for column in _OPERATION_EXECUTION_REQUIRED_NOT_NULL_COLUMNS:
         item = info.get(column)
         if not item:
@@ -270,28 +237,28 @@ def _operation_execution_column_contract_issues(conn: sqlite3.Connection, normal
         elif int(item.get("notnull") or 0) != 1:
             issues.append(f"nullable_column: OperationExecutionEvents.{column}")
     fingerprint = info.get("request_fingerprint")
-    version = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
     if fingerprint is None:
         issues.append("missing_column: OperationExecutionEvents.request_fingerprint")
-    elif (version is None or not 20 <= int(version[0]) < 40) and fingerprint["notnull"]:
+    elif (version is None or not 20 <= version < 40) and fingerprint["notnull"]:
         issues.append("bad_column: OperationExecutionEvents.request_fingerprint must allow historical NULL")
     id_info = info.get("id") or {}
     if int(id_info.get("pk") or 0) != 1 or "autoincrement" not in normalized_sql:
         issues.append("bad_column: OperationExecutionEvents.id must be autoincrement primary key")
     for column in ("source_table", "effective_plan_role"):
-        if not _column_has_no_default(conn, "OperationExecutionEvents", column, structure=structure):
+        if (info.get(column) or {}).get("default") is not None:
             issues.append(f"bad_default: OperationExecutionEvents.{column} must not have default")
     for column, expected in (("suggest_reschedule", "0"), ("created_at", "current_timestamp")):
-        if not _column_default_is(conn, "OperationExecutionEvents", column, expected, structure=structure):
+        default = str((info.get(column) or {}).get("default") or "").strip().strip("'\"").lower()
+        if default != expected:
             issues.append(f"bad_default: OperationExecutionEvents.{column} expected {expected}")
     return issues
 
 
-def _operation_execution_foreign_key_contract_issues(conn: sqlite3.Connection, *, structure=None) -> List[str]:
+def _operation_execution_foreign_key_contract_issues(foreign_keys: List[ForeignKeyGroup]) -> List[str]:
     issues = []
     groups = {
         (child_columns, parent_table, parent_columns)
-        for child_columns, parent_table, parent_columns, _ in _foreign_key_groups(conn, "OperationExecutionEvents", structure=structure)
+        for child_columns, parent_table, parent_columns, _ in foreign_keys
     }
     for child_columns, parent_table, parent_columns in sorted(_OPERATION_EXECUTION_REQUIRED_FOREIGN_GROUPS):
         if (child_columns, parent_table, parent_columns) not in groups:
@@ -299,11 +266,19 @@ def _operation_execution_foreign_key_contract_issues(conn: sqlite3.Connection, *
                 "bad_fk_group: OperationExecutionEvents."
                 f"{child_columns} -> {parent_table}{parent_columns}"
             )
-    pairs = set(_foreign_key_pairs(conn, "OperationExecutionEvents", structure=structure))
+    pairs = {
+        (child_column, parent_table, parent_column)
+        for child_columns, parent_table, parent_columns, _ in foreign_keys
+        for child_column, parent_column in zip(child_columns, parent_columns)
+    }
     for pair in sorted(_OPERATION_EXECUTION_REQUIRED_FOREIGN_PAIRS):
         if pair not in pairs:
             issues.append(f"bad_fk: OperationExecutionEvents.{pair[0]} -> {pair[1]}.{pair[2]}")
-    foreign_delete_actions = _foreign_key_delete_actions(conn, "OperationExecutionEvents", structure=structure)
+    foreign_delete_actions = {
+        (child_column, parent_table, parent_column): action
+        for child_columns, parent_table, parent_columns, actions in foreign_keys
+        for child_column, parent_column, action in zip(child_columns, parent_columns, actions)
+    }
     for pair in (("schedule_id", "Schedule", "id"), ("op_id", "BatchOperations", "id")):
         if foreign_delete_actions.get(pair) == "CASCADE":
             issues.append(f"bad_fk_delete: OperationExecutionEvents.{pair[0]} must not cascade")
@@ -329,7 +304,7 @@ def _operation_execution_index_contract_issues(conn: sqlite3.Connection, *, stru
     return issues
 
 
-def _operation_execution_probe_issues(conn: sqlite3.Connection) -> List[str]:
+def _operation_execution_probe_issues(conn: sqlite3.Connection, *, version: Optional[int]) -> List[str]:
     try:
         conn.execute("SAVEPOINT aps_operation_execution_schema_probe")
         _seed_operation_execution_probe_parents(conn)
@@ -358,8 +333,7 @@ def _operation_execution_probe_issues(conn: sqlite3.Connection) -> List[str]:
         for overrides in probes:
             if _operation_execution_bad_probe_is_accepted(conn, overrides):
                 issues.append(f"bad_probe: accepted {overrides['idempotency_key']}")
-        version = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
-        if version is None or not 20 <= int(version[0]) < 40:
+        if version is None or not 20 <= version < 40:
             nullable = {"request_fingerprint": None, "idempotency_key": "__probe_nullable_fingerprint__",
                         "previous_state_revision": "2147483001:0:nullable_fingerprint"}
             if not _operation_execution_bad_probe_is_accepted(conn, nullable):

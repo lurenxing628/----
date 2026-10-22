@@ -30,7 +30,7 @@ from .launcher_contracts import (
     write_runtime_contract_file,
 )
 from .launcher_endpoint_result import RuntimeEndpointReadResult, read_runtime_endpoint_files_result
-from .launcher_network import BindProbeResult, _can_bind, _can_bind_result, pick_bind_host, pick_port
+from .launcher_network import BindProbeResult, _can_bind_result, pick_bind_host, pick_port
 from .launcher_paths import (
     RUNTIME_CONTRACT_VERSION as _RUNTIME_CONTRACT_VERSION,
 )
@@ -83,24 +83,19 @@ from .launcher_paths import (
 )
 from .launcher_processes import (
     _kill_runtime_pid,
-    _pid_exists,
     _pid_matches_contract,
     _pid_state,
     _query_process_executable_path,
     _run_powershell_text,
-    runtime_pid_exists,
     runtime_pid_matches_executable,
     runtime_pid_state,
 )
 from .launcher_stop import (
     _build_shutdown_url,
-    _can_force_kill_runtime,
     _classify_runtime_state,
     _list_aps_chrome_pids,
     _probe_runtime_health,
-    _read_runtime_endpoint_files,
     _request_runtime_shutdown,
-    _runtime_process_inactive,
     _runtime_stop_failure_reason,
     _runtime_stop_is_complete,
     _stop_aps_chrome_if_requested,
@@ -130,7 +125,6 @@ def resolve_shared_data_root(base_dir: str, *, frozen: Optional[bool] = None) ->
 
 
 def _sync_launcher_hooks(*, include_chrome_hook: bool) -> None:
-    _processes._pid_exists = _pid_exists
     _processes._pid_matches_contract = _pid_matches_contract
     _processes._kill_runtime_pid = _kill_runtime_pid
     _processes._run_powershell_text = _run_powershell_text
@@ -138,7 +132,6 @@ def _sync_launcher_hooks(*, include_chrome_hook: bool) -> None:
     # 否则 facade 层 monkeypatch 对 _is_runtime_lock_active 失效（launcher_contracts 只剩再导出）。
     _runtime_lock._pid_matches_contract = _pid_matches_contract
     _runtime_lock._pid_state = _pid_state
-    _stop._pid_exists = _pid_exists
     _stop._pid_matches_contract = _pid_matches_contract
     _stop._pid_state = _pid_state
     _stop._kill_runtime_pid = _kill_runtime_pid
@@ -149,10 +142,8 @@ def _sync_launcher_hooks(*, include_chrome_hook: bool) -> None:
     _stop.delete_runtime_contract_files = delete_runtime_contract_files
     _stop.delete_runtime_contract_files_result = delete_runtime_contract_files_result
     _stop_cleanup.release_runtime_lock = release_runtime_lock
-    _stop.read_runtime_contract = read_runtime_contract
     _stop.read_runtime_contract_result = read_runtime_contract_result
     _stop.read_runtime_endpoint_files_result = read_runtime_endpoint_files_result
-    _stop.read_runtime_lock = read_runtime_lock
     _stop.read_runtime_lock_result = read_runtime_lock_result
     _stop.probe_runtime_health_result = probe_runtime_health_result
     _stop.default_chrome_profile_dir = default_chrome_profile_dir

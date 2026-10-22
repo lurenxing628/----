@@ -6,11 +6,11 @@ Existing operations use retained birth evidence; missing birth stays unknown.
 New operations capture their batch instance on insert, never a template group.
 """
 
-from core.infrastructure.workbench_metadata_schema import _canonical_sql, workbench_metadata_contract_issues
+from core.infrastructure.workbench_metadata_schema import canonical_sql, workbench_metadata_contract_issues
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 from core.infrastructure.workbench_template_lineage_schema import template_lineage_contract_issues
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure, schema_objects
 
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 
@@ -85,21 +85,23 @@ def workbench_outsourcing_contract_issues(conn, *, structure=None):
     actual = schema_objects(conn, structure=structure)
     return [("missing_outsourcing_schema:" if name not in actual else "invalid_outsourcing_schema:") + name
             for name, sql in workbench_outsourcing_objects().items()
-            if name not in actual or _canonical_sql(sql) != _canonical_sql(actual[name] or "")]
+            if name not in actual or canonical_sql(sql) != canonical_sql(actual[name] or "")]
 
 
 def install_workbench_outsourcing_schema(conn):
     if not conn.in_transaction:
         raise RuntimeError("Outsourcing installation requires the caller's migration transaction")
+    structure = SchemaStructure(conn)
     definitions = workbench_outsourcing_objects()
-    names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
-    issues = (workbench_metadata_contract_issues(conn) + workbench_plan_identity_contract_issues(conn) +
-              template_lineage_contract_issues(conn))
-    if names & set(definitions):
-        issues += workbench_outsourcing_contract_issues(conn)
+    names = structure.objects.keys()
+    has_any = bool(names & definitions.keys())
+    issues = (workbench_metadata_contract_issues(conn, structure=structure) + workbench_plan_identity_contract_issues(conn, structure=structure) +
+              template_lineage_contract_issues(conn, structure=structure))
+    if has_any:
+        issues += workbench_outsourcing_contract_issues(conn, structure=structure)
     if issues:
         raise RuntimeError("Cannot install or repair outsourcing schema: " + ";".join(issues))
-    if names & set(definitions):
+    if has_any:
         if conn.execute("SELECT 1 FROM WorkbenchPlanSourceRefs r WHERE r.kind='operation' AND r.active=1 "
                         "AND NOT EXISTS(SELECT 1 FROM WorkbenchOutsourcingOperationOrigins o WHERE o.operation_ref=r.ref) LIMIT 1").fetchone():
             raise RuntimeError("Outsourcing origins are missing; existing installation cannot be repaired")

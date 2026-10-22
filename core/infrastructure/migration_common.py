@@ -79,13 +79,12 @@ def add_column_if_missing(
     log_added: bool = False,
 ) -> MigrationOutcome:
     if not table_exists(conn, table):
-        if logger:
-            fallback_log(logger, "warning", f"数据库迁移 {migration_label}：{table} 表不存在，已跳过 {column} 补列。")
+        fallback_log(logger, "warning", f"数据库迁移 {migration_label}：{table} 表不存在，已跳过 {column} 补列。")
         return MigrationOutcome.SKIPPED
     if column_exists(conn, table, column):
         return MigrationOutcome.APPLIED
     conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
-    if log_added and logger:
+    if log_added:
         fallback_log(logger, "info", f"数据库迁移 {migration_label}：已为 {table}.{column} 补列。")
     return MigrationOutcome.APPLIED
 

@@ -1,9 +1,9 @@
 """Append-only current-source confirmations; never rewrite operation birth evidence."""
 
-from core.infrastructure.workbench_metadata_schema import _canonical_sql
+from core.infrastructure.workbench_metadata_schema import canonical_sql
 from core.infrastructure.workbench_outsourcing_schema import contract_issues as outsourcing_issues
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure, schema_objects
 
 
 def workbench_outsourcing_source_objects():
@@ -40,24 +40,25 @@ def workbench_outsourcing_source_contract_issues(conn, *, structure=None):
     actual = schema_objects(conn, structure=structure)
     return [("missing_outsourcing_source_schema:" if name not in actual else "invalid_outsourcing_source_schema:") + name
             for name, sql in workbench_outsourcing_source_objects().items()
-            if name not in actual or _canonical_sql(sql) != _canonical_sql(actual[name] or "")]
+            if name not in actual or canonical_sql(sql) != canonical_sql(actual[name] or "")]
 
 
-def install_workbench_outsourcing_source_schema(conn):
+def install(conn):
     if not conn.in_transaction:
         raise RuntimeError("Outsourcing source installation requires the caller's migration transaction")
+    structure = SchemaStructure(conn)
     definitions = workbench_outsourcing_source_objects()
-    names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
-    issues = outsourcing_issues(conn)
-    if names & set(definitions):
-        issues += workbench_outsourcing_source_contract_issues(conn)
+    names = structure.objects.keys()
+    has_any = bool(names & definitions.keys())
+    issues = outsourcing_issues(conn, structure=structure)
+    if has_any:
+        issues += workbench_outsourcing_source_contract_issues(conn, structure=structure)
     if issues:
         raise RuntimeError("Cannot install or repair outsourcing source schema: " + ";".join(issues))
-    if not names & set(definitions):
+    if not has_any:
         for sql in definitions.values():
             conn.execute(sql)
 
 
 objects = workbench_outsourcing_source_objects
 contract_issues = workbench_outsourcing_source_contract_issues
-install = install_workbench_outsourcing_source_schema

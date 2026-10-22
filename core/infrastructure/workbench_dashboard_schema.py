@@ -3,7 +3,7 @@
 from core.infrastructure.workbench_metadata_schema import schema_contract_matches, workbench_metadata_contract_issues
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure, schema_objects
 
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 
@@ -92,14 +92,15 @@ def workbench_dashboard_contract_issues(conn, *, structure=None, allow_legacy=Tr
 def install_workbench_dashboard_schema(conn):
     if not conn.in_transaction:
         raise RuntimeError("Dashboard installation requires the caller's migration transaction")
+    structure = SchemaStructure(conn)
     definitions = workbench_dashboard_objects()
-    names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
-    if names & set(definitions):
-        issues = workbench_dashboard_contract_issues(conn)
+    names = structure.objects.keys()
+    if names & definitions.keys():
+        issues = workbench_dashboard_contract_issues(conn, structure=structure)
         if issues:
             raise RuntimeError("Cannot repair partial dashboard schema: " + ";".join(issues))
         return
-    issues = workbench_metadata_contract_issues(conn) + workbench_plan_identity_contract_issues(conn)
+    issues = workbench_metadata_contract_issues(conn, structure=structure) + workbench_plan_identity_contract_issues(conn, structure=structure)
     if issues or "MachineDowntimes" not in names:
         raise RuntimeError("Dashboard prerequisites are incomplete: " + ";".join(issues))
     if conn.execute("SELECT 1 FROM WorkbenchCommandReceipts WHERE action IN ('dashboard.transition','dashboard.reopen') LIMIT 1").fetchone():

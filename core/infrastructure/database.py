@@ -11,9 +11,6 @@ from typing import List, Optional
 from .database_bootstrap import (
     build_schema_exec_script as _build_schema_exec_script,
 )
-from .database_bootstrap import (
-    load_schema_sql as _load_schema_sql,
-)
 from .migration_common import fallback_log
 from .migration_runner import migrate_with_backup as _migrate_with_backup_impl
 from .migration_runner import preflight_migration_contract as _preflight_migration_contract_impl
@@ -40,6 +37,7 @@ from .safe_files import (
     create_fixed_file_exclusive,
     guard_fixed_file_open_target,
 )
+from .schema_declaration import load_schema_sql
 from .schema_declaration import resolve_schema_path as _resolve_schema_path_impl
 
 _LOGGER = logging.getLogger(__name__)
@@ -162,8 +160,7 @@ def ensure_schema(
     current_version: int = 0
     try:
         try:
-            sql = _load_schema_sql(schema_path)
-            script = _build_schema_exec_script(sql)
+            sql = load_schema_sql(schema_path)
 
             # 仅在库中不存在任何业务表时才执行 schema.sql 建表。
             # 旧 schema 的空表库不能走这里，否则 CREATE TABLE IF NOT EXISTS
@@ -176,7 +173,7 @@ def ensure_schema(
                 _ensure_current_schema_contract(conn, schema_version=initial_version, schema_sql=sql, full_data=full_data)
             elif _has_no_user_tables(conn):
                 _ensure_no_user_tables_db_can_bootstrap(conn, initial_version, full_data=full_data)
-                conn.executescript(script)
+                conn.executescript(_build_schema_exec_script(sql))
 
             # 确保 SchemaVersion 表存在，并获取当前版本
             if initial_version == CURRENT_SCHEMA_VERSION:
@@ -187,8 +184,7 @@ def ensure_schema(
                 _ensure_schema_version_not_newer(current_version, supported_version=CURRENT_SCHEMA_VERSION)
                 _ensure_current_schema_contract(conn, schema_version=current_version, schema_sql=sql)
             conn.commit()
-            if logger:
-                fallback_log(logger, "info", "数据库结构检查完成（已确保所有表存在）。")
+            fallback_log(logger, "info", "数据库结构检查完成（已确保所有表存在）。")
         except Exception as init_exc:
             # 失败尽最大努力回滚，避免半初始化状态
             _rollback_failed_schema_initialization(conn, init_exc, logger=logger)
@@ -197,8 +193,7 @@ def ensure_schema(
         try:
             conn.close()
         except Exception as e:
-            if logger:
-                fallback_log(logger, "warning", f"数据库连接关闭失败：{e}")
+            fallback_log(logger, "warning", f"数据库连接关闭失败：{e}")
 
     # 需要迁移（ALTER TABLE / 数据清洗等）：迁移前先备份，失败可回滚
     if current_version < CURRENT_SCHEMA_VERSION:
@@ -209,8 +204,7 @@ def ensure_schema(
                 schema_sql=sql,
             )
         except MigrationContractError as e:
-            if logger:
-                fallback_log(logger, "error", str(e))
+            fallback_log(logger, "error", str(e))
             raise
         _migrate_with_backup(
             db_path,

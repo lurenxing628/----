@@ -130,9 +130,6 @@ def _parts(part_count, operation_count):
         parts.append({"business_code": f"CS-PART-{part_index + 1:02d}",
                       "label": "复杂样例" + names[part_index],
                       "remark": "独立复杂样例：顺序依赖、装夹工时、两段连续合并外协",
-                      "route_raw": "；".join("{}: {}".format(row["seq"],
-                                          (_INTERNAL_NAMES + _EXTERNAL_NAMES)[int(row["op_type_code"][-2:]) - 1])
-                                          for row in operations),
                       "operations": operations, "groups": groups})
     return parts
 
@@ -170,7 +167,7 @@ def _batches(batch_count, parts, start):
                                    "priority": priority, "ready_status": "partial" if partial else "yes",
                                    "ready_date": (start + timedelta(days=ready_offset)).isoformat(),
                                    "remark": "[复杂样例] 独立数据；含交期、加急、齐套及分次到料"},
-                        "materials": material_rows, "operation_overrides": []})
+                        "materials": material_rows})
     return batches
 
 
@@ -226,7 +223,7 @@ def _permissions(resources):
     return result
 
 
-def sample_blueprint(batch_count=100, operation_count=50, start_date=None):
+def sample_blueprint(batch_count=100, operation_count=50):
     """Return fresh JSON-shaped data; supported sample sizes have at least 8 ops.
 
     ``(2, 12)`` is the small real-API acceptance fixture. The default contains
@@ -234,11 +231,10 @@ def sample_blueprint(batch_count=100, operation_count=50, start_date=None):
     operations in 200 merged stages. Parts are reused by successive batches.
     The default anchor starts fourteen days before creation (weekends move to
     Monday), so real adopted past tasks can receive synthetic actual reports.
-    Conflict scenarios are explicit optional changes, never silently injected
-    into the base data. Actual report requests must use a real adopted plan.
+    Actual report requests must use a real adopted plan.
     """
     created_date = date.today()
-    start = date.fromisoformat(start_date) if start_date is not None else created_date - timedelta(days=14)
+    start = created_date - timedelta(days=14)
     while start.weekday() >= 5:
         start += timedelta(days=1)
     end = start + timedelta(days=80)
@@ -246,8 +242,7 @@ def sample_blueprint(batch_count=100, operation_count=50, start_date=None):
     parts = _parts(min(10, batch_count), operation_count)
     batches = _batches(batch_count, parts, start)
     calendar_days, personal_days = _calendars(start, end)
-    report_requests = [{"batch_code": batch["business_code"], "operation_seq": 1,
-                        "quantity": max(1, batch["fields"]["quantity"] // 3)}
+    report_requests = [{"batch_code": batch["business_code"], "operation_seq": 1}
                        for batch in batches[:6]]
     return {"metadata": {"id": "complex-scheduling", "label": "复杂排产样例",
                          "anchor_date": start.isoformat(),
@@ -262,16 +257,7 @@ def sample_blueprint(batch_count=100, operation_count=50, start_date=None):
             "schedule_window": {"start_date": start.isoformat(), "end_date": end.isoformat(),
                                 "ready_check": True, "missing_resource_policy": "auto_assign",
                                 "completed_policy": "preserve_actuals", "material_strategy": "stage"},
-            "config_patch": {"auto_assign_enabled": "yes"}, "resources": resources,
+            "resources": resources,
             "parts": parts, "batches": batches, "calendar_days": calendar_days,
             "operator_calendar_days": personal_days, "machine_downtimes": _downtimes(resources, start),
-            "operator_machine_permissions": _permissions(resources), "actual_report_requests": report_requests,
-            "conflict_scenarios": [
-                {"code": "arrival-after-window", "batch_code": batches[0]["business_code"],
-                 "fields": {"ready_status": "no", "ready_date": (start + timedelta(days=83)).isoformat(),
-                            "due_date": (start + timedelta(days=2)).isoformat()},
-                 "expectation": "齐套时间超出排产范围，不能伪造窗口内开工或准时交付"},
-                {"code": "due-before-release", "batch_code": batches[-1]["business_code"],
-                 "fields": {"ready_date": (start + timedelta(days=77)).isoformat(),
-                            "due_date": (start + timedelta(days=1)).isoformat()},
-                 "expectation": "依赖顺序及外协周期不变，交付风险必须保留"}]}
+            "operator_machine_permissions": _permissions(resources), "actual_report_requests": report_requests}

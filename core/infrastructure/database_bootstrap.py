@@ -13,11 +13,6 @@ from .schema_declaration import declared_tables
 _LOGGER = logging.getLogger(__name__)
 
 
-def load_schema_sql(schema_path: str) -> str:
-    with open(schema_path, encoding="utf-8") as f:
-        return f.read()
-
-
 def build_schema_exec_script(sql: str) -> str:
     script = str(sql or "")
     try:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from functools import lru_cache
 from typing import Dict, List, Optional, Set
 
 from .batch_external_context_schema import contract_issues as batch_external_context_contract_issues
@@ -57,15 +58,12 @@ def build_contract_error(
     missing_tables: Optional[List[str]] = None,
     blocked_version: Optional[int] = None,
     blocked_outcome: Optional[MigrationOutcome] = None,
-    bootstrap_error: Optional[Exception] = None,
 ) -> MigrationContractError:
     parts = ["检测到非空数据库存在不受支持的残缺结构。"]
     if missing_tables:
         parts.append(f"已识别缺失整表：{', '.join(missing_tables)}。")
     parts.append("系统不会用当前 schema.sql 静默补齐缺失整表；请先人工修复或恢复到完整备份后再重试。")
-    if bootstrap_error is not None:
-        parts.append(f"缺失整表预补齐失败：{bootstrap_error}")
-    elif blocked_version is not None and blocked_outcome is not None:
+    if blocked_version is not None and blocked_outcome is not None:
         parts.append(f"迁移预检在 v{blocked_version} 返回 {blocked_outcome.value}。")
     return MigrationContractError(" ".join(parts))
 
@@ -152,10 +150,9 @@ def ensure_schema_version(conn: sqlite3.Connection, logger=None, *, schema_sql: 
     version = get_schema_version(conn)
     if version <= 0 and detect_schema_is_current(conn, schema_sql=schema_sql) and is_truly_empty_db(conn):
         set_schema_version(conn, CURRENT_SCHEMA_VERSION)
-        if logger:
-            fallback_log(
-                logger, "info", f"检测到新库结构已满足当前版本，SchemaVersion 已设为 {CURRENT_SCHEMA_VERSION}。"
-            )
+        fallback_log(
+            logger, "info", f"检测到新库结构已满足当前版本，SchemaVersion 已设为 {CURRENT_SCHEMA_VERSION}。"
+        )
 
 
 def get_schema_version(conn: sqlite3.Connection) -> int:
@@ -231,6 +228,7 @@ _SUBSYSTEM_OBJECT_SOURCES = (
 _CORE_TABLES_WITH_DEDICATED_LABEL = ("SystemConfig", "SystemJobState")
 
 
+@lru_cache(maxsize=1)
 def _subsystem_owned_object_names() -> Set[str]:
     owned: Set[str] = set()
     for objects in _SUBSYSTEM_OBJECT_SOURCES:
@@ -241,7 +239,7 @@ def _subsystem_owned_object_names() -> Set[str]:
 def _live_columns(conn: sqlite3.Connection, table: str, *, structure=None) -> Set[str]:
     quoted = '"' + str(table).replace('"', '""') + '"'
     rows = structure.table_info(table) if structure is not None else conn.execute(f"PRAGMA table_info({quoted})").fetchall()
-    return {str(row[1]) for row in rows}
+    return {row[1] for row in rows}
 
 
 def current_schema_contract_issues(conn: sqlite3.Connection, *, schema_sql: Optional[str] = None, full_data: bool = False) -> List[str]:
@@ -312,7 +310,7 @@ def current_schema_contract_issues(conn: sqlite3.Connection, *, schema_sql: Opti
 def schedule_history_data_issues(conn):
     """Each persisted schedule version must own its historical head."""
     versions = conn.execute("SELECT DISTINCT version FROM Schedule EXCEPT SELECT version FROM ScheduleHistory LIMIT 8").fetchall()
-    return ["bad_data: Schedule version=" + str(row[0]) + " missing ScheduleHistory head" for row in versions[:8]]
+    return ["bad_data: Schedule version=" + str(row[0]) + " missing ScheduleHistory head" for row in versions]
 
 
 def _batch_material_ready_default_is_no(conn: sqlite3.Connection, *, structure=None) -> bool:

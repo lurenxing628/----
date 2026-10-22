@@ -363,10 +363,7 @@ def _resolve_listen_endpoint(deps, host, prelaunch_log_dir, runtime_dir, *, logg
     preferred_port = _preferred_listen_port(logger=logger)
 
     requested_host = host
-    try:
-        host, port = deps.pick_port(host, preferred_port, logger=logger, state_dir=prelaunch_log_dir, runtime_dir=runtime_dir)
-    except TypeError:
-        host, port = deps.pick_port(host, preferred_port, logger=logger)
+    host, port = deps.pick_port(host, preferred_port, logger=logger, state_dir=prelaunch_log_dir, runtime_dir=runtime_dir)
     if host != requested_host:
         safe_log(logger, "warning", "APS_HOST=%s 不可绑定，已回退到 %s（port=%s）", requested_host, host, port)
     return host, port

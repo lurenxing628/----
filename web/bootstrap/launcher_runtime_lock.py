@@ -17,7 +17,7 @@ import os
 import sys
 import time
 from contextlib import contextmanager
-from typing import Any, Dict, Iterator, Optional, Tuple
+from typing import Any, Dict, Iterator, Optional, Tuple, cast
 
 from core.infrastructure.safe_files import (
     create_fixed_file_exclusive,
@@ -110,8 +110,6 @@ def _raise_uncertain_runtime_lock(result: RuntimeLockReadResult) -> None:
 
 
 def _is_runtime_lock_active(lock_payload: Dict[str, Any], expected_exe_path: str = "", *, local_probe_only: bool = False) -> bool:
-    if not isinstance(lock_payload, dict):
-        return False
     state_dir = str(lock_payload.get("state_dir") or "")
     set_process_log_context(state_dir=state_dir)
     try:
@@ -266,7 +264,7 @@ def _acquire_lock_file(
         if existing_result.status != LOCK_STATUS_MISSING:
             if not existing_result.ok:
                 _raise_uncertain_runtime_lock(existing_result)
-            _raise_if_runtime_lock_active(existing_result.payload or {}, owner_s, exe_path_s, db_label=db_label)
+            _raise_if_runtime_lock_active(cast(Dict[str, Any], existing_result.payload), owner_s, exe_path_s, db_label=db_label)
             try:
                 remove_fixed_file(lock_path)
             except OSError as exc:
@@ -301,7 +299,7 @@ def _rollback_own_runtime_lock(lock_path: str, own_payload: Dict[str, Any]) -> N
             result = read_runtime_lock_result_from_path(lock_path)
             if result.status == LOCK_STATUS_MISSING:
                 return
-            removed = result.ok and _lock_identity_fields(result.payload or {}) == _lock_identity_fields(own_payload)
+            removed = result.ok and _lock_identity_fields(cast(Dict[str, Any], result.payload)) == _lock_identity_fields(own_payload)
             if removed:
                 remove_fixed_file(lock_path)
     except (RuntimeLockError, OSError) as exc:
@@ -372,7 +370,7 @@ def _release_lock_from_result(
             state_dir=result.state_dir,
         )
         return False
-    existing = result.payload or {}
+    existing = cast(Dict[str, Any], result.payload)
     if expected_payload is not None:
         if _lock_identity_fields(existing) != _lock_identity_fields(expected_payload):
             launcher_log_warning(None, "释放运行时锁时归属已变化，已保留当前实例锁：path=%s", result.path, state_dir=result.state_dir)

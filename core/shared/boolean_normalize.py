@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional, Sequence, Tuple
+from typing import Any
 
 _YES = "yes"
 _NO = "no"
@@ -14,20 +14,7 @@ def _text(value: Any) -> str:
 
 def _normalize_default_yes_no(value: Any) -> str:
     text = _text(value).lower()
-    if text in _YES_NO_TRUE_WIDE:
-        return _YES
-    if text in _YES_NO_FALSE_WIDE:
-        return _NO
-    return _NO
-
-
-def _merge_aliases(values: Optional[Sequence[str]]) -> Tuple[str, ...]:
-    out = []
-    for item in list(values or ()):
-        text = _text(item)
-        if text:
-            out.append(text)
-    return tuple(out)
+    return _YES if text in _YES_NO_TRUE_WIDE else _NO
 
 
 def normalize_yes_no_wide(
@@ -35,32 +22,19 @@ def normalize_yes_no_wide(
     *,
     default: str = _NO,
     unknown_policy: str = "no",
-    true_aliases: Optional[Sequence[str]] = None,
-    false_aliases: Optional[Sequence[str]] = None,
 ) -> str:
     # 这是 core 低层宽口径；不要改指 services.common.normalization_matrix，反向导入会把 core/services 绕成环。
-    default_norm = _normalize_default_yes_no(default)
     if value is None:
-        return default_norm
+        return _normalize_default_yes_no(default)
     text = _text(value)
     lowered = text.lower()
-    true_values = {item.lower() for item in _merge_aliases(true_aliases)}
-    false_values = {item.lower() for item in _merge_aliases(false_aliases)}
-    if text == "":
-        return _NO
-    if text == "是" or lowered in _YES_NO_TRUE_WIDE or lowered in true_values:
+    if text == "是" or lowered in _YES_NO_TRUE_WIDE:
         return _YES
-    if text == "否" or lowered in _YES_NO_FALSE_WIDE or lowered in false_values:
+    if text == "否" or lowered in _YES_NO_FALSE_WIDE:
         return _NO
 
     policy = str(unknown_policy or "no").strip().lower()
-    if policy == "default":
-        return default_norm
-    if policy == "passthrough":
-        return text
-    if policy == "raise":
-        raise ValueError(text)
-    return _NO
+    return _normalize_default_yes_no(default) if policy == "default" else _NO
 
 
 def to_yes_no(value: Any, *, default: str = "no") -> str:

@@ -159,12 +159,7 @@ class OperationLogger:
             # 注意：不要在外层事务（TransactionManager）中隐式 commit()，否则会破坏原子性。
             # 这里通过 transaction 上下文标记来判断是否应自动提交。
             # 另外：若调用方已处于 sqlite 事务中（conn.in_transaction=True），也不能“顺手 commit”，避免误提交调用方未提交写入。
-            pre_in_tx = False
-            try:
-                pre_in_tx = bool(getattr(self.conn, "in_transaction", False))
-            except Exception as exc:
-                pre_in_tx = True
-                safe_log(self.logger, "warning", f"读取数据库事务状态失败，操作日志不会自动提交：{exc}")
+            pre_in_tx = bool(self.conn.in_transaction)
             auto_commit = (not pre_in_tx) and (not in_transaction_context(self.conn))
             self.conn.execute(
                 """
@@ -186,13 +181,7 @@ class OperationLogger:
                 ),
             )
             if auto_commit:
-                post_in_tx = True
-                try:
-                    post_in_tx = bool(getattr(self.conn, "in_transaction", False))
-                except Exception:
-                    post_in_tx = True
-                if post_in_tx:
-                    self.conn.commit()
+                self.conn.commit()
             return True
         except Exception as e:
             # 若我们决定自动提交，则异常路径也要尽量结束事务，避免悬挂
@@ -208,13 +197,7 @@ class OperationLogger:
         ok = self.log("INFO", module, action, **kwargs)
         if ok:
             _invoke_safely(self.logger.info, f"[{module}] 操作：{action}（{kwargs.get('target_type') or ''} {kwargs.get('target_id') or ''}）")
-        return bool(ok)
-
-    def warn(self, module: str, action: str, **kwargs) -> bool:
-        ok = self.log("WARN", module, action, **kwargs)
-        if ok:
-            _invoke_safely(self.logger.warning, f"[{module}] 警告：{action}（{kwargs}）")
-        return bool(ok)
+        return ok
 
     def error(self, module: str, action: str, error_code: str, error_message: str, **kwargs) -> bool:
         ok = self.log(
@@ -227,4 +210,4 @@ class OperationLogger:
         )
         if ok:
             _invoke_safely(self.logger.error, f"[{module}] 失败：{action}（[{error_code}] {error_message}）")
-        return bool(ok)
+        return ok

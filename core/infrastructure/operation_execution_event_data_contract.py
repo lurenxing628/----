@@ -12,9 +12,11 @@ from core.models.operation_execution_event import (
     validate_operation_execution_event_sequence,
 )
 
+from .migration_common import table_exists
+
 
 def operation_execution_event_data_issues(conn: sqlite3.Connection, *, limit: int = 8) -> List[str]:
-    if not _table_exists(conn, "OperationExecutionEvents"):
+    if not table_exists(conn, "OperationExecutionEvents"):
         return []
     issues: List[str] = []
     issues.extend(_event_value_issues(conn, limit=limit))
@@ -29,11 +31,6 @@ def _row_value(row: Any, key: str, index: int) -> Any:
 
 def _text(value: Any) -> str:
     return str(value or "").strip()
-
-
-def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
-    row = conn.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)).fetchone()
-    return row is not None
 
 
 def _int_value(value: Any, field_name: str) -> int:
@@ -147,10 +144,10 @@ def _event_value_issues(conn: sqlite3.Connection, *, limit: int) -> List[str]:
                         return issues[:limit]
                 current_rows = []
             current_key = key
-            event_id = _row_value(row, "id", 0)
             try:
                 current_rows.append(_validate_event_contract_row(row))
             except ValueError as exc:
+                event_id = _row_value(row, "id", 0)
                 issues.append(f"bad_data: OperationExecutionEvents.id={event_id} {exc}")
                 if len(issues) >= limit:
                     break
@@ -176,18 +173,18 @@ def _sequence_key(row: Any) -> Tuple[str, str, str, str, str, str, str]:
 
 
 def _sequence_issue(rows: List[Any]) -> str:
-    ids = ", ".join(str(row.id if isinstance(row, OperationExecutionEvent) else _row_value(row, "id", 0))
-                    for row in rows[:8])
     try:
         events = [row if isinstance(row, OperationExecutionEvent) else OperationExecutionEvent.from_row(row) for row in rows]
         validate_operation_execution_event_sequence(events)
     except ValueError as exc:
+        ids = ", ".join(str(row.id if isinstance(row, OperationExecutionEvent) else _row_value(row, "id", 0))
+                        for row in rows[:8])
         return f"bad_sequence: OperationExecutionEvents.ids={ids} {exc}"
     return ""
 
 
 def operation_execution_event_sequence_issues(conn: sqlite3.Connection, *, limit: int = 8) -> List[str]:
-    if not _table_exists(conn, "OperationExecutionEvents"):
+    if not table_exists(conn, "OperationExecutionEvents"):
         return []
     issues: List[str] = []
     try:

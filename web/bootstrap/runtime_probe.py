@@ -2,15 +2,13 @@ from __future__ import annotations
 
 import json
 import os
-import time
 import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
-from core.infrastructure.safe_files import read_fixed_text, remove_fixed_file
+from core.infrastructure.safe_files import read_fixed_text
 
 from .launcher_observability import launcher_log_warning
-from .runtime_capabilities import CapabilityResult, available, degraded
 
 _EXPECTED_CONTRACT_VERSION = 1
 
@@ -24,28 +22,12 @@ class ProbeHealthResult:
     payload: Optional[Dict[str, Any]] = None
     error: str = ""
 
-    def to_capability(self) -> CapabilityResult:
-        details = {"base_url": self.base_url}
-        if self.status is not None:
-            details["status"] = str(self.status)
-        if self.ok:
-            return available("runtime-health", details)
-        if self.error:
-            details["error"] = self.error
-        return degraded("runtime-health", self.reason or "runtime_health_failed", details)
-
-
 def _runtime_log_paths(runtime_dir: str) -> Tuple[str, str]:
     log_dir = os.path.join(str(runtime_dir), "logs")
     return (
         os.path.join(log_dir, "aps_host.txt"),
         os.path.join(log_dir, "aps_port.txt"),
     )
-
-
-def _runtime_db_path_file(runtime_dir: str) -> str:
-    log_dir = os.path.join(str(runtime_dir), "logs")
-    return os.path.join(log_dir, "aps_db_path.txt")
 
 
 def _read_text(path: str) -> str:
@@ -57,13 +39,6 @@ def _read_optional_text(path: str) -> Optional[str]:
         return _read_text(path)
     except FileNotFoundError:
         return None
-
-
-def _normalize_db_path(path: str) -> str:
-    raw = str(path or "").strip()
-    if not raw:
-        return ""
-    return os.path.normcase(os.path.abspath(raw))
 
 
 def build_base_url(host: str, port: int) -> str:
@@ -89,33 +64,6 @@ def read_runtime_host_port(runtime_dir: str) -> Optional[Tuple[str, int]]:
         launcher_log_warning(None, "运行时端口文件非法，已按无运行实例处理：dir=%s port=%s", runtime_dir, port, runtime_dir=runtime_dir)
         return None
     return (host, port)
-
-
-def read_runtime_db_path(runtime_dir: str) -> Optional[str]:
-    db_file = _runtime_db_path_file(runtime_dir)
-    try:
-        raw = _read_optional_text(db_file)
-        if raw is None:
-            return None
-        db_path = _normalize_db_path(raw)
-    except (OSError, UnicodeError, ValueError, TypeError) as exc:
-        launcher_log_warning(None, "读取运行时 db_path 文件失败，已按无 db_path 处理：path=%s error=%s", db_file, exc, runtime_dir=runtime_dir)
-        return None
-    if not db_path:
-        return None
-    return db_path
-
-
-def delete_stale_runtime_files(runtime_dir: str) -> None:
-    host_file, port_file = _runtime_log_paths(runtime_dir)
-    db_file = _runtime_db_path_file(runtime_dir)
-    for path in (host_file, port_file, db_file):
-        try:
-            remove_fixed_file(path, allow_symlink=False)
-        except FileNotFoundError:
-            pass
-        except OSError as exc:
-            launcher_log_warning(None, "删除运行时残留文件失败，已继续：path=%s error=%s", path, exc, runtime_dir=runtime_dir)
 
 
 def probe_health_result(
@@ -156,16 +104,6 @@ def probe_health(base_url: str, timeout: float = 2.0, *, log_failures: bool = Fa
     return result.payload if result.ok else None
 
 
-_DEFAULT_PROBE_HEALTH = probe_health
-
-
-def _probe_health_for_resolve(base_url: str, timeout: float, runtime_dir: str) -> ProbeHealthResult:
-    if probe_health is not _DEFAULT_PROBE_HEALTH:
-        payload = probe_health(base_url, timeout=timeout, log_failures=True)
-        return ProbeHealthResult(bool(payload), base_url, "" if payload else "legacy_probe_failed", payload=payload)
-    return probe_health_result(base_url, timeout=timeout, log_failures=True, runtime_dir=runtime_dir)
-
-
 def _build_endpoint_result(host: str, port: int, source: str, health: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "host": str(host),
@@ -198,8 +136,7 @@ def resolve_healthy_endpoint(
             host = ""
             port = 0
         if host and port > 0:
-            health_result = _probe_health_for_resolve(build_base_url(host, port), timeout, runtime_dir)
-            health_result.to_capability()
+            health_result = probe_health_result(build_base_url(host, port), timeout=timeout, log_failures=True, runtime_dir=runtime_dir)
             if health_result.payload is not None and health_result.ok:
                 return _build_endpoint_result(host, port, "preferred", health_result.payload)
             launcher_log_warning(
@@ -216,8 +153,7 @@ def resolve_healthy_endpoint(
     if runtime is None:
         return None
     host, port = runtime
-    health_result = _probe_health_for_resolve(build_base_url(host, port), timeout, runtime_dir)
-    health_result.to_capability()
+    health_result = probe_health_result(build_base_url(host, port), timeout=timeout, log_failures=True, runtime_dir=runtime_dir)
     if health_result.payload is None or not health_result.ok:
         launcher_log_warning(
             None,
@@ -230,25 +166,3 @@ def resolve_healthy_endpoint(
         )
         return None
     return _build_endpoint_result(host, port, "runtime_files", health_result.payload)
-
-
-def wait_for_healthy_runtime_endpoint(
-    runtime_dir: str,
-    timeout_s: int,
-    interval_s: float = 0.5,
-) -> Dict[str, Any]:
-    deadline = time.time() + max(int(timeout_s), 1)
-    last_seen: Optional[str] = None
-    sleep_s = max(float(interval_s), 0.05)
-    while time.time() < deadline:
-        runtime = read_runtime_host_port(runtime_dir)
-        if runtime is not None:
-            host, port = runtime
-            last_seen = f"{host}:{port}"
-            health = probe_health(build_base_url(host, port), timeout=2.0)
-            if health is not None:
-                return _build_endpoint_result(host, port, "runtime_files", health)
-        time.sleep(sleep_s)
-    if last_seen is not None:
-        raise TimeoutError(f"Timed out waiting for healthy runtime endpoint: {last_seen}")
-    raise TimeoutError(f"Timed out waiting for runtime host/port files in {os.path.join(str(runtime_dir), 'logs')}")

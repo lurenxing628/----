@@ -4,7 +4,7 @@ from typing import Any, Tuple
 
 from core.errors import ValidationError
 from core.shared.field_labels import display_field_label
-from core.shared.number_utils import parse_finite_float
+from core.shared.strict_parse import parse_required_float
 
 
 def _weight_label(field_name: str) -> str:
@@ -13,10 +13,8 @@ def _weight_label(field_name: str) -> str:
 
 def _parse_weight(value: Any, *, field_name: str) -> float:
     label = _weight_label(field_name)
-    if value is None or (isinstance(value, str) and value.strip() == ""):
-        raise ValidationError(f"“{label}”不能为空", field=field_name)
     try:
-        raw = float(parse_finite_float(value, field=label, allow_none=False))
+        raw = parse_required_float(value, field=label)
     except ValidationError as exc:
         raise ValidationError(exc.message, field=field_name) from exc
     if raw < 0:

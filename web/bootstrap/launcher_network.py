@@ -22,7 +22,7 @@ def pick_bind_host(raw_host: Optional[str], *, logger: Optional[logging.Logger] 
     host = (raw_host or "").strip() or "127.0.0.1"
     try:
         ip = ipaddress.ip_address(host)
-        if getattr(ip, "version", None) != 4:
+        if ip.version != 4:
             raise ValueError("not ipv4")
     except ValueError as exc:
         launcher_log_warning(logger, "APS_HOST 非法或非 IPv4：%s，已回退到 127.0.0.1：%s", host, exc)
@@ -103,19 +103,6 @@ def _can_bind_result(
             )
 
 
-def _can_bind(
-    host0: str,
-    port0: int,
-    *,
-    logger: Optional[logging.Logger] = None,
-    log_failures: bool = False,
-) -> bool:
-    return _can_bind_result(host0, port0, logger=logger, log_failures=log_failures).ok
-
-
-_DEFAULT_CAN_BIND = _can_bind
-
-
 def candidate_ports(preferred: int) -> List[int]:
     candidates: List[int] = []
     for p in [preferred, 5000, 5705, 5706, 5707, 5710, 5711, 5712, 5713, 5714, 5715]:
@@ -173,21 +160,6 @@ def _bind_ephemeral_port(
             )
 
 
-def _bind_probe_for_pick(
-    host: str,
-    port: int,
-    *,
-    logger: Optional[logging.Logger] = None,
-    state_dir: Optional[str] = None,
-    runtime_dir: Optional[str] = None,
-    cfg_log_dir: Optional[str] = None,
-) -> BindProbeResult:
-    if _can_bind is not _DEFAULT_CAN_BIND:
-        ok = bool(_can_bind(host, port))
-        return BindProbeResult(ok, str(host or "").strip() or "127.0.0.1", int(port or 0), "" if ok else "legacy_can_bind_false")
-    return _can_bind_result(host, port, logger=logger, state_dir=state_dir, runtime_dir=runtime_dir, cfg_log_dir=cfg_log_dir)
-
-
 def pick_port(
     host: str,
     preferred: int,
@@ -201,7 +173,7 @@ def pick_port(
     fallback_host = "127.0.0.1"
     last_result = BindProbeResult(False, str(host or "").strip() or fallback_host, 0, "no_candidates")
     for p in candidates:
-        last_result = _bind_probe_for_pick(host, p, logger=logger, state_dir=state_dir, runtime_dir=runtime_dir, cfg_log_dir=cfg_log_dir)
+        last_result = _can_bind_result(host, p, logger=logger, state_dir=state_dir, runtime_dir=runtime_dir, cfg_log_dir=cfg_log_dir)
         if last_result.ok:
             return (host, int(p))
 
@@ -219,7 +191,7 @@ def pick_port(
 
     if host != fallback_host:
         for p in candidates:
-            last_result = _bind_probe_for_pick(
+            last_result = _can_bind_result(
                 fallback_host,
                 p,
                 logger=logger,

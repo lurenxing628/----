@@ -4,11 +4,11 @@ import html
 import json
 import re
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, Optional
 
-from flask import current_app, jsonify, render_template, request
+from flask import current_app, render_template, request
 
-from core.errors import AppError, ErrorCode, app_error_http_status, error_response
+from core.errors import AppError, ErrorCode, error_response
 from core.shared.field_labels import user_field_label
 
 _INTERNAL_ASCII_RE = re.compile(r"[A-Za-z]")
@@ -16,12 +16,10 @@ _INTERNAL_KEY_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]*\b")
 _MACHINE_FIELD_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 _PATH_LIKE_RE = re.compile(r"(^|[\s:：,，;；(（\[{])(/[A-Za-z0-9_.-]|[A-Za-z]:[\\/]|\\\\|\.{1,2}/)")
 _PUBLIC_DIAGNOSTIC_REASONS = {
-    "invalid_query_date",
     "invalid_schedule_rows",
     "no_actionable_schedule_rows",
     "out_of_scope_schedule_rows",
 }
-_PUBLIC_DETAIL_MODES = {"reject_need_async"}
 _PUBLIC_LITERAL_MESSAGE_FIELDS = {"version"}
 _GENERIC_ERROR_MESSAGES = {
     ErrorCode.NOT_FOUND: "要找的内容不存在或已不可用。",
@@ -33,36 +31,12 @@ _GENERIC_ERROR_MESSAGES = {
     ErrorCode.DB_TRANSACTION_ERROR: "数据访问失败，请稍后重试。",
     ErrorCode.DB_INTEGRITY_ERROR: "和现有数据冲突，这次操作没有保存。请调整后重试。",
 }
-_KNOWN_FIELD_LABELS = {
-    "end_date": "结束日期",
-    "machine_id": "设备",
-    "offset": "偏移周数",
-    "operator_id": "人员",
-    "period_preset": "时间范围",
-    "query_date": "查询日期",
-    "scope_id": "范围",
-    "scope_type": "范围类型",
-    "date_range": "日期范围",
-    "start_date": "开始日期",
-    "team_axis": "班组维度",
-    "team_id": "班组",
-    "version": "版本",
-    "view": "视图",
-    "week_start": "周起始日期",
-}
 
 
 def _normalized_reason(details: Any) -> str:
     if not isinstance(details, dict):
         return ""
     return str(details.get("reason") or "").strip().lower()
-
-
-def _field_only_details(exc: AppError) -> Optional[dict]:
-    details = exc.details if isinstance(exc.details, dict) else {}
-    field = str(details.get("field") or "").strip()
-    field_label = get_user_visible_field_label(field)
-    return {"field": field_label} if field_label else None
 
 
 def _looks_internal_message(message: str) -> bool:
@@ -95,24 +69,6 @@ def _looks_internal_non_validation_message(message: str) -> bool:
     return False
 
 
-def get_user_visible_field_label(field: Any) -> str:
-    key = str(field or "").strip()
-    if not key:
-        return ""
-    shared_label = user_field_label(key)
-    if shared_label and shared_label != key:
-        return shared_label
-    try:
-        from core.services.scheduler.config.config_field_spec import field_label_for
-
-        label = str(field_label_for(key) or "").strip()
-    except Exception:
-        label = ""
-    if label and label != key:
-        return label
-    return str(_KNOWN_FIELD_LABELS.get(key) or "").strip()
-
-
 def _message_mentions_internal_field(message: str, field: str) -> bool:
     text = str(message or "").strip()
     key = str(field or "").strip()
@@ -133,58 +89,10 @@ def _message_mentions_path_like(message: str) -> bool:
     return bool(_PATH_LIKE_RE.search(str(message or "")))
 
 
-def _public_invalid_query_details(details: dict) -> dict:
-    invalid_query_keys = details.get("invalid_query_keys")
-    if not isinstance(invalid_query_keys, list):
-        return {}
-    raw_keys: List[str] = []
-    labels: List[str] = []
-    for item in invalid_query_keys:
-        key = str(item).strip()
-        label = get_user_visible_field_label(key)
-        if not key or not label:
-            continue
-        raw_keys.append(key)
-        labels.append(label)
-    if not raw_keys:
-        return {}
-    return {
-        "invalid_query_keys": raw_keys,
-        "invalid_query_labels": labels,
-    }
-
-
-def _public_report_details(details: dict) -> dict:
-    mode = str(details.get("mode") or "").strip()
-    if mode not in _PUBLIC_DETAIL_MODES:
-        return {}
-
-    sanitized: dict = {"mode": mode}
-    estimated_rows = details.get("estimated_rows")
-    if isinstance(estimated_rows, int) and not isinstance(estimated_rows, bool):
-        sanitized["estimated_rows"] = estimated_rows
-    report_name = str(details.get("report_name") or "").strip()
-    if report_name and not _INTERNAL_ASCII_RE.search(report_name):
-        sanitized["report_name"] = report_name
-    return sanitized
-
-
-def _replace_field_details(details: dict) -> Optional[dict]:
-    field = str(details.get("field") or "").strip()
-    field_label = get_user_visible_field_label(field)
-
-    sanitized: dict = {}
-    if field_label:
-        sanitized["field"] = field_label
-    sanitized.update(_public_invalid_query_details(details))
-    sanitized.update(_public_report_details(details))
-    return sanitized or None
-
-
 def _validation_error_message(exc: AppError, details: dict) -> str:
     reason = _normalized_reason(details)
     field = str(details.get("field") or "").strip()
-    field_label = get_user_visible_field_label(field)
+    field_label = user_field_label(field)
     message_mentions_field = _message_mentions_internal_field(exc.message, field)
     message_mentions_key = _message_mentions_machine_key(exc.message)
     message_mentions_path = _message_mentions_path_like(exc.message)
@@ -212,25 +120,9 @@ def user_visible_app_error_message(exc: AppError) -> str:
 
 
 def user_visible_app_error_details(exc: AppError) -> Optional[dict]:
-    details = exc.details if isinstance(exc.details, dict) else None
-    if not details:
-        return None
-    reason = _normalized_reason(details)
-    if exc.code == ErrorCode.VALIDATION_ERROR:
-        if isinstance(details.get("invalid_query_keys"), list):
-            return _replace_field_details(details)
-        if reason in {"invalid_schedule_rows", "no_actionable_schedule_rows", "out_of_scope_schedule_rows"}:
-            return _field_only_details(exc)
-        if str(details.get("field") or "").strip() == "freeze_window":
-            return _field_only_details(exc)
-        if (
-            _looks_internal_message(exc.message)
-            or _message_mentions_internal_field(exc.message, str(details.get("field") or ""))
-            or _message_mentions_machine_key(exc.message)
-            or _message_mentions_path_like(exc.message)
-        ):
-            return _field_only_details(exc)
-    return _replace_field_details(details)
+    details = exc.details if isinstance(exc.details, dict) else {}
+    field_label = user_field_label(details.get("field"))
+    return {"field": field_label} if field_label else None
 
 
 def user_visible_app_error_diagnostics(exc: AppError) -> Optional[dict]:
@@ -241,15 +133,9 @@ def user_visible_app_error_diagnostics(exc: AppError) -> Optional[dict]:
     reason = _normalized_reason(details)
     if reason in _PUBLIC_DIAGNOSTIC_REASONS:
         diagnostics["reason"] = reason
-    for key in (
-        "invalid_schedule_row_count",
-        "valid_schedule_row_count",
-        "no_actionable_schedule_row_count",
-        "out_of_scope_schedule_row_count",
-    ):
-        value = details.get(key)
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            diagnostics[key] = value
+    value = details.get("invalid_schedule_row_count")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        diagnostics["invalid_schedule_row_count"] = value
     return diagnostics or None
 
 
@@ -261,7 +147,7 @@ def build_user_visible_app_error_payload(exc: AppError) -> dict:
     )
     diagnostics = user_visible_app_error_diagnostics(exc)
     if diagnostics:
-        payload.setdefault("error", {})["diagnostics"] = diagnostics
+        payload["error"]["diagnostics"] = diagnostics
     return payload
 
 
@@ -276,23 +162,12 @@ def wants_json_error_response() -> bool:
     return False
 
 
-def wants_json_error_response_or_default(
-    *,
-    default: bool = False,
-    log_message: Optional[str] = None,
-) -> bool:
+def wants_json_error_response_or_default(*, log_message: str) -> bool:
     try:
         return wants_json_error_response()
     except Exception as exc:
-        if log_message:
-            logger = getattr(current_app, "logger", None)
-            if logger is not None:
-                logger.warning(log_message, exc)
-        return bool(default)
-
-
-def json_error_response(exc: AppError, *, payload: Optional[dict] = None):
-    return jsonify(payload if payload is not None else build_user_visible_app_error_payload(exc)), app_error_http_status(exc.code)
+        current_app.logger.warning(log_message, exc)
+        return False
 
 
 def _details_text(details: Any) -> Optional[str]:
@@ -309,7 +184,7 @@ def _details_text(details: Any) -> Optional[str]:
 def render_minimal_error_page(
     *,
     title: str,
-    code: Any,
+    code: str = "",
     message: str,
     details: Any = None,
     field_label: Optional[str] = None,
@@ -356,17 +231,14 @@ def render_minimal_error_page(
 
 
 def render_error_template(
-    template_name: str = "error.html",
     *,
     title: str,
-    code: Any,
     message: str,
     details: Any = None,
     field_label: Optional[str] = None,
 ) -> str:
     context = {
         "title": title,
-        "code": code,
         "message": message,
         "details": details,
         "field_label": field_label,
@@ -374,14 +246,11 @@ def render_error_template(
         "occurred_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
     try:
-        return render_template(template_name, **context)
+        return render_template("error.html", **context)
     except Exception as exc:
-        logger = getattr(current_app, "logger", None)
-        if logger is not None:
-            logger.error("错误页渲染失败，已回退最小错误页：%s", exc)
+        current_app.logger.error("错误页渲染失败，已回退最小错误页：%s", exc)
         return render_minimal_error_page(
             title=title,
-            code=code,
             message=message,
             details=details,
             field_label=field_label,

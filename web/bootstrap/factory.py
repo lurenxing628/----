@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import atexit
-import json
 import os
 import sys
 import threading
@@ -70,7 +69,7 @@ def _resolve_config_class():
 
 def resolve_startup_debug_flag() -> bool:
     # 此处只读同一配置源；锁归属判定仍先于 create_app 的数据库及退出备份副作用。
-    return bool(getattr(_resolve_config_class(), "DEBUG", False))
+    return bool(_resolve_config_class().DEBUG)
 
 
 def _app_log_once(app: Flask, key: str, level: str, message: str, *args: Any) -> None:
@@ -81,7 +80,7 @@ def _app_log_once(app: Flask, key: str, level: str, message: str, *args: Any) ->
     if key in flags:
         return
     flags.add(key)
-    safe_log(getattr(app, "logger", None), level, message, *args)
+    safe_log(app.logger, level, message, *args)
 
 
 
@@ -138,21 +137,19 @@ def _run_exit_backup(manager: Optional[BackupManager] = None) -> bool:
 def _maintenance_gate_response():
     message = "系统正在维护中，请稍后重试。"
     if wants_json_error_response_or_default(
-        default=False,
         log_message="维护窗口响应分类失败，已回退 HTML 503：%s",
     ):
         return {"success": False, "error": {"code": "503", "message": message}}, 503
-    return render_error_template(title="系统维护中", code="503", message=message), 503
+    return render_error_template(title="系统维护中", message=message), 503
 
 
 def _maintenance_detection_failure_response():
     message = "系统状态检测失败，请稍后重试。"
     if wants_json_error_response_or_default(
-        default=False,
         log_message="系统状态检测错误响应分类失败，已回退 HTML 500：%s",
     ):
         return {"success": False, "error": {"code": "500", "message": message}}, 500
-    return render_error_template(title="系统状态检测失败", code="500", message=message), 500
+    return render_error_template(title="系统状态检测失败", message=message), 500
 
 
 def _default_anchor_file() -> str:
@@ -267,11 +264,6 @@ def create_app_core(
     # 静态资源长缓存（配合 url_for('static', ...) 版本参数）
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = int(app.config.get("SEND_FILE_MAX_AGE_DEFAULT") or 43200)
     install_versioned_url_for(app, static_dir)
-
-    def tojson_zh(value, indent: int = 2):
-        return json.dumps(value, ensure_ascii=False, indent=indent)
-
-    app.jinja_env.filters["tojson_zh"] = tojson_zh
 
     app_logger = AppLogger(
         app_name=app.config.get("APP_NAME", "APS"),

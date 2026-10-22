@@ -28,39 +28,21 @@ class Config:
     # 应用名（用于日志等）
     APP_NAME = "APS"
 
-    # 数据库
-    # 说明：为便于测试/排障，允许用环境变量覆盖默认路径
-    DATABASE_PATH = os.environ.get("APS_DB_PATH") or os.path.join(BASE_DIR, "db", "aps.db")
-
     # 日志
-    LOG_DIR = os.environ.get("APS_LOG_DIR") or os.path.join(BASE_DIR, "logs")
     LOG_LEVEL = "INFO"  # DEBUG/INFO/WARNING/ERROR
     LOG_MAX_BYTES = 10 * 1024 * 1024  # 10MB
     LOG_BACKUP_COUNT = 5
 
     # 备份
-    BACKUP_DIR = os.environ.get("APS_BACKUP_DIR") or os.path.join(BASE_DIR, "backups")
     BACKUP_KEEP_DAYS = 7
 
     # Excel模板
-    EXCEL_TEMPLATE_DIR = os.environ.get("APS_EXCEL_TEMPLATE_DIR") or os.path.join(BASE_DIR, "templates_excel")
     # 上限的唯一来源是表描述协议：各表自己声明 byte_limit（批次 10MB、报工 8MB、
     # 其余按默认 16MB），传输层只需要放行其中最大的那个。原来这里独立写 16MB，
     # 说明书跟着写"统一 16MB"，而批次和报工在自己的读取器里另有更小的值，三处各说各的。
     EXCEL_MAX_UPLOAD_BYTES = DEFAULT_IMPORT_BYTE_LIMIT  # 16MB（Excel 文件本体）
     # multipart/form-data 会包含 boundary/header 等额外开销，请求体上限需略大于文件本体上限。
     MAX_CONTENT_LENGTH = EXCEL_MAX_UPLOAD_BYTES + 1 * 1024 * 1024
-
-    # 排产默认配置（Phase 1 仅占位，后续模块会真正使用）
-    DEFAULT_HOURS_PER_DAY = 8
-    DEFAULT_SORT_STRATEGY = "priority_first"
-    DEFAULT_PRIORITY_WEIGHT = 0.4
-    DEFAULT_DUE_WEIGHT = 0.5
-    DEFAULT_READY_WEIGHT = 0.1
-
-    # 甘特图静态资源（Phase 1 不落地，但保留配置键）
-    FRAPPE_GANTT_JS = os.path.join(BASE_DIR, "static", "js", "frappe-gantt.min.js")
-    FRAPPE_GANTT_CSS = os.path.join(BASE_DIR, "static", "css", "frappe-gantt.css")
 
 
 class DevelopmentConfig(Config):

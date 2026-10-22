@@ -21,13 +21,8 @@ def bootstrap_vendor_paths(base_dir: str) -> List[str]:
         os.path.join(base, "vendor", "Lib", "site-packages"),
     ]
     added: List[str] = []
-    for p in candidates:
-        try:
-            ap = os.path.abspath(p)
-            if os.path.isdir(ap) and ap not in sys.path:
-                sys.path.insert(0, ap)
-                added.append(ap)
-        except Exception:
-            continue
+    for path in candidates:
+        if os.path.isdir(path) and path not in sys.path:
+            sys.path.insert(0, path)
+            added.append(path)
     return added
-

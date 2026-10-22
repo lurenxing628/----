@@ -3,7 +3,7 @@
 from core.infrastructure.workbench_metadata_schema import schema_contract_matches, workbench_metadata_contract_issues
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure, schema_objects
 
 RUN_TABLES = ("WorkbenchRunJobs", "WorkbenchRunReceipts", "WorkbenchRunCandidates", "WorkbenchRunCandidateTasks")
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
@@ -82,24 +82,21 @@ def workbench_run_contract_issues(conn, *, structure=None, allow_legacy=True):
 def install_workbench_run_schema(conn):
     if not conn.in_transaction:
         raise RuntimeError("install_workbench_run_schema requires the caller's migration transaction")
+    structure = SchemaStructure(conn)
     objects = workbench_run_objects()
-    names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
-    if names & set(objects):
-        issues = workbench_run_contract_issues(conn)
+    names = structure.objects.keys()
+    if names & objects.keys():
+        issues = workbench_run_contract_issues(conn, structure=structure)
         if issues:
             raise RuntimeError("Cannot repair partial run ledger: " + "; ".join(issues))
         return
     required = {"WorkbenchCommandReceipts", "WorkbenchPlanSourceRefs"}
     if not required <= names:
         raise RuntimeError("Run ledger prerequisites missing: " + ", ".join(sorted(required - names)))
-    issues = workbench_metadata_contract_issues(conn) + workbench_plan_identity_contract_issues(conn)
+    issues = workbench_metadata_contract_issues(conn, structure=structure) + workbench_plan_identity_contract_issues(conn, structure=structure)
     if issues:
         raise RuntimeError("Run ledger prerequisites are incomplete: " + "; ".join(issues))
     if conn.execute("SELECT 1 FROM WorkbenchCommandReceipts WHERE action='scheduling.run' LIMIT 1").fetchone():
         raise RuntimeError("Run admissions remain but ledger is missing; restore a complete backup")
     for sql in objects.values():
         conn.execute(sql)
-
-
-objects = workbench_run_objects
-contract_issues = workbench_run_contract_issues

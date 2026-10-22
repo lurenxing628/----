@@ -1,6 +1,6 @@
 """Additional machine work types; the legacy primary capability remains valid."""
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure, schema_objects
 from .workbench_metadata_schema import canonical_sql
 
 
@@ -33,11 +33,12 @@ def contract_issues(conn, *, structure=None):
 def install(conn):
     if not conn.in_transaction:
         raise RuntimeError("Machine capabilities require a migration transaction.")
-    names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
-    if names & set(objects()):
-        issues = contract_issues(conn)
+    structure = SchemaStructure(conn)
+    definitions = objects()
+    if structure.objects.keys() & definitions.keys():
+        issues = contract_issues(conn, structure=structure)
         if issues:
             raise RuntimeError("Cannot repair partial machine capabilities: " + ";".join(issues))
         return
-    for sql in objects().values():
+    for sql in definitions.values():
         conn.execute(sql)

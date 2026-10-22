@@ -3,7 +3,7 @@
 from core.infrastructure.workbench_metadata_schema import schema_contract_matches, workbench_metadata_contract_issues
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure, schema_objects
 
 TRIAL_TABLES = ("WorkbenchTrialDrafts", "WorkbenchTrialRows", "WorkbenchTrialChanges",
                 "WorkbenchTrialScenarios", "WorkbenchTrialScenarioRows")
@@ -91,24 +91,20 @@ def workbench_trial_contract_issues(conn, *, structure=None, allow_legacy=True):
 def install_workbench_trial_schema(conn):
     if not conn.in_transaction:
         raise RuntimeError("Trial installation requires the caller's migration transaction")
+    structure = SchemaStructure(conn)
     objects = workbench_trial_objects()
-    names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
-    if names & set(objects):
-        issues = workbench_trial_contract_issues(conn)
+    names = structure.objects.keys()
+    if names & objects.keys():
+        issues = workbench_trial_contract_issues(conn, structure=structure)
         if issues:
             raise RuntimeError("Cannot repair partial trial schema: " + "; ".join(issues))
         return
     if not {"WorkbenchCommandReceipts", "WorkbenchPlanSourceRefs"} <= names:
         raise RuntimeError("Trial identity/receipt prerequisites are missing")
-    issues = workbench_metadata_contract_issues(conn) + workbench_plan_identity_contract_issues(conn)
+    issues = workbench_metadata_contract_issues(conn, structure=structure) + workbench_plan_identity_contract_issues(conn, structure=structure)
     if issues:
         raise RuntimeError("Trial prerequisites are incomplete: " + "; ".join(issues))
     if conn.execute("SELECT 1 FROM WorkbenchCommandReceipts WHERE action IN ('trial.create','trial.change','trial.save','trial.discard') LIMIT 1").fetchone():
         raise RuntimeError("Trial receipts remain without their ledger; restore a complete backup")
     for sql in objects.values():
         conn.execute(sql)
-
-
-objects = workbench_trial_objects
-contract_issues = workbench_trial_contract_issues
-install = install_workbench_trial_schema

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from flask import current_app, g, has_request_context, request, url_for
@@ -8,7 +8,6 @@ from werkzeug.routing.exceptions import BuildError
 
 from core.infrastructure.logging import safe_log
 from core.models.schedule_plan_role import VALID_PLAN_ROLES
-from web.viewmodels.page_manuals import build_manual_for_endpoint, resolve_manual_id
 
 _PLAN_CONTEXT_TOKEN_PATHS = {
     "/",
@@ -172,10 +171,7 @@ def _rewrite_manual_src_query(parts: Any) -> Tuple[List[Tuple[str, str]], bool]:
 def _sanitize_manual_src_context(src: Optional[str]) -> Optional[str]:
     if not src:
         return src
-    try:
-        parts = urlsplit(src)
-    except ValueError:
-        return src
+    parts = urlsplit(src)
     query, changed = _rewrite_manual_src_query(parts)
     if not changed:
         return src
@@ -227,43 +223,3 @@ def safe_url_for(endpoint: str, **values: Any) -> Optional[str]:
             _log_warning("读取当前请求 path 失败，仍会记录链接构建异常：%s", exc)
         _log_warning("模板链接构建失败：endpoint=%s，path=%s，error=%s", endpoint, path, exc)
         return None
-
-
-def get_manual_url(endpoint: Any = None, src: Any = None) -> Optional[str]:
-    current_endpoint = _resolve_manual_endpoint(endpoint)
-    if not current_endpoint or resolve_manual_id(current_endpoint) is None:
-        return None
-    safe_src = normalize_manual_src_context(_resolve_manual_src(src))
-    return safe_url_for("scheduler.config_manual_page", page=current_endpoint, src=safe_src)
-
-
-def get_full_manual_section_url(endpoint: Any = None, src: Any = None) -> str:
-    current_endpoint = _resolve_manual_endpoint(endpoint)
-    if not current_endpoint:
-        return ""
-    manual = build_manual_for_endpoint(current_endpoint, include_sections=False)
-    if not manual:
-        return ""
-    safe_src = normalize_manual_src_context(_resolve_manual_src(src))
-    base_url = safe_url_for("scheduler.config_manual_page", src=safe_src)
-    if not base_url:
-        return ""
-    anchor = str(manual.get("full_manual_anchor") or "").strip()
-    return base_url + anchor if anchor else base_url
-
-
-def get_help_card(endpoint: Any = None, src: Any = None) -> Optional[Dict[str, Any]]:
-    current_endpoint = _resolve_manual_endpoint(endpoint)
-    if not current_endpoint:
-        return None
-    manual = build_manual_for_endpoint(current_endpoint, include_sections=False)
-    if not manual:
-        return None
-    help_card = manual.get("help_card")
-    if not help_card:
-        return None
-    return {
-        "title": str(help_card.get("title") or "").strip(),
-        "items": list(help_card.get("items") or []),
-        "manual_url": get_manual_url(endpoint=current_endpoint, src=src),
-    }

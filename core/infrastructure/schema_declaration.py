@@ -26,8 +26,7 @@ def resolve_schema_path(schema_path: Optional[str]) -> str:
         for candidate in candidates:
             absolute = os.path.abspath(candidate)
             if os.path.exists(absolute):
-                schema_path = absolute
-                break
+                return absolute
     if not schema_path:
         raise FileNotFoundError("找不到数据库结构文件：schema.sql（请确认工作目录或打包参数包含该文件）")
     schema_path = os.path.abspath(schema_path)
@@ -86,4 +85,4 @@ def declared_tables(schema_sql: str) -> List[str]:
 
 def declared_columns(schema_sql: str) -> Dict[str, List[str]]:
     """schema 文本声明的 {表名: [列名...]}（含 SchemaVersion）。"""
-    return {name: list(cols) for name, cols in _declared(schema_sql)[1].items()}
+    return _declared(schema_sql)[1]

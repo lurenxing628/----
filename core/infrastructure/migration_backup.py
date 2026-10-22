@@ -31,8 +31,7 @@ def cleanup_sqlite_sidecars(db_path: str, logger=None) -> None:
         try:
             remove_fixed_file(path, missing_ok=True, allow_symlink=False)
         except Exception as exc:
-            if logger:
-                fallback_log(logger, "warning", f"清理 SQLite sidecar 失败：{exc}（path={path}）")
+            fallback_log(logger, "warning", f"清理 SQLite sidecar 失败：{exc}（path={path}）")
             raise
 
 
@@ -47,7 +46,6 @@ def restore_db_file_from_backup(
     db_abs = os.path.abspath(db_path)
     # Old rollback versions could leave this fixed file behind; retain its safe cleanup.
     tmp_path = f"{db_abs}.rollback_tmp"
-    last = None
     retry_count = int(retries) if retries is not None else 1
     if retry_count < 1:
         retry_count = 1
@@ -65,25 +63,14 @@ def restore_db_file_from_backup(
                 cleanup_sqlite_sidecars(db_abs, logger=logger)
             return
         except Exception as exc:
-            last = exc
             _remove_tmp_file(tmp_path)
-            _collect_garbage()
+            gc.collect()
             if is_windows_lock_error(exc) and attempt < retry_count - 1:
-                if logger and attempt == 0:
+                if attempt == 0:
                     fallback_log(logger, "warning", f"数据库文件回滚遇到文件锁，准备重试：{exc}（db={db_abs}）")
                 time.sleep(base_delay_s * (attempt + 1))
                 continue
             raise
-    if last:
-        raise last
-
-
-def release_sqlite_connection_reference(conn) -> None:
-    try:
-        del conn
-    except Exception as exc:
-        _LOGGER.debug("释放 SQLite 连接引用失败，继续尝试回收：%s", exc)
-    _collect_garbage()
 
 
 def _remove_tmp_file(tmp_path: str) -> None:
@@ -92,10 +79,3 @@ def _remove_tmp_file(tmp_path: str) -> None:
     except Exception as exc:
         _LOGGER.warning("临时数据库文件清理失败：%s（path=%s）", exc, tmp_path)
         raise
-
-
-def _collect_garbage() -> None:
-    try:
-        gc.collect()
-    except Exception as exc:
-        _LOGGER.debug("触发垃圾回收失败（已继续）：%s", exc)

@@ -5,7 +5,7 @@ from core.infrastructure.workbench_plan_identity_schema import workbench_plan_id
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
 from core.models.workbench_template_lineage import OPERATION_COLUMNS, SEMANTIC_COLUMNS, STATE_COLUMNS
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure, schema_objects
 
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 _STAMP = "strftime('%Y-%m-%dT%H:%M:%fZ','now')"
@@ -118,27 +118,30 @@ def template_lineage_contract_issues(conn, *, structure=None, allow_legacy=True)
                 conn, actual[name] or "", sql, legacy[name], allow_legacy=allow_legacy)]
 
 
-def _source_contract_issues(conn):
+def _source_contract_issues(conn, *, structure=None):
+    structure = structure if structure is not None else SchemaStructure(conn)
     required = {"BatchOperations": set(OPERATION_COLUMNS), "Batches": {"batch_id", "part_no", "quantity"},
                 "PartOperations": {"id", "part_no", "seq", "op_type_id", "op_type_name", "source", "supplier_id",
                                    "setup_hours", "unit_hours", "ext_days", "ext_group_id", "status", "created_at"}}
     return ["missing_template_lineage_source:" + table + "." + column for table, columns in required.items()
-            for column in sorted(columns - {row[1] for row in conn.execute('PRAGMA table_info("' + table + '")')})]
+            for column in sorted(columns - {row[1] for row in structure.table_info(table)})]
 
 
 def install_template_lineage(conn):
     """Never backfill, commit, alter a business table, or repair a partial install."""
     if not conn.in_transaction:
         raise RuntimeError("install_template_lineage requires the caller's migration transaction.")
+    structure = SchemaStructure(conn)
     objects = template_lineage_objects()
-    actual = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
-    issues = (workbench_metadata_contract_issues(conn) + workbench_process_contract_issues(conn) +
-              workbench_plan_identity_contract_issues(conn) + _source_contract_issues(conn))
-    if actual & set(objects):
-        issues += template_lineage_contract_issues(conn)
+    actual = structure.objects.keys()
+    has_any = bool(actual & objects.keys())
+    issues = (workbench_metadata_contract_issues(conn, structure=structure) + workbench_process_contract_issues(conn, structure=structure) +
+              workbench_plan_identity_contract_issues(conn, structure=structure) + _source_contract_issues(conn, structure=structure))
+    if has_any:
+        issues += template_lineage_contract_issues(conn, structure=structure)
     if issues:
         raise RuntimeError("Cannot install template lineage: " + "; ".join(issues))
-    if not actual & set(objects):
+    if not has_any:
         for sql in objects.values():
             conn.execute(sql)
 

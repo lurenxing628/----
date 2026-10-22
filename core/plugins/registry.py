@@ -55,7 +55,7 @@ class PluginRegistry:
     def to_dict(self) -> Dict[str, Any]:
         # provider 可能不可序列化，这里只暴露 key 列表与冲突摘要
         return {
-            "capabilities": sorted(list(self.capabilities.keys())),
+            "capabilities": sorted(self.capabilities),
             "conflicted_capabilities": list(self.conflicted_capabilities),
             "conflict_policy": self.conflict_policy,
         }

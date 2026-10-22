@@ -8,7 +8,7 @@ from core.infrastructure.workbench_dashboard_schema import contract_issues as da
 from core.infrastructure.workbench_metadata_schema import schema_contract_matches
 from core.infrastructure.workbench_outsourcing_schema import contract_issues as outsourcing_issues
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure, schema_objects
 
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 
@@ -72,17 +72,19 @@ def orphaned_handling_receipts(conn):
                         "AND NOT EXISTS(SELECT 1 FROM WorkbenchDashboardItems i WHERE i.item_ref=c.context_ref) LIMIT 1").fetchone() is not None
 
 
-def install_workbench_dashboard_external_schema(conn):
+def install(conn):
     if not conn.in_transaction:
         raise RuntimeError("External dashboard installation requires the caller's migration transaction")
+    structure = SchemaStructure(conn)
     definitions = workbench_dashboard_external_objects()
-    names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
-    issues = dashboard_issues(conn) + outsourcing_issues(conn)
-    if names & set(definitions):
-        issues += workbench_dashboard_external_contract_issues(conn)
+    names = structure.objects.keys()
+    has_any = bool(names & definitions.keys())
+    issues = dashboard_issues(conn, structure=structure) + outsourcing_issues(conn, structure=structure)
+    if has_any:
+        issues += workbench_dashboard_external_contract_issues(conn, structure=structure)
     if issues:
         raise RuntimeError("Cannot install or repair external dashboard schema: " + ";".join(issues))
-    if names & set(definitions):
+    if has_any:
         if conn.execute("SELECT 1 FROM WorkbenchOutsourcingReceipts r WHERE NOT EXISTS "
                         "(SELECT 1 FROM WorkbenchDashboardExternalItems i WHERE i.outsourcing_ref=r.outsourcing_ref) LIMIT 1").fetchone():
             raise RuntimeError("External dashboard mappings are missing; no guessed replacements")
@@ -97,4 +99,3 @@ def install_workbench_dashboard_external_schema(conn):
 
 objects = workbench_dashboard_external_objects
 contract_issues = workbench_dashboard_external_contract_issues
-install = install_workbench_dashboard_external_schema

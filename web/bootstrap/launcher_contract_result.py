@@ -8,7 +8,6 @@ from core.infrastructure.safe_files import read_fixed_json
 
 from .launcher_observability import launcher_log_warning
 from .launcher_paths import RUNTIME_CONTRACT_VERSION, resolve_runtime_state_dir_for_read
-from .runtime_capabilities import CapabilityResult, available, unavailable
 
 CONTRACT_STATUS_MISSING = "missing"
 CONTRACT_STATUS_VALID = "valid"
@@ -28,18 +27,6 @@ class RuntimeContractReadResult:
     @property
     def ok(self) -> bool:
         return self.status == CONTRACT_STATUS_VALID
-
-    def to_capability(self, *, has_runtime_artifacts: bool = True) -> CapabilityResult:
-        details = {"path": self.path, "status": self.status}
-        if self.ok:
-            return available("runtime-contract", details)
-        if self.status == CONTRACT_STATUS_MISSING and not has_runtime_artifacts:
-            return available("runtime-contract", details)
-        reason = self.reason or self.status
-        if self.error:
-            details["error"] = self.error
-        return unavailable("runtime-contract", reason, details)
-
 
 def _runtime_contract_path(state_dir: str) -> str:
     return os.path.join(str(state_dir), "aps_runtime.json")

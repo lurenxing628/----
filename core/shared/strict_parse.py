@@ -36,7 +36,7 @@ def _parse_finite_float(value: Any, *, field: str) -> float:
         raise ValidationError(f"“{field}”必须是数字", field=field)
     try:
         parsed = float(value)
-    except Exception as exc:
+    except (TypeError, ValueError, OverflowError) as exc:
         raise ValidationError(f"“{field}”必须是数字", field=field) from exc
     if not math.isfinite(parsed):
         raise ValidationError(f"“{field}”必须是有限数字", field=field)
@@ -57,7 +57,7 @@ def _parse_finite_int(value: Any, *, field: str, reject_integer_float: bool = Fa
         raise ValidationError(f"“{field}”必须是整数", field=field)
     try:
         parsed = float(value)
-    except Exception as exc:
+    except (TypeError, ValueError, OverflowError) as exc:
         raise ValidationError(f"“{field}”必须是整数", field=field) from exc
     if not math.isfinite(parsed):
         raise ValidationError(f"“{field}”必须是有限整数", field=field)
@@ -69,12 +69,6 @@ def _parse_finite_int(value: Any, *, field: str, reject_integer_float: bool = Fa
     return int(integer_value)
 
 
-def _normalize_datetime_text(value: Any, *, field: str) -> str:
-    if is_blank_input(value):
-        _raise_blank_required(field)
-    return str(value).strip().replace("/", "-").replace("T", " ").replace("：", ":")
-
-
 def parse_required_float(
     value: Any, *, field: str, min_value: Optional[float] = None, min_inclusive: bool = True
 ) -> float:
@@ -83,10 +77,10 @@ def parse_required_float(
     return _ensure_min_float(_parse_finite_float(value, field=field), field=field, min_value=min_value, min_inclusive=min_inclusive)
 
 
-def parse_optional_float(value: Any, *, field: str, min_value: Optional[float] = None, min_inclusive: bool = True) -> Optional[float]:
+def parse_optional_float(value: Any, *, field: str) -> Optional[float]:
     if is_blank_input(value):
         return None
-    return parse_required_float(value, field=field, min_value=min_value, min_inclusive=min_inclusive)
+    return _parse_finite_float(value, field=field)
 
 
 def parse_required_int(
@@ -113,47 +107,31 @@ def parse_required_int(
     )
 
 
-def parse_optional_int(value: Any, *, field: str, min_value: Optional[int] = None) -> Optional[int]:
+def parse_optional_date(value: Any, *, field: str) -> Optional[date]:
     if is_blank_input(value):
         return None
-    return parse_required_int(value, field=field, min_value=min_value)
-
-
-def parse_required_date(value: Any, *, field: str) -> date:
     if isinstance(value, datetime):
         return value.date()
     if isinstance(value, date):
         return value
-    if is_blank_input(value):
-        _raise_blank_required(field)
     text = str(value).strip().replace("/", "-")
     try:
         return datetime.strptime(text, "%Y-%m-%d").date()
-    except Exception as exc:
+    except (TypeError, ValueError, OverflowError) as exc:
         raise ValidationError(f"“{field}”格式不合法（期望：YYYY-MM-DD）", field=field) from exc
-
-
-def parse_optional_date(value: Any, *, field: str) -> Optional[date]:
-    if is_blank_input(value):
-        return None
-    return parse_required_date(value, field=field)
-
-
-def parse_required_datetime(value: Any, *, field: str) -> datetime:
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, date):
-        return datetime(value.year, value.month, value.day, 0, 0, 0)
-    text = _normalize_datetime_text(value, field=field)
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(text, fmt)
-        except Exception:
-            continue
-    raise ValidationError(f"“{field}”格式不合法（期望：{_DATETIME_FORMAT_HINT}）", field=field)
 
 
 def parse_optional_datetime(value: Any, *, field: str) -> Optional[datetime]:
     if is_blank_input(value):
         return None
-    return parse_required_datetime(value, field=field)
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day, 0, 0, 0)
+    text = str(value).strip().replace("/", "-").replace("T", " ").replace("：", ":")
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt)
+        except (TypeError, ValueError, OverflowError):
+            continue
+    raise ValidationError(f"“{field}”格式不合法（期望：{_DATETIME_FORMAT_HINT}）", field=field)

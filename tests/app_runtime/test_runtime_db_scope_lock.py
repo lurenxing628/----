@@ -268,7 +268,7 @@ def test_stop_retains_initial_shell_database_and_contract_through_wait(tmp_path,
     runtime_dir, logs, database = tmp_path / "app", tmp_path / "app" / "logs", tmp_path / "aps.db"
     old_lock = _acquire(runtime_dir, logs, database)
     old_contract = _publish_claim(runtime_dir, logs, database, old_lock, "old-stop-instance")["payload"]
-    original_status = dict(state="active", state_dir=str(logs), lock=old_lock, contract=old_contract)
+    original_status = dict(state="active", runtime_dir=str(runtime_dir), state_dir=str(logs), lock=old_lock, contract=old_contract)
     new = {}
     monkeypatch.setattr(stop_mod, "_classify_runtime_state", lambda directory: original_status)
     monkeypatch.setattr(stop_mod, "_request_runtime_shutdown", lambda *args, **kwargs: True)
@@ -293,7 +293,7 @@ def test_stop_succeeds_after_server_exit_cleans_configured_log_mirror(tmp_path, 
     claim = _acquire(runtime_dir, logs, database)
     publication = _publish_claim(runtime_dir, configured_logs, database, claim, "normal-stop-instance")
     contract = publication["payload"]
-    active = dict(state="active", state_dir=str(logs), lock=claim, contract=contract)
+    active = dict(state="active", runtime_dir=str(runtime_dir), state_dir=str(logs), lock=claim, contract=contract)
     monkeypatch.setattr(stop_mod, "_classify_runtime_state", lambda directory: active)
     monkeypatch.setattr(stop_mod, "_request_runtime_shutdown", lambda *args, **kwargs: True)
 
@@ -332,7 +332,7 @@ def _make_real_lock_deps(tmp_path: Path, events: List[str], state: Dict[str, Any
         write_runtime_contract_file=lambda *a, **k: {"path": "", "payload": {}},
         default_chrome_profile_dir=lambda runtime_dir: str(tmp_path / "chrome-profile"),
         pick_bind_host=lambda raw_host, logger=None: "127.0.0.1",
-        pick_port=lambda host, preferred_port, logger=None: (host, 6322),
+        pick_port=lambda host, preferred_port, logger=None, state_dir=None, runtime_dir=None: (host, 6322),
         stop_runtime_from_dir=lambda runtime_dir, stop_aps_chrome=False: 0,
         serve_runtime_app=lambda app, host, port: events.append("serve"),
         should_use_runtime_reloader=lambda debug: False,

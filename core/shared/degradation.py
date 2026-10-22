@@ -3,42 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-STABLE_DEGRADATION_CODES = (
-    "missing_required",
-    "blank_required",
-    "invalid_choice",
-    "invalid_number",
-    "number_below_minimum",
-    "invalid_due_date",
-    "bad_time_row_skipped",
-    "missing_machine_row_skipped",
-    "downtime_overlap_merged",
-    "zero_capacity_window",
-    "calendar_load_failed",
-    "resource_load_capacity_failed",
-    "critical_chain_unavailable",
-    "legacy_external_days_defaulted",
-    "freeze_seed_unavailable",
-    "freeze_window_degraded",
-    "freeze_window_partially_applied",
-    "freeze_window_unapplied",
-    "downtime_avoid_degraded",
-    "resource_pool_degraded",
-    "config_fallback",
-    "input_fallback",
-    "template_missing",
-    "external_group_missing",
-    "merge_context_degraded",
-    "summary_merge_failed",
-    "ortools_warmstart_failed",
-    "plugin_bootstrap_db_unavailable",
-    "plugin_bootstrap_config_reader_failed",
-    "plugin_bootstrap_config_read_failed",
-    "plugin_bootstrap_load_failed",
-    "plugin_bootstrap_status_snapshot_failed",
-    "plugin_bootstrap_telemetry_failed",
-)
-
 
 @dataclass(frozen=True)
 class DegradationEvent:
@@ -51,17 +15,12 @@ class DegradationEvent:
 
 
 class DegradationCollector:
-    def __init__(self, events: Optional[Iterable[DegradationEvent]] = None):
+    def __init__(self):
         self._events: List[DegradationEvent] = []
         self._index: Dict[Tuple[str, str, Optional[str], str], int] = {}
-        if events is not None:
-            self.extend(events)
 
     def __bool__(self) -> bool:
         return bool(self._events)
-
-    def __len__(self) -> int:
-        return len(self._events)
 
     def add(
         self,
@@ -120,11 +79,7 @@ class DegradationCollector:
         return merged
 
     def extend(self, events: Iterable[DegradationEvent]) -> None:
-        if isinstance(events, DegradationCollector):
-            iterable = events.to_list()
-        else:
-            iterable = events
-        for event in iterable:
+        for event in events:
             self.add(event)
 
     def to_list(self) -> List[DegradationEvent]:
@@ -137,7 +92,7 @@ class DegradationCollector:
         return counters
 
 
-def degradation_event_to_dict(event: DegradationEvent) -> Dict[str, Any]:
+def _degradation_event_to_dict(event: DegradationEvent) -> Dict[str, Any]:
     return {
         "code": str(event.code),
         "scope": str(event.scope),
@@ -149,4 +104,4 @@ def degradation_event_to_dict(event: DegradationEvent) -> Dict[str, Any]:
 
 
 def degradation_events_to_dicts(events: Iterable[DegradationEvent]) -> List[Dict[str, Any]]:
-    return [degradation_event_to_dict(event) for event in events]
+    return [_degradation_event_to_dict(event) for event in events]

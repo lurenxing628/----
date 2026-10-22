@@ -94,8 +94,7 @@ def _batches(parts, resources, scenario, start):
                     "priority": priority, "ready_status": "partial" if arrival_rows else "yes",
                     "ready_date": workday(start, batch_index).isoformat(), "remark": None},
                 "materials": [{"material_code": material, "required_quantity": quantity, "available_quantity": available,
-                               "operation_seq": part["operations"][0]["seq"], "arrivals": arrival_rows}],
-                "operation_overrides": []})
+                               "operation_seq": part["operations"][0]["seq"], "arrivals": arrival_rows}]})
     return batches
 
 

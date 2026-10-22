@@ -7,7 +7,7 @@ Factory integration (register before ANY DB-opening before_request hook):
     make_server(..., request_handler=WorkbenchRequestHandler)  # disconnect cleanup
 
 Shutdown order in entrypoint finally AND atexit backup/lock-release guards:
-    require stop_workbench_requests_for_database(db_path, wait=True) is True
+    require the registered gate.shutdown(wait=True) is True
     require existing run runtime.shutdown(wait=True) is True
     only then backup or release the original launcher locks
 
@@ -32,7 +32,7 @@ from .workbench_request_lifecycle_wsgi import (
 )
 
 __all__ = ["install_workbench_request_lifecycle", "lookup_workbench_request_lifecycle",
-           "stop_workbench_requests_for_database", "track_workbench_request_connection",
+           "track_workbench_request_connection",
            "close_workbench_request_connection", "WorkbenchRequestLifecycle", "WorkbenchRequestHandler"]
 
 _INSTALL_LOCK = threading.RLock()
@@ -54,14 +54,6 @@ def lookup_workbench_request_lifecycle(db_path):
     key = _database_key(db_path)
     with _INSTALL_LOCK:
         return _GATES.get(key)
-
-
-def stop_workbench_requests_for_database(db_path, wait=True, timeout=None):
-    """Fail closed when a backup/lock cannot be associated with a registered DB."""
-    gate = lookup_workbench_request_lifecycle(db_path)
-    if gate is None:
-        raise RuntimeError("No request lifecycle registered for the specified database")
-    return gate.shutdown(wait=wait, timeout=timeout)
 
 
 def install_workbench_request_lifecycle(app):

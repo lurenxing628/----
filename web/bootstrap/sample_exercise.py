@@ -30,8 +30,8 @@ def _query(path, values):
     return path + "?" + urlencode(values)
 
 
-def _run(client, seed, progress, label, batch_codes=None):
-    codes = list(seed["refs"]["batch"]) if batch_codes is None else batch_codes
+def _run(client, seed, progress, label):
+    codes = list(seed["refs"]["batch"])
     value = dict(seed["schedule_window"], batch_refs=sorted(seed["refs"]["batch"][code] for code in codes), hold_window=None)
     preflight = client.post(BASE + "/scheduling/preflight", value)["data"]
     preview = client.post(BASE + "/scheduling/runs/preview", {"input_ref": preflight["input_ref"]})["data"]

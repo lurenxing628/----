@@ -51,7 +51,7 @@ class RequestTicket:
 class WorkbenchRequestLifecycle:
     """One barrier per normalized DB; each app/request owns a distinct ticket.
 
-    True from shutdown/drain proves only HTTP quiescence. The host MUST then
+    True from shutdown proves only HTTP quiescence. The host MUST then
     join its existing run runtime before backup or launcher-lock release.
     """
 
@@ -106,9 +106,6 @@ class WorkbenchRequestLifecycle:
             self._state = "stopping"
             self._condition.notify_all()
             return self._wait(wait, timeout)
-
-    def drain(self, wait=True, timeout=None):
-        return self.shutdown(wait=wait, timeout=timeout)
 
     def _wait(self, wait, timeout, owner: Optional[RequestTicket] = None):
         deadline = None if timeout is None else time.monotonic() + max(0, timeout)

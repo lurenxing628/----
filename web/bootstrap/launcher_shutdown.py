@@ -91,7 +91,7 @@ def read_exit_backup_enabled(manager, connect):
         from core.services.system.system_config_service import SystemConfigService
 
         cfg = SystemConfigService(conn, logger=manager.logger).get_snapshot_readonly(
-            backup_keep_days_default=int(getattr(manager, "keep_days", 7) or 7))
+            backup_keep_days_default=int(manager.keep_days))
         return cfg.auto_backup_enabled == YesNo.YES.value
     except Exception as exc:
         fallback_log(manager.logger, "error", "读取退出自动备份配置失败：" + str(exc))

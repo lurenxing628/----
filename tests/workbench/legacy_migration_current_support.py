@@ -5,7 +5,7 @@ from core.infrastructure.workbench_dashboard_external_schema import objects as d
 from core.infrastructure.workbench_execution_void_schema import execution_void_objects
 from core.infrastructure.workbench_outsourcing_schema import workbench_outsourcing_objects
 from core.infrastructure.workbench_outsourcing_source_schema import objects as source_objects
-from core.infrastructure.workbench_plan_identity_write_guard import objects as guard_objects
+from core.infrastructure.workbench_plan_identity_write_guard import plan_identity_write_guard_objects as guard_objects
 
 V30_EMPTY_TABLES = (
     "WorkbenchOutsourcingReceipts", "WorkbenchOutsourcingMembers", "WorkbenchOutsourcingFacts",

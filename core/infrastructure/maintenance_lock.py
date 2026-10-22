@@ -243,13 +243,6 @@ def is_maintenance_window_active(db_path: str, *, logger=None) -> bool:
         raise MaintenanceWindowError("lock_state_unavailable", "系统维护锁状态检测失败，请稍后重试。") from exc
 
 
-def ensure_backup_allowed(db_path: str, *, logger=None) -> None:
-    if current_thread_holds_maintenance_window(db_path):
-        return
-    if is_maintenance_window_active(db_path, logger=logger):
-        raise MaintenanceWindowError("busy", "数据库正在维护/恢复中，请稍后重试。")
-
-
 def _enter_nested_maintenance_window(state: dict, db_abs: str) -> None:
     if state.get("db_path") != db_abs:
         raise MaintenanceWindowError("busy", "当前线程已有其他维护任务在执行，暂不支持跨数据库嵌套维护。")

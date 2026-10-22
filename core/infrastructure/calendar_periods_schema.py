@@ -1,7 +1,7 @@
 """Optional multiple daily work periods without reinterpreting legacy rows."""
 
 from .migration_common import column_exists
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure, schema_objects
 from .workbench_metadata_schema import canonical_sql
 
 
@@ -40,14 +40,17 @@ def contract_issues(conn, *, structure=None):
 def install(conn):
     if not conn.in_transaction:
         raise RuntimeError("Calendar period installation requires a migration transaction.")
-    names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
-    if names & set(objects()) or any(column_exists(conn, table, "periods_json")
-                                    for table in ("WorkCalendar", "OperatorCalendar")):
-        issues = contract_issues(conn)
+    structure = SchemaStructure(conn)
+    definitions = objects()
+    if structure.objects.keys() & definitions.keys() or any(
+        "periods_json" in {row[1] for row in structure.table_info(table)}
+        for table in ("WorkCalendar", "OperatorCalendar")
+    ):
+        issues = contract_issues(conn, structure=structure)
         if issues:
             raise RuntimeError("Cannot repair partial calendar periods: " + ";".join(issues))
         return
     for table in ("WorkCalendar", "OperatorCalendar"):
         conn.execute("ALTER TABLE " + table + " ADD COLUMN periods_json TEXT")
-    for sql in objects().values():
+    for sql in definitions.values():
         conn.execute(sql)

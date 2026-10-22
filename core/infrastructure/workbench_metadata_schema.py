@@ -235,10 +235,6 @@ def canonical_sql(sql: str) -> str:
     return text
 
 
-# Compatibility for the existing migration contracts; new callers use the public helper.
-_canonical_sql = canonical_sql
-
-
 def schema_contract_matches(conn, actual_sql: str, current_sql: str, legacy_sql: str, *, allow_legacy=True) -> bool:
     """A declared historical DDL is accepted only while its upgrade is pending."""
     actual = canonical_sql(actual_sql)

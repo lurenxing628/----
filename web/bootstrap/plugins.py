@@ -282,5 +282,4 @@ def bootstrap_plugins(base_dir: str, database_path: str, *, logger: Optional[log
                 pass
 
     plugin_status = _merge_plugin_degradation(plugin_status, collector)
-    plugin_status = _ensure_plugin_status_shape(plugin_status, base_dir=base_dir)
     return plugin_status

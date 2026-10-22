@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, Tuple
+from typing import Tuple
 
 from core.infrastructure.safe_files import read_fixed_text
 
@@ -18,13 +18,10 @@ ENDPOINT_STATUS_EMPTY = "empty"
 
 @dataclass(frozen=True)
 class RuntimeEndpointReadResult:
-    state_dir: str
     host: str
     port: int
     host_status: str
     port_status: str
-    host_path: str
-    port_path: str
     host_error: str = ""
     port_error: str = ""
 
@@ -41,10 +38,6 @@ class RuntimeEndpointReadResult:
         return self.host_present != self.port_present
 
     @property
-    def both_missing(self) -> bool:
-        return not self.host_present and not self.port_present
-
-    @property
     def uncertain(self) -> bool:
         uncertain_statuses = {
             ENDPOINT_STATUS_EMPTY,
@@ -57,34 +50,18 @@ class RuntimeEndpointReadResult:
             or self.port_status in uncertain_statuses
         )
 
-    def as_legacy_dict(self) -> Dict[str, Any]:
-        return {
-            "host": self.host,
-            "port": self.port,
-            "host_exists": os.path.lexists(self.host_path),
-            "port_exists": os.path.lexists(self.port_path),
-        }
-
-
 def read_runtime_endpoint_files_result(state_dir: str) -> RuntimeEndpointReadResult:
     host_path, port_path, _db_path, _contract_path = state_contract_paths(state_dir)
     host, host_status, host_error = _read_host_file(host_path)
     port, port_status, port_error = _read_port_file(port_path)
     return RuntimeEndpointReadResult(
-        state_dir=str(state_dir),
         host=host,
         port=port,
         host_status=host_status,
         port_status=port_status,
-        host_path=host_path,
-        port_path=port_path,
         host_error=host_error,
         port_error=port_error,
     )
-
-
-def read_runtime_endpoint_files(state_dir: str) -> Dict[str, Any]:
-    return read_runtime_endpoint_files_result(state_dir).as_legacy_dict()
 
 
 def _read_host_file(path: str) -> Tuple[str, str, str]:
@@ -93,7 +70,6 @@ def _read_host_file(path: str) -> Tuple[str, str, str]:
         return "", ENDPOINT_STATUS_MISSING, ""
     if error:
         return "", ENDPOINT_STATUS_UNREADABLE, error
-    value = value.strip()
     if not value:
         return "", ENDPOINT_STATUS_EMPTY, "host_empty"
     return value, ENDPOINT_STATUS_VALID, ""
@@ -105,7 +81,6 @@ def _read_port_file(path: str) -> Tuple[int, str, str]:
         return 0, ENDPOINT_STATUS_MISSING, ""
     if error:
         return 0, ENDPOINT_STATUS_UNREADABLE, error
-    value = value.strip()
     if not value:
         launcher_log_warning(None, "运行时端口文件为空：path=%s", path, state_dir=os.path.dirname(path))
         return 0, ENDPOINT_STATUS_EMPTY, "port_empty"
@@ -121,7 +96,7 @@ def _read_port_file(path: str) -> Tuple[int, str, str]:
 
 def _read_endpoint_text(path: str) -> Tuple[str, str]:
     try:
-        return (read_fixed_text(path) or "").strip(), ""
+        return read_fixed_text(path).strip(), ""
     except FileNotFoundError:
         return "", "missing"
     except (OSError, UnicodeError) as exc:

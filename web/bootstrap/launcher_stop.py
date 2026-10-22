@@ -5,38 +5,39 @@ import os
 import time
 import urllib.error
 import urllib.request
-from typing import Any, Dict, List, Optional
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+)
 
 from . import launcher_chrome as _chrome
 from .launcher_chrome import _StopChromeResult
 from .launcher_contracts import (
     CONTRACT_STATUS_INVALID,
-    CONTRACT_STATUS_MISSING,
     CONTRACT_STATUS_UNREADABLE,
-    CONTRACT_STATUS_VALID,
-    RuntimeContractReadResult,
     _is_runtime_lock_active,
     delete_runtime_contract_files,
     delete_runtime_contract_files_result,
-    read_runtime_contract,
     read_runtime_contract_result,
-    read_runtime_lock,
     read_runtime_lock_result,
 )
 from .launcher_endpoint_result import (
     RuntimeEndpointReadResult,
     read_runtime_endpoint_files_result,
 )
-from .launcher_endpoint_result import (
-    read_runtime_endpoint_files as _read_runtime_endpoint_files,
+from .launcher_health import (
+    HealthProbeResult,
+    probe_runtime_health_result,
 )
-from .launcher_health import HealthProbeResult, probe_runtime_health_result
 from .launcher_lock_result import (
     LOCK_STATUS_MISSING,
     LOCK_STATUS_VALID,
-    RuntimeLockReadResult,
 )
-from .launcher_observability import launcher_log_warning
+from .launcher_observability import (
+    launcher_log_warning,
+)
 from .launcher_paths import (
     RUNTIME_SHUTDOWN_PATH,
     default_chrome_profile_dir,
@@ -45,7 +46,6 @@ from .launcher_paths import (
 )
 from .launcher_processes import (
     _kill_runtime_pid,
-    _pid_exists,
     _pid_matches_contract,
     _pid_state,
     _run_powershell_text,
@@ -57,12 +57,12 @@ from .launcher_stop_cleanup import (
     read_initial_runtime_claims,
     release_initial_runtime_locks,
 )
-from .launcher_stop_process import runtime_process_inactive
-from .launcher_stop_state import _runtime_state_name, _runtime_stop_is_complete
+from .launcher_stop_state import (
+    _runtime_state_name,
+    _runtime_stop_is_complete,
+)
 
-_DEFAULT_READ_RUNTIME_CONTRACT = read_runtime_contract
 _DEFAULT_READ_RUNTIME_CONTRACT_RESULT = read_runtime_contract_result
-_DEFAULT_READ_RUNTIME_LOCK = read_runtime_lock
 _DEFAULT_READ_RUNTIME_LOCK_RESULT = read_runtime_lock_result
 _DEFAULT_DELETE_RUNTIME_CONTRACT_FILES = delete_runtime_contract_files
 _DEFAULT_DELETE_RUNTIME_CONTRACT_FILES_RESULT = delete_runtime_contract_files_result
@@ -221,50 +221,6 @@ def _runtime_pid_match(contract_pid: int, lock_pid: int, expected_exe_path: str)
     return None
 
 
-def _read_contract_result_for_status(state_dir: str) -> RuntimeContractReadResult:
-    if read_runtime_contract is not _DEFAULT_READ_RUNTIME_CONTRACT and read_runtime_contract_result is _DEFAULT_READ_RUNTIME_CONTRACT_RESULT:
-        paths = resolve_runtime_state_paths(state_dir)
-        payload = read_runtime_contract(state_dir)
-        if isinstance(payload, dict):
-            return RuntimeContractReadResult(
-                status=CONTRACT_STATUS_VALID,
-                payload=payload,
-                path=paths["contract_path"],
-                state_dir=state_dir,
-                reason="legacy_wrapper_valid",
-            )
-        return RuntimeContractReadResult(
-            status=CONTRACT_STATUS_MISSING,
-            payload=None,
-            path=paths["contract_path"],
-            state_dir=state_dir,
-            reason="legacy_wrapper_missing",
-        )
-    return read_runtime_contract_result(state_dir)
-
-
-def _read_lock_result_for_status(state_dir: str) -> RuntimeLockReadResult:
-    if read_runtime_lock is not _DEFAULT_READ_RUNTIME_LOCK and read_runtime_lock_result is _DEFAULT_READ_RUNTIME_LOCK_RESULT:
-        paths = resolve_runtime_state_paths(state_dir)
-        payload = read_runtime_lock(state_dir)
-        if isinstance(payload, dict):
-            return RuntimeLockReadResult(
-                status=LOCK_STATUS_VALID,
-                payload=payload,
-                path=str(payload.get("path") or paths["lock_path"]),
-                state_dir=state_dir,
-                reason="legacy_wrapper_valid",
-            )
-        return RuntimeLockReadResult(
-            status=LOCK_STATUS_MISSING,
-            payload=None,
-            path=paths["lock_path"],
-            state_dir=state_dir,
-            reason="legacy_wrapper_missing",
-        )
-    return read_runtime_lock_result(state_dir)
-
-
 def _health_result_for_status(host: str, port: int, state_dir: str) -> HealthProbeResult:
     if _probe_runtime_health is not _DEFAULT_PROBE_RUNTIME_HEALTH and probe_runtime_health_result is _DEFAULT_PROBE_RUNTIME_HEALTH_RESULT:
         ok = bool(_probe_runtime_health(host, int(port), timeout_s=0.75))
@@ -307,11 +263,10 @@ def _classify_runtime_state(runtime_dir_or_state_dir: str) -> Dict[str, Any]:
     set_process_log_context(state_dir=state_dir, runtime_dir=runtime_dir_abs)
     paths = resolve_runtime_state_paths(state_dir)
     endpoint_files = read_runtime_endpoint_files_result(state_dir)
-    contract_result = _read_contract_result_for_status(state_dir)
+    contract_result = read_runtime_contract_result(state_dir)
     has_artifacts = _has_runtime_artifacts(paths)
-    contract_capability = contract_result.to_capability(has_runtime_artifacts=has_artifacts)
     contract = contract_result.payload if contract_result.ok else None
-    lock_result = _read_lock_result_for_status(state_dir)
+    lock_result = read_runtime_lock_result(state_dir)
     lock_payload = lock_result.payload if lock_result.ok else None
     identity = _runtime_identity(contract, lock_payload)
     endpoint = _endpoint_status(contract, endpoint_files, state_dir)
@@ -333,7 +288,6 @@ def _classify_runtime_state(runtime_dir_or_state_dir: str) -> Dict[str, Any]:
         "paths": paths,
         "contract": contract,
         "contract_result": contract_result,
-        "contract_capability": contract_capability,
         "contract_status": contract_result.status,
         "contract_reason": contract_result.reason,
         "contract_error": contract_result.error,
@@ -362,22 +316,6 @@ def _classify_runtime_state(runtime_dir_or_state_dir: str) -> Dict[str, Any]:
     }
 
 
-def _can_force_kill_runtime(status: Dict[str, Any]) -> bool:
-    if str(status.get("contract_status") or "") != CONTRACT_STATUS_VALID:
-        return False
-    contract = status.get("contract")
-    if not isinstance(contract, dict):
-        return False
-    if str(status.get("state") or "") not in {"active", "mixed"}:
-        return False
-    pid = _safe_int(status.get("pid"))
-    if pid <= 0:
-        return False
-    if status.get("pid_exists") is not True:
-        return False
-    return status.get("pid_match") is True
-
-
 def _runtime_stop_failure_reason(status: Dict[str, Any], *, shutdown_requested: bool) -> str:
     contract_status = str(status.get("contract_status") or "")
     if contract_status in {CONTRACT_STATUS_INVALID, CONTRACT_STATUS_UNREADABLE}:
@@ -393,10 +331,6 @@ def _runtime_stop_failure_reason(status: Dict[str, Any], *, shutdown_requested: 
             return "shutdown_request_failed"
         return "health_still_up"
     return "mixed_state"
-
-
-def _runtime_process_inactive(pid: int, pid_match_hint: Optional[bool] = None) -> bool:
-    return runtime_process_inactive(pid, pid_match_hint, pid_state_func=_pid_state)
 
 
 def _finalize_stopped_runtime(
@@ -439,8 +373,9 @@ def stop_runtime_from_dir(
     timeout_s: float = 15.0,
     logger: Optional[logging.Logger] = None,
 ) -> int:
-    runtime_dir_abs, state_dir = resolve_runtime_stop_context(runtime_dir)
-    status = _classify_runtime_state(state_dir)
+    status = _classify_runtime_state(runtime_dir)
+    runtime_dir_abs = status["runtime_dir"]
+    state_dir = status["state_dir"]
     original_status = status
     expected = read_initial_runtime_claims(status)
     if _runtime_stop_is_complete(status):
@@ -459,23 +394,12 @@ def stop_runtime_from_dir(
 
 
 def _wait_for_runtime_stop(state_dir: str, deadline: float) -> Dict[str, Any]:
-    status = _classify_runtime_state(state_dir)
     while time.time() < deadline:
         status = _classify_runtime_state(state_dir)
         if _runtime_stop_is_complete(status):
             return status
         time.sleep(0.25)
     return _classify_runtime_state(state_dir)
-
-
-def _try_force_kill_runtime(state_dir: str, status: Dict[str, Any]) -> Dict[str, Any]:
-    if not _can_force_kill_runtime(status):
-        return status
-    killed = _kill_runtime_pid(int(status.get("pid") or 0))
-    if not killed:
-        launcher_log_warning(None, "运行时强制停止命令未成功，继续等待最终复查：pid=%s", status.get("pid"), state_dir=str(status.get("state_dir") or ""))
-    kill_deadline = time.time() + 6.0
-    return _wait_for_runtime_stop(state_dir, kill_deadline)
 
 
 def _log_runtime_stop_failure(status: Dict[str, Any], *, shutdown_requested: bool, logger: Optional[logging.Logger]) -> None:

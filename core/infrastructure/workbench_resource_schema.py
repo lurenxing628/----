@@ -5,17 +5,13 @@ from __future__ import annotations
 from typing import Dict, List
 
 from .schema_structure import schema_objects
-from .workbench_metadata_schema import _canonical_sql, identity_triggers
+from .workbench_metadata_schema import canonical_sql, identity_triggers
 
 RESOURCE_ENTITY_TABLES = {
     "machine_group": ("WorkbenchMachineGroups", "group_id"),
     "shift_profile": ("WorkbenchShiftProfiles", "profile_id"),
 }
-RESOURCE_TABLE_NAMES = (
-    "WorkbenchMachineGroups", "WorkbenchMachineGroupMembers", "WorkbenchShiftProfiles",
-    "WorkbenchShiftPatternDays", "WorkbenchOperatorProfiles", "WorkbenchSupplierOpTypes",
-    "WorkbenchSupplierProfiles", "WorkbenchOpTypePolicies",
-)
+
 
 _TABLES = {
     "WorkbenchMachineGroups": """CREATE TABLE IF NOT EXISTS WorkbenchMachineGroups (
@@ -139,4 +135,4 @@ def workbench_resource_contract_issues(conn, *, structure=None) -> List[str]:
     actual = schema_objects(conn, structure=structure)
     return [("missing_workbench_resource: " if name not in actual else "bad_workbench_resource: ") + name
             for name, sql in resource_objects().items()
-            if name not in actual or _canonical_sql(actual[name] or "") != _canonical_sql(sql)]
+            if name not in actual or canonical_sql(actual[name] or "") != canonical_sql(sql)]

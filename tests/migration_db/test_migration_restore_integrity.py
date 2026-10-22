@@ -9,7 +9,7 @@ from unittest.mock import Mock
 import pytest
 
 from core.infrastructure import migration_backup as migration_mod
-from core.infrastructure.backup import BackupIntegrityError
+from core.infrastructure.sqlite_integrity import BackupIntegrityError
 
 
 def _make_restore_files(tmp_path):

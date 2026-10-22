@@ -18,17 +18,11 @@ def _require_collector(collector: Optional[DegradationCollector]) -> Degradation
     return collector
 
 
-def _format_fallback_value(value: Any) -> str:
-    if value is None:
-        return "空值"
-    return str(value)
-
-
-def _minimum_violation_message(*, field: str, field_label: str, fallback: Any, min_value: Any, min_inclusive: bool) -> str:
+def _minimum_violation_message(*, field_label: str, fallback: Any, min_value: Any, min_inclusive: bool) -> str:
     compare_text = "大于等于" if bool(min_inclusive) else "大于"
     return (
         f"{field_label}数值太小（要求{compare_text} {min_value}），"
-        f"本次先按 {_format_fallback_value(fallback)} 处理，请检查后保存。"
+        f"本次先按 {fallback} 处理，请检查后保存。"
     )
 
 
@@ -49,7 +43,6 @@ def _emit_min_violation(
         scope=scope,
         field=field,
         message=_minimum_violation_message(
-            field=field,
             field_label=label,
             fallback=fallback,
             min_value=min_value,
@@ -92,7 +85,7 @@ def parse_field_float(
             fallback=fallback,
             field_label=label,
         )
-        return float(fallback if compat_value is None else compat_value)
+        return float(compat_value)
 
     if min_value is not None:
         is_valid = parsed >= float(min_value) if bool(min_inclusive) else parsed > float(min_value)
@@ -145,7 +138,7 @@ def parse_field_int(
             fallback=fallback,
             field_label=label,
         )
-        return int(fallback if compat_value is None else compat_value)
+        return int(compat_value)
 
     if min_value is not None and parsed < int(min_value):
         compat_fallback = fallback if min_violation_fallback is _MIN_VIOLATION_USE_DEFAULT else int(min_violation_fallback)

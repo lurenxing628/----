@@ -5,18 +5,18 @@ RAISE(ABORT) keeps both live refs and tombstones from being replaced, including
 when recursive_triggers is OFF. The caller's business transaction handles the
 propagated IntegrityError; earlier statements are not committed by this helper.
 
-Register install() in a NEW migration and require contract_issues() at that new
+Register install_plan_identity_write_guards() in a NEW migration and require its contract at that new
 version. Keep the v24..29 objects and fixtures unchanged. This module does not
 register itself, alter SchemaVersion, repair old mappings, or generate refs.
 """
 
 from typing import Dict, List
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure, schema_objects
 from .transaction import TransactionManager
-from .workbench_metadata_schema import _canonical_sql
+from .workbench_metadata_schema import canonical_sql
 from .workbench_plan_identity_schema import (
-    install_plan_identity,
+    _existing_identity_issues,
     workbench_plan_identity_contract_issues,
 )
 
@@ -38,7 +38,7 @@ def plan_identity_write_guard_contract_issues(conn, *, structure=None) -> List[s
     for name, sql in plan_identity_write_guard_objects().items():
         if name not in actual:
             issues.append("missing_workbench_plan_write_guard: " + name)
-        elif _canonical_sql(actual[name] or "") != _canonical_sql(sql):
+        elif canonical_sql(actual[name] or "") != canonical_sql(sql):
             issues.append("bad_workbench_plan_write_guard: " + name)
     return issues
 
@@ -46,21 +46,19 @@ def plan_identity_write_guard_contract_issues(conn, *, structure=None) -> List[s
 def install_plan_identity_write_guards(conn) -> None:
     """Add guards atomically; reject partial/damaged schemas without repair."""
     with TransactionManager(conn).transaction():
-        issues = workbench_plan_identity_contract_issues(conn)
+        structure = SchemaStructure(conn)
         expected = plan_identity_write_guard_objects()
-        present = set(expected) & {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
+        present = expected.keys() & structure.objects.keys()
         if present:
-            issues = plan_identity_write_guard_contract_issues(conn)
+            issues = plan_identity_write_guard_contract_issues(conn, structure=structure)
+        else:
+            issues = workbench_plan_identity_contract_issues(conn, structure=structure)
         if issues:
             raise RuntimeError("Cannot install plan identity write guards: " + "; ".join(issues))
-        # On the validated existing schema this only checks coverage. Lost refs
-        # must fail explicitly; no backfill or clock initialization is possible.
-        install_plan_identity(conn)
+        # Both paths require complete permanent source/task refs; never backfill.
+        identity_issues = _existing_identity_issues(conn)
+        if identity_issues:
+            raise RuntimeError("Lost permanent plan identities; restore a complete backup: " + "; ".join(identity_issues))
         if not present:
             for sql in expected.values():
                 conn.execute(sql)
-
-
-objects = plan_identity_write_guard_objects
-install = install_plan_identity_write_guards
-contract_issues = plan_identity_write_guard_contract_issues

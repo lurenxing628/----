@@ -112,14 +112,6 @@ class SampleInjector:
                        if item["operation_seq"] is not None else None,
                      "arrivals": item["arrivals"]} for item in row["materials"]]
             self.client.command(path + "/materials_update", detail["write_context"], {"rows": rows, "removed_keys": []})
-        for override in row["operation_overrides"]:
-            detail = self.client.get(path)
-            fields = {key: value for key, value in override["fields"].items() if not key.endswith("_code")}
-            for kind in ("machine", "operator", "supplier"):
-                if kind + "_code" in override["fields"]:
-                    fields[kind + "_ref"] = self.refs[kind][override["fields"][kind + "_code"]]
-            self.client.command(path + "/operation_update", detail["write_context"],
-                                {"operation_ref": self.operation_refs[row["business_code"]][override["operation_seq"]], "fields": fields})
         return {"ref": ref, "operation_count": result["data"]["operation_count"], "material_count": len(row["materials"])}
 
     def calendar(self, row, operator=False):

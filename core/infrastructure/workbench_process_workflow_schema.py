@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Tuple
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure, schema_objects
 from .workbench_metadata_schema import schema_contract_matches, workbench_metadata_contract_issues
 from .workbench_process_schema import workbench_process_contract_issues
 from .workbench_resource_schema import workbench_resource_contract_issues
@@ -68,15 +68,17 @@ def install_process_workflow(conn) -> None:
     """Install empty metadata tables inside the migration owner's transaction."""
     if not conn.in_transaction:
         raise RuntimeError("Process workflow installation requires a caller transaction.")
-    workflow_issues = workbench_process_workflow_contract_issues(conn)
+    structure = SchemaStructure(conn)
+    objects = workflow_objects()
+    workflow_issues = workbench_process_workflow_contract_issues(conn, structure=structure)
     missing = [issue for issue in workflow_issues if issue.startswith("missing_workbench_process_workflow: ")]
-    if missing and len(missing) != len(workflow_objects()):
+    if missing and len(missing) != len(objects):
         raise RuntimeError("Cannot install partial process workflow storage: " + "; ".join(workflow_issues))
-    issues = (workbench_metadata_contract_issues(conn) + workbench_resource_contract_issues(conn)
-              + workbench_process_contract_issues(conn) + [
+    issues = (workbench_metadata_contract_issues(conn, structure=structure) + workbench_resource_contract_issues(conn, structure=structure)
+              + workbench_process_contract_issues(conn, structure=structure) + [
                   issue for issue in workflow_issues
                   if not issue.startswith("missing_workbench_process_workflow: ")])
     if issues:
         raise RuntimeError("Cannot install process workflow: " + "; ".join(issues))
-    for sql in workflow_objects().values():
+    for sql in objects.values():
         conn.execute(sql)

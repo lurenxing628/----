@@ -1,8 +1,8 @@
 """Explicit, caller-transactional ledger installation. Never called by a query."""
 
-from core.infrastructure.workbench_metadata_schema import _canonical_sql
+from core.infrastructure.workbench_metadata_schema import canonical_sql
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure, schema_objects
 
 LEGACY_COLUMNS = (
     "id", "schedule_version", "schedule_id", "op_id", "batch_id", "source_table",
@@ -13,6 +13,17 @@ LEGACY_COLUMNS = (
     "idempotency_key", "request_fingerprint", "previous_state_revision", "created_at",
 )
 _REF = "TEXT NOT NULL CHECK(length({0}) = 48 AND {0} NOT GLOB '*[^0-9a-f]*')"
+
+
+_CURRENT_ONLY_OBJECTS = {
+    "idx_wb_execution_reports_legacy": "CREATE INDEX idx_wb_execution_reports_legacy ON WorkbenchProductionReports(legacy_fact_ref) WHERE legacy_fact_ref IS NOT NULL",
+    "wb_execution_legacy_link_active_unique": """CREATE TRIGGER wb_execution_legacy_link_active_unique
+            BEFORE INSERT ON WorkbenchProductionReports
+            WHEN NEW.legacy_fact_ref IS NOT NULL AND EXISTS (
+                SELECT 1 FROM WorkbenchProductionReports r WHERE r.legacy_fact_ref=NEW.legacy_fact_ref
+                AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportVoids v WHERE v.report_ref=r.report_ref))
+            BEGIN SELECT RAISE(ABORT, 'legacy finish already has an active report'); END""",
+}
 
 
 def _capture_sql(where):
@@ -102,13 +113,7 @@ def execution_ledger_objects(*, legacy_link_unique=False):
         name = "wb_execution_" + stem + "_clock"
         objects[name] = f"CREATE TRIGGER {name} AFTER INSERT ON {table} BEGIN UPDATE WorkbenchExecutionLedgerClock SET revision = revision + 1 WHERE singleton = 1; END"
     if not legacy_link_unique:
-        objects["idx_wb_execution_reports_legacy"] = "CREATE INDEX idx_wb_execution_reports_legacy ON WorkbenchProductionReports(legacy_fact_ref) WHERE legacy_fact_ref IS NOT NULL"
-        objects["wb_execution_legacy_link_active_unique"] = """CREATE TRIGGER wb_execution_legacy_link_active_unique
-            BEFORE INSERT ON WorkbenchProductionReports
-            WHEN NEW.legacy_fact_ref IS NOT NULL AND EXISTS (
-                SELECT 1 FROM WorkbenchProductionReports r WHERE r.legacy_fact_ref=NEW.legacy_fact_ref
-                AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportVoids v WHERE v.report_ref=r.report_ref))
-            BEGIN SELECT RAISE(ABORT, 'legacy finish already has an active report'); END"""
+        objects.update(_CURRENT_ONLY_OBJECTS)
     objects["wb_execution_capture_legacy"] = ("CREATE TRIGGER wb_execution_capture_legacy AFTER INSERT ON OperationExecutionEvents BEGIN " +
                                                _capture_sql("e.id = NEW.id") + " END")
     return objects
@@ -122,10 +127,10 @@ def execution_ledger_contract_issues(conn, *, legacy_link_unique=False, structur
     for name, sql in declared.items():
         if name not in actual:
             issues.append("missing_execution_ledger:" + name)
-        elif _canonical_sql(sql) != _canonical_sql(actual[name] or ""):
+        elif canonical_sql(sql) != canonical_sql(actual[name] or ""):
             issues.append("invalid_execution_ledger:" + name)
     if legacy_link_unique:
-        current_only = execution_ledger_objects().keys() - declared.keys()
+        current_only = _CURRENT_ONLY_OBJECTS.keys()
         issues.extend("unexpected_execution_ledger:" + name for name in sorted(current_only) if name in actual)
     if not issues:
         rows = conn.execute("SELECT singleton, revision, next_report_no FROM WorkbenchExecutionLedgerClock LIMIT 2").fetchall()
@@ -134,15 +139,16 @@ def execution_ledger_contract_issues(conn, *, legacy_link_unique=False, structur
     return issues
 
 
-def execution_ledger_migration_contract_issues(conn):
+def execution_ledger_migration_contract_issues(conn, *, structure=None):
     """Historical installers accept complete pre-v37 or current ledger DDL.
 
     A real old database keeps its earlier contract until v37 changes it; a new
     migration chain may already have installed the current definition at v25.
     Runtime readers continue to require execution_ledger_contract_issues.
     """
-    issues = execution_ledger_contract_issues(conn)
-    if issues and not execution_ledger_contract_issues(conn, legacy_link_unique=True):
+    structure = structure if structure is not None else SchemaStructure(conn)
+    issues = execution_ledger_contract_issues(conn, structure=structure)
+    if issues and not execution_ledger_contract_issues(conn, legacy_link_unique=True, structure=structure):
         return []
     return issues
 
@@ -156,10 +162,11 @@ def install_execution_ledger(conn):
     """
     if not conn.in_transaction:
         raise RuntimeError("install_execution_ledger requires the caller's migration transaction.")
+    structure = SchemaStructure(conn)
     objects = execution_ledger_objects()
-    names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
-    if names & set(objects):
-        issues = execution_ledger_migration_contract_issues(conn)
+    names = structure.objects.keys()
+    if names & objects.keys():
+        issues = execution_ledger_migration_contract_issues(conn, structure=structure)
         if issues:
             raise RuntimeError("Cannot repair partial execution ledger: " + "; ".join(issues))
         if conn.execute("SELECT 1 FROM OperationExecutionEvents e LEFT JOIN WorkbenchExecutionLegacyFacts f ON f.id=e.id WHERE f.id IS NULL LIMIT 1").fetchone():
@@ -170,7 +177,7 @@ def install_execution_ledger(conn):
         raise RuntimeError("Execution ledger prerequisites are missing: " + ", ".join(sorted(required - names)))
     if conn.execute("SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*' LIMIT 1").fetchone():
         raise RuntimeError("Ledger data is missing but execution receipts remain; restore the complete ledger.")
-    columns = {row[1] for row in conn.execute("PRAGMA table_info(OperationExecutionEvents)")}
+    columns = {row[1] for row in structure.table_info("OperationExecutionEvents")}
     if columns != set(LEGACY_COLUMNS):
         raise RuntimeError("Legacy event columns changed; refusing a lossy archive.")
     for sql in objects.values():
@@ -197,7 +204,3 @@ def execution_ledger_initialization_sql() -> str:
     return ("INSERT INTO WorkbenchExecutionLedgerClock(singleton, revision, next_report_no) "
             "SELECT 1, CASE WHEN " + " AND ".join(_INITIALIZATION_EMPTY_CHECKS) + " THEN 1 ELSE 0 END, 1 "
             "WHERE NOT EXISTS (SELECT 1 FROM WorkbenchExecutionLedgerClock);")
-
-
-objects = execution_ledger_objects
-contract_issues = execution_ledger_contract_issues

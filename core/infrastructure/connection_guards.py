@@ -54,13 +54,8 @@ def data_version(conn: sqlite3.Connection) -> Optional[int]:
     return row[0]
 
 
-def database_list(conn: sqlite3.Connection) -> List[Any]:
-    """PRAGMA database_list 的原始行（seq, name, file），保留连接的行工厂形态。"""
-    return list(conn.execute("PRAGMA database_list").fetchall() or [])
-
-
 def main_database_path(conn: sqlite3.Connection) -> str:
-    for row in database_list(conn):
+    for row in conn.execute("PRAGMA database_list").fetchall():
         if row[1] == "main":
             return str(row[2])
     raise LookupError("connection has no main database")

@@ -40,16 +40,18 @@ def _clear_poison(conn) -> None:
     _poison_map().pop(id(conn), None)
 
 
-def _inc_depth(conn) -> None:
+def _inc_depth(conn) -> int:
     m = _depth_map()
     key = id(conn)
-    m[key] = int(m.get(key, 0) or 0) + 1
+    depth = m.get(key, 0) + 1
+    m[key] = depth
+    return depth
 
 
 def _dec_depth(conn) -> None:
     m = _depth_map()
     key = id(conn)
-    d = int(m.get(key, 0) or 0)
+    d = m.get(key, 0)
     if d <= 1:
         m.pop(key, None)
     else:
@@ -64,15 +66,11 @@ def in_transaction_context(conn) -> bool:
     """
     if conn is None:
         return False
-    try:
-        return _current_depth(conn) > 0
-    except Exception as exc:
-        logger.warning("读取事务上下文失败，按处于事务内处理：%s", exc)
-        return True
+    return _current_depth(conn) > 0
 
 
 def _current_depth(conn) -> int:
-    return int(_depth_map().get(id(conn), 0) or 0)
+    return _depth_map().get(id(conn), 0)
 
 
 def _owns_transaction(conn, depth: int) -> bool:
@@ -185,11 +183,9 @@ def _block_commit_if_poisoned(conn, depth: int, owns_tx: bool, sp_name: Optional
 
 @contextmanager
 def _transaction_scope(conn, begin_sql: str = "BEGIN"):
-    _inc_depth(conn)
+    depth = _inc_depth(conn)
     sp_name = None
-    depth = 0
     try:
-        depth = _current_depth(conn)
         owns_tx = _owns_transaction(conn, depth)
         sp_name = _begin_scope(conn, depth, owns_tx, begin_sql=begin_sql)
 

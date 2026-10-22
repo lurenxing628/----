@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Callable, Dict, Set, Tuple
+from typing import Any, Callable, Dict, Tuple
 
 from flask import Flask
 from flask import url_for as flask_url_for
@@ -18,27 +18,13 @@ def _normalize_filename(value: Any) -> str:
     return text
 
 
-def _parse_versioned_endpoints(app: Flask) -> Set[str]:
-    endpoints: Set[str] = {"static"}
-    raw = app.config.get("STATIC_VERSIONED_ENDPOINTS")
-    if isinstance(raw, (list, tuple, set)):
-        for item in raw:
-            name = str(item or "").strip()
-            if name:
-                endpoints.add(name)
-    return endpoints
-
-
 def _warn_once(app: Flask, code: str, message: str) -> None:
     seen_key = "aps.static_versioning.warnings"
     seen = app.extensions.setdefault(seen_key, set())
     if code in seen:
         return
     seen.add(code)
-    logger = getattr(app, "logger", None)
-    warning = getattr(logger, "warning", None) if logger is not None else None
-    if callable(warning):
-        warning(message)
+    app.logger.warning(message)
 
 
 def _pick_fixed_version(app: Flask) -> str:
@@ -53,31 +39,18 @@ def _pick_fixed_version(app: Flask) -> str:
 
 def build_versioned_url_for(app: Flask, static_dir: str) -> Callable[..., str]:
     fixed_version = _pick_fixed_version(app)
-    versioned_endpoints = _parse_versioned_endpoints(app)
     # 版本缓存：一个 key 一次性写入 (mtime, version) 元组。threaded=True 下所有请求
     # 线程无锁共享本缓存；拆成两个 dict「先写 mtime 再写 version」存在 check-then-act
     # 竞态窗口（读侧命中新 mtime 却读到空/旧 version，audit 2026-07-19 D05）。
     # 单 dict 单次赋值在 GIL 下原子：读侧要么命中完整旧对，要么命中完整新对。
     version_cache: Dict[str, Tuple[int, str]] = {}
 
-    def _resolve_static_root(endpoint: str) -> str:
-        if endpoint == "static":
-            return static_dir
-        if endpoint.endswith(".static"):
-            bp_name = endpoint.rsplit(".", 1)[0]
-            bp = app.blueprints.get(bp_name)
-            static_root = getattr(bp, "static_folder", None) if bp is not None else None
-            if static_root:
-                return str(static_root)
-        return static_dir
-
-    def _mtime_version(endpoint: str, filename: Any) -> str:
+    def _mtime_version(filename: Any) -> str:
         rel = _normalize_filename(filename)
         if not rel:
             return ""
-        root = _resolve_static_root(endpoint)
-        file_path = os.path.join(root, rel.replace("/", os.sep))
-        cache_key = f"{endpoint}|{rel}"
+        file_path = os.path.join(static_dir, rel.replace("/", os.sep))
+        cache_key = f"static|{rel}"
         try:
             mtime = int(os.path.getmtime(file_path))
         except OSError as exc:
@@ -91,10 +64,9 @@ def build_versioned_url_for(app: Flask, static_dir: str) -> Callable[..., str]:
         return ver
 
     def _versioned_url_for(endpoint: str, **values: Any) -> str:
-        if endpoint in versioned_endpoints and "v" not in values:
-            version = fixed_version or _mtime_version(endpoint, values.get("filename"))
+        if endpoint == "static" and "v" not in values:
+            version = fixed_version or _mtime_version(values.get("filename"))
             if version:
-                values = dict(values)
                 values["v"] = version
         return flask_url_for(endpoint, **values)
 

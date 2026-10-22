@@ -6,7 +6,6 @@ from core.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models import BatchOperation, ExternalGroup, PartOperation
 from core.services.common.normalize import normalize_text
-from core.shared.number_utils import parse_finite_float
 from data.repositories import (
     BatchOperationRepository,
     BatchRepository,
@@ -47,10 +46,6 @@ class ScheduleService:
     @staticmethod
     def _normalize_text(value: Any) -> Optional[str]:
         return normalize_text(value)
-
-    @staticmethod
-    def _normalize_float(value: Any, field: str, allow_none: bool = True) -> Optional[float]:
-        return parse_finite_float(value, field=field, allow_none=allow_none)
 
     def _get_op_or_raise(self, op_id: int) -> BatchOperation:
         normalized_op_id = int(op_id)

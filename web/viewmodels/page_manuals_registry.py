@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 VIEW_MANUALS: Dict[str, Dict[str, Any]] = {
     "dashboard": {
@@ -105,8 +105,6 @@ VIEW_MANUALS: Dict[str, Dict[str, Any]] = {
     },
 }
 
-MANUAL_VIEW_IDS: Tuple[str, ...] = tuple(VIEW_MANUALS)
-
 
 def manual_entry(view_id: Optional[str]) -> Optional[Dict[str, Any]]:
     """按视图 id 取“本页说明”登记；未登记或空值返回 None，不做别名猜测。"""
@@ -117,10 +115,3 @@ def manual_entry(view_id: Optional[str]) -> Optional[Dict[str, Any]]:
     if entry is None:
         return None
     return dict(entry, view=key)
-
-
-# 旧路由层的端点键映射已随旧页面退役（2026-09-21）。下面三个名字只为 ``web/viewmodels/page_manuals.py``
-# 和 ``web/manual_src_security.py`` 的既有导入不断，内容一律为空；新代码不要再往里加条目。
-ENDPOINT_TO_MANUAL_ID: Dict[str, str] = {}
-MANUAL_ENTRY_ENDPOINTS: Dict[str, str] = {}
-ENDPOINT_OVERRIDES: Dict[str, Dict[str, Any]] = {}

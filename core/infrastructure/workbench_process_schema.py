@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Dict, List, Tuple
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure, schema_objects
 from .workbench_metadata_schema import (
-    _canonical_sql,
+    canonical_sql,
     entity_key_sql,
     identity_triggers,
     workbench_metadata_contract_issues,
@@ -34,13 +34,17 @@ def optimize_process_identity_triggers(conn) -> None:
         raise RuntimeError("Process identity trigger upgrade requires a caller transaction.")
     current, legacy = process_objects(), process_objects(legacy=True)
     actual = {row[0]: row[1] for row in conn.execute("SELECT name, sql FROM sqlite_master WHERE type='trigger'")}
+    changed = []
     for name, sql in current.items():
-        if name not in actual or _canonical_sql(actual[name]) not in (_canonical_sql(sql), _canonical_sql(legacy[name])):
+        actual_canonical = canonical_sql(actual[name]) if name in actual else None
+        expected_canonical = canonical_sql(sql)
+        if actual_canonical not in (expected_canonical, canonical_sql(legacy[name])):
             raise RuntimeError("Cannot replace missing or unrecognized process identity trigger: " + name)
-    for name, sql in current.items():
-        if _canonical_sql(actual[name]) != _canonical_sql(sql):
-            conn.execute('DROP TRIGGER "' + name + '"')
-            conn.execute(sql)
+        if actual_canonical != expected_canonical:
+            changed.append((name, sql))
+    for name, sql in changed:
+        conn.execute('DROP TRIGGER "' + name + '"')
+        conn.execute(sql)
 
 
 def _source_contract_issues(conn, *, structure=None) -> List[str]:
@@ -64,15 +68,16 @@ def workbench_process_contract_issues(conn, *, structure=None) -> List[str]:
     for name, sql in process_objects().items():
         if name not in actual:
             issues.append("missing_workbench_process: " + name)
-        elif _canonical_sql(actual[name] or "") != _canonical_sql(sql):
+        elif canonical_sql(actual[name] or "") != canonical_sql(sql):
             issues.append("bad_workbench_process: " + name)
     return issues
 
 
 def install_process(conn) -> None:
     """Install/backfill within the caller's transaction; reject damaged objects."""
-    issues = workbench_metadata_contract_issues(conn) + [
-        issue for issue in workbench_process_contract_issues(conn)
+    structure = SchemaStructure(conn)
+    issues = workbench_metadata_contract_issues(conn, structure=structure) + [
+        issue for issue in workbench_process_contract_issues(conn, structure=structure)
         if not issue.startswith("missing_workbench_process: ")
     ]
     if issues:

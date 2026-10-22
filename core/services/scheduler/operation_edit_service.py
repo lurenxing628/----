@@ -6,7 +6,7 @@ from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models import BatchOperation
 from core.models.enums import BatchOperationStatus, MachineStatus, MergeMode, OperatorStatus, SupplierStatus
 from core.services.personnel.operator_qualification import OperatorQualificationService, require_machine_authorization
-from core.shared.strict_parse import parse_required_float
+from core.shared.strict_parse import parse_optional_float, parse_required_float
 
 _OPERATION_NOT_FOUND_MESSAGE = "这道工序不存在或已被删除，请刷新批次详情后重试。"
 
@@ -73,9 +73,9 @@ def _validate_operator_machine_match(svc, *, mc_id: Optional[str], operator_id_t
     )
 
 
-def _normalize_hours(svc, *, setup_hours: Any, unit_hours: Any) -> Tuple[float, float]:
-    sh = svc._normalize_float(setup_hours, field="换型时间(小时)", allow_none=True)
-    uh = svc._normalize_float(unit_hours, field="单件工时(小时)", allow_none=True)
+def _normalize_hours(*, setup_hours: Any, unit_hours: Any) -> Tuple[float, float]:
+    sh = parse_optional_float(setup_hours, field="换型时间(小时)")
+    uh = parse_optional_float(unit_hours, field="单件工时(小时)")
     sh2 = 0.0 if sh is None else float(sh)
     uh2 = 0.0 if uh is None else float(uh)
     if sh2 < 0 or uh2 < 0:
@@ -188,7 +188,7 @@ def update_internal_operation(
     # 人员存在性 + 在岗性
     _validate_operator_available(svc, operator_id_text)
 
-    sh, uh = _normalize_hours(svc, setup_hours=setup_hours, unit_hours=unit_hours)
+    sh, uh = _normalize_hours(setup_hours=setup_hours, unit_hours=unit_hours)
 
     updates: Dict[str, Any] = {
         "machine_id": mc_id,

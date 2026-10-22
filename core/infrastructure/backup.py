@@ -1,16 +1,13 @@
-"""数据库备份/恢复/轮换修剪（BackupManager）。
+"""数据库备份与恢复（BackupManager）。
 
 维护窗互斥锁逻辑已按职责拆到 core/infrastructure/maintenance_lock.py（2026-07-19 B04 批次），
-本模块原样再导出锁公共 API（MaintenanceWindowError / maintenance_window /
-is_maintenance_window_active / ensure_backup_allowed 等），既有 import 路径全部兼容。
+本模块保留调用方使用的维护窗公共 API。
 
 备份完整性合同（B01/B05，2026-07-19 盲区扫描）：
 - 备份创建后必须通过 PRAGMA integrity_check 才能升正式备份（既有 R32/O27 合同）；
 - 恢复（含自动回滚）把任何源文件盖到主库前必须通过 PRAGMA integrity_check，
   失败抛 BackupIntegrityError，fail-loud 拒绝落地损坏库；
-- 备份轮换修剪按天龄删除，但必须至少保留最新 MIN_KEEP_BACKUPS 份（防长期停机后
-  唯一好备份被 keep_days 全部剪光；before_restore/pre_migration/exit 快照同前缀，
-  同受数量保底保护）。
+- 备份轮换由维护清理服务负责，数量保底共用 protected_recent_backup_paths。
 """
 
 from __future__ import annotations
@@ -22,17 +19,14 @@ import time
 import traceback
 from contextlib import closing
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Iterable, List, Optional, Set, Tuple
+from datetime import datetime
+from typing import Iterable, Optional, Set, Tuple
 from urllib.parse import quote
 
 from core.infrastructure.maintenance_lock import (
     MaintenanceWindowError,
-    current_thread_holds_maintenance_window,
-    ensure_backup_allowed,
     is_maintenance_window_active,
     maintenance_window,
-    read_maintenance_lock_state,
 )
 from core.infrastructure.migration_common import fallback_log
 from core.infrastructure.safe_files import (
@@ -46,17 +40,13 @@ from core.infrastructure.sqlite_integrity import BackupIntegrityError
 from core.infrastructure.sqlite_integrity import run_sqlite_integrity_check as _run_sqlite_integrity_check
 
 __all__ = [
-    "BackupIntegrityError",
     "BackupManager",
     "MIN_KEEP_BACKUPS",
     "MaintenanceWindowError",
     "RestoreResult",
-    "current_thread_holds_maintenance_window",
-    "ensure_backup_allowed",
     "is_maintenance_window_active",
     "maintenance_window",
     "protected_recent_backup_paths",
-    "read_maintenance_lock_state",
 ]
 
 # 备份轮换修剪的数量保底：无论 keep_days 多短、停机多久，至少保留最新 N 份备份
@@ -72,19 +62,11 @@ class RestoreResult:
     before_restore_path: Optional[str] = None
 
 
-def _prepare_exclusive_sqlite_target(path: str):
-    fd = create_fixed_file_exclusive(path)
-    os.close(fd)
-
-
-def _sqlite_existing_file_uri(path: str) -> str:
+def _connect_existing_sqlite_file(path: str, **kwargs):
     path_abs = os.path.abspath(str(path))
     path_for_uri = path_abs.replace("\\", "/")
-    return "file:" + quote(path_for_uri, safe="/:") + "?mode=rw"
-
-
-def _connect_existing_sqlite_file(path: str, **kwargs):
-    return sqlite3.connect(_sqlite_existing_file_uri(path), uri=True, **kwargs)
+    uri = "file:" + quote(path_for_uri, safe="/:") + "?mode=rw"
+    return sqlite3.connect(uri, uri=True, **kwargs)
 
 
 def protected_recent_backup_paths(survey: Iterable[Tuple[datetime, str, str]], min_keep: int) -> Set[str]:
@@ -100,17 +82,11 @@ class BackupManager:
         backup_dir: str = "backups",
         keep_days: int = 7,
         logger: Optional[logging.Logger] = None,
-        min_keep_backups: Optional[int] = None,
     ):
         self.db_path = db_path
         self.backup_dir = backup_dir
         self.keep_days = keep_days
-        self.min_keep_backups = MIN_KEEP_BACKUPS if min_keep_backups is None else max(0, int(min_keep_backups))
         self.logger = logger or logging.getLogger(__name__)
-        self.last_list_unsafe_count = 0
-        self.last_list_unsafe_sample = []
-        self.last_list_error_count = 0
-        self.last_list_error_sample = []
         os.makedirs(backup_dir, exist_ok=True)
 
     def backup(self, suffix: Optional[str] = None) -> str:
@@ -130,7 +106,8 @@ class BackupManager:
                     raise RuntimeError(f"清理备份临时文件失败：{exc}") from exc
 
                 try:
-                    _prepare_exclusive_sqlite_target(tmp_path)
+                    fd = create_fixed_file_exclusive(tmp_path)
+                    os.close(fd)
                 except Exception as exc:
                     raise RuntimeError(f"创建备份临时文件失败：{exc}") from exc
 
@@ -185,10 +162,6 @@ class BackupManager:
                     continue
                 raise
 
-    def _restore_target_unreadable_result(self, exc: Exception) -> RestoreResult:
-        fallback_log(self.logger, "error", f"数据库恢复目标不可写：{self.db_path}：{exc}")
-        return RestoreResult(ok=False, code="db_target_unreadable", message=f"数据库恢复目标不可写：{self.db_path}")
-
     def _auto_rollback(
         self,
         before_restore_path: Optional[str],
@@ -233,7 +206,8 @@ class BackupManager:
         try:
             stat_regular_file(self.db_path)
         except (OSError, TypeError, ValueError) as e:
-            return self._restore_target_unreadable_result(e)
+            fallback_log(self.logger, "error", f"数据库恢复目标不可写：{self.db_path}：{e}")
+            return RestoreResult(ok=False, code="db_target_unreadable", message=f"数据库恢复目标不可写：{self.db_path}")
 
         before_restore_path = None
         try:
@@ -288,103 +262,3 @@ class BackupManager:
                 message="数据库恢复失败，请查看日志。",
                 before_restore_path=before_restore_path,
             )
-
-    def _record_cleanup_issue(self, result: dict, kind: str, filename: str, error: Exception, log_message: str) -> None:
-        result[kind + "_count"] = int(result[kind + "_count"]) + 1
-        sample = result[kind + "_sample"]
-        if len(sample) < 10:
-            sample.append({"filename": filename, "error": str(error)})
-        fallback_log(self.logger, "warning", log_message)
-
-    def _survey_backup_files(self, result: dict) -> List[Tuple[datetime, str, str]]:
-        survey: List[Tuple[datetime, str, str]] = []
-        for filename in os.listdir(self.backup_dir):
-            if not filename.startswith("aps_backup_") or not filename.endswith(".db"):
-                continue
-            filepath = os.path.join(self.backup_dir, filename)
-            try:
-                st = stat_regular_file(filepath)
-                survey.append((datetime.fromtimestamp(st.st_mtime), filename, filepath))
-            except UnsafeFixedFileError as e:
-                self._record_cleanup_issue(result, "unsafe", filename, e, f"跳过非普通备份文件（{filename}）：{e}")
-            except Exception as e:
-                self._record_cleanup_issue(result, "error", filename, e, f"清理备份失败（{filename}）：{e}")
-        return survey
-
-    def cleanup_old_backups(self):
-        cutoff = datetime.now() - timedelta(days=self.keep_days)
-        result = {
-            "removed_count": 0,
-            "kept_recent_count": 0,
-            "min_keep": int(self.min_keep_backups),
-            "unsafe_count": 0,
-            "unsafe_sample": [],
-            "error_count": 0,
-            "error_sample": [],
-        }
-        if not os.path.exists(self.backup_dir):
-            return result
-        survey = self._survey_backup_files(result)
-        # B01：数量保底——无论天龄，最新 min_keep_backups 份一律不删，
-        # 防长期停机后所有备份都过期时把唯一好备份剪光。
-        protected = protected_recent_backup_paths(survey, self.min_keep_backups)
-        for file_time, filename, filepath in survey:
-            if file_time >= cutoff:
-                continue
-            if filepath in protected:
-                result["kept_recent_count"] = int(result["kept_recent_count"]) + 1
-                continue
-            try:
-                remove_fixed_file(filepath, allow_symlink=False)
-                result["removed_count"] = int(result["removed_count"]) + 1
-                fallback_log(self.logger, "info", f"已清理过期备份：{filename}")
-            except UnsafeFixedFileError as e:
-                self._record_cleanup_issue(result, "unsafe", filename, e, f"跳过非普通备份文件（{filename}）：{e}")
-            except Exception as e:
-                self._record_cleanup_issue(result, "error", filename, e, f"清理备份失败（{filename}）：{e}")
-        if result["kept_recent_count"]:
-            fallback_log(
-                self.logger,
-                "info",
-                f"备份清理保底生效：{result['kept_recent_count']} 份已过期备份因『至少保留最新 "
-                f"{self.min_keep_backups} 份』被保留（keep_days={self.keep_days}）。",
-            )
-        return result
-
-    def list_backups(self) -> list:
-        backups = []
-        self.last_list_unsafe_count = 0
-        self.last_list_unsafe_sample = []
-        self.last_list_error_count = 0
-        self.last_list_error_sample = []
-        if not os.path.exists(self.backup_dir):
-            return backups
-
-        for filename in sorted(os.listdir(self.backup_dir), reverse=True):
-            if not filename.startswith("aps_backup_") or not filename.endswith(".db"):
-                continue
-
-            filepath = os.path.join(self.backup_dir, filename)
-            try:
-                file_stat = stat_regular_file(filepath)
-            except UnsafeFixedFileError as e:
-                self.last_list_unsafe_count += 1
-                if len(self.last_list_unsafe_sample) < 10:
-                    self.last_list_unsafe_sample.append({"filename": filename, "error": str(e)})
-                fallback_log(self.logger, "warning", f"跳过非普通备份文件（{filename}）：{e}")
-                continue
-            except (OSError, TypeError, ValueError) as e:
-                self.last_list_error_count += 1
-                if len(self.last_list_error_sample) < 10:
-                    self.last_list_error_sample.append({"filename": filename, "error": str(e)})
-                fallback_log(self.logger, "warning", f"读取备份文件信息失败，已跳过（{filename}）：{e}")
-                continue
-            backups.append(
-                {
-                    "filename": filename,
-                    "path": filepath,
-                    "size_mb": round(file_stat.st_size / 1024 / 1024, 2),
-                    "created_at": datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
-                }
-            )
-        return backups

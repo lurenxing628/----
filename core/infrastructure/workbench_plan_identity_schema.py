@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from typing import Dict, List, Tuple
 
-from .schema_structure import schema_objects
-from .workbench_metadata_schema import _canonical_sql, entity_key_sql
+from .schema_structure import SchemaStructure, schema_objects
+from .workbench_metadata_schema import canonical_sql, entity_key_sql
 
 _REF = "TEXT PRIMARY KEY NOT NULL CHECK(length(ref) = 48 AND ref NOT GLOB '*[^0-9a-f]*')"
 _RANDOM = "lower(hex(randomblob(24)))"
@@ -216,7 +216,7 @@ def _structure_issues(conn, *, structure=None) -> List[str]:
     for name, sql in plan_identity_objects().items():
         if name not in actual:
             issues.append("missing_workbench_plan_identity: " + name)
-        elif _canonical_sql(actual[name] or "") != _canonical_sql(sql):
+        elif canonical_sql(actual[name] or "") != canonical_sql(sql):
             issues.append("bad_workbench_plan_identity: " + name)
     return issues
 
@@ -241,26 +241,12 @@ def plan_identity_initialization_sql() -> str:
 
 The revision CHECK deliberately aborts a missing-clock initialization when any
 source/identity data exists. Do not replace it with INSERT OR IGNORE. Python
-callers use initialize_plan_identity() to validate the complete DDL first.
+installers validate the complete DDL before checking or initializing its clock.
 """
     empty = " AND ".join(f'NOT EXISTS (SELECT 1 FROM "{table}" LIMIT 1)' for table in _INITIALIZATION_TABLES)
     return ("INSERT INTO WorkbenchPlanIdentityClock(singleton, revision) "
             f"SELECT 1, CASE WHEN {empty} THEN 1 ELSE 0 END "
             "WHERE NOT EXISTS (SELECT 1 FROM WorkbenchPlanIdentityClock);")
-
-
-def initialize_plan_identity(conn) -> None:
-    """Initialize a complete, empty schema once; never recreate refs or a used clock."""
-    issues = _structure_issues(conn)
-    if issues:
-        raise RuntimeError("Cannot initialize workbench plan identities: " + "; ".join(issues))
-    clock_issues = _clock_issues(conn)
-    if clock_issues == ["missing_workbench_plan_clock_state"]:
-        if any(conn.execute(f'SELECT 1 FROM "{table}" LIMIT 1').fetchone() for table in _INITIALIZATION_TABLES):
-            raise RuntimeError("Cannot initialize a missing plan clock over existing source or identity data.")
-        conn.execute(plan_identity_initialization_sql())
-    elif clock_issues:
-        raise RuntimeError("Cannot initialize workbench plan identities: " + "; ".join(clock_issues))
 
 
 def _existing_identity_issues(conn) -> List[str]:
@@ -282,14 +268,14 @@ def _existing_identity_issues(conn) -> List[str]:
     return issues
 
 
-def _is_first_install(conn) -> bool:
+def _is_first_install(conn, *, structure: SchemaStructure) -> bool:
     expected = set(plan_identity_objects())
-    actual = {row[0] for row in conn.execute("SELECT name FROM sqlite_master").fetchall()}
+    actual = structure.objects.keys()
     present = expected & actual
     if present and present != expected:
         raise RuntimeError("Partial workbench plan identity schema; refusing to recreate permanent identities: " +
                            ", ".join(sorted(expected - present)))
-    issues = _structure_issues(conn) if present else _source_issues(conn)
+    issues = _structure_issues(conn, structure=structure) if present else _source_issues(conn, structure=structure)
     if issues:
         raise RuntimeError("Cannot install workbench plan identities: " + "; ".join(issues))
     if not present and "SchemaVersion" in actual:
@@ -313,8 +299,15 @@ def _backfill_source(conn, kind: str) -> None:
 
 def install_plan_identity(conn) -> None:
     """First install backfills; a complete existing schema is checked, never repaired."""
-    if not _is_first_install(conn):
-        initialize_plan_identity(conn)
+    structure = SchemaStructure(conn)
+    if not _is_first_install(conn, structure=structure):
+        clock_issues = _clock_issues(conn)
+        if clock_issues == ["missing_workbench_plan_clock_state"]:
+            if any(conn.execute(f'SELECT 1 FROM "{table}" LIMIT 1').fetchone() for table in _INITIALIZATION_TABLES):
+                raise RuntimeError("Cannot initialize a missing plan clock over existing source or identity data.")
+            conn.execute(plan_identity_initialization_sql())
+        elif clock_issues:
+            raise RuntimeError("Cannot initialize workbench plan identities: " + "; ".join(clock_issues))
         issues = _existing_identity_issues(conn)
         if issues:
             raise RuntimeError("Lost permanent plan identities; restore a complete backup: " + "; ".join(issues))
@@ -332,9 +325,3 @@ def install_plan_identity(conn) -> None:
     for kind in _SOURCES:
         _backfill_source(conn, kind)
     conn.execute(_task_insert())
-
-
-# Small integration surface for the coordinator; no registration in this module.
-objects = plan_identity_objects
-install = install_plan_identity
-contract_issues = workbench_plan_identity_contract_issues

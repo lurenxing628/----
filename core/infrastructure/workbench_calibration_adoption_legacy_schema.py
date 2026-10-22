@@ -1,11 +1,11 @@
 """Frozen v29 adoption/lock DDL, used only while upgrading historical databases."""
 
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_migration_contract_issues
-from core.infrastructure.workbench_metadata_schema import _canonical_sql, workbench_metadata_contract_issues
+from core.infrastructure.workbench_metadata_schema import canonical_sql, workbench_metadata_contract_issues
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
 from core.infrastructure.workbench_template_lineage_schema import contract_issues as lineage_contract_issues
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure, schema_objects
 
 ADOPTIONS = "WorkbenchCalibrationAdoptions"
 LOCKS = "WorkbenchCalibrationQuotaLocks"
@@ -68,21 +68,23 @@ def contract_issues(conn, *, structure=None):
     actual = schema_objects(conn, structure=structure)
     return [("missing_calibration_adoption:" if name not in actual else "invalid_calibration_adoption:") + name
             for name, sql in objects().items()
-            if name not in actual or _canonical_sql(actual[name] or "") != _canonical_sql(sql)]
+            if name not in actual or canonical_sql(actual[name] or "") != canonical_sql(sql)]
 
 
 def install(conn):
     """Caller migration owns commit/rollback. Partial or changed DDL is rejected."""
     if not conn.in_transaction:
         raise RuntimeError("Calibration adoption installation requires the caller migration transaction.")
+    structure = SchemaStructure(conn)
     declared = objects()
-    actual = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
-    issues = (workbench_metadata_contract_issues(conn) + workbench_process_contract_issues(conn) +
-              execution_ledger_migration_contract_issues(conn) + lineage_contract_issues(conn))
-    if actual & set(declared):
-        issues += contract_issues(conn)
+    actual = structure.objects.keys()
+    has_any = bool(actual & declared.keys())
+    issues = (workbench_metadata_contract_issues(conn, structure=structure) + workbench_process_contract_issues(conn, structure=structure) +
+              execution_ledger_migration_contract_issues(conn, structure=structure) + lineage_contract_issues(conn, structure=structure))
+    if has_any:
+        issues += contract_issues(conn, structure=structure)
     if issues:
         raise RuntimeError("Cannot install calibration adoption: " + "; ".join(issues))
-    if not actual & set(declared):
+    if not has_any:
         for sql in declared.values():
             conn.execute(sql)
