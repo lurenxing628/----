@@ -99,13 +99,18 @@ def test_utc_operation_logs_use_one_local_time_for_lists_details_filters_and_exp
 
 
 def test_due_backup_runs_after_response_on_owned_worker_and_shutdown_joins_it(system_api, monkeypatch):
-    from core.services.system.system_config_service import SystemConfigService
     from core.services.system.system_maintenance_service import SystemMaintenanceService
+    from data.repositories.system_config_repo import SystemConfigRepository
     from web.bootstrap.workbench_run_lifecycle import stop_run_runtime
 
     conn = system_api.connect()
     try:
-        SystemConfigService(conn).update_backup_settings("yes", 60, "no", 7, 1440)
+        with conn:
+            repo = SystemConfigRepository(conn)
+            for key, value in (("auto_backup_enabled", "yes"), ("auto_backup_interval_minutes", "60"),
+                               ("auto_backup_cleanup_enabled", "no"), ("auto_backup_keep_days", "7"),
+                               ("auto_backup_cleanup_interval_minutes", "1440")):
+                repo.set(key, value)
     finally:
         conn.close()
     # Advance the deferred check interval in this controlled test, without waiting ten seconds.

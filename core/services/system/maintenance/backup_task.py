@@ -5,48 +5,12 @@ import os
 import time
 import traceback
 from datetime import datetime
-from typing import Any, Callable, Dict, Tuple
+from typing import Callable, Tuple
 
 from core.infrastructure.backup import BackupManager
 from core.infrastructure.logging import safe_log
-from core.infrastructure.transaction import TransactionManager
 
-from .due_info import IsDueResult, unpack_due_info
-
-
-def _safe_logger_emit(logger, level: str, message: str) -> None:
-    safe_log(logger, level, message)
-
-
-def _write_oplog(conn, *, op_logger, logger=None, level: str, **kwargs) -> bool:
-    if op_logger is None:
-        return True
-    try:
-        with TransactionManager(conn).transaction():
-            if level == "error":
-                result = op_logger.error(**kwargs)
-            else:
-                result = op_logger.info(**kwargs)
-            if result is False:
-                raise RuntimeError("OperationLogs 未成功落库。")
-        return True
-    except Exception as e:
-        safe_log(logger, "warning", f"自动备份 telemetry 写入 OperationLogs 失败：{e}")
-        return False
-
-
-def _write_job_state(conn, *, job_repo, job_key: str, last_run_time: str, last_run_detail: str, logger=None) -> bool:
-    try:
-        with TransactionManager(conn).transaction():
-            job_repo.set_last_run(
-                job_key,
-                last_run_time=last_run_time,
-                last_run_detail=last_run_detail,
-            )
-        return True
-    except Exception as e:
-        safe_log(logger, "warning", f"自动备份 telemetry 写入 SystemJobState 失败：{e}")
-        return False
+from .telemetry import write_job_state, write_oplog
 
 
 def maybe_run_auto_backup(
@@ -61,12 +25,11 @@ def maybe_run_auto_backup(
     job_key: str,
     logger=None,
     op_logger=None,
-    is_due_fn: Callable[..., IsDueResult],
+    is_due_fn: Callable[..., bool],
     fmt_db_dt_fn: Callable[[datetime], str],
-) -> Tuple[bool, Dict[str, Any]]:
-    due, last_run, last_run_state, last_run_raw = unpack_due_info(is_due_fn(job_repo, job_key, now, interval_minutes))
-    if not due:
-        return False, {"due": False, "last_run_time": last_run, "last_run_state": last_run_state, "last_run_raw": last_run_raw}
+) -> Tuple[bool, bool]:
+    if not is_due_fn(job_repo, job_key, now, interval_minutes):
+        return False, False
 
     mgr = BackupManager(db_path=db_path, backup_dir=backup_dir, keep_days=int(keep_days), logger=logger)
     t0 = time.time()
@@ -104,7 +67,7 @@ def maybe_run_auto_backup(
             ensure_ascii=False,
         )
 
-        oplog_written = _write_oplog(
+        write_oplog(
             conn,
             op_logger=op_logger,
             logger=logger,
@@ -115,7 +78,7 @@ def maybe_run_auto_backup(
             target_id=filename,
             detail=detail,
         )
-        job_state_written = _write_job_state(
+        write_job_state(
             conn,
             job_repo=job_repo,
             job_key=job_key,
@@ -123,15 +86,7 @@ def maybe_run_auto_backup(
             last_run_detail=job_detail,
             logger=logger,
         )
-        return True, {
-            "due": True,
-            "created": filename,
-            "size_mb": size_mb,
-            "size_mb_status": size_mb_status,
-            "size_mb_error": size_mb_error,
-            "oplog_persisted": bool(oplog_written),
-            "job_state_persisted": bool(job_state_written),
-        }
+        return True, True
     except Exception as e:
         # B01(3)：失败留全量上下文与堆栈（不再只留一行 message），错误仍进 oplog/job_state 审计链，
         # 返回 False 供调度方（system_maintenance_service）据此跳过本轮自动清理。
@@ -142,7 +97,7 @@ def maybe_run_auto_backup(
             f"keep_days={int(keep_days)}）：{e}\n{traceback.format_exc()}",
         )
         time_cost_ms = int((time.time() - t0) * 1000)
-        oplog_written = _write_oplog(
+        write_oplog(
             conn,
             op_logger=op_logger,
             logger=logger,
@@ -155,7 +110,7 @@ def maybe_run_auto_backup(
             error_code="auto_backup_failed",
             error_message=str(e),
         )
-        job_state_written = _write_job_state(
+        write_job_state(
             conn,
             job_repo=job_repo,
             job_key=job_key,
@@ -163,9 +118,4 @@ def maybe_run_auto_backup(
             last_run_detail=json.dumps({"error": str(e), "time_cost_ms": time_cost_ms}, ensure_ascii=False),
             logger=logger,
         )
-        return False, {
-            "due": True,
-            "error": str(e),
-            "oplog_persisted": bool(oplog_written),
-            "job_state_persisted": bool(job_state_written),
-        }
+        return True, False

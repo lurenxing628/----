@@ -59,41 +59,36 @@ class LogEntryWithOrigin(LogEntry):
 
 @overload
 def read_log_entries_tail(
-    log_path: str, *, max_entries: int = MAX_ENTRIES, include_origin: Literal[False] = False, missing_ok: bool = True
+    log_path: str, *, max_entries: int = MAX_ENTRIES, include_origin: Literal[False] = False
 ) -> List[LogEntry]: ...
 
 
 @overload
 def read_log_entries_tail(
-    log_path: str, *, max_entries: int = MAX_ENTRIES, include_origin: Literal[True], missing_ok: bool = True
+    log_path: str, *, max_entries: int = MAX_ENTRIES, include_origin: Literal[True]
 ) -> List[LogEntryWithOrigin]: ...
 
 
 @overload
 def read_log_entries_tail(
-    log_path: str, *, max_entries: int = MAX_ENTRIES, include_origin: bool, missing_ok: bool = True
+    log_path: str, *, max_entries: int = MAX_ENTRIES, include_origin: bool
 ) -> Union[List[LogEntry], List[LogEntryWithOrigin]]: ...
 
 
 def read_log_entries_tail(
-    log_path: str, *, max_entries: int = MAX_ENTRIES, include_origin: bool = False, missing_ok: bool = True
+    log_path: str, *, max_entries: int = MAX_ENTRIES, include_origin: bool = False
 ) -> Union[List[LogEntry], List[LogEntryWithOrigin]]:
     """从文件尾读取最近 max_entries 条日志条目，倒序返回（最新在前）。
 
     返回 [{"head": 首行, "body": 余下行, "level": "ERROR"}, ...]。
     include_origin 另带内部 _origin（实际文件身份和字节位置），仅供系统显示键使用。
-    文件不存在默认返回 []；missing_ok=False 时保留 FileNotFoundError 供调用方区分 missing/empty。
+    文件不存在抛 FileNotFoundError，供调用方区分 missing/empty。
     IO 失败抛 OSError，由路由层明示。
 
     统一安全打开拒绝软链接和非普通文件，并核对实际打开的文件；
     调用方从这一次打开区分 missing、empty 和 error。
     """
-    try:
-        f = open_fixed_file_for_read_binary(log_path)
-    except FileNotFoundError:
-        if missing_ok:
-            return []
-        raise
+    f = open_fixed_file_for_read_binary(log_path)
     with f:
         origin = os.fstat(f.fileno()) if include_origin else None
         regions = _scan_tail_regions(f, max_entries)

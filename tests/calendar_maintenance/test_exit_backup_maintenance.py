@@ -17,7 +17,7 @@ def test_exit_backup_maintenance(db_path, tmp_path) -> None:
 
     from core.infrastructure.backup import BackupManager, maintenance_window
     from core.infrastructure.database import ensure_schema, get_connection
-    from core.services.system import SystemConfigService
+    from data.repositories.system_config_repo import SystemConfigRepository
     from web.bootstrap import factory as factory_mod
 
     backup_dir = os.path.join(str(tmp_path), "backups")
@@ -26,11 +26,12 @@ def test_exit_backup_maintenance(db_path, tmp_path) -> None:
 
     conn = get_connection(db_path)
     try:
-        SystemConfigService(conn, logger=None).set_value(
-            "auto_backup_enabled",
-            "yes",
-            description="自动备份（按请求触发；正常退出时也受此开关控制）是否启用：yes/no",
-        )
+        with conn:
+            SystemConfigRepository(conn).set(
+                "auto_backup_enabled",
+                "yes",
+                description="自动备份（按请求触发；正常退出时也受此开关控制）是否启用：yes/no",
+            )
     finally:
         conn.close()
 

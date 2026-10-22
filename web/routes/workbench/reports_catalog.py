@@ -43,10 +43,9 @@ def _official(export):
     selected = [labels[row["operation_ref"]] for row in ordered]
     if not selected:
         raise WorkbenchCommandRejected("empty_export", "当前范围里没有可导出的正式工序，没有开始下载。请放宽筛选范围后重新点「导出 XLSX」。", 422)
-    ensure_export_size(reader.engine, len(selected))
+    decision = ensure_export_size(reader.engine, len(selected))
     # 读事务和读额度都已释放：XLSX 只用已读出的结果生成，不再占着读锁。
-    file = reader.engine._build_xlsx_export(report_name="正式执行复盘", filename="正式执行复盘.xlsx",
-        estimated_rows=len(selected),
+    file = reader.engine._build_xlsx_export(filename="正式执行复盘.xlsx", decision=decision,
         build_direct=lambda: export_execution_review_xlsx(selected, summary_rows=metadata(data, snapshot)),
         build_stream=lambda: export_execution_review_xlsx(selected, summary_rows=metadata(data, snapshot), write_only=True))
     return download_response(file, snapshot)

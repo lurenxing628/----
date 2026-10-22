@@ -7,8 +7,9 @@ from typing import Any, DefaultDict, List, Tuple, TypedDict
 from core.services.capacity.plan_calendar_intervals import union
 from core.services.capacity.plan_calendar_windows import available_intervals
 from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
+from core.shared.local_datetime import parse_local_datetime as parse_dt
 
-from .calculation_helpers import is_internal_source, is_valid_interval, parse_dt
+from .calculation_helpers import is_internal_source, is_valid_interval
 from .report_degradation import record_report_bad_time_row, record_report_zero_capacity_window
 
 

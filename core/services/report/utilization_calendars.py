@@ -8,6 +8,8 @@ from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLim
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES, MAX_POLICY_CELLS
 from core.services.capacity.plan_calendar_windows import apply_resource, policy_projection, unavailable
 
+from .calculation_helpers import is_internal_source
+
 
 def resource_calendars(conn, rows, start, end):
     ids = _internal_resource_ids(rows)
@@ -25,9 +27,16 @@ def resource_calendars(conn, rows, start, end):
 
 def _internal_resource_ids(rows):
     """Sorted machine and operator ids referenced by internal-source rows."""
-    return {kind: sorted({str(row[kind + "_id"]) for row in rows if row.get(kind + "_id") not in (None, "")
-                          and str(row.get("source") or "").strip().lower() == "internal"})
-            for kind in ("machine", "operator")}
+    ids = {"machine": set(), "operator": set()}
+    for row in rows:
+        if not is_internal_source(row.get("source")):
+            continue
+        for kind, keys in ids.items():
+            value = row.get(kind + "_id")
+            if value not in (None, ""):
+                keys.add(str(value))
+    return {kind: sorted(keys) for kind, keys in ids.items()}
+
 
 
 def _projection_dates(start, end):

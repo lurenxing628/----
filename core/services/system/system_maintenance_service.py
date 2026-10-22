@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional, Tuple
+from typing import Optional
 
 from core.infrastructure.backup import MIN_KEEP_BACKUPS
 from core.infrastructure.logging import safe_log
@@ -36,19 +36,13 @@ def _parse_db_dt(value: Optional[str]) -> ParsedJobTime:
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
         try:
             return ParsedJobTime(value=datetime.strptime(v, fmt), state="valid", raw=v)
-        except Exception:
+        except ValueError:
             continue
     return ParsedJobTime(value=None, state="invalid", raw=raw)
 
 
 def _fmt_db_dt(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
-
-
-@dataclass
-class MaintenanceResult:
-    ran_any: bool
-    details: Dict[str, Any]
 
 
 class SystemMaintenanceService:
@@ -89,9 +83,9 @@ class SystemMaintenanceService:
         logger=None,
         op_logger=None,
         admission_window=None,
-    ) -> MaintenanceResult:
+    ) -> None:
         if not MaintenanceThrottle.allow_run(cls.CHECK_THROTTLE_SECONDS):
-            return MaintenanceResult(ran_any=False, details={"throttled": True})
+            return
 
         cfg_svc = SystemConfigService(conn, logger=logger)
         cfg = cfg_svc.get_snapshot_readonly(backup_keep_days_default=int(backup_keep_days_default))
@@ -104,20 +98,17 @@ class SystemMaintenanceService:
             def is_due(*args):
                 nonlocal admitted
                 captured = cls._is_due(*args)
-                if captured[0] and admission_window is not None and not admitted:
+                if captured and admission_window is not None and not admitted:
                     ownership.enter_context(admission_window())
                     admitted = True
                 return captured
-
-            details: Dict[str, Any] = {"throttled": False, "now": _fmt_db_dt(now)}
-            ran_any = False
 
             # -------------------------
             # 1) 自动备份
             # -------------------------
             auto_backup_failed_this_round = False
             if cfg.auto_backup_enabled == YesNo.YES.value:
-                ran, d = maybe_run_auto_backup(
+                due, ok = maybe_run_auto_backup(
                     conn,
                     job_repo=job_repo,
                     now=now,
@@ -131,10 +122,8 @@ class SystemMaintenanceService:
                     is_due_fn=is_due,
                     fmt_db_dt_fn=_fmt_db_dt,
                 )
-                details["auto_backup"] = d
-                ran_any = ran_any or ran
-                # 本轮到点执行了自动备份但失败（due=True 且 ran=False）：清理不得继续。
-                auto_backup_failed_this_round = bool(d.get("due")) and not ran
+                # 到期但备份失败时，保留现有好备份，阻止本轮清理。
+                auto_backup_failed_this_round = due and not ok
 
             # -------------------------
             # 2) 自动清理备份（保留策略）
@@ -150,12 +139,8 @@ class SystemMaintenanceService:
                         "本轮自动备份失败，已跳过本轮自动清理备份（reason=auto_backup_failed_this_round，"
                         "失败原因见 auto_backup 的 error 日志与 OperationLogs）。",
                     )
-                    details["auto_backup_cleanup"] = {
-                        "skipped": True,
-                        "reason": "auto_backup_failed_this_round",
-                    }
                 else:
-                    ran, d = maybe_run_auto_backup_cleanup(
+                    maybe_run_auto_backup_cleanup(
                         conn,
                         job_repo=job_repo,
                         now=now,
@@ -170,14 +155,12 @@ class SystemMaintenanceService:
                         fmt_db_dt_fn=_fmt_db_dt,
                         min_keep_backups=int(cls.MIN_KEEP_BACKUPS),
                     )
-                    details["auto_backup_cleanup"] = d
-                    ran_any = ran_any or ran
 
             # -------------------------
             # 3) 自动清理操作日志（保留策略）
             # -------------------------
             if cfg.auto_log_cleanup_enabled == YesNo.YES.value:
-                ran, d = maybe_run_auto_log_cleanup(
+                maybe_run_auto_log_cleanup(
                     conn,
                     job_repo=job_repo,
                     now=now,
@@ -191,23 +174,14 @@ class SystemMaintenanceService:
                     is_due_fn=is_due,
                     fmt_db_dt_fn=_fmt_db_dt,
                 )
-                details["auto_log_cleanup"] = d
-                ran_any = ran_any or ran
-
-            return MaintenanceResult(ran_any=ran_any, details=details)
-
     # -------------------------
     # 内部辅助方法
     # -------------------------
     @classmethod
-    def _is_due(cls, job_repo: SystemJobStateRepository, job_key: str, now: datetime, interval_minutes: int) -> Tuple[bool, Optional[str], str, Optional[str]]:
+    def _is_due(cls, job_repo: SystemJobStateRepository, job_key: str, now: datetime, interval_minutes: int) -> bool:
         st = job_repo.get(job_key)
         parsed = _parse_db_dt(st.last_run_time if st else None)
         if parsed.state != "valid" or parsed.value is None:
-            return True, None, parsed.state, parsed.raw
+            return True
         delta = now - parsed.value
-        return delta >= timedelta(minutes=int(interval_minutes)), _fmt_db_dt(parsed.value), parsed.state, parsed.raw
-
-    @classmethod
-    def reset_throttle_for_tests(cls) -> None:
-        MaintenanceThrottle.reset()
+        return delta >= timedelta(minutes=int(interval_minutes))

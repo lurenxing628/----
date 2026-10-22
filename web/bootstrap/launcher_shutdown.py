@@ -88,7 +88,7 @@ def read_exit_backup_enabled(manager, connect):
     conn = None
     try:
         conn = connect(manager.db_path)
-        from core.services.system import SystemConfigService
+        from core.services.system.system_config_service import SystemConfigService
 
         cfg = SystemConfigService(conn, logger=manager.logger).get_snapshot_readonly(
             backup_keep_days_default=int(getattr(manager, "keep_days", 7) or 7))

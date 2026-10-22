@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Mapping, Optional
 
-from core.services.common.degradation import DegradationCollector, degradation_events_to_dicts
+from core.shared.degradation import DegradationCollector, degradation_events_to_dicts
 
 BAD_TIME_MESSAGE = "开始或结束时间写法不对，已过滤。"
 MISSING_MACHINE_MESSAGE = "停机记录缺少设备编号，已过滤。"
@@ -131,7 +131,8 @@ def report_degradation_payload(collector: DegradationCollector) -> Dict[str, Any
     overlap_merged_count = int(counters.get("downtime_overlap_merged") or 0)
     zero_capacity_count = int(counters.get("zero_capacity_window") or 0)
     unknown_capacity_count = int(counters.get("resource_load_capacity_failed") or 0)
-    samples = [str(event.sample) for event in collector.to_list() if event.code == "bad_time_row_skipped" and event.sample]
+    events = collector.to_list()
+    samples = [str(event.sample) for event in events if event.code == "bad_time_row_skipped" and event.sample]
     messages: List[str] = []
     if bad_time_count > 0:
         messages.append(f"已过滤 {bad_time_count} 条开始或结束时间写法不对的记录，下面结果只按可解析记录计算。")
@@ -145,7 +146,7 @@ def report_degradation_payload(collector: DegradationCollector) -> Dict[str, Any
         messages.append(f"共 {unknown_capacity_count} 行资源的日历资料不完整，占用率无法计算；具体原因见计算说明。")
     return {
         "report_degraded": bool(collector),
-        "report_degradation_events": degradation_events_to_dicts(collector.to_list()),
+        "report_degradation_events": degradation_events_to_dicts(events),
         "report_degradation_counters": counters,
         "report_degradation_samples": samples[:3],
         "report_degradation_message": "".join(messages),
@@ -154,49 +155,3 @@ def report_degradation_payload(collector: DegradationCollector) -> Dict[str, Any
         "report_downtime_overlap_merged_count": overlap_merged_count,
         "report_zero_capacity_row_count": zero_capacity_count,
     }
-
-
-def report_degradation_summary_rows(degradation: Optional[Mapping[str, Any]]) -> List[List[Any]]:
-    data = dict(degradation or {})
-    bad_time_count = _summary_count(data, "report_bad_time_skipped_count")
-    invalid_due_count = _summary_count(data, "report_invalid_due_count")
-    missing_machine_count = _summary_count(data, "report_missing_machine_skipped_count")
-    overlap_merged_count = _summary_count(data, "report_downtime_overlap_merged_count")
-    zero_capacity_count = _summary_count(data, "report_zero_capacity_row_count")
-    # 任意一类降级都要在导出摘要里诚实出现，不能只看坏完工时间数。
-    # 否则“仅坏交期、无坏完工时间”时页面有提示而 Excel 摘要静默为空（两条链路口径不一致）。
-    degraded = (
-        bool(data.get("report_degraded"))
-        or bad_time_count > 0
-        or invalid_due_count > 0
-        or missing_machine_count > 0
-        or overlap_merged_count > 0
-        or zero_capacity_count > 0
-    )
-    if not degraded:
-        return []
-    rows: List[List[Any]] = [["数据不完整", "是"]]
-    rows.extend(_bad_time_summary_rows(data, bad_time_count))
-    if invalid_due_count > 0:
-        rows.append(["交期写法异常批次数", invalid_due_count])
-    if missing_machine_count > 0:
-        rows.append(["缺少设备编号的停机记录数", missing_machine_count])
-    if overlap_merged_count > 0:
-        rows.append(["同设备停机时间重叠处数", overlap_merged_count])
-    if zero_capacity_count > 0:
-        rows.append(["产能为 0 利用率不适用的资源行数", zero_capacity_count])
-    rows.append(["处理提示", data.get("report_degradation_message") or ""])
-    return rows
-
-
-def _summary_count(data: Mapping[str, Any], key: str) -> int:
-    return int(data.get(key) or 0)
-
-
-def _bad_time_summary_rows(data: Mapping[str, Any], bad_time_count: int) -> List[List[Any]]:
-    if bad_time_count <= 0:
-        return []
-    count_label = _text(data.get("report_degradation_count_label")) or "开始或结束时间写法不对，已过滤的记录数"
-    sample_label = _text(data.get("report_degradation_sample_label")) or "已过滤记录样例"
-    samples_text = "；".join(str(item) for item in data.get("report_degradation_samples") or [])
-    return [[count_label, bad_time_count], [sample_label, samples_text]]

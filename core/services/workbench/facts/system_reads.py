@@ -8,9 +8,9 @@ from core.models.operation_log_labels import operation_log_summary
 from core.models.operation_log_public_projection import public_operation_log_detail_text
 from core.models.workbench_command import canonical_json
 from core.models.workbench_system import normalize_log_level
-from core.services.system.operation_log_service import OperationLogService
 from core.services.system.runtime_log_reader import LOG_FILE_CHOICES, NO_ANCHOR_HEAD, read_log_entries_tail
 from core.services.workbench.messages import stored_utc_text
+from data.repositories.operation_log_repo import OperationLogRepository
 
 from .system_redaction import public_system_text
 
@@ -46,7 +46,7 @@ def backup_records(directory):
 def _runtime_rows(log_dir, name):
     path = os.path.join(log_dir, name)
     try:
-        entries = read_log_entries_tail(path, max_entries=201, include_origin=True, missing_ok=False)
+        entries = read_log_entries_tail(path, max_entries=201, include_origin=True)
     except FileNotFoundError:
         return [], {"source": name, "state": "missing", "window": 200, "count": None, "truncated": False}
     rows = []
@@ -79,7 +79,7 @@ def log_records(conn, log_dir, logger):
             sources.append({"source": name, "state": "error", "window": 200, "count": None,
                             "truncated": False, "message": "日志文件读不到，请让维护人员检查日志文件。"})
     try:
-        operations = OperationLogService(conn, logger=logger).list_recent(limit=501)
+        operations = OperationLogRepository(conn, logger=logger).list_recent(limit=501)
         for item in operations[:500]:
             summary = public_system_text(operation_log_summary(item.module, item.action), 1000)
             body = public_system_text(public_operation_log_detail_text(item.detail) + "\n" + str(item.error_message or ""))

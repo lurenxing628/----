@@ -1,14 +1,10 @@
 from __future__ import annotations
 
 import io
-import logging
 import tempfile
 from typing import Any, BinaryIO, Dict, List, Optional, cast
 
-from core.services.common.excel_templates import _sanitize_export_cell
-from core.services.report.values.number_parsing import parse_optional_report_float
-
-_LOGGER = logging.getLogger(__name__)
+from core.services.common.excel_templates import sanitize_export_cell
 
 
 def _auto_width(ws) -> None:
@@ -24,7 +20,7 @@ def _auto_width(ws) -> None:
 
 
 def _append_row(ws, values: List[Any]) -> None:
-    ws.append([_sanitize_export_cell(v) for v in values])
+    ws.append([sanitize_export_cell(v) for v in values])
 
 
 def _append_write_only_row(ws, values: List[Any], *, is_header: bool = False) -> None:
@@ -33,7 +29,7 @@ def _append_write_only_row(ws, values: List[Any], *, is_header: bool = False) ->
 
     row_cells: List[Any] = []
     for value in values:
-        cell = WriteOnlyCell(ws, value=_sanitize_export_cell(value))
+        cell = WriteOnlyCell(ws, value=sanitize_export_cell(value))
         if is_header:
             cell.font = Font(bold=True)
             cell.alignment = Alignment(horizontal="center", vertical="center")
@@ -62,21 +58,8 @@ def _make_output_buffer(*, write_only: bool) -> BinaryIO:
     return io.BytesIO()
 
 
-def _close_workbook_best_effort(wb: Any) -> None:
-    try:
-        wb.close()
-    except Exception as exc:
-        _LOGGER.warning("关闭报表 Excel 工作簿失败：%s", exc)
-
-
-def _utilization_percent(value: Any) -> Optional[float]:
-    number = parse_optional_report_float(
-        value,
-        field="utilization",
-        label="利用率",
-        source_label="资源负荷导出数据",
-    )
-    return round(number * 100.0, 2) if number is not None else None
+def _utilization_percent(value: Optional[float]) -> Optional[float]:
+    return round(value * 100.0, 2) if value is not None else None
 
 
 _OVERDUE_HEADERS = ["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(天)", "超期(小时)"]
@@ -113,7 +96,7 @@ def _append_summary_row(ws, values: List[Any], *, write_only: bool) -> None:
         from openpyxl.cell import WriteOnlyCell
         from openpyxl.styles import Alignment
 
-        cells = [WriteOnlyCell(ws, value=_sanitize_export_cell(values[0])),
+        cells = [WriteOnlyCell(ws, value=sanitize_export_cell(values[0])),
                  WriteOnlyCell(ws, value=values[1])]
         cells[1].data_type = "s"
         for cell in cells:
@@ -128,7 +111,7 @@ def _append_summary_row(ws, values: List[Any], *, write_only: bool) -> None:
 def _append_summary_sheet(wb, summary_rows: Optional[List[List[Any]]], *, write_only: bool) -> None:
     from openpyxl.styles import Alignment, Font
 
-    rows = list(summary_rows or [])
+    rows = summary_rows
     if not rows:
         return
     if write_only:
@@ -138,18 +121,8 @@ def _append_summary_sheet(wb, summary_rows: Optional[List[List[Any]]], *, write_
             _append_summary_row(ws, row, write_only=True)
         return
 
-    if (
-        len(wb.worksheets) == 1
-        and wb.active is not None
-        and wb.active.title == "Sheet"
-        and wb.active.max_row == 1
-        and wb.active.max_column == 1
-        and wb.active["A1"].value is None
-    ):
-        ws = wb.active
-        ws.title = "查询摘要"
-    else:
-        ws = wb.create_sheet("查询摘要")
+    ws = wb.worksheets[0]
+    ws.title = "查询摘要"
     _append_row(ws, ["项目", "内容"])
     for row in rows:
         _append_summary_row(ws, row, write_only=False)
@@ -165,7 +138,6 @@ def _append_summary_sheet(wb, summary_rows: Optional[List[List[Any]]], *, write_
 def export_overdue_xlsx(
     items: List[Dict[str, Any]],
     *,
-    diagnosis_rows: Optional[List[Dict[str, Any]]] = None,
     summary_rows: Optional[List[List[Any]]] = None,
     write_only: bool = False,
 ) -> BinaryIO:
@@ -174,81 +146,38 @@ def export_overdue_xlsx(
     wb = openpyxl.Workbook(write_only=write_only)
     try:
         _append_summary_sheet(wb, summary_rows, write_only=write_only)
-        ws = wb.create_sheet("超期清单") if (write_only or summary_rows) else wb.active
-        if ws is None:
-            raise RuntimeError("无法创建超期清单工作表")
-        if not write_only:
+        ws = wb.create_sheet("超期清单") if (write_only or summary_rows) else wb.worksheets[0]
+        if write_only:
+            _append_write_only_row(ws, _OVERDUE_HEADERS, is_header=True)
+        else:
             ws.title = "超期清单"
             _append_row(ws, _OVERDUE_HEADERS)
-            for it in items:
-                _append_row(
-                    ws,
-                    [
-                        it.get("bucket_label"),
-                        it.get("batch_id"),
-                        it.get("part_no"),
-                        it.get("part_name"),
-                        it.get("quantity"),
-                        it.get("due_date"),
-                        it.get("finish_time") or it.get("as_of_time"),
-                        it.get("delay_days"),
-                        it.get("delay_hours"),
-                    ],
-                )
+        append = _append_write_only_row if write_only else _append_row
+        for item in items:
+            append(ws, [item.get("bucket_label"), item.get("batch_id"), item.get("part_no"),
+                        item.get("part_name"), item.get("quantity"), item.get("due_date"),
+                        item.get("finish_time") or item.get("as_of_time"),
+                        item.get("delay_days"), item.get("delay_hours")])
+        if not write_only:
             _format_sheet(ws)
-
-            _append_diagnosis_sheet(wb, list(diagnosis_rows or []), write_only=False)
-        else:
-            _append_write_only_row(ws, _OVERDUE_HEADERS, is_header=True)
-            for it in items:
-                _append_write_only_row(
-                    ws,
-                    [
-                        it.get("bucket_label"),
-                        it.get("batch_id"),
-                        it.get("part_no"),
-                        it.get("part_name"),
-                        it.get("quantity"),
-                        it.get("due_date"),
-                        it.get("finish_time") or it.get("as_of_time"),
-                        it.get("delay_days"),
-                        it.get("delay_hours"),
-                    ],
-                )
-            _append_diagnosis_sheet(wb, list(diagnosis_rows or []), write_only=True)
+        _append_diagnosis_sheet(wb, write_only=write_only)
 
         buf = _make_output_buffer(write_only=write_only)
         wb.save(buf)
         buf.seek(0)
         return buf
     finally:
-        _close_workbook_best_effort(wb)
+        wb.close()
 
 
-def _append_diagnosis_sheet(wb, diagnosis_rows: List[Dict[str, Any]], *, write_only: bool) -> None:
+def _append_diagnosis_sheet(wb, *, write_only: bool) -> None:
     ws = wb.create_sheet("诊断依据")
     if write_only:
         _append_write_only_row(ws, _DIAGNOSIS_HEADERS, is_header=True)
-        for row in diagnosis_rows:
-            _append_write_only_row(ws, _diagnosis_values(row))
         return
 
     _append_row(ws, _DIAGNOSIS_HEADERS)
-    for row in diagnosis_rows:
-        _append_row(ws, _diagnosis_values(row))
     _format_sheet(ws)
-
-
-def _diagnosis_values(row: Dict[str, Any]) -> List[Any]:
-    return [
-        row.get("diagnosis_id"),
-        row.get("summary"),
-        row.get("check_info"),
-        row.get("evidence_sources"),
-        row.get("data_gaps"),
-        row.get("generated_at"),
-        row.get("filters"),
-    ]
 
 
 def export_utilization_xlsx(
@@ -267,9 +196,7 @@ def export_utilization_xlsx(
             ("machine", "设备负荷", ["设备编号", "设备名称"], machines),
             ("operator", "人员负荷", ["工号", "姓名"], operators),
         ):
-            sheet = wb.create_sheet(title) if write_only or summary_rows or kind == "operator" else wb.active
-            if sheet is None:
-                raise RuntimeError("无法创建资源负荷工作表")
+            sheet = wb.create_sheet(title) if write_only or summary_rows or kind == "operator" else wb.worksheets[0]
             sheet.title = title
             header = labels + ["班表内占用(小时)", "任务数", "可用工时(小时)", "整窗占用率(%)",
                                "累计负荷(小时)", "重叠负荷(小时)", "班表外占用(小时)", "计算方式版本", "计算说明"]
@@ -296,7 +223,7 @@ def export_utilization_xlsx(
         buf.seek(0)
         return buf
     finally:
-        _close_workbook_best_effort(wb)
+        wb.close()
 
 
 def export_downtime_impact_xlsx(
@@ -310,50 +237,27 @@ def export_downtime_impact_xlsx(
     wb = openpyxl.Workbook(write_only=write_only)
     try:
         _append_summary_sheet(wb, summary_rows, write_only=write_only)
-        ws = wb.create_sheet("停机影响") if (write_only or summary_rows) else wb.active
-        if ws is None:
-            raise RuntimeError("无法创建停机影响工作表")
-        if not write_only:
-            ws.title = "停机影响"
-            _append_row(ws, ["设备编号", "设备名称", "停机时长(小时)", "停机次数", "与排程重叠(小时)", "重叠次数"])
-            for r in machines:
-                _append_row(
-                    ws,
-                    [
-                        r.get("machine_id"),
-                        r.get("machine_name"),
-                        r.get("downtime_hours"),
-                        r.get("downtime_count"),
-                        r.get("schedule_overlap_hours"),
-                        r.get("schedule_overlap_count"),
-                    ],
-                )
-            _format_sheet(ws)
+        ws = wb.create_sheet("停机影响") if (write_only or summary_rows) else wb.worksheets[0]
+        header = ["设备编号", "设备名称", "停机时长(小时)", "停机次数", "与排程重叠(小时)", "重叠次数"]
+        if write_only:
+            _append_write_only_row(ws, header, is_header=True)
         else:
-            _append_write_only_row(
-                ws,
-                ["设备编号", "设备名称", "停机时长(小时)", "停机次数", "与排程重叠(小时)", "重叠次数"],
-                is_header=True,
-            )
-            for r in machines:
-                _append_write_only_row(
-                    ws,
-                    [
-                        r.get("machine_id"),
-                        r.get("machine_name"),
-                        r.get("downtime_hours"),
-                        r.get("downtime_count"),
-                        r.get("schedule_overlap_hours"),
-                        r.get("schedule_overlap_count"),
-                    ],
-                )
+            ws.title = "停机影响"
+            _append_row(ws, header)
+        append = _append_write_only_row if write_only else _append_row
+        for row in machines:
+            append(ws, [row.get("machine_id"), row.get("machine_name"), row.get("downtime_hours"),
+                        row.get("downtime_count"), row.get("schedule_overlap_hours"),
+                        row.get("schedule_overlap_count")])
+        if not write_only:
+            _format_sheet(ws)
 
         buf = _make_output_buffer(write_only=write_only)
         wb.save(buf)
         buf.seek(0)
         return buf
     finally:
-        _close_workbook_best_effort(wb)
+        wb.close()
 
 
 def export_execution_review_xlsx(
@@ -367,9 +271,7 @@ def export_execution_review_xlsx(
     wb = openpyxl.Workbook(write_only=write_only)
     try:
         _append_summary_sheet(wb, summary_rows, write_only=write_only)
-        ws = wb.create_sheet("计划和现场实际") if (write_only or summary_rows) else wb.active
-        if ws is None:
-            raise RuntimeError("无法创建计划和现场实际工作表")
+        ws = wb.create_sheet("计划和现场实际") if (write_only or summary_rows) else wb.worksheets[0]
         if not write_only:
             ws.title = "计划和现场实际"
             _append_row(ws, _EXECUTION_REVIEW_HEADERS)

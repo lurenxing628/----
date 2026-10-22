@@ -19,9 +19,9 @@ from core.services.system.runtime_log_reader import (
     SECRET_FILE_NAME,
 )
 from core.services.system.system_config_service import SystemConfigService
-from core.services.system.system_job_state_query_service import SystemJobStateQueryService
 from core.services.system.system_maintenance_service import _parse_db_dt
 from data.repositories.operation_log_repo import OperationLogRepository
+from data.repositories.system_job_state_repo import SystemJobStateRepository
 
 _CONFIG_FIELDS = (
     "auto_backup_enabled", "auto_backup_interval_minutes",
@@ -99,7 +99,7 @@ def _inventory(path: str, kind: str) -> Dict[str, Any]:
             raise OSError("Metadata directory must not be a symbolic link")
         if not stat.S_ISDIR(directory.st_mode):
             raise NotADirectoryError("Metadata path is not a directory")
-        names = sorted(name for name in os.listdir(path) if _matches_file(name, kind))
+        names = [name for name in os.listdir(path) if _matches_file(name, kind)]
     except FileNotFoundError as exc:
         result.update(status="missing", error=_error(exc))
         return result
@@ -114,6 +114,7 @@ def _inventory(path: str, kind: str) -> Dict[str, Any]:
         else:
             result["issues"].append(item)
     files.sort(key=lambda item: (item["modified_at"], item["filename"]), reverse=True)
+    result["issues"].sort(key=lambda item: item["filename"])
     result.update(
         status="partial" if result["issues"] else ("available" if files else "empty"),
         count=None if result["issues"] else len(files), known_count=len(files),
@@ -243,9 +244,9 @@ def _job_result(raw: Any, kind: str) -> Dict[str, Any]:
     return result
 
 
-def _maintenance_job(service, kind: str, initial: Dict[str, Any]):
-    job = {"kind": kind, "status": initial["status"], "last_run_time": None,
-           "last_run_time_status": "not_read", "result": None, "error": initial["error"]}
+def _maintenance_job(service, kind: str):
+    job = {"kind": kind, "status": "not_read", "last_run_time": None,
+           "last_run_time_status": "not_read", "result": None, "error": None}
     if service is None:
         return job, False
     try:
@@ -278,11 +279,8 @@ def _maintenance(conn) -> Dict[str, Any]:
               "jobs": [], "error": None}
     service = None
     if conn is not None:
-        try:
-            service = SystemJobStateQueryService(conn)
-        except _READ_ERRORS as exc:
-            result.update(status="error", error=_error(exc))
-    outcomes = [_maintenance_job(service, kind, result) for kind in _JOBS]
+        service = SystemJobStateRepository(conn)
+    outcomes = [_maintenance_job(service, kind) for kind in _JOBS]
     result["jobs"] = [job for job, _ in outcomes]
     if service is not None:
         count = sum(exists for _, exists in outcomes)

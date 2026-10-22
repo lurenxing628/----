@@ -41,8 +41,4 @@ def planned_review_labels(row: Dict[str, Any]) -> Dict[str, Any]:
         "planned_start_time_label": _display_time(row.get("start_time")),
         "planned_end_time_label": _display_time(row.get("end_time")),
         "planned_resource_label": resource_pair_label(machine, operator, empty_label="未安排计划资源"),
-        "planned_machine_id": str(row.get("machine_id") or ""),
-        "planned_machine_name": str(row.get("machine_name") or ""),
-        "planned_operator_id": str(row.get("operator_id") or ""),
-        "planned_operator_name": str(row.get("operator_name") or ""),
     }

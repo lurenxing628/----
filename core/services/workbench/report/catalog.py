@@ -7,7 +7,7 @@ from datetime import datetime
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_report import ReportScope
-from core.services.report import calculations
+from core.services.common.overdue_calculations import compute_overdue_bucket_groups
 from core.services.report.exporters.xlsx import (
     export_downtime_impact_xlsx,
     export_overdue_xlsx,
@@ -66,7 +66,7 @@ def _identity(facts, kind, key):
 
 def _overdue_rows(facts, snapshot):
     rows, source_rows = [], []
-    scheduled, unscheduled, invalid, _ = calculations.compute_overdue_bucket_groups(facts["raw"], now_dt=datetime.fromisoformat(snapshot["as_of"]))
+    scheduled, unscheduled, invalid, _ = compute_overdue_bucket_groups(facts["raw"], now_dt=datetime.fromisoformat(snapshot["as_of"]))
     for row in scheduled + invalid + unscheduled:
         public = {key: row.get(key) for key, _ in CATALOG_COLUMNS["overdue"]}
         public.update({"batch_ref": _identity(facts, "batch", row["batch_id"]), "batch_label": row["batch_id"]})
@@ -119,7 +119,7 @@ def catalog_workspace(facts, snapshot, page):
 def export_catalog_xlsx(reader, data, selected, snapshot):
     if not selected:
         raise WorkbenchCommandRejected("empty_export", "当前筛选范围里没有可导出的结果，没有开始下载。请放宽筛选条件后重试。", 422)
-    ensure_export_size(reader.engine, len(selected))
+    decision = ensure_export_size(reader.engine, len(selected))
     kind = data["topic"]
     def render(write_only=False):
         options = {"summary_rows": metadata(data, snapshot), "write_only": write_only}
@@ -129,5 +129,5 @@ def export_catalog_xlsx(reader, data, selected, snapshot):
             return export_downtime_impact_xlsx(selected, **options)
         return export_utilization_xlsx([row for row in selected if row["resource_kind"] == "machine"],
                                       [row for row in selected if row["resource_kind"] == "operator"], **options)
-    return reader.engine._build_xlsx_export(report_name="其他报表", filename=TOPIC_TITLES[kind] + ".xlsx",
-        estimated_rows=len(selected), build_direct=render, build_stream=lambda: render(True))
+    return reader.engine._build_xlsx_export(filename=TOPIC_TITLES[kind] + ".xlsx",
+        decision=decision, build_direct=render, build_stream=lambda: render(True))

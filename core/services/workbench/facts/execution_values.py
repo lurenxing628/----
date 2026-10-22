@@ -1,11 +1,11 @@
 """Factory wall-clock presentation; unknown values are not zero measurements."""
 
 from core.services.execution.processing_hours import hour_totals as hour_totals
-from core.services.report import calculations
+from core.shared.local_datetime import parse_local_datetime
 
 
 def _local_dt(value):
-    parsed = calculations.parse_dt(value)
+    parsed = parse_local_datetime(value)
     if parsed is None or parsed.tzinfo is not None:
         return None
     return parsed

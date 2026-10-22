@@ -16,9 +16,3 @@ class MaintenanceThrottle:
                 return False
             cls._last_check_ts = now_ts
             return True
-
-    @classmethod
-    def reset(cls) -> None:
-        with cls._check_lock:
-            cls._last_check_ts = 0.0
-

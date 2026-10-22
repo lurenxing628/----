@@ -2,22 +2,21 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from typing import Any, BinaryIO, Callable, ClassVar, Dict, Optional
+from datetime import date, datetime, timedelta
+from typing import Any, BinaryIO, Callable, ClassVar, Dict
 
-from core.errors import AppError, ErrorCode, ValidationError
+from core.errors import ValidationError
 from core.models.report_export import ReportExport, ReportExportDecision
 from core.services.capacity.resource_utilization_metrics import METRIC_VERSION
-from core.services.common.degradation import DegradationCollector
 from core.services.common.plan_query import SchedulePlanQueryService, SchedulePlanResolution
+from core.shared.degradation import DegradationCollector
 from data.repositories import MachineDowntimeRepository
 
-from . import calculations
 from .date_range_limits import ensure_report_date_range_within_limit
-from .report_context_filters import filter_downtime_rows_for_report_context
+from .downtime_impact import compute_downtime_impact
 from .report_degradation import report_degradation_payload
+from .utilization import compute_utilization
 from .utilization_calendars import resource_calendars
-from .values.number_parsing import parse_report_nonnegative_int
 
 
 class ReportEngine:
@@ -47,59 +46,21 @@ class ReportEngine:
         )
 
 
-    def _export_nonnegative_int(self, value: Any, *, field: str, default: Optional[int] = None) -> int:
-        return parse_report_nonnegative_int(
-            value,
-            field=field,
-            label=field,
-            source_label="导出配置",
-            blank_default=int(default or 0),
-        )
-
     def _build_export_decision(self, estimated_rows: int) -> ReportExportDecision:
-        rows = self._export_nonnegative_int(estimated_rows, field="导出行数")
-        direct_max = self._export_nonnegative_int(
-            getattr(self, "EXPORT_DIRECT_MAX_ROWS", 0),
-            field="直接导出行数上限",
-        )
-        stream_max = self._export_nonnegative_int(
-            getattr(self, "EXPORT_STREAM_MAX_ROWS", direct_max),
-            field="流式导出行数上限",
-            default=direct_max,
-        )
-        if stream_max < direct_max:
-            raise ValidationError("流式导出行数上限不能小于直接导出行数上限。", field="流式导出行数上限")
-
-        if rows <= direct_max:
-            return ReportExportDecision(mode="direct", estimated_rows=rows)
-        if rows <= stream_max:
-            return ReportExportDecision(mode="stream", estimated_rows=rows)
-        return ReportExportDecision(mode="reject_need_async", estimated_rows=rows)
-
-    def _raise_export_need_async(self, *, report_name: str, decision: ReportExportDecision) -> None:
-        raise AppError(
-            code=ErrorCode.VALIDATION_ERROR,
-            message=f"{report_name}导出范围过大（预估 {int(decision.estimated_rows)} 行），请缩小范围后重试，或改走后台导出。",
-            details={
-                "field": "导出范围",
-                "mode": decision.mode,
-                "estimated_rows": int(decision.estimated_rows),
-                "report_name": report_name,
-            },
-        )
+        if estimated_rows <= self.EXPORT_DIRECT_MAX_ROWS:
+            return ReportExportDecision(mode="direct", estimated_rows=estimated_rows)
+        if estimated_rows <= self.EXPORT_STREAM_MAX_ROWS:
+            return ReportExportDecision(mode="stream", estimated_rows=estimated_rows)
+        return ReportExportDecision(mode="reject_need_async", estimated_rows=estimated_rows)
 
     def _build_xlsx_export(
         self,
         *,
-        report_name: str,
         filename: str,
-        estimated_rows: int,
+        decision: ReportExportDecision,
         build_direct: Callable[[], BinaryIO],
         build_stream: Callable[[], BinaryIO],
     ) -> ReportExport:
-        decision = self._build_export_decision(estimated_rows)
-        if decision.mode == "reject_need_async":
-            self._raise_export_need_async(report_name=report_name, decision=decision)
         data = build_stream() if decision.mode == "stream" else build_direct()
         return ReportExport(
             filename=filename,
@@ -118,8 +79,8 @@ class ReportEngine:
         end_field: str = "end_date",
         limit_field: str = "date_range",
     ):
-        sd = calculations.parse_date(start_date, field=start_field)
-        ed = calculations.parse_date(end_date, field=end_field)
+        sd = _parse_date(start_date, field=start_field)
+        ed = _parse_date(end_date, field=end_field)
         if ed < sd:
             raise ValidationError("结束日期不能早于开始日期", field=end_field)
         ensure_report_date_range_within_limit(sd, ed, field=limit_field)
@@ -142,7 +103,7 @@ class ReportEngine:
 
         calendars = resource_calendars(self.conn, schedule_rows, start_dt, end_dt_excl)
         degradation_collector = DegradationCollector()
-        machine_rows, operator_rows = calculations.compute_utilization(
+        machine_rows, operator_rows = compute_utilization(
             schedule_rows=schedule_rows,
             start_dt=start_dt,
             end_dt_excl=end_dt_excl,
@@ -180,13 +141,7 @@ class ReportEngine:
         downtime_rows = self.machine_downtime_repo.list_active_overlaps_with_machine_names(start_s, end_s)
         sch_rows = self._list_plan_rows_between(resolution, start_s, end_s)
         degradation_collector = DegradationCollector()
-        downtime_rows = filter_downtime_rows_for_report_context(
-            downtime_rows,
-            sch_rows,
-            degradation_collector=degradation_collector,
-        )
-
-        machines = calculations.compute_downtime_impact(
+        machines = compute_downtime_impact(
             downtime_rows=downtime_rows,
             schedule_rows=sch_rows,
             start_dt=start_dt,
@@ -202,3 +157,15 @@ class ReportEngine:
             "machines": machines,
             **degradation,
         }
+
+
+def _parse_date(value: Any, field: str) -> date:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value or "").strip().replace("/", "-")
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValidationError("日期格式不合法（期望：YYYY-MM-DD）", field=field) from exc

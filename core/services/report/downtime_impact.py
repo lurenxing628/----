@@ -4,16 +4,17 @@ from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from core.services.capacity.plan_calendar_intervals import IntervalIndex
-from core.services.common.degradation import DegradationCollector
+from core.shared.degradation import DegradationCollector
+from core.shared.local_datetime import parse_local_datetime as parse_dt
 
-from .calculation_helpers import is_internal_source, is_valid_interval, overlap_seconds, parse_dt
+from .calculation_helpers import is_internal_source, is_valid_interval, overlap_seconds
 from .report_degradation import (
     record_report_bad_time_row,
     record_report_downtime_overlap_merged,
     record_report_missing_machine_row,
 )
 
-DowntimeSegment = Tuple[datetime, datetime, str, str]
+DowntimeSegment = Tuple[datetime, datetime]
 ScheduleSegment = Tuple[datetime, datetime]
 TimeInterval = Tuple[datetime, datetime]
 
@@ -59,7 +60,7 @@ def _index_downtime_rows(
         if not s_dt or not e_dt or not is_valid_interval(s_dt, e_dt):
             record_report_bad_time_row(degradation_collector, scope="report.downtime.downtime", row=r)
             continue
-        by_machine_dt.setdefault(mc, []).append((s_dt, e_dt, str(r.get("reason_code") or ""), str(r.get("reason_detail") or "")))
+        by_machine_dt.setdefault(mc, []).append((s_dt, e_dt))
         if mc not in machine_name:
             machine_name[mc] = r.get("machine_name")
     return by_machine_dt, machine_name
@@ -99,7 +100,7 @@ def _merge_downtime_intervals(
     检测到重叠必须降级留痕（与同文件缺 machine_id / 坏时间行同契约），不许静默修数。
     首尾相接（前段 end == 后段 start）不算重叠，不留痕。
     """
-    ordered = sorted((s, e) for s, e, _, _ in downtime_segments)
+    ordered = sorted(downtime_segments)
     merged: List[TimeInterval] = []
     for s, e in ordered:
         if merged and s < merged[-1][1]:

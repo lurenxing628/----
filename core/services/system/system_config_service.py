@@ -1,27 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
-from core.errors import ValidationError
-from core.infrastructure.transaction import TransactionManager
-from core.services.common.enum_normalizers import normalize_yes_no_wide
+from core.shared.boolean_normalize import normalize_yes_no_wide
 from data.repositories import SystemConfigRepository
-
-_DIRTY_FIELD_LABELS = {
-    "auto_backup_enabled": "自动备份开关",
-    "auto_backup_interval_minutes": "自动备份间隔",
-    "auto_backup_cleanup_enabled": "自动清理备份开关",
-    "auto_backup_keep_days": "备份保留天数",
-    "auto_backup_cleanup_interval_minutes": "自动清理备份间隔",
-    "auto_log_cleanup_enabled": "自动清理日志开关",
-    "auto_log_cleanup_keep_days": "日志保留天数",
-    "auto_log_cleanup_interval_minutes": "自动清理日志间隔",
-}
-
-
-def _dirty_field_label(field: str) -> str:
-    return _DIRTY_FIELD_LABELS.get(str(field or "").strip(), "系统配置项")
 
 
 def _normalize_yes_no(value: Any) -> str:
@@ -33,19 +16,6 @@ def _normalize_yes_no(value: Any) -> str:
 
 def _switch_value_label(value: Any) -> str:
     return "启用" if str(value or "").strip().lower() == "yes" else "关闭"
-
-
-def _parse_int(value: Any, field: str, min_v: int, max_v: int) -> int:
-    raw = "" if value is None else str(value).strip()
-    if raw == "":
-        raise ValidationError(f"“{field}”不能为空", field=field)
-    try:
-        v = int(raw)
-    except Exception as e:
-        raise ValidationError(f"“{field}”必须是整数", field=field) from e
-    if v < min_v or v > max_v:
-        raise ValidationError(f"“{field}”范围不合法（允许 {min_v}~{max_v}）", field=field)
-    return v
 
 
 @dataclass
@@ -60,26 +30,6 @@ class SystemConfigSnapshot:
     auto_log_cleanup_interval_minutes: int
     dirty_fields: List[str]
     dirty_reasons: Dict[str, str]
-
-    def to_dict(self) -> Dict[str, Any]:
-        dirty_reasons = dict(self.dirty_reasons or {})
-        return {
-            "auto_backup_enabled": self.auto_backup_enabled,
-            "auto_backup_interval_minutes": int(self.auto_backup_interval_minutes),
-            "auto_backup_cleanup_enabled": self.auto_backup_cleanup_enabled,
-            "auto_backup_keep_days": int(self.auto_backup_keep_days),
-            "auto_backup_cleanup_interval_minutes": int(self.auto_backup_cleanup_interval_minutes),
-            "auto_log_cleanup_enabled": self.auto_log_cleanup_enabled,
-            "auto_log_cleanup_keep_days": int(self.auto_log_cleanup_keep_days),
-            "auto_log_cleanup_interval_minutes": int(self.auto_log_cleanup_interval_minutes),
-            "dirty_fields": list(self.dirty_fields or []),
-            "dirty_field_labels": [_dirty_field_label(field) for field in list(self.dirty_fields or [])],
-            "dirty_reasons": dirty_reasons,
-            "dirty_reason_items": [
-                {"field": field, "label": _dirty_field_label(field), "reason": dirty_reasons.get(field) or "旧格式已自动整理，请检查后保存。"}
-                for field in list(self.dirty_fields or [])
-            ],
-        }
 
 
 class SystemConfigService:
@@ -98,33 +48,24 @@ class SystemConfigService:
     MAX_KEEP_DAYS = 365
 
     def __init__(self, conn, logger=None):
-        self.conn = conn
-        self.logger = logger
-        self.tx = TransactionManager(conn)
         self.repo = SystemConfigRepository(conn, logger=logger)
 
-    def _read_snapshot(self, backup_keep_days_default: int, stored_values=None) -> SystemConfigSnapshot:
-        stored_values = self.repo.read_values() if stored_values is None else stored_values
+    def _read_snapshot(self, backup_keep_days_default: int, stored_values) -> SystemConfigSnapshot:
         dirty_fields: List[str] = []
         dirty_reasons: Dict[str, str] = {}
 
         def _mark_dirty(key: str, reason: str) -> None:
-            field = str(key or "").strip()
-            text = str(reason or "").strip()
-            if not field or not text:
-                return
-            if field not in dirty_fields:
-                dirty_fields.append(field)
-            dirty_reasons[field] = text
+            dirty_fields.append(key)
+            dirty_reasons[key] = reason
 
         def _get_yes_no(key: str, default: str) -> str:
             raw = stored_values.get(key, default)
             raw = default if raw is None else raw
             normalized = _normalize_yes_no(raw)
-            raw_text = "" if raw is None else str(raw).strip()
+            raw_text = str(raw).strip()
             if raw_text and raw_text.lower() not in {"yes", "no"}:
                 _mark_dirty(key, f"这个开关保存的是旧写法，本次先按“{_switch_value_label(normalized)}”处理。")
-            elif raw is not None and not raw_text:
+            elif not raw_text:
                 _mark_dirty(key, f"这个开关保存为空，本次先按“{_switch_value_label(normalized)}”处理。")
             return normalized
 
@@ -138,7 +79,7 @@ class SystemConfigService:
                 return int(default)
             try:
                 v = int(raw_text)
-            except Exception:
+            except ValueError:
                 _mark_dirty(key, f"这个数字不是整数，本次先按 {default} 处理。")
                 return int(default)
             if v < min_v:
@@ -164,41 +105,9 @@ class SystemConfigService:
             auto_log_cleanup_interval_minutes=_get_int(
                 "auto_log_cleanup_interval_minutes", default=60, min_v=self.MIN_INTERVAL_MINUTES, max_v=self.MAX_INTERVAL_MINUTES
             ),
-            dirty_fields=list(dirty_fields),
-            dirty_reasons=dict(dirty_reasons),
+            dirty_fields=dirty_fields,
+            dirty_reasons=dirty_reasons,
         )
-
-    def ensure_defaults(self, backup_keep_days_default: int, stored_values=None) -> None:
-        """
-        确保必要的 key 已落库（缺失则写入，不覆盖用户已有配置）。
-        """
-        stored_values = self.repo.read_values() if stored_values is None else stored_values
-        existing = set(stored_values)
-
-        # 自动任务默认关闭；但保留策略给一个默认值（便于用户一键开启）
-        defaults: Dict[str, Tuple[str, str]] = {
-            "auto_backup_enabled": ("no", "自动备份开关：启用后，有人访问系统时会按间隔检查；程序正常退出时也会受这个开关控制。"),
-            "auto_backup_interval_minutes": ("60", "自动备份检查间隔（分钟）：有人访问系统时，系统会按这个间隔判断要不要备份。"),
-            "auto_backup_cleanup_enabled": ("no", "自动清理过期备份开关：启用后，有人访问系统时会按保留天数清理旧备份。"),
-            "auto_backup_keep_days": (str(int(backup_keep_days_default)), "备份保留天数（自动清理策略）"),
-            "auto_backup_cleanup_interval_minutes": ("1440", "自动清理备份检查间隔（分钟）：有人访问系统时，系统会按这个间隔判断要不要清理。"),
-            "auto_log_cleanup_enabled": ("no", "自动清理操作日志开关：启用后，有人访问系统时会按保留天数清理旧日志。"),
-            "auto_log_cleanup_keep_days": ("30", "操作日志保留天数（自动清理策略）"),
-            "auto_log_cleanup_interval_minutes": ("60", "自动清理操作日志检查间隔（分钟）：有人访问系统时，系统会按这个间隔判断要不要清理。"),
-        }
-
-        to_set = [(k, v, d) for k, (v, d) in defaults.items() if k not in existing]
-        if not to_set:
-            return
-        with self.tx.transaction():
-            for k, v, d in to_set:
-                self.repo.set(k, v, description=d)
-                stored_values[k] = v
-
-    def get_snapshot(self, backup_keep_days_default: int) -> SystemConfigSnapshot:
-        stored = self.repo.read_values()
-        self.ensure_defaults(backup_keep_days_default=backup_keep_days_default, stored_values=stored)
-        return self._read_snapshot(backup_keep_days_default=backup_keep_days_default, stored_values=stored)
 
     def snapshot_with_storage(self, backup_keep_days_default: int):
         stored = self.repo.read_values()
@@ -206,60 +115,3 @@ class SystemConfigService:
 
     def get_snapshot_readonly(self, backup_keep_days_default: int) -> SystemConfigSnapshot:
         return self.snapshot_with_storage(backup_keep_days_default)[0]
-
-    def get_value(self, config_key: str, default: Optional[str] = None) -> Optional[str]:
-        return self.repo.get_value(config_key, default=default)
-
-    def get_value_with_presence(self, config_key: str) -> Tuple[bool, Optional[str]]:
-        return self.repo.get_value_with_presence(config_key)
-
-    def set_value(self, config_key: str, value: Any, description: Optional[str] = None) -> None:
-        key = (str(config_key) if config_key is not None else "").strip()
-        if not key:
-            raise ValidationError("config_key 不能为空", field="config_key")
-        val = "" if value is None else str(value)
-        with self.tx.transaction():
-            self.repo.set(key, val, description=description)
-
-    def update_backup_settings(
-        self,
-        auto_backup_enabled: Any,
-        auto_backup_interval_minutes: Any,
-        auto_backup_cleanup_enabled: Any,
-        auto_backup_keep_days: Any,
-        auto_backup_cleanup_interval_minutes: Any,
-    ) -> None:
-        enabled = _normalize_yes_no(auto_backup_enabled)
-        cleanup_enabled = _normalize_yes_no(auto_backup_cleanup_enabled)
-        interval = _parse_int(auto_backup_interval_minutes, field="自动备份间隔(分钟)", min_v=self.MIN_INTERVAL_MINUTES, max_v=self.MAX_INTERVAL_MINUTES)
-        keep_days = _parse_int(auto_backup_keep_days, field="备份保留天数", min_v=self.MIN_KEEP_DAYS, max_v=self.MAX_KEEP_DAYS)
-        cleanup_interval = _parse_int(
-            auto_backup_cleanup_interval_minutes,
-            field="备份自动清理间隔(分钟)",
-            min_v=self.MIN_INTERVAL_MINUTES,
-            max_v=self.MAX_INTERVAL_MINUTES,
-        )
-        with self.tx.transaction():
-            self.repo.set("auto_backup_enabled", enabled, description="自动备份开关：启用后，有人访问系统时会按间隔检查；程序正常退出时也会受这个开关控制。")
-            self.repo.set("auto_backup_interval_minutes", str(interval), description="自动备份检查间隔（分钟）：有人访问系统时，系统会按这个间隔判断要不要备份。")
-            self.repo.set("auto_backup_cleanup_enabled", cleanup_enabled, description="自动清理过期备份开关：启用后，有人访问系统时会按保留天数清理旧备份。")
-            self.repo.set("auto_backup_keep_days", str(keep_days), description="备份保留天数（自动清理策略）")
-            self.repo.set(
-                "auto_backup_cleanup_interval_minutes",
-                str(cleanup_interval),
-                description="自动清理备份检查间隔（分钟）：有人访问系统时，系统会按这个间隔判断要不要清理。",
-            )
-
-    def update_logs_settings(self, auto_log_cleanup_enabled: Any, auto_log_cleanup_keep_days: Any, auto_log_cleanup_interval_minutes: Any) -> None:
-        enabled = _normalize_yes_no(auto_log_cleanup_enabled)
-        keep_days = _parse_int(auto_log_cleanup_keep_days, field="操作日志保留天数", min_v=self.MIN_KEEP_DAYS, max_v=self.MAX_KEEP_DAYS)
-        interval = _parse_int(
-            auto_log_cleanup_interval_minutes,
-            field="日志自动清理间隔(分钟)",
-            min_v=self.MIN_INTERVAL_MINUTES,
-            max_v=self.MAX_INTERVAL_MINUTES,
-        )
-        with self.tx.transaction():
-            self.repo.set("auto_log_cleanup_enabled", enabled, description="自动清理操作日志开关：启用后，有人访问系统时会按保留天数清理旧日志。")
-            self.repo.set("auto_log_cleanup_keep_days", str(keep_days), description="操作日志保留天数（自动清理策略）")
-            self.repo.set("auto_log_cleanup_interval_minutes", str(interval), description="自动清理操作日志检查间隔（分钟）：有人访问系统时，系统会按这个间隔判断要不要清理。")

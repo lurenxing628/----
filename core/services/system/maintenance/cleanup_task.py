@@ -12,42 +12,7 @@ from core.infrastructure.safe_files import UnsafeFixedFileError, remove_fixed_fi
 from core.infrastructure.transaction import TransactionManager
 from data.repositories.operation_log_repo import OperationLogRepository
 
-from .due_info import IsDueResult, unpack_due_info
-
-
-def _safe_logger_emit(logger, level: str, message: str) -> None:
-    safe_log(logger, level, message)
-
-
-def _write_oplog(conn, *, op_logger, logger=None, level: str, **kwargs) -> bool:
-    if op_logger is None:
-        return True
-    try:
-        with TransactionManager(conn).transaction():
-            if level == "error":
-                result = op_logger.error(**kwargs)
-            else:
-                result = op_logger.info(**kwargs)
-            if result is False:
-                raise RuntimeError("OperationLogs 未成功落库。")
-        return True
-    except Exception as e:
-        safe_log(logger, "warning", f"系统维护 telemetry 写入 OperationLogs 失败：{e}")
-        return False
-
-
-def _write_job_state(conn, *, job_repo, job_key: str, last_run_time: str, last_run_detail: str, logger=None) -> bool:
-    try:
-        with TransactionManager(conn).transaction():
-            job_repo.set_last_run(
-                job_key,
-                last_run_time=last_run_time,
-                last_run_detail=last_run_detail,
-            )
-        return True
-    except Exception as e:
-        safe_log(logger, "warning", f"系统维护 telemetry 写入 SystemJobState 失败：{e}")
-        return False
+from .telemetry import write_job_state, write_oplog
 
 
 def _survey_backup_files(backup_dir: str) -> Tuple[list, Dict[str, Any]]:
@@ -174,18 +139,12 @@ def maybe_run_auto_backup_cleanup(
     job_key: str,
     logger=None,
     op_logger=None,
-    is_due_fn: Callable[..., IsDueResult],
+    is_due_fn: Callable[..., bool],
     fmt_db_dt_fn: Callable[[datetime], str],
     min_keep_backups: int = MIN_KEEP_BACKUPS,
-) -> Tuple[bool, Dict[str, Any]]:
-    due, last_run, last_run_state, last_run_raw = unpack_due_info(is_due_fn(job_repo, job_key, now, interval_minutes))
-    if not due:
-        return False, {
-            "due": False,
-            "last_run_time": last_run,
-            "last_run_state": last_run_state,
-            "last_run_raw": last_run_raw,
-        }
+) -> bool:
+    if not is_due_fn(job_repo, job_key, now, interval_minutes):
+        return False
 
     t0 = time.time()
     try:
@@ -205,7 +164,7 @@ def maybe_run_auto_backup_cleanup(
             "time_cost_ms": time_cost_ms,
             **meta,
         }
-        oplog_written = _write_oplog(
+        write_oplog(
             conn,
             op_logger=op_logger,
             logger=logger,
@@ -216,7 +175,7 @@ def maybe_run_auto_backup_cleanup(
             target_id=None,
             detail=detail,
         )
-        job_state_written = _write_job_state(
+        write_job_state(
             conn,
             job_repo=job_repo,
             job_key=job_key,
@@ -224,17 +183,11 @@ def maybe_run_auto_backup_cleanup(
             last_run_detail=json.dumps({"removed_count": removed, "time_cost_ms": time_cost_ms, **meta}, ensure_ascii=False),
             logger=logger,
         )
-        return True, {
-            "due": True,
-            "removed_count": int(removed),
-            "oplog_persisted": bool(oplog_written),
-            "job_state_persisted": bool(job_state_written),
-            **meta,
-        }
+        return True
     except Exception as e:
         safe_log(logger, "error", f"自动清理备份失败：{e}")
         time_cost_ms = int((time.time() - t0) * 1000)
-        oplog_written = _write_oplog(
+        write_oplog(
             conn,
             op_logger=op_logger,
             logger=logger,
@@ -247,7 +200,7 @@ def maybe_run_auto_backup_cleanup(
             error_code="auto_backup_cleanup_failed",
             error_message=str(e),
         )
-        job_state_written = _write_job_state(
+        write_job_state(
             conn,
             job_repo=job_repo,
             job_key=job_key,
@@ -255,12 +208,7 @@ def maybe_run_auto_backup_cleanup(
             last_run_detail=json.dumps({"error": str(e), "time_cost_ms": time_cost_ms}, ensure_ascii=False),
             logger=logger,
         )
-        return False, {
-            "due": True,
-            "error": str(e),
-            "oplog_persisted": bool(oplog_written),
-            "job_state_persisted": bool(job_state_written),
-        }
+        return False
 
 
 def maybe_run_auto_log_cleanup(
@@ -275,23 +223,14 @@ def maybe_run_auto_log_cleanup(
     job_key: str,
     logger=None,
     op_logger=None,
-    is_due_fn: Callable[..., IsDueResult],
+    is_due_fn: Callable[..., bool],
     fmt_db_dt_fn: Callable[[datetime], str],
-) -> Tuple[bool, Dict[str, Any]]:
-    due, last_run, last_run_state, last_run_raw = unpack_due_info(is_due_fn(job_repo, job_key, now, interval_minutes))
-    if not due:
-        return False, {
-            "due": False,
-            "last_run_time": last_run,
-            "last_run_state": last_run_state,
-            "last_run_raw": last_run_raw,
-        }
+) -> bool:
+    if not is_due_fn(job_repo, job_key, now, interval_minutes):
+        return False
 
     t0 = time.time()
     try:
-        deleted = 0
-        meta: Dict[str, Any] = {}
-        time_cost_ms = 0
         with TransactionManager(conn).transaction():
             deleted, meta = cleanup_operation_logs_with_limit(
                 conn,
@@ -310,7 +249,7 @@ def maybe_run_auto_log_cleanup(
             "time_cost_ms": time_cost_ms,
             **meta,
         }
-        oplog_written = _write_oplog(
+        write_oplog(
             conn,
             op_logger=op_logger,
             logger=logger,
@@ -321,7 +260,7 @@ def maybe_run_auto_log_cleanup(
             target_id=None,
             detail=detail,
         )
-        job_state_written = _write_job_state(
+        write_job_state(
             conn,
             job_repo=job_repo,
             job_key=job_key,
@@ -329,17 +268,11 @@ def maybe_run_auto_log_cleanup(
             last_run_detail=json.dumps({"deleted_count": deleted, "time_cost_ms": time_cost_ms, **meta}, ensure_ascii=False),
             logger=logger,
         )
-        return True, {
-            "due": True,
-            "deleted_count": int(deleted),
-            "oplog_persisted": bool(oplog_written),
-            "job_state_persisted": bool(job_state_written),
-            **meta,
-        }
+        return True
     except Exception as e:
         safe_log(logger, "error", f"自动清理操作日志失败：{e}")
         time_cost_ms = int((time.time() - t0) * 1000)
-        oplog_written = _write_oplog(
+        write_oplog(
             conn,
             op_logger=op_logger,
             logger=logger,
@@ -352,7 +285,7 @@ def maybe_run_auto_log_cleanup(
             error_code="auto_log_cleanup_failed",
             error_message=str(e),
         )
-        job_state_written = _write_job_state(
+        write_job_state(
             conn,
             job_repo=job_repo,
             job_key=job_key,
@@ -360,9 +293,4 @@ def maybe_run_auto_log_cleanup(
             last_run_detail=json.dumps({"error": str(e), "time_cost_ms": time_cost_ms}, ensure_ascii=False),
             logger=logger,
         )
-        return False, {
-            "due": True,
-            "error": str(e),
-            "oplog_persisted": bool(oplog_written),
-            "job_state_persisted": bool(job_state_written),
-        }
+        return False

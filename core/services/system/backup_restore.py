@@ -65,8 +65,6 @@ def _verify_restored_database(
     logger: Any,
     ensure_schema_func: Callable[..., Any],
 ) -> Tuple[Any, Optional[RestoreBackupOutcome]]:
-    copied_pending_verify = str(getattr(result, "code", "") or "") == "copied_pending_verify"
-    before_restore_path = getattr(result, "before_restore_path", None)
     try:
         ensure_schema_func(
             database_path,
@@ -75,18 +73,11 @@ def _verify_restored_database(
             full_data=True,
         )
     except Exception:
-        if copied_pending_verify:
-            return result, _rollback_after_verify_failure(
-                result=result,
-                before_restore_path=before_restore_path,
-                manager=manager,
-                logger=logger,
-            )
-        logger.exception("恢复后 ensure_schema 失败")
-        return result, RestoreBackupOutcome(
-            message="数据库文件已恢复，但数据表检查没有通过。请先联系管理员排查后再继续使用。",
-            category="error",
+        return result, _rollback_after_verify_failure(
             result=result,
+            before_restore_path=result.before_restore_path,
+            manager=manager,
+            logger=logger,
         )
     return replace(result, code="verified", message=f"数据库文件已恢复，并确认数据表可以正常使用：{filename}"), None
 

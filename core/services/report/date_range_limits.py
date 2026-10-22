@@ -13,10 +13,7 @@ def ensure_report_date_range_within_limit(
     end_date: date,
     *,
     field: Any = "date_range",
-    max_day_count: int = REPORT_EXPLICIT_DATE_RANGE_MAX_DAYS,
 ) -> None:
     day_count = (end_date - start_date).days + 1
-    if day_count <= 0:
-        raise ValidationError("日期范围写法不对，请重新选择开始日期和结束日期。", field=field)
-    if day_count > int(max_day_count):
-        raise ValidationError(f"日期范围不能超过 {int(max_day_count)} 天", field=field)
+    if day_count > REPORT_EXPLICIT_DATE_RANGE_MAX_DAYS:
+        raise ValidationError(f"日期范围不能超过 {REPORT_EXPLICIT_DATE_RANGE_MAX_DAYS} 天", field=field)
