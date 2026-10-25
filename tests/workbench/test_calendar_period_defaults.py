@@ -4,7 +4,12 @@ import pytest
 
 from core.models.calendar_periods import DEFAULT_WORK_PERIODS
 from core.services.scheduler.calendar.service import CalendarService
-from tests.workbench.calendar_api_support import BASE, calendar_api_fixture  # noqa: F401
+from tests.workbench.calendar_api_support import (
+    BASE,
+    assert_read_failure,
+    calendar_api_fixture,  # noqa: F401
+    deny_table_reads,
+)
 
 PERIODS = [{"start": "09:00", "end": "12:00", "day_offset": 0},
            {"start": "14:00", "end": "18:00", "day_offset": 0}]
@@ -37,5 +42,10 @@ def test_default_periods_are_readonly_until_confirmed_and_persist_across_service
     assert day["fields"]["hours"] == 7 and day["fields"]["periods"] == PERIODS
     with calendar_api.db() as conn:
         service = CalendarService(conn)
-        assert service.get("2026-09-10").shift_hours == 7
+        assert service._engine._policy_for_date("2026-09-10").shift_hours == 7
         assert conn.execute("SELECT COUNT(*) FROM WorkbenchCalendarDefaults").fetchone()[0] == 1
+
+
+def test_range_preview_read_failure_reports_nothing_committed(calendar_api):
+    deny_table_reads(calendar_api.client.application, "WorkCalendar")
+    assert_read_failure(calendar_api.preview_response())

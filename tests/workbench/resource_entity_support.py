@@ -7,8 +7,7 @@ import pytest
 
 from core.infrastructure.migration_state import ensure_schema_version
 from core.services.workbench.commands import WorkbenchCommandService
-from core.services.workbench.resource.catalogs import WorkbenchResourceCatalogService
-from core.services.workbench.resource.entities import WorkbenchResourceService
+from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from tests.workbench.identity_metadata_support import (
     business_snapshot,
@@ -56,11 +55,6 @@ def resource_database(schema_conn):
     return schema_conn
 
 
-def resource_service(conn, kind):
-    service = WorkbenchResourceCatalogService if kind in ("machine_group", "shift_profile") else WorkbenchResourceService
-    return service(conn, kind)
-
-
 def identity_for(conn, kind, code=None):
     return WorkbenchIdentityRepository(conn).find_active(kind, code or ENTITY_TABLES[kind][2])
 
@@ -76,33 +70,34 @@ def stored_state(conn):
             table_rows(conn, "WorkbenchCommandReceipts"))
 
 
-def run_resource(conn, kind, action, payload, *, identity=None, code=None, command=None, key=None,
-                 after_apply=None, adapter=None):
-    adapter = adapter or resource_service(conn, kind)
-    normalized = adapter.normalize_input(action, payload)
-    if action != "create" and identity is None:
+def run_resource(conn, kind, action, payload, *, code=None):
+    reader = WorkbenchResourceQueryService(conn, kind)
+    normalized = reader.domain.normalize_input(action, payload)
+    identity = None
+    if action != "create":
         identity = identity_for(conn, kind, code)
+        assert identity is not None
 
     def guard():
         assert conn.in_transaction
-        if identity is not None:
-            adapter.snapshot(identity)
-        return identity
+        preparation = reader.preparation_for(action, normalized, ref=identity.ref if identity is not None else None)
+        checked = (None if identity is None else
+                   preparation.state(kind, preparation.current(kind, identity).entity_key))
+        return reader.domain.prepare(action, normalized, checked, preparation)
 
-    def mutate(checked):
+    def mutate(change):
         assert conn.in_transaction
-        outcome = adapter.apply(action, normalized, checked)
+        outcome = reader.domain.apply_prepared(change)
         assert conn.in_transaction
         if action != "delete":
             current = identity_for(conn, kind, outcome.data["business_code"])
-            snapshot = adapter.snapshot(current)
+            assert current is not None
+            snapshot = WorkbenchResourceQueryService(conn, kind).current_with_identity(current)
             assert snapshot["record"] == resource_row(conn, kind, outcome.data["business_code"])
-        if after_apply is not None:
-            after_apply(outcome)
         return outcome
 
-    return (command or WorkbenchCommandService(conn)).execute(
-        request_key=key or "resource-test-" + uuid4().hex, action=kind + "." + action,
+    return WorkbenchCommandService(conn).execute(
+        request_key="resource-test-" + uuid4().hex, action=kind + "." + action,
         context_ref=identity.ref if identity is not None else kind + ".collection",
         normalized_input=normalized, guard=guard, mutate=mutate,
     )
@@ -113,16 +108,20 @@ def create_catalog(conn, kind, code=None, fields=None):
     payload = {"business_code": code, "label": code,
                "fields": deepcopy(FIXED_FIELDS if kind == "shift_profile" and fields is None else fields or {})}
     run_resource(conn, kind, "create", payload)
-    return identity_for(conn, kind, code)
+    identity = identity_for(conn, kind, code)
+    assert identity is not None
+    return identity
 
 
 def explicit_operator(conn):
     shift = create_catalog(conn, "shift_profile")
+    op_type = identity_for(conn, "op_type")
+    assert op_type is not None
     run_resource(conn, "operator", "update", {
         "fields": {"status": "leave"},
-        "relationships": {"shift_profile_ref": shift.ref, "skill_refs": [identity_for(conn, "op_type").ref]},
+        "relationships": {"shift_profile_ref": shift.ref, "skill_refs": [op_type.ref]},
     })
-    return resource_service(conn, "operator").snapshot(identity_for(conn, "operator"))
+    return WorkbenchResourceQueryService(conn, "operator").current_with_identity(identity_for(conn, "operator"))
 
 
 def invalid_entity_inputs():

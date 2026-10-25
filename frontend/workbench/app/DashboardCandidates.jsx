@@ -1,12 +1,7 @@
 (function () {
   'use strict';
-  const A = window.RunCandidateAPI, B = window.RunBaselineAPI, Q = window.DashboardCandidateComparisonAPI, C = window.DashboardContract;
+  const A = window.RunCandidateAPI, Q = window.DashboardCandidateComparisonAPI, C = window.DashboardContract;
   const P = window.DashboardCandidatePanels, { Button, ErrorBox, Issues } = window.ResourceControls;
-  // 排产时的不重排时段：没有这一项是旧记录；不是完整的起止时刻按记录无效显示。
-  function holdText(value) {
-    const valid = value === undefined || value === null || !!value && typeof value.start === 'string' && typeof value.end === 'string';
-    return window.WorkbenchTerms.hold_window(value, !valid);
-  }
   function rangeFor(input) {
     const start = input && input.start_date + 'T00:00:00', raw = input && input.end_date + 'T00:00:00';
     C.check(A.time(start) && A.time(raw), '这次排产没有有效的提交时间范围，无法比较。请重新选择排产记录。');
@@ -24,7 +19,7 @@
     return { ...first.data, candidates: rows };
   }
   function Candidates({ catalog, initialContext = {}, onState, selectedBatch, onSelectBatch, issueBatchRef = null }) {
-    const api = React.useMemo(() => A.create(), []), baselineApi = React.useMemo(() => B.create(), []), comparisonApi = React.useMemo(() => Q.create(), []);
+    const api = React.useMemo(() => A.create(), []), comparisonApi = React.useMemo(() => Q.create(), []);
     const [choice, setChoice] = React.useState(() => { const value = Q.context(initialContext); delete value.batch_ref; return value; }), [revision, refresh] = React.useReducer(n => n + 1, 0);
     const context = Q.context({ ...choice, ...(issueBatchRef ? { batch_ref: issueBatchRef } : {}) });
     const [list, setList] = React.useState({ run: null, data: null, error: null, loading: false });
@@ -50,18 +45,14 @@
           if (!controller.signal.aborted) setChoice(previous => C.equal(previous, choice) ? { ...previous, ...rangeFor(first.data.generation.input) } : previous);
           return;
         }
-        const scope = { range_start: context.range_start, range_end: context.range_end, ...(context.batch_ref ? { batch_ref: context.batch_ref } : {}) };
-        const workspace = await api.workspace(context.candidate_ref, scope, controller.signal);
-        C.check(workspace.data.candidate.run_ref === context.run_ref, '返回的候选不属于原排产记录，未改指其他记录。');
-        const baseline = await baselineApi.read(workspace.data, controller.signal);
-        const comparison = await comparisonApi.read(workspace.data, baseline.data, controller.signal);
-        if (!controller.signal.aborted) setRead({ signature, data: { workspace, baseline, comparison }, error: null, loading: false });
+        const comparison = await comparisonApi.read(context, controller.signal);
+        if (!controller.signal.aborted) setRead({ signature, data: comparison, error: null, loading: false });
       };
       load().catch(error => { if (!controller.signal.aborted) setRead({ signature, data: null, error, loading: false }); });
       return () => controller.abort();
-    }, [api, baselineApi, comparisonApi, signature, revision]);
+    }, [api, comparisonApi, signature, revision]);
     const current = read.signature === signature ? read : null, result = current && current.data;
-    const data = result && result.comparison.data, options = list.run === choice.run_ref && list.data;
+    const data = result && result.data, options = list.run === choice.run_ref && list.data;
     const caption = data ? { reference: data.candidate.candidate_ref, label: '比较方案', name: data.candidate.label || window.WorkbenchTerms.name_missing,
       status: data.baseline.available ? '已保存候选方案 · 与排产时的正式计划对照' : '已保存候选方案 · 排产时没有正式计划' } : null;
     const captionKey = JSON.stringify(caption);
@@ -112,7 +103,7 @@
         <details className="dy-evidence"><summary>排产时的范围与规则</summary><dl className="dy-facts"><div><dt>比较批次</dt><dd>{data.batch_refs.length} 批；预计完工按全部工序安排计算</dd></div><div><dt>齐套检查</dt><dd>{data.generation.input.ready_check ? '开启' : '关闭'}</dd></div>
           <div><dt>物料齐套规则</dt><dd>{window.WorkbenchTerms.material_strategy(data.generation.input.material_strategy, data.generation.input.ready_check)}</dd></div>
           <div><dt>缺设备人员时的规则</dt><dd>{data.generation.input.missing_resource_policy === 'auto_assign' ? '按匹配规则自动分配' : '排除缺设备人员的工序'}</dd></div>
-          <div><dt>不重排时段</dt><dd>{holdText(data.generation.input.hold_window)}</dd></div>
+          <div><dt>不重排时段</dt><dd>{window.WorkbenchTerms.hold_window(data.generation.input.hold_window)}</dd></div>
           <div><dt>已开工工序的规则</dt><dd>保留已登记的实际数据和受保护的安排</dd></div></dl><window.WorkbenchReference entries={{ '排产编号': data.generation.run_ref }} /></details>
         {summary && <P.Summary data={data} onClose={() => setSummary(false)} />}
       </>}

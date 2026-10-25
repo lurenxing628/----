@@ -149,7 +149,7 @@ def project_changeover_events(arrangements, *, start=None, end=None, work_availa
     inconsistent = set()
     types = {}
     for row in rows.values():
-        if row.machine_ref is not None and row.operation_ref is not None and row.type_ref is not None:
+        if row.machine_ref is not None and row.operation_ref is not None and row.type_ref:
             key = row.machine_ref, row.operation_ref
             types.setdefault(key, set()).add(row.type_ref)
     for key, values in types.items():
@@ -200,3 +200,38 @@ def project_changeover_events(arrangements, *, start=None, end=None, work_availa
             "conflict": True if scoped_conflicts else None if unknown_geometry else False,
             "conflict_count": len(scoped_conflicts), "issues": issues,
             "metric_version": "type_changeover_v1", "source": "saved_arrangement_sequence"}
+
+
+def count_known_changeovers(by_machine) -> int:
+    """Count known type transitions across internal machine sequences with the same validity rules as event projection."""
+    total = 0
+    for machine_ref, machine_rows in by_machine.items():
+        if not machine_ref:
+            continue
+        timed = []
+        types_by_op = {}
+        blocked = False
+        for row in machine_rows:
+            start, end = row.start_time, row.end_time
+            if start is not None and start == end:
+                continue
+            if start is None or end is None or not (start < end):
+                blocked = True
+                break
+            timed.append(row)
+            if row.op_id > 0 and row.op_type_id:
+                types_by_op.setdefault(row.op_id, set()).add(row.op_type_id)
+        if blocked or len(timed) < 2:
+            continue
+        inconsistent = {op_id for op_id, values in types_by_op.items() if len(values) > 1}
+        timed.sort(key=lambda item: (item.start_time, item.end_time, item.op_id))
+        for previous, current in zip(timed, timed[1:]):
+            if previous.op_id <= 0 or current.op_id <= 0 or previous.op_id == current.op_id:
+                continue
+            if previous.op_id in inconsistent or current.op_id in inconsistent:
+                continue
+            if not previous.op_type_id or not current.op_type_id:
+                continue
+            if previous.op_type_id != current.op_type_id:
+                total += 1
+    return total

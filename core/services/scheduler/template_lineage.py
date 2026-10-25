@@ -7,7 +7,6 @@ and newly inserted birth evidence belong to this caller's transaction.
 from dataclasses import dataclass
 from typing import Optional, cast
 
-from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_template_lineage import copy_payload, snapshot, state_snapshot
 from data.repositories.batch_external_context_repo import BatchExternalContextRepository
@@ -17,8 +16,6 @@ from .template_lineage_query import (
     TemplateLineageQuery,
     check_evidence_size,
     lineage_available,
-    read_events,
-    read_origins,
 )
 
 
@@ -98,70 +95,46 @@ class TemplateLineageWriter:
         if self.repo.identity_schema_broken():
             raise WorkbenchCommandRejected("template_lineage_unavailable", "来源模板或批次的记录结构已损坏，这次复制没有执行，系统没有用不可靠的版本继续。请联系维护人员。")
 
-    def template(self, template_id):
-        return _template_row(self.repo.template(template_id))
-
-    def instance(self, operation_id):
-        return _instance_row(self.repo.instance(operation_id))
-
-    def copy_template(self, batch_id, template_id):
-        self.require_ready()
-        with TransactionManager(self.conn).transaction():
-            prepared = self.prepare_templates([self.template(template_id)])[0]
-            return self.copy_prepared_template(batch_id, prepared)
-
-    def prepare_templates(self, rows, *, facts=None):
+    def prepare_templates(self, rows, *, facts):
         """Capture fixed raw templates once for this caller transaction."""
         self.require_ready()
-        if facts is not None:
-            target_ids = {row["id"] for row in rows}
-            entities = _entity_facts(facts)
-            templates = _template_facts(facts, entities, target_ids=target_ids)
-            by_id = {row["id"]: row for row in templates.values() if row["id"] is not None}
-            rows = [by_id.get(row["id"]) for row in rows]
-        return [_PreparedTemplate(_template_row(row), snapshot(row)) for row in rows]
+        target_ids = {row["id"] for row in rows}
+        entities = _entity_facts(facts)
+        templates = _template_facts(facts, entities, target_ids=target_ids)
+        by_id = {row["id"]: row for row in templates.values() if row["id"] is not None}
+        rows = [_template_row(by_id.get(row["id"])) for row in rows]
+        return [_PreparedTemplate(row, snapshot(row)) for row in rows]
 
     def copy_prepared_template(self, batch_id, prepared):
         self.require_ready()
-        with TransactionManager(self.conn).transaction():
-            template = prepared.row
-            instance = _instance_row(self.repo.insert_instance(copy_payload(template, batch_id, from_template=True)))
-            if instance["part_ref"] != template["part_ref"]:
-                raise WorkbenchCommandRejected("template_lineage_mismatch", "目标批次不是这个来源模板的零件，系统没有按图号猜着匹配，这次没有复制。请重新选择批次。")
-            if instance["source"] == "external":
-                if not self.contexts.mark_template_copy(instance["id"]):
-                    raise WorkbenchCommandRejected("external_context_missing", "没有保存这道外协工序的周期记录，这次没有复制。请先完成版本升级。")
-            self._record_new_origin(instance, template, prepared.encoded)
-            return instance["id"]
+        template = prepared.row
+        instance = _instance_row(self.repo.insert_instance(copy_payload(template, batch_id, from_template=True)))
+        if instance["part_ref"] != template["part_ref"]:
+            raise WorkbenchCommandRejected("template_lineage_mismatch", "目标批次不是这个来源模板的零件，系统没有按图号猜着匹配，这次没有复制。请重新选择批次。")
+        if instance["source"] == "external":
+            if not self.contexts.mark_template_copy(instance["id"]):
+                raise WorkbenchCommandRejected("external_context_missing", "没有保存这道外协工序的周期记录，这次没有复制。请先完成版本升级。")
+        self._record_new_origin(instance, template, prepared.encoded)
+        return instance["id"]
 
-    def copy_instance(self, batch_id, operation_id):
-        self.require_ready()
-        with TransactionManager(self.conn).transaction():
-            prepared = self.prepare_instances([self.instance(operation_id)])[0]
-            return self.copy_prepared_instance(batch_id, prepared)
-
-    def prepare_instances(self, rows, *, facts=None):
+    def prepare_instances(self, rows, *, facts):
         """Capture source identities, contexts and lineage together, before any source write."""
         self.require_ready()
         rows = list(rows)
-        current = templates = None
-        if facts is not None:
-            entities = _entity_facts(facts)
-            current = _instance_facts(facts, entities)
-            templates = _template_facts(facts, entities)
-            by_id = {row["id"]: row for row in current.values()}
-            rows = [by_id.get(row["id"]) for row in rows]
-        rows = [_instance_row(row) for row in rows]
+        entities = _entity_facts(facts)
+        current = _instance_facts(facts, entities)
+        templates = _template_facts(facts, entities)
+        by_id = {row["id"]: row for row in current.values()}
+        rows = [_instance_row(by_id.get(row["id"])) for row in rows]
         external_ids = {row["id"] for row in rows if row["source"] == "external"}
         contexts = {}
         if external_ids:
-            captured = facts["BatchExternalContexts"] if facts is not None else self.contexts.for_operations(external_ids)
+            captured = facts["BatchExternalContexts"]
             contexts = {row["operation_id"]: row for row in captured if row["operation_id"] in external_ids}
             if set(contexts) != external_ids:
                 raise WorkbenchCommandRejected("external_context_missing", "原工序缺少外协周期记录，不能按当前模板猜着复制。请先核对原批次。")
         query = TemplateLineageQuery(self.conn, repo=self.repo)
-        lineage = query.read([row["operation_ref"] for row in rows], current=current, templates=templates,
-            captured_current={row["operation_ref"]: row for row in rows} if facts is None else None)
+        lineage = query.read([row["operation_ref"] for row in rows], current=current, templates=templates)
         prepared = []
         for row in rows:
             ref = row["operation_ref"]
@@ -174,39 +147,24 @@ class TemplateLineageWriter:
 
     def copy_prepared_instance(self, batch_id, prepared):
         self.require_ready()
-        with TransactionManager(self.conn).transaction():
-            original = prepared.row
-            instance = _instance_row(self.repo.insert_instance(copy_payload(original, batch_id, from_template=False)))
-            if original["source"] == "external":
-                if original["part_ref"] != instance["part_ref"]:
-                    raise WorkbenchCommandRejected("template_lineage_mismatch", "目标批次不是原外协周期记录的零件，这次没有复制。")
-                self.contexts.copy_captured(cast(dict, prepared.context), instance["id"])
-            origin = prepared.origin
-            # Known but polluted origins remain known and polluted after copying.
-            if origin is not None:
-                template = cast(dict, prepared.template)
-                if instance["part_ref"] != template["part_ref"]:
-                    raise WorkbenchCommandRejected("template_lineage_mismatch", "目标批次不是原来源模板的零件，这次没有复制。请重新选择批次。")
-                self._record_new_origin(instance, template, origin["template_snapshot"], source=origin,
-                    source_event_id=prepared.source_event_id, source_eligible=prepared.source_eligible)
-            return instance["id"]
+        original = prepared.row
+        instance = _instance_row(self.repo.insert_instance(copy_payload(original, batch_id, from_template=False)))
+        if original["source"] == "external":
+            if original["part_ref"] != instance["part_ref"]:
+                raise WorkbenchCommandRejected("template_lineage_mismatch", "目标批次不是原外协周期记录的零件，这次没有复制。")
+            self.contexts.copy_captured(cast(dict, prepared.context), instance["id"])
+        origin = prepared.origin
+        # Known but polluted origins remain known and polluted after copying.
+        if origin is not None:
+            template = cast(dict, prepared.template)
+            if instance["part_ref"] != template["part_ref"]:
+                raise WorkbenchCommandRejected("template_lineage_mismatch", "目标批次不是原来源模板的零件，这次没有复制。请重新选择批次。")
+            self._record_new_origin(instance, template, origin["template_snapshot"], source=origin,
+                source_event_id=prepared.source_event_id, source_eligible=prepared.source_eligible)
+        return instance["id"]
 
     def _record_new_origin(self, instance, template, template_snapshot, *, source=None, source_event_id=None, source_eligible=True):
         encoded = state_snapshot(instance)
         check_evidence_size(len(template_snapshot.encode("ascii")) + len(encoded.encode("ascii")))
         return self.repo.append_origin(instance, template, template_snapshot, encoded, birth_event_id=instance["birth_event_id"],
                                        source=source, source_event_id=source_event_id, source_eligible=source_eligible)
-
-    def withdraw(self, operation_ref, reason):
-        self.require_ready()
-        if not isinstance(reason, str) or not reason.strip():
-            raise WorkbenchCommandRejected("invalid_input", "撤回模板来源必须填写原因，这次没有撤回。请填好原因后重新提交。", 400)
-        if not read_origins(self.repo, [operation_ref]):
-            raise WorkbenchCommandRejected("entity_not_found", "这道工序没有可撤回的模板来源。请刷新后重新选择。", 404)
-        rows = read_events(self.repo, [operation_ref]).get(operation_ref, [])
-        if not rows:
-            raise WorkbenchCommandRejected("entity_not_found", "这道工序没有可撤回的模板来源。请刷新后重新选择。", 404)
-        if any(row["event_type"] == "withdrawn" for row in rows):
-            return False
-        self.repo.append_withdrawn_event(operation_ref, reason.strip(), rows[-1])
-        return True

@@ -17,11 +17,3 @@ class MachineCapabilityRepository(BaseRepository):
                 result[row["machine_id"]].append(row["op_type_id"])
         return result
 
-    def replace(self, machine_id, codes, *, primary):
-        existing = set(self.by_machines([machine_id])[machine_id])
-        additional = set(codes) - {primary}
-        for code in sorted(existing - additional):
-            self.execute("DELETE FROM MachineOpTypes WHERE machine_id=? AND op_type_id=?", (machine_id, code))
-        for code in sorted(additional - existing):
-            self.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES (?,?)", (machine_id, code))
-        return additional != existing

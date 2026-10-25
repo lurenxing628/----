@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 from contextlib import contextmanager
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.errors import ValidationError
-from core.infrastructure.transaction import TransactionManager
 from core.models import OperatorCalendar, WorkCalendar
 from core.models.calendar_periods import (
+    encode_periods,
     normalize_periods,
     period_summary,
 )
@@ -42,7 +42,6 @@ class CalendarAdmin:
     def __init__(self, conn, logger=None):
         self.conn = conn
         self.logger = logger
-        self.tx_manager = TransactionManager(conn)
         self.repo = CalendarRepository(conn, logger=logger)
         self.operator_calendar_repo = OperatorCalendarRepository(conn, logger=logger)
         self._normalization_defaults: Optional[Dict[str, Any]] = None
@@ -95,9 +94,9 @@ class CalendarAdmin:
 
     @staticmethod
     def _require_operator_id(operator_id: Any) -> str:
-        op_id = normalize_text(operator_id)
+        op_id = (operator_id if operator_id.strip() else None) if type(operator_id) is str else normalize_text(operator_id)
         if not op_id:
-            raise ValidationError("“工号”不能为空", field="工号")
+            raise ValidationError("人员编号不能为空", field="operator_id")
         return op_id
 
     @staticmethod
@@ -204,7 +203,7 @@ class CalendarAdmin:
             "allow_normal": an,
             "allow_urgent": au,
             "remark": rmk,
-            "periods_json": None if periods is None else json.dumps(periods, ensure_ascii=False, separators=(",", ":")),
+            "periods_json": encode_periods(periods, normalized=True),
         }
 
     def _build_work_calendar(
@@ -258,21 +257,18 @@ class CalendarAdmin:
             raise ValidationError("已保存的工作时段不能为空值。", field="periods")
         return periods
 
-    def _build_work_calendar_from_payload(self, calendar_payload: Any, *, requested_shift_hours=None) -> WorkCalendar:
-        if isinstance(calendar_payload, WorkCalendar):
-            return calendar_payload
-        payload = calendar_payload or {}
+    def _build_work_calendar_from_payload(self, calendar_payload: Dict[str, Any], *, requested_shift_hours=None) -> WorkCalendar:
         return self._build_work_calendar(
-            date_value=payload.get("date"),
-            day_type=payload.get("day_type"),
-            shift_hours=payload.get("shift_hours"),
-            shift_start=payload.get("shift_start"),
-            shift_end=payload.get("shift_end"),
-            efficiency=payload.get("efficiency"),
-            allow_normal=payload.get("allow_normal"),
-            allow_urgent=payload.get("allow_urgent"),
-            remark=payload.get("remark"),
-            periods=self._payload_periods(payload),
+            date_value=calendar_payload.get("date"),
+            day_type=calendar_payload.get("day_type"),
+            shift_hours=calendar_payload.get("shift_hours"),
+            shift_start=calendar_payload.get("shift_start"),
+            shift_end=calendar_payload.get("shift_end"),
+            efficiency=calendar_payload.get("efficiency"),
+            allow_normal=calendar_payload.get("allow_normal"),
+            allow_urgent=calendar_payload.get("allow_urgent"),
+            remark=calendar_payload.get("remark"),
+            periods=self._payload_periods(calendar_payload),
             requested_shift_hours=requested_shift_hours,
         )
 
@@ -306,139 +302,17 @@ class CalendarAdmin:
         )
         return OperatorCalendar(operator_id=op_id, **fields)
 
-    def _build_operator_calendar_from_payload(self, calendar_payload: Any) -> OperatorCalendar:
-        if isinstance(calendar_payload, OperatorCalendar):
-            return calendar_payload
-        payload = calendar_payload or {}
+    def _build_operator_calendar_from_payload(self, calendar_payload: Dict[str, Any]) -> OperatorCalendar:
         return self._build_operator_calendar(
-            operator_id=payload.get("operator_id"),
-            date_value=payload.get("date"),
-            day_type=payload.get("day_type"),
-            shift_hours=payload.get("shift_hours"),
-            shift_start=payload.get("shift_start"),
-            shift_end=payload.get("shift_end"),
-            efficiency=payload.get("efficiency"),
-            allow_normal=payload.get("allow_normal"),
-            allow_urgent=payload.get("allow_urgent"),
-            remark=payload.get("remark"),
-            periods=self._payload_periods(payload),
+            operator_id=calendar_payload.get("operator_id"),
+            date_value=calendar_payload.get("date"),
+            day_type=calendar_payload.get("day_type"),
+            shift_hours=calendar_payload.get("shift_hours"),
+            shift_start=calendar_payload.get("shift_start"),
+            shift_end=calendar_payload.get("shift_end"),
+            efficiency=calendar_payload.get("efficiency"),
+            allow_normal=calendar_payload.get("allow_normal"),
+            allow_urgent=calendar_payload.get("allow_urgent"),
+            remark=calendar_payload.get("remark"),
+            periods=self._payload_periods(calendar_payload),
         )
-
-    # -------------------------
-    # WorkCalendar：CRUD（给页面/Excel用）
-    # -------------------------
-    def list_all(self) -> List[WorkCalendar]:
-        return self.repo.list_all()
-
-    def list_range(self, start_date: Any, end_date: Any) -> List[WorkCalendar]:
-        s = normalize_date(start_date)
-        e = normalize_date(end_date)
-        return self.repo.list_range(s, e)
-
-    def upsert(
-        self,
-        date_value: Any,
-        day_type: Any = None,
-        shift_hours: Any = None,
-        shift_start: Any = None,
-        shift_end: Any = None,
-        efficiency: Any = None,
-        allow_normal: Any = None,
-        allow_urgent: Any = None,
-        remark: Any = None,
-        periods: Any = None,
-    ) -> WorkCalendar:
-        cal = self._build_work_calendar(
-            date_value=date_value,
-            day_type=day_type,
-            shift_hours=shift_hours,
-            shift_start=shift_start,
-            shift_end=shift_end,
-            efficiency=efficiency,
-            allow_normal=allow_normal,
-            allow_urgent=allow_urgent,
-            remark=remark,
-            periods=periods,
-        )
-        with self.tx_manager.transaction():
-            self.repo.upsert(cal)
-        return cal
-
-    def upsert_no_tx(self, calendar_payload: Dict[str, Any]) -> WorkCalendar:
-        """
-        upsert 工作日历（不控制事务）。
-
-        说明：
-        - 供 Excel 批量导入在“外部已开启事务”时使用，避免嵌套 commit 导致无法整体回滚。
-        """
-        c = self._build_work_calendar_from_payload(calendar_payload)
-        self.repo.upsert(c)
-        return c
-
-    def delete(self, date_value: Any) -> None:
-        d = normalize_date(date_value)
-        with self.tx_manager.transaction():
-            self.repo.delete(d)
-
-    def delete_all_no_tx(self) -> None:
-        self.repo.delete_all()
-
-    # -------------------------
-    # OperatorCalendar：CRUD（人员专属日历）
-    # -------------------------
-    def get_operator_calendar(self, operator_id: Any, date_value: Any) -> Optional[OperatorCalendar]:
-        op_id = self._require_operator_id(operator_id)
-        d = normalize_date(date_value)
-        return self.operator_calendar_repo.get(op_id, d)
-
-    def list_operator_calendar(self, operator_id: Any) -> List[OperatorCalendar]:
-        op_id = self._require_operator_id(operator_id)
-        return self.operator_calendar_repo.list_by_operator(op_id)
-
-    def list_operator_calendar_all(self) -> List[OperatorCalendar]:
-        return self.operator_calendar_repo.list_all()
-
-    def upsert_operator_calendar(
-        self,
-        operator_id: Any,
-        date_value: Any,
-        day_type: Any = None,
-        shift_hours: Any = None,
-        shift_start: Any = None,
-        shift_end: Any = None,
-        efficiency: Any = None,
-        allow_normal: Any = None,
-        allow_urgent: Any = None,
-        remark: Any = None,
-        periods: Any = None,
-    ) -> OperatorCalendar:
-        cal = self._build_operator_calendar(
-            operator_id=operator_id,
-            date_value=date_value,
-            day_type=day_type,
-            shift_hours=shift_hours,
-            shift_start=shift_start,
-            shift_end=shift_end,
-            efficiency=efficiency,
-            allow_normal=allow_normal,
-            allow_urgent=allow_urgent,
-            remark=remark,
-            periods=periods,
-        )
-        with self.tx_manager.transaction():
-            self.operator_calendar_repo.upsert(cal)
-        return cal
-
-    def upsert_operator_calendar_no_tx(self, calendar_payload: Dict[str, Any]) -> OperatorCalendar:
-        c = self._build_operator_calendar_from_payload(calendar_payload)
-        self.operator_calendar_repo.upsert(c)
-        return c
-
-    def delete_operator_calendar(self, operator_id: Any, date_value: Any) -> None:
-        op_id = self._require_operator_id(operator_id)
-        d = normalize_date(date_value)
-        with self.tx_manager.transaction():
-            self.operator_calendar_repo.delete(op_id, d)
-
-    def delete_operator_calendar_all_no_tx(self) -> None:
-        self.operator_calendar_repo.delete_all()

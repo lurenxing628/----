@@ -12,6 +12,7 @@ from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution import ExecutionProjection
 from core.services.execution.ledger_reader import ExecutionLedgerReader
+from core.services.execution.projection import projection_resource_refs
 from data.repositories.execution_ledger_scope_repo import ExecutionLedgerScopeRepository
 
 from .execution_ledger_guard import ledger_fact_changes
@@ -67,7 +68,15 @@ def _scope_tasks(ledger, scopes):
         key = tuple(row[:4])
         if key in by_identity:
             raise _unavailable("execution_ledger_scope_ambiguous", op_id=row[2])
-        by_identity[key] = {"operation_ref": row[4], "task_ref": row[5], "plan_ref": row[6], "source": row[7]}
+        setup_hours, unit_hours = row[13], row[14]
+        by_identity[key] = {
+            "operation_ref": row[4],
+            "task_ref": row[5],
+            "plan_ref": row[6],
+            "source": row[7],
+            "setup_hours": setup_hours,
+            "unit_hours": unit_hours,
+        }
     result = {}
     for scope in scopes:
         task = by_identity.get((scope.schedule_id, scope.schedule_version, scope.op_id, scope.batch_id))
@@ -117,7 +126,14 @@ def _adapt_scope_facts(legacy_facts, tasks, projections, plan, ledger_revision, 
         ):
             raise _unavailable("execution_ledger_current_task_mismatch", op_id=scope.op_id)
         fact = legacy_facts[scope]
-        changes = ledger_fact_changes(fact, projection, resources, source=task["source"])
+        changes = ledger_fact_changes(
+            fact,
+            projection,
+            resources,
+            source=task["source"],
+            setup_hours=task["setup_hours"],
+            unit_hours=task["unit_hours"],
+        )
         if changes is None:
             result[scope] = replace(fact, target_quantity=projection.target_quantity, quantity_basis=projection.target_basis)
             continue
@@ -142,20 +158,12 @@ def adapt_ledger_facts(ledger, legacy_facts, *, execution_projections=None):
         tasks = _scope_tasks(ledger, scopes)
         refs = list(dict.fromkeys(task["operation_ref"] for task in tasks.values()))
         projections, plan, ledger_revision = _load_projections(ledger, refs, execution_projections)
-        refs_by_op = {op_ref: _projection_resource_refs(row) for op_ref, row in projections.items()}
+        refs_by_op = {op_ref: projection_resource_refs(row) for op_ref, row in projections.items()}
         resource_refs = {ref for refs_set in refs_by_op.values() for ref in refs_set}
         resources = {row["ref"]: row for row in ledger.resources(resource_refs)}
         return _adapt_scope_facts(legacy_facts, tasks, projections, plan, ledger_revision, resources, refs_by_op)
     except WorkbenchCommandRejected as exc:
         raise _unavailable(exc.code) from exc
-
-
-def _projection_resource_refs(projection):
-    refs = {getattr(report, field) for report in projection.reports
-            for field in ("actual_machine_ref", "actual_operator_ref") if getattr(report, field)}
-    refs.update(fact[field] for fact in projection.legacy_facts
-                for field in ("actual_machine_ref", "actual_operator_ref") if fact[field])
-    return refs
 
 
 def _snapshot_projection(projection):

@@ -4,7 +4,8 @@ from core.models.workbench_batch_query import batch_scope
 from core.models.workbench_command import WorkbenchCommandRejected
 
 from .facts import BatchFacts
-from .projection import BatchProjection
+from .projection import BatchProjection, batch_choices
+from .resource_choices import BatchResourceFacts, operation_choices, operator_machine_links
 from .template_validation import template_status
 
 
@@ -62,41 +63,29 @@ class WorkbenchBatchQueryService(BatchFacts):
                 "create_context": None}
 
     def detail(self, ref):
-        return self.details([ref])[0]
-
-    def details(self, refs):
-        """Expand complete operation details only for the requested batches."""
-        rows = [self.batch(ref) for ref in refs]
+        """Expand complete operation details for the requested batch."""
+        row = self.batch(ref)
         facts = self.load()
         projection = BatchProjection(facts)
-        entities = []
-        for row in rows:
-            entity = projection.entity(row)
-            entity["materials"] = projection.materials(row)
-            entity["template"] = template_status(facts, row, projection.resources)
-            entities.append(entity)
-        return entities
+        entity = projection.entity(row)
+        entity["materials"] = projection.materials(row)
+        entity["template"] = template_status(facts, row, projection.resources)
+        return entity
 
     def summaries(self, refs):
         """Selected-list consumers share the same summary as filtered lists."""
+        facts = self.load()
         rows = [self.batch(ref) for ref in refs]
-        projection = BatchProjection(self.load())
+        projection = BatchProjection(facts)
         return [projection.summary(row) for row in rows]
 
     def choices(self, batch_ref=None, operation_ref=None):
+        if batch_ref is None and operation_ref is None:
+            facts = self.load_choices()
+            return batch_choices(facts, operator_machine_links(facts))
         facts = self.load()
-        projection = BatchProjection(facts)
-        parts = [{"ref": projection.ref("part", row["part_no"]), "business_code": row["part_no"], "label": row["part_name"]}
-                 for row in facts["Parts"]]
-        choices = {"parts": parts, **{name: [projection.resource(kind, key) for key in projection.catalogs[kind]]
-                                  for name, kind in (("machines", "machine"), ("operators", "operator"), ("suppliers", "supplier"))},
-                "authorizations": [{"machine_ref": projection.ref("machine", mid), "operator_ref": projection.ref("operator", oid)}
-                                   for oid, mid in sorted(projection.links)]}
-        if batch_ref is not None:
-            from .resource_choices import operation_choices
-
-            return operation_choices(self, batch_ref, operation_ref, choices, projection.resources, facts)
-        return choices
+        resources = BatchResourceFacts(facts)
+        return operation_choices(self, batch_ref, operation_ref, batch_choices(facts, resources.links), resources, facts)
 
     def selection(self, scope):
         rows = self.matched(scope)

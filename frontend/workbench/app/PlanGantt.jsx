@@ -81,6 +81,7 @@
     printState.current = printing;
     const labelWidth = position.width < 550 ? 125 : 170, viewport = Math.max(100, position.width - labelWidth);
     const before = data.projections.baseline, showBaseline = before.state === 'available';
+    React.useEffect(() => { if (selected && selected.before && showBaseline) setBaseline(true); }, [selected, showBaseline]);
     const displayBaseline = showBaseline && baseline, displayChangedOnly = showBaseline && changedOnly;
     // Print uses a normalized axis for tick/point layout; CSS maps its percentages to the actual paper width.
     // It must not inherit a wide screen or expanded board's pixel width.
@@ -100,7 +101,7 @@
     const printItems = printing ? model.rows.flatMap(row => row.items) : [];
     const printNumbers = new Map(printItems.map((item, index) => [item.task.task_ref, index + 1]));
     const risks = React.useMemo(() => new Map(data.projections.delivery_risks.items.map(row => [row.batch_id, row.risk])), [data]);
-    const axis = V.axis({ start: model.start, end: model.end, width, left: renderLeft, viewport: renderViewport }), ticks = axis.ticks;
+    const axis = React.useMemo(() => V.axis({ start: model.start, end: model.end, width, left: renderLeft, viewport: renderViewport }), [model.start, model.end, width, renderLeft, renderViewport]), ticks = axis.ticks;
     const refreshedAt = React.useMemo(() => M.instant(asOf), [asOf]);
     const timeX = at => (at - model.start) / (model.end - model.start) * width;
     const axisLeft = at => printing ? timeX(at) / width * 100 + '%' : timeX(at);
@@ -153,16 +154,16 @@
     React.useEffect(() => {
       if (!selected || !selected.locate || located.current === selected) return;
       const locations = selected.before ? model.baselineLocations : model.locations;
-      if (!locations.has(selectedRef)) { if (!selected.before && displayChangedOnly) setChangedOnly(false); return; }
+      if (!locations.has(selectedRef)) { if (displayChangedOnly) setChangedOnly(false); return; }
       located.current = selected; locate(selectedRef, selected.before);
     }, [selected, model]);
     function select(task, beforeTask) { setHover(null); onSelect(task, beforeTask); }
+    const currentIndex = selectedRef && model.taskOrder ? (model.taskOrder.has(selectedRef) ? model.taskOrder.get(selectedRef) : -1) : model.tasks.findIndex(task => task.task_ref === selectedRef);
     function move(direction) {
-      const tasks = model.tasks, index = tasks.findIndex(task => task.task_ref === selectedRef);
+      const tasks = model.tasks, index = currentIndex;
       const next = tasks[Math.max(0, Math.min(tasks.length - 1, index < 0 ? 0 : index + direction))];
       if (next) { onSelect(next, false); locate(next.task_ref, false); }
     }
-    const currentIndex = model.tasks.findIndex(task => task.task_ref === selectedRef);
     return <div className={'plan-gantt' + (expanded ? ' plan-expanded' : '')} data-plan-gantt data-printing={printing || undefined} onKeyDown={event => {
       if (disabled || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.target.closest('input,textarea,select,[role=dialog]')) return;
       if (event.key === '/') { event.preventDefault(); search.current.focus(); }
@@ -205,7 +206,7 @@
                 <div className="plan-resource" title={[row.label, meta, summary, row.overlap ? '同一组存在同时进行的安排，已上下分行' : null].filter(Boolean).join(' · ')}>{row.before
                   ? <small className="plan-resource-meta">{row.tasks.length ? '原安排' : row.label + ' · 原安排'}</small>
                   : <><strong>{row.label}{!row.point && row.trackCount > 1 && <em className="wb-gantt-subrow-badge">{row.subrow}/{row.trackCount}</em>}</strong><small className="plan-resource-meta">{meta}</small>{summary && <small className="plan-resource-summary">{summary}</small>}</>}</div>
-                <div className="plan-track" style={{ width }}>{ticks.map(tick => <i key={tick.at} className="plan-gridline" style={{ left: axisLeft(tick.at) }} />)}
+                <div className="plan-track" style={{ width }}>{ticks.map(tick => <i key={tick.at} className="plan-gridline" style={{ left: printing ? tick.x / width * 100 + '%' : tick.x }} />)}
                   {items.length > 70 ? <DenseRow row={row} items={items} model={model} width={width} printing={printing} printNumbers={printNumbers} viewport={renderViewport} left={renderLeft} selectedRef={selectedRef} selectedBefore={selected && selected.before} active={active} risks={risks} onSelect={select} onHover={setHover} /> :
                     items.map(item => <Bar key={item.task.task_ref} item={item} model={model} width={width} printing={printing} printNumbers={printNumbers} selectedRef={selectedRef} selectedBefore={selected && selected.before} active={active} risks={risks} onSelect={select} onHover={setHover} />)}
                 </div>

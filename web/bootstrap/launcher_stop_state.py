@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from .launcher_contracts import CONTRACT_STATUS_INVALID, CONTRACT_STATUS_UNREADABLE
+from .launcher_contract_result import CONTRACT_STATUS_INVALID, CONTRACT_STATUS_UNREADABLE
 
 
 def _is_bad_contract_status(contract_status: str) -> bool:

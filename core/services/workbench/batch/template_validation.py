@@ -2,16 +2,28 @@
 
 from core.errors import ValidationError
 from core.models.workbench_batch import number
-from core.services.process.template_source import source_issues, valid_external_group, valid_supplier
+from core.services.process.template_source import SOURCE_MESSAGES, TemplateSourceFacts
 
 from .projection import issue
 
 
-def template_diagnostics(rows, facts, batch, resources):
+def template_diagnostics(rows, facts, resources):
     diagnostics = []
     sequences = set()
     types = resources.catalogs["op_type"]
-    groups, suppliers = _source_catalogs(rows, facts, batch, resources)
+    part_nos = {row["part_no"] for row in rows}
+    referenced_groups = {row["ext_group_id"] for row in rows if row["ext_group_id"] is not None}
+    part_groups = [
+        row for row in facts["ExternalGroups"]
+        if row["part_no"] in part_nos or row["group_id"] in referenced_groups
+    ] if rows else []
+    group_ids = {row["group_id"] for row in part_groups}
+    source_rows = [
+        row for row in facts["PartOperations"]
+        if row["status"] == "active" and (row["part_no"] in part_nos or row["ext_group_id"] in group_ids)
+    ] if group_ids else rows
+    source_facts = TemplateSourceFacts(source_rows, part_groups, facts["Suppliers"],
+                                      facts["WorkbenchSupplierOpTypes"], facts["WorkbenchSupplierProfiles"])
     for row in rows:
         if type(row["seq"]) is not int or row["seq"] <= 0:
             diagnostics.append(issue("工序号 " + str(row["seq"]) + " 无效，请填写正整数。"))
@@ -19,16 +31,10 @@ def template_diagnostics(rows, facts, batch, resources):
             diagnostics.append(issue("工序号 " + str(row["seq"]) + " 重复，请先整理工艺路线。"))
         sequences.add(row["seq"])
         kind = types.get(row["op_type_id"])
-        group = groups.get(row.get("ext_group_id"))
-        supplier = suppliers.get(row.get("supplier_id"))
-        group_supplier = suppliers.get(group["supplier_id"]) if group else None
-        group_valid = (group is None or group["valid"] and (group["merge_mode"] == "separate" or group["supplier_id"] is None
-                       or _supplier_valid(group_supplier, row["op_type_id"])))
-        errors = source_issues(row, type_name=kind["name"] if kind else None,
-                              category=kind["category"] if kind else None,
-                              supplier_valid=_supplier_valid(supplier, row["op_type_id"]),
-                              group=group, group_valid=group_valid)
-        diagnostics.extend(issue("工序 " + str(row["seq"]) + " " + _SOURCE_MESSAGES[code]) for code in errors)
+        group = source_facts.groups.get(row["ext_group_id"])
+        errors = source_facts.issues(row, type_name=kind["name"] if kind else None,
+                                     category=kind["category"] if kind else None)
+        diagnostics.extend(issue("工序 " + str(row["seq"]) + " " + SOURCE_MESSAGES[code]) for code in errors)
         if row["source"] == "internal":
             diagnostics.extend(_internal_diagnostics(row))
         elif row["source"] == "external":
@@ -36,40 +42,12 @@ def template_diagnostics(rows, facts, batch, resources):
     return diagnostics
 
 
-_SOURCE_MESSAGES = {
-    "source_missing": "尚未明确自制或外协归属。",
-    "type_missing": "缺少明确工种。",
-    "type_source_mismatch": "的工种不支持本序归属，请先核对工艺。",
-    "supplier_missing": "的供应商未填写。",
-    "supplier_invalid": "的供应商不存在或已停用，或未登记本序能力。",
-    "group_invalid": "的外协组关系不完整，请先完善工艺。",
-    "group_supplier_mismatch": "的供应商与外协组不一致，请先完善工艺。",
-    "internal_external_binding": "是自制工序，不能保留外协供应商或外协组关系。",
-}
-
-
-def _source_catalogs(rows, facts, batch, resources):
-    members = {}
-    for row in rows:
-        members.setdefault(row.get("ext_group_id"), []).append((row["seq"], row["source"], row["supplier_id"]))
-    groups = {group["group_id"]: dict(group, valid=valid_external_group(
-        group, batch["part_no"], members.get(group["group_id"], []))) for group in facts["ExternalGroups"]}
-    profiles = {row["supplier_id"]: row for row in facts["WorkbenchSupplierProfiles"]}
-    suppliers = {row["supplier_id"]: dict(row, capabilities=resources.supplier_types.get(row["supplier_id"], set()),
-        inactive_reason=profiles.get(row["supplier_id"], {}).get("inactive_reason")) for row in facts["Suppliers"]}
-    return groups, suppliers
-
-
-def _supplier_valid(supplier, op_type_id):
-    return valid_supplier(dict(supplier, capable=op_type_id in supplier["capabilities"])) if supplier else False
-
-
 def template_status(facts, batch, resources, *, rows=None):
     """The detail and replacement preview apply the same completeness policy."""
     if rows is None:
         rows = [row for row in facts["PartOperations"] if row["part_no"] == batch["part_no"] and row["status"] == "active"]
     workflow = facts["workflow"][batch["part_no"]]["workflow"]
-    diagnostics = template_diagnostics(rows, facts, batch, resources)
+    diagnostics = template_diagnostics(rows, facts, resources)
     if not rows:
         diagnostics.insert(0, issue("尚未录入有效工序，请先完善工艺路线。"))
     elif workflow["origin"] == "managed" and not workflow["ready"]:

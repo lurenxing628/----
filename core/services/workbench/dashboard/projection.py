@@ -3,8 +3,10 @@
 from collections import defaultdict
 
 from core.models.enums import DueState
+from core.models.workbench_batch import STATUSES
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import MAX_ROWS, bounded
+from core.services.material.stage_availability import MaterialAvailability
 from core.services.workbench.facts.preflight_checks import PreflightChecks, number, stored_date
 
 from .facts import source_issue
@@ -67,9 +69,9 @@ class _MaterialChecks(PreflightChecks):
     """Reuse the exact readiness rule without loading unrelated resource catalogs."""
 
     def __init__(self, requirements, stored_batches):
-        self.materials = defaultdict(list)
-        for row in requirements:
-            self.materials[row["batch_id"]].append(row)
+        self.availability = MaterialAvailability({"BatchMaterials": requirements})
+        self._batch_reviewed = {}
+        self._batch_readiness = {}
         self.marks = {row["batch_id"]: row["ready_status"] for row in stored_batches}
 
     def readiness(self, batch):
@@ -94,10 +96,10 @@ def _material_requirement(row, value, material_refs):
 
 def _material_batch(batch, checks, refs, by_material, material_refs, source_facts):
     reasons = checks.readiness(batch)
-    rows = checks.materials[batch["batch_id"]]
+    rows = checks.availability.requirements[batch["batch_id"]]
     projected = [_material_requirement(row, by_material.get(row["material_id"]), material_refs) for row in rows]
     status = batch["ready_status"] if batch["ready_status"] in ("yes", "no", "partial") else None
-    unknown = status is None or batch["status"] not in ("pending", "scheduled", "processing", "completed") or any(bad for _, bad in projected)
+    unknown = status is None or batch["status"] not in STATUSES or any(bad for _, bad in projected)
     active = None if unknown else bool(reasons)
     ref = refs[batch["batch_id"]]["ref"]
     source = {"kind": "batch_readiness", "batch_ref": ref, "batch_id": batch["batch_id"],

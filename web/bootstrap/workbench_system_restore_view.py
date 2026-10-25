@@ -10,8 +10,8 @@ from werkzeug.wrappers import Request, Response
 from core.models.workbench_command import WorkbenchCommandRejected
 
 from .paths import runtime_base_dir
+from .workbench_system_restore_status import validate_maintenance_reference
 
-BASE = "/api/workbench/v1/system"
 DIAGNOSTIC_FILENAME = "维护诊断.json"
 # 恢复各阶段与数据库来源的叫法必须和 frontend/workbench/app/SystemRestoreStatus.js 的 labels / origins 逐字相同，
 # 冷启动维护页和工作台里的维护面板才会说同一句话；tests/workbench/test_du_system_restore_view.py 锁住这一致性。
@@ -32,31 +32,42 @@ def _query(request, status):
         raise WorkbenchCommandRejected("invalid_input", "这一页只能查看，查询条件不对，没有执行任何操作。", 400)
     kind = args.get("kind", "request")
     reference = args.get("reference", status.get("request_key") or "").strip()
+    if reference:
+        validate_maintenance_reference(kind, reference)
     return kind, reference
 
 
-def _recent_records(journal):
-    records = sorted(journal.records(), key=lambda row: row["updated_at"], reverse=True)
+def _recent_records(journal, records):
+    records = sorted(records, key=lambda row: row["updated_at"], reverse=True)
     return [journal.public(row, True) for row in records[:20]]
 
 
-def recovery_response(environ, journal, status, lookup):
+def recovery_response(environ, journal_factory, status, lookup):
     request = Request(environ)
     kind, reference, result, error, code = "request", "", None, "", 503
+    rows, history_error, journal, records = [], "", None, None
+    try:
+        journal = journal_factory()
+        records = journal.collection()
+        rows = _recent_records(journal, records)
+    except WorkbenchCommandRejected as exc:
+        if exc.code != "maintenance_record_capacity":
+            journal = None
+        history_error = "维护记录列表没能完整读出来，这里不是完整清单。可以用操作编号单独查一条记录。"
+    except Exception:
+        journal = None
+        history_error = "维护记录列表没能完整读出来，这里不是完整清单。可以用操作编号单独查一条记录。"
     try:
         kind, reference = _query(request, status)
         if reference:
-            result = lookup(BASE + ("/jobs/" if kind == "job" else "/results/") + reference, status)
+            if journal is None or records is None and kind == "request":
+                error = "维护记录损坏或读不出来，不能确认这次恢复的结果。系统已停下，请不要再操作，联系维护人员。"
+            else:
+                result = lookup(kind, reference, status, journal)
     except WorkbenchCommandRejected as exc:
         error, code = str(exc), exc.status
     except Exception:
         error = "维护记录损坏或读不出来，不能确认这次恢复的结果。系统已停下，请不要再操作，联系维护人员。"
-    # A bad record must not turn into an empty/successful maintenance history.
-    rows, history_error = [], ""
-    try:
-        rows = _recent_records(journal)
-    except Exception:
-        history_error = "维护记录列表没能完整读出来，这里不是完整清单。可以用操作编号单独查一条记录。"
     operation = result.get("operation") if result else None
     uncertain = (status["state"] == "recovery_required" or not operation or not operation["terminal"]
                  or status.get("request_key") != operation["request_key"])

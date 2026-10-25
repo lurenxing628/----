@@ -154,20 +154,40 @@
     const shared = scopes !== null;
     const id = React.useId(), svg = React.useRef(null), [selection, setSelection] = React.useState(null), [metricSelection, setMetricSelection] = React.useState({ objective: objective.name, key: objective.primary_metric_key }), [windowMode, setWindowMode] = React.useState('full'), [showAttempts, setShowAttempts] = React.useState(false);
     const metricKey = metricSelection.objective === objective.name ? metricSelection.key : objective.primary_metric_key;
-    const points = progress.points, mode = progress.mode, definitions = metricChoices(objective), definition = definitions.find(field => field.key === metricKey) || definitions[0];
-    const value = point => savedValue(point, definition), viewedObjective = { ...objective, primary_metric_label: definition.label, unit: definition.unit };
-    const eventAxis = mode === 'discrete' && points.length > 0 && points.every(point => !known(point.elapsed_ms));
-    const xValue = point => eventAxis ? point.event_index : point.elapsed_ms, range = timeRange(progress, elapsedMs, lastImprovementElapsedMs), hasImprovement = range.lastImprovementElapsedMs !== null;
-    const activeWindow = mode === 'curve' && hasImprovement ? windowMode : 'full', limit = activeWindow === 'improvements' ? range.improvements : range.full;
-    const plotted = mode === 'none' ? [] : points.map((point, index) => ({ point, index })).filter(item => known(xValue(item.point)) && known(value(item.point)) && (eventAxis || xValue(item.point) <= limit));
-    const scatter = showAttempts && !eventAxis ? attempts.filter(point => known(point.elapsed_ms) && point.elapsed_ms <= limit && known(value(point))) : [];
-    const eventValues = eventAxis ? points.map(xValue).filter(known) : [];
-    const xDomain = eventAxis ? { min: eventValues.length ? Math.min(...eventValues) : 0, max: eventValues.length ? Math.max(...eventValues) : 1 } : { min: 0, max: limit || 1 };
-    const yDomain = domain([...plotted.map(item => value(item.point)), ...scatter.map(value)]);
+    const points = progress.points, mode = progress.mode;
+    const {
+      definitions, definition, value, viewedObjective, eventAxis, xValue, range, hasImprovement,
+      activeWindow, limit, plotted, scatter, xDomain, yDomain, x, y, sampled,
+      lineGroups, phaseMarkers, xTicks, yTicks, xLabel, chartLabel, initial, final, lastVisible, continueToEnd
+    } = React.useMemo(() => {
+      const definitions = metricChoices(objective), definition = definitions.find(field => field.key === metricKey) || definitions[0];
+      const value = point => savedValue(point, definition), viewedObjective = { ...objective, primary_metric_label: definition.label, unit: definition.unit };
+      const eventAxis = mode === 'discrete' && points.length > 0 && points.every(point => !known(point.elapsed_ms));
+      const xValue = point => eventAxis ? point.event_index : point.elapsed_ms, range = timeRange(progress, elapsedMs, lastImprovementElapsedMs), hasImprovement = range.lastImprovementElapsedMs !== null;
+      const activeWindow = mode === 'curve' && hasImprovement ? windowMode : 'full', limit = activeWindow === 'improvements' ? range.improvements : range.full;
+      const plotted = mode === 'none' ? [] : points.map((point, index) => ({ point, index })).filter(item => known(xValue(item.point)) && known(value(item.point)) && (eventAxis || xValue(item.point) <= limit));
+      const scatter = showAttempts && !eventAxis ? attempts.filter(point => known(point.elapsed_ms) && point.elapsed_ms <= limit && known(value(point))) : [];
+      const eventValues = eventAxis ? points.map(xValue).filter(known) : [];
+      const xDomain = eventAxis ? { min: eventValues.length ? Math.min(...eventValues) : 0, max: eventValues.length ? Math.max(...eventValues) : 1 } : { min: 0, max: limit || 1 };
+      const yDomain = domain([...plotted.map(item => value(item.point)), ...scatter.map(value)]);
+      const x = point => 8 + ratio(xValue(point), xDomain) * 784, y = point => 232 - ratio(value(point), yDomain) * 224;
+      const sampled = mode === 'curve' && progress.sampling && known(progress.sampling.event_total_count) && progress.sampling.event_total_count > points.length;
+      const lineGroups = segments(progress, value).map(group => group.filter(point => point.elapsed_ms <= limit)).filter(group => group.length > 1);
+      const phaseMarkers = markers(progress).filter(marker => known(value(marker.point)) && marker.point.elapsed_ms <= limit);
+      const xTicks = eventAxis && plotted.length ? [...new Set([0, Math.floor((plotted.length - 1) / 4), Math.floor((plotted.length - 1) / 2), Math.floor((plotted.length - 1) * 3 / 4), plotted.length - 1].map(index => xValue(plotted[index].point)))] : ticks(xDomain);
+      const yTicks = ticks(yDomain);
+      const xLabel = eventAxis ? '已保存事件顺序（累计计算耗时未记录）' : '累计计算耗时', chartLabel = definition.label + (definition.unit ? '（' + definition.unit + '）' : '');
+      const initial = points.find(point => point.flags.includes('first_valid')), final = points.find(point => point.flags.includes('final'));
+      const lastVisible = plotted.length ? plotted[plotted.length - 1].point : null, nextSaved = lastVisible ? points[points.indexOf(lastVisible) + 1] : null;
+      const continueToEnd = lastVisible === final || windowMode === 'improvements' && nextSaved && nextSaved.verified === true && sameScope(lastVisible, nextSaved);
+      return {
+        definitions, definition, value, viewedObjective, eventAxis, xValue, range, hasImprovement,
+        activeWindow, limit, plotted, scatter, xDomain, yDomain, x, y, sampled,
+        lineGroups, phaseMarkers, xTicks, yTicks, xLabel, chartLabel, initial, final, lastVisible, continueToEnd
+      };
+    }, [progress, objective, metricKey, elapsedMs, lastImprovementElapsedMs, attempts, windowMode, showAttempts]);
     const sourceIndex = shared && sourceEventId !== null ? points.findIndex(point => point.source_event_id === sourceEventId) : -1;
     const cursor = selection && selection.progress === progress ? Math.min(selection.index, Math.max(0, points.length - 1)) : Math.max(0, sourceIndex), selected = points[cursor];
-    const x = point => 8 + ratio(xValue(point), xDomain) * 784, y = point => 232 - ratio(value(point), yDomain) * 224;
-    const sampled = mode === 'curve' && progress.sampling && known(progress.sampling.event_total_count) && progress.sampling.event_total_count > points.length;
     function choose(index) {
       if (windowMode === 'improvements' && points[index] && known(points[index].elapsed_ms) && points[index].elapsed_ms > limit) setWindowMode('full');
       if (!selection || selection.progress !== progress || index !== cursor) setSelection({ progress, index });
@@ -189,15 +209,7 @@
       const found = nearestPoint(plotted, xDomain.min + (relative - 8) / 784 * (xDomain.max - xDomain.min), xValue);
       if (found) choose(found.index);
     }
-    const lineGroups = segments(progress, value).map(group => group.filter(point => point.elapsed_ms <= limit)).filter(group => group.length > 1);
-    const phaseMarkers = markers(progress).filter(marker => known(value(marker.point)) && marker.point.elapsed_ms <= limit);
-    const xTicks = eventAxis && plotted.length ? [...new Set([0, Math.floor((plotted.length - 1) / 4), Math.floor((plotted.length - 1) / 2), Math.floor((plotted.length - 1) * 3 / 4), plotted.length - 1].map(index => xValue(plotted[index].point)))] : ticks(xDomain);
-    const yTicks = ticks(yDomain);
-    const xLabel = eventAxis ? '已保存事件顺序（累计计算耗时未记录）' : '累计计算耗时', chartLabel = definition.label + (definition.unit ? '（' + definition.unit + '）' : '');
-    const initial = points.find(point => point.flags.includes('first_valid')), final = points.find(point => point.flags.includes('final'));
     const selectedPlotted = plotted.find(item => item.index === cursor), selectionText = selected ? pointText({ ...selected, primary_value: value(selected) }, cursor, points.length, viewedObjective) : '当前没有保存的过程点。';
-    const lastVisible = plotted.length ? plotted[plotted.length - 1].point : null, nextSaved = lastVisible ? points[points.indexOf(lastVisible) + 1] : null;
-    const continueToEnd = lastVisible === final || windowMode === 'improvements' && nextSaved && nextSaved.verified === true && sameScope(lastVisible, nextSaved);
     return <figure className="rd-process-chart" data-progress-mode={mode} data-progress-axis={eventAxis ? 'event_index' : 'elapsed_ms'} data-process-metric={definition.key} data-process-window={activeWindow}>
       <div className="rd-process-chart-toolbar"><figcaption className="rd-process-chart-caption" id={id + '-caption'}>{mode === 'curve' ? '保留方案的计算过程' : '已保存过程记录'}</figcaption><label>观察指标<select aria-label="计算过程观察指标" value={definition.key || ''} onChange={event => setMetricSelection({ objective: objective.name, key: event.target.value })}>{definitions.map(field => <option key={field.key || 'unknown'} value={field.key || ''}>{field.label}{field.unit ? '（' + field.unit + '）' : ''}</option>)}</select></label></div>
       <div className="rd-process-chart-summary"><div><span>{mode === 'discrete' ? '首个保存点' : '首个有效方案'}</span><strong>{number(value(mode === 'discrete' ? points[0] || { primary_value: null, score: [] } : initial || { primary_value: null, score: [] }))}</strong>{definition.unit && ' ' + definition.unit}</div><div><span>{mode === 'discrete' ? '末个保存点' : '最终结果'}</span><strong>{number(value(mode === 'discrete' ? points[points.length - 1] || { primary_value: null, score: [] } : final || { primary_value: null, score: [] }))}</strong>{definition.unit && ' ' + definition.unit}</div>{hasImprovement && <div data-process-last-improvement-ms={range.lastImprovementElapsedMs}><span>最后一次评分改善</span>{shared ? <strong>{elapsed(range.lastImprovementElapsedMs)}</strong> : <><strong>{number(range.lastImprovementElapsedMs / 1000)}</strong> 秒</>}</div>}</div>

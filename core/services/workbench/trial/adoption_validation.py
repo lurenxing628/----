@@ -3,9 +3,10 @@
 from dataclasses import replace
 from datetime import datetime
 
-from core.errors import AppError
+from core.errors import AppError, ValidationError
 from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked, TrialAdoptionEvidence
@@ -22,7 +23,7 @@ from core.services.workbench.run.jobs_facts import run_execution_projections
 
 from .adoption_input import prepare_trial_adoption_input
 from .facts import live_context
-from .materials import hold_settings, run_window
+from .materials import run_window
 from .validation import TrialValidator
 
 _INPUT_UNPROVEN = ("scenario_constraint_unproven", "试调方案的排产输入没有通过核对，正式计划没有改变。请回到试调列表重新预检。")
@@ -42,19 +43,19 @@ def validate_trial_adoption(conn, scenario_ref):
             require_adoption_schema(conn)
             saved, head, rows = load_saved_scenario(conn, scenario_ref)
             admission = head["admission"]
-            capture, execution = ProductionFactsCapture(conn), []
+            capture = ProductionFactsCapture(conn)
             live = live_context(conn, [row["operation_ref"] for row in rows], capture=capture,
-                execution_service=execution_service, prepared_execution=execution)
+                execution_service=execution_service)
             _current_baseline(admission, live)
             _original_work(rows, live)
-            checked, settings = _scenario_validation(conn, saved, admission, rows, live)
+            checked, settings, held = _scenario_validation(conn, saved, admission, rows, live)
             issues = [row for row in checked["issues"] if row["code"] != "scenario_adoption_not_connected"]
             if issues:
                 raise TrialAdoptionBlocked("scenario_constraint_unproven", "试调方案没有通过当前的完整核对，正式计划没有改变。", issues)
-            projections = run_execution_projections(conn, settings, capture=capture, existing=execution,
-                                                    service=execution_service)
+            projections = run_execution_projections(conn, settings, capture=capture,
+                existing=live["preflight_facts"].execution_projections.values(), service=execution_service)
             _require_official_baseline(live["baseline"], projections)
-            prepared = prepare_trial_adoption_input(conn, settings, projections, live, hold=hold_settings(admission, settings),
+            prepared = prepare_trial_adoption_input(conn, settings, projections, live, held=held,
                 capture=capture, validated_projections={row.operation_ref: row for row in projections})
             _complete_scope(rows, prepared)
             # Pending stage work follows the run's end date; the saved rows keep their own span.
@@ -82,7 +83,7 @@ def validate_trial_adoption(conn, scenario_ref):
         raise
     except CandidateRunInputError as exc:
         raise TrialAdoptionBlocked(*_INPUT_PROBLEMS.get(exc.reason, _INPUT_UNPROVEN)) from exc
-    except (AppError, ValueError, TypeError, KeyError, OverflowError) as exc:
+    except (PieceAdoptionBlocked, ValidationError, AppError) as exc:
         raise TrialAdoptionBlocked("scenario_constraint_unproven", "试调方案的现场数据、编号或约束资料不完整，没有执行正式采用。") from exc
 
 
@@ -104,14 +105,14 @@ def _scenario_validation(conn, saved, admission, rows, live):
         issues.append(item)
     validator = TrialValidator(conn, dict(admission, base_issues=issues), rows, live)
     checked = validator.evaluate_saved(check_baseline=False)
-    return checked, validator.settings
+    return checked, validator.settings, validator.held
 
 
 def _original_work(rows, live):
     tables = live["facts"]["tables"]
     ops = {row["id"]: row for row in tables["BatchOperations"]}
     batches = {row["batch_id"]: row for row in tables["Batches"]}
-    refs = {(row["kind"], row["entity_key"]): row["ref"] for row in tables["WorkbenchEntityRefs"] if row["active"] == 1}
+    refs = live["preflight_facts"].refs
     for row in rows:
         original = row["original"]
         if (not same(original["operation"], ops.get(original["operation"]["id"]))

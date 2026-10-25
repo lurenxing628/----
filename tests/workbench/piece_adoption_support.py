@@ -62,15 +62,15 @@ def lower_input(case, *batch_ids):
     svc = build_schedule_repository_bundle(case.conn)
     production = PreflightFacts(case.conn)
     with production.snapshot(fingerprint=False):
-        pass
+        production.configuration()
     production.execution_projections.update((item.operation_ref, item) for item in run_execution_projections(
         case.conn, settings, capture=production.capture))
-    version = svc.history_repo.get_latest_version()
+    version = max((row["version"] for row in production.capture.table("ScheduleHistory")), default=0)
     prior_refs = {production.operation_refs[op_id] for op_id in production.latest_plan_rows(version)}
     facts, fixed, completed, actual, snap = build_execution_guardrails_from_projections(svc, operations, prev_version=version,
         execution_projections=[row for row in production.execution_projections.values() if row.operation_ref in prior_refs],
         facts=production, external_groups=execution_groups(production, batches, operations))
-    refs = WorkbenchPlanIdentityRepository(case.conn).get_operation_refs(op.id for op in operations)
+    refs = WorkbenchPlanIdentityRepository(case.conn).get_operation_refs(op.id for op in operations if op.id is not None)
     projected = {item.operation_ref: item.to_dict() for item in case.projections(*ids)}
     scope = build_piece_adoption_scope(operations, batches)
     dispositions = [{"op_id": work.op_id, "operation_ref": refs[work.op_id], "batch_id": work.batch_id,
@@ -81,21 +81,21 @@ def lower_input(case, *batch_ids):
     tables = {name: [dict(row) for row in case.conn.execute('SELECT * FROM "' + name + '"')]
               for name in ("BatchExternalContexts", "BatchOperations")}
     prime_template_cache(svc, tables, batches, operations)
-    cfg = candidate_config(case.conn, settings)
+    cfg = candidate_config(settings, snapshot=production.config_snapshot)
     # 正式计划里的锁定标记不再起作用：受保护的只有报工保护的工序，和本次不重排时段里保持原安排的工序。
-    held, _ = held_arrangements(svc, facts=production, cfg=cfg, prev_version=version, start_dt=START, operations=operations,
+    held = held_arrangements(svc, facts=production, cfg=cfg, prev_version=version, start_dt=START, operations=operations,
         reschedulable_operations=[op for op in operations if op.id not in fixed | completed],
-        hold_window=hold_window(case.conn, settings)[0])
+        hold_window=hold_window(settings, snapshot=production.config_snapshot)[0])
     return SimpleNamespace(preflight_facts=production, latest_plan_rows=production.latest_plan_rows(version),
         execution_reservations=build_execution_resource_reservations(facts=facts,
-            selected_op_ids={op.id for op in operations}, capture=production.capture),
+            selected_op_ids={op.id for op in operations if op.id is not None}, capture=production.capture),
         operation_sources=({op.id: op.source for op in operations}, []),
         normalized_batch_ids=ids, normalized_input=settings,
-        operations=operations, batches=batches, dispositions=dispositions,
+        operations=operations, batches=batches, dispositions=dispositions, piece_scope=scope,
         cal_svc=CalendarService(case.conn), prev_version=version, start_dt_norm=START, cfg=cfg,
         end_date_norm=datetime(2026, 9, 25).date(), readiness_gate_enabled=True, downtime_map={},
         algo_ops=build_algo_operations(svc, operations, strict_mode=True),
-        frozen_op_ids={seed["op_id"] for seed in held}, seed_results=list(actual) + held,
+        frozen_op_ids=held.frozen_op_ids, seed_results=actual + held.seed_results,
         execution_facts=facts, execution_fixed_op_ids=fixed, execution_completed_op_ids=completed,
         execution_seed_results=actual,
         execution_snapshot_revision=snap.revision, execution_snapshot_op_ids=list(snap.op_ids),

@@ -12,9 +12,9 @@ _TABLES = {"BatchOperations": "id", "Batches": "batch_id", "Parts": "part_no",
            "Machines": "machine_id", "Operators": "operator_id", "Suppliers": "supplier_id", "OpTypes": "op_type_id"}
 
 
-def _table(facts, name):
+def archived_table(facts, name):
     schema, tables = facts.get("schema"), facts.get("tables")
-    if type(schema) is not list or type(tables) is not dict:
+    if type(schema) is not list or type(tables) is not dict or type(facts.get("columns", {})) is not dict:
         corrupt()
     if name not in tables:
         return None
@@ -25,7 +25,7 @@ def _table(facts, name):
         columns = archived_columns(facts, name)
     except (ValueError, TypeError, KeyError):
         corrupt()
-    if not columns:
+    if not columns or len(set(columns)) != len(columns):
         corrupt()
     column_set = frozenset(columns)
     result = []
@@ -41,7 +41,7 @@ def _table(facts, name):
     return result
 
 
-def _index(rows, key):
+def index_rows(rows, key):
     result = {}
     for row in rows or []:
         if type(row) is not dict:
@@ -53,11 +53,11 @@ def _index(rows, key):
     return result
 
 
-def _entity_refs(facts):
-    return _entity_ref_rows(_table(facts, "WorkbenchEntityRefs"))
+def archived_entity_refs(facts):
+    return entity_ref_rows(archived_table(facts, "WorkbenchEntityRefs"))
 
 
-def _entity_ref_rows(rows):
+def entity_ref_rows(rows):
     result = {}
     for row in rows or []:
         if row.get("active") != 1:
@@ -69,13 +69,13 @@ def _entity_ref_rows(rows):
     return result
 
 
-def _operation_ref_rows(rows):
+def operation_ref_rows(rows):
     result = {}
     for row in rows or []:
         if row.get("kind") != "operation" or row.get("active") != 1:
             continue
         ref, key = reference(row.get("ref"), stored=True), row.get("source_key")
-        if type(key) is not str or not key.isdigit() or str(int(key)) != key or ref in result:
+        if type(key) is not str or not key.isascii() or not key.isdigit() or str(int(key)) != key or ref in result:
             corrupt()
         result[ref] = int(key)
     return result
@@ -87,10 +87,10 @@ class GenerationFacts:
         facts = stored_json(value)
         self.archive = facts
         self._decoded_tables = {}
-        self.tables = {name: _index(self.table(name), key) for name, key in _TABLES.items()}
-        self.entity_refs = _entity_ref_rows(self.table("WorkbenchEntityRefs"))
-        self.operations = _operation_ref_rows(self.table("WorkbenchPlanSourceRefs"))
-        self.execution = _index(capture["execution"], "operation_ref")
+        self.tables = {name: index_rows(self.table(name), key) for name, key in _TABLES.items()}
+        self.entity_refs = entity_ref_rows(self.table("WorkbenchEntityRefs"))
+        self.operations = operation_ref_rows(self.table("WorkbenchPlanSourceRefs"))
+        self.execution = index_rows(capture["execution"], "operation_ref")
         self._operation_labels = {}
         for ref in self.execution:
             reference(ref, stored=True)
@@ -98,19 +98,25 @@ class GenerationFacts:
     def table(self, name):
         """Decode an immutable saved table once for all consumers of this source."""
         if name not in self._decoded_tables:
-            self._decoded_tables[name] = _table(self.archive, name)
+            self._decoded_tables[name] = archived_table(self.archive, name)
         return self._decoded_tables[name]
 
     @cached_property
     def operations_by_batch(self):
         result = defaultdict(list)
         for operation in self.tables["BatchOperations"].values():
+            if type(operation.get("batch_id")) is not str:
+                corrupt()
             result[operation["batch_id"]].append(dict(operation, op_id=operation["id"]))
         return dict(result)
 
     @cached_property
     def batch_ids_by_ref(self):
         return {ref: key for (kind, key), ref in self.entity_refs.items() if kind == "batch"}
+
+    @cached_property
+    def operation_refs(self):
+        return {key: ref for ref, key in self.operations.items()}
 
     def operation(self, ref, payload, gaps):
         key = self.operations.get(ref)

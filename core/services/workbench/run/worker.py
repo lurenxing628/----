@@ -24,8 +24,7 @@ from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository
 
 from .compute import compute_candidate_run
-from .jobs_facts import run_facts_unchanged
-from .progress import clear_progress, report_progress
+from .jobs_facts import production_facts_match
 from .result_preparation import prepare_run_result
 from .worker_claim import claim_run
 from .worker_snapshot import computation_database
@@ -44,13 +43,12 @@ def failure_diagnostic(exc):
 
 
 class WorkbenchRunWorker:
-    def __init__(self, conn, *, clock=None, compute_runner=None, progress_sink=None, app_error_message=None):
+    def __init__(self, conn, *, clock=None, compute_runner=None, app_error_message=None):
         self.conn = conn
         self.clock = clock or datetime.now
         self.repo = WorkbenchRunRepository(conn)
         self.results = WorkbenchRunResultRepository(conn)
         self.compute_runner = compute_runner
-        self.progress_sink = progress_sink
         # AppError 给用户看的提示由宿主传入的 web 层清洗函数给出；没传时按计算失败处理，不外露原文。
         self.app_error_message = app_error_message
 
@@ -58,7 +56,7 @@ class WorkbenchRunWorker:
         return self.clock().isoformat(timespec="microseconds")
 
     def _check_facts(self, row, conn=None, *, capture=None):
-        if not run_facts_unchanged(self.conn if conn is None else conn, row["facts_json"], row["facts_hash"], capture=capture):
+        if not production_facts_match(self.conn if conn is None else conn, row["facts_json"], capture=capture):
             raise WorkbenchCommandRejected("snapshot_stale", "排产之后现场数据有变化，这次的候选方案没有保存。请重新做一次排产检查。")
 
     def execute(self, run_ref, *, retry_original=None):
@@ -81,18 +79,15 @@ class WorkbenchRunWorker:
             written = self._persist(row, prepared_result, admission["decision"])
             return public_job_head({**row, **written}, admission["scope"], prepared_result.status_header)
         finally:
-            # The run is terminal (or failed to claim) here; the receipt is the record from now on.
-            clear_progress(run_ref)
             lock.release()
 
     def _compute(self, row, admission):
-        progress = self.progress_sink or (lambda done, total: report_progress(row["run_ref"], done, total, self._now()))
         if self.compute_runner is not None:
-            return self.compute_runner(self.conn, row, admission=admission, on_progress=progress)
+            return self.compute_runner(self.conn, row, admission=admission)
         with computation_database(self.conn) as snapshot:
-            return self.compute_owned_snapshot(snapshot, row, admission, on_progress=progress)
+            return self.compute_owned_snapshot(snapshot, row, admission)
 
-    def compute_owned_snapshot(self, snapshot, row, admission, *, on_progress):
+    def compute_owned_snapshot(self, snapshot, row, admission):
         """Consume the caller's isolated database without copying it again."""
         with candidate_read_snapshot(snapshot):
             current_capture = ProductionFactsCapture(snapshot)
@@ -102,7 +97,7 @@ class WorkbenchRunWorker:
             projections = restore_execution_projections(raw_execution)
             computation = compute_candidate_run(
                 snapshot, normalized_input, projections,
-                on_progress=on_progress, capture=current_capture,
+                capture=current_capture,
                 validated_projections={row.operation_ref: row for row in projections})
             capture = {"input": normalized_input, "execution": raw_execution,
                        "baseline": json.loads(row["baseline_json"]), "facts_text": row["facts_json"],

@@ -5,6 +5,7 @@ from copy import deepcopy
 import pytest
 
 from core.infrastructure.transaction import TransactionManager
+from core.models.workbench_batch_material import normalize_material_changes
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked
 from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
 from core.services.workbench.facts.trial_policy import load_draft, load_scenario
@@ -218,9 +219,9 @@ def test_trial_includes_selected_batch_with_only_material_deferred_operations(tr
     operation_ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
                                       (str(second),)).fetchone()[0]
     with TransactionManager(case.conn).transaction():
-        WorkbenchBatchMaterialService(case.conn).apply(case.ref("batch", "B2"), {"removed_keys": [], "rows": [{
+        WorkbenchBatchMaterialService(case.conn).apply_normalized(case.ref("batch", "B2"), normalize_material_changes({"removed_keys": [], "rows": [{
             "row_key": None, "material_ref": case.ref("material", "STEEL"), "required_quantity": 3,
-            "available_quantity": 0, "operation_ref": operation_ref, "arrivals": []}]})
+            "available_quantity": 0, "operation_ref": operation_ref, "arrivals": []}]}))
     accepted = case.accept(settings=case.settings("B1", "B2", material_strategy="stage"))
     result = WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
     draft = create(case, {"base": {"candidate_ref": result["candidates"][0]["candidate_ref"]}})

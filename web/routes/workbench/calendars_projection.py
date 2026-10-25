@@ -12,7 +12,7 @@ def calendar_snapshot(day: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def calendar_policy(state: Dict[str, Any]) -> Dict[str, Any]:
-    effective, row = dict(state["effective"]), state["row"]
+    effective, row = state["effective"], state["row"]
     fields = {key: effective[key] for key in ("type", "hours", "eff", "allowNormal", "allowUrgent")}
     # A configured workday with both priorities disabled is stopped, not a holiday edit.
     if row is not None and row["day_type"] == "workday":
@@ -27,7 +27,7 @@ def calendar_day(state: Dict[str, Any]) -> Dict[str, Any]:
     public = {"date": state["date"], "calendar_ref": state["calendar_ref"], **calendar_policy(state)}
     public["entity"] = None if not state["explicit"] else {
         "ref": state["calendar_ref"], "business_code": state["date"], "label": state["date"],
-        "status": "configured", "fields": dict(public["fields"]), "relationships": {}, "issues": []}
+        "status": "configured", "fields": public["fields"], "relationships": {}, "issues": []}
     return public
 
 
@@ -37,8 +37,8 @@ def calendar_preview(preview) -> Dict[str, Any]:
              "changed": item["before"]["row"] != item["after"]["row"]} for item in preview.days]
     changed = sum(item["changed"] for item in days)
     return {"preview_ref": preview.preview_ref, "created_at": preview.created_at, "expires_at": preview.expires_at,
-            "request": {**preview.request, "fields": dict(preview.request["fields"])},
-            "dates": list(preview.dates), "days": days,
+            "request": {**preview.request, "fields": preview.request["fields"]},
+            "dates": preview.dates, "days": days,
             "counts": {"selected": len(days), "changed": changed, "unchanged": len(days) - changed,
                        "configured_before": sum(item["before"]["explicit"] for item in days),
                        "configured_after": sum(item["after"]["explicit"] for item in days)}}

@@ -587,10 +587,18 @@
       && data.attempts.length === summary.saved_attempt_count && new Set(data.attempts.map(value => value.saved_index)).size === data.attempts.length,
     '已保存计算尝试与所选方案的计算来源不一致，请点“刷新优化过程”。');
     if (q.record_kind === 'progress') {
-      check(data.items.every(value => point(value) && progress.points.some(saved => sameSaved(saved, value)))
+      const pointsByEvent = new Map();
+      progress.points.forEach(saved => {
+        const list = pointsByEvent.get(saved.event_index);
+        if (list) list.push(saved); else pointsByEvent.set(saved.event_index, [saved]);
+      });
+      check(data.items.every(value => point(value) && (pointsByEvent.get(value.event_index) || []).some(saved => sameSaved(saved, value)))
         && new Set(data.items.map(value => value.event_index)).size === data.items.length, '本页优化进展与保存的记录不一致，请点“刷新优化过程”。');
-    } else check(data.items.every(value => data.attempts === undefined ? attempt(value) : data.attempts.some(saved => sameSaved(saved, value)))
-      && new Set(data.items.map(value => value.saved_index)).size === data.items.length, '本页计算尝试的记录不完整，请点“刷新优化过程”。');
+    } else {
+      const attemptsByIndex = data.attempts === undefined ? null : new Map(data.attempts.map(saved => [saved.saved_index, saved]));
+      check(data.items.every(value => attemptsByIndex === null ? attempt(value) : attemptsByIndex.has(value.saved_index) && sameSaved(attemptsByIndex.get(value.saved_index), value))
+        && new Set(data.items.map(value => value.saved_index)).size === data.items.length, '本页计算尝试的记录不完整，请点“刷新优化过程”。');
+    }
     return data;
   }
   function detailScope(runRef, query, section) {

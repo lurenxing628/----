@@ -1,6 +1,7 @@
 """Explain template replacement from the exact before/after rows."""
 
 import math
+import re
 from collections import defaultdict
 
 from core.models.workbench_batch import MAX_INTEGER
@@ -10,6 +11,15 @@ from core.services.workbench.process.projection import public_sequence
 def _display_number(value):
     # Non-applicable legacy fields stay untouched in storage and cannot break JSON.
     return value if type(value) in (int, float) and math.isfinite(value) and abs(value) <= MAX_INTEGER else None
+
+
+def _sequence_order(value):
+    # Legacy text sequences sort after numeric ones instead of failing the preview.
+    if type(value) is int:
+        return 0, value, ""
+    if isinstance(value, str) and re.fullmatch(r"-?[0-9]+", value):
+        return 0, int(value), ""
+    return 1, 0, str(value)
 
 
 def template_after(rows, facts, projection):
@@ -49,7 +59,7 @@ def _group_structures(rows):
         if row["external_group"] is not None:
             members[_group_key(row)].append(row["sequence"])
     return {key: {"piece_id": key[1], "start_sequence": key[2], "end_sequence": key[3],
-                  "merge_mode": key[4], "total_days": key[5], "member_sequences": sorted(sequences, key=int)}
+                  "merge_mode": key[4], "total_days": key[5], "member_sequences": sorted(sequences, key=_sequence_order)}
             for key, sequences in members.items()}
 
 
@@ -87,13 +97,13 @@ def template_changes(before, after):
     pairs = {(_group_key(old[key]), _group_key(new[key])) for key in old.keys() & new.keys()}
     group_changes = {pair: old_groups.get(pair[0]) != new_groups.get(pair[1]) for pair in pairs}
     changes = []
-    for key in sorted(set(old) | set(new), key=lambda value: (int(value[0]), value[1] or "")):
+    for key in sorted(set(old) | set(new), key=lambda value: (_sequence_order(value[0]), value[1] or "")):
         previous, current = old.get(key), new.get(key)
         changes.append({"sequence": key[0], "piece_id": key[1], "change": _change_state(previous, current, group_changes),
                         "before": previous, "after": current})
     cleared = _cleared_resources(before)
     def group_order(group):
-        return int(group["start_sequence"]), int(group["end_sequence"]), group["piece_id"] or ""
+        return _sequence_order(group["start_sequence"]), _sequence_order(group["end_sequence"]), group["piece_id"] or ""
     return {"changes": changes, "change_counts": _change_counts(changes), "cleared_resources": cleared,
             "external_groups": {"before": sorted(old_groups.values(), key=group_order),
                                 "after": sorted(new_groups.values(), key=group_order)}}

@@ -24,7 +24,7 @@
       } catch (failure) { onValidationError(failure); }
     }
     function rowChange(index, key, next) {
-      const rows = value.pattern.map(row => ({ ...row })), row = rows[index]; row[key] = next;
+      const rows = value.pattern.map(row => ({ ...row, ...(Array.isArray(row.periods) ? { periods: row.periods.map(p => ({ ...p })) } : {}) })), row = rows[index]; row[key] = next;
       // Rest has no working interval; retain existing times, canonicalize only empty rest markers.
       if (key === 'periods') {
         if (next.length) { row.shift_start = next[0].start; row.shift_end = next[next.length - 1].end; }

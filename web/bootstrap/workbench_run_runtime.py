@@ -20,9 +20,8 @@ from core.services.system.system_maintenance_service import SystemMaintenanceSer
 from core.services.workbench.run.worker_claim import RunClaimBusy, capture_claim_retry_state, require_retryable_claim
 from core.services.workbench.run.worker_recovery import recover_unfinished_runs
 from web.error_boundary import user_visible_app_error_message
-from web.runtime_host import restore_host
+from web.runtime_host import normalize_runtime_db_path, restore_host
 
-from .launcher_paths import _normalize_db_path_for_runtime
 from .workbench_request_lifecycle import lookup_workbench_request_lifecycle
 from .workbench_run_runtime_lock import RunRuntimeLockProof, RunRuntimeOwnershipError
 
@@ -36,7 +35,7 @@ _ENABLED = "WORKBENCH_RUN_JOBS_ENABLED"
 class WorkbenchRunRuntime:
     def __init__(self, app):
         self.app = app
-        self.db_path = _normalize_db_path_for_runtime(app.config.get("DATABASE_PATH"))
+        self.db_path = normalize_runtime_db_path(app.config.get("DATABASE_PATH"))
         self.proof = None
         self.recovery = None
         self._condition = threading.Condition()
@@ -87,7 +86,7 @@ class WorkbenchRunRuntime:
         self.app.logger.error("Workbench run runtime disabled: db=%s reason=%s", self.db_path, reason)
 
     def _verify(self):
-        if _normalize_db_path_for_runtime(self.app.config.get("DATABASE_PATH")) != self.db_path:
+        if normalize_runtime_db_path(self.app.config.get("DATABASE_PATH")) != self.db_path:
             raise RunRuntimeOwnershipError("runtime_database_config_changed")
         if self.proof is None:
             raise RunRuntimeOwnershipError("runtime_lock_not_supplied")
@@ -102,11 +101,10 @@ class WorkbenchRunRuntime:
             return None
         return False
 
-    def _recover(self):
+    def _recover(self, run_ref=None):
         self._verify()
         with closing(get_connection(self.db_path)) as conn:
-            result = recover_unfinished_runs(conn,
-                executor_is_active=self._executor_is_active)
+            result = recover_unfinished_runs(conn, executor_is_active=self._executor_is_active, run_ref=run_ref)
         self.recovery = result
         self._verify()
         if result["scheduling_busy"]:
@@ -174,7 +172,6 @@ class WorkbenchRunRuntime:
             with closing(get_connection(self.db_path)) as conn:
                 if claim_failures:
                     require_retryable_claim(conn, original)
-                    self._verify()
                 row = WorkbenchRunService(conn).get(run_ref)
                 if row["state"] != "queued" or row["stage"] != "queued":
                     if row["state"] not in TERMINAL_STATES:
@@ -199,6 +196,8 @@ class WorkbenchRunRuntime:
                 except WorkbenchCommandRejected as exc:
                     if exc.code != "scheduling_busy":
                         raise
+                    if not claim_failures:
+                        original = None
             if retry_claim:
                 # The failed connection is closed before waiting. Only this
                 # unstarted claim may retry; all compute/commit uncertainty
@@ -226,9 +225,12 @@ class WorkbenchRunRuntime:
                     state = WorkbenchRunService(conn).get(run_ref)
                 if state["state"] in TERMINAL_STATES:
                     return
-                self._disable("awaiting_reconciliation: " + run_ref)
-                self._stop.set()
-                self._recover()
+                self._recover(run_ref)
+                with closing(get_connection(self.db_path)) as conn:
+                    state = WorkbenchRunService(conn).get(run_ref)
+                if state["state"] not in TERMINAL_STATES:
+                    self._disable("awaiting_reconciliation: " + run_ref)
+                    self._stop.set()
             except Exception as exc:
                 self._disable(str(exc))
                 self.app.logger.exception("Workbench run reconciliation failed: run_ref=%s db=%s",
@@ -327,7 +329,7 @@ class WorkbenchRunRuntime:
 
 def stop_workbench_runs_for_database(db_path):
     """Exit-backup guard; no database connection or lifecycle initialization."""
-    key = _normalize_db_path_for_runtime(db_path)
+    key = normalize_runtime_db_path(db_path)
     with _INSTALL_LOCK:
         if not key and _RUNTIMES:
             raise RuntimeError("Cannot associate exit backup with a managed database")
@@ -348,7 +350,7 @@ def install_workbench_run_runtime(app, *, runtime_lock=None):
         if runtime is not None:
             if not isinstance(runtime, WorkbenchRunRuntime) or runtime._closed:
                 raise RuntimeError("Workbench runtime already closed or foreign")
-            if runtime.db_path != _normalize_db_path_for_runtime(app.config.get("DATABASE_PATH")):
+            if runtime.db_path != normalize_runtime_db_path(app.config.get("DATABASE_PATH")):
                 raise RuntimeError("Workbench runtime database changed")
             if runtime.proof is not None:
                 if not runtime.proof.matches(runtime.db_path, runtime_lock):

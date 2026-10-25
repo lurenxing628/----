@@ -10,10 +10,10 @@ from core.models.workbench_preflight import issue
 from core.models.workbench_run_compute import CandidateRunInputError
 
 from .preflight_checks import number, stored_date
-from .preflight_dependencies import link_predecessors, piece_scope_problem
+from .preflight_dependencies import link_predecessors
 
 _BATCH_STATES = {"pending", "scheduled", "processing", "completed", "cancelled"}
-_OP_STATES = {"pending", "scheduled", "processing", "completed", "skipped"}
+OPERATION_STATES = {"pending", "scheduled", "processing", "completed", "skipped"}
 
 
 def fail(reason, message, **context) -> NoReturn:
@@ -52,7 +52,7 @@ def operation_model(row):
         _required_text(row[key], key)
     for key in ("piece_id", "machine_id", "operator_id", "supplier_id"):
         _optional_text(row[key], key)
-    if row["status"] not in _OP_STATES or row["source"] not in ("internal", "external"):
+    if row["status"] not in OPERATION_STATES or row["source"] not in ("internal", "external"):
         fail("invalid_operation_state", "有工序的状态或来源资料不完整，这次排产没有开始。请到批次管理核对。", op_id=row["id"])
     if row["source"] == "internal":
         for key in ("setup_hours", "unit_hours"):
@@ -81,17 +81,20 @@ def classify_rows(facts, settings, raw_batches, operations, projections, guarded
     batches = {row["batch_id"]: row for row in raw_batches}
     cycles = external_cycles or {}
     rows = []
+    releases = {}
     for op in operations:
         raw, batch = raw_by_id[op.id], batches[op.batch_id]
         ref = facts.operation_ref(raw)
         projection = projections[ref]
-        status, reasons = _classification(checks, batch, raw, projection, settings, guarded_ids, cycles)
+        status, reasons, release = _classification(checks, batch, raw, projection, settings, guarded_ids, cycles)
+        if status in ("eligible", "auto_assign_required"):
+            releases[op.id] = release
         rows.append({"operation_ref": ref, "op_id": op.id, "batch_ref": batch["ref"], "batch_id": op.batch_id,
                      "piece_id": op.piece_id, "sequence": op.seq, "status": status, "issues": reasons,
                      "predecessor_refs": [], "execution": projection.to_dict()})
         if op.id in cycles:
             rows[-1]["external_execution_cycle"] = cycles[op.id]
-    _link_dispositions(rows, batches, piece_scope, settings)
+    _link_dispositions(rows, batches, piece_scope)
     blocked = [row for row in rows if row["status"] == "blocked"]
     if blocked:
         raise CandidateRunInputError("input_blocked", "排产资料还有缺项，不能开始。请先补齐下方列出的项。", issues=blocked)
@@ -99,10 +102,10 @@ def classify_rows(facts, settings, raw_batches, operations, projections, guarded
     if not eligible and not cycles:
         raise CandidateRunInputError("no_eligible_operations", "选定范围内没有可排的工序。请调整范围后重试。", issues=rows)
     mutable = [_assignable_operation(op, eligible[op.id]) for op in operations if op.id in eligible]
-    return rows, mutable
+    return rows, mutable, releases
 
 
-def _link_dispositions(rows, batches, piece_scope, settings):
+def _link_dispositions(rows, batches, piece_scope):
     by_batch = defaultdict(list)
     for row in rows:
         by_batch[row["batch_id"]].append(row)
@@ -111,9 +114,6 @@ def _link_dispositions(rows, batches, piece_scope, settings):
             link_predecessors(chain)
     else:
         link_predecessors(rows, piece_scope=piece_scope)
-        problem = piece_scope_problem(rows, settings)
-        if problem:
-            fail(problem["code"], problem["message"])
     for batch_id, batch in batches.items():
         if batch_id not in by_batch:
             fail("route_missing", "选中的批次还没有工序，这次排产没有开始。请先到批次管理给它生成工艺。", batch_ref=batch["ref"])
@@ -121,28 +121,40 @@ def _link_dispositions(rows, batches, piece_scope, settings):
 
 def _classification(checks, batch, op, projection, settings, guarded_ids, cycles):
     if op["id"] in guarded_ids:
-        return "protected", [issue("actuals_preserved", "已开工工序保留原安排。")]
+        return "protected", [issue("actuals_preserved", "已开工工序保留原安排。")], None
     if (op["status"] in ("processing", "completed") or projection.execution_state != "unreported"
             or projection.reports or projection.legacy_facts or projection.first_actual_start or projection.confirmed_finish):
-        return "blocked", [issue("execution_protection_unresolved", "这道工序已经有报工记录，这次排产保不住它的原安排，排产没有开始。请把它移出排产范围。")]
+        return "blocked", [issue("execution_protection_unresolved", "这道工序已经有报工记录，这次排产保不住它的原安排，排产没有开始。请把它移出排产范围。")], None
     gaps = checks.protected_resources(op) if op["id"] in cycles else checks.fields(batch, op)
     if projection.data_quality == "invalid":
         gaps.extend(projection.data_gaps or [issue("execution_invalid", "这道工序的报工记录有问题，这次排产没有开始。请到现场记录核对后重试。")])
     if gaps:
-        return "blocked", gaps
+        return "blocked", gaps, None
     if op["id"] in cycles:
-        return "protected", [issue("external_group_actuals_preserved", "合并外协组已有实际记录，整组保留同一固定周期。")]
-    return _mutable_classification(checks, batch, op, settings)
+        return "protected", [issue("external_group_actuals_preserved", "合并外协组已有实际记录，整组保留同一固定周期。")], None
+    if (
+        op["status"] == "skipped"
+        or batch["status"] in ("completed", "cancelled")
+        or (batch["quantity"] == 0 and op["source"] != "internal")
+    ):
+        status, reasons = mutable_classification(checks, batch, op, settings, ())
+        return status, reasons, None
+    ready, release = checks.operation_readiness(batch, op, settings)
+    release_day = release if not ready and release != "1900-01-01" else None
+    status, reasons = mutable_classification(checks, batch, op, settings, ready)
+    return status, reasons, release_day
 
 
-def _mutable_classification(checks, batch, op, settings):
-    if op["status"] == "skipped" or batch["status"] in ("completed", "cancelled"):
-        return "skipped", [issue("closed", "批次已结束，或者这道工序标了跳过，本次不排它。")]
+def mutable_classification(checks, batch, op, settings, ready_reasons):
+    """One scheduling disposition for unreported, structurally valid raw work."""
+    if op["status"] == "skipped":
+        return "skipped", [issue("operation_skipped", "这道工序标了跳过，本次不排它。")]
+    if batch["status"] in ("completed", "cancelled"):
+        return "skipped", [issue("batch_closed", "批次已完成或取消，不进入本次排产。")]
     if batch["quantity"] == 0 and op["source"] != "internal":
         return "skipped", [issue("zero_quantity", "这道外协工序的目标数量是 0，本次不排它。")]
-    ready, _release = checks.operation_readiness(batch, op, settings)
-    if ready:
-        return "skipped", ready
+    if ready_reasons:
+        return "skipped", ready_reasons
     ready_day = stored_date(batch["ready_date"])
     if settings["ready_check"] and ready_day is not None and ready_day > settings["end_date"]:
         return "skipped", [issue("ready_after_window", "这个批次的齐套日期晚于排产止日，本次不排它。")]

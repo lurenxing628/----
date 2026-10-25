@@ -10,19 +10,16 @@ from core.services.workbench.facts.decision_delivery import project_decision_del
 from core.services.workbench.facts.decision_metrics import (
     METRIC_VERSION,
     delivery_coverage,
-    metric_definitions,
-    metric_deltas,
-    metric_value,
     operation_change_metrics,
 )
 from core.services.workbench.facts.preparation_projection import project_operation_effort
 from core.services.workbench.run.decision import read_run_decision
 from core.services.workbench.run.decision_impact import (
-    _arrangement,
-    _by_operation,
-    _operation_delta,
+    arrangement_view,
+    by_operation,
     iter_operation_comparisons,
     operation_changes,
+    operation_delta,
 )
 from core.services.workbench.run.decision_queries import read_decision_details
 from core.services.workbench.run.decision_resources import DecisionResources
@@ -56,18 +53,6 @@ def test_archive_builder_reuses_its_admission_scope_for_candidate_metrics(candid
     assert all(scope is scopes[0] for scope in scopes)
 
 
-def test_delivery_delta_requires_matching_batch_identities_and_known_values():
-    before = {definition["key"]: metric_value(1, total=2) for definition in metric_definitions()}
-    after = {key: dict(value) for key, value in before.items()}
-    before["overdue_count"] = metric_value(1, total=2, covered_refs=["batch-a", "batch-b"])
-    after["overdue_count"] = metric_value(2, total=2, covered_refs=["batch-a", "batch-c"])
-    delta = metric_deltas(after, before, work_scope_comparable=True)
-    assert delta["overdue_count"]["state"] == "different_coverage"
-    assert delta["overdue_count"]["value"] is None
-    after["total_tardiness_hours"] = metric_value(None, total=2, unknown=1, subtotal=3)
-    assert metric_deltas(after, before, work_scope_comparable=True)["total_tardiness_hours"]["state"] == "unavailable"
-
-
 def test_unspecified_due_is_excluded_while_invalid_due_keeps_delivery_unknown():
     facts = GenerationFacts.__new__(GenerationFacts)
     facts.__dict__.update(
@@ -81,7 +66,7 @@ def test_unspecified_due_is_excluded_while_invalid_due_keeps_delivery_unknown():
              {"row_ref": "row-b", "operation_ref": "op-b", "batch_ref": "batch-b", "start": "2026-09-10T08:00:00", "end": "2026-09-10T10:00:00"}]
 
     def evaluate():
-        return delivery_coverage(facts, tasks, ["batch-a", "batch-b"], set())
+        return delivery_coverage(project_decision_delivery(facts, tasks, ["batch-a", "batch-b"]))
 
     coverage, values = evaluate()
     assert coverage["state"] == "complete" and coverage["excluded_due_count"] == 1
@@ -127,7 +112,7 @@ def test_resource_reference_gap_preserves_known_operation_change_subtotal():
     assert unavailable == operation_changes(after, before, ["op-a", "op-b"], True, selected_available=False)
     assert all(value["value"] is value["known_subtotal"] is None and value["unknown_count"] == 2
                and value["reason"]["code"] == "candidate_result_unavailable" for value in unavailable.values())
-    groups, original = _by_operation(before), deepcopy((before, after))
+    groups, original = by_operation(before), deepcopy((before, after))
     repeated = operation_changes(after, before, ["op-a", "op-b"], True, reference_groups=groups)
     assert repeated == values and (before, after) == original
     before_times, after_times = ({row["row_ref"]: (datetime.fromisoformat(row["start"]), datetime.fromisoformat(row["end"]))
@@ -143,7 +128,7 @@ def test_resource_reference_gap_preserves_known_operation_change_subtotal():
     source._analysis = {"candidate-a": before}
     assert source.computation_key("reference") == "candidate-a"
     assert source.computation_key("candidate-b") == "candidate-b"
-    assert source.reference_operation_groups is source.reference_operation_groups
+    assert source.analysis_groups("reference") is source.analysis_groups("reference")
     source._task_intervals = {"candidate-a": before_times}
     assert source.task_intervals("reference") is source.task_intervals("candidate-a")
     source.official = {"identity": {"state": "available"}, "tasks": before, "operation_refs": ["op-a", "op-b"]}
@@ -160,7 +145,7 @@ def test_unproven_official_point_keeps_time_difference_unknown():
                 "machine": {"ref": "machine-a"}, "operator": {"ref": "operator-a"}, "supplier": None, "locked": False, "data_gaps": []}
     before = dict(template, interval_comparable=False, data_gaps=[{"field": "point_evidence", "code": "source_missing"}])
     after = dict(template, start="2026-09-09T09:00:00", end="2026-09-09T10:00:00")
-    difference = _operation_delta(_arrangement([before]), _arrangement([after]))
+    difference = operation_delta(arrangement_view([before]), arrangement_view([after]))
     assert difference["start_delta_hours"] is difference["end_delta_hours"] is None
     assert difference["change_kinds"] == ["unknown"]
     values = operation_changes([after], [before], ["op-a"], True)

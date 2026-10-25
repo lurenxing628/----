@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import math
 from decimal import Decimal
-from typing import Any, MutableSequence, Optional
+from typing import Any, Optional, Tuple
+
+from core.errors import ValidationError
 
 
 def normalize_text(value: Any) -> Optional[str]:
@@ -27,26 +29,10 @@ def normalize_text(value: Any) -> Optional[str]:
     return v if v != "" else None
 
 
-def to_str_or_blank(value: Any) -> str:
-    """
-    将任意输入标准化为“去首尾空白的文本”；空值返回空串。
-
-    说明：
-    - 与 `normalize_text()` 不同，此函数不会返回 None
-    - 对数字 0 返回 "0"，避免 `value or ""` 把 0 误判为空
-    """
-    normalized = normalize_text(value)
-    return "" if normalized is None else normalized
-
-
-def append_unique_text_messages(buffer: Optional[MutableSequence[str]], messages: Any) -> None:
-    """向消息缓冲区按原顺序追加非空且不重复的文本。"""
-    if buffer is None:
-        return
-    items = messages if isinstance(messages, (list, tuple, set)) else [messages]
-    for item in items:
-        text = str(item or "").strip()
-        if not text or text in buffer:
-            continue
-        buffer.append(text)
-
+def validate_enum(value: Optional[str], allowed: Tuple[str, ...], field: str) -> Optional[str]:
+    if value is None:
+        return None
+    if value not in allowed:
+        allow_text = "普通 / 急件 / 特急" if field == "优先级" else " / ".join(allowed)
+        raise ValidationError(f"“{field}”不正确，请选择：{allow_text}。", field=field)
+    return value

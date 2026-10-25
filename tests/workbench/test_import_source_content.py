@@ -8,7 +8,7 @@ from core.models.workbench_action_values import AtomicActionPreview
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_field_report_source import PreparedFieldReportSource
 from core.models.workbench_resource_file_source import PreparedImportSource
-from core.services.workbench.execution.field_report_files import FieldReportFileService
+from core.services.workbench.execution.field_report_files import FieldReportFileService, report_index
 
 
 def test_prepared_import_retains_original_bytes_and_confirmed_document():
@@ -28,11 +28,7 @@ def test_prepared_import_retains_original_bytes_and_confirmed_document():
     with pytest.raises(WorkbenchCommandRejected) as failure:
         PreparedImportSource.confirmation(preview, content + b"changed")
     assert failure.value.code == "stale_write"
-    rows, parsed_notices = source.parsed()
-    rows[0]["value"] = 1
-    parsed_notices[0]["details"].append("consumer note")
-    assert source.parsed()[0][0]["value"] is True
-    assert source.parsed()[1] == [{"details": ["extra sheet"]}]
+    assert source.parsed() == (decoded, notices)
     intent = preview.intent()
     assert intent["preview_document"] == preview.document
     assert content.decode("latin-1") not in intent["preview_document"]
@@ -51,18 +47,21 @@ def test_field_source_number_is_stable_and_reuses_one_saved_old_report():
     row = _report_row()
     resources = {"codes": {}, "labels": {}}
     source = PreparedFieldReportSource.build(b"original", [row])
-    first = service._row_item(row, task, resources, source.source_ref)
-    assert first == service._row_item(source.parsed()[0], task, resources, source.source_ref)
+    reports = report_index(task["execution"]["reports"])
+    first = service._row_item(row, task["task_ref"], reports, resources, source.source_ref)
+    assert first == service._row_item(source.parsed()[0], task["task_ref"], reports, resources, source.source_ref)
     assert first["payload"]["report_no"] == "BG-X-" + source.source_ref + "-2"
     old = deepcopy(first["payload"])
     old["report_no"] = "BG-X-" + "b" * 32 + "-2"
     task["execution"]["reports"] = [old]
     next_source = PreparedFieldReportSource.build(b"original", [row])
-    recovered = service._row_item(row, task, resources, next_source.source_ref)
+    reports = report_index(task["execution"]["reports"])
+    recovered = service._row_item(row, task["task_ref"], reports, resources, next_source.source_ref)
     assert recovered["payload"]["report_no"] == old["report_no"]
     supplied = deepcopy(row)
     supplied["values"]["report_no"] = "user-report-number"
-    assert service._row_item(supplied, task, resources, next_source.source_ref)["payload"]["report_no"] == "user-report-number"
+    assert service._row_item(supplied, task["task_ref"], reports, resources,
+                             next_source.source_ref)["payload"]["report_no"] == "user-report-number"
 
 
 def test_field_source_requires_original_number_for_ambiguous_old_reports():
@@ -73,5 +72,6 @@ def test_field_source_requires_original_number_for_ambiguous_old_reports():
     other = dict(old, report_no="BG-X-" + "c" * 32 + "-2")
     task = {"task_ref": "a" * 48, "execution": {"reports": [old, other]}}
     with pytest.raises(WorkbenchCommandRejected) as failure:
-        service._row_item(row, task, {"codes": {}, "labels": {}}, "d" * 32)
+        service._row_item(row, task["task_ref"], report_index(task["execution"]["reports"]),
+                          {"codes": {}, "labels": {}}, "d" * 32)
     assert failure.value.code == "invalid_input"

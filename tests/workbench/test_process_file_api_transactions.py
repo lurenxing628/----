@@ -2,7 +2,6 @@
 
 import pytest
 
-from core.services.process.template_hours import ProcessTemplateHours
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process.file_route import ProcessRouteFileOperations
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
@@ -68,13 +67,16 @@ def test_response_loss_recovers_actual_committed_receipt(file_api, monkeypatch, 
 
 
 def test_hours_batch_uses_prepared_rows_and_rolls_back_actual_revision_change(file_api, monkeypatch):
+    from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
+
     preview, body = file_api.file_intent("hours")
     before, calls, writes = file_api.snapshot(), [], []
-    current, update = ProcessTemplateHours.current, WorkbenchProcessHoursRepository.update_operation_hours
+    read_operations = WorkbenchProcessQueryRepository.operations
+    update = WorkbenchProcessHoursRepository.update_operation_hours
 
-    def observed(self, refs):
-        calls.append(tuple(refs))
-        return current(self, refs)
+    def observed(self):
+        calls.append(self.part_ref)
+        return read_operations(self)
 
     def change_before_write(self, op_id, values, *, ref, revision):
         writes.append(op_id)
@@ -83,16 +85,16 @@ def test_hours_batch_uses_prepared_rows_and_rolls_back_actual_revision_change(fi
         return update(self, op_id, values, ref=ref, revision=revision)
 
     with monkeypatch.context() as patch:
-        patch.setattr(ProcessTemplateHours, "current", observed)
+        patch.setattr(WorkbenchProcessQueryRepository, "operations", observed)
         patch.setattr(WorkbenchProcessHoursRepository, "update_operation_hours", change_before_write)
         rejected(file_api.file_post("hours", "confirm", body), "stale_write")
-    assert calls == [] and len(writes) == 2
+    assert len(calls) == 1 and len(writes) == 2
     assert file_api.snapshot() == before
     calls.clear()
     with monkeypatch.context() as patch:
-        patch.setattr(ProcessTemplateHours, "current", observed)
+        patch.setattr(WorkbenchProcessQueryRepository, "operations", observed)
         receipt = success(file_api.file_post("hours", "confirm", body))
-    assert calls == []
+    assert len(calls) == 1
     assert receipt["data"]["summary"]["update"] == 2
     node_contract("receipt", receipt, "hours", body=body, preview=preview)
 
@@ -144,3 +146,64 @@ def test_process_export_outlives_original_read_token(file_api, monkeypatch, kind
 
     clock[0] = 2701.0
     rejected(file_api.download(kind, export_ref), "snapshot_stale")
+
+
+@pytest.mark.parametrize("kind,row_count", [("route", 1), ("hours", 3)])
+def test_detail_export_reuses_target_snapshot_across_unrelated_template_changes(file_api, kind, row_count):
+    from core.services.workbench.process.file_codec import decode_process_file
+    from tests.workbench.process_stage_api_support import PART
+
+    target = file_api.ref()
+    body, detail = file_api.export_body(target=target, selection="explicit", refs=[target])
+    file_api.execute("UPDATE Parts SET remark='其他零件已更新' WHERE part_no='PROC-003'")
+    preview = success(file_api.file_post(kind, "export-preview", body))
+    assert preview["data"]["row_count"] == row_count
+    file_api.execute("UPDATE PartOperations SET unit_hours=9 WHERE part_no='PROC-004'")
+    download = file_api.download(kind, preview["data"]["export_ref"])
+    assert download.status_code == 200, download.get_json()
+    assert download.headers["X-Workbench-Snapshot-Ref"] == detail["meta"]["snapshot_ref"]
+    rows, _ = decode_process_file(kind, download.data, "csv")
+    assert len(rows) == row_count and all(row["values"]["business_code"] == PART for row in rows)
+
+
+def test_detail_export_rejects_nontext_target_before_capture(file_api):
+    target = file_api.ref()
+    body, _ = file_api.export_body(target=target, selection="explicit", refs=[target])
+    body["target_ref"] = {"ref": target}
+    rejected(file_api.file_post("route", "export-preview", body), "invalid_input", 400)
+
+
+
+@pytest.mark.parametrize("kind,row", [("route", 2), ("hours", 4)])
+def test_export_reports_mixed_type_sequence_as_row_file_error(file_api, kind, row):
+    from core.errors import ValidationError
+    from core.services.workbench.process.file_export import count_process_export_rows
+    from core.services.workbench.process.queries import WorkbenchProcessQueryService
+    from tests.workbench.process_stage_api_support import PART
+
+    # 存量工序号混入文本：排序本身不能炸，按与逐格导出同一规则报出结构化错误和所在行。
+    file_api.execute("UPDATE PartOperations SET seq='第三道' WHERE part_no=? AND seq=30", (PART,))
+    target = file_api.ref()
+    body, _ = file_api.export_body(target=target, selection="explicit", refs=[target])
+    error = rejected(file_api.file_post(kind, "export-preview", body), "invalid_input", 422)["error"]
+    assert [field["path"] for field in error["fields"]] == ["sequence"]
+    with file_api.database() as conn:
+        reader = WorkbenchProcessQueryService(conn, part_ref=target)
+        with reader.read_snapshot():
+            facts = reader.facts()
+        parts = [part for part in facts["parts"] if part["part_no"] == PART]
+        with pytest.raises(ValidationError) as raised:
+            count_process_export_rows(kind, parts, facts, "csv")
+    assert raised.value.field == "sequence" and raised.value.details["row"] == row
+
+
+def test_batch_detail_orders_mixed_type_operation_sequences(file_api):
+    from tests.workbench.process_stage_api_support import BASE
+
+    file_api.execute("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_name,source,setup_hours,unit_hours) "
+                     "VALUES ('STAGE-API-TEXT-SEQ','PROC-B','第二道','text sequence','internal',1,1)")
+    path = BASE + "/entities/batch/" + file_api.ref("batch", "PROC-B")
+    operations = success(file_api.client.get(path))["data"]["operations"]
+    sequences = [row["sequence"] for row in operations]
+    # 整数工序号照常按序在前，存量文本工序号排在后面照常展示。
+    assert sequences[-1] == "第二道" and sequences[:-1] == sorted(sequences[:-1]) and len(sequences) > 1

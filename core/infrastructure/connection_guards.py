@@ -12,12 +12,14 @@ from typing import Any, Iterator, List, Optional, Tuple
 
 from .schema_structure import SchemaStructure
 
-_SCHEMA_CONTRACTS: ContextVar[tuple] = ContextVar("aps_schema_contracts", default=())
+SCHEMA_CONTRACTS: ContextVar[tuple] = ContextVar("aps_schema_contracts", default=())
 
 _QUERY_ONLY: ContextVar[Tuple[sqlite3.Connection, ...]] = ContextVar("aps_query_only", default=())
 
 
 def is_query_only(conn: sqlite3.Connection) -> bool:
+    if any(current is conn for current in _QUERY_ONLY.get()):
+        return True
     row = conn.execute("PRAGMA query_only").fetchone()
     return bool(row) and row[0] == 1
 
@@ -106,19 +108,19 @@ def connection_snapshot_metadata(conn: sqlite3.Connection) -> Tuple[int, int, in
 
 def schema_contract_memo(conn):
     """Use the current transaction/read owner; standalone callers get fresh facts."""
-    return next((memo for memo in reversed(_SCHEMA_CONTRACTS.get()) if memo.conn is conn), None) or SchemaContractMemo(conn)
+    return next((memo for memo in reversed(SCHEMA_CONTRACTS.get()) if memo.conn is conn), None) or SchemaContractMemo(conn)
 
 
 @contextmanager
 def schema_contract_scope(conn):
     """Share one lazy structure until the existing operation boundary exits."""
-    existing = next((memo for memo in _SCHEMA_CONTRACTS.get() if memo.conn is conn), None)
+    existing = next((memo for memo in SCHEMA_CONTRACTS.get() if memo.conn is conn), None)
     if existing is not None:
         yield existing
         return
     memo = SchemaContractMemo(conn)
-    token = _SCHEMA_CONTRACTS.set(_SCHEMA_CONTRACTS.get() + (memo,))
+    token = SCHEMA_CONTRACTS.set(SCHEMA_CONTRACTS.get() + (memo,))
     try:
         yield memo
     finally:
-        _SCHEMA_CONTRACTS.reset(token)
+        SCHEMA_CONTRACTS.reset(token)

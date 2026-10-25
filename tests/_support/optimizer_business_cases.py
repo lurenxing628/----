@@ -5,11 +5,17 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from types import SimpleNamespace
+from typing import Any, Dict, List
 
+from core.algorithm_contracts.types import ScheduleResult
 from core.algorithms.evaluation import compute_metrics, objective_score
+from core.models.batch import Batch
+from core.models.batch_operation import BatchOperation
 from core.models.schedule_config_runtime import default_snapshot_values
+from core.services.common.build_outcome import BuildOutcome
 from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
+from core.services.scheduler.run.schedule_input_contracts import ScheduleRunInput
 from tests._support.optimizer_exact_oracle import (
     OBJECTIVES,
     ScheduledOperation,
@@ -120,8 +126,9 @@ def case_environment(data, objective, config=None):
         conn.row_factory = sqlite3.Row
         conn.executescript((REPO_ROOT / "schema.sql").read_text(encoding="utf-8"))
         calendar = CalendarService(conn)
-        for row in data["calendar"]:
-            calendar.upsert_no_tx(row)
+        calendar._admin.repo.upsert_many(
+            [calendar._admin._build_work_calendar_from_payload(row) for row in data["calendar"]]
+        )
         conn.commit()
         values = default_snapshot_values()
         values.update(sort_strategy="fifo", dispatch_mode="sgs", dispatch_rule="slack", algo_mode="improve",
@@ -129,16 +136,25 @@ def case_environment(data, objective, config=None):
                       auto_assign_enabled="no" if "tiny_case" in data else "yes",
                       freeze_window_enabled="no", freeze_window_days=0)
         operations = [SimpleNamespace(**row) for row in data["operations"]]
-        seeds = [dict(row, start_time=datetime.fromisoformat(row["start_time"]),
+        batch_operations = [BatchOperation.from_row(row) for row in data["operations"]]
+        seeds: List[Dict[str, Any]] = [dict(row, start_time=datetime.fromisoformat(row["start_time"]),
                       end_time=datetime.fromisoformat(row["end_time"])) for row in data["seed_results"]]
         frozen_ids = {row["op_id"] for row in seeds}
-        yield SimpleNamespace(
+        yield ScheduleRunInput(
             cal_svc=calendar, cfg_svc=SimpleNamespace(**values), cfg=SimpleNamespace(**values),
             algo_ops=operations, algo_ops_to_schedule=[op for op in operations if op.id not in frozen_ids],
-            batches={row["batch_id"]: SimpleNamespace(**row) for row in data["batches"]},
+            batches={row["batch_id"]: Batch(part_no=row["batch_id"], **row) for row in data["batches"]},
             start_dt_norm=START, end_date_norm=None, downtime_map=data["downtime"], seed_results=seeds,
             resource_pool=data["resource_pool"], optimizer_seed_version=config["seed"],
             readiness_gate_enabled=data["readiness_gate_enabled"], frozen_op_ids=frozen_ids,
+            normalized_batch_ids=[row["batch_id"] for row in data["batches"]], t0=0.0,
+            operations=batch_operations,
+            missing_internal_resource_op_ids=set(), algo_input_outcome=BuildOutcome(operations),
+            prev_version=0, execution_facts={}, execution_fixed_op_ids=set(), execution_completed_op_ids=set(),
+            execution_seed_results=[], execution_snapshot_revision="fixture", execution_snapshot_op_ids=[],
+            execution_snapshot_op_count=0, schedule_output_allowed_op_ids={row["id"] for row in data["operations"]},
+            payload_validation_operations=batch_operations, algo_warnings=[], freeze_meta={}, downtime_meta={},
+            resource_pool_meta={},
         )
     finally:
         conn.close()
@@ -147,7 +163,7 @@ def case_environment(data, objective, config=None):
 def _payload(plan, env):
     metrics = compute_metrics(
         plan.results, env.batches, expected_operations=env.algo_ops_to_schedule,
-        seed_results=[SimpleNamespace(**row) for row in env.seed_results], failure_details=plan.summary.failure_details,
+        seed_results=[ScheduleResult(**row) for row in env.seed_results], failure_details=plan.summary.failure_details,
     )
     return {
         "quality_vectors": {objective: [float(plan.summary.failed_ops)] + list(objective_score(objective, metrics))
@@ -239,6 +255,7 @@ def run_case(scenario, objective):
         oracles = ({key: _oracle_report(data["tiny_case"], payload) for key, payload in representatives.items()}
                    if "tiny_case" in data else {})
     process = outcome.unified_process
+    assert process is not None
     observations = [event for event in process["events"]
                     if event["event_type"] == "archive_observation" and event["verified"] is True
                     and process["scopes"][event["scope_ref"]]["is_complete"]]

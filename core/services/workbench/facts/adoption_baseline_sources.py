@@ -5,16 +5,18 @@ from typing import Tuple, Union
 
 from core.infrastructure.read_evidence import verified_read
 from core.infrastructure.schema_probe import table_exists
+from core.models.content import same
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate
-from core.services.workbench.facts.candidate_baseline import AdmissionBaseline, _blob
+from core.services.workbench.facts.candidate_baseline import AdmissionBaseline, unpack_blob
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_projection import baseline_capture, candidate_origin
-from core.services.workbench.facts.candidate_tasks import _resource
+from core.services.workbench.facts.candidate_tasks import task_resource
 from core.services.workbench.facts.candidate_values import gap
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 
-from .adoption_baseline_values import fail, require, same
+from .adoption_baseline_values import fail, require
 
 _TABLES = ("Schedule", "ScheduleHistory", "WorkbenchPlanSourceRefs", "WorkbenchTaskRefs",
            "WorkbenchEntityRefs", "BatchOperations", "Batches")
@@ -41,14 +43,19 @@ def _tables_exist(conn, names):
 
 def _decode_rows(rows):
     require(type(rows) is list, "archived_table_rows")
-    return [{key: _blob(value) for key, value in row.items()} for row in rows]
+    return [{key: unpack_blob(value) for key, value in row.items()} for row in rows]
 
 
 def candidate_source_evidence(conn, audit):
     """Private complete proof and its parsed facts, including without reuse."""
     key = ("candidate_adoption_source", audit["candidate_ref"], audit["run_ref"])
-    candidate, capture, evidence = verified_read(
-        conn, key, lambda: _candidate_source(conn, audit))
+    try:
+        candidate, capture, evidence = verified_read(
+            conn, key, lambda: _candidate_source(conn, audit))
+    except WorkbenchCommandRejected as exc:
+        if exc.status == 413:
+            raise
+        fail(gap="candidate_source:" + exc.code)
     require(candidate["run_ref"] == audit["run_ref"], "candidate.run_ref")
     proof = audit["proof"]
     values = [("run_ref", audit["run_ref"]), ("candidate_ref", audit["candidate_ref"]),
@@ -71,7 +78,7 @@ def _candidate_source(conn, audit):
     run, candidate, scope, tasks, capture, _ = load_adoption_candidate(conn, candidate_ref)
     facts = GenerationFacts(capture)
     tables = _candidate_tables(facts)
-    AdmissionBaseline(capture, facts, scope, run["accepted_at"])
+    AdmissionBaseline(capture, facts, scope)
     prepared = CandidateAdmissionProof(decoded_baseline(capture["baseline"]), tables)
     evidence = {"baseline": capture["baseline"], "tables": tables,
                 "arranged": [row["payload"] for row in tasks], "generation_facts": facts,
@@ -93,8 +100,13 @@ def _candidate_tables(facts):
 def trial_source_evidence(conn, audit):
     """Return adoption evidence and its once-prepared scenario resources."""
     key = ("trial_adoption_source", audit["scenario_ref"], audit["draft_ref"])
-    prepared, evidence = verified_read(
-        conn, key, lambda: _trial_source(conn, audit))
+    try:
+        prepared, evidence = verified_read(
+            conn, key, lambda: _trial_source(conn, audit))
+    except WorkbenchCommandRejected as exc:
+        if exc.status == 413:
+            raise
+        fail(gap="trial_source:" + exc.code)
     head = prepared.source[1]
     admission, proof = head["admission"], audit["proof"]
     require(head["draft_ref"] == audit["draft_ref"], "trial.draft_ref")
@@ -223,8 +235,8 @@ def _adoption_operation_facts(evidence):
             supplier = None
             gaps.append(gap("supplier", "not_recorded"))
         else:
-            supplier = _resource(resources, "supplier", op["supplier_id"], gaps)
-        assigned = {kind: _resource(assigned_resources, kind, row[kind + "_id"], gaps) for kind in ("machine", "operator")}
+            supplier = task_resource(resources, "supplier", op["supplier_id"], gaps)
+        assigned = {kind: task_resource(assigned_resources, kind, row[kind + "_id"], gaps) for kind in ("machine", "operator")}
         assigned["supplier"] = supplier
         directory = [{"kind": kind, "ref": value["ref"], "business_code": op["supplier_id"] if kind == "supplier" else row[kind + "_id"],
                       "label": value["label"]} for kind, value in assigned.items() if value is not None and value["ref"] is not None]

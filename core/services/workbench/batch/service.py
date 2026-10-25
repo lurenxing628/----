@@ -7,7 +7,9 @@ from core.errors import BusinessError, ErrorCode, ValidationError
 from core.models.batch import Batch
 from core.models.workbench_batch import public_ref
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
-from core.services.batch.service import BatchService
+from core.services.common.datetime_normalize import normalize_date
+from core.services.common.normalize import normalize_text, validate_enum
+from core.shared.strict_parse import parse_required_int
 from data.repositories.batch_repo import BatchRepository
 
 from .facts import BatchFacts, index_relations, require_deletable, require_unreferenced
@@ -92,17 +94,16 @@ class BatchChangePreparation:
 
     def copy(self, source, code, *, quantity=None, ready_status="no", ready_date=None):
         """Copies keep the existing legacy date/text normalization, using the captured part."""
-        svc = BatchService
-        quantity = svc._normalize_int(source["quantity"] if quantity is None else quantity, field="数量")
+        quantity = parse_required_int(source["quantity"] if quantity is None else quantity, field="数量")
         if quantity <= 0:
             raise ValidationError("“数量”必须大于 0", field="数量")
-        part_name = svc._normalize_text(source["part_name"]) or self.parts[source["part_no"]]["part_name"]
-        priority = svc._normalize_text(source["priority"]) or "normal"
-        svc._validate_enum(priority, ("normal", "urgent", "critical"), "优先级")
+        part_name = normalize_text(source["part_name"]) or self.parts[source["part_no"]]["part_name"]
+        priority = normalize_text(source["priority"]) or "normal"
+        validate_enum(priority, ("normal", "urgent", "critical"), "优先级")
         return self.create(Batch(batch_id=code, part_no=source["part_no"], part_name=part_name,
-            quantity=quantity, due_date=svc._normalize_date(source["due_date"]),
+            quantity=quantity, due_date=normalize_date(source["due_date"]),
             priority=priority, ready_status=ready_status, ready_date=ready_date,
-            remark=svc._normalize_text(source["remark"])))
+            remark=normalize_text(source["remark"])))
 
 
 class WorkbenchBatchService:

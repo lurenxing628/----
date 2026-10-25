@@ -7,6 +7,6 @@
 - 缺失/失败可回退，且状态可观测（系统页展示 + 日志/留痕）
 """
 
-from .manager import PluginManager, reset_plugin_state
+from .manager import PluginManager
 
-__all__ = ["PluginManager", "reset_plugin_state"]
+__all__ = ["PluginManager"]

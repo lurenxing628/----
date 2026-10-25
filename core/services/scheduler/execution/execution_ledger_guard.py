@@ -12,6 +12,20 @@ _STATUSES = {"unreported": "not_started", "started": "processing", "partial": "p
 _IDENTITY_GAPS = {"invalid_legacy_sequence", "legacy_identity_unresolved", "operation_retired"}
 
 
+def is_point_work(source, setup_hours, unit_hours, target_quantity):
+    values = (setup_hours, unit_hours, target_quantity)
+    return (
+        source == SourceType.INTERNAL.value
+        and type(target_quantity) is int
+        and all(
+            type(value) in (int, float) and 0 <= value <= 9007199254740991
+            for value in values
+        )
+        and setup_hours == 0
+        and (unit_hours == 0 or target_quantity == 0)
+    )
+
+
 def _actual_time(value):
     return None if value is None else parse_operation_event_time(value)
 
@@ -35,26 +49,30 @@ def _report_segments(projection):
     )
 
 
-def _actual_intervals(projection, reasons, report_segments, first_start, confirmed_finish):
+def _actual_intervals(projection, reasons, report_segments, first_start, confirmed_finish, *, is_point):
     intervals = []
-    for start, end, _ in report_segments:
-        if start is None or end is None or end <= start:
+    for start, end, report in report_segments:
+        valid_point = is_point and end == start and report.effective_processing_hours == 0
+        if start is None or end is None or (end <= start and not valid_point):
             reasons.append("execution_ledger_actual_interval_missing")
         else:
             intervals.append((start, end))
     if not projection.reports and projection.completion_basis == "legacy_finish_event":
-        if first_start is not None and confirmed_finish is not None and confirmed_finish > first_start:
+        valid_span = (confirmed_finish >= first_start) if is_point else (confirmed_finish > first_start)
+        if valid_span:
             intervals.append((first_start, confirmed_finish))
         else:
             reasons.append("execution_ledger_actual_interval_missing")
     return tuple(intervals)
 
 
-def _requires_ledger_projection(fact, projection, gap_codes):
+def _requires_ledger_projection(fact, projection, gap_codes, *, is_point):
     identity_invalid = bool(_IDENTITY_GAPS.intersection(gap_codes))
     # Report intervals and completed legacy evidence use the strict ledger
     # contract; in-progress event-only evidence keeps legacy plan duration.
-    old_finish = projection.completion_basis == "legacy_finish_event" and fact.actual_status != "completed"
+    old_finish = projection.completion_basis == "legacy_finish_event" and (
+        fact.actual_status != "completed" or is_point or fact.actual_start_time == fact.actual_end_time
+    )
     return bool(projection.reports or identity_invalid or old_finish)
 
 
@@ -74,12 +92,22 @@ def _protected_status(projection, reasons, gap_codes):
     return status
 
 
-def _protected_intervals(projection, status, reasons, report_segments, first_start, confirmed_finish):
-    intervals = _actual_intervals(projection, reasons, report_segments, first_start, confirmed_finish)
-    if status == "completed" and (not intervals or any(
-        left[1] != right[0] for left, right in zip(intervals, intervals[1:])
-    )):
-        reasons.append("execution_ledger_intervals_not_representable")
+def _occupancy_intervals(intervals):
+    # Zero-duration point reports are evidence inside the actual span, not occupancy.
+    positive = tuple(interval for interval in intervals if interval[0] < interval[1])
+    return positive or intervals
+
+
+def _protected_intervals(projection, status, reasons, report_segments, first_start, confirmed_finish, *, is_point):
+    intervals = _actual_intervals(
+        projection, reasons, report_segments, first_start, confirmed_finish, is_point=is_point,
+    )
+    if status == "completed":
+        span = _occupancy_intervals(intervals)
+        if not span or any(left[1] != right[0] for left, right in zip(span, span[1:])) or any(
+            start < span[0][0] or end > span[-1][1] for start, end in intervals
+        ):
+            reasons.append("execution_ledger_intervals_not_representable")
     return intervals
 
 
@@ -99,6 +127,10 @@ def _actual_resources(projection, resources, *, source, reasons, report_segments
             reasons.append("execution_ledger_external_resource_conflict")
     elif source == SourceType.INTERNAL.value:
         if projection.reports:
+            primary = next(
+                (seg[2] for seg in report_segments if seg[0] is not None and seg[1] is not None and seg[0] < seg[1]),
+                report_segments[0][2],
+            )
             resolved = {}
             for field, kind in (("actual_machine_ref", "machine"), ("actual_operator_ref", "operator")):
                 refs = {getattr(report, field) for report in projection.reports}
@@ -106,7 +138,7 @@ def _actual_resources(projection, resources, *, source, reasons, report_segments
                 legacy_refs = legacy_resource_refs(projection.legacy_facts, field, gaps=projection.data_gaps)
                 if None in legacy_refs or not legacy_refs <= refs:
                     reasons.append("execution_ledger_actual_resource_missing_or_multiple")
-                resolved[field] = codes[getattr(report_segments[0][2], field)]
+                resolved[field] = codes[getattr(primary, field)]
             machine, operator = resolved["actual_machine_ref"], resolved["actual_operator_ref"]
         else:
             machine = _resource_id(_actual_resource_refs(projection, "actual_machine_ref"), resources, "machine", reasons)
@@ -133,16 +165,19 @@ def _legacy_in_progress_changes(fact, projection, resources, gap_codes, *, sourc
             "actual_end_time": None, "actual_machine_id": machine, "actual_operator_id": operator}
 
 
-def ledger_fact_changes(fact, projection, resources, *, source):
+def ledger_fact_changes(fact, projection, resources, *, source, setup_hours, unit_hours):
     gap_codes = [gap["code"] for gap in projection.data_gaps]
-    if not _requires_ledger_projection(fact, projection, gap_codes):
+    is_point = is_point_work(source, setup_hours, unit_hours, projection.target_quantity)
+    if not _requires_ledger_projection(fact, projection, gap_codes, is_point=is_point):
         return _legacy_in_progress_changes(fact, projection, resources, gap_codes, source=source)
     reasons = []
     status = _protected_status(projection, reasons, gap_codes)
     report_segments = _report_segments(projection)
     first_start = _actual_time(projection.first_actual_start)
     confirmed_finish = _actual_time(projection.confirmed_finish)
-    intervals = _protected_intervals(projection, status, reasons, report_segments, first_start, confirmed_finish)
+    intervals = _protected_intervals(
+        projection, status, reasons, report_segments, first_start, confirmed_finish, is_point=is_point,
+    )
     machine, operator = _actual_resources(projection, resources, source=source, reasons=reasons,
                                           report_segments=report_segments)
     return {"actual_status": status, "actual_start_time": first_start,
@@ -154,17 +189,23 @@ def ledger_fact_changes(fact, projection, resources, *, source):
 
 def fact_resource_segments(fact):
     """Return multi-report actual occupancy; the plan row retains the earliest resource pair."""
+    if fact.actual_start_time is not None and fact.actual_start_time == fact.actual_end_time:
+        return ()
     content = fact.execution_protection_content
     if fact.actual_status == "completed" and content is not None:
         reports = content["projection"]["reports"]
         if len(reports) > 1:
             resources = content["resources"]
-            return tuple(sorted(
-                (parse_operation_event_time(report["actual_start"]), parse_operation_event_time(report["actual_end"]),
+            segments = tuple(sorted(
+                (start, end,
                  resources[report["actual_machine_ref"]]["business_code"],
                  resources[report["actual_operator_ref"]]["business_code"])
                 for report in reports
+                for start, end in ((parse_operation_event_time(report["actual_start"]),
+                                    parse_operation_event_time(report["actual_end"])),)
+                if start < end
             ))
+            return segments if len(segments) > 1 else ()
     return ()
 
 
@@ -191,7 +232,10 @@ def ensure_ledger_execution_schedulable(facts):
             intervals = fact.execution_effective_intervals
             if not intervals or fact.actual_start_time is None or fact.actual_end_time is None:
                 reasons.append("execution_ledger_actual_interval_missing")
-            elif fact.actual_start_time != intervals[0][0] or fact.actual_end_time != intervals[-1][1]:
-                reasons.append("execution_ledger_actual_interval_inconsistent")
+            else:
+                span = _occupancy_intervals(intervals)
+                if (fact.actual_start_time != span[0][0] or fact.actual_end_time != span[-1][1]
+                        or any(start < span[0][0] or end > span[-1][1] for start, end in intervals)):
+                    reasons.append("execution_ledger_actual_interval_inconsistent")
         if reasons:
             _raise_reconciliation(op_id, fact.ledger_execution_state, fact.remaining_quantity, reasons)

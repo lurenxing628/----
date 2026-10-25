@@ -7,7 +7,7 @@ from datetime import date, datetime
 from core.models.resource_capabilities import machine_type_index, supplier_capability_rows, supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_preflight import issue
-from core.services.material.stage_availability import MaterialAvailability, covers_quantity, quantity
+from core.services.material.stage_availability import MaterialAvailability
 from core.services.scheduler.contracts.external_context import (
     context_group_key,
     context_problem,
@@ -38,7 +38,7 @@ class PreflightChecks:
         self.catalogs = {kind: {row[key]: row for row in tables[table]} for kind, table, key in (
             ("machine", "Machines", "machine_id"), ("operator", "Operators", "operator_id"),
             ("supplier", "Suppliers", "supplier_id"), ("op_type", "OpTypes", "op_type_id"))}
-        self.machine_types = machine_type_index(tables["Machines"], tables.get("MachineOpTypes", []))
+        self.machine_types = machine_type_index(tables["Machines"], tables["MachineOpTypes"])
         self.links = {(row["operator_id"], row["machine_id"]) for row in tables["OperatorMachine"]}
         self.skills = defaultdict(set)
         for row in tables["OperatorSkill"]:
@@ -49,12 +49,12 @@ class PreflightChecks:
         self.supplier_skills = defaultdict(set)
         for row in supplier_capability_rows(tables["Suppliers"], tables["WorkbenchSupplierOpTypes"]):
             self.supplier_skills[row["supplier_id"]].add(row["op_type_id"])
-        self.external_contexts = {row["operation_id"]: row for row in tables.get("BatchExternalContexts", [])}
-        self.external_members = member_index(self.external_contexts, tables.get("BatchOperations", []))
+        self.external_contexts = {row["operation_id"]: row for row in tables["BatchExternalContexts"]}
+        self.external_members = member_index(self.external_contexts, tables["BatchOperations"])
         self.availability = MaterialAvailability(tables)
-        self.materials = defaultdict(list)
-        for row in tables["BatchMaterials"]:
-            self.materials[row["batch_id"]].append(row)
+        # 批级齐套结论按批次算一次，同批每道工序复用。
+        self._batch_reviewed = {}
+        self._batch_readiness = {}
 
     def fields(self, batch, op):
         gaps = []
@@ -137,25 +137,40 @@ class PreflightChecks:
                 gaps.append(issue(kind + "_identity_missing", "实际记录的原设备、人员或供应商身份缺失，请核对历史记录。"))
         return gaps
 
+    def _reviewed(self, batch_id):
+        reviewed = self._batch_reviewed.get(batch_id)
+        if reviewed is None:
+            reviewed = self._batch_reviewed[batch_id] = any(
+                row["id"] in self.availability.reviews for row in self.availability.requirements[batch_id])
+        return reviewed
+
     def readiness(self, batch):
-        if hasattr(self, "availability") and any(row["id"] in self.availability.reviews for row in self.materials[batch["batch_id"]]):
+        batch_id = batch["batch_id"]
+        reasons = self._batch_readiness.get(batch_id)
+        if reasons is None:
+            reasons = self._batch_readiness[batch_id] = self._batch_reasons(batch)
+        # 每个调用方拿到自己的列表：排产检查会把它当作行的问题，之后还会往里追加批级问题。
+        return list(reasons)
+
+    def _batch_reasons(self, batch):
+        if self._reviewed(batch["batch_id"]):
             status, problems = self.availability.readiness_state(batch, date.today().isoformat())
             return problems or ([] if status == "yes" else [issue("material_not_ready", "按当前日期的到料，物料尚未全部齐套。")])
+        diagnosis = self.availability.readiness_diagnostics(batch, date.today().isoformat())
         reasons = []
         if batch["ready_status"] != "yes":
             reasons.append(issue("batch_not_ready", "这批还没确认齐套。请到批次管理确认齐套状态。"))
-        for row in self.materials[batch["batch_id"]]:
-            required, available = row["required_qty"], row["available_qty"]
-            if not number(required, positive=True) or not number(available):
-                reasons.append(issue("material_unknown", "物料需求量或到料数量没填，算不出齐不齐套。请到批次管理核对物料需求。"))
-            elif not covers_quantity(quantity(available), quantity(required)) or row["ready_status"] != "yes":
+        for requirement in diagnosis["requirements"].values():
+            if requirement["problems"]:
+                reasons.extend(issue(problem["code"], problem["message"]) for problem in requirement["problems"])
+            elif not requirement["ready"]:
                 reasons.append(issue("material_not_ready", "这批的物料还没到齐。请到批次管理核对物料需求。"))
         return reasons
 
     def operation_readiness(self, batch, op, settings):
         if not settings["ready_check"]:
             return [], None
-        if not any(row["id"] in self.availability.reviews for row in self.materials[batch["batch_id"]]):
+        if not self._reviewed(batch["batch_id"]):
             return self.readiness(batch), None
         try:
             day = self.availability.operation_release(batch, op, settings.get("material_strategy", "strict"))

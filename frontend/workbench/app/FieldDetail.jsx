@@ -56,13 +56,17 @@
         {record.correction_history.map((item, index) => <div key={index}><strong>{C.reportActions[item.action] || C.reportActions.correct}</strong> {C.date(item.recorded_at)} · {item.reason}
           {item.before && item.after && <dl>{C.fields.filter(key => item.before[key] !== item.after[key]).map(key => <React.Fragment key={key}><dt>{({ completed_quantity: '数量', effective_processing_hours: '有效工时', actual_start: '实际开工', actual_end: '本次完工', actual_machine_ref: '实际设备', actual_operator_ref: '实际人员', remark: '备注' })[key]}</dt><dd>{key.endsWith('_ref') ? '资源已更正' : C.display(item.before[key]) + ' → ' + C.display(item.after[key])}</dd></React.Fragment>)}</dl>}</div>)}</div>;
   }
-  function FieldDetail({ adapter, taskRef, scope, snapshot, revision, command, editor, retained, onDraft, onEdit, onCloseEditor, onDone, onNavigate, nextDraft, onContinueReady }) {
+  function FieldDetail({ adapter, taskRef, scope, snapshot, revision, command, editor, retained, onDraft, onEdit, onCloseEditor, onDone, onNavigate, nextDraft, onContinueReady, onRefresh }) {
     const [historyRef, setHistoryRef] = React.useState(null);
     const [timeline, setTimeline] = React.useState(false);
     const detail = React.useRef(null);
     const request = window.APSResourceSession.useQuery(async signal => C.query(await adapter.detail(taskRef, { ...scope, snapshot_ref: snapshot }, signal), 'detail', taskRef), [adapter, taskRef, scope, snapshot, revision]);
     const task = request.result && request.result.data.task, p = task && task.execution;
-    React.useEffect(() => { if (nextDraft && task) onContinueReady(task); }, [nextDraft, task, onContinueReady]);
+    React.useEffect(() => {
+      if (!nextDraft || request.loading) return;
+      if (task) onContinueReady(task);
+      else if (request.error) onContinueReady(null);
+    }, [nextDraft, request.loading, task, request.error, onContinueReady]);
     React.useEffect(() => {
       if (!task || !detail.current || editor || nextDraft) return;
       // Only bring the detail into view when it is off screen; scrolling an already visible detail pushed the toolbar away.
@@ -70,7 +74,7 @@
       if (box.top < 0 || box.top > window.innerHeight - 120) detail.current.scrollIntoView({ block: 'start', inline: 'nearest' });
     }, [task, editor, nextDraft]);
     if (request.loading) return <div className="field-note" role="status">正在读取逐次报工…</div>;
-    if (!task) return <div className="field-error"><ErrorBox error={request.error} /><Button icon="refresh-cw" onClick={request.reload} disabled={command.locked}>刷新详情</Button>
+    if (!task) return <div className="field-error"><ErrorBox error={request.error} /><Button icon="refresh-cw" onClick={() => request.error && (request.error.error && request.error.error.code || request.error.code) === 'snapshot_stale' && onRefresh ? onRefresh() : request.reload()} disabled={command.locked}>刷新详情</Button>
       {editor && <Button onClick={onCloseEditor} disabled={command.locked}>取消暂存编辑</Button>}</div>;
     const report = editor && p.reports.find(row => row.report_ref === editor.reportRef);
     const legacy = editor && p.legacy_facts.find(row => row.legacy_fact_ref === editor.legacyRef);

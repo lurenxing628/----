@@ -51,10 +51,10 @@ def internal_resource_validation_message(
 
 def _operation_public_details(*, batch: Any, op: Any, meta: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        "op_id": meta.get("op_id"),
-        "batch_id": public_safe_identifier(getattr(op, "batch_id", None) or meta.get("batch_id")) or "-",
+        "op_id": meta["op_id"],
+        "batch_id": public_safe_identifier(getattr(op, "batch_id", None) or meta["batch_id"]) or "-",
         "op_code": public_safe_identifier(getattr(op, "op_code", None)),
-        "seq": int(meta.get("seq") or 0),
+        "seq": meta["seq"],
         "op_type_name": public_safe_label(getattr(op, "op_type_name", None)),
         "part_no": public_safe_identifier(getattr(batch, "part_no", None) or getattr(op, "part_no", None)),
         "part_name": public_safe_label(getattr(batch, "part_name", None) or getattr(op, "part_name", None)),

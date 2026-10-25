@@ -77,8 +77,9 @@ class DecisionSource:
         self.selected_ref = selected_candidate_ref or self.basis["selected_candidate_ref"]
         self._candidate_reference(self.reference_ref)
         self._candidate_reference(self.selected_ref, require_result=False)
-        self._projected, self._verified, self._task_intervals, self._analysis, self._candidate_records = {}, {}, {}, {}, {}
-        self._raw_tasks, self._candidate_sources, self._prepared_task_rows, self._scheduled_op_ids = {}, {}, {}, {}
+        self._projected, self._task_intervals, self._analysis, self._candidate_records = {}, {}, {}, {}
+        self._raw_tasks, self._candidate_sources, self._scheduled_op_ids = {}, {}, {}
+        self._process_projection = None
         self._candidate_records.update({row["candidate_ref"]: row for row in prepared.get("rows", ())})
         for name in ("receipt", "capture", "facts", "disposition"):
             if name in prepared:
@@ -162,11 +163,11 @@ class DecisionSource:
         return self._analysis[key]
 
     def analysis_groups(self, key):
-        from .decision_impact import _by_operation
+        from .decision_impact import by_operation
         name = self.computation_key(key)
         cache = self.__dict__.setdefault("_analysis_groups", {})
         if name not in cache:
-            cache[name] = _by_operation(self.analysis_tasks(name))
+            cache[name] = by_operation(self.analysis_tasks(name))
         return cache[name]
 
     def operation_batch_ref(self, operation_ref):
@@ -245,24 +246,14 @@ class DecisionSource:
     def tasks(self, candidate_ref):
         if candidate_ref not in self._projected:
             row = self.candidate_record(candidate_ref)
-            self._projected[candidate_ref] = project_validated_tasks(
-                self.core_tasks(candidate_ref), row, self.facts, self._task_intervals[candidate_ref],
-                prepared_tasks=self._prepared_task_rows[candidate_ref])
-            del self._verified[candidate_ref]
-            del self._prepared_task_rows[candidate_ref]
-        return self._projected[candidate_ref]
-
-    def core_tasks(self, candidate_ref):
-        if candidate_ref in self._projected:
-            return self._projected[candidate_ref]
-        if candidate_ref not in self._verified:
-            row = self.candidate_record(candidate_ref)
             self._raw_tasks[candidate_ref] = self.store.tasks(candidate_ref)
-            self._prepared_task_rows[candidate_ref] = {}
-            (self._verified[candidate_ref], self._task_intervals[candidate_ref],
+            prepared_tasks = {}
+            (verified, self._task_intervals[candidate_ref],
              self._scheduled_op_ids[candidate_ref]) = validate_saved_tasks(
-                self._raw_tasks[candidate_ref], row, self.facts, prepared_tasks=self._prepared_task_rows[candidate_ref])
-        return self._verified[candidate_ref]
+                self._raw_tasks[candidate_ref], row, self.facts, prepared_tasks=prepared_tasks)
+            self._projected[candidate_ref] = project_validated_tasks(
+                verified, row, self.facts, self._task_intervals[candidate_ref], prepared_tasks=prepared_tasks)
+        return self._projected[candidate_ref]
 
     def candidate_source(self, candidate_ref):
         from core.services.workbench.facts.candidate_read_source import read_candidate_source
@@ -301,17 +292,13 @@ class DecisionSource:
         return self._task_intervals[key]
 
     @cached_property
-    def reference_operation_groups(self):
-        return self.analysis_groups("reference")
-
-    @cached_property
     def operation_comparisons(self):
         from .decision_impact import operation_comparisons
         return operation_comparisons(self.analysis_tasks(self.selected_ref), self.analysis_tasks("reference"), self.scope["operation_refs"],
             self.baseline["state"] == "available", selected_available=self.result_available(self.selected_ref),
             deferred_refs=self.deferred_refs, reference_deferred_refs=self.reference_deferred_refs,
-            reference_groups=self.reference_operation_groups, task_intervals=self.task_intervals(self.selected_ref),
-            reference_task_intervals=self.task_intervals("reference"))
+            reference_groups=self.analysis_groups("reference"), selected_groups=self.analysis_groups(self.selected_ref),
+            task_intervals=self.task_intervals(self.selected_ref), reference_task_intervals=self.task_intervals("reference"))
 
     @cached_property
     def batch_impacts(self):
@@ -333,7 +320,7 @@ class DecisionSource:
     @cached_property
     def official_details(self):
         resolver = decision_baseline_source_resolver(self.store.conn)
-        return read_decision_baseline(self.capture, self.facts, self.disposition, self.run["accepted_at"], source_resolver=resolver)
+        return read_decision_baseline(self.capture, self.facts, self.disposition, source_resolver=resolver)
 
     @cached_property
     def official(self):
@@ -420,7 +407,7 @@ class DecisionSource:
 
     @cached_property
     def operation_efforts(self):
-        return saved_operation_efforts((self.receipt or {}).get("operation_effort"), identities=self.facts.operations)
+        return saved_operation_efforts(self.receipt.get("operation_effort"), identities=self.facts.operations)
 
     @cached_property
     def preparation(self):

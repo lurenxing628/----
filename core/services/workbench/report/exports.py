@@ -8,7 +8,11 @@ import io
 from core.models.report_export import ReportExport
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.services.common.excel_templates import sanitize_export_cell
-from core.services.report.exporters.xlsx import SUMMARY_IDENTITY_LABELS, _append_write_only_row
+from core.services.report.exporters.xlsx import (
+    SUMMARY_IDENTITY_LABELS,
+    _append_write_only_row,
+    append_summary_row,
+)
 from core.services.workbench.facts.execution_projection import COMPLETION_BASIS_TEXT, DATA_QUALITY_TEXT
 from core.services.workbench.facts.export_names import export_stamp
 from core.services.workbench.facts.table_cells import number_text
@@ -76,19 +80,8 @@ def _export_values(columns, rows, format_name):
 
 
 def _append_xlsx_metadata(sheet, data, snapshot):
-    from openpyxl.cell import WriteOnlyCell
-    from openpyxl.styles import Alignment
-
-    for label, value in metadata(data, snapshot):
-        if label not in IDENTITY_LABELS:
-            _append_write_only_row(sheet, [label, value])
-            continue
-        # References must round-trip exactly without ever becoming formulas.
-        cells = [WriteOnlyCell(sheet, value=label), WriteOnlyCell(sheet, value=value)]
-        cells[1].data_type = "s"
-        for cell in cells:
-            cell.alignment = Alignment(vertical="top", wrap_text=True)
-        sheet.append(cells)
+    for row in metadata(data, snapshot):
+        append_summary_row(sheet, row, write_only=True)
 
 
 def export_table(engine, data, rows, snapshot, format_name):

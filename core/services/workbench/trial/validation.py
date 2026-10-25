@@ -4,11 +4,13 @@ from datetime import datetime
 from types import SimpleNamespace
 
 from core.errors import AppError
+from core.models.content import content_text, same
 from core.models.resource_capabilities import supports_source
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_trial import issue, reject, validation
-from core.models.workbench_trial_codec import packed, same
 from core.services.personnel.operator_qualification import OperatorQualificationError
+from core.services.workbench.run.input_runtime import HeldArrangements
 from core.services.workbench.run.piece_adoption_trial import trial_piece_issues
 
 from .arrangements import same_arrangement
@@ -16,12 +18,12 @@ from .calendar import calendar_engine, estimate, new_slot_effort
 from .constraints import interval, relation_issues, resource_issues
 from .execution_anchors import anchor_issue, execution_anchors
 from .facts import facts_unchanged
-from .materials import adoption_settings, material_issues
-from .protection import TrialProtection, frozen_arrangements, frozen_issue, frozen_note, keeps_frozen
+from .materials import adoption_settings, hold_settings, material_issues
+from .protection import TrialProtection, frozen_issue, frozen_note, keeps_frozen, prepare_frozen_arrangements
 
 
 class TrialValidator:
-    def __init__(self, conn, admission, rows, live, *, anchors=None, anchor_error=None):
+    def __init__(self, conn, admission, rows, live):
         self.conn, self.admission, self.rows, self.live = conn, admission, rows, live
         self.tables = live["facts"]["tables"]
         self.checks = live["preflight_facts"].checks()
@@ -34,38 +36,46 @@ class TrialValidator:
         self.qualification = live["resource_facts"]
         self.qualification_cache = {}
         self._protected_state = None
-        self._protect()
-        if anchors is None and anchor_error is None:
-            prepared_anchors = live.get("execution_anchors")
-            if prepared_anchors is not None:
-                anchors, anchor_error = prepared_anchors
-            else:
-                try:
-                    anchors = execution_anchors(conn, rows, live)
-                except (AppError, ValueError, TypeError, KeyError, OverflowError) as exc:
-                    anchor_error = anchor_issue(exc)
-        self.anchors = {} if anchors is None else anchors
-        self.anchor_error = anchor_error
+        self._hold_key = None
+        prepared_anchors = live.get("execution_anchors")
+        if prepared_anchors is not None:
+            self.anchors, self.anchor_error = prepared_anchors
+        else:
+            try:
+                self.anchors = execution_anchors(conn, rows, live)
+                self.anchor_error = None
+            except (AppError, ValueError, KeyError) as exc:
+                self.anchors = {}
+                self.anchor_error = anchor_issue(exc)
         self.downtime = {}
         for row in self.tables["MachineDowntimes"]:
             self.downtime.setdefault(row["machine_id"], []).append(row)
 
     def _protect(self):
         # 采用输入的起止日随试调行变化（不重排时段按它裁剪）：行改过就按当前各行重新找。
-        # 只比较各行的起止时间和资源编号，不为判断“改没改”复制整个安排或计算摘要。
-        state = tuple((row["current"]["start"], row["current"]["end"],
-                       row["current"]["machine_ref"], row["current"]["operator_ref"]) for row in self.rows)
-        if self._protected_state == state:
+        # 只比较各行的最早开始日与最晚结束日，并在冻结窗口口径未变时复用冻结原安排。
+        span = (min(row["current"]["start"][:10] for row in self.rows),
+                max(row["current"]["end"][:10] for row in self.rows))
+        if self._protected_state == span:
             return
-        self._protected_state = state
+        self._protected_state = span
         self.settings = adoption_settings(self.admission, self.rows, self.checks, self.live["execution"])
+        anchor = hold_settings(self.admission, self.settings)
+        hold_key = anchor["start_date"], anchor.get("hold_window")
+        if self._hold_key == hold_key:
+            return
+        self._hold_key = hold_key
         self.frozen, self.frozen_issue = {}, None
         try:
-            self.frozen = frozen_arrangements(self.conn, self.admission, self.rows, self.live,
-                                              settings=self.settings)
-        except (AppError, ValueError, TypeError, KeyError, OverflowError):
+            self.held = prepare_frozen_arrangements(self.conn, self.admission, self.rows, self.live,
+                                                   settings=self.settings)
+        except (AppError, CandidateRunInputError, ValueError):
+            self.held = HeldArrangements(set(), [], [], {})
             self.frozen_issue = issue("freeze_window_unavailable", "正式采用要原样保留来源排产不重排时段里的原安排，"
                                       "但正式计划里这段时间的安排读不出来或者对不上，不能正式采用。请联系维护人员核对正式计划。")
+        else:
+            self.frozen = {seed["op_id"]: dict(seed, hold_window=self.held.meta["hold_window"])
+                           for seed in self.held.seed_results}
         self.protection = TrialProtection(self.live, self.frozen)
 
     def evaluate_saved(self, *, check_baseline=True):
@@ -97,7 +107,7 @@ class TrialValidator:
         issues.extend(relation_issues(self.rows, self.live))
         issues.extend(trial_piece_issues(self.rows, self.live, self.settings))
         issues.extend(resource_issues(self.rows, self.live, conn=self.conn))
-        unique = {canonical_json(packed(item)): item for item in issues}
+        unique = {content_text(item): item for item in issues}
         return validation(list(unique.values()))
 
     def _row(self, row):
@@ -194,6 +204,7 @@ class TrialValidator:
         return [dict(result, task_ref=ref)] if result else []
 
     def adjusted(self, row, intent):
+        self._protect()
         protected = self.protection.check(row)
         if protected:
             reject(protected["code"], protected["message"])

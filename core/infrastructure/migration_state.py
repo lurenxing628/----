@@ -12,15 +12,18 @@ from .machine_capabilities_schema import contract_issues as machine_capabilities
 from .machine_capabilities_schema import objects as machine_capabilities_objects
 from .material_stages_schema import contract_issues as material_stages_contract_issues
 from .material_stages_schema import objects as material_stages_objects
-from .migration_common import MigrationOutcome, column_exists, fallback_log, table_exists
+from .migration_common import MigrationOutcome, fallback_log
 from .migration_operation_execution_contract import operation_execution_event_contract_issues
+from .operation_execution_event_schema import operation_execution_event_objects
 from .schedule_business_roles_schema import contract_issues as schedule_business_roles_contract_issues
 from .schedule_business_roles_schema import objects as schedule_business_roles_objects
 from .schema_declaration import declared_columns, load_schema_sql
 from .schema_structure import SchemaStructure
 from .workbench_calibration_adoption_schema import contract_issues as calibration_adoption_contract_issues
 from .workbench_calibration_adoption_schema import objects as calibration_adoption_objects
-from .workbench_dashboard_external_schema import contract_issues as dashboard_external_contract_issues
+from .workbench_dashboard_external_schema import (
+    workbench_dashboard_external_contract_issues as dashboard_external_contract_issues,
+)
 from .workbench_dashboard_external_schema import workbench_dashboard_external_objects
 from .workbench_dashboard_schema import workbench_dashboard_contract_issues, workbench_dashboard_objects
 from .workbench_execution_ledger_schema import execution_ledger_contract_issues, execution_ledger_objects
@@ -119,16 +122,18 @@ def ensure_schema_version_not_newer(db_version: int, *, supported_version: int =
 
 
 def ensure_current_schema_contract(
-    conn: sqlite3.Connection, *, schema_version: Optional[int] = None, schema_sql: Optional[str] = None, full_data: bool = False
+    conn: sqlite3.Connection, *, schema_version: int, schema_sql: Optional[str] = None, full_data: bool = False
 ) -> None:
-    version = int(get_schema_version(conn) if schema_version is None else schema_version)
+    version = int(schema_version)
     if version == CURRENT_SCHEMA_VERSION:
-        issues = current_schema_contract_issues(conn, schema_sql=schema_sql, full_data=full_data)
+        issues = current_schema_contract_issues(conn, schema_version=version, schema_sql=schema_sql, full_data=full_data)
         if issues:
             raise build_current_schema_contract_error(version, issues=issues)
 
 
-def ensure_schema_version(conn: sqlite3.Connection, logger=None, *, schema_sql: Optional[str] = None) -> None:
+def ensure_schema_version(
+    conn: sqlite3.Connection, logger=None, *, schema_sql: Optional[str] = None, full_data: bool = False
+) -> int:
     """
     确保 SchemaVersion 表存在，并写入/修正版本号。
 
@@ -148,11 +153,15 @@ def ensure_schema_version(conn: sqlite3.Connection, logger=None, *, schema_sql: 
     conn.execute("INSERT OR IGNORE INTO SchemaVersion (id, version) VALUES (1, 0)")
 
     version = get_schema_version(conn)
-    if version <= 0 and detect_schema_is_current(conn, schema_sql=schema_sql) and is_truly_empty_db(conn):
+    if version <= 0 and is_truly_empty_db(conn) and detect_schema_is_current(
+        conn, schema_version=version, schema_sql=schema_sql, full_data=full_data
+    ):
         set_schema_version(conn, CURRENT_SCHEMA_VERSION)
         fallback_log(
             logger, "info", f"检测到新库结构已满足当前版本，SchemaVersion 已设为 {CURRENT_SCHEMA_VERSION}。"
         )
+        return CURRENT_SCHEMA_VERSION
+    return version
 
 
 def get_schema_version(conn: sqlite3.Connection) -> int:
@@ -160,7 +169,7 @@ def get_schema_version(conn: sqlite3.Connection) -> int:
         row = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()
         if not row:
             return 0
-        return int(row["version"] if isinstance(row, sqlite3.Row) else row[0])
+        return int(row[0])
     except sqlite3.OperationalError as exc:
         msg = str(exc).lower()
         # 仅在“表/列不存在”等可预期场景回落 0；其它错误必须可观测（向上抛出）
@@ -204,19 +213,22 @@ def list_user_tables(conn: sqlite3.Connection) -> List[str]:
         ORDER BY name
         """
     ).fetchall()
-    return [r["name"] if isinstance(r, sqlite3.Row) else r[0] for r in rows]
+    return [r[0] for r in rows]
 
 
 def has_no_user_tables(conn: sqlite3.Connection) -> bool:
     return len(list_user_tables(conn)) == 0
 
 
-def detect_schema_is_current(conn: sqlite3.Connection, *, schema_sql: Optional[str] = None) -> bool:
-    return not current_schema_contract_issues(conn, schema_sql=schema_sql)
+def detect_schema_is_current(
+    conn: sqlite3.Connection, *, schema_version: Optional[int] = None, schema_sql: Optional[str] = None, full_data: bool = False
+) -> bool:
+    return not current_schema_contract_issues(conn, schema_version=schema_version, schema_sql=schema_sql, full_data=full_data)
 
 
 # 有自己 DDL 模块与契约函数的子系统：它们的表/索引/触发器按“DDL 逐字相等”核对，不再重复做列级比对。
 _SUBSYSTEM_OBJECT_SOURCES = (
+    operation_execution_event_objects,
     metadata_objects, resource_objects, process_objects, workflow_objects, plan_identity_objects,
     plan_identity_write_guard_objects, execution_ledger_objects, execution_void_objects, workbench_run_objects, run_read_model_objects,
     schedule_business_roles_objects,
@@ -236,13 +248,9 @@ def _subsystem_owned_object_names() -> Set[str]:
     return owned
 
 
-def _live_columns(conn: sqlite3.Connection, table: str, *, structure=None) -> Set[str]:
-    quoted = '"' + str(table).replace('"', '""') + '"'
-    rows = structure.table_info(table) if structure is not None else conn.execute(f"PRAGMA table_info({quoted})").fetchall()
-    return {row[1] for row in rows}
-
-
-def current_schema_contract_issues(conn: sqlite3.Connection, *, schema_sql: Optional[str] = None, full_data: bool = False) -> List[str]:
+def current_schema_contract_issues(
+    conn: sqlite3.Connection, *, schema_version: Optional[int] = None, schema_sql: Optional[str] = None, full_data: bool = False
+) -> List[str]:
     """
     当前库是否满足当前版本的结构契约。
 
@@ -259,21 +267,22 @@ def current_schema_contract_issues(conn: sqlite3.Connection, *, schema_sql: Opti
         if not structure.has_table(table):
             issues.append(f"missing_table: {table}")
             continue
-        live = _live_columns(conn, table, structure=structure)
+        live = {row[1] for row in structure.table_info(table)}
         for col in columns:
             if col not in live:
                 issues.append(f"missing_column: {table}.{col}")
     for ok, label in (
-        (_has_system_management_tables(conn, structure=structure), "missing_table: SystemConfig/SystemJobState"),
-        (_has_schedule_unique_index(conn, structure=structure), "bad_index: idx_schedule_version_op_unique"),
-        (_has_candidate_indexes(conn, structure=structure), "bad_index: schedule candidate indexes"),
-        (_has_adjustment_draft_indexes(conn, structure=structure), "bad_index: schedule adjustment draft indexes"),
-        (_has_adjustment_scenario_indexes(conn, structure=structure), "bad_index: schedule adjustment scenario indexes"),
-        (_batch_material_ready_default_is_no(conn, structure=structure), "bad_default: BatchMaterials.ready_status expected no"),
+        (_has_system_management_tables(structure=structure), "missing_table: SystemConfig/SystemJobState"),
+        (_has_schedule_unique_index(structure=structure), "bad_index: idx_schedule_version_op_unique"),
+        (_has_candidate_indexes(structure=structure), "bad_index: schedule candidate indexes"),
+        (_has_adjustment_draft_indexes(structure=structure), "bad_index: schedule adjustment draft indexes"),
+        (_has_adjustment_scenario_indexes(structure=structure), "bad_index: schedule adjustment scenario indexes"),
+        (_batch_material_ready_default_is_no(structure=structure), "bad_default: BatchMaterials.ready_status expected no"),
     ):
         if not ok:
             issues.append(label)
-    issues.extend(operation_execution_event_contract_issues(conn, structure=structure, full_data=full_data))
+    version = get_schema_version(conn) if schema_version is None else schema_version
+    issues.extend(operation_execution_event_contract_issues(conn, structure=structure, full_data=full_data, schema_version=version))
     issues.extend(workbench_metadata_contract_issues(conn, structure=structure, allow_legacy=False))
     issues.extend(workbench_resource_contract_issues(conn, structure=structure))
     issues.extend(workbench_process_contract_issues(conn, structure=structure))
@@ -299,7 +308,7 @@ def current_schema_contract_issues(conn: sqlite3.Connection, *, schema_sql: Opti
     issues.extend(material_stages_contract_issues(conn, structure=structure))
     from .efficiency_indexes_schema import contract_issues as efficiency_index_contract_issues
     from .single_pass_indexes_schema import contract_issues as index_contract_issues
-    if get_schema_version(conn) in (0, CURRENT_SCHEMA_VERSION):
+    if version in (0, CURRENT_SCHEMA_VERSION):
         issues.extend(index_contract_issues(conn, structure=structure))
         issues.extend(efficiency_index_contract_issues(conn, structure=structure))
     if full_data and structure.has_table("Schedule") and structure.has_table("ScheduleHistory"):
@@ -313,44 +322,45 @@ def schedule_history_data_issues(conn):
     return ["bad_data: Schedule version=" + str(row[0]) + " missing ScheduleHistory head" for row in versions]
 
 
-def _batch_material_ready_default_is_no(conn: sqlite3.Connection, *, structure=None) -> bool:
-    try:
-        rows = structure.table_info("BatchMaterials") if structure is not None else conn.execute("PRAGMA table_info(BatchMaterials)").fetchall()
-    except sqlite3.OperationalError:
-        return False
-    for row in rows:
-        name = row["name"] if isinstance(row, sqlite3.Row) else row[1]
+def _batch_material_ready_default_is_no(*, structure: SchemaStructure) -> bool:
+    for row in structure.table_info("BatchMaterials"):
+        name = row[1]
         if name != "ready_status":
             continue
-        default_value = row["dflt_value"] if isinstance(row, sqlite3.Row) else row[4]
+        default_value = row[4]
         normalized = str(default_value or "").strip().strip("'\"").lower()
         return normalized == "no"
     return False
 
 
-def _has_system_management_tables(conn: sqlite3.Connection, *, structure=None) -> bool:
-    structure = structure if structure is not None else SchemaStructure(conn)
+def _has_system_management_tables(*, structure: SchemaStructure) -> bool:
     return structure.has_table("SystemConfig") and structure.has_table("SystemJobState")
 
 
-def _has_schedule_unique_index(conn: sqlite3.Connection, *, structure=None) -> bool:
-    structure = structure if structure is not None else SchemaStructure(conn)
-    return structure.index_table("idx_schedule_version_op_unique") == "Schedule"
+def _has_schedule_unique_index(*, structure: SchemaStructure) -> bool:
+    return (
+        structure.index_table("idx_schedule_version_op_unique") == "Schedule"
+        and structure.has_unique_key("Schedule", ("version", "op_id"))
+        and any(
+            row[1] == "idx_schedule_version_op_unique"
+            and row[2]
+            and not row[4]
+            and tuple(col[2] for col in structure.index_info(row[1])) == ("version", "op_id")
+            for row in structure.index_list("Schedule")
+        )
+    )
 
 
-def _has_candidate_indexes(conn: sqlite3.Connection, *, structure=None) -> bool:
-    structure = structure if structure is not None else SchemaStructure(conn)
+def _has_candidate_indexes(*, structure: SchemaStructure) -> bool:
     names = ['idx_schedule_candidate_rows_time', 'idx_schedule_candidate_rows_version_candidate', 'idx_schedule_candidate_rows_version_candidate_time', 'idx_schedule_candidate_version_kind', 'idx_schedule_history_version', 'idx_schedule_version_time']
     return all(name in structure.objects and structure.objects[name][0] == "index" for name in names)
 
 
-def _has_adjustment_draft_indexes(conn: sqlite3.Connection, *, structure=None) -> bool:
-    structure = structure if structure is not None else SchemaStructure(conn)
+def _has_adjustment_draft_indexes(*, structure: SchemaStructure) -> bool:
     names = ['idx_schedule_adjustment_change_draft_op', 'idx_schedule_adjustment_draft_base', 'idx_schedule_adjustment_draft_status']
     return all(name in structure.objects and structure.objects[name][0] == "index" for name in names)
 
 
-def _has_adjustment_scenario_indexes(conn: sqlite3.Connection, *, structure=None) -> bool:
-    structure = structure if structure is not None else SchemaStructure(conn)
+def _has_adjustment_scenario_indexes(*, structure: SchemaStructure) -> bool:
     names = ['idx_schedule_adjustment_scenario_base', 'idx_schedule_adjustment_scenario_row_op', 'idx_schedule_adjustment_scenario_row_time']
     return all(name in structure.objects and structure.objects[name][0] == "index" for name in names) and structure.has_unique_key("ScheduleAdjustmentScenario", ("source_draft_id",))

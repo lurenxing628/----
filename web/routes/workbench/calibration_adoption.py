@@ -3,12 +3,12 @@
 from flask import current_app, g, request
 
 from core.models.workbench_calibration import MAX_RESPONSE_BYTES
-from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.services.workbench import messages
 from core.services.workbench.calibration.adoption import WorkbenchCalibrationAdoptionService
 from web.api_responses import json_response, query_success
 
-from .api_responses import api_endpoint
+from .api_responses import api_endpoint, read_endpoint
 from .write_context import issue_write_context, validate_write_context
 
 
@@ -25,7 +25,7 @@ def _body(fields):
     return value
 
 
-@api_endpoint
+@read_endpoint
 def calibration_adoption_preview(suggestion_ref):
     value = _body(("input",))
     data = _service().preview(suggestion_ref, value["input"])
@@ -38,6 +38,7 @@ def calibration_adoption_preview(suggestion_ref):
 @api_endpoint
 def calibration_adoption_confirm(suggestion_ref):
     value = _body(("write_token", "request_key", "input"))
+    validate_request_key(value["request_key"])
     g.workbench_request_key = value["request_key"]
     result = _service().confirm(suggestion_ref, value["write_token"], value["request_key"], value["input"])
     response = json_response(result)

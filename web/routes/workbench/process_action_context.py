@@ -15,7 +15,7 @@ PREVIEW_SCOPE = "workbench-process-action-preview-v1"
 EXPORT_SCOPE = "workbench-process-file-export-v1"
 
 
-def action_preview(preview, command, *, kind=None, content=None, extra=None, body=None):
+def action_preview(preview, command, *, kind=None, content=None, extra, body=None):
     ref, expiry = retain_context(PREVIEW_SCOPE, preview.document, content)
     if body is None:
         body = preview.as_dict()
@@ -31,7 +31,7 @@ def action_preview(preview, command, *, kind=None, content=None, extra=None, bod
     if kind is not None:
         result.update(kind=kind, template_version=TEMPLATE_VERSION, instructions=INSTRUCTIONS[kind])
         result.update({key: body["request"][key] for key in ("format", "mode")})
-    result.update(extra or {})
+    result.update(extra)
     return result
 
 

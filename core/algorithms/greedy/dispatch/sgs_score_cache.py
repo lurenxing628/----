@@ -22,6 +22,7 @@ from types import GetSetDescriptorType, MemberDescriptorType
 from typing import Any, Callable, Dict, NamedTuple, Optional, Tuple
 
 from core.algorithm_contracts.value_domains import INTERNAL
+from core.algorithm_runtime.auto_assign_contract import AutoAssignAttempt
 from core.algorithm_runtime.calendar_timing_memo import MemoizedTimingCalendar, native_timing_calendar
 from core.algorithm_runtime.internal_slot import refresh_changeover_penalty
 from core.algorithm_runtime.resource_quality import MachineTypeState
@@ -40,7 +41,6 @@ _RECORD_FIELDS = (
     "ext_merge_mode", "ext_group_id", "ext_group_total_days", "ext_days",
 )
 _AUTO_ASSIGN_CALLBACKS = (
-    ("auto_assign_callback", "_auto_assign_internal_resources"),
     ("auto_assign_attempt_callback", "_auto_assign_internal_resources_attempt"),
 )
 Witness = Tuple[Any, ...]
@@ -157,7 +157,7 @@ class SgsScoreCache:
 
     def __init__(
         self, state: ScheduleRunState, *, auto_assign_enabled: bool, resource_pool: Any, native_auto_assign: bool,
-        eligible_resources: Callable[[Any, Any], EligibleResources], timing_calendar: Any, calendar_days: Any, preparation: Any,
+        eligible_resources: Callable[[Any], EligibleResources], timing_calendar: Any, calendar_days: Any, preparation: Any,
     ) -> None:
         self.state = state
         self.preparation = preparation
@@ -167,7 +167,9 @@ class SgsScoreCache:
         self._reuse_keys = True
         self._saw_auto = False
         self.graph_candidates_pruned = 0
-        self.eligible_resources = eligible_resources
+        self.eligible_resources: Optional[Callable[[Any], EligibleResources]] = (
+            eligible_resources if (auto_assign_enabled and native_auto_assign and isinstance(resource_pool, dict)) else None
+        )
         self._timing = MemoizedTimingCalendar(timing_calendar) if timing_calendar is not None else None
         self._shared_slots = SharedSlotEstimateCache() if self._timing is not None else None
         # Every timeline occupation performed inside this decode, per (timeline identity, resource): (seq, start, end).
@@ -175,7 +177,6 @@ class SgsScoreCache:
         self._occupation_seq = 0
         self._last_scan: Optional[Tuple[Any, Any]] = None
         self.pair_revalidated = 0
-        self._pool = resource_pool if (auto_assign_enabled and native_auto_assign and isinstance(resource_pool, dict)) else None
         self._entries: Dict[int, _Entry] = {}
         # Per operation: False when it can never be cached (external, hooked record classes, no native
         # pool), else its eligible auto-assign resources or None for fixed resources.
@@ -247,7 +248,7 @@ class SgsScoreCache:
         must estimate the very same pair against the same timelines with ``abort_after=None``.
         """
         state = self.state
-        if (self._suspended or not self._reuse_keys or self._pool is None
+        if (self._suspended or not self._reuse_keys or self.eligible_resources is None
                 or machine_timeline is not state.machine_timeline or operator_timeline is not state.operator_timeline):
             return None
         witness = (
@@ -343,11 +344,11 @@ class SgsScoreCache:
         if self._timing is not None and self._shared_slots is not None:
             self._shared_slots.begin_round()
 
-    def record_attempt(self, attempt: Any) -> None:
+    def record_attempt(self, attempt: AutoAssignAttempt) -> None:
         """Sink for the probe result of the candidate currently being scored."""
-        self._pending_tie = getattr(attempt, "pair_tie_occurred", None)
-        machine_id = str(getattr(attempt, "machine_id", "") or "")
-        operator_id = str(getattr(attempt, "operator_id", "") or "")
+        self._pending_tie = attempt.pair_tie_occurred
+        machine_id = attempt.machine_id
+        operator_id = attempt.operator_id
         self._pending_resources = (machine_id, operator_id) if machine_id and operator_id else None
 
     def remember_estimate(self, estimate: Any, inputs: Dict[str, Any]) -> None:
@@ -429,9 +430,9 @@ class SgsScoreCache:
             return False
         if machine_id and operator_id:
             return None
-        if self._pool is None:
+        if self.eligible_resources is None:
             return False
-        eligible = self.eligible_resources(op, self._pool)
+        eligible = self.eligible_resources(op)
         return False if eligible is None else eligible
 
     def _witness(self, op: Any, batch: Any, batch_id: str, graph_state: Optional[Dict[str, Any]]) -> Optional[Witness]:

@@ -34,7 +34,7 @@
         <label>搜索<input type="search" aria-label="搜索批次或工序" value={draft.query || ''} onChange={event => set({ query: event.target.value })} /></label>
         <div className="aw-scope-tools"><Button icon="search" type="submit" busy={busy} aria-label="查询范围" className="primary" />
           <Button icon="chevron-down" aria-label="更多筛选" aria-expanded={more} onClick={() => setMore(old => !old)} />
-          <Button icon="x" aria-label="清除筛选" onClick={() => onChange({ source: 'production', ...(value.plan_ref ? { plan_ref: value.plan_ref } : {}) })} /></div>
+          <Button icon="x" aria-label="清除筛选" onClick={() => { const next = { source: 'production', ...(value.plan_ref ? { plan_ref: value.plan_ref } : {}) }; setDraft(next); onChange(next); }} /></div>
       </div>
       <div className="aw-scope-filters" hidden={!more}>
         <label>资源类型<select aria-label="资源类型" value={draft.resource_type || ''} onChange={event => set({ resource_type: event.target.value, resource_ref: '' })}><option value="">全部资源</option><option value="machine">设备</option><option value="operator">人员</option></select></label>
@@ -54,7 +54,7 @@
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
         event.preventDefault(); const next = event.key === 'Home' ? 0 : event.key === 'End' ? 4 : (index + (event.key === 'ArrowRight' ? 1 : -1) + 5) % 5;
         const nextTopic = window.ReportAPI.topics[next];
-        onChange(nextTopic); document.getElementById('report-tab-' + nextTopic).focus();
+        onChange(nextTopic); const el = document.getElementById('report-tab-' + nextTopic); if (el) el.focus();
       }}>{labels[index]}</button>)}</div>;
   }
   function Page({ page, onChange, busy }) {

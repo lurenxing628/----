@@ -42,13 +42,11 @@ def validate_graph_ready_context(
 
 
 def graph_node_metrics_by_op_id(
-    graph_ready_context: Dict[str, Any], *, schedulable_ids: Optional[set] = None,
+    graph_ready_context: Dict[str, Any], *, schedulable_ids: set,
 ) -> Dict[int, Dict[str, Any]]:
     value = graph_ready_context.get("node_metrics_by_op_id")
     if not isinstance(value, dict):
         _raise("图 ready 候选缺少 node_metrics_by_op_id，无法按多组图权重重新评分。", "graph_ready_missing_node_metrics")
-    if schedulable_ids is None:
-        schedulable_ids = _op_id_set(graph_ready_context.get("schedulable_op_ids"), field="schedulable_op_ids")
     out: Dict[int, Dict[str, Any]] = {}
     for op_id in sorted(schedulable_ids):
         metric = value.get(op_id)

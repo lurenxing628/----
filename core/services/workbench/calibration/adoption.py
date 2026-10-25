@@ -54,7 +54,6 @@ class WorkbenchCalibrationAdoptionService:
                     "validation": {"can_adopt": not evidence.blockers, "issues": evidence.blockers}, "write_context": context}
 
     def confirm(self, template_operation_ref, write_token, request_key, value):
-        self._outer()
         public_ref(template_operation_ref)
         intent = adoption_input(value)
 

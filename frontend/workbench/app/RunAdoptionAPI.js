@@ -90,7 +90,7 @@
       && typeof e.retryable === 'boolean' && text(e.request_ref) && /^[a-f0-9]{32}$/.test(e.request_ref)
       && (e.request_key === undefined && e.result_target === undefined || key(requestKey) && e.request_key === requestKey && e.result_target === BASE + 'commands/' + requestKey);
     const error = new Error(valid ? e.message : window.WorkbenchTerms.outcomes.pending('采用')); error.code = valid ? e.code : 'invalid_response';
-    if (valid && v.committed === false && [400, 409, 422, 503].includes(status) && e.code !== 'request_key_conflict') rejections.add(error);
+    if (valid && v.committed === false && [400, 404, 409, 422, 503].includes(status) && e.code !== 'request_key_conflict') rejections.add(error);
     return error;
   }
   function validIntent(v) {
@@ -161,5 +161,5 @@
       }
     };
   }
-  window.RunAdoptionAPI = { create, preview, receipt, lookup, input, pending, ref, overview, validIntent, PENDING_KEY, EVENT, isRejected: e => rejections.has(e) };
+  window.RunAdoptionAPI = { create, preview, receipt, lookup, input, pending, ref, overview, validIntent, contextRef, PENDING_KEY, EVENT, isRejected: e => rejections.has(e) };
 })();

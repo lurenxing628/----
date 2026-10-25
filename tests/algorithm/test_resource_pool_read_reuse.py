@@ -5,14 +5,10 @@ from types import SimpleNamespace
 
 from core.services.personnel.operator_qualification import OperatorQualificationService
 from core.services.scheduler import resource_pool_builder
-from core.services.workbench.run.input_runtime import runtime_resource_facts
+from core.services.workbench.run.input_runtime import downtime_overlap, held_machine_downtimes, runtime_resource_facts
 from core.services.workbench.run.preflight_facts import PreflightFacts
 
 START = datetime(2026, 10, 14, 8)
-
-
-def _service(conn):
-    return SimpleNamespace(conn=conn, logger=None)
 
 
 def test_empty_downtime_is_read_once_when_extending_pool(schema_conn):
@@ -48,6 +44,27 @@ def test_empty_downtime_is_read_once_when_extending_pool(schema_conn):
     assert sum(' FROM "MachineDowntimes" ' in statement for statement in sql) == 1
     assert downtime == {"M_A": [], "M_B": [(datetime(2026, 10, 14, 9), datetime(2026, 10, 14, 10))]}
     assert meta["downtime_load_ok"] is True and meta["downtime_extend_ok"] is True
+
+
+def test_padded_machine_downtime_stays_on_its_own_machine(schema_conn):
+    conn = schema_conn
+    conn.executemany("INSERT INTO Machines(machine_id, name) VALUES (?, ?)", [(" M1 ", "padded"), ("M1", "plain")])
+    conn.execute(
+        "INSERT INTO MachineDowntimes(machine_id, start_time, end_time) VALUES (' M1 ', ?, ?)",
+        ("2026-10-14 09:00:00", "2026-10-14 10:00:00"),
+    )
+    conn.commit()
+    padded, plain = ({"source": "internal", "machine_id": mid, "start_time": START,
+                      "end_time": datetime(2026, 10, 14, 11)} for mid in (" M1 ", "M1"))
+    stop = (datetime(2026, 10, 14, 9), datetime(2026, 10, 14, 10))
+    facts = PreflightFacts(conn)
+    with facts.snapshot(fingerprint=False):
+        assert runtime_resource_facts(facts).downtimes == {" M1 ": [stop]}
+        assert held_machine_downtimes([plain], facts=facts) == {"M1": []}
+        downtimes = held_machine_downtimes([padded, plain], facts=facts)
+    assert downtimes == {" M1 ": [stop], "M1": []}
+    assert downtime_overlap(padded, downtimes) == stop
+    assert downtime_overlap(plain, downtimes) is None
 
 
 def _seed_multi_work_type_pool(conn):
@@ -101,7 +118,7 @@ def test_multi_work_type_pool_loads_qualifications_once_and_keeps_selection(sche
                                                            machine_id="M_A", operator_id="O_SKILLED")])
             for _ in range(2):
                 pool = resource_pool_builder.build_resource_pool(
-                    _service(conn), cfg=SimpleNamespace(auto_assign_enabled="yes"),
+                    cfg=SimpleNamespace(auto_assign_enabled="yes"),
                     algo_ops=[SimpleNamespace(source="internal", op_type_id=code, machine_id=None, operator_id=None)
                               for code in ("OT_A", "OT_B")], meta=meta, resource_facts=resources,
                 )
@@ -119,3 +136,23 @@ def test_multi_work_type_pool_loads_qualifications_once_and_keeps_selection(sche
         "operator_skills": {"O_EMPTY": [], "O_LEGACY": None, "O_SKILLED": ["OT_B"]},
     }
     assert meta["resource_pool_build_ok"] is True
+
+
+def test_resource_pool_recognizes_chinese_primary_synonyms(schema_conn):
+    conn = schema_conn
+    _seed_multi_work_type_pool(conn)
+    conn.execute("UPDATE OperatorMachine SET is_primary='主操' WHERE operator_id='O_LEGACY' AND machine_id='M_A'")
+    conn.execute("UPDATE OperatorMachine SET is_primary='主' WHERE operator_id='O_LEGACY' AND machine_id='M_B'")
+    conn.commit()
+    facts = PreflightFacts(conn)
+    with facts.snapshot(fingerprint=False):
+        resources = runtime_resource_facts(facts)
+        pool = resource_pool_builder.build_resource_pool(
+            cfg=SimpleNamespace(auto_assign_enabled="yes"),
+            algo_ops=[SimpleNamespace(source="internal", op_type_id=code, machine_id=None, operator_id=None)
+                      for code in ("OT_A", "OT_B")],
+            resource_facts=resources,
+        )
+    assert pool is not None
+    assert pool["pair_rank"] == {("O_LEGACY", "M_A"): 1, ("O_SKILLED", "M_A"): 0, ("O_LEGACY", "M_B"): 2}
+    assert pool["operators_by_machine"] == {"M_A": ["O_SKILLED", "O_LEGACY"], "M_B": ["O_LEGACY"]}

@@ -3,12 +3,10 @@
 from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_run_schema import workbench_run_contract_issues
 from core.models.workbench_command import canonical_json
-from core.models.workbench_run_job import TERMINAL_STATES, new_run_ref
+from core.models.workbench_run_job import PROJECTION_VERSION, new_run_ref
 
 _HEAD_COLUMNS = ("run_ref,request_key,input_ref,accepted_at,state,stage,executor_ref,"
                  "started_at,finished_at,error_json")
-_DECISION_COLUMNS = frozenset(("header", "context", "memberships", "calendar", "official", "process"))
-_CANDIDATE_COLUMNS = frozenset(("summary", "preparation", "completion", "delivery", "delivery_detail", "arrangements"))
 _RUN_MODEL_FIELDS = ("header", "context", "memberships", "calendar", "official", "process")
 _CANDIDATE_MODEL_FIELDS = ("summary", "preparation", "completion", "delivery", "delivery_detail", "arrangements")
 
@@ -22,13 +20,12 @@ def encode_result(result):
 def encode_decision_read_models(read_models):
     """Convert the fixed physical columns once; the storage packet holds strings."""
     model = read_models["run_model"]
-    run = {key: model[key] for key in ("run_ref", "projection_version") if key in model}
-    run.update({name + "_json": None if name == "process" and model.get(name) is None else canonical_json(model[name])
-                for name in _RUN_MODEL_FIELDS})
+    run = {name + "_json": None if name == "process" and model[name] is None else canonical_json(model[name])
+           for name in _RUN_MODEL_FIELDS}
     candidates = []
     for model in read_models["candidate_models"]:
-        row = {key: model[key] for key in ("candidate_ref", "run_ref", "projection_version") if key in model}
-        row.update({name + "_json": canonical_json(model[name]) for name in _CANDIDATE_MODEL_FIELDS})
+        row = {"candidate_ref": model["candidate_ref"],
+               **{name + "_json": canonical_json(model[name]) for name in _CANDIDATE_MODEL_FIELDS}}
         candidates.append(row)
     return {"run_model": run, "candidate_models": candidates}
 
@@ -74,38 +71,36 @@ class WorkbenchRunRepository:
     def input_admitted(self, input_ref):
         return self.conn.execute("SELECT 1 FROM WorkbenchRunJobs WHERE input_ref=? LIMIT 1", (input_ref,)).fetchone() is not None
 
-    def admission_read_model(self, run_ref, fields=("scope",)):
-        columns = self._read_columns(fields, frozenset(("scope", "decision")))
+    def admission_read_model(self, run_ref, fields):
+        columns = self._read_columns(fields)
         row = self.conn.execute("SELECT run_ref,projection_version," + columns + " FROM WorkbenchRunAdmissionReadModels WHERE run_ref=?", (run_ref,)).fetchone()
         return dict(row) if row else None
 
-    def decision_read_model(self, run_ref, fields=("header", "context", "memberships")):
-        columns = self._read_columns(fields, _DECISION_COLUMNS)
+    def decision_read_model(self, run_ref, fields):
+        columns = self._read_columns(fields)
         row = self.conn.execute("SELECT run_ref,projection_version," + columns +
                                 " FROM WorkbenchRunDecisionReadModels WHERE run_ref=?", (run_ref,)).fetchone()
         return dict(row) if row else None
 
     def candidate_read_models(self, run_ref, fields=("summary",)):
-        columns = self._read_columns(fields, _CANDIDATE_COLUMNS, prefix="m.")
+        columns = self._read_columns(fields, prefix="m.")
         return [dict(row) for row in self.conn.execute("SELECT m.candidate_ref,m.run_ref,m.projection_version," + columns +
             " FROM WorkbenchRunCandidateReadModels m JOIN WorkbenchRunCandidates c ON c.candidate_ref=m.candidate_ref "
             "WHERE m.run_ref=? ORDER BY c.sequence", (run_ref,))]
 
     def candidate_read_model(self, candidate_ref, fields):
-        columns = self._read_columns(fields, _CANDIDATE_COLUMNS)
+        columns = self._read_columns(fields)
         row = self.conn.execute("SELECT candidate_ref,run_ref,projection_version," + columns +
                                 " FROM WorkbenchRunCandidateReadModels WHERE candidate_ref=?", (candidate_ref,)).fetchone()
         return dict(row) if row else None
 
     @staticmethod
-    def _read_columns(fields, allowed, prefix=""):
-        if not fields or len(set(fields)) != len(fields) or not set(fields) <= allowed:
-            raise ValueError("Unknown decision read-model columns")
+    def _read_columns(fields, prefix=""):
         return ",".join(prefix + field + "_json" for field in fields)
 
     def insert_admission_read_model(self, run_ref, scope, decision):
         self.conn.execute("INSERT INTO WorkbenchRunAdmissionReadModels(run_ref,projection_version,scope_json,decision_json) VALUES (?,?,?,?)",
-                          (run_ref, "decision-read-v1", canonical_json(scope), canonical_json(decision)))
+                          (run_ref, PROJECTION_VERSION, canonical_json(scope), canonical_json(decision)))
 
     def insert_decision_read_models(self, run_ref, run_read_model, candidate_read_models):
         prepared = encode_decision_read_models({"run_model": run_read_model, "candidate_models": candidate_read_models})
@@ -114,11 +109,11 @@ class WorkbenchRunRepository:
     def insert_prepared_decision_read_models(self, run_ref, run_read_model, candidate_read_models):
         self.conn.execute("INSERT INTO WorkbenchRunDecisionReadModels"
             "(run_ref,projection_version,header_json,context_json,memberships_json,calendar_json,official_json,process_json) "
-            "VALUES (?,?,?,?,?,?,?,?)", (run_ref, "decision-read-v1", *(run_read_model[name + "_json"] for name in _RUN_MODEL_FIELDS)))
+            "VALUES (?,?,?,?,?,?,?,?)", (run_ref, PROJECTION_VERSION, *(run_read_model[name + "_json"] for name in _RUN_MODEL_FIELDS)))
         for candidate in candidate_read_models:
             self.conn.execute("INSERT INTO WorkbenchRunCandidateReadModels"
                 "(candidate_ref,run_ref,projection_version,summary_json,preparation_json,completion_json,delivery_json,delivery_detail_json,arrangements_json) "
-                "VALUES (?,?,?,?,?,?,?,?,?)", (candidate["candidate_ref"], run_ref, "decision-read-v1",
+                "VALUES (?,?,?,?,?,?,?,?,?)", (candidate["candidate_ref"], run_ref, PROJECTION_VERSION,
                     *(candidate[name + "_json"] for name in _CANDIDATE_MODEL_FIELDS)))
 
     def dependency_heads(self, candidate_refs, scenario_refs):
@@ -152,10 +147,6 @@ class WorkbenchRunRepository:
         return self.dependency_heads([row["candidate_ref"] for row in expected["candidates"]],
                                      [row["scenario_ref"] for row in expected["scenarios"]]) == expected
 
-    def by_request(self, request_key):
-        row = self.conn.execute("SELECT run_ref FROM WorkbenchRunJobs WHERE request_key=?", (request_key,)).fetchone()
-        return self.get(row[0]) if row else None
-
     def receipt(self, run_ref):
         row = self.conn.execute("SELECT * FROM WorkbenchRunReceipts WHERE run_ref=?", (run_ref,)).fetchone()
         return dict(row) if row else None
@@ -166,13 +157,12 @@ class WorkbenchRunRepository:
             WHERE request_key=?""", (request_key,)).fetchone()
         return None if row is None else tuple(row)
 
-    def insert(self, *, request_key, input_ref, settings, facts_hash, facts_json, projections, baseline, now, run_ref=None):
-        ref = run_ref if run_ref is not None else new_run_ref()
+    def insert(self, *, request_key, input_ref, settings, facts_hash, facts_json, projections, baseline, now, run_ref):
         self.conn.execute("""INSERT INTO WorkbenchRunJobs
             (run_ref,request_key,input_ref,normalized_input_json,facts_hash,facts_json,execution_json,baseline_json,accepted_at,state,stage)
-            VALUES (?,?,?,?,?,?,?,?,?,'queued','queued')""", (ref, request_key, input_ref, canonical_json(settings), facts_hash,
+            VALUES (?,?,?,?,?,?,?,?,?,'queued','queued')""", (run_ref, request_key, input_ref, canonical_json(settings), facts_hash,
                            facts_json, canonical_json([item.to_dict() for item in projections]), canonical_json(baseline), now))
-        return ref
+        return run_ref
 
     def claim(self, run_ref, executor_ref, now):
         cursor = self.conn.execute("""UPDATE WorkbenchRunJobs SET state='running',stage='computing',executor_ref=?,started_at=?
@@ -187,11 +177,11 @@ class WorkbenchRunRepository:
 
     def finish_prepared(self, run_ref, result, now):
         state = result["state"]
-        if state not in TERMINAL_STATES:
-            raise ValueError("Invalid terminal run state")
         receipt_ref = new_run_ref()
-        self.conn.execute("INSERT INTO WorkbenchRunReceipts VALUES (?,?,?,?,?)",
-                          (receipt_ref, run_ref, state, result["result_json"], now))
+        self.conn.execute(
+            "INSERT INTO WorkbenchRunReceipts(receipt_ref,run_ref,state,result_json,recorded_at) VALUES (?,?,?,?,?)",
+            (receipt_ref, run_ref, state, result["result_json"], now),
+        )
         cursor = self.conn.execute("""UPDATE WorkbenchRunJobs SET state=?,stage='finished',finished_at=?,error_json=?
             WHERE run_ref=? AND state IN ('running','queued')""",
             (state, now, result["error_json"], run_ref))
@@ -219,8 +209,10 @@ class WorkbenchRunRepository:
     def has_candidates(self, run_ref):
         return self.conn.execute("SELECT 1 FROM WorkbenchRunCandidates WHERE run_ref=? LIMIT 1", (run_ref,)).fetchone() is not None
 
-    def unfinished(self):
-        return [dict(row) for row in self.conn.execute("SELECT * FROM WorkbenchRunJobs WHERE state IN ('queued','running') ORDER BY accepted_at,run_ref")]
+    def unfinished(self, run_ref):
+        where, params = ("", ()) if run_ref is None else (" AND run_ref=?", (run_ref,))
+        return [dict(row) for row in self.conn.execute("SELECT " + _HEAD_COLUMNS + " FROM WorkbenchRunJobs "
+            "WHERE state IN ('queued','running')" + where + " ORDER BY accepted_at,run_ref", params)]
 
     def awaiting_reconciliation(self, run_ref):
         self.conn.execute("UPDATE WorkbenchRunJobs SET stage='awaiting_reconciliation' WHERE run_ref=? AND state IN ('queued','running')", (run_ref,))

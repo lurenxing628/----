@@ -16,8 +16,8 @@ from core.models.objective import target_objectives_for
 from .optimizer.candidate_profile import build_candidate_profile
 from .optimizer.config import ensure_optimizer_config_snapshot, is_ortools_enabled, resolve_optimizer_config
 from .optimizer.graph.ready import (
+    GraphReadyDeadlineExhausted,
     GraphStageBundle,
-    _GraphReadyDeadlineExhausted,
     build_graph_search_stages,
     prepare_shared_graph_features,
 )
@@ -27,8 +27,7 @@ from .optimizer.grasp_ig_candidates import GraspIGStage
 from .optimizer.local_search import LocalSearchStage
 from .optimizer.multi_start import MultiStartStage
 from .optimizer.neighborhood_moves import BUSINESS_NEIGHBORHOODS
-from .optimizer.outcome import OptimizationOutcome, _record_decoder_invocations
-from .optimizer.runtime import OptimizerRuntime, _resolve_runtime
+from .optimizer.runtime import OptimizerRuntime, resolve_runtime
 from .optimizer.search_budget import SearchBudget, SearchBudgetExhausted
 from .optimizer.search_report import OptimizationSearchReportState
 from .optimizer.search_stage import SearchStage
@@ -43,7 +42,6 @@ from .schedule_seed_contracts import coerce_seed_results
 @dataclass
 class SharedOptimizationResult:
     archive: SharedScheduleArchive
-    primary_outcome: OptimizationOutcome
     target_objectives: Tuple[str, ...]
     process_facts: Dict[str, Any]
 
@@ -75,10 +73,9 @@ class _WarmStartStage(SearchStage):
     def available(self) -> bool:
         return not self.done and self.deadline - self.clock() >= 1.0
 
-    def run_task(self) -> int:
+    def run_task(self) -> None:
         self.done = True
         self.run()
-        return 0
 
     def finish(self) -> None:
         self.done = True
@@ -242,9 +239,9 @@ class _SharedSearch:
             view.candidate["_shared_evidence_revision"] = revision
             view.entry_id, view.evidence_revision = entry_id, revision
         candidate = view.candidate
-        if candidate is None:
+        if candidate is None or entry_id is None:
             return
-        entry = self.archive.entry(cast(int, entry_id))
+        entry = self.archive.entry(entry_id)
         view.report.sync_best_reference(candidate, origin=str(entry.evidence_origin["origin"]))
         view.state.best = candidate
         if view.graph_bundle is not None:
@@ -261,7 +258,7 @@ class _SharedSearch:
         if view.local_stage is not None:
             view.local_stage.best = candidate
 
-    def run_action(self, view: _GoalView, stage: SearchStage, *, initial: bool = False) -> bool:
+    def run_action(self, view: _GoalView, stage: SearchStage, *, initial: bool = False) -> None:
         started_at, before_events = self.clock(), len(self.events)
         before_complete = self.first_complete_elapsed_ms
         before_new = self.decode_session.new_decisions if self.decode_session is not None else 0
@@ -308,7 +305,6 @@ class _SharedSearch:
             "new_decisions": new_decisions, "reused_decisions": reused_decisions, "skip_reason": skip_reason,
             "improved_objectives": improvements,
         })
-        return bool(new_events)
 
     def _refresh_active_entries(self) -> None:
         """Replace archive roots with the candidates that paused generators actually hold."""
@@ -412,7 +408,7 @@ def optimize_shared_schedule(
     _runtime: Optional[OptimizerRuntime] = None,
 ) -> SharedOptimizationResult:
     """Construct once, then rotate one action at a time over all target generators."""
-    runtime = _resolve_runtime(_runtime, search_budget)
+    runtime = resolve_runtime(_runtime, search_budget)
     started_at = runtime.clock()
     algo_stats: Dict[str, Any] = {"fallback_counts": {}, "param_fallbacks": {}}
     cfg = ensure_optimizer_config_snapshot(cfg, strict_mode=bool(strict_mode))
@@ -468,14 +464,14 @@ def optimize_shared_schedule(
         sorter = StrategyFactory.create(strategy, **(params or {}))
         return [item.batch_id for item in sorter.sort(sortable, base_date=start_dt.date())]
 
-    profile = build_candidate_profile(algo_mode=config.algo_mode, dispatch_mode=dispatch_mode,
-        dispatch_rule=config.dispatch_rule, time_budget_seconds=config.time_budget_seconds, version=version,
-        strict_mode=bool(strict_mode), ortools_enabled=is_ortools_enabled(cfg), graph_sgs_required=piece)
+    profile = build_candidate_profile(
+        algo_mode=config.algo_mode, time_budget_seconds=config.time_budget_seconds,
+        ortools_enabled=is_ortools_enabled(cfg), graph_sgs_required=piece,
+    )
     for target in targets:
         report = OptimizationSearchReportState(
-            algorithm_profile=profile.profile, seed=int(version), time_budget_seconds=config.time_budget_seconds,
             objective_name=target, started_at=started_at,
-            candidate_profile=profile.to_report_dict(), candidate_clock=runtime.clock,
+            candidate_clock=runtime.clock,
             candidate_observer=lambda *, _target=target, **kw: session.observe(_target, **kw),
             candidate_acceptance_observer=lambda *, _target=target, **kw: session.accept(_target, **kw),
             reference_capture_observer=lambda *, _target=target, **kw: session.capture(_target, **kw),
@@ -504,7 +500,11 @@ def optimize_shared_schedule(
     initial_construction_count = construction.index
     prepared_features = None
     feature_preparation_calls = 0
-    graph_enabled = cfg.graph_analysis_mode == "on" and graph_ready_context is not None
+    graph_enabled = (
+        cfg.graph_analysis_mode == "on"
+        and graph_ready_context is not None
+        and (piece or graph_ready_context.get("score_enabled") is not False)
+    )
     if config.algo_mode == "improve" and graph_enabled and runtime.clock() < deadline:
         graph_construction = {"graph_ready_optimization": graph_ready_v2_profile_summary(
             max_candidate_profiles=60, seed=version, objective_name=targets[0], shared_search=True)}
@@ -515,8 +515,8 @@ def optimize_shared_schedule(
                 **{key: common[key] for key in ("scheduler", "algo_ops_to_schedule", "batches", "start_dt",
                                                "downtime_map", "seed_sr_list", "resource_pool", "deadline", "clock")},
                 graph_ready_context=cast(Dict[str, Any], graph_ready_context), candidate_construction=graph_construction)
-        except _GraphReadyDeadlineExhausted:
-            primary.report.mark_phase_skipped("graph_features", "time_budget")
+        except GraphReadyDeadlineExhausted:
+            pass
         finally:
             shared_budget.charge_preparation(targets[0], "graph_features", runtime.clock() - feature_started_at)
 
@@ -538,7 +538,7 @@ def optimize_shared_schedule(
             view.stages.append(_WarmStartStage(run=warmstart, clock=runtime.clock, deadline=deadline))
         if not piece:
             view.local_stage = LocalSearchStage(
-                **decode_common, batches=batches, algo_mode=config.algo_mode, best=view.state.best, version=version,
+                **decode_common, batches=batches, best=view.state.best, version=version,
                 dispatch_mode_cfg=dispatch_mode, dispatch_rule_cfg=config.dispatch_rule, objective_name=view.objective,
                 attempts=view.state.attempts, improvement_trace=view.state.improvement_trace,
                 rng_factory=runtime.rng_factory, search_report_state=view.report,
@@ -546,7 +546,7 @@ def optimize_shared_schedule(
                 valid_dispatch_rules=list(config.valid_dispatch_rules), acceptance=profile.acceptance)
             view.stages.append(view.local_stage)
             view.stages.append(GraspIGStage(
-                **decode_common, algo_mode=config.algo_mode, version=version,
+                **decode_common, version=version,
                 candidate_construction=profile.candidate_construction, base_strategy=config.strategy_enum,
                 base_params=config.strategy_params or {}, build_order=build_order, dispatch_rule_cfg=config.dispatch_rule,
                 objective_name=view.objective, rng_factory=runtime.rng_factory,
@@ -604,20 +604,6 @@ def optimize_shared_schedule(
     runtime_ms = max(int((finished_at - started_at) * 1000), 0)
     budget_stats = shared_budget.summary(finished_at=finished_at)
     decode_stats = session.decode_session.stats()
-    attempts = primary.state.compact_attempts(limit=12)
-    trajectory = session.trajectories[targets[0]]
-    report = primary.report.finalize(runtime_ms=runtime_ms, attempts=attempts,
-                                     improvement_trace=trajectory, stop_reason=stop_reason)
-    _record_decoder_invocations(report, scheduler)
-    outcome = OptimizationOutcome(
-        results=best["results"], summary=best["summary"], used_strategy=best["strategy"], used_params=best["params"],
-        metrics=best["metrics"], best_score=best["score"], best_order=list(best.get("order") or []),
-        attempts=attempts, improvement_trace=trajectory, algo_mode=config.algo_mode, objective_name=targets[0],
-        time_budget_seconds=config.time_budget_seconds, algo_stats=best.get("algo_stats") or algo_stats,
-        search_report=report, dispatch_mode=str(best.get("dispatch_mode") or dispatch_mode),
-        dispatch_rule=(str(best.get("dispatch_rule") or config.dispatch_rule)
-                       if best.get("dispatch_mode") == "sgs" else config.dispatch_rule),
-    )
     facts = {
         "events": session.events, "actions": session.actions, "bridges": session.bridges,
         "initial_entry_id": session.initial_entry_id,
@@ -630,7 +616,7 @@ def optimize_shared_schedule(
     }
     facts["unified_process"] = build_shared_process(session, runtime_ms=runtime_ms, stop_reason=stop_reason,
         decode_stats=decode_stats, budget_stats=budget_stats)
-    return SharedOptimizationResult(archive, outcome, targets, facts)
+    return SharedOptimizationResult(archive, targets, facts)
 
 
 __all__ = ["SharedOptimizationResult", "optimize_shared_schedule"]

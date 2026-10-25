@@ -14,19 +14,11 @@ _SORTS = {"business_code": "m.material_id", "label": "m.name", "spec": "m.spec",
 
 
 class WorkbenchMaterialQueryRepository(BaseRepository):
-    def export_by_refs(self, refs):
-        rows = []
-        for start in range(0, len(refs), 400):
-            chunk = refs[start:start + 400]
-            marks = ",".join("?" for _ in chunk)
-            rows.extend(self.fetchall(_TABLE_SELECT + " WHERE r.ref IN (" + marks + ")", chunk))
-        return rows
-
     def table_rows(self, query="", status=None, *, requirements=None):
         where, params = self._where(query, status)
         rows = self.fetchall(_TABLE_SELECT + where + " ORDER BY m.material_id", params)
         requirements = self.requirement_counts() if requirements is None else requirements
-        counts = {row["material_id"]: row["amount"] for row in requirements if row["material_id"] is not None}
+        counts = {row["material_id"]: row["amount"] for row in requirements}
         for row in rows:
             row["requirement_count"] = counts.get(row["material_id"], 0)
         return rows
@@ -50,9 +42,7 @@ class WorkbenchMaterialQueryRepository(BaseRepository):
 
     def page(self, *, query, status, number, size, sort, direction):
         where, params = self._where(query, status)
-        total = int(self.fetchvalue("SELECT COUNT(*) FROM Materials AS m" + where, params, default=0))
-        if sort not in _SORTS or direction not in ("asc", "desc"):
-            raise ValueError("Invalid material sort")
+        total = self.fetchvalue("SELECT COUNT(*) FROM Materials AS m" + where, params)
         order = _SORTS[sort] + " " + direction.upper()
         if sort != "business_code":
             order += ", m.material_id ASC"
@@ -70,7 +60,7 @@ class WorkbenchMaterialQueryRepository(BaseRepository):
         return self.fetchall("""SELECT material_id, COUNT(*) AS amount FROM BatchMaterials
             GROUP BY material_id ORDER BY material_id""")
 
-    def metrics(self, query="", status=None):
+    def metrics(self, query, status):
         """Status and stock counts over the toolbar scope (text query + status) only."""
         where, params = self._where(query, status)
         return self.fetchone("""SELECT COUNT(*) AS total,

@@ -6,7 +6,7 @@ from core.services.workbench.facts.decision_metrics import delivery_metric_value
 from core.services.workbench.facts.delivery_projection import delivery_batch_delta
 
 from .decision_completion import compact_common, compact_completion
-from .decision_impact import _arrangement, _drill, _operation_delta
+from .decision_impact import arrangement_view, drill_target, operation_delta
 from .decision_tradeoffs import aggregate_tradeoffs, tradeoff_entry
 
 RECOMMENDATION_VERSION = "decision-recommendation-v1"
@@ -27,7 +27,7 @@ def _support(source, candidate_ref, kind, ref, tab, query, *, tasks=None, operat
     else:
         # operations excludes unavailable baselines before calling with before=True;
         # all other callers use before=False.
-        drill = cast(Dict[str, Any], _drill(source, tasks=tasks, batch_ref=batch_ref, operation_ref=operation_ref, before=before))
+        drill = cast(Dict[str, Any], drill_target(source, tasks=tasks, batch_ref=batch_ref, operation_ref=operation_ref, before=before))
         if not before or source.comparison_mode == "admission_official":
             drill["candidate_ref"] = candidate_ref
         drill.update(selected_candidate_ref=candidate_ref, resource_view=source.resource_view)
@@ -70,7 +70,7 @@ class RecommendationSupport:
             self._operations = []
             for ref in source.scope["operation_refs"]:
                 previous, current = old[ref], new[ref]
-                delta = _operation_delta(_arrangement(previous), _arrangement(current),
+                delta = operation_delta(arrangement_view(previous), arrangement_view(current),
                     task_intervals=source.task_intervals(key), reference_task_intervals=source.task_intervals("reference"))
                 known_change = any(kind not in ("unknown", "unchanged") for kind in delta["change_kinds"])
                 # The common operation-change metrics keep multiple segments in

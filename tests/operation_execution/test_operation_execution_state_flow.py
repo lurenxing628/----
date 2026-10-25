@@ -1,201 +1,141 @@
-"""开工、暂停、继续、异常、完工流程及缺少反馈信息时不写库。"""
+"""历史事件按完整计划身份折叠为执行事实，并复用同次读取的校验结果。"""
 
-from __future__ import annotations
-
+import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
-from core.errors import AppError
-from core.services.scheduler.operation_execution_feedback_service import OperationExecutionFeedbackService
-from tests.operation_execution.operation_execution_state_revision_support import (
-    _connect,
-    _context,
-    _event_count,
-    _seed_plan,
-)
+from core.infrastructure.database import get_connection
+from core.models import operation_execution_event as event_model
+from core.models.operation_execution_scope import OperationExecutionScope
+from core.services.scheduler.execution import execution_fact_provider as fact_module
+from core.services.workbench.facts.production_capture import ProductionFactsCapture
+from data.repositories import operation_execution_event_repo as event_repo
+from tests.workbench.plan_identity_support import load_v24_schema
 
 
-def test_pause_resume_exception_and_finish_state_flow_is_aggregated(tmp_path: Path) -> None:
+def _connect(tmp_path: Path) -> sqlite3.Connection:
+    conn = get_connection(str(tmp_path / "aps.db"))
+    load_v24_schema(conn)
+    return conn
+
+
+def _seed_plan(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        INSERT INTO Machines(machine_id, name, status)
+        VALUES ('M1', '一号设备', 'active'), ('M2', '二号设备', 'active');
+
+        INSERT INTO Operators(operator_id, name, status)
+        VALUES ('O1', '张三', 'active'), ('O2', '李四', 'active');
+
+        INSERT INTO Parts(part_no, part_name)
+        VALUES ('P001', '零件一');
+
+        INSERT INTO Batches(batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status)
+        VALUES ('B1', 'P001', '零件一', 10, '2026-05-10', 'normal', 'yes', 'scheduled');
+
+        INSERT INTO BatchOperations(id, op_code, batch_id, piece_id, seq, op_type_name, source, status)
+        VALUES (10, 'OP10', 'B1', 'piece-a', 10, '车削', 'internal', 'scheduled');
+
+        INSERT INTO ScheduleVersionSeq(version) VALUES (1);
+
+        INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
+        VALUES (100, 10, 'M1', 'O1', '2026-05-01 08:00:00', '2026-05-01 09:00:00', 'unlocked', 1);
+
+        INSERT INTO ScheduleHistory(version, strategy, batch_count, op_count, result_status, result_summary, created_by)
+        VALUES (1, 'priority_first', 1, 1, 'success', '{}', 'pytest');
+        """
+    )
+    conn.commit()
+
+
+@pytest.mark.parametrize("captured", [False, True])
+def test_historical_event_flow_is_folded_once_without_resource_queries(tmp_path, monkeypatch, captured):
     conn = _connect(tmp_path)
     try:
         _seed_plan(conn)
-        service = OperationExecutionFeedbackService(conn)
-        started = service.start_operation(
-            _context(),
-            event_time="2026-05-01 08:00:00",
-            operator_id="O1",
-            machine_id="M1",
-        )
-        paused = service.pause_operation(
-            _context(idempotency_key="pause-key", expected_state_revision=started.state_revision),
-            event_time="2026-05-01 08:20:00",
-            reason_code="equipment",
-            remark="设备需要检查",
-        )
-        assert paused.state.current_status == "paused"
-        assert paused.state.current_status_label == "已暂停"
-        assert paused.state.pause_duration_minutes == 0
-
-        resumed = service.resume_operation(
-            _context(idempotency_key="resume-key", expected_state_revision=paused.state_revision),
-            event_time="2026-05-01 08:35:00",
-            remark="继续生产",
-        )
-        assert resumed.state.current_status == "processing"
-        assert resumed.state.pause_duration_minutes == 15
-        assert resumed.state.last_event_action_label == "继续生产"
-
-        exception = service.report_exception(
-            _context(idempotency_key="exception-key", expected_state_revision=resumed.state_revision),
-            event_time="2026-05-01 08:45:00",
-            reason_code="equipment",
-            severity="high",
-            impact_minutes=30,
-            affected_machine_id="M2",
-            affected_operator_id="O2",
-            handling_status="new",
-            suggest_reschedule="yes",
-            remark="设备突然停了",
-        )
-        assert exception.state.current_status == "exception"
-        assert exception.event.event_type == "exception"
-        assert exception.state.last_event_action_label == "报异常"
-        assert exception.state.latest_exception_reason_label == "设备问题"
-        assert exception.state.latest_exception_severity_label == "严重"
-        assert exception.state.latest_exception_affected_machine_label == "M2 二号设备"
-        assert exception.state.latest_exception_affected_machine_display_label == "二号设备"
-        assert exception.state.latest_exception_affected_machine_identity_label == "M2 二号设备"
-        assert exception.state.latest_exception_affected_operator_label == "O2 李四"
-        assert exception.state.latest_exception_affected_operator_display_label == "李四"
-        assert exception.state.latest_exception_affected_operator_identity_label == "O2 李四"
-        assert exception.state.latest_exception_suggest_reschedule_label == "建议重新排程"
-
-        resumed_after_exception = service.resume_operation(
-            _context(
-                idempotency_key="resume-after-exception-key",
-                expected_state_revision=exception.state_revision,
-            ),
-            event_time="2026-05-01 09:00:00",
-        )
-        assert resumed_after_exception.state.current_status == "processing"
-        assert resumed_after_exception.state.latest_exception_event_id == exception.event.id
-
-        finished = service.finish_operation(
-            _context(idempotency_key="finish-after-exception-key", expected_state_revision=resumed_after_exception.state_revision),
-            event_time="2026-05-01 09:30:00",
-            quantity_done=10,
-            remark="已完工",
-        )
-        assert finished.state.current_status == "completed"
-        assert finished.state.actual_start_time == "2026-05-01 08:00:00"
-        assert finished.state.actual_end_time == "2026-05-01 09:30:00"
-        assert finished.state.actual_duration_minutes == 90
-        assert finished.state.pause_duration_minutes == 15
-        assert finished.state.latest_exception_event_id == exception.event.id
-        assert finished.state.latest_exception_remark == "设备突然停了"
-        assert _event_count(conn) == 6
-    finally:
-        conn.close()
-
-
-def test_execution_feedback_requires_pause_and_exception_details_before_write(tmp_path: Path) -> None:
-    conn = _connect(tmp_path)
-    try:
-        _seed_plan(conn)
-        service = OperationExecutionFeedbackService(conn)
-        started = service.start_operation(
-            _context(),
-            event_time="2026-05-01 08:00:00",
-            operator_id="O1",
-            machine_id="M1",
+        scope = OperationExecutionScope.from_values(
+            schedule_version=1, schedule_id=100, op_id=10, batch_id="B1",
+            source_table="schedule", effective_plan_role="adopted", scenario_id=None,
         )
 
-        with pytest.raises(AppError) as missing_pause_reason:
-            service.pause_operation(
-                _context(idempotency_key="pause-missing-reason", expected_state_revision=started.state_revision),
-                event_time="2026-05-01 08:10:00",
-                reason_code="",
+        def check_fact(*, count, event_id, status, start=None, end=None, exception=False):
+            capture = ProductionFactsCapture(conn) if captured else None
+            provider = fact_module.ExecutionFactProvider(conn, capture=capture)
+            normalized, checked, sql = [], [], []
+            normalize = event_model.normalize_operation_execution_event_values
+            validation_module = fact_module if captured else event_repo
+            validate = validation_module.validate_operation_execution_event_sequence
+
+            def normalize_event(**values):
+                normalized.append(values)
+                return normalize(**values)
+
+            def validate_scope(events):
+                checked.append(events)
+                return validate(events)
+
+            with monkeypatch.context() as patch:
+                patch.setattr(event_model, "normalize_operation_execution_event_values", normalize_event)
+                patch.setattr(validation_module, "validate_operation_execution_event_sequence", validate_scope)
+                conn.set_trace_callback(sql.append)
+                try:
+                    fact = provider.facts_by_scope([scope])[scope]
+                    if captured:
+                        assert provider.facts_by_scope([scope])[scope] is fact
+                finally:
+                    conn.set_trace_callback(None)
+            assert len(normalized) == count
+            assert len(checked) == int(bool(count) or captured)
+            assert not any(" FROM MACHINES" in statement.upper() or " FROM OPERATORS" in statement.upper() for statement in sql)
+            assert (
+                fact.op_id, fact.batch_id, fact.actual_status, fact.actual_start_time, fact.actual_end_time,
+                fact.actual_machine_id, fact.actual_operator_id, fact.state_revision,
+                fact.latest_exception_impact_minutes, fact.latest_exception_handling_status,
+                fact.latest_exception_suggest_reschedule,
+            ) == (
+                10, "B1", status, start, end,
+                "M1" if count else None, "O1" if count else None, f"10:{count}:{event_id}",
+                30 if exception else None, "new" if exception else None, exception,
             )
-        assert missing_pause_reason.value.code.value == "1001"
-        assert missing_pause_reason.value.details["reason"] == "missing_required_field"
-        assert missing_pause_reason.value.details["field"] == "reason_code"
-
-        with pytest.raises(AppError) as missing_pause_detail:
-            service.pause_operation(
-                _context(idempotency_key="pause-missing-detail", expected_state_revision=started.state_revision),
-                event_time="2026-05-01 08:12:00",
-                reason_code="equipment",
+            assert (fact.schedule_version, fact.schedule_id, fact.source_table, fact.effective_plan_role, fact.scenario_id) == (
+                1, 100, "schedule", "adopted", None,
             )
-        assert missing_pause_detail.value.code.value == "1001"
-        assert missing_pause_detail.value.details["reason"] == "missing_required_field"
-        assert missing_pause_detail.value.details["field"] == "remark"
 
-        with pytest.raises(AppError) as missing_exception_reason:
-            service.report_exception(
-                _context(idempotency_key="exception-missing-reason", expected_state_revision=started.state_revision),
-                event_time="2026-05-01 08:15:00",
-                reason_code="",
-                severity="high",
+        check_fact(count=0, event_id=0, status="not_started")
+        previous_id = 0
+        events = (
+            ("start", "processing", "08:00:00"),
+            ("pause", "paused", "08:20:00"),
+            ("resume", "processing", "08:35:00"),
+            ("exception", "exception", "08:45:00"),
+            ("resume", "processing", "09:00:00"),
+            ("finish", "completed", "09:30:00"),
+        )
+        for count, (event_type, status, time) in enumerate(events, start=1):
+            is_exception = event_type == "exception"
+            cursor = conn.execute(
+                """
+                INSERT INTO OperationExecutionEvents (
+                    schedule_version, schedule_id, op_id, batch_id, source_table, effective_plan_role,
+                    event_type, reported_status, event_time, actual_machine_id, actual_operator_id,
+                    reason_code, severity, impact_minutes, handling_status, suggest_reschedule, created_by, idempotency_key,
+                    request_fingerprint, previous_state_revision
+                ) VALUES (1, 100, 10, 'B1', 'schedule', 'adopted', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pytest', ?, ?, ?)
+                """,
+                (event_type, status, "2026-05-01 " + time,
+                 "M1" if count == 1 else None, "O1" if count == 1 else None,
+                 "equipment" if event_type in ("pause", "exception") else None, "high" if is_exception else None,
+                 30 if is_exception else None, "new" if is_exception else None, int(is_exception),
+                 f"legacy-event-{count}", f"legacy-fp-{count}", f"10:{count - 1}:{previous_id}"),
             )
-        assert missing_exception_reason.value.code.value == "1001"
-        assert missing_exception_reason.value.details["reason"] == "missing_required_field"
-        assert missing_exception_reason.value.details["field"] == "reason_code"
-
-        with pytest.raises(AppError) as missing_exception_severity:
-            service.report_exception(
-                _context(idempotency_key="exception-missing-severity", expected_state_revision=started.state_revision),
-                event_time="2026-05-01 08:20:00",
-                reason_code="equipment",
-                severity="",
-                remark="设备异常",
+            previous_id = cursor.lastrowid
+            conn.commit()
+            check_fact(
+                count=count, event_id=previous_id, status=status, start=datetime(2026, 5, 1, 8),
+                end=datetime(2026, 5, 1, 9, 30) if event_type == "finish" else None, exception=count >= 4,
             )
-        assert missing_exception_severity.value.code.value == "1001"
-        assert missing_exception_severity.value.details["reason"] == "missing_required_field"
-        assert missing_exception_severity.value.details["field"] == "severity"
-
-        with pytest.raises(AppError) as missing_exception_detail:
-            service.report_exception(
-                _context(idempotency_key="exception-missing-detail", expected_state_revision=started.state_revision),
-                event_time="2026-05-01 08:25:00",
-                reason_code="equipment",
-                severity="high",
-            )
-        assert missing_exception_detail.value.code.value == "1001"
-        assert missing_exception_detail.value.details["reason"] == "missing_required_field"
-        assert missing_exception_detail.value.details["field"] == "remark"
-        assert _event_count(conn) == 1
-    finally:
-        conn.close()
-
-
-def test_event_read_normalizes_once_and_checks_each_scope_once(tmp_path, monkeypatch):
-    from core.models import operation_execution_event as event_model
-    from core.services.scheduler.execution.operation_execution_scope_read import scope_from_feedback_context
-    from data.repositories import operation_execution_event_repo as event_repo
-
-    conn = _connect(tmp_path)
-    try:
-        _seed_plan(conn)
-        service = OperationExecutionFeedbackService(conn)
-        service.start_operation(_context(), event_time="2026-05-01 08:00:00", operator_id="O1", machine_id="M1")
-        normalized, checked = [], []
-        normalize = event_model.normalize_operation_execution_event_values
-        validate = event_repo.validate_operation_execution_event_sequence
-
-        def normalize_one(**values):
-            normalized.append(values)
-            return normalize(**values)
-
-        def validate_scope(events):
-            checked.append(list(events))
-            return validate(events)
-
-        monkeypatch.setattr(event_model, "normalize_operation_execution_event_values", normalize_one)
-        monkeypatch.setattr(event_repo, "validate_operation_execution_event_sequence", validate_scope)
-        scope = scope_from_feedback_context(_context())
-        state = service.event_repo.aggregate_states_by_scopes([scope])[scope]
-        assert state.current_status == "processing"
-        assert len(normalized) == 1 and len(checked) == 1
     finally:
         conn.close()

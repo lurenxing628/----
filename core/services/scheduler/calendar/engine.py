@@ -99,12 +99,12 @@ class DayPolicy:
             if windows:
                 self._window_start, self._window_end = windows[0][0], windows[-1][1]
             else:
-                d = datetime.strptime(self.date_str, "%Y-%m-%d").date()
+                d = date.fromisoformat(self.date_str)
                 self._window_start = self._window_end = datetime.combine(d, self.shift_start)
         else:
-            d = datetime.strptime(self.date_str, "%Y-%m-%d").date()
+            d = date.fromisoformat(self.date_str)
             self._window_start = datetime.combine(d, self.shift_start)
-            self._window_end = self._window_start + timedelta(hours=float(self.shift_hours or 0.0))
+            self._window_end = self._window_start + timedelta(hours=self.shift_hours)
 
     def work_windows(self) -> tuple:
         if self.periods_json is not None:
@@ -129,6 +129,9 @@ class DayPolicy:
     def work_window(self) -> Tuple[datetime, datetime]:
         return self._window_start, self._window_end
 
+    def is_working(self) -> bool:
+        return self.shift_hours > 0 and (self.is_priority_allowed(_NORMAL_PRIORITY) or self.is_priority_allowed("urgent"))
+
 
 class CalendarEngine:
     """
@@ -139,13 +142,13 @@ class CalendarEngine:
     - 读取日历数据（WorkCalendar/OperatorCalendar）但不负责 CRUD/导入
     """
 
-    def __init__(self, conn, logger=None, *, capture=None):
+    def __init__(self, conn, logger=None, *, capture=None, shift_repo=None):
         self.conn = conn
         self.logger = logger
         self.capture = capture
         self.repo = CalendarRepository(conn, logger=logger)
         self.operator_calendar_repo = OperatorCalendarRepository(conn, logger=logger)
-        self.operator_shift_calendar = OperatorShiftCalendar(conn, logger=logger, capture=capture)
+        self.operator_shift_calendar = OperatorShiftCalendar(conn, logger=logger, capture=capture, repo=shift_repo)
         self._captured_global_rows = (None if capture is None else {
             str(row["date"]): row for row in capture.business_table("WorkCalendar")})
         self._captured_personal_rows = (None if capture is None else {
@@ -201,7 +204,7 @@ class CalendarEngine:
     def _normalize_text(value: Any) -> Optional[str]:
         # Only native strings bypass the general NaN/custom-object checks.
         if type(value) is str:
-            return value.strip() or None
+            return value if value.strip() else None
         return normalize_text(value)
 
     def default_periods(self):
@@ -213,7 +216,7 @@ class CalendarEngine:
                 raise ValidationError("默认工作时间至少需要一个工作时段。", field="periods")
             self._default_periods = periods
             if self._default_periods_json is None:
-                self._default_periods_json = encode_periods(periods)
+                self._default_periods_json = encode_periods(periods, normalized=True)
             _, self._default_period_hours = self._period_facts_for_json(self._default_periods_json, periods)
         return self._default_periods
 
@@ -226,7 +229,7 @@ class CalendarEngine:
     def _default_for_date(self, date_str: str) -> WorkCalendar:
         if date_str in self._public_calendar_rows:
             return self._public_calendar_rows[date_str]
-        d = datetime.strptime(date_str, "%Y-%m-%d").date()
+        d = date.fromisoformat(date_str)
         # 周末默认不排产；工作日按上午和下午两段，午休不计工时。
         if d.weekday() >= 5:
             row = WorkCalendar(
@@ -276,30 +279,17 @@ class CalendarEngine:
         return self._public_calendar_rows[date_str]
 
     @staticmethod
-    def _normalize_efficiency(cal: Any) -> float:
-        raw_efficiency = getattr(cal, "efficiency", 1.0)
-        if raw_efficiency is None or (isinstance(raw_efficiency, str) and raw_efficiency.strip() == ""):
-            raw_efficiency = 1.0
-        efficiency = _parse_finite_float_value(
-            raw_efficiency, field="efficiency",
-            number_msg="日历效率必须是数字", finite_msg="日历效率必须是有限数字",
-        )
-        if efficiency <= 0:
-            raise ValidationError("日历效率必须大于 0", field="efficiency")
-        return efficiency
-
-    @staticmethod
     def _parse_shift_start(cal: Any) -> time:
-        ss = normalize_hhmm(getattr(cal, "shift_start", None), field="班次开始") or "08:00"
+        ss = normalize_hhmm(cal.shift_start, field="班次开始") or "08:00"
         return datetime.strptime(ss, "%H:%M").time()
 
     @staticmethod
     def _override_shift_hours_by_shift_end(cal: Any, *, date_str: str, shift_start_t: time, shift_hours: float) -> float:
-        se = normalize_hhmm(getattr(cal, "shift_end", None), field="班次结束")
+        se = normalize_hhmm(cal.shift_end, field="班次结束")
         if not se:
             return shift_hours
         se_t = datetime.strptime(se, "%H:%M").time()
-        base_d = date.fromisoformat(getattr(cal, "date", None) or date_str)
+        base_d = date.fromisoformat(cal.date or date_str)
         st_dt = datetime.combine(base_d, shift_start_t)
         et_dt = datetime.combine(base_d, se_t)
         # 跨午夜：shift_end <= shift_start 表示次日结束（含相等：24h）
@@ -310,10 +300,13 @@ class CalendarEngine:
     def _policy_for_date(self, date_str: str, operator_id: Optional[str] = None) -> DayPolicy:
         """获取某个“日期键”的 DayPolicy（不做跨午夜归属判断）。"""
         op_id = self._normalize_text(operator_id) if operator_id is not None else None
-        cache_key = ((op_id or ""), date_str)
-        cached = self._policy_cache.get(cache_key)
-        if cached is not None:
-            return cached
+        if op_id is not None:
+            cache_key = (op_id, date_str)
+            cached = self._policy_cache.get(cache_key)
+            if cached is not None:
+                return cached
+        elif date_str in self._public_policy_cache:
+            return self._public_policy_cache[date_str]
 
         # Resolve personal facts first: an explicit personal day never consumes global data.
         cal = self._resolve_calendar_row(date_str, op_id)
@@ -324,28 +317,21 @@ class CalendarEngine:
             if p is None:
                 p = self._policy_from_calendar(date_str, cal)
                 self._public_policy_cache[date_str] = p
-            if op_id:
+            if op_id is not None:
                 p = self.operator_shift_calendar.apply_policy(p, op_id, prepare_periods=self._period_facts_for_json)
-        self._policy_cache[cache_key] = p
-        self._policy_operator_keys.setdefault(cache_key[0], {})[cache_key] = None
+        if op_id is not None:
+            self._policy_cache[(op_id, date_str)] = p
+            self._policy_operator_keys.setdefault(op_id, {})[(op_id, date_str)] = None
         return p
 
     def _policy_from_calendar(self, date_str: str, cal: Any) -> DayPolicy:
         """Normalize a public date once, or one explicit personal override."""
-        raw_shift_hours = getattr(cal, "shift_hours", 0.0)
-        if raw_shift_hours is None or (isinstance(raw_shift_hours, str) and raw_shift_hours.strip() == ""):
-            raw_shift_hours = 0.0
-        shift_hours = _parse_finite_float_value(
-            raw_shift_hours, field="shift_hours",
-            number_msg="班次工时必须是数字", finite_msg="班次工时必须是有限数字",
-        )
-        if shift_hours < 0:
-            raise ValidationError("班次工时不能为负数", field="shift_hours")
-        efficiency = self._normalize_efficiency(cal)
+        shift_hours = float(cal.shift_hours)
+        efficiency = float(cal.efficiency)
 
         # shift_start/shift_end：默认 08:00；若提供 shift_end 则优先用其推导 shift_hours
         ss_t = self._parse_shift_start(cal)
-        periods_json = getattr(cal, "periods_json", None)
+        periods_json = cal.periods_json
         offsets = None
         if periods_json is not None:
             offsets, shift_hours = self._period_facts_for_json(periods_json)
@@ -355,7 +341,7 @@ class CalendarEngine:
             )
 
         p = DayPolicy(
-            date_str=getattr(cal, "date", None) or date_str,
+            date_str=cal.date or date_str,
             day_type=cal.day_type,
             shift_hours=shift_hours,
             efficiency=efficiency,
@@ -417,14 +403,15 @@ class CalendarEngine:
 
     def _effective_segments(self, day: date, operator_id: Optional[str] = None) -> tuple:
         """Disjoint natural-day pieces; today's window overrides yesterday's tail."""
-        cache = self._segment_cache.setdefault(self._normalize_text(operator_id) or "", {})
+        op_id = self._normalize_text(operator_id) if operator_id is not None else None
+        cache = self._segment_cache.setdefault(op_id or "", {})
         if day in cache:
             return cache[day]
         lo = datetime.combine(day, time.min)
         hi = datetime.max if day == date.max else lo + timedelta(days=1)
-        policies = [self._policy_for_date(day.isoformat(), operator_id=operator_id)]
+        policies = [self._policy_for_date(day.isoformat(), operator_id=op_id)]
         if day > date.min:
-            policies.append(self._policy_for_date((day - timedelta(days=1)).isoformat(), operator_id=operator_id))
+            policies.append(self._policy_for_date((day - timedelta(days=1)).isoformat(), operator_id=op_id))
         windows = [(p, max(lo, start), min(hi, end)) for p in policies for start, end in p.work_windows()]
         windows = [(p, start, end) for p, start, end in windows if start < end]
         edges = sorted({point for _, start, end in windows for point in (start, end)})

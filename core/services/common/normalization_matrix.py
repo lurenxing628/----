@@ -64,15 +64,14 @@ def _text(value: Any) -> str:
     return str(value).strip()
 
 
-def _normalize_default_yes_no(default: str) -> str:
-    text = _text(default).lower()
-    return YesNo.YES.value if text in ("y", YesNo.YES.value, "true", "1", "on") else YesNo.NO.value
+def _lookup_alias(alias_map: Dict[str, str], text: str) -> Optional[str]:
+    return alias_map.get(text) or alias_map.get(text.lower())
 
 
 def _unknown_result(text: str, *, default: str, unknown_policy: str) -> str:
-    policy = str(unknown_policy or "passthrough").strip().lower()
+    policy = unknown_policy.strip().lower()
     if policy == "default":
-        return str(default)
+        return default
     if policy == "raise":
         raise ValueError(text)
     return text
@@ -86,21 +85,18 @@ def _enum_alias_lookup(
     unknown_policy: str,
 ) -> str:
     text = _text(value)
-    if text == "":
-        return str(default)
-    mapped = alias_map.get(text)
+    if not text:
+        return default
+    mapped = _lookup_alias(alias_map, text)
     if mapped is not None:
         return mapped
-    mapped = alias_map.get(text.lower())
-    if mapped is not None:
-        return mapped
-    return _unknown_result(text, default=str(default), unknown_policy=unknown_policy)
+    return _unknown_result(text, default=default, unknown_policy=unknown_policy)
 
 
 def normalize_batch_priority_value(
     value: Any,
     *,
-    default: str = BatchPriority.NORMAL.value,
+    default: str,
     unknown_policy: str = "passthrough",
 ) -> str:
     return _enum_alias_lookup(value, alias_map=_BATCH_PRIORITY_ALIAS_MAP, default=default, unknown_policy=unknown_policy)
@@ -109,7 +105,7 @@ def normalize_batch_priority_value(
 def normalize_ready_status_value(
     value: Any,
     *,
-    default: str = ReadyStatus.YES.value,
+    default: str,
     unknown_policy: str = "passthrough",
 ) -> str:
     return _enum_alias_lookup(value, alias_map=_READY_STATUS_ALIAS_MAP, default=default, unknown_policy=unknown_policy)
@@ -118,8 +114,8 @@ def normalize_ready_status_value(
 def normalize_calendar_day_type_value(
     value: Any,
     *,
-    default: str = CalendarDayType.WORKDAY.value,
-    unknown_policy: str = "passthrough",
+    default: str,
+    unknown_policy: str,
 ) -> str:
     return _enum_alias_lookup(value, alias_map=_CALENDAR_DAY_TYPE_ALIAS_MAP, default=default, unknown_policy=unknown_policy)
 
@@ -127,50 +123,41 @@ def normalize_calendar_day_type_value(
 def normalize_yes_no_narrow_value(
     value: Any,
     *,
-    default: str = YesNo.YES.value,
-    unknown_policy: str = "passthrough",
+    default: str,
+    unknown_policy: str,
     true_aliases: Optional[Sequence[str]] = None,
     false_aliases: Optional[Sequence[str]] = None,
 ) -> str:
-    default_norm = _normalize_default_yes_no(default)
     text = _text(value)
-    if text == "":
-        return default_norm
+    if not text:
+        return default
 
     lowered = text.lower()
     if text == "是" or lowered in _YES_NO_TRUE_NARROW or lowered in {alias.lower() for item in (true_aliases or ()) if (alias := _text(item))}:
         return YesNo.YES.value
     if text == "否" or lowered in _YES_NO_FALSE_NARROW or lowered in {alias.lower() for item in (false_aliases or ()) if (alias := _text(item))}:
         return YesNo.NO.value
-    return _unknown_result(text, default=default_norm, unknown_policy=unknown_policy)
+    return _unknown_result(text, default=default, unknown_policy=unknown_policy)
 
 
 def normalize_skill_level_value(
     value: Any,
     *,
-    allow_none: bool = False,
-    unknown_policy: str = "raise",
+    allow_none: bool,
+    unknown_policy: str,
 ) -> Optional[str]:
     text = _text(value)
-    if text == "":
-        if allow_none:
-            return None
-        return SkillLevel.NORMAL.value
-
-    mapped = _SKILL_LEVEL_ALIAS_MAP.get(text)
-    if mapped is not None:
-        return mapped
-    mapped = _SKILL_LEVEL_ALIAS_MAP.get(text.lower())
-    if mapped is not None:
-        return mapped
-
-    policy = str(unknown_policy or "raise").strip().lower()
-    if policy == "default":
-        return SkillLevel.NORMAL.value
-    raise ValueError(f"invalid skill_level: {text!r}")
+    if not text:
+        return None if allow_none else SkillLevel.NORMAL.value
+    return _enum_alias_lookup(
+        text,
+        alias_map=_SKILL_LEVEL_ALIAS_MAP,
+        default=SkillLevel.NORMAL.value,
+        unknown_policy=unknown_policy,
+    )
 
 
 def skill_level_rank(value: Any) -> int:
     text = _text(value)
-    normalized = _SKILL_LEVEL_ALIAS_MAP.get(text.lower(), "")
+    normalized = _lookup_alias(_SKILL_LEVEL_ALIAS_MAP, text) or ""
     return _SKILL_LEVEL_RANK.get(normalized, 9)

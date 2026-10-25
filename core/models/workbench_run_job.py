@@ -14,6 +14,7 @@ from core.models.workbench_command import WorkbenchCommandRejected
 
 TERMINAL_STATES = frozenset(("complete", "partial", "failed", "interrupted"))
 PROCESS_EXECUTOR_REF = secrets.token_hex(24)
+PROJECTION_VERSION = "decision-read-v1"
 
 
 def new_run_ref():

@@ -5,6 +5,8 @@ from datetime import datetime
 from heapq import heappop, heappush
 
 from core.models.workbench_trial import issue, reject
+from core.services.execution.legacy import legacy_resource_refs
+from core.services.scheduler.execution.execution_ledger_guard import is_point_work
 from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
 
 _MAX_ISSUES = 50000
@@ -69,6 +71,7 @@ def resource_issues(rows, live, *, conn):
 def _outside_intervals(occupied, rows, live, *, conn):
     issues = []
     selected = {row["operation_ref"] for row in rows}
+    selected_op_ids = {row["original"]["operation"]["id"] for row in rows}
     refs = {int(row["source_key"]): row["ref"] for row in live["facts"]["tables"]["WorkbenchPlanSourceRefs"]
             if row["kind"] == "operation" and row["active"] == 1}
     latest, point_versions = {}, {}
@@ -76,7 +79,7 @@ def _outside_intervals(occupied, rows, live, *, conn):
         latest[row["op_id"]] = row
     for op_id, row in latest.items():
         ref = refs.get(op_id)
-        if ref in selected:
+        if op_id in selected_op_ids or ref in selected:
             continue
         span, problem = _outside_occupancy(row, conn, point_versions)
         if problem is not None:
@@ -163,10 +166,10 @@ def _actual_reservations(rows, live):
         row_start = datetime.fromisoformat(row["current"]["start"])
         row_end = datetime.fromisoformat(row["current"]["end"])
         for kind in ("machine", "operator"):
-            for ref, execution, fact in index[kind, row["current"][kind + "_ref"]]:
+            for ref, execution, start_dt, end_dt in index[kind, row["current"][kind + "_ref"]]:
                 if row["operation_ref"] == ref:
                     continue
-                conflict = _actual_conflict(row, row_start, row_end, execution, fact)
+                conflict = _actual_conflict(row, row_start, row_end, execution, start_dt, end_dt)
                 if conflict:
                     issues.append(conflict)
                     _issue_limit(issues)
@@ -177,32 +180,71 @@ def _actual_index(live):
     index, issues = defaultdict(list), []
     tables = live["facts"]["tables"]
     ops = {str(row["id"]): row for row in tables["BatchOperations"]}
-    sources = {row["ref"]: ops.get(row["source_key"], {}).get("source") for row in tables["WorkbenchPlanSourceRefs"]
-               if row["kind"] == "operation"}
+    ops_by_ref = {row["ref"]: ops.get(row["source_key"], {}) for row in tables["WorkbenchPlanSourceRefs"]
+                  if row["kind"] == "operation"}
     for ref, execution in live["execution"].items():
-        if execution["execution_state"] == "unreported" and not execution["reports"] and not execution["legacy_facts"]:
+        reports, legacy = execution["reports"], execution["legacy_facts"]
+        if execution["execution_state"] == "unreported" and not reports and not legacy:
             continue
-        if sources.get(ref) == "external":
+        op = ops_by_ref.get(ref, {})
+        if op.get("source") == "external":
             continue
-        for fact in execution["reports"] + execution["legacy_facts"]:
+        complete = execution["execution_state"] == "complete"
+        # 与排产执行保护同一口径：零定额点工序的零时长报工合法，不占设备人员时段。
+        is_point = is_point_work(op.get("source"), op.get("setup_hours"), op.get("unit_hours"),
+                                 execution["target_quantity"])
+        for report in reports:
+            start_dt, end_dt = _actual_span(complete, report["actual_start"] or execution["first_actual_start"],
+                                            report["actual_end"] or execution["confirmed_finish"])
+            if is_point and report["effective_processing_hours"] == 0 and start_dt is not None and start_dt == end_dt:
+                continue
             for kind in ("machine", "operator"):
-                resource = fact.get("actual_" + kind + "_ref")
+                resource = report["actual_" + kind + "_ref"]
                 if resource is None:
-                    issues.append(issue("execution_resource_unknown", "现场数据里没有设备人员编号，范围外的占用情况无法判断。"))
+                    issues.append(_resource_unknown())
                 else:
-                    index[kind, resource].append((ref, execution, fact))
+                    index[kind, resource].append((ref, execution, start_dt, end_dt))
+        if not legacy:
+            continue
+        # 旧事件的资源按整组解释：完工、暂停事件可以不重复开工事件已记的设备人员。
+        legacy_refs = {kind: legacy_resource_refs(legacy, "actual_" + kind + "_ref", gaps=execution["data_gaps"])
+                       for kind in ("machine", "operator")}
+        if reports:
+            # 有新报工时占用按报工算，旧事件只能是报工已覆盖的资源（与排产执行保护同一口径）。
+            for kind, refs in legacy_refs.items():
+                if None in refs or not refs <= {report["actual_" + kind + "_ref"] for report in reports}:
+                    issues.append(_resource_unknown())
+            continue
+        start_dt, end_dt = _actual_span(complete, execution["first_actual_start"], execution["confirmed_finish"])
+        if is_point and start_dt is not None and start_dt == end_dt:
+            continue
+        for kind, refs in legacy_refs.items():
+            if not refs or None in refs:
+                issues.append(_resource_unknown())
+                continue
+            for resource in refs:
+                index[kind, resource].append((ref, execution, start_dt, end_dt))
     return index, issues
 
 
-def _actual_conflict(row, row_start, row_end, execution, fact):
+def _resource_unknown():
+    return issue("execution_resource_unknown", "现场数据里没有设备人员编号，范围外的占用情况无法判断。")
+
+
+def _actual_span(complete, start, end):
+    # Only a confirmed whole-operation finish releases the resource at a known time.
+    if not complete or not start or not end:
+        return None, None
+    return datetime.fromisoformat(start), datetime.fromisoformat(end)
+
+
+def _actual_conflict(row, row_start, row_end, execution, start_dt, end_dt):
     # Partial report end is never whole-operation resource release.
     if execution["execution_state"] != "complete":
         return issue("execution_resource_release_unknown", "同一资源仍有未确认整道完工的实际生产，不能推测释放时间。", row["task_ref"])
-    start = fact.get("actual_start") or execution["first_actual_start"]
-    end = fact.get("actual_end") or execution["confirmed_finish"]
-    if not start or not end:
+    if start_dt is None or end_dt is None or end_dt <= start_dt:
         return issue("execution_resource_interval_unknown", "已有实际生产占用时间不完整，无法证明资源可用。", row["task_ref"])
-    if datetime.fromisoformat(start) < row_end and datetime.fromisoformat(end) > row_start:
+    if start_dt < row_end and end_dt > row_start:
         return issue("execution_resource_overlap", "安排与真实生产资源占用重叠。", row["task_ref"])
     return None
 

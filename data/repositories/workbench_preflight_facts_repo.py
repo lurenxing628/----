@@ -54,8 +54,8 @@ class WorkbenchPreflightFactsRepository(BaseRepository):
         """Capture actual columns and original storage values once in rowid order."""
         if name not in self._present_tables():
             raise ValueError("unknown table: " + repr(name))
-        info = list(self.execute("PRAGMA table_info(" + _quote(name) + ")"))
-        columns, projection = raw_projection(self.conn, name, column_info=info)
+        info = schema_contract_memo(self.conn).structure.table_info(name)
+        columns, projection = raw_projection(name, info)
         self.column_types[name] = {str(row[1]): str(row[2]) for row in info}
         codecs = {column: sqlite3.converters[kind] for column, declared in self.column_types[name].items()
                   for kind in (re.split(r"[ (]", declared, maxsplit=1)[0].upper(),) if kind in sqlite3.converters}

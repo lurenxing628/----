@@ -70,14 +70,10 @@ def resource_detail(kind, ref):
 
 @api_endpoint
 def resource_command(kind, action, ref=None):
-    if action not in ("create", "update", "delete") or (action == "create") != (ref is None):
-        raise WorkbenchCommandRejected("invalid_input", "这个操作入口不对，数据没有改动。请刷新页面后重试。", 400)
     body = _command_body()
     reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
     normalized = reader.domain.normalize_input(action, body["input"])
-    subject = kind + ":create" if action == "create" else ref
-    if not isinstance(subject, str) or not subject:
-        raise WorkbenchCommandRejected("invalid_input", "没有指明要改哪一条记录，数据没有改动。请刷新页面后重新选择。", 400)
+    subject = kind + ":create" if ref is None else ref
     command = kind + "." + action
 
     def guard():

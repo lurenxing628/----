@@ -21,17 +21,7 @@ def ensure_secret_key(app: Flask) -> None:
         app.config["SECRET_KEY"] = env_key
         return
 
-    log_dir = app.config.get("LOG_DIR") or ""
-    try:
-        log_dir = str(log_dir).strip()
-    except Exception as e:
-        log_dir = ""
-        safe_log(
-            getattr(app, "logger", None),
-            "warning",
-            "LOG_DIR 配置解析失败，SECRET_KEY 将仅保留进程内随机值：%s",
-            e,
-        )
+    log_dir = str(app.config.get("LOG_DIR") or "").strip()
 
     secret_file = os.path.join(log_dir, "aps_secret_key.txt") if log_dir else ""
     min_len = 32
@@ -46,7 +36,7 @@ def ensure_secret_key(app: Flask) -> None:
                     app.config["SECRET_KEY"] = key0
                     return
         except Exception as e:
-            safe_log(getattr(app, "logger", None), "warning", "读取 SECRET_KEY 文件失败（将尝试重新生成）：%s", e)
+            safe_log(app.logger, "warning", "读取 SECRET_KEY 文件失败（将尝试重新生成）：%s", e)
 
     key = secrets.token_urlsafe(32)
     app.config["SECRET_KEY"] = key
@@ -57,7 +47,7 @@ def ensure_secret_key(app: Flask) -> None:
         write_fixed_text(secret_file, key + "\n", replace_symlink=True)
         app.logger.info("已生成 SECRET_KEY 并写入：%s", secret_file)
     except Exception as e:
-        safe_log(getattr(app, "logger", None), "warning", "写入 SECRET_KEY 文件失败（将使用进程内随机 SECRET_KEY）：%s", e)
+        safe_log(app.logger, "warning", "写入 SECRET_KEY 文件失败（将使用进程内随机 SECRET_KEY）：%s", e)
 
 
 def apply_session_cookie_hardening(app: Flask) -> None:

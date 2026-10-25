@@ -13,15 +13,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def is_windows_lock_error(exc: Exception) -> bool:
-    try:
-        if isinstance(exc, PermissionError):
-            return True
-        winerr = getattr(exc, "winerror", None)
-        if winerr in (32, 33, 5):
-            return True
-    except Exception as detect_error:
-        _LOGGER.debug("判断 Windows 文件锁异常失败，按非文件锁处理：%s", detect_error)
-    return False
+    return isinstance(exc, PermissionError) or getattr(exc, "winerror", None) in (32, 33, 5)
 
 
 def cleanup_sqlite_sidecars(db_path: str, logger=None) -> None:
@@ -46,9 +38,7 @@ def restore_db_file_from_backup(
     db_abs = os.path.abspath(db_path)
     # Old rollback versions could leave this fixed file behind; retain its safe cleanup.
     tmp_path = f"{db_abs}.rollback_tmp"
-    retry_count = int(retries) if retries is not None else 1
-    if retry_count < 1:
-        retry_count = 1
+    retry_count = max(1, retries)
     for attempt in range(retry_count):
         try:
             _remove_tmp_file(tmp_path)

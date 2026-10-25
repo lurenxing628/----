@@ -43,16 +43,20 @@
       original.current = review.day; setValue(merged);
       setBase(review.day); setReview(null); setReadError(null); setError(null);
     }
+    function toggleClearing(next) {
+      setClearing(next); setError(null);
+      if (command.phase === 'rejected' && !stale && typeof command.reset === 'function') command.reset();
+    }
     return <Modal title={base.date + ' · 工作日历'} icon="calendar-days" onClose={onClose} guardOwner={guardOwner} locked={command.locked || reading}
       footer={<><Button disabled={command.locked || reading} onClick={close}>{done ? '关闭' : '取消'}</Button>
-        {!done && !clearing && base.explicit && <Button icon="minus" disabled={disabled || !!review} onClick={() => setClearing(true)}>清除单独设置</Button>}
-        {!done && clearing && <Button disabled={disabled} onClick={() => setClearing(false)}>返回编辑</Button>}
+        {!done && !clearing && base.explicit && <Button icon="minus" disabled={disabled || !!review} onClick={() => toggleClearing(true)}>清除单独设置</Button>}
+        {!done && clearing && <Button disabled={disabled} onClick={() => toggleClearing(false)}>返回编辑</Button>}
         {!done && <Button type="submit" form={formId} className="btn primary" icon={clearing ? 'minus' : 'check'} busy={disabled} reason={reason} reasonDisplay={stale ? 'tooltip' : 'inline'}>
           {clearing ? '确认清除，恢复默认' : '保存配置'}</Button>}</>}>
       <form id={formId} ref={formRef} className="modal-b form scroll" onSubmit={save} noValidate>
         <div style={{ borderBottom: '1px solid var(--ui-border)', paddingBottom: 12, marginBottom: 16 }}><Policy value={base} /></div>
         {clearing ? <p>将清除 <b>{base.date}</b> 的单独设置，改用该日期的默认规则。{window.WorkbenchTerms.personal_calendar}和班次不变。</p> :
-          <Fields value={value} error={error || command.error} disabled={disabled} onChange={next => { setValue(next); setError(null); }} />}
+          <Fields value={value} error={error || command.error} disabled={disabled} onChange={next => { setValue(next); setError(null); if (command.phase === 'rejected' && !stale && typeof command.reset === 'function') command.reset(); }} />}
         <ErrorBox error={error} excludePaths={clearing ? [] : window.CalendarFields.fieldPaths} /><Feedback command={command} excludePaths={clearing ? [] : window.CalendarFields.fieldPaths} /><ErrorBox error={readError} />
         {!done && <Button icon="refresh-cw" busy={reading} disabled={command.locked} onClick={reloadContext}>{window.WorkbenchTerms.refresh_latest}</Button>}
         {review && <div className="match-note is-block">

@@ -14,7 +14,7 @@ def check_admission_current(conn, capture, *, current_capture):
     text = capture["facts_text"]
     if type(text) is not str:
         raise CandidateAdoptionBlocked("candidate_artifact_invalid", "排产时记下的数据校验不通过，不能采用，正式计划没有改动。请重新排产后再试。")
-    baseline = run_baseline(conn, capture=current_capture)
+    baseline = run_baseline(capture=current_capture)
     if not same(baseline, capture["baseline"]):
         raise WorkbenchCommandRejected("snapshot_stale", "排产时的正式计划已经变了，这次没有采用，正式计划没有改动。请重新做排产检查。")
     schedule = current_capture.table("Schedule")

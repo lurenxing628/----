@@ -12,7 +12,7 @@ from core.services.scheduler.execution.execution_snapshot import (
 )
 
 
-def _conflict(reason: str) -> AppError:
+def execution_conflict(reason: str) -> AppError:
     return AppError(
         ErrorCode.SCHEDULE_CONFLICT,
         "现场执行事实或正式计划身份不完整，本次没有写入新排程。请先核对现场反馈和正式计划。",
@@ -30,7 +30,7 @@ def _validate_event_plan_identities(capture) -> None:
         row, op = schedules.get(event["schedule_id"]), operations.get(event["op_id"])
         if (row is None or op is None or event["schedule_version"] != row["version"]
                 or event["op_id"] != row["op_id"] or event["batch_id"] != op["batch_id"]):
-            raise _conflict("execution_scope_missing")
+            raise execution_conflict("execution_scope_missing")
 
 
 def resource_execution_snapshot(
@@ -55,5 +55,5 @@ def collect_resource_execution_facts(
         )
         snapshot = resource_execution_snapshot(facts, plan_rows)
     except (ValueError, TypeError, OverflowError) as exc:
-        raise _conflict("invalid_execution_fact") from exc
+        raise execution_conflict("invalid_execution_fact") from exc
     return facts, plan_rows, snapshot

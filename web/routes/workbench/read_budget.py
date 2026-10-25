@@ -17,8 +17,6 @@ class _Waiter:
 
 class ReadBudget:
     def __init__(self, capacity):
-        if capacity < 1:
-            raise ValueError("Read capacity must be positive")
         self._available = capacity
         self._condition = Condition()
         self._waiting = deque()
@@ -71,9 +69,8 @@ PLAN_READ_SLOTS = ReadBudget(1)
 
 
 @contextmanager
-def batch_read_snapshot(reader, *, detached=True):
+def batch_read_snapshot(reader):
     # FIFO waiters hold no SQLite transaction and cannot starve behind newcomers.
     with BATCH_READ_SLOTS.slot():
-        context = reader.detached_read_snapshot() if detached else reader.read_snapshot()
-        with context as fingerprint:
+        with reader.detached_read_snapshot() as fingerprint:
             yield fingerprint

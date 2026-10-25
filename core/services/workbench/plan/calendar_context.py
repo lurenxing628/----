@@ -1,10 +1,9 @@
-"""Shared selected-plan admission and public issue vocabulary."""
+"""Shared selected-plan admission and public resource identities."""
 
 from collections import namedtuple
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.capacity.plan_calendar_intervals import instant
-from core.services.capacity.plan_calendar_issues import issue  # noqa: F401  公开词汇表已下沉到共享内核，这里保留原入口
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from core.services.workbench.facts.zero_duration_evidence import overlaps
 
@@ -31,7 +30,7 @@ def selected_context(conn, entry, scope, rows, resources, plan_span, *, read_con
     return SelectedPlanContext(selected, start, end, time_scope, plain_plan_facts(binding))
 
 
-def _selected_rows(conn, entry, scope, rows, start, end, *, read_context=None):
+def _selected_rows(conn, entry, scope, rows, start, end, *, read_context):
     selected, unique = [], {}
     prepared = rows if read_context is not None else annotate_plan_points(conn, rows, source_table=entry.plan_identity.source_table)
     times = read_context.datetime_intervals(entry) if read_context is not None else None

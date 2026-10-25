@@ -13,7 +13,7 @@ from flask import Flask
 from core.services.workbench.facts.run_data_context import RunDataContext
 from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
 from tests.workbench.system_maintenance_support import SystemTestAPI
-from web.bootstrap import factory, launcher, launcher_paths
+from web.bootstrap import factory, launcher_paths
 from web.bootstrap.workbench_system_restore_recovery import (
     RECOVERY,
     prepare_system_restore_startup,
@@ -34,7 +34,6 @@ def portable_dir(tmp_path, monkeypatch):
     def registry_must_not_be_read():
         pytest.fail("portable launch must not consult the installed SharedDataRoot")
 
-    monkeypatch.setattr(launcher, "read_shared_data_root_from_registry", registry_must_not_be_read)
     monkeypatch.setattr(launcher_paths, "read_shared_data_root_from_registry", registry_must_not_be_read)
     return root
 

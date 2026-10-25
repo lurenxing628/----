@@ -4,14 +4,14 @@ from typing import Any, Dict, List, Literal, Union, overload
 
 from core.models.workbench_run_candidate import MAX_COLLECTION_BYTES, reference
 from core.models.workbench_run_history import STATES, TERMINAL_STATES, inconsistent
+from core.models.workbench_run_job import PROJECTION_VERSION
 
 from .candidate_values import bounded_size, corrupt, stored_json
-from .run_history_projection import _failure, _job_clocks, _job_lifecycle
+from .run_history_projection import failure_reason, job_clocks, job_lifecycle
 
-PROJECTION_VERSION = "decision-read-v1"
-_OPERATION_MEMBERS = frozenset(("operation_refs", "admission_operation_refs", "expected_operation_refs",
+OPERATION_MEMBERS = frozenset(("operation_refs", "admission_operation_refs", "expected_operation_refs",
     "scheduled_operation_refs", "deferred_operation_refs", "unplanned_operation_refs", "covered_operation_refs"))
-_BATCH_MEMBERS = frozenset(("batch_refs", "covered_batch_refs", "complete_batch_refs", "incomplete_batch_refs",
+BATCH_MEMBERS = frozenset(("batch_refs", "covered_batch_refs", "complete_batch_refs", "incomplete_batch_refs",
     "ordinary_incomplete_batch_refs", "deferred_batch_refs", "unknown_batch_refs", "common_completed_batch_refs"))
 _PREPARATION_ALLOCATION_MEMBERS = frozenset(("new_schedule", "retained", "execution", "completed", "external",
                                           "unplanned", "deferred", "unknown"))
@@ -76,9 +76,9 @@ class Memberships:
         for field, item in value.items():
             if allocation_coverage and field in _PREPARATION_ALLOCATION_MEMBERS:
                 result[field] = list(self.refs(item, "operation"))
-            elif field in _OPERATION_MEMBERS and item is not None:
+            elif field in OPERATION_MEMBERS and item is not None:
                 result[field] = list(self.refs(item, "operation"))
-            elif field in _BATCH_MEMBERS and item is not None:
+            elif field in BATCH_MEMBERS and item is not None:
                 result[field] = list(self.refs(item, "batch"))
             else:
                 coverage = field in ("coverage", "allocation_groups") and type(item) is dict and set(item) <= _PREPARATION_ALLOCATION_MEMBERS
@@ -161,8 +161,8 @@ def _head_candidates(head, admission, header):
             "queued": ("queued", "awaiting_reconciliation"),
             "running": ("computing", "awaiting_reconciliation")}.get(state, ("finished",)):
         inconsistent()
-    started, finished = _job_clocks(head)
-    _job_lifecycle(head, started, finished)
+    started, finished = job_clocks(head)
+    job_lifecycle(head, started, finished)
     if type(admission) is not dict or type(admission.get("scope_summary")) is not dict:
         corrupt()
     if state in TERMINAL_STATES:
@@ -177,8 +177,11 @@ def _head_candidates(head, admission, header):
         candidates = []
     seen = set()
     for row in candidates:
+        if type(row) is not dict:
+            corrupt()
+        reference(row.get("candidate_ref"), stored=True)
         count = row.get("task_count")
-        if (row.get("candidate_ref") in seen or type(count) is not int or count < 0 or
+        if (row["candidate_ref"] in seen or type(count) is not int or count < 0 or
                 row.get("status") not in ("completed", "failed", "skipped")):
             corrupt()
         seen.add(row["candidate_ref"])
@@ -196,7 +199,7 @@ def public_run_head(head, admission, header):
         "task_count_basis": "persisted_rows_across_candidates", "counts_final": state in TERMINAL_STATES,
         "scope_summary": admission["scope_summary"], "recovery_required": pending,
         "recovery_reason": {"code": "awaiting_reconciliation", "message": "运行状态待核对，本次读取未恢复或重跑。"} if pending else None,
-        "error": _failure(head, header), "completion_semantics": "execution_state_only",
+        "error": failure_reason(head, header), "completion_semantics": "execution_state_only",
         "constraint_verification": "not_checked_by_history", "task_content_verification": "candidate_workspace_required"}
     return result
 
@@ -213,7 +216,7 @@ def public_job_head(head, admission, header):
                        for candidate in candidates],
         "result_persisted": bool(header and header["result_persisted"]), "scope_summary": scope,
         "accepted_at": head["accepted_at"], "started_at": head["started_at"], "finished_at": head["finished_at"],
-        "receipt_ref": head.get("receipt_ref"), "error": _failure(head, header),
+        "receipt_ref": head.get("receipt_ref"), "error": failure_reason(head, header),
         "recovery_required": head["stage"] == "awaiting_reconciliation"}
 
 

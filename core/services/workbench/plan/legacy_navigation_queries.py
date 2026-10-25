@@ -6,7 +6,7 @@ from typing import Optional
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.schedule_plan_role import VALID_PLAN_ROLES
-from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
+from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.services.common.plan_query import SchedulePlanQueryService
 from data.repositories.schedule_history_repo import ScheduleHistoryRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
@@ -78,8 +78,6 @@ class LegacyNavigationQueries:
             return LegacyPlanBinding(locator, "", True)
         with self.references.read_bindings():
             ref = self.references.get_plan_ref(locator)
-            if self.references.resolve_plan(ref) != locator:
-                raise WorkbenchPlanReferenceError("plan_binding_invalid", "这份计划的系统编号绑定不一致。")
         return LegacyPlanBinding(locator, ref, False)
 
     def entity(self, kind: str, business_key: str):

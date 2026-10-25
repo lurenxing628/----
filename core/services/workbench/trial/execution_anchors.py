@@ -9,7 +9,6 @@ from core.services.scheduler.run.schedule_execution_guardrails import build_exec
 from core.services.scheduler.run.schedule_input_seed_metadata import (
     MERGED_EXECUTION_GROUP_SOURCE,
     merged_actual_group_intervals,
-    merged_external_group_identity,
 )
 from core.services.workbench.run.input_external import execution_groups
 
@@ -21,17 +20,13 @@ def _selected_has_actuals(rows, live):
                for ref, value in live["execution"].items())
 
 
-def _prior_plan_projections(svc, version, live):
+def _prior_plan_projections(version, live):
     """Restore execution facts only for operations the official plan already placed."""
-    prior_ids = set(live["preflight_facts"].latest_plan_rows(version))
-    tables = live["facts"]["tables"]
-    prior_refs = {row["ref"] for row in tables["WorkbenchPlanSourceRefs"]
-                  if row["kind"] == "operation" and row["active"] == 1 and int(row["source_key"]) in prior_ids}
-    return [live["preflight_facts"].execution_projections[ref] for ref in sorted(prior_refs)]
-
-
-def _active_entity_refs(tables):
-    return {(row["kind"], row["entity_key"]): row["ref"] for row in tables["WorkbenchEntityRefs"] if row["active"] == 1}
+    facts = live["preflight_facts"]
+    prior_ids = set(facts.latest_plan_rows(version))
+    refs = facts.operation_refs
+    prior_refs = {refs[op_id] for op_id in prior_ids if op_id in refs}
+    return [facts.execution_projections[ref] for ref in sorted(prior_refs)]
 
 
 def _seed_arrangement(seed, refs):
@@ -63,26 +58,22 @@ def execution_anchors(conn, rows, live):
     if version is None:
         raise ValueError("Actual production has no official plan")
     svc = build_schedule_repository_bundle(conn)
-    projections = _prior_plan_projections(svc, version, live)
+    projections = _prior_plan_projections(version, live)
     operations = [SimpleNamespace(**row["original"]["operation"]) for row in rows]
     facts = live["preflight_facts"]
     batches = {row["batch_id"]: SimpleNamespace(**row) for row in facts.tables["Batches"]}
+    groups = execution_groups(facts, batches, operations)
     _, fixed, completed, seeds, _ = build_execution_guardrails_from_projections(
         svc, operations, prev_version=version, execution_projections=projections, facts=facts,
-        external_groups=execution_groups(facts, batches, operations))
-    refs = _active_entity_refs(live["facts"]["tables"])
-    result = _merged_group_anchors(rows, seeds, fixed | completed, refs)
+        external_groups=groups)
+    refs = facts.refs
+    result = _merged_group_anchors(groups, seeds, fixed | completed, refs)
     for seed in seeds:
         result[seed["op_id"]] = _seed_anchor(seed, refs, completed)
     return result
 
 
-def _merged_group_anchors(rows, seeds, actual_ids, refs):
-    groups = {}
-    for row in rows:
-        original = row["original"]
-        op, group = SimpleNamespace(**original["operation"]), original.get("external_group")
-        groups[op.id] = merged_external_group_identity(op, group=SimpleNamespace(**group) if group else None)
+def _merged_group_anchors(groups, seeds, actual_ids, refs):
     periods = merged_actual_group_intervals(groups, seeds, actual_ids)
     result = {}
     for op_id, group in groups.items():
@@ -108,7 +99,7 @@ def anchor_issue(exc):
 def attach_execution_anchors(conn, rows, live):
     try:
         anchors = execution_anchors(conn, rows, live)
-    except (AppError, ValueError, TypeError, KeyError, OverflowError) as exc:
+    except (AppError, ValueError, KeyError) as exc:
         problem = anchor_issue(exc)
         live["execution_anchors"] = ({}, problem)
         return [problem]

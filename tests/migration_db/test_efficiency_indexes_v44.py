@@ -12,8 +12,9 @@ from core.infrastructure.efficiency_indexes_schema import ADDED, contract_issues
 from core.infrastructure.migration_state import current_schema_contract_issues
 from core.models.workbench_command import WorkbenchCommandOutcome
 from core.models.workbench_run_history import RunHistoryScope
+from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.facts.schema_compat import project_facts
-from core.services.workbench.run.jobs_facts import capture_run_facts, run_facts_unchanged
+from core.services.workbench.run.jobs_facts import production_facts_match
 from data.repositories.batch_operation_repo import BatchOperationRepository
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_run_query_repo import WorkbenchRunHistoryQueryRepository
@@ -136,7 +137,7 @@ def test_v43_to_v44_changes_only_declared_indexes_and_preserves_archives(indexed
         conn.execute('DROP INDEX "' + name + '"')
     conn.execute("UPDATE SchemaVersion SET version=43 WHERE id=1")
     conn.commit()
-    captured_hash, archived = capture_run_facts(conn)
+    archived = ProductionFactsCapture(conn).content()
     ref = _run(conn, 1, "2026-10-17T08:00:00", time="2026-10-17T08:01:00.100000", archive=archived)
     conn.commit()
     before_rows, before_ddl = snapshot(conn), source_ddl(conn)
@@ -150,8 +151,8 @@ def test_v43_to_v44_changes_only_declared_indexes_and_preserves_archives(indexed
     assert [row for row in after_ddl if row[1] not in ADDED] == before_ddl
     assert {row[1] for row in after_ddl if row not in before_ddl} == set(ADDED)
     assert conn.execute("SELECT facts_json FROM WorkbenchRunJobs WHERE run_ref=?", (ref,)).fetchone()[0] == archived
-    assert run_facts_unchanged(conn, archived, captured_hash)
-    _digest, current = capture_run_facts(conn)
+    assert production_facts_match(conn, archived)
+    current = ProductionFactsCapture(conn).content()
     assert project_facts(json.loads(archived)) == project_facts(json.loads(current))
 
     for mutation in (
@@ -162,6 +163,6 @@ def test_v43_to_v44_changes_only_declared_indexes_and_preserves_archives(indexed
         try:
             for sql in mutation.split(";"):
                 conn.execute(sql)
-            assert not run_facts_unchanged(conn, archived, captured_hash)
+            assert not production_facts_match(conn, archived)
         finally:
             conn.rollback()

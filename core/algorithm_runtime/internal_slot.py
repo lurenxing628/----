@@ -53,8 +53,6 @@ def validate_internal_hours_for_mode(op: Any, batch: Any, *, strict_mode: bool) 
 
 def raise_strict_internal_hours_validation(op: Any, batch: Any, exc: ValueError) -> NoReturn:
     for field, raw_value in _internal_hour_fields(op, batch):
-        if raw_value is True:
-            continue
         try:
             if not raw_value:
                 continue
@@ -207,8 +205,7 @@ def _estimate_attempt(calendar: Any, *, earliest: datetime, total_base: float, p
     advance_effective = getattr(calendar, "add_effective_hours", None)
     if advance_effective is not None:
         end = advance_effective(earliest, total_base, priority=priority, operator_id=operator_id)
-        hours = calendar.working_hours_between(earliest, end, priority=priority, operator_id=operator_id)
-        return _SlotAttempt(earliest, end, float(hours), False)
+        return _SlotAttempt(earliest, end, -1.0, False)
     # Continuous adapters and older test calendars expose only a fixed-efficiency clock.
     eff, used_fallback = _resolve_efficiency(calendar, start_time=earliest, operator_id=operator_id)
     total_hours = total_base / eff if eff != 1.0 else total_base
@@ -327,6 +324,13 @@ def estimate_internal_slot(
         if shift_to is None:
             if handoff is not None:
                 handoff.note_scan(scan_start, max(scan_end, attempt.end_time))
+            if attempt.total_hours < 0.0:
+                hours = calendar.working_hours_between(
+                    earliest, attempt.end_time, priority=priority, operator_id=operator_id
+                )
+                attempt = _SlotAttempt(
+                    attempt.start_time, attempt.end_time, float(hours), attempt.efficiency_fallback_used
+                )
             return _build_slot_estimate(
                 machine_id=machine_id,
                 operator_id=operator_id,

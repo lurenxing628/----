@@ -10,7 +10,7 @@ MAX_WORK_PERIODS = 8
 DEFAULT_WORK_PERIODS = [{"start": "08:30", "end": "11:50", "day_offset": 0},
                         {"start": "13:30", "end": "17:30", "day_offset": 0}]
 
-_CLOCK_RE = re.compile(r"(?:[01]\d|2[0-3]):[0-5]\d")
+_CLOCK_RE = re.compile(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]\Z")
 
 
 def _clock(value):
@@ -39,7 +39,6 @@ def normalize_periods(value):
     return result
 
 
-
 def _period_bounds(item, *, first):
     if not isinstance(item, dict) or set(item) - {"start", "end", "day_offset"}:
         raise ValidationError("工作时段字段不正确。", field="periods")
@@ -65,9 +64,9 @@ def decode_periods(raw):
     return normalize_periods(value)
 
 
-def encode_periods(value):
-    normalized = normalize_periods(value)
-    return None if normalized is None else json.dumps(normalized, ensure_ascii=False, separators=(",", ":"))
+def encode_periods(value, *, normalized=False):
+    items = value if normalized else normalize_periods(value)
+    return None if items is None else json.dumps(items, ensure_ascii=False, separators=(",", ":"))
 
 
 def period_windows(day, periods):

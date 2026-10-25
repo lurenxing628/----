@@ -30,7 +30,8 @@ class ExecutionLedgerScopeRepository(BaseRepository):
             marks = ",".join("?" for _ in part)
             cursor = self.execute(f"""SELECT s.id, s.version, s.op_id, bo.batch_id,
                 r.operation_ref, t.ref AS task_ref, p.ref AS plan_ref, bo.source,
-                s.start_time, s.end_time, s.machine_id, s.operator_id, s.lock_status
+                s.start_time, s.end_time, s.machine_id, s.operator_id, s.lock_status,
+                bo.setup_hours, bo.unit_hours
                 FROM Schedule s CROSS JOIN BatchOperations bo ON bo.id=s.op_id
                 CROSS JOIN WorkbenchPlanSourceRefs r ON r.kind='schedule_row' AND r.active=1
                     AND r.source_key=CAST(s.id AS TEXT) AND r.version=s.version AND r.operation_id=s.op_id

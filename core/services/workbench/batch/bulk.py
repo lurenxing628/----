@@ -44,9 +44,6 @@ class WorkbenchBatchBulkService:
         self.reader = reader if reader is not None else BatchFacts(conn, logger)
         self.domain = WorkbenchBatchService(conn, logger, facts=self.reader)
 
-    def plan(self, payload):
-        return self.plan_normalized(normalize_bulk(payload))
-
     def plan_normalized(self, payload):
         facts = self.reader.load()
         projection = BatchProjection(facts)
@@ -81,9 +78,8 @@ class WorkbenchBatchBulkService:
                              if payload["action"] == "copy" else [])}
 
     @staticmethod
-    def _copy_code(code, used, successors=None):
+    def _copy_code(code, used, successors):
         """Find the nearest free suffix, sharing occupied runs within this operation."""
-        successors = {} if successors is None else successors
         match = re.search(r"([0-9]+)$", code)
         prefix = code[:match.start()] if match else code + "-copy-"
         digits = len(match[1]) if match else 1
@@ -106,9 +102,6 @@ class WorkbenchBatchBulkService:
             visited.append(serial)
             serial += 1
         raise WorkbenchCommandRejected("constraint_conflict", "无法为复制批次分配有效编号，请手工新增。")
-
-    def apply(self, payload):
-        return self.apply_normalized(normalize_bulk(payload))
 
     def apply_normalized(self, payload):
         if not self.conn.in_transaction:
@@ -151,8 +144,9 @@ class WorkbenchBatchBulkService:
             result = self.domain.apply_prepared(change)
             mapping = {op["id"]: writer.copy_prepared_instance(code, prepared[op["id"]])
                        for op in source_relations[batch["batch_id"]]["operations"]}
-            BatchMaterialRepository(self.conn).copy_requirements(batch["batch_id"], code, mapping,
-                                                               requirements=requirements[batch["batch_id"]])
+            BatchMaterialRepository(self.conn).copy_requirements(
+                code, mapping, requirements=requirements[batch["batch_id"]]
+            )
             outcomes.append({**result.data, "source_ref": ref, "result": "committed"})
         return self._outcome(payload, outcomes)
 

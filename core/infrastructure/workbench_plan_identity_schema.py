@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Tuple
 
-from .schema_structure import SchemaStructure, schema_objects
+from .schema_structure import SchemaStructure
 from .workbench_metadata_schema import canonical_sql, entity_key_sql
 
 _REF = "TEXT PRIMARY KEY NOT NULL CHECK(length(ref) = 48 AND ref NOT GLOB '*[^0-9a-f]*')"
@@ -192,27 +192,26 @@ def plan_identity_objects() -> Dict[str, str]:
     return objects
 
 
-def _source_issues(conn, *, structure=None) -> List[str]:
+def _source_issues(*, structure: SchemaStructure) -> List[str]:
     issues = []
     extras = {"history": ("schedule_time", "version"), "scenario_row": ("op_id",),
               "schedule_row": ("id", "version", "op_id")}
     sources = dict(_SOURCES, history=("ScheduleHistory", "id", (), ()))
     for kind, (table, primary, alternates, rotate_columns) in sources.items():
-        info = ([(row[1], row[5]) for row in structure.table_info(table)] if structure is not None
-                else conn.execute("SELECT name, pk FROM pragma_table_info(?)", (table,)).fetchall())
-        names = {row[0] for row in info}
+        info = structure.table_info(table)
+        names = {row[1] for row in info}
         required = {primary, *rotate_columns, *extras.get(kind, ())}
         required.update(column for columns in alternates for column in columns)
         issues.extend("missing_workbench_plan_source: " + table + "." + column
                       for column in sorted(required - names))
-        if tuple(row[0] for row in sorted(info, key=lambda row: row[1]) if row[1]) != (primary,):
+        if tuple(row[1] for row in sorted(info, key=lambda row: row[5]) if row[5]) != (primary,):
             issues.append("bad_workbench_plan_source_primary: " + table)
     return issues
 
 
-def _structure_issues(conn, *, structure=None) -> List[str]:
-    actual = schema_objects(conn, structure=structure)
-    issues = _source_issues(conn, structure=structure)
+def _structure_issues(*, structure: SchemaStructure) -> List[str]:
+    actual = structure.sql
+    issues = _source_issues(structure=structure)
     for name, sql in plan_identity_objects().items():
         if name not in actual:
             issues.append("missing_workbench_plan_identity: " + name)
@@ -232,7 +231,8 @@ def _clock_issues(conn) -> List[str]:
 
 def workbench_plan_identity_contract_issues(conn, *, structure=None) -> List[str]:
     """SELECT-only structure and required clock check, not business completeness."""
-    issues = _structure_issues(conn, structure=structure)
+    structure = structure if structure is not None else SchemaStructure(conn)
+    issues = _structure_issues(structure=structure)
     return issues if issues else _clock_issues(conn)
 
 
@@ -275,7 +275,7 @@ def _is_first_install(conn, *, structure: SchemaStructure) -> bool:
     if present and present != expected:
         raise RuntimeError("Partial workbench plan identity schema; refusing to recreate permanent identities: " +
                            ", ".join(sorted(expected - present)))
-    issues = _structure_issues(conn, structure=structure) if present else _source_issues(conn, structure=structure)
+    issues = _structure_issues(structure=structure) if present else _source_issues(structure=structure)
     if issues:
         raise RuntimeError("Cannot install workbench plan identities: " + "; ".join(issues))
     if not present and "SchemaVersion" in actual:

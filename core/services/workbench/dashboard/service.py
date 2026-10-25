@@ -45,7 +45,7 @@ def navigation(item, *, current=True):
              "reason": None if current else "这条来源这次没有参与评估；系统保留原记录，不会换成编号相同的另一条。"}]
 
 
-def _handling_view(item, stored, now):
+def _handling_view(stored, now):
     handling = stored["handling"] if stored else empty_handling()
     deadline = handling["deadline"]
     return {**handling, "status_label": {"new": "待分析", "following": "跟进中", "awaiting_verification": "待验证", "closed": "已关闭"}[handling["status"]],
@@ -53,20 +53,35 @@ def _handling_view(item, stored, now):
             "evidence_verification": "not_verified", "history_count": stored["revision"] if stored else 0}
 
 
-def _category_counts(categories, observations, stored):
+def _category_counts(categories, observations_by_category, stored):
+    handled_by_category = {name: [] for name in categories}
+    for row in stored.values():
+        if row["category"] in handled_by_category:
+            handled_by_category[row["category"]].append(row)
     categories = {name: dict(summary) for name, summary in categories.items()}
     for name, summary in categories.items():
-        scope = [row for row in observations if row["category"] == name]
+        scope = observations_by_category.get(name, ())
         summary["known_risk_count"] = sum(row["risk"]["active"] is True for row in scope)
         known = name != "candidate" and summary["state"] in ("loaded", "no_data") and not summary["unknown_count"]
         summary["risk_count"] = summary["known_risk_count"] if known else None
         summary["evaluation_gaps"] = [{"source_ref": row["anchor_ref"], "subject": row["subject"],
                                         "code": row["risk"]["code"], "message": row["risk"]["message"]}
                                        for row in scope if row["risk"]["active"] is None and row["risk"]["code"] != "due_not_applicable"]
-        handled = [row for row in stored.values() if row["category"] == name]
+        handled = handled_by_category[name]
         summary["handling_count"] = len(handled)
         summary["closed_count"] = sum(row["handling"]["status"] == "closed" for row in handled)
     return categories
+
+
+class _ProjectedDashboard(dict):
+    def __init__(self, values, snapshot_factory):
+        super().__init__(values)
+        self._snapshot_factory = snapshot_factory
+
+    def __getitem__(self, key):
+        if key == "snapshot_contents" and key not in self:
+            self[key] = self._snapshot_factory()
+        return super().__getitem__(key)
 
 
 class DashboardSources:
@@ -139,31 +154,33 @@ class WorkbenchDashboardService:
     def project(self, sources):
         """Pure projection of load(); callers may run it after their read snapshot has ended."""
         facts = sources.facts.project()
-        observations, delivery_summary = delivery(facts)
-        observations, categories = list(observations), {"delivery": delivery_summary}
+        delivery_obs, delivery_summary = delivery(facts)
+        observations_by_category, categories = {"delivery": delivery_obs}, {"delivery": delivery_summary}
         for name in ("actual", "downtime"):
             found, categories[name] = facts.observations(name)
-            observations.extend(found)
+            observations_by_category[name] = found
         found, categories["material"] = sources.material
-        observations.extend(found)
+        observations_by_category["material"] = found
         external_summary, external_items, external_stored = sources.external
         categories["candidate"] = category(facts.candidates["state"], issues=facts.candidates["issues"])
         categories["candidate"].update(kind="directory_not_risk", run_count=facts.candidates["run_count"],
                                        entry={"view": "analysis", "target": "/api/workbench/v1/scheduling/runs", "enabled": True})
         stored = sources.stored
-        items = self._merge(observations, sources, categories, facts.now)
+        items = self._merge(observations_by_category, sources, categories, facts.now)
         items.extend(self._decorate(item, saved, identity, facts.now) for item, saved, identity in external_items)
-        categories = _category_counts(categories, observations, stored)
+        categories = _category_counts(categories, observations_by_category, stored)
         categories["external"] = external_summary
-        snapshot_contents = facts.snapshot_contents(view={
-            "stored": stored, "external_stored": external_stored,
-            "items": [(row["item_ref"], row["_guard"]) for row in items]})
-        return {"plan": facts.plan, "as_of": facts.now.isoformat(timespec="seconds"), "items": items,
-                "resource_pressure": facts.pressure, "candidate_catalog": facts.candidates,
-                "categories": {name: categories[name] for name in CATEGORIES}, "snapshot_contents": snapshot_contents}
+        return _ProjectedDashboard(
+            {"plan": facts.plan, "as_of": facts.now.isoformat(timespec="seconds"), "items": items,
+             "resource_pressure": facts.pressure, "candidate_catalog": facts.candidates,
+             "categories": {name: categories[name] for name in CATEGORIES}},
+            lambda: facts.snapshot_contents(view={
+                "stored": stored, "external_stored": external_stored,
+                "items": [(row["item_ref"], row["_guard"]) for row in items]}),
+        )
 
-    def _merge(self, observations, sources, categories, now):
-        found, stored = self._identified(observations, sources.mappings), sources.stored
+    def _merge(self, observations_by_category, sources, categories, now):
+        found, stored = self._identified(observations_by_category, sources.mappings), sources.stored
         items = []
         for ref, (item, identity) in found.items():
             # 只列出当前有风险或已有处置的条目；其余几千条无风险观察不逐条规整、不签快照。
@@ -184,10 +201,10 @@ class WorkbenchDashboardService:
         return items
 
     @staticmethod
-    def _identified(observations, loaded):
+    def _identified(observations_by_category, loaded):
         found = {}
         for name in ("delivery", "actual", "downtime", "material"):
-            selected = [row for row in observations if row["category"] == name]
+            selected = observations_by_category[name]
             mappings = mapped_anchors(loaded[name], [row["anchor_ref"] for row in selected])
             for item in selected:
                 identity = mappings[item["anchor_ref"]]
@@ -201,7 +218,7 @@ class WorkbenchDashboardService:
         item["_guard"] = typed({"source_state": item["source_state"], "identity": identity,
                                 "revision": saved["revision"] if saved else 0,
                                 "source": item["source"], "risk": item["risk"], "handling": handling})
-        item.update(handling=_handling_view(item, saved, now), allowed_transitions=allowed_transitions(handling["status"]),
+        item.update(handling=_handling_view(saved, now), allowed_transitions=allowed_transitions(handling["status"]),
                     _handling=handling)
         item["write_context"] = None
         return item

@@ -2,9 +2,8 @@
 
 from core.models.calendar_periods import shift_pattern_fields
 from core.models.resource_capabilities import supports_source
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_status import public_resource_status
-from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
+from core.services.personnel.operator_machine_normalizers import normalize_operator_machine_row
 
 
 def _related(value):
@@ -62,9 +61,8 @@ def _operator(entity, raw, state):
     relations["shift_profile"] = _related(state["shift"])
     relations["shift_profile_ref"] = relations["shift_profile"]["ref"] if relations["shift_profile"] else None
     relations["machine_authorization_count"] = len(state["machine_authorizations"])
-    if "authorized_machines" in state:
-        from .operator_machine_permissions import permission_rows
-        relations["machine_permissions"] = permission_rows(state)
+    from .operator_machine_permissions import permission_rows
+    relations["machine_permissions"] = permission_rows(state)
     entity["issues"].extend(_authorization_issues(state["machine_authorizations"]))
     if any(not supports_source(item["record"]["category"], "internal") for item in state["skill_types"]):
         entity["issues"].append({"code": "operator_skill_invalid", "message": "这个人登记的技能里有不是自制的工种，没有算成自制资格。请核对技能登记。"})
@@ -88,8 +86,6 @@ def _supplier(entity, raw):
     entity["fields"]["default_days"] = raw["default_days"]
     refs = []
     for row in raw["op_types"]:
-        if row["ref"] is None:
-            raise WorkbenchCommandRejected("storage_failure", "这家供应商关联的工种在资料里查不到编号，这条没有打开。请到资料总览核对后重试。", 500)
         refs.append({"ref": row["ref"], "business_code": row["op_type_id"], "label": row["name"],
                      "legacy": bool(row["legacy"]), "explicit": bool(row["explicit"])})
         if not supports_source(row["category"], "external"):
@@ -108,7 +104,7 @@ def _authorization_issues(rows):
     issues = []
     labels = {"skill_level": "技能等级", "is_primary": "主操设备"}
     for row in rows:
-        normalized = OperatorMachineQueryService._normalize_row(row)
+        normalized = normalize_operator_machine_row(row)
         fields = normalized.get("dirty_fields", [])
         if fields:
             message = "设备“{}”的授权记录要核对，涉及：{}。系统只是按兼容规则解释，原值没有被改。".format(

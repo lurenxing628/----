@@ -64,12 +64,12 @@ def prepare_evaluation_context(
         weight = float(PRIORITY_WEIGHT.get(priority, 1.0))
         priority_weights[bid] = weight
         due_raw = getattr(batch, "due_date", None)
-        due_date_value, due_invalid = _parse_due_date_state(due_raw)
+        due_datetime, due_text, due_invalid = parse_due_exclusive_datetime(due_raw)
         # Due projection keeps each source row and its order, even when raw keys
         # normalize to one ID. Completion weights retain the last such source.
         due_batches.append(PreparedBatchDue(
             batch_id=bid, priority_weight=weight, due_invalid=due_invalid,
-            due_exclusive=due_exclusive(due_date_value) if due_date_value else None, due_text=_due_text(due_raw),
+            due_exclusive=due_datetime, due_text=due_text,
         ))
     return PreparedEvaluationContext(
         expected_keys=expected, expected_by_batch=expected_by_batch, batch_by_op_id=batch_by_op_id,
@@ -100,6 +100,12 @@ def _parse_due_date_state(value: Any) -> Tuple[Optional[date], bool]:
         return None, False
     parsed = parse_date(s)
     return parsed, parsed is None
+
+
+def parse_due_exclusive_datetime(value: Any) -> Tuple[Optional[datetime], str, bool]:
+    """交期指标与风险摘要共用的日期、展示文本及坏值口径。"""
+    parsed, invalid = _parse_due_date_state(value)
+    return due_exclusive(parsed) if parsed is not None else None, _due_text(value), invalid
 
 
 @dataclass(frozen=True)
@@ -184,14 +190,38 @@ def collect_batch_completion(
     scheduled = {_operation_key(item, result=True) for item in results if _has_time_range(item)}
     failed = list(failure_details or ())
     failure_batches = _failure_batches(failed, context.batch_by_op_id) if failed else set()
+    unexpected = scheduled - expected
+    missing_operation_count = len(expected - scheduled)
+    if (
+        missing_operation_count == 0
+        and not unexpected
+        and not failure_batches
+        and len(context.expected_by_batch) == len(context.batch_ids)
+    ):
+        return BatchCompletion(
+            expected_operation_count=len(expected),
+            missing_operation_count=0,
+            unexpected_result_count=0,
+            complete_batch_count=len(context.batch_ids),
+            incomplete_batch_ids=(),
+            partial_batch_ids=(),
+            failure_detail_count=0,
+            failure_batch_ids=(),
+            explained=False,
+            incomplete_work_weight=0.0,
+        )
     batch_ids = set(context.batch_ids)
     batch_ids.update(key[0] for key in scheduled)
     batch_ids.update(failure_batches)
-    unexpected = scheduled - expected
-    incomplete = _incomplete_batch_ids(batch_ids, context.expected_by_batch, scheduled, unexpected) | failure_batches
+    if missing_operation_count == 0:
+        incomplete = {bid for bid in batch_ids if not context.expected_by_batch.get(bid)}
+        incomplete.update(key[0] for key in unexpected)
+        incomplete |= failure_batches
+    else:
+        incomplete = _incomplete_batch_ids(batch_ids, context.expected_by_batch, scheduled, unexpected) | failure_batches
     return BatchCompletion(
         expected_operation_count=len(expected),
-        missing_operation_count=len(expected - scheduled),
+        missing_operation_count=missing_operation_count,
         unexpected_result_count=len(unexpected),
         complete_batch_count=len(batch_ids - incomplete),
         incomplete_batch_ids=tuple(sorted(incomplete)),

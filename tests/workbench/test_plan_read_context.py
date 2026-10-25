@@ -69,7 +69,7 @@ def test_read_context_owns_capture_and_next_request_observes_change(plan_api, mo
         assert captures["raw", 3, "schedule"] == captures["detail", 3] == 1
         assert selected_calls == [ref]
         assert sum("FROM WorkbenchPlanIdentityClock WHERE singleton = 1" in sql for sql in statements) == 1
-        assert sum("SELECT schema_version FROM pragma_schema_version" in sql for sql in statements) == 1
+        assert not any("SELECT schema_version FROM pragma_schema_version" in sql for sql in statements)
         assert sum("SELECT * FROM WorkbenchPlanSourceRefs WHERE ref = '" + ref + "' AND active = 1" in sql
                    for sql in statements) == 1
         assert not any(sql.lstrip().split(None, 1)[0].upper() in {"INSERT", "UPDATE", "DELETE", "REPLACE"}

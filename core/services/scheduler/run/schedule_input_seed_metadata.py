@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from core.algorithms.greedy.seed import _identity_int
+from core.algorithms.greedy.seed import identity_int
 from core.errors import ValidationError
 from core.models.enums import MergeMode, SourceType
 
@@ -19,7 +19,7 @@ def _metadata_error(op_id: int, reason: str) -> ValidationError:
 
 def _external_seed_ids(seed_results: List[Dict[str, Any]]) -> Set[int]:
     return {
-        _identity_int(seed.get("op_id"))
+        identity_int(seed.get("op_id"))
         for seed in seed_results
         if str(seed.get("source") or "").strip().lower() == SourceType.EXTERNAL.value
     }
@@ -28,7 +28,7 @@ def _external_seed_ids(seed_results: List[Dict[str, Any]]) -> Set[int]:
 def _enriched_operation_lookup(algo_ops: List[Any], external_seeds: Set[int]) -> Dict[int, Any]:
     by_id: Dict[int, Any] = {}
     for op in algo_ops:
-        op_id = _identity_int(getattr(op, "id", None))
+        op_id = identity_int(getattr(op, "id", None))
         if op_id not in external_seeds:
             continue
         if op_id in by_id:
@@ -37,23 +37,12 @@ def _enriched_operation_lookup(algo_ops: List[Any], external_seeds: Set[int]) ->
     return by_id
 
 
-def _validated_batch_identity(seed: Dict[str, Any], op: Any, op_id: int) -> str:
-    batch_id = str(getattr(op, "batch_id", "") or "").strip()
-    if (
-        not batch_id or batch_id != str(seed.get("batch_id") or "").strip()
-        or str(getattr(op, "source", "") or "").strip().lower() != SourceType.EXTERNAL.value
-        or _identity_int(getattr(op, "seq", None)) != _identity_int(seed.get("seq"))
-    ):
-        raise _metadata_error(op_id, "operation_identity_mismatch")
-    return batch_id
-
-
 def _enrich_external_seed(seed: Dict[str, Any], by_id: Dict[int, Any]) -> Dict[str, Any]:
-    op_id = _identity_int(seed.get("op_id"))
+    op_id = identity_int(seed.get("op_id"))
     op = by_id.get(op_id)
     if op is None:
         raise _metadata_error(op_id, "missing_operation")
-    batch_id = _validated_batch_identity(seed, op, op_id)
+    batch_id = str(op.batch_id or "").strip()
     mode = str(getattr(op, "ext_merge_mode", None) or "").strip().lower()
     if mode not in ("", MergeMode.SEPARATE.value, MergeMode.MERGED.value):
         raise _metadata_error(op_id, "invalid_merge_mode")
@@ -78,7 +67,7 @@ def with_external_seed_metadata(
         return seed_results
     by_id = _enriched_operation_lookup(algo_ops, external_seeds)
     return [
-        _enrich_external_seed(seed, by_id) if _identity_int(seed.get("op_id")) in external_seeds else seed
+        _enrich_external_seed(seed, by_id) if identity_int(seed.get("op_id")) in external_seeds else seed
         for seed in seed_results
     ]
 
@@ -140,13 +129,13 @@ def with_confirmed_merged_group_periods(seed_results, *, group_identities, compl
     return result
 
 
-def with_merged_actual_group_seeds(seed_results, *, algo_ops, actual_op_ids):
+def with_merged_actual_group_seeds(seed_results, *, algo_ops, groups, actual_op_ids):
     """Fix unreported cycle members without inventing reports for those operations.
 
     Existing locked/frozen members must already agree, in either sequence order.
     Returned IDs distinguish these derived seeds from inherited official locks.
+    ``groups`` maps every algo op id to merged_external_group_identity(op).
     """
-    groups = {op.id: merged_external_group_identity(op) for op in algo_ops}
     intervals = merged_actual_group_intervals(groups, seed_results, actual_op_ids)
     by_id = {seed["op_id"]: seed for seed in seed_results}
     for op_id, seed in by_id.items():
@@ -159,9 +148,9 @@ def with_merged_actual_group_seeds(seed_results, *, algo_ops, actual_op_ids):
         if identity not in intervals or op.id in by_id:
             continue
         start, end = intervals[identity]
-        result.append({"op_id": op.id, "op_code": getattr(op, "op_code", None), "batch_id": op.batch_id, "seq": op.seq,
-                       "source": op.source, "op_type_name": getattr(op, "op_type_name", None), "machine_id": None,
-                       "operator_id": None, "start_time": start, "end_time": end,
+        result.append({"op_id": op.id, "op_code": op.op_code, "batch_id": op.batch_id, "seq": op.seq,
+                       "source": op.source, "op_type_name": op.op_type_name, "op_type_id": op.op_type_id,
+                       "machine_id": None, "operator_id": None, "start_time": start, "end_time": end,
                        "seed_source": MERGED_EXECUTION_GROUP_SOURCE})
         derived.add(op.id)
     return result, derived

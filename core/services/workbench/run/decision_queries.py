@@ -39,7 +39,7 @@ def normalize_filters(section, *, batch_ref=None, resource_ref=None, change_kind
             "sort": sort, "order": order, "delivery_filter": delivery_filter, "selected_batch_ref": selected_batch_ref}
 
 
-def _page(value, *, size=False):
+def parse_page(value, *, size=False):
     try:
         parsed = int(value)
     except (TypeError, ValueError):
@@ -67,7 +67,7 @@ def decision_details(source, section, filters, *, page: Union[int, str] = 1, siz
         rows = source.operation_impacts
     rows = [row for row in rows if _matches(row, filters)]
     rows = _ordered(rows, filters)
-    page, size = _page(page), _page(size, size=True)
+    page, size = parse_page(page), parse_page(size, size=True)
     offset = (page - 1) * size
     result = {"run_ref": source.run["run_ref"], "scope": source.scope, "baseline": source.baseline,
               "candidate": {"candidate_ref": source.selected_ref, "label": source.selected["artifact"].get("label"),

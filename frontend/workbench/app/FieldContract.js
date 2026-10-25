@@ -106,5 +106,5 @@
   // not :00, so nothing is lost while whole-minute times read as minutes. WorkbenchFormat has no auto option yet.
   const hasSeconds = value => typeof value === 'string' && /:\d\d:(?!00(?:\.0+)?$)\d\d(?:\.\d+)?$/.test(value);
   const date = value => window.WorkbenchFormat.dateTime(value, { seconds: hasSeconds(value), fractions: true });
-  window.FieldContract = { states, reportActions, fields, ref, task, report, query, blocked, draft, input, saveFile, display, date, hasSeconds, quantity, hours, pieceLabel, planQuantity, quantityReasons, validTime };
+  window.FieldContract = { states, reportActions, fields, ref, task, report, query, blocked, draft, input, saveFile, display, date, quantity, hours, pieceLabel, planQuantity, quantityReasons, validTime };
 })();

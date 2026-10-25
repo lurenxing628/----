@@ -8,7 +8,7 @@ from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.decision_metrics import METRIC_VERSION
 
 from .decision_impact import filter_options
-from .decision_queries import _page
+from .decision_queries import parse_page
 from .decision_source import DecisionSource
 
 PREPARATION_SORTS = ("sequence", "batch_id", "after_setup_hours", "after_required_hours", "setup_delta_hours")
@@ -35,8 +35,8 @@ def normalize_preparation_filters(section, *, batch_ref=None, machine_ref=None, 
 
 def preparation_options(source, section):
     machines = {}
-    before = source.official["tasks"] if source.comparison_mode == "admission_official" else source.before_tasks
-    tasks = before + [task for candidate in source.rows for task in source.tasks(candidate["candidate_ref"])]
+    before = source.official["tasks"] if source.comparison_mode == "admission_official" else []
+    tasks = before + [task for candidate in source.rows for task in source.analysis_tasks(candidate["candidate_ref"])]
     for task in tasks:
         machine = task["machine"]
         if machine is not None and machine["ref"] is not None:
@@ -49,7 +49,7 @@ def preparation_options(source, section):
             if saved_ref is not None and saved_ref not in machines:
                 machines[saved_ref] = {"ref": saved_ref, "label": source.facts.tables["Machines"].get(key, {}).get("name"), "kind": "machine"}
     return {"machines": sorted(machines.values(), key=lambda row: (row["label"] or "", row["ref"])),
-            "batches": filter_options(source, "batches")["batches"]}
+            "batches": filter_options(source, "batches")["batches"] if section == "preparation" else []}
 
 
 def preparation_details(source, filters, *, page: Union[int, str] = 1, size: Union[int, str] = 20, all_rows=False):
@@ -73,7 +73,7 @@ def preparation_details(source, filters, *, page: Union[int, str] = 1, size: Uni
         (unknown if _sort_value(row, filters["sort"]) is None else ordered).append(row)
     ordered.sort(key=lambda item: _sort_value(item, filters["sort"]), reverse=filters["order"] == "desc")
     rows = ordered + unknown
-    page, size = _page(page), _page(size, size=True)
+    page, size = parse_page(page), parse_page(size, size=True)
     offset = (page - 1) * size
     return {"run_ref": source.run["run_ref"], "scope": source.scope, "baseline": source.baseline,
             "candidate": {"candidate_ref": source.selected_ref, "label": source.selected["artifact"].get("label")},

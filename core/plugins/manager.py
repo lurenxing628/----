@@ -27,8 +27,8 @@ class PluginStatus:
     version: Optional[str]
     enabled: str  # yes/no
     loaded: str  # yes/no
+    enabled_source: str
     error: Optional[str] = None
-    enabled_source: Optional[str] = None
     capabilities: List[str] = field(default_factory=list)  # registered capability keys
     conflicted_capabilities: List[str] = field(default_factory=list)
 
@@ -44,46 +44,6 @@ class PluginStatus:
             "capabilities": self.capabilities,
             "conflicted_capabilities": self.conflicted_capabilities,
         }
-
-
-# 进程内全局状态（用于系统页展示）
-_STATE: Dict[str, Any] = {
-    "loaded_at": None,
-    "vendor_paths": [],
-    "plugins_dir": None,
-    "statuses": [],
-    "registry": PluginRegistry(),
-}
-
-
-def _get_plugin_status() -> Dict[str, Any]:
-    registry_dict = _STATE["registry"].to_dict()
-    return {
-        "loaded_at": _STATE["loaded_at"],
-        "vendor_paths": list(_STATE["vendor_paths"]),
-        "plugins_dir": _STATE["plugins_dir"],
-        "statuses": [status.to_dict() for status in _STATE["statuses"]],
-        "registry": registry_dict,
-        "conflicted_capabilities": registry_dict["conflicted_capabilities"],
-        "conflict_policy": registry_dict["conflict_policy"],
-    }
-
-
-def reset_plugin_state(base_dir: Optional[str] = None) -> Dict[str, Any]:
-    """清空进程内插件能力状态，并返回同形状的空状态快照。"""
-
-    registry = PluginRegistry()
-    plugins_dir = os.path.join(os.path.abspath(base_dir or "."), "plugins")
-    _STATE.update(
-        {
-            "loaded_at": None,
-            "vendor_paths": [],
-            "plugins_dir": plugins_dir,
-            "statuses": [],
-            "registry": registry,
-        }
-    )
-    return _get_plugin_status()
 
 
 class PluginManager:
@@ -107,7 +67,9 @@ class PluginManager:
         cls,
         base_dir: str,
         *,
-        config_reader: Optional[PluginConfigReader] = None,
+        config_reader: Optional[PluginConfigReader],
+        enabled_source_map: Dict[str, str],
+        default_enabled_source: str,
         logger=None,
     ) -> Dict[str, Any]:
         base = os.path.abspath(base_dir or ".")
@@ -118,26 +80,9 @@ class PluginManager:
         statuses: List[PluginStatus] = []
         registry = PluginRegistry()
 
-        enabled_source_map = getattr(config_reader, "enabled_source_map", {}) if callable(config_reader) else {}
-        if not isinstance(enabled_source_map, dict):
-            enabled_source_map = {}
-        default_enabled_source = str(getattr(config_reader, "default_enabled_source", "default") or "default")
-        if not default_enabled_source:
-            default_enabled_source = "default"
+        plugin_files = sorted(os.listdir(plugins_dir)) if os.path.isdir(plugins_dir) else []
 
-        if not os.path.isdir(plugins_dir):
-            _STATE.update(
-                {
-                    "loaded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "vendor_paths": vendor_paths,
-                    "plugins_dir": plugins_dir,
-                    "statuses": statuses,
-                    "registry": registry,
-                }
-            )
-            return _get_plugin_status()
-
-        for fn in sorted(os.listdir(plugins_dir)):
+        for fn in plugin_files:
             if not fn.endswith(".py") or fn.startswith("_"):
                 continue
             path0 = os.path.join(plugins_dir, fn)
@@ -171,7 +116,7 @@ class PluginManager:
                 default_enabled = _normalize_yes_no(getattr(mod, "PLUGIN_DEFAULT_ENABLED", None), default="no")
 
                 enabled = default_enabled
-                if callable(config_reader):
+                if config_reader is not None:
                     try:
                         raw_enabled = config_reader(plugin_id)
                     except Exception as exc:
@@ -238,7 +183,7 @@ class PluginManager:
                         enabled=enabled,
                         loaded=loaded,
                         error=err,
-                        enabled_source=str(enabled_source_map.get(plugin_id) or default_enabled_source),
+                        enabled_source=enabled_source_map.get(plugin_id, default_enabled_source),
                         capabilities=cap_keys,
                         conflicted_capabilities=conflict_keys,
                     )
@@ -246,7 +191,7 @@ class PluginManager:
             except Exception as e:
                 tb = traceback.format_exc(limit=5)
                 enabled = "no"
-                if callable(config_reader):
+                if config_reader is not None:
                     try:
                         raw_enabled = config_reader(guessed_id)
                     except Exception:
@@ -261,7 +206,7 @@ class PluginManager:
                         enabled=enabled,
                         loaded="no",
                         error=f"{e}\n{tb}",
-                        enabled_source=str(enabled_source_map.get(guessed_id) or default_enabled_source),
+                        enabled_source=enabled_source_map.get(guessed_id, default_enabled_source),
                         capabilities=[],
                         conflicted_capabilities=[],
                     )
@@ -272,14 +217,13 @@ class PluginManager:
                     except Exception:
                         pass
 
-        _STATE.update(
-            {
-                "loaded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "vendor_paths": vendor_paths,
-                "plugins_dir": plugins_dir,
-                "statuses": statuses,
-                "registry": registry,
-            }
-        )
-
-        return _get_plugin_status()
+        registry_status = registry.to_dict()
+        return {
+            "loaded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "vendor_paths": vendor_paths,
+            "plugins_dir": plugins_dir,
+            "statuses": [status.to_dict() for status in statuses],
+            "registry": registry_status,
+            "conflicted_capabilities": registry_status["conflicted_capabilities"],
+            "conflict_policy": registry_status["conflict_policy"],
+        }

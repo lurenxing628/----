@@ -7,14 +7,18 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 
 
+def operator_machine_links(facts):
+    return {(row["operator_id"], row["machine_id"]) for row in facts["OperatorMachine"]}
+
+
 class BatchResourceFacts:
     def __init__(self, facts):
         self.catalogs = {kind: {row[key]: row for row in facts[table]} for kind, table, key in (
             ("machine", "Machines", "machine_id"), ("operator", "Operators", "operator_id"),
             ("supplier", "Suppliers", "supplier_id"), ("op_type", "OpTypes", "op_type_id"),
             ("material", "Materials", "material_id"))}
-        self.machine_types = machine_type_index(facts["Machines"], facts.get("MachineOpTypes", []))
-        self.links = {(row["operator_id"], row["machine_id"]) for row in facts["OperatorMachine"]}
+        self.machine_types = machine_type_index(facts["Machines"], facts["MachineOpTypes"])
+        self.links = operator_machine_links(facts)
         self.supplier_types = defaultdict(set)
         for row in supplier_capability_rows(facts["Suppliers"], facts["WorkbenchSupplierOpTypes"], status="active"):
             if not row["missing_supplier"]:

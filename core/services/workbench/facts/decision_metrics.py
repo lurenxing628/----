@@ -1,9 +1,10 @@
 """One metric catalog and coverage-aware values for the run decision overview."""
 
+from typing import Any, Dict, List, Tuple
+
 from core.models.workbench_run_candidate import local_time
 
 from .candidate_projection import metrics as saved_metrics
-from .decision_delivery import project_decision_delivery
 from .delivery_projection import delivery_summary
 from .preflight_dependencies import material_deferred_ids
 from .preparation_projection import (
@@ -53,7 +54,7 @@ RESOURCE_METRICS = (
 )
 
 
-def metric_definitions():
+def _build_metric_definitions() -> Tuple[Dict[str, Any], ...]:
     names = ("key", "label", "group", "unit", "precision", "improvement", "scope", "source", "common")
     resources = [(kind + "_" + key, "高负荷" + prefix if key == "high_pressure_count" else prefix + label,
                   "resources", count_unit if unit == "项" else unit, precision, improvement,
@@ -64,8 +65,17 @@ def metric_definitions():
                    for key, label, _field, _group, common in PREPARATION_METRICS]
     events = (("type_changeover_count", "工种切换次数", "preparation", "次", 0, "lower", "fixed_changeover_window", "archived_changeover_events", True),
               ("changed_machine_count", "有切换设备数", "preparation", "台", 0, "lower", "fixed_changeover_window", "archived_changeover_events", False))
-    return [{**dict(zip(names, row)), "metric_version": RESOURCE_METRIC_VERSION if row[7] == "archived_resource_calendar" else METRIC_VERSION}
-            for row in _CATALOG + tuple(resources) + tuple(preparation) + events]
+    return tuple(
+        {**dict(zip(names, row)), "metric_version": RESOURCE_METRIC_VERSION if row[7] == "archived_resource_calendar" else METRIC_VERSION}
+        for row in _CATALOG + tuple(resources) + tuple(preparation) + events
+    )
+
+
+_METRIC_DEFINITIONS = _build_metric_definitions()
+
+
+def metric_definitions() -> List[Dict[str, Any]]:
+    return list(_METRIC_DEFINITIONS)
 
 
 def metric_value(value, *, total=1, unknown=0, subtotal=None, state=None, scope="full_admission", reason=None, covered_refs=None, metric_version=METRIC_VERSION):
@@ -88,10 +98,7 @@ def admission_operations(facts, settings, disposition):
     return refs, deferred, skipped
 
 
-def delivery_coverage(facts, tasks, batch_refs, deferred_refs, *, candidate=None, items=None):
-    if items is None:
-        deferred_ids = {facts.operations[ref] for ref in deferred_refs}
-        items = project_decision_delivery(facts, tasks, batch_refs, deferred_ids=deferred_ids, candidate=candidate)
+def delivery_coverage(items):
     summary = delivery_summary(items)
     coverage = {**summary, "state": "complete" if summary["complete_batch_count"] == summary["batch_count"] else "partial",
                 "delivery_state": summary["state"]}
@@ -120,7 +127,7 @@ def candidate_metrics(candidate, tasks, facts, disposition, batch_refs, *, deliv
     state = "unavailable" if not has_result or not input_known else "partial" if missing or skipped else "complete"
     schedulable = {"state": state, "expected_count": len(expected), "scheduled_count": len(scheduled) if has_result else None,
                    "missing_count": len(missing) if has_result else None, "skipped_count": len(skipped), "deferred_count": len(deferred)}
-    coverage, values = delivery_coverage(facts, tasks, batch_refs, deferred, candidate=candidate, items=delivery_items)
+    coverage, values = delivery_coverage(delivery_items)
     if not has_result:
         coverage["state"] = "unavailable"
     saved = saved_metrics(candidate["artifact"], [])
@@ -205,11 +212,6 @@ def operation_change_metrics(comparisons, operation_refs, reference_available, *
                                                     subtotal=changed, reason=reason if unknown else None),
             "machine_change_count": metric_value(None if machine_unknown else machines, total=len(operation_refs), unknown=machine_unknown,
                                                  subtotal=machines, reason=reason if machine_unknown else None)}
-
-
-def metric_deltas(values, reference_values, *, work_scope_comparable):
-    return {definition["key"]: metric_delta(definition, values[definition["key"]], reference_values.get(definition["key"], {}),
-                                             work_scope_comparable=work_scope_comparable) for definition in metric_definitions()}
 
 
 def metric_delta(definition, selected, previous, *, work_scope_comparable=True):

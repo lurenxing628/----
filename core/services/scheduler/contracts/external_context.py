@@ -42,7 +42,7 @@ def _group_problem(row, part_no, sequence):
     if row["group_part_no"] != part_no or row["merge_mode"] not in ("merged", "separate"):
         return "批次保存的外协分组关系不完整，不能按当前模板猜测。"
     low, high = row["start_sequence"], row["end_sequence"]
-    if type(low) is not int or type(high) is not int or not 0 < low <= sequence <= high:
+    if type(low) is not int or type(high) is not int or type(sequence) is not int or not 0 < low <= sequence <= high:
         return "批次保存的外协分组范围与本工序不一致，请核对批次工序。"
     if not _reference(row["group_ref"]):
         return "批次保存的外协分组缺少来源编号，请联系维护人员核对。"

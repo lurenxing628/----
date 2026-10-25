@@ -3,7 +3,6 @@
 import pytest
 from flask import Blueprint
 
-from core.services.batch.service import BatchService
 from tests.workbench.piece_chain_support import adopt_candidate, adopt_trial, piece_candidate, saved_trial
 from tests.workbench.point_downstream_support import ACTUAL, FIELD, app_for, read
 from tests.workbench.trial_support import snapshot
@@ -71,11 +70,11 @@ def test_dashboard_retains_adopted_piece_and_common_quantities_after_live_batch_
     for name, rows in original.items():
         assert rows == adopted, name
 
-    # This fixture edits current master data through the real domain service.
+    # This fixture changes only current batch master data.
     # It does not change any captured run, adopted audit, task, or plan row;
     # an older adopted task must retain its original work even after such drift.
-    changed = BatchService(case.conn).update("B1", quantity=5)
-    assert changed.quantity == 5
+    case.conn.execute("UPDATE Batches SET quantity=5 WHERE batch_id='B1'")
+    case.conn.commit()
     assert case.conn.execute("SELECT quantity FROM Batches WHERE batch_id='B1'").fetchone()[0] == 5
     refreshed = _read_quantities(client, case, plan_ref)
     for name, rows in refreshed.items():

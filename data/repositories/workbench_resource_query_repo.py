@@ -3,7 +3,7 @@
 from core.models.workbench_resource_status import RAW_RESOURCE_STATUSES, SPECIAL_INACTIVE_REASONS
 
 from .base_repo import BaseRepository
-from .workbench_resource_dependencies import DEPENDENCIES
+from .workbench_resource_dependencies import DEPENDENCIES, report_revision_rows
 from .workbench_resource_state_repo import RESOURCE_KEYS
 
 _TABLES = {**RESOURCE_KEYS, "supplier": ("Suppliers", "supplier_id")}
@@ -22,9 +22,17 @@ def _public_status(kind):
 
 
 class WorkbenchResourceQueryRepository(BaseRepository):
+    def _order(self, query, key):
+        sort = {"business_code": "source." + key, "label": "source.name",
+                "status": _public_status(query.kind), "default_days": "source.default_days"}.get(query.sort)
+        if sort is None:
+            return "source." + key
+        return sort + " " + query.direction.upper() + (", source." + key + " ASC" if query.sort != "business_code" else "")
+
     def toolbar_keys(self, query):
         key, source, where, params = self._scope(query)
-        return [row["business_code"] for row in self.fetchall("SELECT source." + key + " AS business_code" + source + where + " ORDER BY source." + key, params)]
+        return [row["business_code"] for row in self.fetchall(
+            "SELECT source." + key + " AS business_code" + source + where + " ORDER BY " + self._order(query, key), params)]
 
     def _scope(self, query):
         table, key = _TABLES[query.kind]
@@ -47,18 +55,29 @@ class WorkbenchResourceQueryRepository(BaseRepository):
 
     def page(self, query):
         key, source, where, params = self._scope(query)
-        total = int(self.fetchvalue("SELECT COUNT(*)" + source + where, params, default=0))
+        total = self.fetchvalue("SELECT COUNT(*)" + source + where, params)
         join = " LEFT JOIN WorkbenchEntityRefs AS refs ON refs.kind=? AND refs.active=1 AND refs.entity_key=source." + key
-        sort = {"business_code": "source." + key, "label": "source.name", "status": _public_status(query.kind), "default_days": "source.default_days"}[query.sort]
-        order = sort + " " + query.direction.upper() + (", source." + key + " ASC" if query.sort != "business_code" else "")
+        order = self._order(query, key)
         rows = self.fetchall("SELECT source." + key + " AS business_code, refs.ref, refs.revision" + source + join + where
                              + " ORDER BY " + order + " LIMIT ? OFFSET ?", [query.kind] + params + [query.size, (query.number - 1) * query.size])
         return rows, total
 
-    def scope_state(self, kind):
-        counts = {table + "." + key: self.fetchall(f"SELECT {key} AS resource_key,COUNT(*) AS amount FROM {table} "
-                                                 f"WHERE {key} IS NOT NULL GROUP BY {key} ORDER BY {key}")
-                  for table, key in DEPENDENCIES.get(kind, ())}
+    def scope_state(self, kind, *, identities, report_revisions):
+        counts = {}
+        for table, key in DEPENDENCIES.get(kind, ()):
+            if table == "WorkbenchProductionReportRevisions":
+                rows_by_code = report_revision_rows(self.conn, kind, key, identities=identities)
+                report_revisions[(kind, key)] = rows_by_code
+                counts[table + "." + key] = [
+                    {"resource_key": code, "amount": len(rows)}
+                    for code, rows in sorted(rows_by_code.items())
+                    if rows
+                ]
+            else:
+                counts[table + "." + key] = self.fetchall(
+                    f"SELECT {key} AS resource_key,COUNT(*) AS amount FROM {table} "
+                    f"WHERE {key} IS NOT NULL GROUP BY {key} ORDER BY {key}"
+                )
         return {"dependencies": counts}
 
     def create_relations(self, kind):
@@ -89,9 +108,9 @@ class WorkbenchResourceQueryRepository(BaseRepository):
         return result
 
     def summary(self):
-        result = {kind: int(self.fetchvalue(f"SELECT COUNT(*) FROM {table}", default=0)) for kind, (table, _) in _TABLES.items()}
-        result["part"] = int(self.fetchvalue("SELECT COUNT(*) FROM Parts", default=0))
-        result["material"] = int(self.fetchvalue("SELECT COUNT(*) FROM Materials", default=0))
-        result["internal_op_types"] = int(self.fetchvalue("SELECT COUNT(*) FROM OpTypes WHERE category IN ('internal','both')", default=0))
-        result["external_op_types"] = int(self.fetchvalue("SELECT COUNT(*) FROM OpTypes WHERE category IN ('external','both')", default=0))
+        result = {kind: self.fetchvalue(f"SELECT COUNT(*) FROM {table}") for kind, (table, _) in _TABLES.items()}
+        result["part"] = self.fetchvalue("SELECT COUNT(*) FROM Parts")
+        result["material"] = self.fetchvalue("SELECT COUNT(*) FROM Materials")
+        result["internal_op_types"] = self.fetchvalue("SELECT COUNT(*) FROM OpTypes WHERE category IN ('internal','both')")
+        result["external_op_types"] = self.fetchvalue("SELECT COUNT(*) FROM OpTypes WHERE category IN ('external','both')")
         return result

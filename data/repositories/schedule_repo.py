@@ -1,110 +1,27 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Union, cast
-
-from core.models import Schedule
+from typing import Any, Mapping, Sequence
 
 from .base_repo import BaseRepository
-from .schedule_detail_query import build_schedule_detail_sql
-from .schedule_rows import ScheduleDetailRow, ScheduleSeedRow
-from .schedule_time_sql import parse_dt_for_sql, register_schedule_time_sql_functions, time_dt
-
-
-def _require_schedule_op_id(schedule: Schedule) -> int:
-    op_id = schedule.op_id
-    if op_id is None:
-        raise ValueError("schedule.op_id is required")
-    return int(op_id)
 
 
 class ScheduleRepository(BaseRepository):
     """排程结果仓库（Schedule）。"""
 
-    def __init__(self, conn, logger=None):
-        super().__init__(conn, logger=logger)
-        register_schedule_time_sql_functions(conn)
-
-    def get(self, schedule_id: int) -> Optional[Schedule]:
-        row = self.fetchone(
-            "SELECT id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version, created_at FROM Schedule WHERE id = ?",
-            (int(schedule_id),),
-        )
-        return Schedule.from_row(row) if row else None
-
-    def list_version_rows_by_op_ids_start_range(
-        self,
-        *,
-        version: int,
-        op_ids: Sequence[int],
-        start_time: str,
-        end_time: str,
-        chunk_size: int = 900,
-    ) -> List[ScheduleSeedRow]:
-        """
-        查询指定版本与 [start_time, end_time) 范围“有重叠”的排程记录，并限定 op_id 集合。
-
-        主要用于“冻结窗口”：
-        - sqlite 默认变量上限 999，因此这里默认分块查询
-        - 返回 dict 行（不转模型），便于上层做 seed 构建
-        """
-        ids: List[int] = []
-        for x in (op_ids or []):
-            try:
-                v = int(x)
-            except (TypeError, ValueError):
-                continue
-            if v > 0:
-                ids.append(v)
-        if not ids:
-            return []
-        parsed_start_time = parse_dt_for_sql(start_time)
-        parsed_end_time = parse_dt_for_sql(end_time)
-        if parsed_start_time is None or parsed_end_time is None:
-            raise ValueError("冻结窗口查询时间写法不对，无法读取旧排程种子")
-
-        out: List[ScheduleSeedRow] = []
-        for i in range(0, len(ids), int(chunk_size)):
-            chunk = ids[i : i + int(chunk_size)]
-            placeholders = ",".join(["?"] * len(chunk))
-            sql = f"""
-            SELECT op_id, machine_id, operator_id, start_time, end_time
-            FROM Schedule
-            WHERE version = ?
-              AND op_id IN ({placeholders})
-              AND {time_dt(None, "start_time")} < ?
-              AND {time_dt(None, "end_time")} > ?
-            """
-            params: List[Any] = [int(version)] + list(chunk) + [parsed_end_time, parsed_start_time]
-            out.extend(cast(List[ScheduleSeedRow], self.fetchall(sql, tuple(params))))
-        return out
-
-    def list_by_version_with_details(self, version: int) -> List[ScheduleDetailRow]:
-        """
-        查询指定版本的全部排程记录，并补齐甘特图/关键链识别所需的关联信息。
-
-        说明：
-        - 返回 dict 行（带 join 字段），供服务层直接拼装输出。
-        """
-        sql = build_schedule_detail_sql(where_clauses=("s.version = ?",))
-        return cast(List[ScheduleDetailRow], self.fetchall(sql, (int(version),)))
-
-    def bulk_create(self, schedules: Sequence[Union[Schedule, Dict[str, Any]]]) -> int:
-        params = []
-        for item in schedules:
-            s = item if isinstance(item, Schedule) else Schedule.from_row(item)
-            params.append(
-                (
-                    _require_schedule_op_id(s),
-                    s.machine_id,
-                    s.operator_id,
-                    s.start_time,
-                    s.end_time,
-                    s.lock_status,
-                    int(s.version),
-                )
-            )
-        cur = self.executemany(
+    def bulk_create(self, schedules: Sequence[Mapping[str, Any]]) -> int:
+        return self.executemany(
             "INSERT INTO Schedule (op_id, machine_id, operator_id, start_time, end_time, lock_status, version) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            params,
-        )
-        return cur.rowcount
+            (
+                (
+                    item["op_id"],
+                    item["machine_id"],
+                    item["operator_id"],
+                    item["start_time"],
+                    item["end_time"],
+                    item["lock_status"],
+                    item["version"],
+                )
+                for item in schedules
+            ),
+        ).rowcount
+

@@ -3,12 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, Tuple
 
 from core.errors import ValidationError
-from core.models.schedule_resource_filter import (
-    SUPPORTED_SCHEDULE_RESOURCE_TYPES,
-    normalize_schedule_resource_filter,
-)
-
-SUPPORTED_REPORT_RESOURCE_TYPES = SUPPORTED_SCHEDULE_RESOURCE_TYPES
+from core.models.schedule_resource_filter import normalize_schedule_resource_filter
 
 # normalize_report_resource_filter 的 6 个资源筛选实参名(顺序=签名参数序)。
 # web 侧从 request.args 抄这组键时一律遍历本常量,不要再手维第二份键名列表(R67 收口点)。

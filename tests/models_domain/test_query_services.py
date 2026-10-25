@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import sqlite3
 
-from core.services.personnel.operator_machine_query_service import OperatorMachineQueryService
+from core.services.personnel.operator_machine_normalizers import normalize_operator_machine_row
+from core.services.workbench.resource.projection import _authorization_issues
 from data.repositories import OperatorMachineRepository, ScheduleHistoryRepository
 
 
@@ -48,7 +49,7 @@ def _operator_machine_repository() -> OperatorMachineRepository:
 
 
 def _operator_machine_rows_by_key(rows):
-    return {(r.get("operator_id"), r.get("machine_id")): r for r in rows}
+    return {(r["operator_id"], r["machine_id"]): r for r in rows}
 
 
 def _assert_operator_machine_link(row, *, skill_level, is_primary, dirty_skill):
@@ -60,13 +61,10 @@ def _assert_operator_machine_link(row, *, skill_level, is_primary, dirty_skill):
         assert row.get("dirty_fields", []) == []
 
 
-def test_operator_machine_query_service_lists_with_names_and_linkage_rows() -> None:
+def test_operator_machine_normalizer_lists_with_names_and_linkage_rows() -> None:
     repo = _operator_machine_repository()
-    by_machine = OperatorMachineQueryService._normalize_rows(repo.list_with_names_by_machine())
-    by_operator = OperatorMachineQueryService._normalize_rows(repo.list_with_names_by_operator())
-    assert [(row["machine_id"], row["operator_id"]) for row in by_machine] == [
-        ("M1", "O1"), ("M1", "O2"), ("M2", "O1"),
-    ]
+    raw_rows = repo.list_simple_rows_for_operators(["O1", "O2"])
+    by_operator = [normalize_operator_machine_row(row) for row in raw_rows]
     assert [(row["operator_id"], row["machine_id"]) for row in by_operator] == [
         ("O1", "M1"), ("O1", "M2"), ("O2", "M1"),
     ]
@@ -74,8 +72,19 @@ def test_operator_machine_query_service_lists_with_names_and_linkage_rows() -> N
     _assert_operator_machine_link(rows[("O1", "M1")], skill_level="expert", is_primary="yes", dirty_skill=True)
     _assert_operator_machine_link(rows[("O1", "M2")], skill_level="beginner", is_primary="no", dirty_skill=True)
     _assert_operator_machine_link(rows[("O2", "M1")], skill_level="normal", is_primary="no", dirty_skill=False)
-    assert rows[("O1", "M1")]["operator_name"] == "张三"
-    assert rows[("O1", "M1")]["machine_name"] == "机床1"
+    assert _authorization_issues(raw_rows) == [
+        {
+            "code": "machine_authorization_dirty",
+            "fields": ["skill_level"],
+            "message": "设备“M1”的授权记录要核对，涉及：技能等级。系统只是按兼容规则解释，原值没有被改。",
+        },
+        {
+            "code": "machine_authorization_dirty",
+            "fields": ["skill_level"],
+            "message": "设备“M2”的授权记录要核对，涉及：技能等级。系统只是按兼容规则解释，原值没有被改。",
+        },
+    ]
+
 
 
 def test_schedule_history_query_service_versions_and_latest() -> None:
@@ -118,15 +127,3 @@ def test_schedule_history_query_service_versions_and_latest() -> None:
     assert h1.version == 1
     assert h1.strategy == "s_new"
     assert h1.result_status == "fail"
-
-    versions = q.list_versions(limit=10)
-    assert [int(r["version"] or 0) for r in versions] == [2, 1]
-    v1 = [r for r in versions if int(r["version"] or 0) == 1][0]
-    assert v1["strategy"] == "s_new"
-    assert v1["result_status"] == "fail"
-    assert v1["schedule_time"] == "2026-03-02 10:00:00"
-
-    recent = q.list_recent(limit=2)
-    assert len(recent) == 2
-    assert int(recent[0].version or 0) == 2
-    assert int(recent[1].version or 0) == 1

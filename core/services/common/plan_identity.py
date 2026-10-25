@@ -11,7 +11,7 @@ from core.models.schedule_plan_role import (
     SOURCE_SCHEDULE,
     plan_role_label,
 )
-from core.models.scheduler_history_parser import parse_result_summary_payload
+from core.models.scheduler_history_parser import ResultSummaryParseResult
 
 _VALID_PLAN_SOURCE_TABLES = frozenset((SOURCE_SCHEDULE, SOURCE_CANDIDATE_ROWS, SOURCE_ADJUSTMENT_SCENARIO_ROWS))
 
@@ -76,10 +76,6 @@ def _valid_source(value: Any) -> str:
     return source
 
 
-def _int_or_none(value: Any) -> Optional[int]:
-    return int(value) if value is not None else None
-
-
 def _result_status(value: Any) -> Optional[str]:
     return _text(value).lower() or None
 
@@ -131,20 +127,20 @@ def build_plan_identity(
     latest_official_version: Optional[int],
     schedule_lock_status: Optional[str],
     detail_saved: Any,
+    summary_parse: ResultSummaryParseResult,
 ) -> PlanIdentity:
-    requested = _text(requested_role) or ROLE_ADOPTED
-    effective = _text(effective_role) or ROLE_ADOPTED
-    resolution_status = _text(status) or "not_found"
+    requested = _text(requested_role)
+    effective = _text(effective_role)
+    resolution_status = _text(status)
     source = _valid_source(source_table)
-    version_value = _int_or_none(version)
-    latest_version = _int_or_none(latest_official_version)
     is_preview = _is_preview_plan(scenario_id=scenario_id, source_table=source, status=resolution_status)
-    summary_parse = parse_result_summary_payload(result_summary)
     summary_unavailable, summary_reason = _summary_unavailable(result_summary, summary_parse)
     # is_simulation 是派工/反馈的灵魂线；摘要解析失败时按模拟方案处理，禁止写现场事实。
-    is_simulation = is_preview or summary_parse.parse_failed or bool((summary_parse.payload or {}).get("is_simulation"))
-    is_current = _is_current_version(version_value, latest_version)
-    is_superseded = _is_superseded_version(version_value, latest_version)
+    is_simulation = is_preview or summary_parse.parse_failed or bool(
+        summary_parse.payload and summary_parse.payload.get("is_simulation")
+    )
+    is_current = _is_current_version(version, latest_official_version)
+    is_superseded = _is_superseded_version(version, latest_official_version)
     is_official = _is_official_plan(
         source_table=source,
         requested_role=requested,
@@ -171,7 +167,7 @@ def build_plan_identity(
     )
     label = plan_role_label(effective) if not is_preview else user_label
     return PlanIdentity(
-        version=version_value,
+        version=version,
         requested_plan_role=requested,
         effective_plan_role=effective,
         plan_resolution_status=resolution_status,

@@ -6,10 +6,13 @@
   const measure = v => v === null || typeof v === 'number' && Number.isFinite(v);
   const fields = (v, keys) => object(v) && keys.every(k => Object.prototype.hasOwnProperty.call(v, k));
   function check(value, message = '试调数据不完整或不一致，请刷新后重试。') { if (!value) throw new Error(message); }
+  const DAYS = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   function time(v) {
-    // Keep the wire value intact: Date only validates the calendar part, never serializes business time.
-    return typeof v === 'string' && /^(?!0000)\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(?!000000$)\d{6})?(?![\s\S])/.test(v)
-      && Number.isFinite(Date.parse(v.slice(0, 19) + 'Z')) && new Date(v.slice(0, 19) + 'Z').toISOString().slice(0, 19) === v.slice(0, 19);
+    // Keep the wire value intact: calendar fields are validated directly without Date allocation or timezone serialization.
+    if (typeof v !== 'string' || !/^(?!0000)\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.(?!000000$)\d{6})?(?![\s\S])/.test(v)) return false;
+    const y = (v.charCodeAt(0) - 48) * 1000 + (v.charCodeAt(1) - 48) * 100 + (v.charCodeAt(2) - 48) * 10 + (v.charCodeAt(3) - 48);
+    const m = (v.charCodeAt(5) - 48) * 10 + (v.charCodeAt(6) - 48), d = (v.charCodeAt(8) - 48) * 10 + (v.charCodeAt(9) - 48);
+    return m >= 1 && m <= 12 && d >= 1 && d <= (m === 2 && y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0) ? 29 : DAYS[m]);
   }
   function base(v) { check(object(v) && Object.keys(v).length === 1 && ['plan_ref', 'candidate_ref'].some(k => ref(v[k]))); return v; }
   function scope(v = {}) {

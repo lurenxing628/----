@@ -1,6 +1,6 @@
 """Current-official and unified execution adapters under one caller read snapshot."""
 
-from typing import Any
+from typing import Any, Dict, cast
 
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.content import content_text
@@ -57,18 +57,21 @@ class _EntityRefs:
 class DashboardFacts:
     def __init__(self, conn, now):
         self.conn, self.now = conn, now
-        self.repo = DashboardSourceRepository(conn)
+        self.repo: DashboardSourceRepository
         self.raw, self.plan, self.delivery, self.tasks, self.execution = {}, None, None, [], None
         self.plan_state, self.plan_issues, self.execution_issues = "no_official_plan", [], []
         self.task_rows, self.execution_facts, self.delivery_facts = [], None, None
+        self._typed_execution_facts = None
         self.pressure = {"state": "unavailable", "resource_count": None, "issues": []}
         self.candidates = {"state": "unavailable", "run_count": None, "issues": []}
         self._ledger = None
-        self._calendar_factory = None
+        self.calendar_factory = None
         self._resource_pressure_cache = {}
         self._resource_pressure_index = None
         self._resource_pressure_window = None
         self._resource_pressure_cohort = None
+        self._resource_pressure_tasks = None
+        self._resource_pressure_intervals = None
         self._resource_pressure_identity_issues = []
         self._entity_refs = {}
         self._observations = {}
@@ -88,6 +91,7 @@ class DashboardFacts:
     def load(self, *, include_candidates=True):
         """Read sources under the caller's snapshot; project() then works on them without SQLite."""
         with read_evidence_scope(self.conn):
+            self.repo = DashboardSourceRepository(self.conn)
             return self._load_sources(include_candidates=include_candidates)
 
     def _load_sources(self, *, include_candidates=True):
@@ -163,7 +167,7 @@ class DashboardFacts:
             self.raw["plan_identity_revision"] = context.references.read_revision()
             self.plan_state = "loaded"
             self._capture_calendar_inputs(resource_ids(original_rows, "machine"))
-            self.pressure, self.raw["resource_pressure"], self._calendar_factory = capture_resource_pressure(
+            self.pressure, self.raw["resource_pressure"], self.calendar_factory = capture_resource_pressure(
                 self.conn, entry=entry, scope=scope, resources=resources, identities=resource_state, plan_span=span,
                 context=context, facts=self, captured_calendar=self.calendar_inputs)
         except WorkbenchPlanReferenceError as exc:
@@ -179,12 +183,11 @@ class DashboardFacts:
         self.plan_issues = [source_issue(code, message)]
 
     def _load_execution(self):
-        if self.plan is None:
-            raise RuntimeError("Execution risk requires the resolved current official plan")
+        # 只在 plan_state == "loaded" 时调用，正式计划这时已经读出。
+        plan = cast(Dict[str, Any], self.plan)
         ledger = ExecutionLedgerService(self.conn, clock=lambda: self.now)
         try:
-            ledger.require_schema()
-            facts = ledger.load_many([task["operation_ref"] for task in self.tasks], comparison_plan_ref=self.plan["plan_ref"])
+            facts = ledger.load_many([task["operation_ref"] for task in self.tasks], comparison_plan_ref=plan["plan_ref"])
             self.raw["execution_operation_sources"] = {ref: row["source"] for ref, row in facts["operations"].items()}
             facts = {**facts, "operations": {ref: dict(row, source=read_source_type(row["source"]))
                                             for ref, row in facts["operations"].items()}}
@@ -194,7 +197,8 @@ class DashboardFacts:
 
     def _project_execution(self, ledger, facts):
         try:
-            self.execution_facts = typed(facts)
+            self.execution_facts = facts
+            self._typed_execution_facts = None
             self.execution = {row.operation_ref: row.to_dict() for row in ledger.project_loaded(facts, contexts=False)}
             for task in self.tasks:
                 projection = self.execution[task["operation_ref"]]
@@ -211,8 +215,10 @@ class DashboardFacts:
 
     def snapshot_contents(self, *, view=None):
         """Encode original sources and their view state once, without nested source documents."""
+        if self._typed_execution_facts is None and self.execution_facts is not None:
+            self._typed_execution_facts = typed(self.execution_facts)
         return content_text({"raw": self.raw, "plan": self.plan, "state": self.plan_state,
                              "tasks": self.tasks, "task_rows": self.task_rows,
-                             "delivery": self.delivery_facts, "execution": self.execution_facts,
+                             "delivery": self.delivery_facts, "execution": self._typed_execution_facts,
                              "plan_issues": self.plan_issues, "execution_issues": self.execution_issues,
                              "view": view})

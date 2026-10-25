@@ -84,14 +84,6 @@ reportPage.props.onSize(20); reportPage.props.onPage(3);
 assert.equal(JSON.stringify(calls), '[{"page":1,"size":20},{"page":3}]');
 const calibration = context.window.CalibrationControls.Page({ page: { number: 1, size: 37, total_pages: 2, total: 40 }, onChange() {} });
 assert.deepEqual(Array.from(calibration.props.sizes), [10, 20, 37, 50]); assert.equal(calibration.props.pages, 2);
-for (const file of ['ReportDetail.jsx', 'CalibrationDetail.jsx']) {
-  const source = fs.readFileSync(path.join(base, file), 'utf8');
-  assert(source.includes('WorkbenchDetailPanel'), file); assert(!source.includes('<pre'), file);
-}
-const workspace = fs.readFileSync(path.join(base, 'ReportWorkspace.jsx'), 'utf8');
-assert(workspace.includes('role="tablist"')); assert(workspace.includes('onClick={() => target !== mode && go(target, true)}'));
-assert(!workspace.includes('if (target === mode) return;'), 'Returning to a source in the same workspace must remain possible');
-assert(workspace.includes('returnTo: { view: mode, context: currentContext() }'));
 const categories = {
   external: { issues: [], unknown_count: 4, evaluation_gaps: [
     { source_ref: 'a', subject: '批次 A · 工序 10', code: 'association_missing', message: '关联资料缺失，请联系维护人员。' },

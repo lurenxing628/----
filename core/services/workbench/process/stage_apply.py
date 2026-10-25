@@ -8,8 +8,6 @@ from core.services.process.template_hours import ProcessTemplateHours
 from core.services.process.template_source import group_suppliers_consistent
 from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.part_operation_repo import PartOperationRepository
-from data.repositories.supplier_repo import SupplierRepository
-from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 
 from .zero_hours import require_zero_confirmation
 
@@ -30,22 +28,14 @@ def _related(identities, ref, kind, cache):
     return current.entity_key
 
 
-def source_catalog(conn, logger=None, facts=None):
-    if facts is not None:
-        references = facts["references"]
-        types = {row["op_type_id"]: row for row in references["OpTypes"]}
-        profiles = {row["supplier_id"]: row for row in references["WorkbenchSupplierProfiles"]}
-        suppliers = {row["supplier_id"]: dict(row, inactive_reason=profiles.get(row["supplier_id"], {}).get("inactive_reason"))
-                     for row in references["Suppliers"]}
-        capabilities = {(row["supplier_id"], row["op_type_id"]) for row in
-                        supplier_capability_rows(references["Suppliers"], references["WorkbenchSupplierOpTypes"], "active")
-                        if not row["missing_supplier"]}
-        return types, suppliers, capabilities
-    repo = WorkbenchProcessQueryRepository(conn, logger)
-    types = {row["op_type_id"]: row for row in repo.op_type_reference_rows()}
-    suppliers = {row["supplier_id"]: row for row in repo.supplier_status_rows()}
+def source_catalog(references):
+    types = {row["op_type_id"]: row for row in references["OpTypes"]}
+    profiles = {row["supplier_id"]: row for row in references["WorkbenchSupplierProfiles"]}
+    suppliers = {row["supplier_id"]: dict(row, inactive_reason=profiles.get(row["supplier_id"], {}).get("inactive_reason"))
+                 for row in references["Suppliers"]}
     capabilities = {(row["supplier_id"], row["op_type_id"]) for row in
-                    SupplierRepository(conn, logger).list_capabilities(status="active") if not row["missing_supplier"]}
+                    supplier_capability_rows(references["Suppliers"], references["WorkbenchSupplierOpTypes"], "active")
+                    if not row["missing_supplier"]}
     return types, suppliers, capabilities
 
 
@@ -62,13 +52,12 @@ def require_supplier(operation, supplier_key, type_key, catalog):
     if (supplier_key, type_key) not in capabilities:
         raise WorkbenchCommandRejected("supplier_capability_mismatch", prefix + "不能承接" + types[type_key]["name"] + "，请改选承接此工种的供应商。", 422,
                                        operation_refs=[operation["ref"]])
-    return supplier
 
 
 def prepare_source(payload, operations, identities, *, catalog):
     active = exact_operations(payload, operations)
     types = catalog[0]
-    changes, affected, cache = [], set(), {}
+    changes, cache = [], {}
     for row in payload["operations"]:
         old = active[row["ref"]]
         type_key = _related(identities, row["op_type_ref"], "op_type", cache)
@@ -81,8 +70,7 @@ def prepare_source(payload, operations, identities, *, catalog):
         values = (row["source"], type_key, supplier_key)
         if values != (old["source"], old["op_type_id"], old["supplier_id"]):
             changes.append(values + (old["id"],))
-            affected.add(old["seq"])
-    return changes, affected
+    return changes
 
 
 def apply_source(conn, changes, operations):
@@ -152,11 +140,11 @@ def _hours_updates(payload, active, merged):
     return updates
 
 
-def prepare_hours(conn, payload, operations, groups, *, confirmations=None):
+def prepare_hours(payload, operations, groups, *, confirmations):
     active = exact_operations(payload, operations)
     merged = _merged_hours_groups(payload, active, groups)
     updates = _hours_updates(payload, active, merged)
-    require_zero_confirmation(conn, [(active[row["ref"]], row) for row in payload["operations"]],
+    require_zero_confirmation([(active[row["ref"]], row) for row in payload["operations"]],
                               payload["confirm_zero_unit_hours"], states=confirmations)
     group_updates = [(merged[row["ref"]], row["total_days"]) for row in payload["groups"]
                      if merged[row["ref"]]["total_days"] != row["total_days"]]
@@ -173,7 +161,3 @@ def apply_prepared_hours(conn, prepared):
     for old, days in group_updates:
         group_repo.set_total_days(old["group_id"], days)
     return bool(updates or group_updates)
-
-
-def apply_hours(conn, payload, operations, groups):
-    return apply_prepared_hours(conn, prepare_hours(conn, payload, operations, groups))

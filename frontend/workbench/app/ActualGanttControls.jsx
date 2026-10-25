@@ -30,29 +30,31 @@
           <Button icon={view.details ? 'panel-right-close' : 'panel-right-open'} aria-expanded={view.details} aria-controls="actual-gantt-detail" onClick={() => patch({ details: !view.details })}>{view.details ? '收起详情' : '详情'}</Button>
           <TimelineZoom zoom={zoom} max={1024} onZoom={onZoom} onFit={onFit} className="fg-icon-button" />
           <span className="fg-muted" aria-label="时间轴刻度" data-tick-step={step}>刻度 {M.tickLabel(step)}</span>
-          <Button className="fg-icon-button" icon="search" aria-label="定位选中工序" disabled={!model.items.some(i => i.task.task_ref === view.selected)} onClick={onLocate} />
+          <Button className="fg-icon-button" icon="search" aria-label="定位选中工序" disabled={!(model.shownRefs ? model.shownRefs.has(view.selected) : model.items.some(i => i.task.task_ref === view.selected))} onClick={onLocate} />
         </div></div>
     </div>;
   }
+  const edgeLabels = { process: '工艺先后', machine: '设备接续', operator: '人员接续' };
   function Chain({ index, model, onLocate }) {
-    const { graph, nodes } = index;
-    const visible = new Set(model.items.map(item => item.task.task_ref));
-    const incoming = new Map(graph.critical_edges.map(edge => [edge.to_task_ref, edge]));
-    const edgeLabels = { process: '工艺先后', machine: '设备接续', operator: '人员接续' };
+    const { graph, nodes } = index, locateRef = React.useRef(onLocate);
+    locateRef.current = onLocate;
+    const visible = React.useMemo(() => model.shownRefs || new Set(model.items.map(item => item.task.task_ref)), [model.shownRefs, model.items]);
+    const incoming = React.useMemo(() => new Map(graph.critical_edges.map(edge => [edge.to_task_ref, edge])), [graph.critical_edges]);
+    const steps = React.useMemo(() => graph.critical_task_refs.map(ref => {
+      const node = nodes.get(ref), edge = incoming.get(ref);
+      return <div className="fg-chain-step" key={ref}>
+        {edge && <span className="fg-chain-edge-label" data-edge-type={edge.edge_type} data-chain-edge-reason>{edgeLabels[edge.edge_type]}</span>}
+        <Button className="fg-chain-node" icon="search" data-chain-node={ref}
+          title={M.taskLabel(node) + ' · ' + M.time(node.start) + ' 至 ' + M.time(node.end)} onClick={() => locateRef.current(ref)}>
+          <span className="fg-chain-node-label"><span>{node.batch_id} · {M.pieceLabel(node)}</span><small>{node.sequence} {node.process_label}</small>
+            <small>{M.time(node.start)} 至 {M.time(node.end)}{!visible.has(ref) && ' · 当前视图外'}</small></span>
+        </Button>
+      </div>;
+    }), [graph.critical_task_refs, nodes, incoming, visible]);
+    const shownCount = React.useMemo(() => graph.critical_task_refs.reduce((count, ref) => count + (visible.has(ref) ? 1 : 0), 0), [graph.critical_task_refs, visible]);
     return <div className="fg-chain-strip" aria-label="所选计划关键链">
-      <div className="fg-chain-flow" role="group" aria-label="关键链工序">
-        {graph.critical_task_refs.map(ref => {
-          const node = nodes.get(ref), edge = incoming.get(ref);
-          return <div className="fg-chain-step" key={ref}>
-            {edge && <span className="fg-chain-edge-label" data-edge-type={edge.edge_type} data-chain-edge-reason>{edgeLabels[edge.edge_type]}</span>}
-            <Button className="fg-chain-node" icon="search" data-chain-node={ref}
-              title={M.taskLabel(node) + ' · ' + M.time(node.start) + ' 至 ' + M.time(node.end)} onClick={() => onLocate(ref)}>
-              <span className="fg-chain-node-label"><span>{node.batch_id} · {M.pieceLabel(node)}</span><small>{node.sequence} {node.process_label}</small>
-                <small>{M.time(node.start)} 至 {M.time(node.end)}{!visible.has(ref) && ' · 当前视图外'}</small></span>
-            </Button>
-          </div>;
-        })}</div>
-      <span className="fg-muted">当前显示 {graph.critical_task_refs.filter(ref => visible.has(ref)).length} / {graph.critical_task_refs.length} 道关键工序 · 与图中的金色标记一致</span>
+      <div className="fg-chain-flow" role="group" aria-label="关键链工序">{steps}</div>
+      <span className="fg-muted">当前显示 {shownCount} / {graph.critical_task_refs.length} 道关键工序 · 与图中的金色标记一致</span>
     </div>;
   }
   function Range({ scope, resources = null, onApply, busy }) {

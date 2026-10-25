@@ -8,19 +8,16 @@ or scheduling read snapshot; a subsequent request gets a new engine.
 """
 
 from dataclasses import replace
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 from core.errors import ValidationError
-from core.models.calendar_periods import decode_periods
 from core.services.common.datetime_normalize import normalize_hhmm
 from data.repositories.operator_shift_repo import OperatorShiftRepository
 
-from .period_offsets import offset_hours, period_offsets
-
 
 class OperatorShiftCalendar:
-    def __init__(self, conn, logger=None, *, capture=None):
-        self.repo = OperatorShiftRepository(conn, logger=logger)
+    def __init__(self, conn, logger=None, *, capture=None, repo=None):
+        self.repo = OperatorShiftRepository(conn, logger=logger) if repo is None else repo
         self.capture = capture
         self._profiles = {}
         self._patterns = {}
@@ -80,24 +77,21 @@ class OperatorShiftCalendar:
         patterns = self._prepare_captured_patterns(self.capture)
         return patterns.get((profile_id, offset))
 
-    def apply_policy(self, policy, operator_id, *, prepare_periods=None):
+    def apply_policy(self, policy, operator_id, *, prepare_periods):
         prepared = self._profile(operator_id)
         if prepared is None:
             return policy
         profile, anchor = prepared
-        try:
-            current = date.fromisoformat(policy.date_str)
-        except (ValueError, TypeError):
-            raise ValidationError("人员班次的轮换基准日期无效，不能推测排班。", field="shift_profile") from None
+        current = date.fromisoformat(policy.date_str)
         offset = (current - anchor).days % profile["cycle_days"]
         key = profile["profile_id"], offset
         if key not in self._patterns:
-            self._patterns[key] = self._pattern(profile["profile_id"], offset, current, prepare_periods)
+            self._patterns[key] = self._pattern(profile["profile_id"], offset, prepare_periods)
         start_time, hours, periods_json, offsets = self._patterns[key]
         return replace(policy, shift_start=start_time, shift_hours=min(policy.shift_hours, hours),
                        periods_json=periods_json, _period_offsets=offsets)
 
-    def _pattern(self, profile_id, offset, current, prepare_periods):
+    def _pattern(self, profile_id, offset, prepare_periods):
         day = self._read_pattern(profile_id, offset)
         if day is None:
             raise ValidationError("人员班次缺少当天的轮换规则，不能回退到默认班次。", field="shift_profile")
@@ -106,18 +100,13 @@ class OperatorShiftCalendar:
         if start is None or end is None:
             raise ValidationError("人员班次缺少开始或结束时间。", field="shift_profile")
         start_time, end_time = datetime.strptime(start, "%H:%M").time(), datetime.strptime(end, "%H:%M").time()
-        begin, finish = datetime.combine(current, start_time), datetime.combine(current, end_time)
-        if finish <= begin:
-            finish += timedelta(days=1)
-        hours = 0.0 if day["is_rest"] else (finish - begin).total_seconds() / 3600
-        periods_json = day["periods_json"]
+        start_min = start_time.hour * 60 + start_time.minute
+        end_min = end_time.hour * 60 + end_time.minute
+        hours = 0.0 if day["is_rest"] else ((end_min - start_min) if end_min > start_min else (1440 - start_min + end_min)) / 60.0
+        periods_json = day.get("periods_json")
         offsets = None
         if periods_json is not None:
-            if prepare_periods is None:
-                offsets = period_offsets(decode_periods(periods_json))
-                full_hours = offset_hours(offsets)
-            else:
-                offsets, full_hours = prepare_periods(periods_json)
+            offsets, full_hours = prepare_periods(periods_json)
             hours = 0.0 if day["is_rest"] else full_hours
         return start_time, hours, periods_json, offsets
 

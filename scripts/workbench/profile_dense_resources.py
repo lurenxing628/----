@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 
 def seed(output, batches, operations):
     from core.infrastructure.database import ensure_schema
-    from core.services.scheduler.config.config_field_spec import default_snapshot_values
+    from core.models.schedule_config_runtime_fields import default_snapshot_values
     from tests.workbench.run_compute_support import RunCase
 
     path = output / "case.sqlite"
@@ -43,7 +43,7 @@ def seed(output, batches, operations):
         case.batch(code)
         for seq in range(1, operations + 1):
             case.operation(code, seq, unit_hours=0.001)
-    case.config(algo_mode="greedy", graph_candidate_weight_count=3, time_budget_seconds=600,
+    case.config(algo_mode="greedy", time_budget_seconds=600,
                 ortools_enabled="no", freeze_window_enabled="no")
     return case, codes
 
@@ -93,7 +93,7 @@ def worker(args):
         "profiled_compute_seconds": seconds, "failure": failure, "original_database_unchanged": preserved,
         "state": None if result is None else result.state, "candidate_row_counts": counts,
         "busy_block_skip_enabled": not args.legacy_busy_skip,
-        "complete": failure is None and preserved and result is not None and result.state == "complete" and counts == [expected] * 4,
+        "complete": failure is None and preserved and result is not None and result.state == "complete" and bool(counts) and all(count == expected for count in counts),
         "timing_scope": "cProfile enabled; shared host, not a dedicated capacity acceptance"}
     (output / "result.json").write_text(json.dumps(proof, indent=2), encoding="utf-8")
     case.conn.close()

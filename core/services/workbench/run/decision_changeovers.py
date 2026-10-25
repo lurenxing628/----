@@ -4,7 +4,7 @@ from core.models.workbench_run_candidate import local_time
 from core.services.workbench.facts.changeovers import changeover_projection, subject_arrangements
 from core.services.workbench.facts.decision_metrics import metric_definitions, metric_delta, metric_value
 
-from .decision_impact import _drill
+from .decision_impact import drill_target
 
 
 class DecisionChangeovers:
@@ -60,7 +60,7 @@ class DecisionChangeovers:
                    **{name: {"operation_ref": task["operation_ref"], "batch_ref": task["batch_ref"], "batch_label": task["batch_label"],
                              "process_label": task["process_label"], "type_ref": task.get("process_type_ref"), "type_label": task.get("process_type_label")}
                       for name, task in (("previous", previous), ("next", current))},
-                   "drill": {name: _drill(source, tasks=[task], batch_ref=task["batch_ref"], operation_ref=task["operation_ref"], before=side == "reference")
+                   "drill": {name: drill_target(source, tasks=[task], batch_ref=task["batch_ref"], operation_ref=task["operation_ref"], before=side == "reference")
                              for name, task in (("previous", previous), ("next", current))}}
             for drill in row["drill"].values():
                 if drill is not None:

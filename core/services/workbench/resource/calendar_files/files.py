@@ -13,7 +13,6 @@ from typing import Any, Dict, List, Optional
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
-from core.models.calendar import WorkCalendar
 from core.models.calendar_period_columns import export_period_columns, parse_period_columns
 from core.models.workbench_calendar_file import (
     CLOCK_FIELDS,
@@ -42,23 +41,18 @@ from core.models.workbench_resource_action import (
 )
 from core.models.workbench_resource_file_source import PreparedImportSource
 
-from ..calendars import WorkbenchCalendarService
+from ..calendars import WorkbenchCalendarService, engine_read_row
 from .file_codec import read_calendar_file, read_clock, read_date, read_number
 from .file_writer import check_capacity, number_text, percent_text, write_calendar_file
 
 _LIMITS = {"shift_hours": (0.0, 24.0, False), "efficiency": (0.0, 200.0, True)}
-_DAY_TYPE_TEXT = {"workday": "工作日", "holiday": "假期"}
-_YES_NO_TEXT = {"yes": "是", "no": "否"}
+DAY_TYPE_TEXT = {"workday": "工作日", "holiday": "假期"}
+YES_NO_TEXT = {"yes": "是", "no": "否"}
 
 
-def _blocked(row) -> bool:
+def row_blocked(row) -> bool:
     """这一行是不是已经出错。预检行的初始状态就是 rejected，判据只能是错误列表。"""
     return bool(row["errors"])
-
-
-def _blank(value: Any) -> bool:
-    # 旧库升级加列时没有回填，工时、效率可能空着；日历引擎和日历页都按默认值解释它们。
-    return value is None or isinstance(value, str) and not value.strip()
 
 
 def range_fingerprint(states: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -93,17 +87,21 @@ class WorkbenchCalendarFileService:
 
     # ---------- 导入 ----------
 
-    def prepare_import(self, content, *, file_format, mode="upsert"):
+    def _prepare_source(self, content, *, file_format, mode):
         request = import_request(self.kind, content, file_format, mode)
         source, notices = read_calendar_file(self.kind, content, file_format)
-        return PreparedImportSource.build(self.kind + ".import", request, source, notices, content=content)
+        prepared = PreparedImportSource.build(self.kind + ".import", request, source, notices, content=content)
+        request["actual_source_ref"] = prepared.source_ref
+        return prepared, request
 
     def preview_import(self, content, *, file_format, mode="upsert"):
-        prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
-            content, file_format=file_format, mode=mode)
-        request = prepared.request_for(self.kind + ".import", file_format, mode)
+        prepared, request = self._prepare_source(content, file_format=file_format, mode=mode)
+        with self.tx.transaction():
+            return self._preview_import(prepared, request)
+
+    def _preview_import(self, prepared: PreparedImportSource, request: Dict[str, Any]):
         source, notices = prepared.parsed()
-        with self.tx.transaction(), self._normalization_operation():
+        with self._normalization_operation():
             rows = self._build_rows(source)
             calendars = {row["row"]: row.pop("calendar") for row in rows if "calendar" in row}
             return replace(CalendarFilePreview.build(self.kind + ".import", request, rows, notices, source=prepared),
@@ -182,7 +180,7 @@ class WorkbenchCalendarFileService:
 
     def _load_states(self, rows) -> Dict[str, Dict[str, Any]]:
         """一次读回整段日期的状态，不逐行查库（roadmap 4.7）。"""
-        days = sorted({row["values"]["date"] for row in rows if not _blocked(row)})
+        days = sorted({row["values"]["date"] for row in rows if not row_blocked(row)})
         if not days:
             return {}
         if (date.fromisoformat(days[-1]) - date.fromisoformat(days[0])).days + 1 > MAX_RANGE_DAYS:
@@ -192,7 +190,7 @@ class WorkbenchCalendarFileService:
         return self.calendar.range_states(days[0], days[-1])
 
     def _classify(self, row, states) -> None:
-        if _blocked(row):
+        if row_blocked(row):
             return
         day = row["values"]["date"]
         fields = {UI_FIELDS[self.kind][key]: value for key, value in row["values"].items() if key in UI_FIELDS[self.kind]}
@@ -201,7 +199,7 @@ class WorkbenchCalendarFileService:
             before = self.calendar.day_state(day, states)
             fields.update(parse_period_columns(row["values"]))
             model = self.calendar.proposed_row(fields, before)
-            after = model.to_dict() if isinstance(model, WorkCalendar) else model
+            after = model if model is None or isinstance(model, dict) else model.to_dict()
         except WorkbenchCommandRejected as exc:
             reject_action_row(row, str(exc), code=exc.code, field="date")
             return
@@ -209,8 +207,8 @@ class WorkbenchCalendarFileService:
             reject_action_row(row, exc.message, field=exc.field or "date")
             return
         row["expected"], row["input"], row["calendar"] = before, after, model
-        row["before"] = self._public(before["row"])
-        row["after"] = self._public(after)
+        row["before"] = self._public(before["row"], before["effective"])
+        row["after"] = row["before"] if after is before["row"] else self._public(after)
         row["action"] = "create" if before["row"] is None else "update"
         if before["row"] is None:
             # 只填日期、其余全空的行，对没配置过的天什么都不写（这天继续走默认规则）。
@@ -246,45 +244,41 @@ class WorkbenchCalendarFileService:
                                 "要上班请填可排工时；要休息请把类型填成「假期」。")
             row["requires_confirmation"] = True
 
-    def _public(self, row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def _public(self, row: Optional[Dict[str, Any]], effective: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
         """把领域行翻成文件列口径，导出、预检对比、回导用的是同一份翻译。
 
-        工时、效率空着的旧行按日历引擎的解释写出（工时按时段或起止推算否则 8 小时、效率 1），与日历页显示一致；
-        原样回导时这两格与引擎解释相同，不算改动。
+        班次开始、工时、效率空着的旧行按日历引擎的解释写出（工时按时段或起止推算否则 8 小时、效率 1），与日历页显示一致；
+        原样回导时这几格与引擎解释相同，不算改动。
         """
         if row is None:
             return None
-        hours, ratio = row["shift_hours"], row["efficiency"]
-        if _blank(hours) or _blank(ratio):
-            effective = self.calendar.effective_day(row["date"], row)
-            hours = effective["hours"] if _blank(hours) else hours
-            ratio = effective["efficiency"] if _blank(ratio) else ratio
-        return {"date": row["date"], "day_type": _DAY_TYPE_TEXT[row["day_type"]],
-                "shift_hours": number_text(hours), "efficiency": percent_text(ratio),
-                "allow_normal": _YES_NO_TEXT[row["allow_normal"]], "allow_urgent": _YES_NO_TEXT[row["allow_urgent"]],
+        row = engine_read_row(row, effective=effective, fill_shift_end=True)
+        return {"date": row["date"], "day_type": DAY_TYPE_TEXT[row["day_type"]],
+                "shift_hours": number_text(row["shift_hours"]), "efficiency": percent_text(row["efficiency"]),
+                "allow_normal": YES_NO_TEXT[row["allow_normal"]], "allow_urgent": YES_NO_TEXT[row["allow_urgent"]],
                 "remark": row["remark"], "shift_start": row["shift_start"], "shift_end": row["shift_end"],
                 **export_period_columns(row)}
 
     def confirm_import(self, preview, content, *, file_format, mode="upsert"):
         if not self.conn.in_transaction:
             raise RuntimeError("日历文件导入确认必须在外层工作台写事务中执行。")
-        with self.tx.transaction():
-            try:
-                current = self.preview_import(PreparedImportSource.confirmation(preview, content), file_format=file_format, mode=mode)
-            except ValidationError as exc:
-                raise WorkbenchCommandRejected(
-                    "stale_write", "文件或日历已经变了，没有导入。请点「重新预检」后再确认。") from exc
-            check_resource_preview(preview, current)
-            body = current.as_dict()
-            changes = [(row["expected"], current.calendars[row["row"]]) for row in body["rows"]
-                       if row["result"] != "unchanged"]
-            self.calendar.write_days(changes, include_refs=False)
-            results = [{"row": row["row"], "business_code": row["business_code"],
-                        "result": "unchanged" if row["result"] == "unchanged" else "committed"}
-                       for row in body["rows"]]
-            changed = any(item["result"] == "committed" for item in results)
-            return WorkbenchCommandOutcome("committed" if changed else "unchanged",
-                                           {"rows": results, "summary": body["summary"]})
+        try:
+            prepared = PreparedImportSource.confirmation(preview, content)
+            request = prepared.request_for(self.kind + ".import", file_format, mode)
+            current = self._preview_import(prepared, request)
+        except ValidationError as exc:
+            raise WorkbenchCommandRejected(
+                "stale_write", "文件或日历已经变了，没有导入。请点「重新预检」后再确认。") from exc
+        body = check_resource_preview(preview, current)
+        changes = [(row["expected"], current.calendars[row["row"]]) for row in body["rows"]
+                   if row["result"] != "unchanged"]
+        self.calendar.write_days(changes, include_refs=False)
+        results = [{"row": row["row"], "business_code": row["business_code"],
+                    "result": "unchanged" if row["result"] == "unchanged" else "committed"}
+                   for row in body["rows"]]
+        changed = any(item["result"] == "committed" for item in results)
+        return WorkbenchCommandOutcome("committed" if changed else "unchanged",
+                                       {"rows": results, "summary": body["summary"]})
 
     # ---------- 导出 ----------
 

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import html
-import json
 import re
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 
 from flask import current_app, render_template, request
 
@@ -15,11 +14,6 @@ _INTERNAL_ASCII_RE = re.compile(r"[A-Za-z]")
 _INTERNAL_KEY_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]*\b")
 _MACHINE_FIELD_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 _PATH_LIKE_RE = re.compile(r"(^|[\s:：,，;；(（\[{])(/[A-Za-z0-9_.-]|[A-Za-z]:[\\/]|\\\\|\.{1,2}/)")
-_PUBLIC_DIAGNOSTIC_REASONS = {
-    "invalid_schedule_rows",
-    "no_actionable_schedule_rows",
-    "out_of_scope_schedule_rows",
-}
 _PUBLIC_LITERAL_MESSAGE_FIELDS = {"version"}
 _GENERIC_ERROR_MESSAGES = {
     ErrorCode.NOT_FOUND: "要找的内容不存在或已不可用。",
@@ -33,9 +27,7 @@ _GENERIC_ERROR_MESSAGES = {
 }
 
 
-def _normalized_reason(details: Any) -> str:
-    if not isinstance(details, dict):
-        return ""
+def _normalized_reason(details: dict) -> str:
     return str(details.get("reason") or "").strip().lower()
 
 
@@ -92,10 +84,6 @@ def _message_mentions_path_like(message: str) -> bool:
 def _validation_error_message(exc: AppError, details: dict) -> str:
     reason = _normalized_reason(details)
     field = str(details.get("field") or "").strip()
-    field_label = user_field_label(field)
-    message_mentions_field = _message_mentions_internal_field(exc.message, field)
-    message_mentions_key = _message_mentions_machine_key(exc.message)
-    message_mentions_path = _message_mentions_path_like(exc.message)
     reason_messages = {
         "invalid_schedule_rows": "排产结果包含无效排程行，系统已拒绝写入，请检查排产结果后重试。",
         "no_actionable_schedule_rows": "本次排产没有生成可保存的有效排程结果，请检查排产条件后重试。",
@@ -105,13 +93,16 @@ def _validation_error_message(exc: AppError, details: dict) -> str:
         return reason_messages[reason]
     if field == "freeze_window":
         return "冻结期设置或打底排程有问题，请修复后重试。"
-    if not (_looks_internal_message(exc.message) or message_mentions_field or message_mentions_key or message_mentions_path):
+    if not (
+        _looks_internal_non_validation_message(exc.message)
+        or _message_mentions_internal_field(exc.message, field)
+    ):
         return exc.message
+    field_label = user_field_label(field)
     return f"{field_label}填写不正确，请检查后重试。" if field_label else "参数填写不正确，请检查后重试。"
 
 
-def user_visible_app_error_message(exc: AppError) -> str:
-    details = exc.details if isinstance(exc.details, dict) else {}
+def _user_visible_app_error_message(exc: AppError, details: dict) -> str:
     if exc.code == ErrorCode.VALIDATION_ERROR:
         return _validation_error_message(exc, details)
     if _looks_internal_non_validation_message(exc.message):
@@ -119,36 +110,23 @@ def user_visible_app_error_message(exc: AppError) -> str:
     return exc.message
 
 
-def user_visible_app_error_details(exc: AppError) -> Optional[dict]:
+def user_visible_app_error_message(exc: AppError) -> str:
     details = exc.details if isinstance(exc.details, dict) else {}
+    return _user_visible_app_error_message(exc, details)
+
+
+def _user_visible_app_error_details(details: dict) -> Optional[dict]:
     field_label = user_field_label(details.get("field"))
     return {"field": field_label} if field_label else None
 
 
-def user_visible_app_error_diagnostics(exc: AppError) -> Optional[dict]:
-    details = exc.details if isinstance(exc.details, dict) else None
-    if not details:
-        return None
-    diagnostics: dict = {}
-    reason = _normalized_reason(details)
-    if reason in _PUBLIC_DIAGNOSTIC_REASONS:
-        diagnostics["reason"] = reason
-    value = details.get("invalid_schedule_row_count")
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        diagnostics["invalid_schedule_row_count"] = value
-    return diagnostics or None
-
-
 def build_user_visible_app_error_payload(exc: AppError) -> dict:
-    payload = error_response(
+    details = exc.details if isinstance(exc.details, dict) else {}
+    return error_response(
         exc.code,
-        user_visible_app_error_message(exc),
-        details=user_visible_app_error_details(exc),
+        _user_visible_app_error_message(exc, details),
+        details=_user_visible_app_error_details(details),
     )
-    diagnostics = user_visible_app_error_diagnostics(exc)
-    if diagnostics:
-        payload["error"]["diagnostics"] = diagnostics
-    return payload
 
 
 def wants_json_error_response() -> bool:
@@ -162,44 +140,21 @@ def wants_json_error_response() -> bool:
     return False
 
 
-def wants_json_error_response_or_default(*, log_message: str) -> bool:
-    try:
-        return wants_json_error_response()
-    except Exception as exc:
-        current_app.logger.warning(log_message, exc)
-        return False
-
-
-def _details_text(details: Any) -> Optional[str]:
-    if details is None:
-        return None
-    if isinstance(details, str):
-        return details
-    try:
-        return json.dumps(details, ensure_ascii=False, indent=2)
-    except Exception:
-        return str(details)
-
-
 def render_minimal_error_page(
     *,
     title: str,
-    code: str = "",
     message: str,
-    details: Any = None,
     field_label: Optional[str] = None,
 ) -> str:
     title_text = html.escape(str(title or "发生错误"))
     message_text = html.escape(str(message or "系统出错，这次操作没有完成。请刷新重试；仍不行请联系维护人员。"))
-    details_text = _details_text(details)
     # 发生时刻与日志时间戳同格式，供用户去运行日志页按时间对位定位条目
     occurred_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    extra_parts = []
-    if field_label:
-        extra_parts.append(f"<p><strong>需要检查的项：</strong>{html.escape(str(field_label))}</p>")
-    if details_text:
-        extra_parts.append(f"<pre>{html.escape(str(details_text))}</pre>")
-    extra_html = "".join(extra_parts)
+    extra_html = (
+        f"<p><strong>需要检查的项：</strong>{html.escape(str(field_label))}</p>"
+        if field_label
+        else ""
+    )
     return (
         "<!doctype html>"
         "<html lang=\"zh-CN\">"
@@ -234,13 +189,11 @@ def render_error_template(
     *,
     title: str,
     message: str,
-    details: Any = None,
     field_label: Optional[str] = None,
 ) -> str:
     context = {
         "title": title,
         "message": message,
-        "details": details,
         "field_label": field_label,
         # 与日志时间戳同格式，供用户带着时刻去运行日志页对位条目
         "occurred_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -252,6 +205,5 @@ def render_error_template(
         return render_minimal_error_page(
             title=title,
             message=message,
-            details=details,
             field_label=field_label,
         )

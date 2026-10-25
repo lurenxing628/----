@@ -64,7 +64,7 @@ def issue_context(kind, value, *, database=None):
 def resolve_context(kind, token, *, database=None):
     try:
         payload = resolve_public_token(SCOPE, token, message=messages.STALE, field="write_token")
-    except (ValidationError, ValueError, TypeError) as exc:
+    except ValidationError as exc:
         raise WorkbenchCommandRejected("stale_write", messages.STALE) from exc
     db_scope = database_scope() if database is None else database
     if payload["database"] != db_scope or payload["kind"] != kind:

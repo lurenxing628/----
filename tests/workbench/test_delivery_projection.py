@@ -9,6 +9,7 @@ import pytest
 from openpyxl import load_workbook
 
 from core.infrastructure.transaction import TransactionManager
+from core.models.workbench_batch_material import normalize_material_changes
 from core.models.workbench_plan_scope import PlanReadScope
 from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
@@ -172,9 +173,9 @@ def test_stage_adoption_keeps_deferred_operation_evidence(candidate_case):
     with TransactionManager(case.conn).transaction():
         for batch_id, operation_id in (("B1", second), ("B2", third)):
             operation_ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1", (str(operation_id),)).fetchone()[0]
-            WorkbenchBatchMaterialService(case.conn).apply(case.ref("batch", batch_id), {"removed_keys": [], "rows": [{
+            WorkbenchBatchMaterialService(case.conn).apply_normalized(case.ref("batch", batch_id), normalize_material_changes({"removed_keys": [], "rows": [{
                 "row_key": None, "material_ref": case.ref("material", "STEEL"), "required_quantity": 3,
-                "available_quantity": 0, "operation_ref": operation_ref, "arrivals": []}]})
+                "available_quantity": 0, "operation_ref": operation_ref, "arrivals": []}]}))
     _, refs = compute(case, case.settings(material_strategy="stage", batch_refs=[case.ref("batch", "B1"), case.ref("batch", "B2")]))
     assert refs
     workspace, _ = WorkbenchRunCandidateQueryService(case.conn).workspace(RunCandidateReadScope(refs[0]))

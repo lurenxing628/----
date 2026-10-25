@@ -39,9 +39,13 @@ def test_member_growth_keeps_preview_and_confirmation_reads_bounded(outsourcing_
     assert result["data"]["target"] == preview["target"]
 
 
-def test_new_registration_keeps_shared_piece_continuity_rule(outsourcing_case):
+@pytest.mark.parametrize(
+    "codes",
+    (("XO1", "XO3"), ("XO2",)),
+)
+def test_new_registration_keeps_shared_piece_continuity_rule(outsourcing_case, codes):
     case = outsourcing_case
-    case.conn.execute("UPDATE BatchOperations SET piece_id='A' WHERE op_code IN ('XO1','XO3')")
+    case.conn.execute("UPDATE BatchOperations SET piece_id='A' WHERE op_code IN (" + ",".join("?" for _ in codes) + ")", codes)
     case.conn.commit()
     payload = case.payload(merged=True)
     payload["target"]["operation_refs"] = [case.operation_ref("XO1"), case.operation_ref("XO3")]

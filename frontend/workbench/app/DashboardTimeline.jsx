@@ -62,9 +62,13 @@
       selection.current.located = true;
       // Wait for the selected task's page, then locate once; later data, zoom and resize keep the user's position.
     }, [selectedBatch, focusTask, picker, model]);
-    const axis = V.axis({ start: model.start, end: model.end, width, left: position.left, viewport });
-    const rows = M.visibleRows(model.rows, Math.max(0, position.top - 60), position.top + position.height + 60);
+    const axis = React.useMemo(() => V.axis({ start: model.start, end: model.end, width, left: position.left, viewport }), [model.start, model.end, width, position.left, viewport]);
     const rangeStart = model.start + position.left / width * (model.end - model.start), rangeEnd = model.start + (position.left + viewport) / width * (model.end - model.start);
+    const visible = React.useMemo(() => {
+      const rows = M.visibleRows(model.rows, Math.max(0, position.top - 60), position.top + position.height + 60);
+      const scale = width / (model.end - model.start);
+      return rows.map(row => ({ row, items: row.point ? window.PointGanttModel.visible(row.items, rangeStart, rangeEnd, scale) : M.visibleItems(row.items, rangeStart, rangeEnd) }));
+    }, [model, position.top, position.height, rangeStart, rangeEnd, width]);
     function show(event, text) {
       if (!event) { setHover(null); return; }
       const rect = event.currentTarget.getBoundingClientRect(); setHover({ text, x: rect.left, y: rect.bottom });
@@ -90,22 +94,19 @@
           <div className="dy-timeline-axis"><div className="dy-timeline-corner">设备 / 工序</div><div className="dy-timeline-ticks" style={{ width }}>
             <window.GanttPresentationUI.Axis axis={axis} width={width} />
           </div></div>
-          {rows.map(row => {
-            const items = row.point ? window.PointGanttModel.visible(row.items, rangeStart, rangeEnd, width / (model.end - model.start)) : M.visibleItems(row.items, rangeStart, rangeEnd);
-            return <div key={row.key} className="dy-timeline-row" data-analysis-row-kind={row.point ? 'point' : row.overlap ? 'overlap' : 'task'} style={{ top: row.top + 52, height: row.height, width: labelWidth + width }}>
-              <div className="dy-timeline-label"><b>{row.label}</b><small>{row.items.length} 道{row.point ? '零工时工序' : '安排'}{!row.point && row.overlap > 0 ? ' · 时间重叠分行' : ''}</small></div>
-              <div className="dy-timeline-track" style={{ width }}>{axis.ticks.map(tick => <i className="dy-timeline-grid" key={tick.at} style={{ left: tick.x }} />)}
-                {mode === 'downtime' && (model.windows.get(row.id) || []).map(stop => {
-                  const low = Math.max(model.start, stop.startAt), high = Math.min(model.end, stop.endAt);
-                  const text = ['停机：' + (stop.reason || '原因未填写'), M.timeLabel(stop.start) + ' 至 ' + M.timeLabel(stop.end), '登记时间：' + M.timeLabel(stop.recorded_at)].join('\n');
-                  return high > low ? <span key={stop.downtime_ref} role="img" tabIndex={0} aria-label={text} title={text} data-downtime-ref={stop.downtime_ref}
-                    className="dy-downtime-window" style={{ left: (low - model.start) / (model.end - model.start) * width, width: (high - low) / (model.end - model.start) * width }}
-                    onMouseEnter={event => show(event, text)} onMouseLeave={() => setHover(null)} onFocus={event => show(event, text)} onBlur={() => setHover(null)} /> : null;
-                })}
-                {items.map(item => <TaskBar key={item.task.task_ref} {...{ item, model, width, selectedBatch, onSelect }} onHover={show} />)}
-              </div>
-            </div>;
-          })}
+          {visible.map(({ row, items }) => <div key={row.key} className="dy-timeline-row" data-analysis-row-kind={row.point ? 'point' : row.overlap ? 'overlap' : 'task'} style={{ top: row.top + 52, height: row.height, width: labelWidth + width }}>
+            <div className="dy-timeline-label"><b>{row.label}</b><small>{row.items.length} 道{row.point ? '零工时工序' : '安排'}{!row.point && row.overlap > 0 ? ' · 时间重叠分行' : ''}</small></div>
+            <div className="dy-timeline-track" style={{ width }}>{axis.ticks.map(tick => <i className="dy-timeline-grid" key={tick.at} style={{ left: tick.x }} />)}
+              {mode === 'downtime' && (model.windows.get(row.id) || []).map(stop => {
+                const low = Math.max(model.start, stop.startAt), high = Math.min(model.end, stop.endAt);
+                const text = ['停机：' + (stop.reason || '原因未填写'), M.timeLabel(stop.start) + ' 至 ' + M.timeLabel(stop.end), '登记时间：' + M.timeLabel(stop.recorded_at)].join('\n');
+                return high > low ? <span key={stop.downtime_ref} role="img" tabIndex={0} aria-label={text} title={text} data-downtime-ref={stop.downtime_ref}
+                  className="dy-downtime-window" style={{ left: (low - model.start) / (model.end - model.start) * width, width: (high - low) / (model.end - model.start) * width }}
+                  onMouseEnter={event => show(event, text)} onMouseLeave={() => setHover(null)} onFocus={event => show(event, text)} onBlur={() => setHover(null)} /> : null;
+              })}
+              {items.map(item => <TaskBar key={item.task.task_ref} {...{ item, model, width, selectedBatch, onSelect }} onHover={show} />)}
+            </div>
+          </div>)}
           {!model.rows.length && <window.WorkbenchListControls.EmptyState kind="empty" title="当前读取范围没有可显示的设备安排。" />}
         </div>
       </div>

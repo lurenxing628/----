@@ -1,0 +1,502 @@
+{
+  "schema_version": 1,
+  "rule": "over_defense",
+  "scan_roots": [
+    "core",
+    "data",
+    "web",
+    "plugins",
+    "desktop",
+    "app.py",
+    "app_new_ui.py",
+    "frontend/workbench/app"
+  ],
+  "note": "反过度防御棘轮基线（内部反射字面量/参数进门覆盖/零引用与只被测试引用的函数/往外部对象写私有属性/前端 typeof command.reset）：条目只减不增，刷新走 --refresh。",
+  "entries": [
+    {
+      "path": "core/algorithm_contracts/material_release.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/algorithm_contracts/ordering.py",
+      "kind": "internal_reflect_literal",
+      "count": 8
+    },
+    {
+      "path": "core/algorithm_runtime/algo_stats.py",
+      "kind": "foreign_private_attr_assign",
+      "count": 1
+    },
+    {
+      "path": "core/algorithm_runtime/algo_stats.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/algorithm_runtime/checkpoint_calendar.py",
+      "kind": "test_only_func",
+      "count": 1
+    },
+    {
+      "path": "core/algorithm_runtime/internal_slot.py",
+      "kind": "internal_reflect_literal",
+      "count": 6
+    },
+    {
+      "path": "core/algorithm_runtime/operation_effort.py",
+      "kind": "internal_reflect_literal",
+      "count": 11
+    },
+    {
+      "path": "core/algorithm_runtime/piece_input.py",
+      "kind": "internal_reflect_literal",
+      "count": 4
+    },
+    {
+      "path": "core/algorithm_runtime/run_state.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/algorithm_runtime/sgs_shared_slot.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/algorithms/evaluation.py",
+      "kind": "internal_reflect_literal",
+      "count": 6
+    },
+    {
+      "path": "core/algorithms/evaluation_completion.py",
+      "kind": "internal_reflect_literal",
+      "count": 8
+    },
+    {
+      "path": "core/algorithms/greedy/auto_assign.py",
+      "kind": "internal_reflect_literal",
+      "count": 6
+    },
+    {
+      "path": "core/algorithms/greedy/dispatch/batch_order.py",
+      "kind": "internal_reflect_literal",
+      "count": 2
+    },
+    {
+      "path": "core/algorithms/greedy/dispatch/resource_validation.py",
+      "kind": "internal_reflect_literal",
+      "count": 10
+    },
+    {
+      "path": "core/algorithms/greedy/dispatch/sgs.py",
+      "kind": "internal_reflect_literal",
+      "count": 4
+    },
+    {
+      "path": "core/algorithms/greedy/dispatch/sgs_decode_acceleration.py",
+      "kind": "internal_reflect_literal",
+      "count": 3
+    },
+    {
+      "path": "core/algorithms/greedy/dispatch/sgs_due_span.py",
+      "kind": "internal_reflect_literal",
+      "count": 5
+    },
+    {
+      "path": "core/algorithms/greedy/dispatch/sgs_graph.py",
+      "kind": "internal_reflect_literal",
+      "count": 3
+    },
+    {
+      "path": "core/algorithms/greedy/dispatch/sgs_priority_pruning.py",
+      "kind": "internal_reflect_literal",
+      "count": 6
+    },
+    {
+      "path": "core/algorithms/greedy/dispatch/sgs_score_cache.py",
+      "kind": "internal_reflect_literal",
+      "count": 7
+    },
+    {
+      "path": "core/algorithms/greedy/dispatch/sgs_scoring.py",
+      "kind": "internal_reflect_literal",
+      "count": 6
+    },
+    {
+      "path": "core/algorithms/greedy/external_groups.py",
+      "kind": "internal_reflect_literal",
+      "count": 23
+    },
+    {
+      "path": "core/algorithms/greedy/internal_operation.py",
+      "kind": "internal_reflect_literal",
+      "count": 13
+    },
+    {
+      "path": "core/algorithms/greedy/run_context.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/algorithms/greedy/run_state_setup.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/algorithms/greedy/schedule_params.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/algorithms/greedy/schedule_preparation.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/algorithms/greedy/scheduler.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/algorithms/greedy/seed.py",
+      "kind": "internal_reflect_literal",
+      "count": 13
+    },
+    {
+      "path": "core/algorithms/ortools_bottleneck.py",
+      "kind": "internal_reflect_literal",
+      "count": 6
+    },
+    {
+      "path": "core/infrastructure/migration_backup.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/infrastructure/migrations/v2.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/infrastructure/migrations/v3.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/infrastructure/migrations/v4_sanitizers.py",
+      "kind": "internal_reflect_literal",
+      "count": 2
+    },
+    {
+      "path": "core/infrastructure/migrations/v5.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/models/schedule_config_runtime_coercion.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/models/schedule_config_runtime_read.py",
+      "kind": "internal_reflect_literal",
+      "count": 2
+    },
+    {
+      "path": "core/plugins/manager.py",
+      "kind": "internal_reflect_literal",
+      "count": 5
+    },
+    {
+      "path": "core/services/report/utilization_calendars.py",
+      "kind": "test_only_func",
+      "count": 1
+    },
+    {
+      "path": "core/services/scheduler/_sched_display_utils.py",
+      "kind": "zero_ref_func",
+      "count": 1
+    },
+    {
+      "path": "core/services/scheduler/graph/input_adapter.py",
+      "kind": "internal_reflect_literal",
+      "count": 2
+    },
+    {
+      "path": "core/services/scheduler/graph/nx_runtime.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/scheduler/run/freeze_window.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/scheduler/run/operation_effort.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/scheduler/run/optimizer/attempt_records.py",
+      "kind": "internal_reflect_literal",
+      "count": 4
+    },
+    {
+      "path": "core/services/scheduler/run/optimizer/candidate_fingerprint.py",
+      "kind": "internal_reflect_literal",
+      "count": 5
+    },
+    {
+      "path": "core/services/scheduler/run/optimizer/config.py",
+      "kind": "internal_reflect_literal",
+      "count": 2
+    },
+    {
+      "path": "core/services/scheduler/run/optimizer/graph/candidates.py",
+      "kind": "test_only_func",
+      "count": 1
+    },
+    {
+      "path": "core/services/scheduler/run/optimizer/graph/context.py",
+      "kind": "internal_reflect_literal",
+      "count": 2
+    },
+    {
+      "path": "core/services/scheduler/run/optimizer/graph/iterated_greedy_seed.py",
+      "kind": "internal_reflect_literal",
+      "count": 9
+    },
+    {
+      "path": "core/services/scheduler/run/optimizer/graph/operation_neighbors.py",
+      "kind": "internal_reflect_literal",
+      "count": 3
+    },
+    {
+      "path": "core/services/scheduler/run/optimizer/graph/ready.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/scheduler/run/optimizer/graph/repair_decisions.py",
+      "kind": "internal_reflect_literal",
+      "count": 5
+    },
+    {
+      "path": "core/services/scheduler/run/optimizer/graph/repair_decisions.py",
+      "kind": "test_only_func",
+      "count": 1
+    },
+    {
+      "path": "core/services/scheduler/run/optimizer/graph/reporting.py",
+      "kind": "internal_reflect_literal",
+      "count": 2
+    },
+    {
+      "path": "core/services/scheduler/run/optimizer/shared_decode.py",
+      "kind": "internal_reflect_literal",
+      "count": 5
+    },
+    {
+      "path": "core/services/scheduler/run/schedule_execution_resource_facts.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "core/services/scheduler/run/schedule_graph_dispatch_context.py",
+      "kind": "internal_reflect_literal",
+      "count": 4
+    },
+    {
+      "path": "core/services/scheduler/run/schedule_input_builder.py",
+      "kind": "internal_reflect_literal",
+      "count": 19
+    },
+    {
+      "path": "core/services/scheduler/run/schedule_input_seed_metadata.py",
+      "kind": "internal_reflect_literal",
+      "count": 10
+    },
+    {
+      "path": "core/services/scheduler/run/schedule_payload_contract.py",
+      "kind": "internal_reflect_literal",
+      "count": 8
+    },
+    {
+      "path": "core/services/scheduler/run/schedule_shared_optimizer.py",
+      "kind": "internal_reflect_literal",
+      "count": 2
+    },
+    {
+      "path": "core/services/scheduler/run/schedule_template_lookup.py",
+      "kind": "foreign_private_attr_assign",
+      "count": 1
+    },
+    {
+      "path": "core/services/scheduler/run/schedule_template_lookup.py",
+      "kind": "internal_reflect_literal",
+      "count": 3
+    },
+    {
+      "path": "core/services/scheduler/summary/summary_visible_degradation.py",
+      "kind": "internal_reflect_literal",
+      "count": 3
+    },
+    {
+      "path": "core/services/workbench/dashboard/calendar_capture.py",
+      "kind": "foreign_private_attr_assign",
+      "count": 6
+    },
+    {
+      "path": "core/services/workbench/execution/ledger.py",
+      "kind": "test_only_func",
+      "count": 2
+    },
+    {
+      "path": "core/services/workbench/facts/decision_baseline.py",
+      "kind": "foreign_private_attr_assign",
+      "count": 4
+    },
+    {
+      "path": "core/services/workbench/facts/resource_projection.py",
+      "kind": "foreign_private_attr_assign",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/history/conditions.py",
+      "kind": "test_only_func",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/history/reading.py",
+      "kind": "test_only_func",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/resource/calendars.py",
+      "kind": "zero_ref_func",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run/decision_process.py",
+      "kind": "foreign_private_attr_assign",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run/input_external.py",
+      "kind": "foreign_private_attr_assign",
+      "count": 1
+    },
+    {
+      "path": "core/services/workbench/run/worker_claim.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "data/repositories/workbench_outsourcing_source_repo.py",
+      "kind": "foreign_private_attr_assign",
+      "count": 1
+    },
+    {
+      "path": "frontend/workbench/app/BatchFiles.jsx",
+      "kind": "js_typeof_command_reset",
+      "count": 1
+    },
+    {
+      "path": "frontend/workbench/app/BatchForms.jsx",
+      "kind": "js_typeof_command_reset",
+      "count": 1
+    },
+    {
+      "path": "frontend/workbench/app/BatchMaterialEditor.jsx",
+      "kind": "js_typeof_command_reset",
+      "count": 1
+    },
+    {
+      "path": "frontend/workbench/app/BatchOperationEditor.jsx",
+      "kind": "js_typeof_command_reset",
+      "count": 1
+    },
+    {
+      "path": "frontend/workbench/app/BatchSplitPanel.jsx",
+      "kind": "js_typeof_command_reset",
+      "count": 3
+    },
+    {
+      "path": "frontend/workbench/app/CalendarDayDialog.jsx",
+      "kind": "js_typeof_command_reset",
+      "count": 2
+    },
+    {
+      "path": "frontend/workbench/app/CalendarDefaultsDialog.jsx",
+      "kind": "js_typeof_command_reset",
+      "count": 1
+    },
+    {
+      "path": "frontend/workbench/app/FieldEditor.jsx",
+      "kind": "js_typeof_command_reset",
+      "count": 1
+    },
+    {
+      "path": "frontend/workbench/app/FieldFiles.jsx",
+      "kind": "js_typeof_command_reset",
+      "count": 2
+    },
+    {
+      "path": "frontend/workbench/app/FieldVoidEditor.jsx",
+      "kind": "js_typeof_command_reset",
+      "count": 1
+    },
+    {
+      "path": "frontend/workbench/app/OperatorCalendarPanel.jsx",
+      "kind": "js_typeof_command_reset",
+      "count": 3
+    },
+    {
+      "path": "frontend/workbench/app/ProcessCollectionActions.jsx",
+      "kind": "js_typeof_command_reset",
+      "count": 1
+    },
+    {
+      "path": "frontend/workbench/app/ResourceCatalog.jsx",
+      "kind": "js_typeof_command_reset",
+      "count": 1
+    },
+    {
+      "path": "frontend/workbench/app/ResourceForms.jsx",
+      "kind": "js_typeof_command_reset",
+      "count": 1
+    },
+    {
+      "path": "web/bootstrap/workbench_request_lifecycle_state.py",
+      "kind": "foreign_private_attr_assign",
+      "count": 2
+    },
+    {
+      "path": "web/bootstrap/workbench_request_lifecycle_state.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "web/bootstrap/workbench_request_lifecycle_wsgi.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "web/bootstrap/workbench_run_runtime.py",
+      "kind": "test_only_func",
+      "count": 1
+    },
+    {
+      "path": "web/bootstrap/workbench_system_restore_recovery.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    },
+    {
+      "path": "web/routes/workbench/navigation_boot.py",
+      "kind": "internal_reflect_literal",
+      "count": 1
+    }
+  ]
+}

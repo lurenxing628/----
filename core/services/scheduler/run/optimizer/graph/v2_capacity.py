@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from core.algorithm_contracts.operator_eligibility import qualified_operators
 from core.algorithm_contracts.value_domains import INTERNAL
+from core.algorithms.greedy.seed import seed_resource_segments
 from core.errors import ValidationError
 
 _RESIDUAL_CAPACITY_MAX_WINDOW_DAYS = 30
@@ -16,19 +17,22 @@ class FixedResourceBlockingFacts:
     """Fixed blocking spans owned by one captured feature input, across its windows."""
 
     def __init__(self, *, downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
-                 seed_results_by_resource_id: Dict[str, Dict[str, List[Any]]]) -> None:
+                 seed_results_by_resource_id: Dict[str, Dict[str, List[Tuple[datetime, datetime]]]]) -> None:
         self._downtime_map = downtime_map
         self._seed_results = seed_results_by_resource_id
         self._downtime_segments: Dict[str, List[Tuple[datetime, datetime]]] = {}
-        self._seed_segments: Dict[str, Dict[str, List[Tuple[datetime, datetime]]]] = {"machine": {}, "operator": {}}
         self._pairs: Dict[Tuple[str, Optional[str]], List[Tuple[datetime, datetime]]] = {}
+        self._window_capacities: Dict[Tuple[str, Optional[str], Any, datetime, datetime], Tuple[float, float, float]] = {}
+        self._calendar_windows: Dict[Tuple[Optional[str], Any, datetime, datetime], float] = {}
+        self._pool_view: Optional[Tuple[Optional[Dict[str, Any]], _ResourcePoolView]] = None
+
+    def pool_view(self, resource_pool: Optional[Dict[str, Any]]) -> _ResourcePoolView:
+        if self._pool_view is None or self._pool_view[0] is not resource_pool:
+            self._pool_view = (resource_pool, _ResourcePoolView(resource_pool))
+        return self._pool_view[1]
 
     def _resource_seeds(self, kind: str, resource_id: Optional[str]) -> List[Tuple[datetime, datetime]]:
-        key = resource_id or ""
-        cache = self._seed_segments[kind]
-        if key not in cache:
-            cache[key] = _seed_segments(self._seed_results.get(kind, {}).get(key) or [])
-        return cache[key]
+        return self._seed_results.get(kind, {}).get(resource_id or "") or []
 
     def segments_for(self, machine_id: str, operator_id: Optional[str]) -> List[Tuple[datetime, datetime]]:
         key = machine_id, operator_id
@@ -42,6 +46,37 @@ class FixedResourceBlockingFacts:
             )
         return self._pairs[key]
 
+    def window_capacity(
+        self, key: Tuple[str, Optional[str], Any, datetime, datetime]
+    ) -> Optional[Tuple[float, float, float]]:
+        return self._window_capacities.get(key)
+
+    def remember_window_capacity(
+        self, key: Tuple[str, Optional[str], Any, datetime, datetime], value: Tuple[float, float, float]
+    ) -> Tuple[float, float, float]:
+        self._window_capacities[key] = value
+        return value
+
+    def calendar_window_hours(
+        self,
+        calendar_service: Optional[Any],
+        start_dt: datetime,
+        due_exclusive: datetime,
+        *,
+        priority: Any,
+        operator_id: Optional[str],
+    ) -> float:
+        key = (operator_id, priority, start_dt, due_exclusive)
+        if key not in self._calendar_windows:
+            self._calendar_windows[key] = _calendar_capacity_hours(
+                calendar_service,
+                start_dt,
+                due_exclusive,
+                priority=priority,
+                operator_id=operator_id,
+            )
+        return self._calendar_windows[key]
+
 
 def residual_capacity_for_operation(
     op: Any,
@@ -50,13 +85,12 @@ def residual_capacity_for_operation(
     start_dt: datetime,
     due_exclusive: datetime,
     calendar_service: Optional[Any],
-    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
-    seed_results_by_resource_id: Dict[str, Dict[str, List[Any]]],
     resource_pool: Optional[Dict[str, Any]],
-    prepared: Optional[FixedResourceBlockingFacts] = None,
+    prepared: FixedResourceBlockingFacts,
 ) -> Dict[str, float]:
-    pool = _ResourcePoolView(resource_pool)
-    machine_ids = _candidate_machine_ids(op, pool=pool)
+    pool = prepared.pool_view(resource_pool)
+    resource_key = (_text(op.machine_id), _text(op.operator_id), _text(op.op_type_id))
+    machine_ids = pool.candidate_machine_ids(op, key=resource_key)
     if not machine_ids or due_exclusive <= start_dt:
         return _capacity_payload(
             0.0,
@@ -67,34 +101,22 @@ def residual_capacity_for_operation(
             bottleneck_machine_count=1 if machine_ids else 0,
         )
 
-    if prepared is None:
-        prepared = FixedResourceBlockingFacts(downtime_map=downtime_map,
-                                               seed_results_by_resource_id=seed_results_by_resource_id)
-    window_end = _residual_capacity_window_end(start_dt=start_dt, due_exclusive=due_exclusive)
-    priority = getattr(batch, "priority", None)
-    requires_auto_operator = _requires_auto_operator(op, pool=pool)
-    fixed_operator = _text(getattr(op, "operator_id", None))
-    fixed_operator_ids = (tuple(qualified_operators(resource_pool, [fixed_operator], getattr(op, "op_type_id", None)))
-                          if fixed_operator else None)
-    candidates = []
-    effective_candidate_machine_count = 0
-    for machine_id in machine_ids:
-        operator_ids = (fixed_operator_ids if fixed_operator_ids is not None
-                        else _candidate_operator_ids(op, machine_id=machine_id, pool=pool))
-        if requires_auto_operator and not operator_ids:
-            continue
-        effective_candidate_machine_count += 1
-        candidates.append(
-            _machine_residual_capacity(
-                machine_id=machine_id,
-                operator_ids=operator_ids,
-                start_dt=start_dt,
-                due_exclusive=window_end,
-                priority=priority,
-                calendar_service=calendar_service,
-                prepared=prepared,
-            )
+    window_end = residual_capacity_window_end(start_dt=start_dt, due_exclusive=due_exclusive)
+    priority = batch.priority if batch is not None else None
+    machine_operators = pool.machine_operators(op, machine_ids=machine_ids, key=resource_key)
+    effective_candidate_machine_count = len(machine_operators)
+    candidates = [
+        _machine_residual_capacity(
+            machine_id=machine_id,
+            operator_ids=operator_ids,
+            start_dt=start_dt,
+            due_exclusive=window_end,
+            priority=priority,
+            calendar_service=calendar_service,
+            prepared=prepared,
         )
+        for machine_id, operator_ids in machine_operators
+    ]
     if not candidates:
         return _capacity_payload(
             0.0,
@@ -115,21 +137,41 @@ def residual_capacity_for_operation(
     )
 
 
-def seed_results_by_resource_id(seed_results: Iterable[Any]) -> Dict[str, Dict[str, List[Any]]]:
-    out: Dict[str, Dict[str, List[Any]]] = {"machine": {}, "operator": {}}
+def seed_results_by_resource_id(seed_results: Iterable[Any]) -> Dict[str, Dict[str, List[Tuple[datetime, datetime]]]]:
+    out: Dict[str, Dict[str, List[Tuple[datetime, datetime]]]] = {"machine": {}, "operator": {}}
     for result in list(seed_results or []):
-        if str(getattr(result, "source", INTERNAL) or "").strip().lower() != INTERNAL:
+        if str(result.source or INTERNAL).strip().lower() != INTERNAL:
             continue
-        machine_id = _text(getattr(result, "machine_id", None))
+        segments = seed_resource_segments(result)
+        if segments:
+            for seg_start, seg_end, seg_machine_id, seg_operator_id in segments:
+                if not (isinstance(seg_start, datetime) and isinstance(seg_end, datetime) and seg_end > seg_start):
+                    continue
+                span = (seg_start, seg_end)
+                machine_id = _text(seg_machine_id)
+                if machine_id:
+                    out["machine"].setdefault(machine_id, []).append(span)
+                operator_id = _text(seg_operator_id)
+                if operator_id:
+                    out["operator"].setdefault(operator_id, []).append(span)
+            continue
+        if not (
+            isinstance(result.start_time, datetime)
+            and isinstance(result.end_time, datetime)
+            and result.end_time > result.start_time
+        ):
+            continue
+        span = (result.start_time, result.end_time)
+        machine_id = _text(result.machine_id)
         if machine_id:
-            out["machine"].setdefault(machine_id, []).append(result)
-        operator_id = _text(getattr(result, "operator_id", None))
+            out["machine"].setdefault(machine_id, []).append(span)
+        operator_id = _text(result.operator_id)
         if operator_id:
-            out["operator"].setdefault(operator_id, []).append(result)
+            out["operator"].setdefault(operator_id, []).append(span)
     return out
 
 
-def _residual_capacity_window_end(*, start_dt: datetime, due_exclusive: datetime) -> datetime:
+def residual_capacity_window_end(*, start_dt: datetime, due_exclusive: datetime) -> datetime:
     max_end = start_dt + timedelta(days=_RESIDUAL_CAPACITY_MAX_WINDOW_DAYS)
     return min(due_exclusive, max_end)
 
@@ -176,7 +218,11 @@ def _machine_operator_residual_capacity(
     calendar_service: Optional[Any],
     prepared: FixedResourceBlockingFacts,
 ) -> Tuple[float, float, float]:
-    window_hours = _calendar_capacity_hours(
+    cache_key = (machine_id, operator_id, priority, start_dt, due_exclusive)
+    cached = prepared.window_capacity(cache_key)
+    if cached is not None:
+        return cached
+    window_hours = prepared.calendar_window_hours(
         calendar_service,
         start_dt,
         due_exclusive,
@@ -190,9 +236,12 @@ def _machine_operator_residual_capacity(
         prepared.segments_for(machine_id, operator_id),
         priority=priority,
         operator_id=operator_id,
+        prepared=prepared,
     )
     residual_hours = max(0.0, float(window_hours) - float(blocked_hours))
-    return float(window_hours), float(blocked_hours), float(residual_hours)
+    return prepared.remember_window_capacity(
+        cache_key, (float(window_hours), float(blocked_hours), float(residual_hours))
+    )
 
 
 def _capacity_payload(
@@ -226,18 +275,18 @@ def _capacity_rank(item: Tuple[float, float, float]) -> Tuple[float, float, floa
 
 
 def _requires_auto_operator(op: Any, *, pool: _ResourcePoolView) -> bool:
-    if _text(getattr(op, "operator_id", None)):
+    if _text(op.operator_id):
         return False
-    if _text(getattr(op, "machine_id", None)):
+    if _text(op.machine_id):
         return True
-    op_type_id = _text(getattr(op, "op_type_id", None))
+    op_type_id = _text(op.op_type_id)
     return bool(op_type_id and op_type_id in pool.machines_by_op_type)
 
 
 def _candidate_machine_ids(op: Any, *, pool: _ResourcePoolView) -> Tuple[str, ...]:
-    fixed_machine = _text(getattr(op, "machine_id", None))
-    fixed_operator = _text(getattr(op, "operator_id", None))
-    op_type_id = _text(getattr(op, "op_type_id", None))
+    fixed_machine = _text(op.machine_id)
+    fixed_operator = _text(op.operator_id)
+    op_type_id = _text(op.op_type_id)
     if fixed_machine:
         candidates = [fixed_machine]
     elif fixed_operator:
@@ -254,7 +303,7 @@ def _candidate_machine_ids(op: Any, *, pool: _ResourcePoolView) -> Tuple[str, ..
 
 def _candidate_operator_ids(op: Any, *, machine_id: str, pool: _ResourcePoolView) -> Tuple[str, ...]:
     return _unique_text_tuple(qualified_operators(
-        pool.resource_pool, _text_list(pool.operators_by_machine.get(machine_id)), getattr(op, "op_type_id", None),
+        pool.resource_pool, _text_list(pool.operators_by_machine.get(machine_id)), op.op_type_id,
     ))
 
 
@@ -264,6 +313,46 @@ class _ResourcePoolView:
         self.machines_by_op_type = _mapping_part(resource_pool, "machines_by_op_type")
         self.operators_by_machine = _mapping_part(resource_pool, "operators_by_machine")
         self.machines_by_operator = _mapping_part(resource_pool, "machines_by_operator")
+        self._candidate_machines: Dict[Tuple[Optional[str], Optional[str], Optional[str]], Tuple[str, ...]] = {}
+        self._machine_operators: Dict[
+            Tuple[Optional[str], Optional[str], Optional[str]],
+            Tuple[Tuple[str, Tuple[str, ...]], ...],
+        ] = {}
+
+    def candidate_machine_ids(
+        self, op: Any, *, key: Tuple[Optional[str], Optional[str], Optional[str]]
+    ) -> Tuple[str, ...]:
+        if key not in self._candidate_machines:
+            self._candidate_machines[key] = _candidate_machine_ids(op, pool=self)
+        return self._candidate_machines[key]
+
+    def machine_operators(
+        self,
+        op: Any,
+        *,
+        machine_ids: Tuple[str, ...],
+        key: Tuple[Optional[str], Optional[str], Optional[str]],
+    ) -> Tuple[Tuple[str, Tuple[str, ...]], ...]:
+        if key not in self._machine_operators:
+            requires_auto_operator = _requires_auto_operator(op, pool=self)
+            fixed_operator = key[1]
+            fixed_operator_ids = (
+                tuple(qualified_operators(self.resource_pool, [fixed_operator], op.op_type_id))
+                if fixed_operator
+                else None
+            )
+            pairs: List[Tuple[str, Tuple[str, ...]]] = []
+            for machine_id in machine_ids:
+                operator_ids = (
+                    fixed_operator_ids
+                    if fixed_operator_ids is not None
+                    else _candidate_operator_ids(op, machine_id=machine_id, pool=self)
+                )
+                if requires_auto_operator and not operator_ids:
+                    continue
+                pairs.append((machine_id, operator_ids))
+            self._machine_operators[key] = tuple(pairs)
+        return self._machine_operators[key]
 
 
 def _mapping_part(source: Optional[Dict[str, Any]], key: str) -> MappingABC:
@@ -283,16 +372,6 @@ def _machines_for_fixed_operator(fixed_operator: str, *, pool: _ResourcePoolView
         if machine_text and fixed_operator in _text_list(operator_ids):
             found.append(machine_text)
     return found
-
-
-def _seed_segments(seed_results: Iterable[Any]) -> List[Tuple[datetime, datetime]]:
-    segments: List[Tuple[datetime, datetime]] = []
-    for result in list(seed_results or []):
-        start = getattr(result, "start_time", None)
-        end = getattr(result, "end_time", None)
-        if isinstance(start, datetime) and isinstance(end, datetime) and end > start:
-            segments.append((start, end))
-    return segments
 
 
 def _valid_segments(segments: Iterable[Tuple[datetime, datetime]]) -> List[Tuple[datetime, datetime]]:
@@ -325,14 +404,17 @@ def _blocked_capacity_hours(
     *,
     priority: Any,
     operator_id: Optional[str],
+    prepared: FixedResourceBlockingFacts,
 ) -> float:
     total = 0.0
     for block_start, block_end in segments:
+        if block_start >= end_dt:
+            break
         overlap_start = max(start_dt, block_start)
         overlap_end = min(end_dt, block_end)
         if overlap_end <= overlap_start:
             continue
-        total += _calendar_capacity_hours(
+        total += prepared.calendar_window_hours(
             calendar_service,
             overlap_start,
             overlap_end,
@@ -352,10 +434,11 @@ def _calendar_capacity_hours(
 ) -> float:
     if end_dt <= start_dt:
         return 0.0
-    capacity = getattr(calendar_service, "capacity_hours_between", None)
-    if callable(capacity):
-        return _non_negative_float(capacity(start_dt, end_dt, priority=priority, operator_id=operator_id),
-                                   field="calendar_capacity_hours")
+    if calendar_service is not None:
+        return _non_negative_float(
+            calendar_service.capacity_hours_between(start_dt, end_dt, priority=priority, operator_id=operator_id),
+            field="calendar_capacity_hours",
+        )
     return _wall_hours(start_dt, end_dt)
 
 
@@ -407,6 +490,7 @@ def _non_negative_float(value: Any, *, field: str) -> float:
 
 __all__ = [
     "FixedResourceBlockingFacts",
+    "residual_capacity_window_end",
     "bottleneck_on",
     "residual_capacity_for_operation",
     "seed_results_by_resource_id",

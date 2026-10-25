@@ -5,7 +5,8 @@
 不依赖写入顺序，也不会出现"后一行把前一行刚设好的主操又翻回去"。
 """
 
-from typing import Any, Dict, List, Optional, Set, Tuple
+from dataclasses import asdict
+from typing import Any, Dict, List, Set, Tuple
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
@@ -24,12 +25,12 @@ from core.models.workbench_resource_action import (
     action_row,
     check_resource_preview,
     reject_action_row,
+    resource_page_scope,
     resource_refs,
-    resource_scope,
 )
 from core.models.workbench_resource_file_source import PreparedImportSource
 from core.models.workbench_resource_input import resource_text
-from core.models.workbench_resource_query import ResourcePageRequest
+from core.models.workbench_resource_table_query import table_query_required
 from core.services.personnel.operator_machine_normalizers import (
     normalize_skill_level_optional,
     normalize_skill_level_stored,
@@ -56,52 +57,73 @@ def _blocked(row) -> bool:
 
 
 class WorkbenchRelationFileService:
-    def __init__(self, conn, kind, logger=None):
+    def __init__(self, conn, kind, logger=None, *, reader=None):
         self.conn, self.kind = conn, relation_kind(kind)
-        self.logger = logger
         self.repo = WorkbenchResourceFileRepository(conn, logger)
         self.links = OperatorMachineRepository(conn, logger)
         self.domain = OperatorMachineService(conn, logger)
         self.tx = TransactionManager(conn)
+        self.reader = reader if reader is not None else WorkbenchResourceQueryService(conn, "operator", logger)
 
     # ---------- 导入 ----------
 
-    def prepare_import(self, content, *, file_format, mode="upsert"):
+    def _prepare_source(self, content, *, file_format, mode):
         request = import_request(self.kind, content, file_format, mode)
         source, notices = read_relation_file(self.kind, content, file_format)
-        return PreparedImportSource.build(self.kind + ".import", request, source, notices, content=content)
+        prepared = PreparedImportSource.build(self.kind + ".import", request, source, notices, content=content)
+        request["actual_source_ref"] = prepared.source_ref
+        return prepared, request, source, notices
 
     def preview_import(self, content, *, file_format, mode="upsert"):
-        prepared = content if isinstance(content, PreparedImportSource) else self.prepare_import(
-            content, file_format=file_format, mode=mode)
-        request = prepared.request_for(self.kind + ".import", file_format, mode)
-        source, notices = prepared.parsed()
+        prepared, request, source, notices = self._prepare_source(content, file_format=file_format, mode=mode)
         with self.tx.transaction():
             return self._prepare_import(prepared, request, source, notices)[0]
 
     def _prepare_import(self, prepared, request, source, notices):
         codes = {entity: {item["values"][field] for item in source
                           if type(item["values"].get(field)) is str} for field, entity in _ENTITY_OF.items()}
-        preparation = self._reader().preparation(codes=codes)
-        rows = self._build_rows(source, preparation)
-        targets = [OperatorMachine(None, row["after"]["operator_code"], row["after"]["machine_code"],
-                                   row["after"]["skill_level"], row["after"]["is_primary"])
-                   for row in rows if row["result"] in ("new", "update")]
+        preparation = self.reader.preparation(codes=codes)
+        rows, primaries = self._build_rows(source, preparation)
         operators = sorted({row["values"]["operator_code"] for row in rows if not _blocked(row)})
         current_rows = [link for code in operators for link in preparation.authorizations("operator", code)]
-        changes = self.domain.prepare_changes(current_rows, targets)
+        raw_links = {(link["operator_id"], link["machine_id"]): link for link in current_rows}
+        targets = []
+        for row in rows:
+            if row["result"] not in ("new", "update"):
+                continue
+            after = row["after"]
+            raw_link = raw_links.get((after["operator_code"], after["machine_code"]))
+            skill_level = (
+                raw_link["skill_level"]
+                if raw_link is not None and "skill_level" not in row["changes"]
+                else after["skill_level"]
+            )
+            is_primary = (
+                raw_link["is_primary"]
+                if raw_link is not None and "is_primary" not in row["changes"]
+                else after["is_primary"]
+            )
+            targets.append(OperatorMachine(after["operator_code"], after["machine_code"], skill_level, is_primary))
+        changes = self.domain.prepare_changes(current_rows, targets, primaries=primaries)
         return ResourceActionPreview.build(self.kind + ".import", request, rows, notices, source=prepared), changes
 
-    def _build_rows(self, source, preparation) -> List[Dict[str, Any]]:
+    def _build_rows(self, source, preparation) -> Tuple[List[Dict[str, Any]], Dict[str, Set[str]]]:
         rows = [self._parse_row(item) for item in source]
         self._reject_duplicate_pairs(rows)
         for row in rows:
             self._resolve_entities(row, preparation)
         current = self._load_current_links(rows, preparation)
         primaries = self._final_primaries(rows, current)
+        replaced_by_operator = {
+            operator: [
+                code for code, value in sorted(links.items())
+                if value["is_primary"] == "yes" and code not in primaries[operator]
+            ]
+            for operator, links in current.items()
+        }
         for row in rows:
-            self._classify(row, current, primaries)
-        return rows
+            self._classify(row, current, primaries, replaced_by_operator)
+        return rows, primaries
 
     def _parse_row(self, source) -> Dict[str, Any]:
         row = action_row(source["row"])
@@ -115,20 +137,28 @@ class WorkbenchRelationFileService:
             try:
                 raw = values.get(key)
                 code = resource_text(raw, key)
-                if code is None:
-                    raise ValidationError("这一项必须填写。", field=key)
                 if raw != code:
                     raise ValidationError("编号不能有首尾空格，请修正后重新导入。", field=key)
                 parsed[key] = code
             except ValidationError as exc:
                 reject_action_row(row, exc.message, field=exc.field or key)
-        try:
-            if "skill_level" in values:
-                parsed["skill_level"] = normalize_skill_level_optional(values["skill_level"])
-            if "is_primary" in values:
-                parsed["is_primary"] = normalize_yes_no_optional(values["is_primary"], "is_primary")
-        except ValidationError as exc:
-            reject_action_row(row, exc.message, field="skill_level" if "技能" in exc.message else "is_primary")
+        # 文件里只有填了 \N 才会带上值为 None 的列；这两列在库里不能为空，留空才表示保持原样。
+        if "skill_level" in values:
+            if values["skill_level"] is None:
+                reject_action_row(row, "技能等级不能为空，不能用 \\N 清除；留空表示保持原样。", field="skill_level")
+            else:
+                try:
+                    parsed["skill_level"] = normalize_skill_level_optional(values["skill_level"])
+                except ValidationError as exc:
+                    reject_action_row(row, exc.message, field="skill_level")
+        if "is_primary" in values:
+            if values["is_primary"] is None:
+                reject_action_row(row, "主操设备不能为空，不能用 \\N 清除；留空表示保持原样。", field="is_primary")
+            else:
+                try:
+                    parsed["is_primary"] = normalize_yes_no_optional(values["is_primary"], "is_primary")
+                except ValidationError as exc:
+                    reject_action_row(row, exc.message, field="is_primary")
         row["business_code"] = row_identity(parsed)
         row["values"] = parsed
         return row
@@ -157,18 +187,16 @@ class WorkbenchRelationFileService:
             if raw is None:
                 reject_action_row(row, "系统里找不到这个编号，这一行没有导入。请先在基础资料里维护好再导入。", field=key)
                 return
-            expected[entity] = raw
+            identity = preparation.identity_by_code(entity, code)
+            expected[entity] = {"record": raw, "identity": asdict(identity)}
         row["expected"] = expected
-        row["values"]["operator_label"] = expected["operator"]["name"]
-        row["values"]["machine_label"] = expected["machine"]["name"]
+        row["values"]["operator_label"] = expected["operator"]["record"]["name"]
+        row["values"]["machine_label"] = expected["machine"]["record"]["name"]
 
     def _load_current_links(self, rows, preparation) -> Dict[str, Dict[str, Dict[str, str]]]:
         """一次取回涉及人员的全部现有关联；连带影响要看整组，不能只看文件里这几行。"""
-        codes = sorted({row["values"].get("operator_code") for row in rows
-                        if not _blocked(row) and row["values"].get("operator_code")})
+        codes = sorted({row["values"]["operator_code"] for row in rows if not _blocked(row)})
         current: Dict[str, Dict[str, Dict[str, str]]] = {code: {} for code in codes}
-        if not codes:
-            return current
         for code in codes:
             for link in preparation.authorizations("operator", code):
                 current[code][link["machine_id"]] = {
@@ -184,9 +212,9 @@ class WorkbenchRelationFileService:
             if not _blocked(row):
                 by_operator.setdefault(row["values"]["operator_code"], []).append(row)
         kept = {operator for operator, links in current.items()
-                if self._unchanged_operator(links, by_operator.get(operator, []))}
+                if self._unchanged_operator(links, by_operator[operator])}
         claimed = self._claimed_primaries(rows, kept)
-        return {operator: self._primary_for(operator, links, by_operator.get(operator, []), claimed, operator in kept)
+        return {operator: self._primary_for(operator, links, by_operator[operator], claimed, operator in kept)
                 for operator, links in current.items()}
 
     @staticmethod
@@ -199,7 +227,7 @@ class WorkbenchRelationFileService:
         return True
 
     @staticmethod
-    def _claimed_primaries(rows, kept=()) -> Dict[str, List[Dict[str, Any]]]:
+    def _claimed_primaries(rows, kept) -> Dict[str, List[Dict[str, Any]]]:
         """把填了"是"的行按人归拢；同一个人占了多行就整组拒绝，不替用户挑一台。
 
         旧数据里一人本来就有多台主操、文件又原样导回（kept）时不拒绝：这些行确认时都不写，
@@ -218,32 +246,31 @@ class WorkbenchRelationFileService:
         return claimed
 
     @staticmethod
-    def _current_primary(links) -> Optional[str]:
-        return next((code for code, value in sorted(links.items()) if value["is_primary"] == "yes"), None)
-
-    @classmethod
-    def _primary_for(cls, operator, links, rows, claimed, kept=False) -> Set[str]:
+    def _primary_for(operator, links, rows, claimed, kept) -> Set[str]:
+        existing = {code for code, value in links.items() if value["is_primary"] == "yes"}
         if kept:
-            return {code for code, value in links.items() if value["is_primary"] == "yes"}  # 原样保留，旧数据多台也不动
-        existing = cls._current_primary(links)
-        items = claimed.get(operator) or []
+            return existing  # 原样保留，旧数据多台也不动
+        items = claimed.get(operator, [])
         if len(items) == 1:
             return {items[0]["values"]["machine_code"]}
+        if len(items) > 1:
+            return existing
         # 多行抢主操的那一组已经整批拒绝，主操保持原样；没人抢时只看原主操有没有被显式取消。
-        dropped = not items and any(row["values"].get("is_primary") == "no" and row["values"]["machine_code"] == existing
-                                    for row in rows if not _blocked(row))
-        return set() if dropped or existing is None else {existing}
+        dropped = {row["values"]["machine_code"] for row in rows
+                   if not _blocked(row) and row["values"].get("is_primary") == "no"}
+        return existing - dropped
 
-    def _classify(self, row, current, primaries) -> None:
+    def _classify(self, row, current, primaries, replaced_by_operator) -> None:
         if _blocked(row):
             return
-        links = current.get(row["values"]["operator_code"], {})
+        operator = row["values"]["operator_code"]
+        links = current[operator]
         before = links.get(row["values"]["machine_code"])
         row["after"] = row["input"] = self._after_values(row, before, primaries)
         row["action"] = "create" if before is None else "update"
         row["result"] = "new" if before is None else self._diff(row, before)
         row["reference_count"] = len(links)
-        self._add_primary_notes(row, links)
+        self._add_primary_notes(row, primaries[operator], replaced_by_operator[operator])
 
     @staticmethod
     def _after_values(row, before, primaries) -> Dict[str, Any]:
@@ -252,7 +279,7 @@ class WorkbenchRelationFileService:
             "operator_code": row["values"]["operator_code"],
             "machine_code": machine,
             "skill_level": row["values"].get("skill_level") or (before or {}).get("skill_level") or "normal",
-            "is_primary": "yes" if machine in primaries.get(row["values"]["operator_code"], ()) else "no",
+            "is_primary": "yes" if machine in primaries[row["values"]["operator_code"]] else "no",
         }
 
     @staticmethod
@@ -265,47 +292,42 @@ class WorkbenchRelationFileService:
         return "update" if row["changes"] else "unchanged"
 
     @staticmethod
-    def _add_primary_notes(row, links) -> None:
+    def _add_primary_notes(row, primaries, replaced) -> None:
         """主操连带必须在预检就说清楚：会顶掉谁，以及没填的行为什么会变成非主操。
 
-        不变的行确认时不写，也就顶不掉谁，不提示。
+        不变的组确认时不写，也就顶不掉谁，不提示。
         """
-        if row["after"]["is_primary"] == "yes" and row["result"] != "unchanged":
-            replaced = [code for code, value in sorted(links.items())
-                        if value["is_primary"] == "yes" and code != row["after"]["machine_code"]]
-            if replaced:
-                row["notes"].append("确认后 " + "、".join(replaced) + " 不再是这个人的主操设备。")
+        if row["values"].get("is_primary") == "yes":
+            removed = [code for code in replaced if code != row["after"]["machine_code"]]
+            if removed:
+                row["notes"].append("确认后 " + "、".join(removed) + " 不再是这个人的主操设备。")
                 row["requires_confirmation"] = True
-        if row["result"] == "update" and "is_primary" in row["changes"] and "is_primary" not in row["values"]:
+        if (row["result"] == "update" and "is_primary" in row["changes"]
+                and row["values"].get("is_primary") is None and primaries):
             row["notes"].append("这一行没有填主操设备，但同一份文件把主操给了别的设备，所以这里会变成非主操。")
             row["requires_confirmation"] = True
 
     def confirm_import(self, preview, content, *, file_format, mode="upsert"):
         if not self.conn.in_transaction:
             raise RuntimeError("关系导入确认必须在外层工作台写事务中执行。")
-        with self.tx.transaction():
-            try:
-                prepared = PreparedImportSource.confirmation(preview, content)
-                request = prepared.request_for(self.kind + ".import", file_format, mode)
-                source, notices = prepared.parsed()
-                current, changes = self._prepare_import(prepared, request, source, notices)
-            except ValidationError as exc:
-                raise WorkbenchCommandRejected(
-                    "stale_write", "文件或相关资料已经变了，没有导入。请点「重新预检」后再确认。") from exc
-            check_resource_preview(preview, current)
-            body = current.as_dict()
-            rows = body["rows"]
-            self.domain.apply_changes(changes)
-            results = [{"row": row["row"], "business_code": row["business_code"],
-                        "result": "unchanged" if row["result"] == "unchanged" else "committed"} for row in rows]
-            changed = any(item["result"] == "committed" for item in results)
-            return WorkbenchCommandOutcome("committed" if changed else "unchanged",
-                                           {"rows": results, "summary": body["summary"]})
+        try:
+            prepared = PreparedImportSource.confirmation(preview, content)
+            request = prepared.request_for(self.kind + ".import", file_format, mode)
+            source, notices = prepared.parsed()
+            current, changes = self._prepare_import(prepared, request, source, notices)
+        except ValidationError as exc:
+            raise WorkbenchCommandRejected(
+                "stale_write", "文件或相关资料已经变了，没有导入。请点「重新预检」后再确认。") from exc
+        body = check_resource_preview(preview, current)
+        rows = body["rows"]
+        self.domain.apply_changes(changes)
+        results = [{"row": row["row"], "business_code": row["business_code"],
+                    "result": "unchanged" if row["result"] == "unchanged" else "committed"} for row in rows]
+        changed = any(item["result"] == "committed" for item in results)
+        return WorkbenchCommandOutcome("committed" if changed else "unchanged",
+                                       {"rows": results, "summary": body["summary"]})
 
     # ---------- 导出 ----------
-
-    def _reader(self):
-        return WorkbenchResourceQueryService(self.conn, "operator", self.logger)
 
     def preview_export(self, selection, *, scope, selected_refs=None):
         if not self.conn.in_transaction:
@@ -313,26 +335,39 @@ class WorkbenchRelationFileService:
         if selection not in ("all", "filtered", "selected") or (selection != "selected" and selected_refs is not None):
             raise WorkbenchCommandRejected(
                 "invalid_input", "导出前要先选清楚是全部、当前筛选还是勾选的人员，没有开始下载。请重新选择导出范围。", 400)
-        scope = resource_scope("operator", scope)
+        scope, query = resource_page_scope("operator", scope)
         if selection == "selected":
             refs = resource_refs(selected_refs, allow_empty=True)
-            reader = self._reader()
-            codes = [reader.resolve(ref).entity_key for ref in refs]
-            count = len(self.links.list_simple_rows_for_operators(codes)) if codes else 0
-            return {"scope": scope, "selected_refs": refs}, count
-        effective = resource_scope("operator", {}) if selection == "all" else scope
-        codes = self._codes_for_scope(effective)
-        count = len(self.links.list_simple_rows_for_operators(codes)) if codes else 0
-        return {"scope": effective}, count
+            codes = [identity.entity_key for identity in self.reader.resolve_refs(refs)]
+            return {"scope": scope, "selected_refs": refs}, len(self._links_for(codes))
+        if selection == "all":
+            all_scope = {"query": "", "status": None, "category": None, "sort": "business_code", "direction": "asc"}
+            if scope != all_scope:
+                effective, query = resource_page_scope("operator", {})
+            else:
+                effective = scope
+        else:
+            effective = scope
+        codes = self._codes_for_scope(query)
+        return {"scope": effective}, len(self._links_for(codes))
 
-    def _codes_for_scope(self, scope) -> List[str]:
-        return self._reader().matching_keys(ResourcePageRequest(kind="operator", **scope))
+    def _codes_for_scope(self, query) -> List[str]:
+        return self.reader.matching_keys(query) if table_query_required(query) else self.reader.toolbar_matching_keys(query)
 
-    def _rows_for(self, codes) -> List[Dict[str, Any]]:
+    def _links_for(self, codes) -> List[Dict[str, Any]]:
         if not codes:
             return []
+        if self.reader._snapshot_metrics is not None:
+            grouped = self.reader._table_reader().grouped("authorizations", "operator_id")
+            return [link for code in sorted({x for x in codes if x}) for link in grouped[code]]
+        return self.links.list_simple_rows_for_operators(codes)
+
+    def _rows_for(self, codes) -> List[Dict[str, Any]]:
+        links = self._links_for(codes)
+        if not links:
+            return []
         rows = []
-        for link in self.links.list_simple_rows_for_operators(codes):
+        for link in links:
             # 导出写中文：文件里的下拉和填写说明都是中文，格子里却留英文代号的话，
             # 用户点一下下拉就改了值，想照原样填回 normal 又会被数据校验拒掉。
             # 直接下标不兜底：normalize_*_stored 保证给的是规范值，取不到说明契约破了，
@@ -343,8 +378,13 @@ class WorkbenchRelationFileService:
                 "skill_level": EXPORT_LABELS["skill_level"][normalize_skill_level_stored(link.get("skill_level"))],
                 "is_primary": EXPORT_LABELS["is_primary"][normalize_yes_no_stored(link.get("is_primary"))],
             })
-        operators = self.repo.raw_many("operator", (row["operator_code"] for row in rows))
-        machines = self.repo.raw_many("machine", (row["machine_code"] for row in rows))
+        if self.reader._snapshot_metrics is not None:
+            table_facts = self.reader._table_reader()
+            operators = table_facts.records("operator")
+            machines = table_facts.records("machine")
+        else:
+            operators = self.repo.raw_many("operator", (row["operator_code"] for row in rows))
+            machines = self.repo.raw_many("machine", (row["machine_code"] for row in rows))
         for row in rows:
             operator = operators.get(row["operator_code"])
             machine = machines.get(row["machine_code"])
@@ -356,12 +396,11 @@ class WorkbenchRelationFileService:
         """在已验证的读快照里读完整份导出行；编码文件交给 write_export，在读事务结束后做。"""
         if not self.conn.in_transaction:
             raise RuntimeError("关系导出必须在已验证的查询快照事务中执行。")
-        scope = resource_scope("operator", scope)
+        _, query = resource_page_scope("operator", scope)
         if selected_refs is None:
-            codes = self._codes_for_scope(scope)
+            codes = self._codes_for_scope(query)
         else:
-            reader = self._reader()
-            codes = [reader.resolve(ref).entity_key for ref in resource_refs(selected_refs, allow_empty=True)]
+            codes = [identity.entity_key for identity in self.reader.resolve_refs(resource_refs(selected_refs, allow_empty=True))]
         rows = self._rows_for(codes)
         check_capacity(len(rows), file_format)
         return rows

@@ -36,7 +36,7 @@ def resource_directory(rows, resources, *, tasks=None, baseline=None, archived=(
     return [directory[key] for key in sorted(directory)]
 
 
-def workspace_projections(conn, *, entry, scope, rows, resources, plan_span, logger=None, context=None, captured_calendar=None):
+def workspace_projections(conn, *, entry, scope, rows, resources, plan_span, logger, context, captured_calendar=None):
     baseline, baseline_facts = build_plan_baseline(conn, entry=entry, scope=scope, selected_rows=rows, context=context)
     selected = context.calendar_selection(entry, scope, resources, plan_span) if context is not None else None
     arguments = dict(entry=entry, scope=scope, rows=rows, resources=resources, plan_span=plan_span, context=context, selected=selected)

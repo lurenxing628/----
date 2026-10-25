@@ -42,6 +42,8 @@ def _compat_message(code: str, *, field: str, field_label: str, fallback: Union[
         "priority_weight",
         "due_weight",
         "ready_weight",
+        "graph_critical_weight",
+        "graph_impact_weight",
         "holiday_default_efficiency",
         "freeze_window_days",
         "ortools_time_limit_seconds",
@@ -75,12 +77,11 @@ def recover_compat_number(
     else:
         compat_value = parse_required_int(fallback, field=label)
     code = _reason_code_for_failure(policy, raw_value=value)
-    message_label = label.strip() or display_field_label(field, fallback="这项内容")
     collector.add(
         code=code,
         scope=scope,
         field=field,
-        message=_compat_message(code, field=field, field_label=message_label, fallback=compat_value),
+        message=_compat_message(code, field=field, field_label=label, fallback=compat_value),
         sample=repr(value),
     )
     return compat_value

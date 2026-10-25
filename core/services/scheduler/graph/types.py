@@ -73,6 +73,7 @@ class OperationGraphNode:
     seq: int
     name: str
     duration_minutes: int
+    piece_id: Optional[str] = None
     part_no: Optional[str] = None
     priority: str = "normal"
     source: str = "internal"
@@ -101,7 +102,7 @@ class OperationGraphNode:
             raise ValueError("OperationGraphNode.duration_minutes 不能为负数。")
         object.__setattr__(self, "candidate_machine_ids", _compact_text_tuple(self.candidate_machine_ids))
         object.__setattr__(self, "candidate_operator_ids", _compact_text_tuple(self.candidate_operator_ids))
-        object.__setattr__(self, "raw", _freeze_json_like(self.raw if self.raw is not None else {}))
+        object.__setattr__(self, "raw", _freeze_json_like(self.raw))
 
 
 @dataclass(frozen=True)

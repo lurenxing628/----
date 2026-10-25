@@ -1,23 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .neighborhood_move_support import (
     batch_id,
     bottleneck_machine_rows,
-    changeover_count,
     earliest_due_pressure_batch,
     finish_by_batch,
     first_changeover_pair,
     latest_result,
     most_tardy_batch,
     pick_resource_pair,
-    prepare_batch_due_dates,
-    prepare_machine_rows,
 )
-
-NEIGHBORHOOD_MOVE_SCHEMA_VERSION = 1
 
 CRITICAL_CHAIN = "critical_chain"
 TARDY_WINDOW = "tardy_window"
@@ -41,315 +36,140 @@ ALLOWED_NEIGHBORHOODS: Tuple[str, ...] = BUSINESS_NEIGHBORHOODS + (SGS_DISPATCH_
 
 @dataclass(frozen=True)
 class NeighborhoodMove:
-    schema_version: int
     neighborhood_name: str
-    move_kind: str
-    input_scope: str
     batch_order: Tuple[str, ...]
-    changed_decision_count: int
-    expected_effect: str
     dispatch_mode: str = ""
     dispatch_rule: str = ""
     noop: bool = False
-    fallback_used: bool = False
-    fallback_reason: str = ""
-    candidate_rejected: str = ""
     resource_pair_rank: Optional[Dict[Tuple[str, str], int]] = None
-    diagnostics: Optional[Dict[str, Any]] = None
-    selected_operation_ids: Tuple[str, ...] = ()
-    selected_batch_ids: Tuple[str, ...] = ()
-    selected_machine_ids: Tuple[str, ...] = ()
-    reason: str = ""
-
-    def to_report_dict(self) -> Dict[str, Any]:
-        diagnostics = dict(self.diagnostics or {})
-        if self.dispatch_mode:
-            diagnostics["dispatch_mode"] = str(self.dispatch_mode)
-        if self.dispatch_rule:
-            diagnostics["dispatch_rule"] = str(self.dispatch_rule)
-        row = {
-            "schema_version": int(self.schema_version),
-            "name": str(self.neighborhood_name),
-            "neighborhood_name": str(self.neighborhood_name),
-            "scope": str(self.input_scope),
-            "move_kind": str(self.move_kind),
-            "input_scope": str(self.input_scope),
-            "selected_operation_ids": list(self.selected_operation_ids),
-            "selected_batch_ids": list(self.selected_batch_ids),
-            "selected_machine_ids": list(self.selected_machine_ids),
-            "reason": str(self.reason or ""),
-            "changed_decision_count": int(self.changed_decision_count),
-            "expected_effect": str(self.expected_effect),
-            "noop": bool(self.noop),
-            "fallback_used": bool(self.fallback_used),
-            "candidate_rejected": str(self.candidate_rejected or ""),
-            "diagnostics": diagnostics,
-        }
-        if self.fallback_reason:
-            row["fallback_reason"] = str(self.fallback_reason)
-        return row
 
 
-def noop_move(name: str, *, reason: str, order: List[str], input_scope: str = "batch_order") -> NeighborhoodMove:
+def noop_move(name: str, *, order: List[str]) -> NeighborhoodMove:
     return NeighborhoodMove(
-        schema_version=NEIGHBORHOOD_MOVE_SCHEMA_VERSION,
         neighborhood_name=str(name),
-        move_kind="noop",
-        input_scope=str(input_scope),
         batch_order=tuple(order or []),
-        changed_decision_count=0,
-        expected_effect="none",
         noop=True,
-        candidate_rejected="noop_neighbor",
-        diagnostics={"reason": str(reason or "noop")},
-        reason=str(reason or "noop"),
     )
 
 
 def critical_chain_move(order: List[str], results: List[Any]) -> NeighborhoodMove:
     latest = latest_result(results)
     if latest is None:
-        return noop_move(CRITICAL_CHAIN, reason="critical_chain_missing", order=order, input_scope="decoded_output")
-    bid = batch_id(latest)
-    return _pull_batch_earlier(
-        CRITICAL_CHAIN,
-        order,
-        batch_id=bid,
-        move_kind="pull_latest_chain_batch",
-        expected_effect="pull_latest_chain_batch_earlier",
-        reason_when_first="critical_chain_batch_already_first",
-        reason="critical_path",
-        diagnostics={"chain_node_count": len(results or ())},
-    )
+        return noop_move(CRITICAL_CHAIN, order=order)
+    return _pull_batch_earlier(CRITICAL_CHAIN, order, batch_id=batch_id(latest))
 
 
 def tardy_window_move(order: List[str], results: List[Any], batches: Dict[str, Any]) -> NeighborhoodMove:
     finish_rows = finish_by_batch(results)
-    picked = most_tardy_batch(finish_by_batch_rows=finish_rows, batches=batches)
-    if not picked:
-        return noop_move(TARDY_WINDOW, reason="no_tardy_batch", order=order, input_scope="due_window")
-    batch_id, tardiness_hours = picked
-    return _pull_batch_earlier(
-        TARDY_WINDOW,
-        order,
-        batch_id=batch_id,
-        move_kind="pull_tardy_batch",
-        expected_effect="reduce_tardy_window_pressure",
-        reason_when_first="tardy_batch_already_first",
-        reason="overdue",
-        diagnostics={"tardy_batch_count": 1, "tardiness_hours": round(tardiness_hours, 4)},
-    )
+    bid = most_tardy_batch(finish_by_batch_rows=finish_rows, batches=batches)
+    if not bid:
+        return noop_move(TARDY_WINDOW, order=order)
+    return _pull_batch_earlier(TARDY_WINDOW, order, batch_id=bid)
 
 
 def bottleneck_machine_move(order: List[str], results: List[Any]) -> NeighborhoodMove:
-    machine_id, rows = bottleneck_machine_rows(results)
-    if not machine_id or not rows:
-        return noop_move(BOTTLENECK_MACHINE, reason="bottleneck_machine_missing", order=order, input_scope="machine_load")
+    rows = bottleneck_machine_rows(results)
+    if not rows:
+        return noop_move(BOTTLENECK_MACHINE, order=order)
     latest = latest_result(rows)
-    return _pull_batch_earlier(
-        BOTTLENECK_MACHINE,
-        order,
-        batch_id=batch_id(latest),
-        move_kind="pull_bottleneck_machine_batch",
-        expected_effect="relieve_bottleneck_machine_tail",
-        reason_when_first="bottleneck_batch_already_first",
-        reason="bottleneck",
-        diagnostics={"bottleneck_machine_count": 1, "operation_count": len(rows)},
-        selected_machine_ids=(machine_id,),
-    )
+    if latest is None:
+        return noop_move(BOTTLENECK_MACHINE, order=order)
+    return _pull_batch_earlier(BOTTLENECK_MACHINE, order, batch_id=batch_id(latest))
 
 
 def changeover_block_move(order: List[str], results: List[Any]) -> NeighborhoodMove:
-    machine_rows = prepare_machine_rows(results)
-    pair = first_changeover_pair(results, prepared_machine_rows=machine_rows)
+    pair = first_changeover_pair(results)
     if pair is None:
         fallback = critical_chain_move(order, results)
         if fallback.noop:
-            return noop_move(CHANGEOVER_BLOCK, reason="changeover_block_missing", order=order, input_scope="machine_changeover")
-        return _with_fallback(fallback, neighborhood_name=CHANGEOVER_BLOCK, fallback_reason="changeover_block_missing")
+            return noop_move(CHANGEOVER_BLOCK, order=order)
+        return NeighborhoodMove(
+            neighborhood_name=CHANGEOVER_BLOCK,
+            batch_order=fallback.batch_order,
+            dispatch_mode=fallback.dispatch_mode,
+            dispatch_rule=fallback.dispatch_rule,
+        )
     previous, current = pair
-    before_batch = batch_id(previous)
-    moving_batch = batch_id(current)
-    out = _move_before(order, moving_batch, before_batch)
-    return _order_move(
-        CHANGEOVER_BLOCK,
-        "group_changeover_block",
-        order,
-        out,
-        "try_reduce_machine_changeover",
-        reason="changeover",
-        diagnostics={"changeover_count": changeover_count(results, prepared_machine_rows=machine_rows)},
-        selected_machine_ids=(str(getattr(current, "machine_id", "") or "").strip(),),
-    )
+    out = _move_before(order, batch_id(current), batch_id(previous))
+    return _order_move(CHANGEOVER_BLOCK, order, out)
 
 
 def resource_alternative_move(order: List[str], resource_pool: Optional[Dict[str, Any]]) -> NeighborhoodMove:
     pool = resource_pool or {}
     picked = pick_resource_pair(pool)
     if picked is None:
-        return noop_move(RESOURCE_ALTERNATIVE, reason="no_alternative_resource_pair", order=order, input_scope="resource_pool")
-    operator_id, machine_id, old_rank = picked
-    new_rank = min(int(old_rank), -1)
-    if new_rank == int(old_rank):
-        return noop_move(
-            RESOURCE_ALTERNATIVE,
-            reason="resource_pair_rank_unchanged",
-            order=order,
-            input_scope="resource_pool",
-        )
-    diagnostics = {"alternative_pair_count": 1, "resource_pool_adjusted": True}
+        return noop_move(RESOURCE_ALTERNATIVE, order=order)
+    operator_id, machine_id, _old_rank = picked
     return NeighborhoodMove(
-        schema_version=NEIGHBORHOOD_MOVE_SCHEMA_VERSION,
         neighborhood_name=RESOURCE_ALTERNATIVE,
-        move_kind="promote_alternative_resource_pair",
-        input_scope="resource_pool",
         batch_order=tuple(order or []),
-        changed_decision_count=1,
-        expected_effect="try_alternative_resource_assignment",
-        resource_pair_rank={(operator_id, machine_id): new_rank},
-        diagnostics=diagnostics,
-        selected_machine_ids=(machine_id,),
-        reason="unmatched_resource",
+        resource_pair_rank={(operator_id, machine_id): -1},
     )
 
 
 def time_window_move(order: List[str], results: List[Any], batches: Dict[str, Any]) -> NeighborhoodMove:
     finish_rows = finish_by_batch(results)
-    due_dates = prepare_batch_due_dates(batches)
-    bid = earliest_due_pressure_batch(finish_by_batch_rows=finish_rows, batches=batches, prepared_due_dates=due_dates)
+    bid = earliest_due_pressure_batch(finish_by_batch_rows=finish_rows, batches=batches)
     if not bid:
-        return noop_move(TIME_WINDOW, reason="no_time_window_pressure", order=order, input_scope="due_window")
-    return _pull_batch_earlier(
-        TIME_WINDOW,
-        order,
-        batch_id=bid,
-        move_kind="pull_due_window_batch",
-        expected_effect="repair_due_window_pressure",
-        reason_when_first="time_window_batch_already_first",
-        reason="time_window",
-        diagnostics={"due_window_batch_count": sum(due is not None for _batch_id, due in due_dates)},
-    )
+        return noop_move(TIME_WINDOW, order=order)
+    return _pull_batch_earlier(TIME_WINDOW, order, batch_id=bid)
 
 
-def sgs_dispatch_rule_move(order: List[str], current_rule: str, valid_dispatch_rules: Optional[List[str]], rnd: Any) -> NeighborhoodMove:
-    rules = _normalized_sgs_dispatch_rules(valid_dispatch_rules)
+def pick_sgs_dispatch_rule(
+    current_rule: str,
+    valid_dispatch_rules: List[str],
+    rnd: Any = None,
+    *,
+    tried_rules: Optional[Set[str]] = None,
+) -> Optional[str]:
     current = str(current_rule or "").strip().lower()
-    candidates = [item for item in rules if item != current]
+    candidates = [
+        item for item in valid_dispatch_rules
+        if item != current and (tried_rules is None or item not in tried_rules)
+    ]
+    if not candidates and tried_rules is not None:
+        candidates = [item for item in valid_dispatch_rules if item != current]
     if not candidates:
-        return noop_move(SGS_DISPATCH_RULE, reason="sgs_dispatch_rule_unavailable", order=order, input_scope="dispatch_rule")
-    index = int(rnd.randrange(len(candidates))) if len(candidates) > 1 else 0
-    selected = candidates[index]
+        return None
+    index = int(rnd.randrange(len(candidates))) if rnd is not None and len(candidates) > 1 else 0
+    picked = candidates[index]
+    if tried_rules is not None:
+        tried_rules.add(picked)
+    return picked
+
+
+def sgs_dispatch_rule_move(order: List[str], current_rule: str, valid_dispatch_rules: List[str], rnd: Any = None) -> NeighborhoodMove:
+    picked = pick_sgs_dispatch_rule(current_rule, valid_dispatch_rules, rnd)
+    if picked is None:
+        return noop_move(SGS_DISPATCH_RULE, order=order)
     return NeighborhoodMove(
-        schema_version=NEIGHBORHOOD_MOVE_SCHEMA_VERSION,
         neighborhood_name=SGS_DISPATCH_RULE,
-        move_kind="switch_sgs_dispatch_rule",
-        input_scope="dispatch_rule",
         batch_order=tuple(order or []),
-        changed_decision_count=1,
-        expected_effect="try_alternative_sgs_dispatch_rule",
         dispatch_mode="sgs",
-        dispatch_rule=selected,
-        diagnostics={
-            "from_dispatch_rule": current,
-            "to_dispatch_rule": selected,
-            "candidate_rule_count": len(candidates),
-        },
-        reason="sgs_rule_search",
+        dispatch_rule=picked,
     )
 
 
-def _with_fallback(move: NeighborhoodMove, *, neighborhood_name: str, fallback_reason: str) -> NeighborhoodMove:
+def _order_move(name: str, before: List[str], after: List[str]) -> NeighborhoodMove:
+    if before == after:
+        return noop_move(name, order=before)
     return NeighborhoodMove(
-        schema_version=NEIGHBORHOOD_MOVE_SCHEMA_VERSION,
-        neighborhood_name=neighborhood_name,
-        move_kind=move.move_kind,
-        input_scope=move.input_scope,
-        batch_order=move.batch_order,
-        changed_decision_count=move.changed_decision_count,
-        expected_effect=move.expected_effect,
-        dispatch_mode=move.dispatch_mode,
-        dispatch_rule=move.dispatch_rule,
-        fallback_used=True,
-        fallback_reason=fallback_reason,
-        diagnostics=dict(move.diagnostics or {}),
-        selected_operation_ids=move.selected_operation_ids,
-        selected_batch_ids=move.selected_batch_ids,
-        selected_machine_ids=move.selected_machine_ids,
-        reason=move.reason or fallback_reason,
-    )
-
-
-def _order_move(
-    name: str,
-    move_kind: str,
-    before: List[str],
-    after: List[str],
-    expected_effect: str,
-    *,
-    reason: str,
-    diagnostics: Optional[Dict[str, Any]] = None,
-    selected_machine_ids: Tuple[str, ...] = (),
-) -> NeighborhoodMove:
-    changed = 0
-    changed_batch_ids: List[str] = []
-    for left, right in zip(before, after):
-        if left == right:
-            continue
-        changed += 1
-        for item in (left, right):
-            text = str(item or "").strip()
-            if text and text not in changed_batch_ids:
-                changed_batch_ids.append(text)
-    if len(before) != len(after):
-        changed = max(len(before), len(after))
-    if changed <= 0:
-        return noop_move(name, reason="unchanged_batch_order", order=before)
-    return NeighborhoodMove(
-        schema_version=NEIGHBORHOOD_MOVE_SCHEMA_VERSION,
         neighborhood_name=str(name),
-        move_kind=str(move_kind),
-        input_scope="batch_order",
         batch_order=tuple(after),
-        changed_decision_count=changed,
-        expected_effect=str(expected_effect),
-        diagnostics=dict(diagnostics or {}),
-        selected_batch_ids=tuple(changed_batch_ids),
-        selected_machine_ids=tuple(item for item in selected_machine_ids if item),
-        reason=str(reason),
     )
 
 
-def _pull_batch_earlier(
-    name: str,
-    order: List[str],
-    *,
-    batch_id: str,
-    move_kind: str,
-    expected_effect: str,
-    reason_when_first: str,
-    reason: str,
-    diagnostics: Optional[Dict[str, Any]] = None,
-    selected_machine_ids: Tuple[str, ...] = (),
-) -> NeighborhoodMove:
+def _pull_batch_earlier(name: str, order: List[str], *, batch_id: str) -> NeighborhoodMove:
     batch_id = str(batch_id or "").strip()
     if not batch_id or batch_id not in order:
-        return noop_move(name, reason="batch_not_in_order", order=order)
+        return noop_move(name, order=order)
     index = order.index(batch_id)
     if index <= 0:
-        return noop_move(name, reason=reason_when_first, order=order)
+        return noop_move(name, order=order)
     out = list(order)
     item = out.pop(index)
     out.insert(max(index - 2, 0), item)
-    return _order_move(
-        name,
-        move_kind,
-        order,
-        out,
-        expected_effect,
-        reason=reason,
-        diagnostics=diagnostics,
-        selected_machine_ids=selected_machine_ids,
-    )
+    return _order_move(name, order, out)
 
 
 def _move_before(order: List[str], moving_batch: str, before_batch: str) -> List[str]:
@@ -370,17 +190,6 @@ def _move_before(order: List[str], moving_batch: str, before_batch: str) -> List
     return out
 
 
-def _normalized_sgs_dispatch_rules(valid_dispatch_rules: Optional[List[str]]) -> List[str]:
-    out: List[str] = []
-    for item in list(valid_dispatch_rules or DEFAULT_SGS_DISPATCH_RULES):
-        text = str(item or "").strip().lower()
-        if text and text not in out:
-            out.append(text)
-    if not out:
-        out.extend(DEFAULT_SGS_DISPATCH_RULES)
-    return out
-
-
 __all__ = [
     "ALLOWED_NEIGHBORHOODS",
     "BOTTLENECK_MACHINE",
@@ -388,7 +197,6 @@ __all__ = [
     "CHANGEOVER_BLOCK",
     "CRITICAL_CHAIN",
     "DEFAULT_SGS_DISPATCH_RULES",
-    "NEIGHBORHOOD_MOVE_SCHEMA_VERSION",
     "RESOURCE_ALTERNATIVE",
     "SGS_DISPATCH_RULE",
     "TARDY_WINDOW",
@@ -398,6 +206,7 @@ __all__ = [
     "changeover_block_move",
     "critical_chain_move",
     "noop_move",
+    "pick_sgs_dispatch_rule",
     "resource_alternative_move",
     "sgs_dispatch_rule_move",
     "tardy_window_move",

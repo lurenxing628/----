@@ -70,10 +70,8 @@ def _compute_child(snapshot_path, row, admission, sender, control):
         # host runtime locks and the parent's writable connection are not passed.
         with open_readonly_immutable(snapshot_path,
                 detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES, row_factory=sqlite3.Row) as snapshot, query_only(snapshot):
-            snapshot.execute("PRAGMA foreign_keys=ON")
-            worker = WorkbenchRunWorker(snapshot,
-                progress_sink=lambda done, total: sender.send(("progress", done, total)))
-            result = worker.compute_owned_snapshot(snapshot, row, admission, on_progress=worker.progress_sink)
+            worker = WorkbenchRunWorker(snapshot)
+            result = worker.compute_owned_snapshot(snapshot, row, admission)
         sender.send(("result", result))
     except Exception as exc:
         sender.send(("error", _error_message(exc)))
@@ -81,7 +79,7 @@ def _compute_child(snapshot_path, row, admission, sender, control):
         sender.close()
 
 
-def _receive(process, receiver, on_progress):
+def _receive(process, receiver):
     while True:
         try:
             if not receiver.poll(0.1):
@@ -91,12 +89,6 @@ def _receive(process, receiver, on_progress):
             message = receiver.recv()
         except EOFError as exc:
             raise RuntimeError("Candidate child closed its result channel") from exc
-        if message[0] == "progress":
-            done, total = message[1:]
-            if type(done) is not int or type(total) is not int or not 0 <= done <= total:
-                raise RuntimeError("Invalid candidate child progress")
-            on_progress(done, total)
-            continue
         if message[0] == "error":
             _raise_remote(message[1])
         if message[0] != "result":
@@ -107,7 +99,7 @@ def _receive(process, receiver, on_progress):
         return message[1]
 
 
-def run_compute_in_process(source, row, *, admission, on_progress):
+def run_compute_in_process(source, row, *, admission):
     if source.in_transaction:
         raise RuntimeError("Candidate process snapshot requires no active transaction")
     # TemporaryDirectory owns this fresh directory; nothing supplied by HTTP is
@@ -119,20 +111,19 @@ def run_compute_in_process(source, row, *, admission, on_progress):
         receiver, sender = context.Pipe(duplex=False)
         child_control, parent_control = context.Pipe(duplex=False)
         process = context.Process(target=_compute_child,
-            args=(path, dict(row), admission, sender, child_control), name="aps-candidate-compute", daemon=True)
+            args=(path, row, admission, sender, child_control), name="aps-candidate-compute", daemon=True)
         try:
             process.start()
             safe_log(_LOGGER, "info", "Candidate read-only computation started: run_ref=%s child_pid=%s", row["run_ref"], process.pid)
             sender.close()
             child_control.close()
-            return _receive(process, receiver, on_progress)
+            return _receive(process, receiver)
         finally:
             parent_control.close()
             sender.close()
             child_control.close()
             receiver.close()
             if process.pid is not None:
-                process.join(10)
                 if process.is_alive():
                     # Only this invocation's disposable, read-only child can be
                     # terminated; the parent records failure, never a result.

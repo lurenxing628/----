@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from core.algorithm_contracts.changeover_events import type_transition
 from core.errors import ValidationError
 
 _MAX_JOINT_SIZE = 3
@@ -40,8 +41,15 @@ class _WindowIndex:
         for left, right in zip(queue, queue[1:]):
             self.adjacent[left].add(right)
             self.adjacent[right].add(left)
-            if (resource[0] == "machine_id"
-                    and self.rows[left].op_type_name != self.rows[right].op_type_name):
+        if resource[0] == "machine_id":
+            self._count_switches(queue)
+
+    def _count_switches(self, queue):
+        """Adjacent timed rows switch only between two known type identities; point events are skipped."""
+        rows = self.rows
+        timed = [op_id for op_id in queue if rows[op_id].start_time != rows[op_id].end_time]
+        for left, right in zip(timed, timed[1:]):
+            if type_transition(rows[left].op_type_id, rows[right].op_type_id, left, right) == 1:
                 self.switches[left] += 1
                 self.switches[right] += 1
 

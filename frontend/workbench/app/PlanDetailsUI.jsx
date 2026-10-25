@@ -23,11 +23,12 @@
   function CalendarWindows({ windows }) {
     const [open, setOpen] = React.useState(false), [page, setPage] = React.useState(0);
     if (windows === null) return '暂无数据';
+    const pages = Math.ceil(windows.length / 10), current = Math.min(page, Math.max(0, pages - 1));
     return <div><Button className="linkbtn" aria-expanded={open} onClick={() => setOpen(!open)}>{windows.length} 段</Button>
-      {open && <>{windows.slice(page * 10, page * 10 + 10).map((item, index) => <div key={index} title={M.timeLabel(item.start) + ' 至 ' + M.timeLabel(item.end)}>{F.compactRange(item.start, item.end)}
+      {open && <>{windows.slice(current * 10, current * 10 + 10).map((item, index) => <div key={index} title={M.timeLabel(item.start) + ' 至 ' + M.timeLabel(item.end)}>{F.compactRange(item.start, item.end)}
         <div className="plan-muted">普通件{item.allow_normal ? '允许' : '禁止'} · 急件{item.allow_urgent ? '允许' : '禁止'} · 效率 {F.percent(item.efficiency, { digits: 0 })}</div></div>)}
-        {windows.length > 10 && <div className="plan-pager"><Button className="btn plan-icon" icon="chevron-left" aria-label="可工作时段上一段" disabled={!page} onClick={() => setPage(page - 1)} />
-          <span>{page + 1}</span><Button className="btn plan-icon" icon="chevron-right" aria-label="可工作时段下一段" disabled={(page + 1) * 10 >= windows.length} onClick={() => setPage(page + 1)} /></div>}</>}
+        {windows.length > 10 && <div className="plan-pager"><Button className="btn plan-icon" icon="chevron-left" aria-label="可工作时段上一段" disabled={!current} onClick={() => setPage(current - 1)} />
+          <span>{current + 1}</span><Button className="btn plan-icon" icon="chevron-right" aria-label="可工作时段下一段" disabled={(current + 1) * 10 >= windows.length} onClick={() => setPage(current + 1)} /></div>}</>}
     </div>;
   }
   function DetailSection({ title, collapsible, children }) {
@@ -35,7 +36,7 @@
       : <section><h3>{title}</h3>{children}</section>;
   }
   function Route({ data, prepared, selected, onRelated, disabled, collapsible }) {
-    const loadedRefs = React.useMemo(() => new Set(data.tasks.map(task => task.task_ref)), [data.tasks]);
+    const loadedRefs = React.useMemo(() => prepared && prepared.loadedRefs || new Set(data.tasks.map(task => task.task_ref)), [prepared, data.tasks]);
     if (selected.before) return <section><h3>完整工艺路线</h3><p className="plan-muted">切换到当前安排查看完整工艺路线。</p></section>;
     return <window.GanttRouteList index={prepared.graph} targetRef={selected.task.task_ref} loadedRefs={loadedRefs} onSelect={onRelated} disabled={disabled} collapsible={collapsible} />;
   }
@@ -55,7 +56,7 @@
       for (const [kind, label] of [['machine', '设备'], ['operator', '人员']]) if (comparison.before[kind + '_ref'] !== comparison.after[kind + '_ref'])
         changes.push([label + '变化', M.resourceLabel(comparison.before, kind, labels) + ' → ' + M.resourceLabel(comparison.after, kind, labels)]);
     }
-    const risk = task && data.projections.delivery_risks.items.find(row => row.batch_id === task.batch_id);
+    const risk = task && (prepared.deliveryRisks ? prepared.deliveryRisks.get(task.batch_id) : data.projections.delivery_risks.items.find(row => row.batch_id === task.batch_id));
     const taskFact = task && (comparison ? comparison[selected.before ? 'beforeTime' : 'afterTime'] : prepared.taskIndex.get(task.task_ref));
     const resources = task ? [task.machine_ref, task.operator_ref].map(ref => prepared.occupancy.get(ref)).filter(Boolean).map(value => value.resource) : [];
     const compact = !!onCollapse, panel = React.useRef(null);
@@ -95,8 +96,8 @@
         ]} />
         {!comparison.before_in_scope && comparison.before && <p className="plan-muted">原安排在所选时间范围外，仍显示完整起止时间。</p>}
         {!comparison.after_in_scope && comparison.after && <p className="plan-muted">当前安排已移出所选时间范围，仍显示完整起止时间。</p>}
-        {comparison.before && !selected.before && <Button icon="arrow-right" onClick={() => onSelect(comparison.before, true)}>查看原安排</Button>}
-        {comparison.after && selected.before && <Button icon="arrow-right" onClick={() => onSelect(comparison.after, false)}>查看当前安排</Button>}
+        {comparison.before && !selected.before && <Button icon="arrow-right" onClick={() => onSelect(comparison.before, true, true)}>查看原安排</Button>}
+        {comparison.after && selected.before && <Button icon="arrow-right" onClick={() => onSelect(comparison.after, false, true)}>查看当前安排</Button>}
       </> : <p className="plan-muted">未找到对应对照记录</p>}</DetailSection>}
       <DetailSection title="交付风险" collapsible={compact}>{selected.before ? <p className="plan-muted">暂无原安排的交付风险数据。</p> : risk ? <>
         <Facts items={[

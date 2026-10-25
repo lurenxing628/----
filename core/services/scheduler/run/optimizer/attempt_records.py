@@ -168,7 +168,6 @@ def evaluate_optional_start_candidate(
     dispatch_rule: str,
     primary: Tuple[str, str, str],
     strict_mode: bool,
-    search_report_state: Optional[OptimizationSearchReportState] = None,
 ) -> Optional[Dict[str, Any]]:
     try:
         return evaluate()
@@ -182,8 +181,6 @@ def evaluate_optional_start_candidate(
             dispatch_rule=dispatch_rule,
             exc=exc,
         )
-        if search_report_state is not None:
-            search_report_state.mark_candidate_rejected(reason="validation_error")
         return None
 
 
@@ -196,7 +193,6 @@ def evaluate_optional_local_candidate(
     dispatch_mode: str,
     dispatch_rule: str,
     strict_mode: bool,
-    search_report_state: Optional[OptimizationSearchReportState] = None,
 ) -> Optional[Dict[str, Any]]:
     try:
         return evaluate()
@@ -211,6 +207,4 @@ def evaluate_optional_local_candidate(
             dispatch_rule=dispatch_rule,
             exc=exc,
         )
-        if search_report_state is not None:
-            search_report_state.mark_candidate_rejected(reason="validation_error")
         return None

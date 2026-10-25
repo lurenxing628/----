@@ -18,8 +18,6 @@ from .optimizer.config import (
 from .optimizer.shared_budget import SharedSearchSkip
 from .optimizer.shared_decode import decode_and_metrics
 from .optimizer.step_report_hooks import (
-    _mark_report_deadline_skip,
-    _mark_report_phase_skipped,
     _record_ortools_candidate,
     _record_ortools_optional_failure,
 )
@@ -124,6 +122,8 @@ def _evaluate_ortools_candidate(
             candidate["runtime_ms"] = source_runtime if source_runtime is not None else decoded.receipt["original_decode_ms"]
             candidate["initial_decode_runtime_ms"] = (
                 source_initial if source_initial is not None else decoded.receipt["original_decode_ms"])
+        else:
+            candidate["runtime_ms"] = int(decoded.receipt["original_decode_ms"])
     return candidate
 
 
@@ -143,7 +143,7 @@ def _ortools_warmstart_skip_reason(
     return None
 
 
-def _run_ortools_warmstart(
+def run_ortools_warmstart(
     *,
     algo_mode: str,
     cfg: Any,
@@ -180,10 +180,7 @@ def _run_ortools_warmstart(
         _record_warmstart_shared_skip(attempts, SharedSearchSkip(skip_reason), strategy_enum,
                                       dispatch_mode_cfg, dispatch_rule_cfg)
         decode_session.budget.reject(skip_reason)
-        _mark_report_deadline_skip(search_report_state, "ortools_warmstart")
-        return best
     if skip_reason:
-        _mark_report_phase_skipped(search_report_state, "ortools_warmstart", skip_reason)
         return best
 
     remaining = decode_session.budget.remaining()
@@ -214,7 +211,6 @@ def _run_ortools_warmstart(
             strategy=strategy_enum,
             dispatch_mode=dispatch_mode_cfg,
             dispatch_rule=dispatch_rule_cfg,
-            search_report_state=search_report_state,
             optimizer_algo_stats=optimizer_algo_stats,
             scheduler=scheduler,
             logger=logger,
@@ -230,7 +226,6 @@ def _run_ortools_warmstart(
             strategy=strategy_enum,
             dispatch_mode=dispatch_mode_cfg,
             dispatch_rule=dispatch_rule_cfg,
-            search_report_state=search_report_state,
             optimizer_algo_stats=optimizer_algo_stats,
             scheduler=scheduler,
             logger=logger,
@@ -239,10 +234,8 @@ def _run_ortools_warmstart(
         return best
 
     if not ort_order:
-        _mark_report_phase_skipped(search_report_state, "ortools_warmstart", "no_candidate")
         return best
     if now() >= deadline:
-        _mark_report_deadline_skip(search_report_state, "ortools_warmstart")
         _record_warmstart_shared_skip(attempts, SharedSearchSkip("time_budget"), strategy_enum,
                                       dispatch_mode_cfg, dispatch_rule_cfg)
         decode_session.budget.reject("time_budget")
@@ -276,7 +269,6 @@ def _run_ortools_warmstart(
             strategy=strategy_enum,
             dispatch_mode=dispatch_mode_cfg,
             dispatch_rule=dispatch_rule_cfg,
-            search_report_state=search_report_state,
             optimizer_algo_stats=optimizer_algo_stats,
             scheduler=scheduler,
             logger=logger,
@@ -307,5 +299,5 @@ def _record_warmstart_shared_skip(
 
 
 __all__ = [
-    "_run_ortools_warmstart",
+    "run_ortools_warmstart",
 ]

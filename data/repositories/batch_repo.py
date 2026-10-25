@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional
 
 from core.models import Batch
 
@@ -17,68 +17,7 @@ class BatchRepository(BaseRepository):
         )
         return Batch.from_row(row) if row else None
 
-    def list(
-        self,
-        status: Optional[str] = None,
-        priority: Optional[str] = None,
-        part_no: Optional[str] = None,
-        ready_status: Optional[str] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-    ) -> List[Batch]:
-        sql = "SELECT batch_id, part_no, part_name, quantity, due_date, priority, ready_status, ready_date, status, remark, created_at, updated_at FROM Batches"
-        where, params = self._list_filters(status=status, priority=priority, part_no=part_no, ready_status=ready_status)
-        if where:
-            sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY created_at DESC, batch_id"
-        if limit is not None:
-            sql += " LIMIT ?"
-            params.append(int(limit))
-            if offset is not None:
-                sql += " OFFSET ?"
-                params.append(int(offset))
-        rows = self.fetchall(sql, tuple(params))
-        return [Batch.from_row(r) for r in rows]
-
-    def count(
-        self,
-        status: Optional[str] = None,
-        priority: Optional[str] = None,
-        part_no: Optional[str] = None,
-        ready_status: Optional[str] = None,
-    ) -> int:
-        sql = "SELECT COUNT(1) FROM Batches"
-        where, params = self._list_filters(status=status, priority=priority, part_no=part_no, ready_status=ready_status)
-        if where:
-            sql += " WHERE " + " AND ".join(where)
-        return int(self.fetchvalue(sql, tuple(params), default=0) or 0)
-
-    @staticmethod
-    def _list_filters(
-        *,
-        status: Optional[str] = None,
-        priority: Optional[str] = None,
-        part_no: Optional[str] = None,
-        ready_status: Optional[str] = None,
-    ) -> tuple:
-        params: List[Any] = []
-        where = []
-        if status:
-            where.append("status = ?")
-            params.append(status)
-        if priority:
-            where.append("priority = ?")
-            params.append(priority)
-        if part_no:
-            where.append("part_no = ?")
-            params.append(part_no)
-        if ready_status:
-            where.append("ready_status = ?")
-            params.append(ready_status)
-        return where, params
-
-    def create(self, batch: Union[Batch, Dict[str, Any]]) -> Batch:
-        b = batch if isinstance(batch, Batch) else Batch.from_row(batch)
+    def create(self, batch: Batch) -> None:
         self.execute(
             """
             INSERT INTO Batches
@@ -86,19 +25,18 @@ class BatchRepository(BaseRepository):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                b.batch_id,
-                b.part_no,
-                b.part_name,
-                int(b.quantity),
-                b.due_date,
-                b.priority,
-                b.ready_status,
-                b.ready_date,
-                b.status,
-                b.remark,
+                batch.batch_id,
+                batch.part_no,
+                batch.part_name,
+                batch.quantity,
+                batch.due_date,
+                batch.priority,
+                batch.ready_status,
+                batch.ready_date,
+                batch.status,
+                batch.remark,
             ),
         )
-        return b
 
     def update(self, batch_id: str, updates: Dict[str, Any]) -> None:
         """
@@ -106,41 +44,10 @@ class BatchRepository(BaseRepository):
         - 允许显式传入 None 将可空列置 NULL
         - 避免 COALESCE 造成“无法置空”
         """
-        if not updates:
-            return
-
-        set_parts: List[str] = []
-        params: List[Any] = []
-
-        for key in (
-            "part_no",
-            "part_name",
-            "quantity",
-            "due_date",
-            "priority",
-            "ready_status",
-            "ready_date",
-            "status",
-            "remark",
-        ):
-            if key not in updates:
-                continue
-            val = updates[key]
-            if key == "quantity" and val is not None:
-                val = int(val)
-            set_parts.append(f"{key} = ?")
-            params.append(val)
-
-        if not set_parts:
-            return
-
-        set_parts.append("updated_at = CURRENT_TIMESTAMP")
-        params.append(batch_id)
+        set_parts = [f"{k} = ?" for k in updates] + ["updated_at = CURRENT_TIMESTAMP"]
+        params = [*updates.values(), batch_id]
         sql = f"UPDATE Batches SET {', '.join(set_parts)} WHERE batch_id = ?"
         self.execute(sql, tuple(params))
 
     def delete(self, batch_id: str) -> None:
         self.execute("DELETE FROM Batches WHERE batch_id = ?", (batch_id,))
-
-    def delete_all(self) -> None:
-        self.execute("DELETE FROM Batches")

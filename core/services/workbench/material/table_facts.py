@@ -2,6 +2,7 @@
 
 from core.services.workbench.facts.table_cells import number_cell, status_cell, text_cell
 from core.services.workbench.facts.table_index import ResourceTableIndex
+from data.repositories.sqlite_rows import sql_order
 
 _ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
 _BYTE_LOWER = bytes.maketrans(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ", b"abcdefghijklmnopqrstuvwxyz")
@@ -25,21 +26,11 @@ def material_toolbar_rows(rows, query):
             and (not needle or any(matches(row[field]) for field in ("material_id", "name", "spec")))]
 
 
-def _sqlite_order(value):
-    if value is None:
-        return (0, "")
-    if isinstance(value, (int, float)):
-        return (1, value)
-    if isinstance(value, str):
-        return (2, value)
-    return (3, value)
-
-
 def material_ordered_rows(rows, query):
     """Captured raw rows are already business-code ASC; stable sorting keeps that tie order."""
     if query.sort == "business_code" and query.direction == "asc":
         return rows
-    return sorted(rows, key=lambda row: _sqlite_order(row[_SORT_FIELDS[query.sort]]),
+    return sorted(rows, key=lambda row: sql_order(row[_SORT_FIELDS[query.sort]]),
                   reverse=query.direction == "desc")
 
 

@@ -59,24 +59,12 @@ def _append_ortools_trace(
     )
 
 
-def _mark_report_phase_skipped(search_report_state: Optional[OptimizationSearchReportState], phase: str, reason: str) -> None:
-    if search_report_state is not None:
-        search_report_state.mark_phase_skipped(phase, reason)
-
-
-def _mark_report_deadline_skip(search_report_state: Optional[OptimizationSearchReportState], phase: str) -> None:
-    if search_report_state is not None:
-        search_report_state.mark_deadline_reached()
-        search_report_state.mark_phase_skipped(phase, "time_budget")
-
-
 def _record_ortools_optional_failure(
     *,
     attempts: List[Dict[str, Any]],
     strategy: SortStrategy,
     dispatch_mode: str,
     dispatch_rule: str,
-    search_report_state: Optional[OptimizationSearchReportState],
     optimizer_algo_stats: Optional[Dict[str, Any]],
     scheduler: Any,
     logger: Any,
@@ -91,8 +79,6 @@ def _record_ortools_optional_failure(
         reason="optional_warmstart_failed",
         message=str(exc),
     )
-    if search_report_state is not None:
-        search_report_state.mark_optional_warmstart_failed()
     increment_counter(optimizer_algo_stats if isinstance(optimizer_algo_stats, dict) else scheduler, "ortools_warmstart_failed_count")
     if not logger:
         return
@@ -132,24 +118,11 @@ def _record_ortools_candidate(
     return candidate
 
 
-def _multi_start_deadline_reached(
-    *, now: Callable[[], float], deadline: float, search_report_state: Optional[OptimizationSearchReportState],
-) -> bool:
-    current = now()
-    if current >= deadline:
-        if search_report_state is not None:
-            search_report_state.mark_deadline_reached()
-        return True
-    return False
-
-
 def _append_multi_start_attempt(
     *,
     attempts: List[Dict[str, Any]],
     candidate: Dict[str, Any],
     strategy_key: str,
-    dispatch_mode: str,
-    dispatch_rule: str,
     decision_evidence: Optional[Dict[str, Any]] = None,
 ) -> None:
     metrics = candidate["metrics"]
@@ -177,8 +150,6 @@ def _append_multi_start_trace(
     improvement_trace: List[Dict[str, Any]],
     candidate: Dict[str, Any],
     strategy_key: str,
-    dispatch_mode: str,
-    dispatch_rule: str,
     now: Callable[[], float],
     t_begin: float,
 ) -> None:
@@ -203,8 +174,6 @@ def _record_multi_start_candidate(
     best: Optional[Dict[str, Any]],
     candidate: Dict[str, Any],
     strategy_key: str,
-    dispatch_mode: str,
-    dispatch_rule: str,
     attempts: List[Dict[str, Any]],
     improvement_trace: List[Dict[str, Any]],
     search_report_state: Optional[OptimizationSearchReportState],
@@ -219,8 +188,6 @@ def _record_multi_start_candidate(
         attempts=attempts,
         candidate=candidate,
         strategy_key=strategy_key,
-        dispatch_mode=dispatch_mode,
-        dispatch_rule=dispatch_rule,
         decision_evidence=attempt_decision_evidence(
             candidate=candidate, reference=best, accepted=accepted,
             search_report_state=search_report_state, clock=now, t_begin=t_begin,
@@ -234,8 +201,6 @@ def _record_multi_start_candidate(
         improvement_trace=improvement_trace,
         candidate=candidate,
         strategy_key=strategy_key,
-        dispatch_mode=dispatch_mode,
-        dispatch_rule=dispatch_rule,
         now=now,
         t_begin=t_begin,
     )
@@ -243,9 +208,6 @@ def _record_multi_start_candidate(
 
 
 __all__ = [
-    "_mark_report_deadline_skip",
-    "_mark_report_phase_skipped",
-    "_multi_start_deadline_reached",
     "_record_multi_start_candidate",
     "_record_ortools_candidate",
     "_record_ortools_optional_failure",

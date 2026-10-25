@@ -6,7 +6,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.workbench.facts.archived_calendar import ArchivedCalendar
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.plan.occupancy import _resource_occupancy
@@ -28,7 +30,8 @@ def archive(version=35):
         "WorkbenchShiftDayPeriods": [], "WorkbenchCalendarDefaults": []}}
 
 
-def day(key, start="08:00", end="16:00", *, hours=8, efficiency=1, normal="yes", urgent="yes", operator=None):
+def day(key, start="08:00", end: object = "16:00", *, hours: object = 8, efficiency: object = 1,
+        normal="yes", urgent="yes", operator=None):
     row = {"date": key, "day_type": "workday", "shift_start": start, "shift_end": end,
            "shift_hours": hours, "efficiency": efficiency, "allow_normal": normal, "allow_urgent": urgent,
            "remark": None, "periods_json": None}
@@ -38,7 +41,7 @@ def day(key, start="08:00", end="16:00", *, hours=8, efficiency=1, normal="yes",
 
 
 def project(saved, start="2026-10-12T00:00:00", end="2026-10-13T00:00:00", resources=RESOURCES, **kwargs):
-    return ArchivedCalendar(saved, source_ref="saved-calendar-ref", **kwargs).for_resources(resources, start, end)
+    return dict(ArchivedCalendar(saved, source_ref="saved-calendar-ref", **kwargs).iter_resources(resources, start, end))
 
 
 def test_saved_schema_defaults_keep_old_hours_and_modern_periods():
@@ -187,6 +190,23 @@ def test_broken_policy_days_keep_other_days_known_and_defaults_are_lazy():
     implicit = project(saved, "2026-10-16T08:00:00", "2026-10-16T16:00:00")[MACHINE]
     assert implicit["state"] == "unavailable" and implicit["available_hours"] is None
 
+    engine = SnapshotCalendarEngine({
+        "global": [day("2026-10-14", end=None, hours=0), day("2026-10-15")],
+        "personal": [],
+        "profiles": [],
+        "patterns": [],
+        "defaults": [{"singleton": 1, "periods_json": "null"}],
+    })
+    assert engine.working_hours_between(
+        datetime(2026, 10, 15, 8, 0),
+        datetime(2026, 10, 15, 16, 0),
+    ) == 8.0
+    with pytest.raises(ValidationError):
+        engine.working_hours_between(
+            datetime(2026, 10, 16, 8, 0),
+            datetime(2026, 10, 16, 16, 0),
+        )
+
 
 def test_deleted_or_replaced_identity_stays_unknown_while_true_zero_stays_zero():
     saved = archive()
@@ -244,11 +264,11 @@ def test_real_run_table_archive_and_trial_dictionary_archive_never_read_live_cal
     case.conn.set_trace_callback(statements.append)
     try:
         factory = ArchivedCalendar(saved)
-        run = factory.for_resources(resources, "2026-10-12T08:00:00", "2026-10-12T16:00:00")
-        trial = ArchivedCalendar({"tables": factory._tables}).for_resources(
-            resources, "2026-10-12T08:00:00", "2026-10-12T16:00:00")
-        current = ArchivedCalendar(current_snapshot, metadata_basis="current_transaction_snapshot").for_resources(
-            resources, "2026-10-12T08:00:00", "2026-10-12T16:00:00")
+        run = dict(factory.iter_resources(resources, "2026-10-12T08:00:00", "2026-10-12T16:00:00"))
+        trial = dict(ArchivedCalendar({"tables": factory._tables}).iter_resources(
+            resources, "2026-10-12T08:00:00", "2026-10-12T16:00:00"))
+        current = dict(ArchivedCalendar(current_snapshot, metadata_basis="current_transaction_snapshot").iter_resources(
+            resources, "2026-10-12T08:00:00", "2026-10-12T16:00:00"))
     finally:
         case.conn.set_trace_callback(None)
         case.conn.rollback()
@@ -273,8 +293,9 @@ def test_streaming_releases_person_groups_and_derived_facts_keeps_shared_shift(m
                                            "shift_start": "09:00", "shift_end": "17:00"}]
     factory = ArchivedCalendar(saved)
     engine = factory.engine
-    global_key = ("", "2026-10-12")
-    global_policy = engine._policy_for_date(global_key[1])
+    assert engine is not None
+    global_key = "2026-10-12"
+    global_policy = engine._policy_for_date(global_key)
     reads, pattern = [], engine.operator_shift_calendar.repo.pattern_day
     monkeypatch.setattr(engine.operator_shift_calendar.repo, "pattern_day", lambda *args: (reads.append(args), pattern(*args))[1])
     stream = factory.iter_resources([RESOURCES[1], {"kind": "operator", "ref": second_ref, "saved_id": "O2"}],
@@ -289,12 +310,12 @@ def test_streaming_releases_person_groups_and_derived_facts_keeps_shared_shift(m
     assert "O1" not in engine.operator_shift_calendar._profiles
     assert all(key[0] != "O1" for key in engine._policy_cache)
     assert all(key[0] != "O1" for key in engine._working_hours_prefix)
-    assert "O2" in engine._policy_operator_keys
+    assert "O2" not in engine._policy_operator_keys and len(factory._shift_days) == 3
     assert engine._public_calendar_rows and len(reads) == 1
     assert engine.operator_shift_calendar._patterns
     assert list(stream) == []
-    assert set(engine._policy_operator_keys) == {""}
-    assert all(key[0] == "" for key in engine._policy_cache)
-    assert engine._policy_cache[global_key] is global_policy
+    assert not engine._policy_operator_keys
+    assert not engine._policy_cache
+    assert engine._public_policy_cache[global_key] is global_policy
     engine.clear_policy_cache()
     assert engine._policy_for_date("2026-10-12", "O1").shift_hours == pytest.approx(22 / 3)

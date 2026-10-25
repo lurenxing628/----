@@ -32,7 +32,6 @@ _CATALOG: Tuple[Tuple[str, Callable[[], Dict[str, Any]]], ...] = (
     ("field_report_v1", lambda: workbench_field_report_file.table_descriptor(1)),
     ("field_report_v2", lambda: workbench_field_report_file.table_descriptor(2)),
 )
-TABLE_IDS: Tuple[str, ...] = tuple(table_id for table_id, _ in _CATALOG)
 
 
 def table_descriptor(table_id: str) -> Dict[str, Any]:

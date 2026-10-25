@@ -22,34 +22,46 @@ class InsertionScreen:
             duration = (row.end_time - row.start_time).total_seconds() / 3600.0
             if duration < 0:
                 continue
-            self.rows[row.op_id] = (str(row.batch_id), row.machine_id, row.operator_id, duration, row.op_type_name)
+            self.rows[row.op_id] = (str(row.batch_id), row.machine_id, row.operator_id, duration,
+                                    row.op_type_id or "")
             metric = search.metrics.get(row.op_id, {})
             due = metric.get("due_deadline_hours")
             if type(due) in (int, float) and math.isfinite(due):
                 self.due[str(row.batch_id)] = float(due)
             pressure = metric.get("due_pressure", 0.0)
             weighted = metric.get("weighted_due_pressure", pressure)
-            self.weights[str(row.batch_id)] = weighted / pressure if pressure > 0 else 1.0
+            weighted_hours = metric.get("weighted_processing_hours", 0.0)
+            if pressure > 0:
+                self.weights[str(row.batch_id)] = weighted / pressure
+            elif duration > 0 and type(weighted_hours) in (int, float) and weighted_hours > 0:
+                self.weights[str(row.batch_id)] = duration / float(weighted_hours)
+            else:
+                self.weights[str(row.batch_id)] = 1.0
         self.supported = set(self.rows) == set(reference.order)
 
-    def _estimate(self, order):
-        if not self.supported:
-            return ()
-        ends, machines, operators, batches, families = {}, {}, {}, {}, {}
-        switches = 0
-        for op_id in order:
-            batch, machine, operator, duration, family = self.rows[op_id]
-            ready = max((ends.get(previous, 0.0) for previous in self.predecessors[op_id]), default=0.0)
+    def _advance_state(self, ops, ends, machines, operators, batches, families, switches):
+        """Point events still finish for successors but occupy no resource and never switch types.
+
+        A switch needs two known type identities; an unknown type resets the machine's family.
+        """
+        rows = self.rows
+        predecessors = self.predecessors
+        for op_id in ops:
+            batch, machine, operator, duration, family = rows[op_id]
+            ready = max((ends.get(previous, 0.0) for previous in predecessors[op_id]), default=0.0)
             finish = max(ready, machines.get(machine, 0.0), operators.get(operator, 0.0)) + duration
             ends[op_id] = finish
-            if machine:
-                machines[machine] = finish
-                switches += int(machine in families and families[machine] != family)
-                families[machine] = family
-            if operator:
-                operators[operator] = finish
+            if duration > 0:
+                if machine:
+                    machines[machine] = finish
+                    previous_family = families.get(machine)
+                    if previous_family and family and previous_family != family:
+                        switches += 1
+                    families[machine] = family
+                if operator:
+                    operators[operator] = finish
             batches[batch] = max(batches.get(batch, 0.0), finish)
-        return self._objective_key(batches, switches)
+        return switches
 
     def _objective_key(self, batches, switches):
         tardiness = [(batch, max(end - self.due[batch], 0.0)) for batch, end in batches.items() if batch in self.due]
@@ -71,9 +83,19 @@ class InsertionScreen:
         """Retain the queue after its first item; an estimate never rejects a move."""
         ranked = []
         best_position, best_score = None, None
-        for position in positions:
+        orders = [(position, tuple(without[:position] + [op_id] + without[position:])) for position in positions]
+        targets = (
+            sorted({position for position, order in orders if order not in self.search.scores})
+            if orders and self.supported
+            else ()
+        )
+        target_idx = 0
+        cursor = 0
+        c_ends, c_machines, c_operators, c_batches, c_families = {}, {}, {}, {}, {}
+        c_switches = 0
+        prefix_by_pos = {}
+        for position, order in orders:
             self.search._require_budget()
-            order = tuple(without[:position] + [op_id] + without[position:])
             known = self.search.scores.get(order)
             if known is not None:
                 self.search.report["duplicate_decision_pruned"] += 1
@@ -81,7 +103,37 @@ class InsertionScreen:
                 if known[1] and (best_score is None or known[0] < best_score):
                     best_position, best_score = position, known[0]
                 continue
-            ranked.append((self._estimate(order), abs(position - anchor), position))
+            if not self.supported:
+                estimate = ()
+            else:
+                if position not in prefix_by_pos:
+                    while target_idx < len(targets) and targets[target_idx] <= position:
+                        next_pos = targets[target_idx]
+                        c_switches = self._advance_state(
+                            without[cursor:next_pos],
+                            c_ends,
+                            c_machines,
+                            c_operators,
+                            c_batches,
+                            c_families,
+                            c_switches,
+                        )
+                        cursor = next_pos
+                        prefix_by_pos[next_pos] = (
+                            dict(c_ends),
+                            dict(c_machines),
+                            dict(c_operators),
+                            dict(c_batches),
+                            dict(c_families),
+                            c_switches,
+                        )
+                        target_idx += 1
+                ends, machines, operators, batches, families, p_switches = prefix_by_pos.pop(position)
+                switches = self._advance_state(
+                    order[position:], ends, machines, operators, batches, families, p_switches
+                )
+                estimate = self._objective_key(batches, switches)
+            ranked.append((estimate, abs(position - anchor), position))
         if diversify:
             # Change the hint only inside equal estimate tiers. Stronger
             # estimates keep their place; ties need not always keep the old rank.

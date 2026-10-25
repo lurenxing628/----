@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Any, Dict, List, Set, Tuple
+from types import SimpleNamespace
+from typing import Any, Dict, List, Set, Tuple, cast
 
+from core.algorithm_contracts.schedule_point_evidence import SchedulePointEvidence
 from core.errors import AppError, ErrorCode
 from core.models import BatchOperation
 from core.models.enums import SourceType
@@ -23,13 +25,6 @@ from .schedule_execution_resource_facts import collect_resource_execution_facts
 from .schedule_input_seed_metadata import with_confirmed_merged_group_periods
 
 
-def _op_id(op: Any) -> int:
-    try:
-        return int(getattr(op, "id", 0) or 0)
-    except (TypeError, ValueError):
-        return 0
-
-
 def _execution_conflict(message: str, *, reason: str, op_id: int) -> AppError:
     return AppError(
         ErrorCode.SCHEDULE_CONFLICT,
@@ -39,8 +34,8 @@ def _execution_conflict(message: str, *, reason: str, op_id: int) -> AppError:
 
 
 def _planned_duration(schedule_row: Any, *, op_id: int) -> timedelta:
-    raw_start = schedule_row.get("start_time") if isinstance(schedule_row, dict) else getattr(schedule_row, "start_time", None)
-    raw_end = schedule_row.get("end_time") if isinstance(schedule_row, dict) else getattr(schedule_row, "end_time", None)
+    raw_start = schedule_row["start_time"]
+    raw_end = schedule_row["end_time"]
     start_time = parse_dt(raw_start)
     end_time = parse_dt(raw_end)
     if start_time is None or end_time is None or end_time <= start_time:
@@ -70,7 +65,7 @@ def _build_execution_seed_result(
     op: BatchOperation,
     schedule_row: Any,
 ) -> Dict[str, Any]:
-    op_id = int(fact.op_id)
+    op_id = fact.op_id
     actual_start_time = fact.actual_start_time
     if actual_start_time is None:
         raise _execution_conflict(
@@ -80,7 +75,7 @@ def _build_execution_seed_result(
         )
     if fact.actual_status == EXECUTION_STATUS_COMPLETED:
         actual_end_time = fact.actual_end_time
-        if actual_end_time is None or actual_end_time <= actual_start_time:
+        if actual_end_time is None or actual_end_time < actual_start_time:
             raise _execution_conflict(
                 "已完工的工序缺少有效完工时间，本次没有写入新排程。请先核对现场反馈记录。",
                 reason="missing_actual_end_time",
@@ -99,22 +94,49 @@ def _build_execution_seed_result(
         machine_id, operator_id = _execution_seed_resources(fact, op_id=op_id)
     result = {
         "op_id": op_id,
-        "op_code": getattr(op, "op_code", None),
-        "batch_id": getattr(op, "batch_id", None),
-        "seq": int(getattr(op, "seq", 0) or 0),
+        "op_code": op.op_code,
+        "batch_id": op.batch_id,
+        "seq": op.seq,
         "machine_id": machine_id,
         "operator_id": operator_id,
         "start_time": actual_start_time,
         "end_time": end_time,
-        "source": str(getattr(op, "source", None) or SourceType.INTERNAL.value).strip(),
-        "op_type_name": getattr(op, "op_type_name", None),
-        "op_type_id": getattr(op, "op_type_id", None),
+        "source": op.source,
+        "op_type_name": op.op_type_name,
+        "op_type_id": op.op_type_id,
         "seed_source": "execution_fact",
         "state_revision": fact.state_revision,
     }
+    if fact.actual_status == EXECUTION_STATUS_COMPLETED and end_time == actual_start_time:
+        if (
+            op.source != SourceType.INTERNAL.value
+            or fact.ledger_operation_ref is None
+            or fact.target_quantity is None
+        ):
+            raise _execution_conflict(
+                "已完工的工序缺少有效完工时间，本次没有写入新排程。请先核对现场反馈记录。",
+                reason="missing_actual_end_time",
+                op_id=op_id,
+            )
+        witness = SchedulePointEvidence(
+            op_id=op_id,
+            machine_id=cast(str, machine_id),
+            operator_id=cast(str, operator_id),
+            at=actual_start_time,
+            setup_hours=op.setup_hours,
+            unit_hours=op.unit_hours,
+            quantity=fact.target_quantity,
+        )
+        if not witness.matches(SimpleNamespace(**result)):
+            raise _execution_conflict(
+                "已完工的工序缺少有效完工时间，本次没有写入新排程。请先核对现场反馈记录。",
+                reason="missing_actual_end_time",
+                op_id=op_id,
+            )
+        result["_point_evidence"] = witness
     if fact.actual_status == EXECUTION_STATUS_COMPLETED and op.source != SourceType.EXTERNAL.value:
         segments = fact_resource_segments(fact)
-        if len(segments) > 1:
+        if segments:
             result["_resource_segments"] = segments
     return result
 
@@ -158,14 +180,14 @@ def build_execution_guardrails_from_projections(svc, operations, *, prev_version
     if prev_version not in facts.resource_execution:
         facts.resource_execution[prev_version] = collect_resource_execution_facts(
             svc, prev_version=prev_version, execution_projections=execution_projections, capture=facts.capture,
-            ledger=getattr(facts, "execution_service", None))
+            ledger=facts.execution_service)
     execution_facts, plan_rows, execution_snapshot = facts.resource_execution[prev_version]
     return _execution_guardrail_tuple(operations, execution_facts, execution_snapshot,
                                      plan_rows=plan_rows, group_identities=external_groups)
 
 
 def _execution_guardrail_tuple(operations, facts, execution_snapshot, *, plan_rows, group_identities):
-    op_by_id: Dict[int, BatchOperation] = {_op_id(op): op for op in operations if _op_id(op) > 0}
+    op_by_id: Dict[int, BatchOperation] = {op.id: op for op in operations if op.id > 0}
     ensure_ledger_execution_schedulable(facts)
     fixed_op_ids: Set[int] = set()
     completed_op_ids: Set[int] = set()

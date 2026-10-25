@@ -8,13 +8,9 @@ from .base_repo import BaseRepository
 class SystemConfigRepository(BaseRepository):
     """系统配置仓库（SystemConfig）。用于系统管理：自动备份/自动清理等设置项。"""
 
-    def get_value(self, config_key: str, default: Optional[str] = None) -> Optional[str]:
-        val = self.fetchvalue(
-            "SELECT config_value FROM SystemConfig WHERE config_key = ?",
-            (str(config_key),),
-            default=default,
-        )
-        return str(val) if val is not None else default
+    def get_value(self, config_key: str) -> Optional[str]:
+        val = self.fetchvalue("SELECT config_value FROM SystemConfig WHERE config_key = ?", (config_key,))
+        return str(val) if val is not None else None
 
     def get_value_with_presence(self, config_key: str) -> Tuple[bool, Optional[str]]:
         row = self.fetchone(

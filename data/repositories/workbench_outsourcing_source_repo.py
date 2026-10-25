@@ -36,14 +36,12 @@ class WorkbenchOutsourcingSourceFacts:
         self._operations = {}
         self._origins = {}
         self._confirmations = {}
-        self._memberships = set()
+        self._memberships = {}
         self._receipt_matches = set()
         self._routes = {}
         self._revision = None
 
     def source_row(self, kind, value):
-        if kind not in SOURCE_TABLES:
-            raise ValueError("Unknown outsourcing source kind: " + repr(kind))
         return self._source_rows.get(_key(kind, value))
 
     def entity_identity(self, ref, kind):
@@ -67,6 +65,10 @@ class WorkbenchOutsourcingSourceFacts:
     def has_membership(self, operation_ref):
         return operation_ref in self._memberships
 
+    def memberships(self, operation_refs):
+        """Stored member rows of these operations, ordered by operation ref."""
+        return [self._memberships[ref] for ref in sorted(set(operation_refs)) if ref in self._memberships]
+
     def plan_identity_revision(self):
         return self._revision
 
@@ -84,8 +86,6 @@ class WorkbenchOutsourcingSourceRepository:
 
     def source_row(self, kind, value):
         """Stored row of the legacy source table for kind, every column verbatim; None when absent."""
-        if kind not in SOURCE_TABLES:
-            raise ValueError("Unknown outsourcing source kind: " + repr(kind))
         table, column = SOURCE_TABLES[kind]
         columns = [row[1] for row in schema_contract_memo(self.conn).structure.table_info(table)]
         selected = ",".join('CASE WHEN 1 THEN "' + key + '" END AS "' + key + '"' for key in columns)
@@ -96,39 +96,6 @@ class WorkbenchOutsourcingSourceRepository:
         """Active entity identity row for ref of kind; None when absent or retired."""
         row = self.conn.execute("SELECT * FROM WorkbenchEntityRefs WHERE ref=? AND kind=? AND active=1", (ref, kind)).fetchone()
         return dict(row) if row is not None else None
-
-    def active_ref(self, kind, key):
-        """Active identity ref of the entity with business key; None when absent."""
-        row = self.conn.execute("SELECT ref FROM WorkbenchEntityRefs WHERE kind=? AND entity_key=? AND active=1", (kind, key)).fetchone()
-        return row[0] if row is not None else None
-
-    def operation_identity(self, ref):
-        """Active operation identity row; None when absent or retired."""
-        row = self.conn.execute("SELECT * FROM WorkbenchPlanSourceRefs WHERE ref=? AND kind='operation' AND active=1", (ref,)).fetchone()
-        return dict(row) if row is not None else None
-
-    def operation_origin(self, ref):
-        """Recorded birth batch of the operation; None when no origin was recorded."""
-        row = self.conn.execute("SELECT * FROM WorkbenchOutsourcingOperationOrigins WHERE operation_ref=?", (ref,)).fetchone()
-        return dict(row) if row is not None else None
-
-    def source_confirmation(self, operation_ref):
-        """First-registration source confirmation of the operation; None when never confirmed."""
-        row = self.conn.execute(
-            "SELECT * FROM WorkbenchOutsourcingSourceConfirmations WHERE operation_ref=?", (operation_ref,)).fetchone()
-        return dict(row) if row is not None else None
-
-    def confirmation_matches_receipt(self, operation_ref, batch_ref, fact_ref):
-        """Whether fact_ref is the sequence-1 fact of a receipt that holds operation_ref for batch_ref."""
-        return self.conn.execute("""SELECT 1 FROM WorkbenchOutsourcingMembers m
-            JOIN WorkbenchOutsourcingReceipts r ON r.outsourcing_ref=m.outsourcing_ref
-            JOIN WorkbenchOutsourcingFacts f ON f.outsourcing_ref=r.outsourcing_ref
-            WHERE m.operation_ref=? AND r.batch_ref=? AND f.fact_ref=? AND f.sequence=1""",
-            (operation_ref, batch_ref, fact_ref)).fetchone() is not None
-
-    def has_membership(self, operation_ref):
-        """Whether the operation is a member of any receipt."""
-        return self.conn.execute("SELECT 1 FROM WorkbenchOutsourcingMembers WHERE operation_ref=?", (operation_ref,)).fetchone() is not None
 
     def plan_identity_revision(self):
         return self.conn.execute("SELECT revision FROM WorkbenchPlanIdentityClock WHERE singleton=1").fetchone()[0]
@@ -213,11 +180,12 @@ class WorkbenchOutsourcingSourceRepository:
                 facts._origins[row["operation_ref"]] = dict(row)
             for row in self.conn.execute("SELECT * FROM WorkbenchOutsourcingSourceConfirmations WHERE operation_ref IN (" + marks + ")", chunk):
                 facts._confirmations[row["operation_ref"]] = dict(row)
-            for row in self.conn.execute("""SELECT m.operation_ref,r.batch_ref,f.fact_ref FROM WorkbenchOutsourcingMembers m
+            for row in self.conn.execute("""SELECT m.operation_ref,m.outsourcing_ref,r.batch_ref,f.fact_ref FROM WorkbenchOutsourcingMembers m
                 LEFT JOIN WorkbenchOutsourcingReceipts r ON r.outsourcing_ref=m.outsourcing_ref
                 LEFT JOIN WorkbenchOutsourcingFacts f ON f.outsourcing_ref=r.outsourcing_ref AND f.sequence=1
                 WHERE m.operation_ref IN (""" + marks + ")", chunk):
-                facts._memberships.add(row["operation_ref"])
+                facts._memberships[row["operation_ref"]] = {"operation_ref": row["operation_ref"],
+                                                             "outsourcing_ref": row["outsourcing_ref"]}
                 if row["batch_ref"] is not None and row["fact_ref"] is not None:
                     facts._receipt_matches.add((row["operation_ref"], row["batch_ref"], row["fact_ref"]))
         if include_routes:
@@ -237,9 +205,10 @@ class WorkbenchOutsourcingSourceRepository:
         """Actual operation order for one piece, including shared batch operations."""
         return [dict(row) for row in self.conn.execute(
             "SELECT id,op_code,seq,piece_id,source,supplier_id FROM BatchOperations "
-            "WHERE batch_id=? AND (piece_id IS ? OR piece_id IS NULL) ORDER BY seq,id", (batch_id, piece_id))]
+            "WHERE batch_id=? AND (? IS NULL OR piece_id IS ? OR piece_id IS NULL) ORDER BY seq,id",
+            (batch_id, piece_id, piece_id))]
 
-    def external_operation_rows(self, batch_id, limit, query="", *, unregistered_only=False):
+    def external_operation_rows(self, batch_id, limit, query, *, unregistered_only):
         """Up to limit + 1 external operations (optionally of one batch) with identity, membership and receipt refs."""
         params, where = (), ""
         if batch_id is not None:

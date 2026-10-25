@@ -14,10 +14,12 @@ class WorkbenchRequestHandler(WSGIRequestHandler):
     This is not cancellation; an executing view/generator must still return.
     """
 
+    environ = None
+
     def run_wsgi(self):
         try:
             return super().run_wsgi()
         finally:
-            environ = getattr(self, "environ", None)
+            environ = self.environ
             if environ is not None:
                 close_workbench_response(environ)

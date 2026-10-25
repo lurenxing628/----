@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Sequence
 
-from core.models import OperatorMachine
-
 from .base_repo import BaseRepository
 
 
@@ -18,113 +16,35 @@ class OperatorMachineRepository(BaseRepository):
             )
         )
 
-    def list_by_machine(self, machine_id: str) -> List[OperatorMachine]:
-        rows = self.fetchall(
-            "SELECT id, operator_id, machine_id, skill_level, is_primary, created_at FROM OperatorMachine WHERE machine_id = ? ORDER BY id",
-            (machine_id,),
-        )
-        return [OperatorMachine.from_row(r) for r in rows]
-
-    def list_simple_rows(self) -> List[Dict[str, Any]]:
-        """
-        轻量查询：仅返回 algorithm/页面联动所需字段。
-        """
-        return self.fetchall("SELECT operator_id, machine_id, skill_level, is_primary FROM OperatorMachine", None)
-
     def list_simple_rows_for_operators(self, operator_ids: Sequence[str]) -> List[Dict[str, Any]]:
-        o_list = sorted({str(x).strip() for x in (operator_ids or []) if str(x).strip()})
-        if not o_list:
-            return []
-        placeholders = ",".join(["?"] * len(o_list))
-        return self.fetchall(
-            f"""
-            SELECT operator_id, machine_id, skill_level, is_primary
-            FROM OperatorMachine
-            WHERE operator_id IN ({placeholders})
-            ORDER BY operator_id, machine_id
-            """,
-            tuple(o_list),
-        )
-
-    def list_with_names_by_machine(self) -> List[Dict[str, Any]]:
-        """
-        Excel/页面展示用：返回 machine_name/operator_name（按 machine_id, operator_id 排序）。
-        """
-        return self.fetchall(
-            """
-            SELECT
-              om.machine_id, m.name AS machine_name,
-              om.operator_id, o.name AS operator_name,
-              om.skill_level, om.is_primary
-            FROM OperatorMachine om
-            LEFT JOIN Machines m ON m.machine_id = om.machine_id
-            LEFT JOIN Operators o ON o.operator_id = om.operator_id
-            ORDER BY om.machine_id, om.operator_id
-            """
-        )
-
-    def list_with_names_by_operator(self) -> List[Dict[str, Any]]:
-        """
-        Excel/页面展示用：返回 operator_name/machine_name（按 operator_id, machine_id 排序）。
-        """
-        return self.fetchall(
-            """
-            SELECT
-              om.operator_id, o.name AS operator_name,
-              om.machine_id, m.name AS machine_name,
-              om.skill_level, om.is_primary
-            FROM OperatorMachine om
-            LEFT JOIN Operators o ON o.operator_id = om.operator_id
-            LEFT JOIN Machines m ON m.machine_id = om.machine_id
-            ORDER BY om.operator_id, om.machine_id
-            """
-        )
-
-    def list_links_with_operator_info(self) -> List[Dict[str, Any]]:
-        return self.fetchall(
-            """
-            SELECT om.machine_id, om.operator_id, o.name AS operator_name, o.status AS operator_status
-            FROM OperatorMachine om
-            LEFT JOIN Operators o ON o.operator_id = om.operator_id
-            ORDER BY om.machine_id, om.operator_id
-            """
-        )
-
-    def list_simple_rows_for_machine_operator_sets(self, machine_ids: Sequence[str], operator_ids: Sequence[str]) -> List[Dict[str, Any]]:
-        """
-        给“批次详情页的人机联动”使用：限定 machine_id/operator_id 集合，返回 skill_level/is_primary 元信息。
-        """
-        m_list = [str(x).strip() for x in (machine_ids or []) if str(x).strip()]
-        o_list = [str(x).strip() for x in (operator_ids or []) if str(x).strip()]
-        if not m_list or not o_list:
-            return []
-        m_placeholders = ",".join(["?"] * len(m_list))
-        o_placeholders = ",".join(["?"] * len(o_list))
-        sql = f"""
-        SELECT machine_id, operator_id, skill_level, is_primary
-        FROM OperatorMachine
-        WHERE machine_id IN ({m_placeholders}) AND operator_id IN ({o_placeholders})
-        ORDER BY machine_id, operator_id
-        """
-        return self.fetchall(sql, tuple(m_list + o_list))
+        codes = sorted({x for x in operator_ids if x})
+        rows: List[Dict[str, Any]] = []
+        for offset in range(0, len(codes), 400):
+            chunk = codes[offset:offset + 400]
+            placeholders = ",".join(["?"] * len(chunk))
+            rows.extend(
+                self.fetchall(
+                    f"""
+                    SELECT operator_id, machine_id, skill_level, is_primary
+                    FROM OperatorMachine
+                    WHERE operator_id IN ({placeholders})
+                    ORDER BY operator_id, machine_id
+                    """,
+                    tuple(chunk),
+                )
+            )
+        return rows
 
     def add(
         self,
         operator_id: str,
         machine_id: str,
-        skill_level: str = "normal",
-        is_primary: str = "no",
-    ) -> OperatorMachine:
-        cur = self.execute(
+        skill_level: str,
+        is_primary: str,
+    ) -> None:
+        self.execute(
             "INSERT INTO OperatorMachine (operator_id, machine_id, skill_level, is_primary) VALUES (?, ?, ?, ?)",
             (operator_id, machine_id, skill_level, is_primary),
-        )
-        return OperatorMachine(
-            id=int(cur.lastrowid) if cur.lastrowid is not None else None,
-            operator_id=operator_id,
-            machine_id=machine_id,
-            skill_level=skill_level,
-            is_primary=is_primary,
         )
 
     def remove(self, operator_id: str, machine_id: str) -> None:
@@ -133,8 +53,8 @@ class OperatorMachineRepository(BaseRepository):
             (operator_id, machine_id),
         )
 
-    def update_fields(self, operator_id: str, machine_id: str, *, skill_level: str, is_primary: str) -> int:
-        cur = self.execute(
+    def update_fields(self, operator_id: str, machine_id: str, *, skill_level: str, is_primary: str) -> None:
+        self.execute(
             """
             UPDATE OperatorMachine
             SET skill_level = ?, is_primary = ?
@@ -142,4 +62,3 @@ class OperatorMachineRepository(BaseRepository):
             """,
             (skill_level, is_primary, operator_id, machine_id),
         )
-        return int(cur.rowcount)

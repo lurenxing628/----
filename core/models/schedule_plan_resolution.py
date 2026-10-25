@@ -6,6 +6,21 @@ from typing import Any, Dict, List, Optional
 from .schedule_plan_identity import PlanIdentity
 from .schedule_plan_role import is_comparison_plan, plan_role_label
 
+_IDENTITY_DEFAULTS: Dict[str, Any] = {
+    "can_dispatch": False,
+    "can_write_feedback": False,
+    "is_official": False,
+    "is_preview": False,
+    "is_current_executable_version": False,
+    "is_current_executable_official_version": False,
+    "result_summary_parse_failed": False,
+    "result_summary_parse_reason": "",
+    "is_superseded_by_newer_version": False,
+    "schedule_result_status": None,
+    "schedule_lock_status": None,
+    "detail_saved": False,
+}
+
 
 @dataclass(frozen=True)
 class SchedulePlanRoleOption:
@@ -63,6 +78,11 @@ class SchedulePlanResolution:
 
     def to_dict(self) -> Dict[str, Any]:
         plan_identity = self.plan_identity.to_dict() if self.plan_identity is not None else {}
+        identity_fields = (
+            {key: plan_identity[key] for key in _IDENTITY_DEFAULTS}
+            if plan_identity
+            else dict(_IDENTITY_DEFAULTS)
+        )
         return {
             "version": self.version,
             "requested_role": self.requested_role,
@@ -78,21 +98,12 @@ class SchedulePlanResolution:
             "status": self.status,
             "message": self.message,
             "plan_identity": plan_identity,
-            "can_dispatch": bool(plan_identity.get("can_dispatch")),
-            "can_write_feedback": bool(plan_identity.get("can_write_feedback")),
-            "user_label": plan_identity.get("user_label") or self.scenario_display_name or plan_role_label(self.selected_role),
-            "is_official": bool(plan_identity.get("is_official")),
-            "is_preview": bool(plan_identity.get("is_preview")),
-            "is_current_executable_version": bool(plan_identity.get("is_current_executable_version")),
-            "is_current_executable_official_version": bool(
-                plan_identity.get("is_current_executable_official_version")
+            "user_label": (
+                (self.plan_identity.user_label if self.plan_identity is not None else "")
+                or self.scenario_display_name
+                or plan_role_label(self.selected_role)
             ),
-            "result_summary_parse_failed": bool(plan_identity.get("result_summary_parse_failed")),
-            "result_summary_parse_reason": plan_identity.get("result_summary_parse_reason") or "",
-            "is_superseded_by_newer_version": bool(plan_identity.get("is_superseded_by_newer_version")),
-            "schedule_result_status": plan_identity.get("schedule_result_status"),
-            "schedule_lock_status": plan_identity.get("schedule_lock_status"),
-            "detail_saved": bool(plan_identity.get("detail_saved")),
+            **identity_fields,
             "available_roles": [item.to_dict() for item in self.available_roles],
             "is_fallback": self.status == "fallback_to_adopted",
             "is_comparison": is_comparison_plan(

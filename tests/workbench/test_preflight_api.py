@@ -7,7 +7,8 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from tests.workbench.preflight_support import checked, payload
 from tests.workbench.preflight_support import pf as pf_fixture  # noqa: F401
 from tests.workbench.preflight_support import pf_legacy_schema as pf_legacy_fixture  # noqa: F401
-from web.routes.workbench.preflight import resolve_preflight_input
+from tests.workbench.run_candidate_support import candidate_case as candidate_fixture  # noqa: F401
+from web.routes.workbench.preflight import evaluate_preflight_input_prepared
 
 
 @pytest.mark.parametrize("fixture_name,source", [("pf", "execution_ledger"), ("pf_legacy_schema", "legacy_guard_only")])
@@ -131,8 +132,63 @@ def test_input_ref_uses_the_run_worker_facts_scope(pf, change, stale):
         try:
             if stale:
                 with pytest.raises(WorkbenchCommandRejected, match="有变化"):
-                    resolve_preflight_input(pf.conn, data["input_ref"])
+                    evaluate_preflight_input_prepared(pf.conn, data["input_ref"])
             else:
-                assert resolve_preflight_input(pf.conn, data["input_ref"]) == payload(pf)
+                assert evaluate_preflight_input_prepared(pf.conn, data["input_ref"]).data["normalized_input"] == payload(pf)
         finally:
             pf.conn.rollback()
+
+
+@pytest.mark.parametrize("piece_id", [None, "piece-A"])
+def test_unreported_stored_skipped_is_shared_by_preflight_input_and_partial_candidate(candidate_case, piece_id):
+    from core.services.workbench.run.preflight import PreflightService
+    from tests.workbench.run_candidate_adoption_support import service
+    from tests.workbench.run_candidate_support import api, compute, read
+
+    case = candidate_case
+    if piece_id is not None:
+        case.conn.execute("UPDATE Batches SET quantity=1 WHERE batch_id='B1'")
+    skipped = case.operation(seq=2, piece_id=piece_id)
+    case.operation(seq=3, piece_id=piece_id)
+    case.conn.execute("UPDATE BatchOperations SET status='skipped' WHERE id=?", (skipped,))
+    case.conn.commit()
+    data, _fingerprint = PreflightService(case.conn).evaluate(case.settings())
+    assert data["counts"]["ready_tasks"] == 1
+    assert data["counts"]["skipped_tasks"] == 2
+    assert data["blockers"] == []
+    assert "skipped_not_adoptable" in {item["code"] for item in data["warnings"]}
+    row = next(row for row in data["tasks"] if row["sequence"] == 2)
+    assert row["status"] == "skipped"
+    assert {item["code"] for item in row["issues"]} == {"operation_skipped"}
+    downstream = next(row for row in data["tasks"] if row["sequence"] == 3)
+    assert downstream["status"] == "skipped"
+    assert {item["code"] for item in downstream["issues"]} == {"predecessor_excluded"}
+    _run_ref, candidates = compute(case)
+    assert candidates
+    client, _statements = api(case)
+    summary = read(client, "/candidates/" + candidates[0])["data"]["candidate"]
+    assert summary["status"] == "partial" and summary["task_count"] == 1
+    denied = service(case.conn).preview(candidates[0])
+    assert denied["validation"]["can_adopt"] is False
+    assert denied["validation"]["issues"][0]["code"] == "candidate_incomplete"
+    assert case.conn.execute("SELECT COUNT(*) FROM Schedule").fetchone()[0] == 0
+
+
+def test_corrupt_official_schedule_time_in_hold_window_blocks_strict_freeze(candidate_case):
+    from core.errors import ValidationError
+    from core.services.workbench.run.input import prepare_candidate_run_input
+    from core.services.workbench.run.preflight import PreflightService
+
+    case = candidate_case
+    case.conn.execute("INSERT INTO ScheduleHistory(version,strategy) VALUES (1,'greedy')")
+    case.conn.execute(
+        "INSERT INTO Schedule(op_id,machine_id,operator_id,start_time,end_time,version) VALUES (?,'M1','O1','bad','2026-09-09 09:00:00',1)",
+        (case.op_id,),
+    )
+    case.conn.commit()
+    settings = case.settings(hold_window={"start": "2026-09-09T08:00", "end": "2026-09-09T12:00"})
+    data, _fingerprint = PreflightService(case.conn).evaluate(settings)
+    assert "freeze_window_unavailable" in {item["code"] for item in data["blockers"]}
+    with pytest.raises(ValidationError) as exc:
+        prepare_candidate_run_input(case.conn, settings, execution_projections=case.projections())
+    assert exc.value.field == "freeze_window"

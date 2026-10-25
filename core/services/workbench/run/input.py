@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Sequence
 
 from core.models.workbench_execution import ExecutionProjection
 from core.models.workbench_preflight import local_date, normalize_preflight_input
-from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.repository_bundle import build_schedule_repository_bundle
 from core.services.scheduler.run.operation_effort import build_operation_efforts
 from core.services.scheduler.run.schedule_execution_reservations import (
@@ -30,7 +29,6 @@ from .input_config import candidate_config, hold_window
 from .input_effort import saved_seed_efforts
 from .input_execution import execution_guards
 from .input_external import external_execution_cycles, prime_template_cache
-from .input_materials import bind_material_releases
 from .input_piece import input_piece_scope
 from .input_runtime import build_runtime
 from .preflight_facts import PreflightFacts
@@ -44,10 +42,10 @@ class CandidateRunInput(ScheduleRunInput):
     preflight_facts: Any = None
     execution_reservations: List[Any] = field(default_factory=list)
     latest_plan_rows: Dict[int, Any] = field(default_factory=dict)
-    operation_sources: Any = None
+    piece_scope: Any = None
 
 
-def _projection_map(execution_projections, selected_refs, *, validated=None):
+def _projection_map(execution_projections, selected_refs, *, validated):
     if not isinstance(execution_projections, (list, tuple)):
         fail("execution_projection_type", "Supply AJ ExecutionProjection objects, not a reconstructed dictionary.")
     result = {}
@@ -66,11 +64,13 @@ def _projection_map(execution_projections, selected_refs, *, validated=None):
 
 def prepare_candidate_run_input(conn, normalized_input: Dict[str, Any],
                                 execution_projections: Sequence[ExecutionProjection], *, capture_fingerprint=True,
-                                facts=None, config_snapshot=None, baseline=None, validated_projections=None) -> CandidateRunInput:
+                                facts=None, config_snapshot=None, baseline=None, validated_projections=None,
+                                for_adoption: bool = False, held=None) -> CandidateRunInput:
     """Read-only. Caller supplies AJ selected + all last-official execution scope.
 
     The worker owns the existing run lock and its admission/final revalidation.
     This function neither acquires that lock nor accepts/publishes a run.
+    Adoption keeps input and seed validation but does not prepare solver resources.
     """
     settings = normalize_preflight_input(normalized_input)
     if not settings["batch_refs"]:
@@ -82,15 +82,17 @@ def prepare_candidate_run_input(conn, normalized_input: Dict[str, Any],
             with facts.execution_snapshot():
                 fingerprint = facts.capture.content() if capture_fingerprint else ""
                 return _prepare_facts(conn, settings, facts, fingerprint, execution_projections,
-                                      config_snapshot, baseline, validated_projections)
+                                      config_snapshot, baseline, validated_projections, for_adoption=for_adoption,
+                                      held=held)
         facts = PreflightFacts(conn)
         with facts.snapshot(fingerprint=capture_fingerprint) as fingerprint:
             return _prepare_facts(conn, settings, facts, fingerprint, execution_projections,
-                                  config_snapshot, baseline, validated_projections)
+                                  config_snapshot, baseline, validated_projections, for_adoption=for_adoption,
+                                  held=held)
 
 
 def _prepare_facts(conn, settings, facts, fingerprint, execution_projections,
-                   config_snapshot, baseline, validated_projections, *, hold=None):
+                   config_snapshot, baseline, validated_projections, *, for_adoption: bool, held):
     raw_batches = facts.selected(settings["batch_refs"])
     batches = {row["batch_id"]: batch_model(row) for row in raw_batches}
     raw_ops = [row for row in facts.tables["BatchOperations"] if row["batch_id"] in batches]
@@ -99,19 +101,17 @@ def _prepare_facts(conn, settings, facts, fingerprint, execution_projections,
                                   validated=validated_projections)
     facts.execution_projections.update(projections)
     return _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operations, projections,
-                    hold=hold, config_snapshot=config_snapshot, baseline=baseline)
+                    config_snapshot=config_snapshot, baseline=baseline, for_adoption=for_adoption, held=held)
 
 
-def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operations, projections, hold=None, *,
-             config_snapshot=None, baseline=None):
-    """hold：判断哪些原安排保留时用的输入（试调采用传来源排产的起日），缺省同 settings。"""
-    hold = settings if hold is None else hold
+def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operations, projections, *,
+             config_snapshot, baseline, for_adoption: bool, held):
     piece_scope = input_piece_scope(operations, batches)
     if piece_scope is None:
         validate_single_chain(operations)
     svc = build_schedule_repository_bundle(conn)
     base_config = facts.configuration() if config_snapshot is None else config_snapshot
-    cfg = candidate_config(conn, settings, snapshot=base_config)
+    cfg = candidate_config(settings, snapshot=base_config)
     if piece_scope is not None:
         cfg = replace(cfg, dispatch_mode="sgs")
     prev_version = (max((row["version"] for row in facts.capture.table("ScheduleHistory")), default=0)
@@ -120,25 +120,29 @@ def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operation
     guards = execution_guards(svc, facts, operations, batches, projections, prev_version, piece_scope=piece_scope)
     execution_facts, fixed, completed, execution_seeds, snapshot = guards
     cycles = external_execution_cycles(facts, batches, operations, execution_seeds, set(fixed) | set(completed))
-    dispositions, mutable = classify_rows(facts, settings, raw_batches, operations, projections,
-                                         set(fixed) | set(completed), piece_scope=piece_scope, external_cycles=cycles)
+    dispositions, mutable, releases = classify_rows(
+        facts, settings, raw_batches, operations, projections,
+        set(fixed) | set(completed), piece_scope=piece_scope, external_cycles=cycles,
+    )
     guarded_ids = set(fixed) | set(completed) | set(cycles)
-    algo_outcome, runtime_mutable = _algorithm_scope(svc, facts, batches, operations, mutable, guarded_ids, cycles, settings)
+    algo_outcome, runtime_mutable = _algorithm_scope(svc, facts, batches, operations, mutable, guarded_ids, cycles, releases)
     reservations = build_execution_resource_reservations(
         facts=execution_facts, selected_op_ids={op.id for op in operations}, start_dt=start, capture=facts.capture,
     )
-    calendar = CalendarService(conn, capture=facts.capture)
+    calendar = facts.calendar()
     if reservations:
         calendar = ExecutionResourceCalendar(calendar, reservations)
     runtime = build_runtime(
         svc, cfg=cfg, prev_version=prev_version, start_dt=start, batches=batches, operations=operations,
         mutable=runtime_mutable, algo_ops=algo_outcome.value, fixed_ids=fixed, completed_ids=completed,
-        execution_seeds=execution_seeds, reservations=reservations, hold_window=hold_window(conn, hold, snapshot=base_config)[0],
-        hold_start=datetime.combine(local_date(hold["start_date"]), datetime.min.time()), facts=facts, piece_scope=piece_scope,
+        execution_seeds=execution_seeds, reservations=reservations,
+        hold_window=hold_window(settings, snapshot=base_config)[0] if held is None else None,
+        facts=facts, piece_scope=piece_scope,
+        for_adoption=for_adoption, held=held,
     )
     frozen, seeds, warnings, freeze_meta, to_schedule, downtime_meta, pool_meta, downtime, pool, seed_version = runtime
     missing_ids = _missing_internal_resources(mutable)
-    efforts = build_operation_efforts(
+    efforts = [] if for_adoption else build_operation_efforts(
         operations=operations, batches=batches, algo_operations=algo_outcome.value, operations_to_schedule=to_schedule,
         seed_results=seeds, execution_facts=execution_facts,
         execution_projections={op.id: projections[facts.operation_refs[op.id]] for op in operations},
@@ -148,8 +152,7 @@ def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operation
         normalized_batch_ids=[row["batch_id"] for row in raw_batches], start_dt_norm=start,
         end_date_norm=local_date(settings["end_date"]),
         t0=time.time(), cal_svc=calendar, cfg_svc=None, cfg=cfg, readiness_gate_enabled=settings["ready_check"],
-        batches=batches, operations=operations, reschedulable_operations=mutable,
-        reschedulable_op_ids={op.id for op in mutable}, missing_internal_resource_op_ids=missing_ids,
+        batches=batches, operations=operations, missing_internal_resource_op_ids=missing_ids,
         algo_input_outcome=algo_outcome, algo_ops=algo_outcome.value, prev_version=prev_version,
         frozen_op_ids=frozen, seed_results=seeds, execution_facts=execution_facts,
         execution_fixed_op_ids=fixed, execution_completed_op_ids=completed, execution_seed_results=execution_seeds,
@@ -164,14 +167,17 @@ def _prepare(conn, settings, facts, fingerprint, raw_batches, batches, operation
         preflight_facts=facts, execution_reservations=reservations,
         latest_plan_rows=facts.latest_plan_rows(prev_version),
         operation_sources=({op.id: op.source for op in operations}, []),
+        piece_scope=piece_scope,
     )
 
 
-def _algorithm_scope(svc, facts, batches, operations, mutable, guarded_ids, cycles, settings):
+def _algorithm_scope(svc, facts, batches, operations, mutable, guarded_ids, cycles, releases):
     guarded = [op for op in operations if op.id in guarded_ids]
     prime_template_cache(svc, facts.tables, batches, mutable + guarded)
     outcome = build_algo_operations(svc, mutable + guarded, strict_mode=True, return_outcome=True)
-    bind_material_releases([op for op in outcome.value if op.id not in guarded_ids], facts.tables, batches, settings)
+    for op in outcome.value:
+        if op.id not in guarded_ids:
+            op.material_ready_date = releases[op.id]
     # Derived peers are fixed for calculation, but must still take part in the
     # original lock/freeze lookup so their inherited locks cannot be overwritten.
     runtime_mutable = mutable + [op for op in guarded if op.id in cycles]

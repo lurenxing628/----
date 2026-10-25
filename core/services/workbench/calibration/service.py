@@ -8,7 +8,7 @@ from .facts import CalibrationFacts
 from .table import filter_rows
 
 
-def filtered_suggestions(rows, query, *, cell_cache=None, sort=True):
+def filtered_suggestions(rows, query, *, cell_cache=None, sort):
     selected = [row for row in rows if (query.status == "all" or row["status"] == query.status)
                 and (query.deviation == "all" or row["over_20_percent"])]
     selected = filter_rows(selected, query.column_filters, cell_cache=cell_cache)
@@ -23,20 +23,10 @@ def filtered_suggestions(rows, query, *, cell_cache=None, sort=True):
     return known + unknown
 
 
-class WorkbenchCalibrationService:
-    def __init__(self, conn, *, as_of):
-        self.facts = CalibrationFacts(conn, as_of=as_of)
-
-    def read_snapshot(self, *, clock=None):
-        return self.facts.read_snapshot(clock=clock)
-
-    def read(self, query, *, bind_snapshot=None):
-        """Caller holds read_snapshot until the scope token has been checked."""
-        return self.facts.read(query, bind_snapshot=bind_snapshot)
-
+class WorkbenchCalibrationService(CalibrationFacts):
     @staticmethod
-    def workspace(facts, query, snapshot, *, suggestion_ref=None):
-        rows = [{**row, **snapshot} for row in filtered_suggestions(facts["rows"], query)]
+    def workspace(facts, query, snapshot, *, suggestion_ref, export):
+        rows = filtered_suggestions(facts["rows"], query, sort=suggestion_ref is None)
         data = {"scope": query.scope(), "method_version": METHOD_VERSION,
                 "source_constraints": facts["source_constraints"], "lineage_available": facts["lineage_available"],
                 "capabilities": closed_capabilities(), "blocked_reasons": write_blockers(),
@@ -52,11 +42,14 @@ class WorkbenchCalibrationService:
                 raise WorkbenchCommandRejected("entity_not_found", "这条建议不在当前筛选结果里。数据可能已更新，请刷新后重新选择。", 404)
             linked = facts["samples_by_template"].get(row["template_operation_ref"], [])
             unbound = facts["unbound_samples_by_part"].get(row["part_no"], [])
-            data.update(suggestion=row, samples=linked + unbound,
+            data.update(suggestion={**row, **snapshot}, samples=linked + unbound,
                         candidate_scope_basis="template_ref_and_same_part_unbound")
         else:
             start = (query.number - 1) * query.size
-            data.update(items=rows[start:start + query.size], page={"number": query.number, "size": query.size,
+            items = [{**row, **snapshot} for row in rows[start:start + query.size]]
+            if export:
+                rows = [{**row, **snapshot} for row in rows]
+            data.update(items=items, page={"number": query.number, "size": query.size,
                 "total": len(rows), "total_pages": (len(rows) + query.size - 1) // query.size,
                 "has_more": start + query.size < len(rows)})
         return data, rows

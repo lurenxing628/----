@@ -4,7 +4,7 @@ from collections import defaultdict
 
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_process_commands import process_number, process_ref
+from core.models.workbench_process_commands import process_ref
 from core.models.workbench_resource_action import action_row, reject_action_row
 
 from .file_hours_values import HOURS_FIELDS, assertions, flat_hours, hours_values, row_key, supplied_values
@@ -37,8 +37,7 @@ class HoursFilePreview:
             raise WorkbenchCommandRejected("storage_failure", "工艺编号和原记录对不上，请联系维护人员核对资料。", 500)
         return ref
 
-    def resolve(self, values):
-        code, sequence = row_key(values)
+    def resolve(self, code, sequence):
         part = self.parts.get(code)
         if part is None:
             raise ValidationError("这个图号不存在，工时导入不会新增零件。请先到基础资料新增零件。", field="business_code")
@@ -67,11 +66,15 @@ class HoursFilePreview:
             raise WorkbenchCommandRejected("group_invalid", "原外协组的工序范围不合法，这次没有改动。请到基础资料核对外协组起止序。", 422)
         return group
 
-    def source_ready(self, operation):
+    def _is_source_ready(self, operation):
         state = self.facts["workflow"][operation["part_no"]]
         confirmation = state["operations"].get(operation["ref"], {}).get("source", {})
-        if (state["workflow"]["route"]["state"] != "confirmed" or confirmation.get("state") != "confirmed"
-                or operation["source"] not in ("internal", "external")):
+        return (state["workflow"]["route"]["state"] == "confirmed"
+                and confirmation.get("state") == "confirmed"
+                and operation["source"] in ("internal", "external"))
+
+    def source_ready(self, operation):
+        if not self._is_source_ready(operation):
             raise WorkbenchCommandRejected("stage_not_ready", "目标工序的归属尚未确认或已过期，请先核对归属。", 422)
 
     def row(self, decoded):
@@ -81,7 +84,7 @@ class HoursFilePreview:
             values = supplied_values(decoded["values"])
             code, sequence = row_key(values)
             row.update(business_code=code, sequence=public_sequence(sequence))
-            part_ref, operation = self.resolve(values)
+            part_ref, operation = self.resolve(code, sequence)
             group = self.group(operation)
             row.update(entity_ref=part_ref, before=flat_hours(operation, group),
                        expected={"part_ref": part_ref, "operation_ref": operation["ref"], "operation": _plain(operation),
@@ -99,18 +102,6 @@ class HoursFilePreview:
                 raise
             reject_action_row(row, str(exc), code=exc.code)
         return row
-
-    @staticmethod
-    def duplicates(rows):
-        entries = defaultdict(list)
-        for row in rows:
-            if row["business_code"] is not None and "sequence" in row:
-                entries[(row["business_code"], row["sequence"])].append(row)
-        for repeated in entries.values():
-            if len(repeated) > 1:
-                for row in repeated:
-                    if not any(error["code"] == "duplicate_entry" for error in row["errors"]):
-                        reject_action_row(row, "同一图号和工序在文件中重复，这批不能写入。请合并重复行后重新导入。", field="sequence", code="duplicate_entry")
 
     def group_values(self, rows):
         entries, proposals = defaultdict(list), {}
@@ -133,6 +124,11 @@ class HoursFilePreview:
                 for row in related:
                     reject_action_row(row, "合并组里有不合法的成员，工时导入不能改它的关系。请到基础资料核对外协组。", code="group_invalid")
                 continue
+            if supplied[0] != group["total_days"] and not all(
+                    self._is_source_ready(member) for member in self.members[key]):
+                for row in related:
+                    reject_action_row(row, "目标工序的归属尚未确认或已过期，请先核对归属。", code="stage_not_ready")
+                continue
             proposals[key] = supplied[0]
         return proposals
 
@@ -150,12 +146,6 @@ class HoursFilePreview:
         if group is not None and group["group_id"] in proposals:
             after["group_total_days"] = proposals[group["group_id"]]
         row["after"] = after
-        # A merged member may clear its own cycle only with a valid effective total.
-        if "external_days" in updates and updates["external_days"] is None:
-            try:
-                process_number(after["group_total_days"], positive=True)
-            except WorkbenchCommandRejected as exc:
-                reject_action_row(row, str(exc), field="group_total_days")
         row["changes"] = {key: {"before": row["before"][key], "after": after[key]} for key in HOURS_FIELDS
                           if row["before"][key] != after[key]}
         if row["errors"]:
@@ -170,7 +160,6 @@ class HoursFilePreview:
 
     def build(self, decoded_rows):
         rows = [self.row(decoded) for decoded in decoded_rows]
-        self.duplicates(rows)
         proposals = self.group_values(rows)
         for row in rows:
             self.finish(row, proposals)

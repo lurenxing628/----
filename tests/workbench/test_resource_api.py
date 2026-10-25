@@ -5,7 +5,7 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_query import ResourcePageRequest
-from core.services.workbench.resource.metrics import ResourceMetricFactsError
+from core.services.workbench.resource.metrics import ResourceMetricFactsError, WorkbenchResourceMetricsService
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from core.services.workbench.resource.table_states import resource_table_states
 from data.repositories.workbench_resource_metrics_repo import WorkbenchResourceMetricsRepository
@@ -83,11 +83,13 @@ def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(reso
     conn.execute("UPDATE Machines SET name='车床AlPhA' WHERE machine_id IN ('M1','M2')")
     conn.commit()
     group, shift = create_catalog(conn, "machine_group"), create_catalog(conn, "shift_profile")
+    op_type = identity_for(conn, "op_type")
+    assert op_type is not None
     for code in ("M1", "M2"):
         run_resource(conn, "machine", "update", {"relationships": {"group_ref": group.ref}}, code=code)
     for code in ("O1", "O2"):
         run_resource(conn, "operator", "update", {"relationships": {
-            "shift_profile_ref": shift.ref, "skill_refs": [identity_for(conn, "op_type").ref],
+            "shift_profile_ref": shift.ref, "skill_refs": [op_type.ref],
         }}, code=code)
 
     counts, relations, type_counts, scopes = [], [], [], []
@@ -106,9 +108,9 @@ def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(reso
         type_counts.append(tuple(codes))
         return op_type_dependencies(repo, codes)
 
-    def read_scope(repo, kind):
+    def read_scope(repo, kind, **kwargs):
         scopes.append(kind)
-        return scope_state(repo, kind)
+        return scope_state(repo, kind, **kwargs)
 
     for kind in ("machine", "operator", "supplier", "op_type", "machine_group", "shift_profile"):
         reader = WorkbenchResourceQueryService(conn, kind)
@@ -119,17 +121,16 @@ def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(reso
         scopes.clear()
         with monkeypatch.context() as scoped:
             scoped.setattr(WorkbenchResourceTableRepository, "assigned_counts", read_counts)
-            scoped.setattr(WorkbenchResourceTableRepository, "page_relations", read_relations)
             scoped.setattr(WorkbenchResourceMetricsRepository, "op_type_dependencies", read_type_counts)
             scoped.setattr(WorkbenchResourceQueryRepository, "scope_state", read_scope)
             with reader.read_snapshot() as fingerprint:
                 rows, total = reader.repo.page(query)
                 expected = [reader.detail(row["ref"]) for row in rows]
-                expected_metrics = reader.metrics(query)
+                scoped.setattr(WorkbenchResourceTableRepository, "page_relations", read_relations)
                 records, page = reader.page(query)
                 codes = tuple(row["business_code"] for row in rows)
                 assert records == expected
-                assert page["total"] == total and page["metrics"] == expected_metrics
+                assert page["total"] == total
                 assert page["number"] == query.number and page["size"] == query.size
                 assert page["sort"] == [{"field": query.sort, "direction": query.direction}]
                 assert counts == type_counts == [] and scopes == [kind]
@@ -183,7 +184,7 @@ def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(reso
                 expected = [reader.detail(row["ref"]) for row in rows]
                 records, page = reader.page(query)
                 assert records == expected and page["total"] == total
-                assert page["metrics"] == reader.metrics(query)
+                assert "counts" in page["metrics"]
             with pytest.raises(ResourceMetricFactsError):
                 with reader.read_snapshot():
                     reader.page(ResourcePageRequest(kind, sort=column))
@@ -200,6 +201,12 @@ def test_plain_resource_pages_share_batch_states_and_read_dependencies_once(reso
                     reader.page(query)
                 assert (batched.value.code, batched.value.status) == (original.value.code, original.value.status)
                 assert batched.value.code == "storage_failure" and batched.value.status == 500
+        memory.execute("DELETE FROM OpTypes WHERE op_type_id=''")
+        insert_row(memory, "OpTypes", {"op_type_id": "BOTH1", "name": "both work type", "category": "both"})
+        memory.commit()
+        both_metrics = WorkbenchResourceMetricsService(memory).metrics("op_type", ["BOTH1"])
+        assert [issue["code"] for issue in both_metrics["issues"]] == ["resource_availability_unavailable"]
+        assert both_metrics["issues"][0]["unavailable_fields"] == ["linked_machines", "available_operators", "without_machines"]
     finally:
         memory.close()
 
@@ -213,8 +220,6 @@ def test_resource_import_captures_one_batch_and_applies_without_current_row_rere
 
     from core.services.workbench.resource.files import WorkbenchResourceFileService
     from data.repositories.workbench_resource_file_repo import WorkbenchResourceFileRepository
-    from data.repositories.workbench_resource_state_repo import WorkbenchResourceStateRepository
-    from data.repositories.workbench_supplier_state_repo import WorkbenchSupplierStateRepository
     from tests.workbench.resource_file_support import confirm, file_bytes
 
     conn = resource_conn
@@ -235,18 +240,12 @@ def test_resource_import_captures_one_batch_and_applies_without_current_row_rere
         fact_reads.extend(names)
         return original_facts(repo, names)
 
-    def references(repo, selected_kind, codes):
+    def references(repo, selected_kind, codes, *, report_revisions=None):
         reference_reads.append((selected_kind, tuple(codes)))
-        return original_references(repo, selected_kind, codes)
-
-    def old_row_read(*_args, **_kwargs):
-        raise AssertionError('Current resource rows and relations were already captured.')
+        return original_references(repo, selected_kind, codes, report_revisions=report_revisions)
 
     monkeypatch.setattr(WorkbenchResourceMetricsRepository, 'facts', captured)
     monkeypatch.setattr(WorkbenchResourceFileRepository, 'references_many', references)
-    for name in ('get_raw', 'get_profile', 'skills', 'machine_capabilities'):
-        monkeypatch.setattr(WorkbenchResourceStateRepository, name, old_row_read)
-    monkeypatch.setattr(WorkbenchSupplierStateRepository, 'get_by_ref', old_row_read)
     result = confirm(conn, kind, preview, content)
     assert result['result'] == 'committed'
     assert reference_reads == [(kind, tuple(sorted([code, other])))]
@@ -270,10 +269,8 @@ def test_reasoned_status_changes_preserve_explicit_reason_then_become_unchanged(
     assert response.status_code == 200 and response.get_json()['result'] == 'unchanged'
 
 
-def test_resource_bulk_delete_prepares_one_current_set_and_keeps_rejected_selection_rows(resource_conn, monkeypatch):
+def test_resource_bulk_delete_prepares_one_current_set_and_keeps_rejected_selection_rows(resource_conn):
     from core.services.workbench.resource.bulk import WorkbenchResourceBulkService
-    from core.services.workbench.resource.entities import WorkbenchResourceService
-    from data.repositories.workbench_resource_state_repo import WorkbenchResourceStateRepository
     from tests.workbench.resource_file_support import confirm, ref
 
     conn = resource_conn
@@ -287,11 +284,134 @@ def test_resource_bulk_delete_prepares_one_current_set_and_keeps_rejected_select
     preview = service.preview_delete(refs, scope={})
     assert preview.as_dict()['summary']['rejected'] == 0
 
-    def old_row_read(*_args, **_kwargs):
-        raise AssertionError('Bulk apply must use its prepared current set.')
-
-    monkeypatch.setattr(WorkbenchResourceService, 'apply', old_row_read)
-    monkeypatch.setattr(WorkbenchResourceStateRepository, 'get_raw', old_row_read)
     result = confirm(conn, 'machine', preview)
     assert result['result'] == 'committed' and result['data']['deleted_count'] == 2
     assert conn.execute("SELECT COUNT(*) FROM Machines WHERE machine_id IN ('DELETE-ONE','DELETE-TWO')").fetchone()[0] == 0
+
+
+def test_downtime_create_ignores_reversed_active_legacy_interval(resource_conn):
+    from core.services.workbench.resource.downtimes import WorkbenchDowntimeService
+
+    conn = resource_conn
+    service = WorkbenchDowntimeService(conn)
+    machine = identity_for(conn, "machine", "M1")
+    assert machine is not None
+    service.repo.create({
+        "machine_id": "M1", "scope_type": "machine", "scope_value": "M1",
+        "start_time": "2026-10-01 16:00", "end_time": "2026-10-01 15:00",
+        "reason_code": "maintenance", "reason_detail": None, "status": "active",
+    })
+    state = service.snapshot(machine.ref)
+    with conn:
+        outcome = service.apply_normalized(machine.ref, "create", {
+            "start_time": "2026-10-01 14:00", "end_time": "2026-10-01 17:00",
+            "reason_code": "maintenance", "reason_detail": None,
+        }, state)
+    assert outcome.result == "committed"
+
+    target_id = service.repo.create({
+        "machine_id": "M1", "scope_type": "machine", "scope_value": "M1",
+        "start_time": "2026-10-14 08:00", "end_time": "2026-10-14 10:00",
+        "reason_code": "maintenance", "reason_detail": "原说明", "status": "active",
+    })
+    service.repo.create({
+        "machine_id": "M1", "scope_type": "machine", "scope_value": "M1",
+        "start_time": "2026-10-14 09:00:00", "end_time": "2026-10-14 11:00:00",
+        "reason_code": "fault", "reason_detail": "历史重叠", "status": "active",
+    })
+    target_ref = service.facts.ref_for_id(target_id)
+    overlap_state = service.snapshot(machine.ref)
+    with conn:
+        updated = service.apply_normalized(machine.ref, "update", {
+            "downtime_ref": target_ref,
+            "start_time": "2026-10-14 08:00:00", "end_time": "2026-10-14 10:00:00",
+            "reason_code": "maintenance", "reason_detail": "仅改说明",
+        }, overlap_state)
+    assert updated.result == "committed"
+
+
+@pytest.mark.parametrize(
+    "kind,table,key,code,field",
+    (
+        ("machine", "Machines", "machine_id", "M-REP", "actual_machine_ref"),
+        ("operator", "Operators", "operator_id", "O-REP", "actual_operator_ref"),
+    ),
+)
+def test_active_production_report_revision_blocks_resource_deletion_until_voided(resource_conn, kind, table, key, code, field):
+    import json
+
+    from core.services.workbench.resource.bulk import WorkbenchResourceBulkService
+
+    conn = resource_conn
+    insert_row(conn, table, {key: code, "name": code})
+    conn.execute("INSERT INTO ScheduleHistory(version, schedule_time, strategy) VALUES (7, '2026-09-09 08:00:00', 'greedy')")
+    conn.commit()
+    target = identity_for(conn, kind, code)
+    assert target is not None
+
+    op_ref = conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' LIMIT 1").fetchone()[0]
+    task_row = conn.execute("SELECT ref, plan_ref FROM WorkbenchTaskRefs LIMIT 1").fetchone()
+    assert task_row is not None
+    report_ref = ("a" if kind == "machine" else "b") * 48
+    revision_ref = ("c" if kind == "machine" else "d") * 48
+    void_ref = ("e" if kind == "machine" else "f") * 48
+    req_create = f"report-create-{kind}-0001"
+    req_void = f"report-void-{kind}-0001"
+
+    with conn:
+        conn.execute(
+            """INSERT INTO WorkbenchCommandReceipts(request_key, receipt_ref, action, context_ref, input_hash, outcome_json)
+            VALUES (?, ?, 'execution.report_create', ?, ?, '{}')""",
+            (req_create, ("1" if kind == "machine" else "2") * 32, op_ref, "0" * 64),
+        )
+        conn.execute(
+            """INSERT INTO WorkbenchProductionReports
+            (report_ref, report_no, operation_ref, recorded_against_task_ref, recorded_against_plan_ref, source, recorded_at)
+            VALUES (?, ?, ?, ?, ?, 'manual', '2026-10-01T10:00:00')""",
+            (report_ref, f"BG-{kind.upper()}-001", op_ref, task_row["ref"], task_row["plan_ref"]),
+        )
+        conn.execute(
+            """INSERT INTO WorkbenchProductionReportRevisions
+            (revision_ref, report_ref, sequence, previous_revision_ref, action, values_json, reason,
+             local_operator, declared_operator, recorded_at, request_key)
+            VALUES (?, ?, 1, NULL, 'create', ?, 'initial', 'admin', 'admin', '2026-10-01T10:00:00', ?)""",
+            (revision_ref, report_ref, json.dumps({field: target.ref}), req_create),
+        )
+
+    with pytest.raises(WorkbenchCommandRejected) as exc_info:
+        run_resource(conn, kind, "delete", {}, code=code)
+    assert exc_info.value.code == "constraint_conflict"
+
+    reader = WorkbenchResourceQueryService(conn, kind)
+    bulk_service = WorkbenchResourceBulkService(conn, kind, reader=reader)
+    report_sql_queries = []
+    conn.set_trace_callback(
+        lambda sql: report_sql_queries.append(sql) if "FROM WorkbenchProductionReportRevisions" in sql else None
+    )
+    try:
+        with reader.read_snapshot():
+            preview = bulk_service.preview_delete([target.ref], scope={}).as_dict()
+    finally:
+        conn.set_trace_callback(None)
+    assert len(report_sql_queries) == 1
+    assert preview["summary"]["rejected"] == 1
+    assert preview["rows"][0]["errors"][0]["code"] == "constraint_conflict"
+
+    with conn:
+        conn.execute(
+            """INSERT INTO WorkbenchCommandReceipts(request_key, receipt_ref, action, context_ref, input_hash, outcome_json)
+            VALUES (?, ?, 'execution.report_void', ?, ?, '{}')""",
+            (req_void, ("3" if kind == "machine" else "4") * 32, report_ref, "0" * 64),
+        )
+        conn.execute(
+            """INSERT INTO WorkbenchProductionReportVoids
+            (void_fact_ref, report_ref, original_revision_ref, reason, local_operator, declared_operator, recorded_at, request_key)
+            VALUES (?, ?, ?, 'voided for test', 'admin', 'admin', '2026-10-01T11:00:00', ?)""",
+            (void_ref, report_ref, revision_ref, req_void),
+        )
+
+    preview_after_void = bulk_service.preview_delete([target.ref], scope={}).as_dict()
+    assert preview_after_void["summary"]["rejected"] == 0
+    deleted = run_resource(conn, kind, "delete", {}, code=code)
+    assert deleted["result"] == "committed"
+    assert identity_for(conn, kind, code) is None

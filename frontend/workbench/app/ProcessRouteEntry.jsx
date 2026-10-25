@@ -58,7 +58,12 @@
     function abort() { if (request.current) request.current.abort(); request.current = null; }
     React.useEffect(() => () => abort(), []);
     React.useEffect(() => { invalidate(); }, [adapter, result, disabled, active, command && command.error]);
-    React.useEffect(() => { if (result !== context) { setReview(result); setMergeReview(null); setMergeChoices({}); } }, [result]);
+    React.useEffect(() => {
+      if (result !== context) {
+        if (!active && draftText === baselineDraft.current && !state.result && !state.error) acceptFresh(result);
+        else { setReview(result); setMergeReview(null); setMergeChoices({}); }
+      }
+    }, [result]);
     function invalidate() { abort(); setState({ busy: false, result: null, error: null }); setDiscarded([]); }
     function edited() { invalidate(); setMergeReview(null); setMergeChoices({}); }
     function close() { abort(); onClose(); }
@@ -95,11 +100,11 @@
       baselineDraft.current = D.serialize(initialRows.current);
       setRows(nextRows); setRouteRaw(text); setContext(review); setReview(null); setMergeReview(null); setMergeChoices({}); invalidate();
     }
-    function acceptFresh() {
-      const latest = D.fromEntity(review.data), text = openingText(review.data, latest), nextRows = openingRows(latest);
+    function acceptFresh(target = review) {
+      const latest = D.fromEntity(target.data), text = openingText(target.data, latest), nextRows = openingRows(latest);
       initialRows.current = latest;
       baselineDraft.current = mode === 'text' ? text : D.serialize(nextRows);
-      setRows(nextRows.map(row => ({ ...row, key: ++sequence.current }))); setRouteRaw(text); setContext(review); setReview(null); setMergeReview(null); setMergeChoices({}); invalidate();
+      setRows(nextRows.map(row => ({ ...row, key: ++sequence.current }))); setRouteRaw(text); setContext(target); setReview(null); setMergeReview(null); setMergeChoices({}); invalidate();
     }
     async function acceptLatest() {
       if (blocked || state.busy) return;

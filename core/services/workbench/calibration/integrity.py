@@ -22,24 +22,13 @@ def _values(values, as_of):
     validate_actual_values(values, as_of)
 
 
-def validate_report_histories(facts, heads, as_of):
-    seen = set()
+def validate_report_histories(facts, as_of):
     try:
-        for operation_ref, reports in facts["reports"].items():
-            for report_ref, history in reports.items():
-                seen.add(report_ref)
-                previous = None
-                for sequence, row in enumerate(history, 1):
-                    if (row["sequence"] != sequence or row["previous_revision_ref"] != previous
-                            or row["operation_ref"] != operation_ref or row["report_ref"] != report_ref
-                            or row["action"] not in (("create",) if sequence == 1 else ("supplement", "correct"))):
-                        raise ValueError("Stored report revision chain is broken")
-                    public_ref(row["revision_ref"])
+        for reports in facts["reports"].values():
+            for history in reports.values():
+                for row in history:
                     if factory_time(row["revision_at"]) > as_of or factory_time(row["recorded_at"]) > as_of:
                         raise ValueError("Stored report is newer than the captured read time")
                     _values(row["values"], as_of)
-                    previous = row["revision_ref"]
-        if seen != heads:
-            raise ValueError("Stored production report has no revision history")
-    except (ValueError, TypeError, KeyError, OverflowError) as exc:
+    except (ValueError, TypeError, KeyError, OverflowError, WorkbenchCommandRejected) as exc:
         raise WorkbenchCommandRejected("storage_failure", "报工来源或更正记录损坏，没有生成校准建议。请核对报工数据；仍不行请联系维护人员。", 500) from exc

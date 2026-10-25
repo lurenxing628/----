@@ -1,10 +1,8 @@
 """Resolve a new official baseline from its recorded adoption, never version - 1."""
 
-from typing import cast
-
 from core.infrastructure.read_evidence import verified_read
 from core.infrastructure.schema_probe import table_exists
-from core.models.content import content_text
+from core.models.content import content_text, same
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
 from core.services.workbench.facts.adoption_baseline_sources import (
@@ -13,10 +11,8 @@ from core.services.workbench.facts.adoption_baseline_sources import (
     trial_source_evidence,
 )
 from core.services.workbench.facts.adoption_baseline_values import (
-    AdoptionBaselineUnavailable,
     fail,
     require,
-    same,
     stored,
 )
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
@@ -34,11 +30,12 @@ def read_adoption_record(conn, *, plan_ref, version, history, receipt=None, rece
         conn, plan_ref, version, raw, receipt=receipt, receipt_result=receipt_result))
 
 
-def _read_adoption_record(conn, plan_ref, version, raw, *, receipt=None, receipt_result=None):
+def _read_adoption_record(conn, plan_ref, version, raw, *, receipt, receipt_result):
     if raw is None:
         return None
     audit = stored(raw)
     source = audit.get("source")
+    require(source is None or type(source) is str, "adoption.source_shape")
     if source not in _SOURCES:
         if "proof" in audit or "baseline_ref" in audit:
             fail("adoption_evidence_missing", "ScheduleHistory.adoption_source")
@@ -50,6 +47,11 @@ def _read_adoption_record(conn, plan_ref, version, raw, *, receipt=None, receipt
     basis, _, context, parent = _SOURCES[source]
     if context not in audit or parent not in audit:
         fail("adoption_evidence_missing", "ScheduleHistory.adoption_source_refs")
+    require(all(type(audit[key]) is str for key in ("request_key", context, parent, "reason", "declared_operator")),
+            "adoption.history_fields")
+    require(audit["baseline_ref"] is None or type(audit["baseline_ref"]) is str, "adoption.baseline_ref_shape")
+    require(audit["baseline_version"] is None or type(audit["baseline_version"]) is int,
+            "adoption.baseline_version_shape")
     require(type(audit["version"]) is int and audit["version"] == version and audit["validation"] == "valid"
             and audit["is_simulation"] is False and type(audit["row_count"]) is int and audit["row_count"] > 0,
             "adoption.history_identity")
@@ -75,7 +77,7 @@ def _proof_fields(audit, basis):
         fail("adoption_evidence_missing", "adoption.proof." + ",".join(sorted(missing)))
 
 
-def _receipt(conn, plan_ref, version, audit, *, receipt=None, result=None):
+def _receipt(conn, plan_ref, version, audit, *, receipt, result):
     _, action, context, parent = _SOURCES[audit["source"]]
     if not table_exists(conn, "WorkbenchCommandReceipts"):
         fail("adoption_evidence_missing", "WorkbenchCommandReceipts")
@@ -85,9 +87,14 @@ def _receipt(conn, plan_ref, version, audit, *, receipt=None, result=None):
     require(receipt["request_key"] == audit["request_key"], "adoption.receipt_request")
     result = stored(receipt["outcome_json"]) if result is None else result
     require(result.get("result") == "committed", "adoption.receipt_committed")
+    require(type(result.get("data")) is dict, "adoption.receipt_data_shape")
     data = result["data"]
+    require(type(data.get("official_plan")) is dict, "adoption.receipt_official_shape")
     official = data["official_plan"]
     expected = {"plan_ref": plan_ref, "version": version, "kind": "official", "baseline_ref": audit["baseline_ref"]}
+    fields = ("source_run_ref",) if context == "candidate_ref" else ("source_scenario_ref", "source_draft_ref")
+    require(expected.keys() <= official.keys() and set(fields) <= official.keys(), "adoption.receipt_official_fields")
+    require({context, parent, "row_count"} <= data.keys(), "adoption.receipt_scope_fields")
     require(same({key: official[key] for key in expected}, expected), "adoption.receipt_official_identity")
     require((receipt["action"], receipt["context_ref"]) == (action, audit[context]), "adoption.receipt_source")
     intent = {"confirm": True, "reason": audit["reason"], "declared_operator": audit["declared_operator"]}
@@ -96,7 +103,6 @@ def _receipt(conn, plan_ref, version, audit, *, receipt=None, result=None):
     receipt["input_source_verified"] = original is not None
     require(data[context] == audit[context] and data[parent] == audit[parent]
             and same(data["row_count"], audit["row_count"]), "adoption.receipt_scope")
-    fields = ("source_run_ref",) if context == "candidate_ref" else ("source_scenario_ref", "source_draft_ref")
     require(all(official[key] == audit[key[len("source_"):]] for key in fields), "adoption.receipt_provenance")
     return receipt
 
@@ -107,6 +113,12 @@ def read_adoption_source(conn, *, plan_ref, version, history, recorded=None, con
     The caller's exact version and history are part of this binding; an earlier
     official plan is always a separate source, even when its operations match.
     """
+    if context is not None:
+        return context.adoption_source(plan_ref, version, history, recorded=recorded)
+    return load_adoption_source(conn, plan_ref=plan_ref, version=version, history=history, recorded=recorded)
+
+
+def load_adoption_source(conn, *, plan_ref, version, history, recorded, context=None):
     recorded = read_adoption_record(conn, plan_ref=plan_ref, version=version, history=history) if recorded is None else recorded
     if recorded is None:
         return None
@@ -116,7 +128,7 @@ def read_adoption_source(conn, *, plan_ref, version, history, recorded=None, con
     ))
 
 
-def _read_adoption_source(conn, *, plan_ref, version, recorded, context=None):
+def _read_adoption_source(conn, *, plan_ref, version, recorded, context):
     basis, audit, receipt = recorded
     prepared_candidate = prepared_trial = None
     if basis == "candidate_adoption":
@@ -143,14 +155,11 @@ def _read_adoption_source(conn, *, plan_ref, version, recorded, context=None):
 def read_adoption_baseline(conn, *, plan_ref, version, history, facts, point_annotator=None, context=None):
     """Return captured tasks and locator, or raise a classified evidence gap."""
     try:
-        recorded = read_adoption_record(conn, plan_ref=plan_ref, version=version, history=history)
-        if recorded is None:
+        evidence = read_adoption_source(conn, plan_ref=plan_ref, version=version, history=history, context=context)
+        if evidence is None:
             return None
-        basis, audit, receipt = recorded
+        basis, audit, receipt = (evidence[key] for key in ("basis", "audit", "receipt"))
         facts["adoption"] = {"basis": basis, "audit": audit, "receipt": receipt}
-        evidence = cast(dict, read_adoption_source(
-            conn, plan_ref=plan_ref, version=version, history=history, recorded=recorded, context=context,
-        ))
         baseline, tables, current = evidence["baseline"], evidence["tables"], evidence["selected"]
         facts["provenance"] = evidence["provenance"]
         facts["adoption"].update(baseline=baseline, selected_rows=current)
@@ -159,13 +168,9 @@ def read_adoption_baseline(conn, *, plan_ref, version, history, facts, point_ann
         require(baseline["version"] < version and baseline["plan_ref"] != plan_ref, "adoption.baseline_precedes_selected")
         before = baseline_tasks(conn, baseline, tables, facts["adoption"], point_annotator=point_annotator, context=context)
         return {"basis": basis, "baseline": baseline, "tasks": before}
-    except AdoptionBaselineUnavailable:
-        raise
     except WorkbenchCommandRejected as exc:
         if exc.status == 413:
             raise
         fail("adoption_snapshot_invalid", exc.code)
     except WorkbenchPlanReferenceError as exc:
         fail("adoption_reference_invalid", exc.code)
-    except (KeyError, TypeError, ValueError, OverflowError) as exc:
-        fail("adoption_snapshot_invalid", "stored_evidence_shape:" + type(exc).__name__)

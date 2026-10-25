@@ -22,20 +22,32 @@
       && new Set(value.map(row => row.key)).size === value.length;
   }
   function routeSummary(value) {
-    return value === null || C.object(value) && C.object(value.counts) && ['operations', 'recognized', 'unknown'].every(key => count(value.counts[key]))
-      && value.counts.operations === value.counts.recognized + value.counts.unknown && typeof value.can_confirm_route === 'boolean'
-      && Array.isArray(value.diagnostics) && value.diagnostics.every(row => C.object(row) && text(row.code) && text(row.message)
-        && ['error', 'warning'].includes(row.severity) && (!C.own(row, 'sequence') || sequence(row.sequence)))
-      && Array.isArray(value.operations) && value.operations.length === value.counts.operations
-      && value.operations.every(row => C.object(row) && sequence(row.sequence) && text(row.op_type_name) && row.op_type_name.trim()
-        && [null, 'internal', 'external'].includes(row.source_suggestion) && (row.supplier_label === null || text(row.supplier_label))
-        && (row.external_days === null || Number.isFinite(row.external_days) && row.external_days > 0))
-      && Array.isArray(value.differences) && value.differences.every(row => C.object(row) && sequence(row.sequence)
-        && ['added', 'removed', 'changed', 'retained'].includes(row.change) && (row.before === null || text(row.before))
-        && (row.after === null || text(row.after)) && (row.before !== null || row.after !== null))
-      && (!value.can_confirm_route || value.differences.filter(row => row.after !== null).length === value.operations.length
-        && value.operations.every(op => value.differences.some(row => row.sequence === op.sequence && row.after === op.op_type_name)))
-      && (!value.can_confirm_route || !value.diagnostics.some(row => row.severity === 'error'));
+    if (value === null) return true;
+    if (!C.object(value) || !C.object(value.counts) || !['operations', 'recognized', 'unknown'].every(key => count(value.counts[key]))
+        || value.counts.operations !== value.counts.recognized + value.counts.unknown || typeof value.can_confirm_route !== 'boolean'
+        || !Array.isArray(value.diagnostics) || !value.diagnostics.every(row => C.object(row) && text(row.code) && text(row.message)
+          && ['error', 'warning'].includes(row.severity) && (!C.own(row, 'sequence') || sequence(row.sequence)))
+        || !Array.isArray(value.operations) || value.operations.length !== value.counts.operations
+        || !value.operations.every(row => C.object(row) && sequence(row.sequence) && text(row.op_type_name) && row.op_type_name.trim()
+          && [null, 'internal', 'external'].includes(row.source_suggestion) && (row.supplier_label === null || text(row.supplier_label))
+          && (row.external_days === null || Number.isFinite(row.external_days) && row.external_days > 0))
+        || !Array.isArray(value.differences) || !value.differences.every(row => C.object(row) && sequence(row.sequence)
+          && ['added', 'removed', 'changed', 'retained'].includes(row.change) && (row.before === null || text(row.before))
+          && (row.after === null || text(row.after)) && (row.before !== null || row.after !== null)))
+      return false;
+    if (!value.can_confirm_route) return true;
+    const afterBySeq = new Map();
+    let afterCount = 0;
+    for (const row of value.differences) {
+      if (row.after === null) continue;
+      afterCount++;
+      let names = afterBySeq.get(row.sequence);
+      if (!names) { names = new Set(); afterBySeq.set(row.sequence, names); }
+      names.add(row.after);
+    }
+    return afterCount === value.operations.length
+      && value.operations.every(op => { const names = afterBySeq.get(op.sequence); return !!names && names.has(op.op_type_name); })
+      && !value.diagnostics.some(row => row.severity === 'error');
   }
   function publicColumns(data) {
     if (!columns(data.columns)) throw C.failure('文件预检缺少明确的业务列名。');
@@ -76,8 +88,9 @@
     return result;
   }
   function confirmInput(data, groupRefs, zero) {
-    if (!Array.isArray(groupRefs) || new Set(groupRefs).size !== groupRefs.length || groupRefs.length !== data.affected_groups.length
-        || data.affected_groups.some(group => !groupRefs.includes(group.ref))) throw C.failure('请逐项核对并勾选全部受影响的外协组，未自动解除任何组。');
+    const groupSet = Array.isArray(groupRefs) ? new Set(groupRefs) : null;
+    if (!groupSet || groupSet.size !== groupRefs.length || groupRefs.length !== data.affected_groups.length
+        || data.affected_groups.some(group => !groupSet.has(group.ref))) throw C.failure('请逐项核对并勾选全部受影响的外协组，未自动解除任何组。');
     if (typeof zero !== 'boolean' || data.zero_review_required && !zero) throw C.failure('单件工时为 0，排产只计算换型工时。请按 0 导入。');
     return { preview_ref: data.preview_ref, discard_group_refs: groupRefs.slice(), confirm_zero_unit_hours: zero };
   }
@@ -109,9 +122,12 @@
         || !C.object(result.data.summary) || !results.every(key => count(result.data.summary[key])) || result.data.summary.rejected !== 0 || result.data.summary.delete !== 0
         || results.reduce((sum, key) => sum + result.data.summary[key], 0) !== result.data.rows.length
         || new Set(result.data.rows.map(row => row.row)).size !== result.data.rows.length || !Array.isArray(result.data.affected_refs)
-        || !result.data.affected_refs.every(A.ref) || new Set(result.data.affected_refs).size !== result.data.affected_refs.length
-        || result.data.rows.some(row => !result.data.affected_refs.includes(row.entity_ref))
-        || result.data.affected_refs.some(ref => !result.data.rows.some(row => row.entity_ref === ref))
+        || !result.data.affected_refs.every(A.ref))
+      throw C.failure(window.WorkbenchTerms.outcomes.pending('导入'));
+    const rowRefs = new Set(result.data.rows.map(row => row.entity_ref)), affectedSet = new Set(result.data.affected_refs);
+    if (affectedSet.size !== result.data.affected_refs.length
+        || result.data.rows.some(row => !affectedSet.has(row.entity_ref))
+        || result.data.affected_refs.some(ref => !rowRefs.has(ref))
         || result.result === 'unchanged' && (result.data.summary.new !== 0 || result.data.summary.update !== 0 || result.data.rows.some(row => row.result !== 'unchanged'))
         || targetRef && result.data.affected_refs.some(ref => ref !== targetRef))
       throw C.failure(window.WorkbenchTerms.outcomes.pending('导入'));

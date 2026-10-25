@@ -9,7 +9,7 @@ from .nx_runtime import import_networkx
 _SOURCE_NODE_ID = "__GRAPH_METRICS_SOURCE__"
 
 
-def _node_sort_key(graph: Any, node_id: str) -> Tuple[str, int, str, str]:
+def node_sort_key(graph: Any, node_id: str) -> Tuple[str, int, str, str]:
     data = graph.nodes[node_id]
     return (
         str(data["batch_id"]),
@@ -30,7 +30,7 @@ def get_topological_order(graph: Any) -> List[str]:
 def get_topological_generations(graph: Any) -> List[List[str]]:
     nx = import_networkx()
     return [
-        sorted(list(group), key=lambda node_id: _node_sort_key(graph, node_id))
+        sorted(list(group), key=lambda node_id: node_sort_key(graph, node_id))
         for group in nx.topological_generations(graph)
     ]
 
@@ -82,11 +82,8 @@ def get_critical_path(
 def _build_downstream_critical_minutes_by_node(
     graph: Any,
     *,
-    topological_order: Optional[List[str]] = None,
+    topological_order: List[str],
 ) -> Dict[str, int]:
-    if topological_order is None:
-        topological_order = get_topological_order(graph)
-
     result: Dict[str, int] = {}
     for node_id in reversed(topological_order):
         result[node_id] = _duration_of(graph, node_id) + max(
@@ -192,4 +189,5 @@ __all__ = [
     "get_critical_path",
     "get_topological_generations",
     "get_topological_order",
+    "node_sort_key",
 ]

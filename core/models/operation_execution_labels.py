@@ -2,42 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.models.operation_execution_event import (
-    EXECUTION_ACTION_REPORT_EXCEPTION,
-    EXECUTION_EVENT_EXCEPTION,
-    EXECUTION_EVENT_FINISH,
-    EXECUTION_EVENT_PAUSE,
-    EXECUTION_EVENT_RESUME,
-    EXECUTION_EVENT_START,
-    EXECUTION_STATUS_COMPLETED,
-    EXECUTION_STATUS_EXCEPTION,
-    EXECUTION_STATUS_NOT_STARTED,
-    EXECUTION_STATUS_PAUSED,
-    EXECUTION_STATUS_PROCESSING,
-)
-
-EXECUTION_ACTION_FILL_ACTUAL = "fill_actual"
-EXECUTION_ACTION_VIEW_RECORDS = "view_records"
-
-STATUS_LABELS = {
-    EXECUTION_STATUS_NOT_STARTED: "待开工",
-    EXECUTION_STATUS_PROCESSING: "生产中",
-    EXECUTION_STATUS_PAUSED: "已暂停",
-    EXECUTION_STATUS_EXCEPTION: "异常中",
-    EXECUTION_STATUS_COMPLETED: "已完工",
-}
-
-ACTION_LABELS = {
-    EXECUTION_EVENT_START: "开工",
-    EXECUTION_EVENT_PAUSE: "暂停",
-    EXECUTION_EVENT_RESUME: "继续生产",
-    EXECUTION_EVENT_FINISH: "完工",
-    EXECUTION_EVENT_EXCEPTION: "报异常",
-    EXECUTION_ACTION_REPORT_EXCEPTION: "报异常",
-    EXECUTION_ACTION_FILL_ACTUAL: "填写实际情况",
-    EXECUTION_ACTION_VIEW_RECORDS: "查看现场记录",
-}
-
 REASON_LABELS = {
     "equipment": "设备问题",
     "person": "人员问题",
@@ -61,33 +25,6 @@ HANDLING_STATUS_LABELS = {
     "waiting": "等待条件",
     "handled": "已处理",
 }
-
-def _normalize_remark_token(value: Any) -> str:
-    return str(value or "").strip().casefold()
-
-
-def execution_status_label(value: Any) -> str:
-    text = str(value or "").strip()
-    return STATUS_LABELS.get(text, "状态未识别")
-
-
-def execution_action_label(value: Any) -> str:
-    text = str(value or "").strip()
-    return ACTION_LABELS.get(text, "操作未识别")
-
-
-def event_type_to_action(value: Any) -> str:
-    text = str(value or "").strip()
-    if text == EXECUTION_EVENT_EXCEPTION:
-        return EXECUTION_ACTION_REPORT_EXCEPTION
-    return text
-
-
-def action_to_event_type(value: Any) -> str:
-    text = str(value or "").strip()
-    if text == EXECUTION_ACTION_REPORT_EXCEPTION:
-        return EXECUTION_EVENT_EXCEPTION
-    return text
 
 
 def exception_reason_label(value: Any) -> str:
@@ -114,48 +51,12 @@ def suggest_reschedule_label(value: Any) -> str:
     return "暂不清楚是否需要重新排程"
 
 
-def public_execution_remark(value: Any, *, internal_tokens: Any = None) -> str:
-    """把“情况说明”里被错灌进来的内部枚举码清掉，保留用户真填的文字。
-
-    ``internal_tokens`` 传入本条记录自己的结构化码集合（event_type / reported_status /
-    reason_code / severity / handling_status）。说明只有在等于其中之一时才判为泄漏并清空，
-    这样不会误伤恰好等于其它记录所用英文码的合法说明。判定用 casefold 归一，避免大小写绕过。
-    """
-    text = str(value or "").strip()
-    if not text:
-        return ""
-    tokens = {
-        _normalize_remark_token(token)
-        for token in (internal_tokens or ())
-        if str(token or "").strip()
-    }
-    if _normalize_remark_token(text) in tokens:
-        return ""
-    return text
-
-
-def internal_remark_tokens_from_event(event: Any) -> frozenset:
-    """从一条执行事件里取出它“自己的”结构化枚举码，供 public_execution_remark 判定泄漏。"""
-    values = (event.event_type, event.reported_status, event.reason_code, event.severity, event.handling_status)
-    return frozenset(text for raw in values for text in (str(raw or "").strip(),) if text)
-
-
 __all__ = [
-    "ACTION_LABELS",
-    "EXECUTION_ACTION_FILL_ACTUAL",
-    "EXECUTION_ACTION_VIEW_RECORDS",
     "HANDLING_STATUS_LABELS",
     "REASON_LABELS",
     "SEVERITY_LABELS",
-    "STATUS_LABELS",
-    "action_to_event_type",
     "exception_reason_label",
-    "event_type_to_action",
-    "execution_action_label",
-    "execution_status_label",
     "handling_status_label",
-    "internal_remark_tokens_from_event",
-    "public_execution_remark",
     "severity_label",
     "suggest_reschedule_label",
 ]

@@ -1,19 +1,18 @@
 """Coordinator hook only; JSON trial commands never register or publish a plan."""
 
 import re
-import uuid
 
 from flask import g, request
 
 from core.models.content import content_text
-from core.models.workbench_command import WorkbenchCommandUncertain
+from core.models.workbench_command import validate_request_key
 from core.models.workbench_trial import fields
 from core.models.workbench_trial_catalog import TrialCatalogScope
 from core.services.workbench import messages
 from core.services.workbench.trial.catalog import WorkbenchTrialCatalogService
 from web.api_responses import json_response, query_success
 
-from .api_responses import api_endpoint
+from .api_responses import api_endpoint, read_endpoint
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
 
@@ -31,7 +30,9 @@ def _body(command=False):
     value = request.get_json()
     if command:
         fields(value, ("request_key", "write_token", "input"))
+        validate_request_key(value["request_key"])
         g.workbench_request_key = value["request_key"]
+        g.workbench_result_target = "/api/workbench/v1/trial/commands/" + value["request_key"]
     return value
 
 
@@ -45,22 +46,13 @@ def _query(data, scope):
     return response
 
 
-@api_endpoint
+@read_endpoint
 def trial_create_preview():
     return _query(_service().preview_create(_body()), {"kind": "trial_create_preview"})
 
 
-def _command(call):
-    try:
-        result = call()
-    except WorkbenchCommandUncertain as exc:
-        response = json_response({"ok": False, "committed": "unknown", "error": {
-            "code": "storage_failure", "message": str(exc), "fields": [], "retryable": False,
-            "request_ref": uuid.uuid4().hex,
-            "request_key": exc.request_key, "result_target": "/api/workbench/v1/trial/commands/" + exc.request_key}})
-        response.status_code = 500
-    else:
-        response = json_response(result)
+def _command(result):
+    response = json_response(result)
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -68,7 +60,7 @@ def _command(call):
 @api_endpoint
 def trial_create():
     value = _body(True)
-    return _command(lambda: _service().create(value["input"], value["write_token"], value["request_key"]))
+    return _command(_service().create(value["input"], value["write_token"], value["request_key"]))
 
 
 @api_endpoint
@@ -79,19 +71,19 @@ def trial_read(draft_ref):
 @api_endpoint
 def trial_change(draft_ref):
     value = _body(True)
-    return _command(lambda: _service().change(draft_ref, value["input"], value["write_token"], value["request_key"]))
+    return _command(_service().change(draft_ref, value["input"], value["write_token"], value["request_key"]))
 
 
 @api_endpoint
 def trial_save(draft_ref):
     value = _body(True)
-    return _command(lambda: _service().save(draft_ref, value["input"], value["write_token"], value["request_key"]))
+    return _command(_service().save(draft_ref, value["input"], value["write_token"], value["request_key"]))
 
 
 @api_endpoint
 def trial_discard(draft_ref):
     value = _body(True)
-    return _command(lambda: _service().discard(draft_ref, value["input"], value["write_token"], value["request_key"]))
+    return _command(_service().discard(draft_ref, value["input"], value["write_token"], value["request_key"]))
 
 
 @api_endpoint

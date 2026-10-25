@@ -3,7 +3,7 @@
 from core.infrastructure.read_evidence import verified_read
 from core.models.content import same
 from core.models.workbench_trial import MAX_TRIAL_TASKS, reject
-from core.models.workbench_trial_codec import _encoded, load_object, load_object_with_size
+from core.models.workbench_trial_codec import encode_trial_text, load_object, load_object_with_size
 from core.models.workbench_trial_scenario_archive import (
     logical_snapshot_bytes,
     scenario_read_size_basis,
@@ -19,7 +19,7 @@ def _current_fields(value):
 
 
 def require_trial_schema(repo):
-    if verified_read(getattr(repo, "conn", None), ("trial_schema_issues",), repo.schema_issues):
+    if verified_read(repo.conn, ("trial_schema_issues",), repo.schema_issues):
         reject("trial_schema_unavailable", "试调记录结构不完整，请联系维护人员。", 503)
 
 
@@ -55,7 +55,7 @@ def load_scenario(repo, scenario_ref):
 def load_scenario_record(repo, scenario_ref, *, row_limit=None, byte_limit=None, size_check=None):
     """One immutable saved record; each consumer keeps its own actual body limits."""
     require_trial_schema(repo)
-    header, result, sizes = verified_read(getattr(repo, "conn", None), ("trial_scenario_record", scenario_ref),
+    header, result, sizes = verified_read(repo.conn, ("trial_scenario_record", scenario_ref),
         lambda: _load_scenario_record(repo, scenario_ref, row_limit, byte_limit, size_check))
     _scenario_limits(sizes, row_limit, byte_limit, size_check)
     return header, result
@@ -87,7 +87,7 @@ def _load_scenario_record(repo, scenario_ref, row_limit, byte_limit, size_check)
         sizes["bodies"] += task_bytes
         _scenario_limits(sizes, row_limit, byte_limit, size_check)
         if metadata_bytes is not None:
-            logical_bodies += len(_encoded(task)[1]) if normalize_task_bytes else task_bytes
+            logical_bodies += len(encode_trial_text(task)[1]) if normalize_task_bytes else task_bytes
             logical_snapshot_bytes(metadata_bytes, logical_bodies, sizes["rows"], has_metadata=bool(archive["snapshot"]))
         stored[row["row_ref"]] = task
     if metadata_bytes is not None and not sizes["rows"]:

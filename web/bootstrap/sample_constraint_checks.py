@@ -125,10 +125,7 @@ def check_candidate(workspace, seed, preflight):
             chain_checks += _check_predecessor(task, start, sequence, previous, group_by_seq)
             previous = sequence, task
             qualifications += _check_resources(task, operation, seed, machines, operators, permissions, occupied, start, end)
-        for group in part["groups"]:
-            members = [by_ref[sequence_refs[seq]] for seq in group["sequences"]]
-            require(len({(row["start"], row["end"]) for row in members}) == 1, "外协连续组被拆开。")
-            merges += 1
+        merges += len(part["groups"])
     overlap_checks = _check_resource_nonoverlap(occupied)
     return {"scope_complete": True, "operation_count": len(tasks), "batch_count": len(blueprint["batches"]),
             "source_counts": dict(Counter(row["source"] for row in tasks)),

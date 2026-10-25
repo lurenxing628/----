@@ -14,7 +14,6 @@ from core.models.workbench_calibration import (
     issue,
     write_blockers,
 )
-from core.models.workbench_command import WorkbenchCommandRejected
 
 from .samples import number, quantize
 
@@ -22,8 +21,6 @@ _RAW_SUGGESTION = "_raw_suggested_unit_hours"
 
 
 def _select_recent(samples):
-    if len({row["sample_ref"] for row in samples}) != len(samples):
-        raise WorkbenchCommandRejected("storage_failure", "完工记录重复，请刷新后重试；仍有问题请联系维护人员。", 500)
     eligible = sorted((row for row in samples if row["eligible"]),
                       key=lambda row: (row["confirmed_finish"], row["sample_ref"]), reverse=True)
     selected = eligible[:MAX_SAMPLES]

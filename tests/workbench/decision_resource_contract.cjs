@@ -245,6 +245,15 @@ async function paneContracts() {
   const nextMap = nodes(tree).find(node => node.type === local.RunDecisionResourceHeatmap.Heatmap), before = calls.length;
   nextMap.props.onCursor({ resource_ref: machines[20], date: dates[14] }); await render(); assert.equal(calls.length, before, '日格焦点变化不重读资源');
   nextMap.props.onFocus({ resource_ref: machines[20] }, { date: dates[24], bucket_key: dates[24], start: dates[24] + 'T00:00:00', end: dates[24] + 'T23:59:59' }, 10); await render(); assert.equal(daily.at(-1).bucket_start, dates[24] + 'T00:00:00', '点击时段读取精确起止范围，独立绑定明细快照'); assert.equal(daily.at(-1).bucket_end, dates[24] + 'T23:59:59');
+  const refreshButton = () => nodes(tree).find(node => node.props['aria-label'] === '刷新资源影响'), openDays = daily.length;
+  refreshButton().props.onClick(); await render(); assert.equal(daily.length, openDays + 1, '刷新资源影响同时重读已展开的逐日明细，只读一次');
+  nodes(tree).find(node => node.type === local.RunDecisionResources.SelectedWindow).props.onQuery({ page: 2 }, true); await render(); assert.equal(daily.at(-1).snapshot_ref, token);
+  const pagedDays = daily.length; refreshButton().props.onClick(); await render();
+  assert.equal(daily.length, pagedDays + 1); assert.equal(daily.at(-1).snapshot_ref, undefined, '刷新放弃逐日明细旧快照，并只读一次');
+  const resourceDays = props.adapter.resourceDays; props.adapter.resourceDays = () => new Promise(() => {});
+  refreshButton().props.onClick(); await render(); nodes(tree).find(node => node.type === 'button' && text(node) === '取消逐日读取').props.onClick(); await render();
+  props.adapter.resourceDays = resourceDays; const cancelledDays = daily.length; refreshButton().props.onClick(); await render();
+  assert.equal(daily.length, cancelledDays + 1, '已取消的逐日读取随刷新恢复，只读一次');
   const loadedResources = calls.length, loadedDays = daily.length;
   props.enabled = false; await render(); props.enabled = true; await render();
   assert.equal(calls.length, loadedResources); assert.equal(daily.length, loadedDays, '同上层快照重开资源与逐日面板复用各自成功读取');

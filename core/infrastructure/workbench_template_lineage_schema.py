@@ -118,8 +118,7 @@ def template_lineage_contract_issues(conn, *, structure=None, allow_legacy=True)
                 conn, actual[name] or "", sql, legacy[name], allow_legacy=allow_legacy)]
 
 
-def _source_contract_issues(conn, *, structure=None):
-    structure = structure if structure is not None else SchemaStructure(conn)
+def _source_contract_issues(*, structure: SchemaStructure):
     required = {"BatchOperations": set(OPERATION_COLUMNS), "Batches": {"batch_id", "part_no", "quantity"},
                 "PartOperations": {"id", "part_no", "seq", "op_type_id", "op_type_name", "source", "supplier_id",
                                    "setup_hours", "unit_hours", "ext_days", "ext_group_id", "status", "created_at"}}
@@ -136,7 +135,7 @@ def install_template_lineage(conn):
     actual = structure.objects.keys()
     has_any = bool(actual & objects.keys())
     issues = (workbench_metadata_contract_issues(conn, structure=structure) + workbench_process_contract_issues(conn, structure=structure) +
-              workbench_plan_identity_contract_issues(conn, structure=structure) + _source_contract_issues(conn, structure=structure))
+              workbench_plan_identity_contract_issues(conn, structure=structure) + _source_contract_issues(structure=structure))
     if has_any:
         issues += template_lineage_contract_issues(conn, structure=structure)
     if issues:
@@ -144,8 +143,3 @@ def install_template_lineage(conn):
     if not has_any:
         for sql in objects.values():
             conn.execute(sql)
-
-
-objects = template_lineage_objects
-contract_issues = template_lineage_contract_issues
-install = install_template_lineage

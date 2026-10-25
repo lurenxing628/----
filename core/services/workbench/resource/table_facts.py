@@ -7,16 +7,14 @@ from typing import Mapping, cast
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
-from core.models.workbench_resource_status import public_resource_status
-from core.models.workbench_resource_table_query import table_columns
 from core.services.workbench.facts.table_cells import number_cell, relation_cell, status_cell, text_cell
 from core.services.workbench.facts.table_index import ResourceTableIndex
 from data.repositories.workbench_resource_dependencies import DEPENDENCIES
 from data.repositories.workbench_resource_table_repo import WorkbenchResourceTableRepository
 
-from .metrics import _KEYS, _READ_FACTS, _index
+from .metrics import READ_FACTS, RESOURCE_KEYS, index_resource_rows
 
-_OP_TYPE_DEPENDENCIES = {
+OP_TYPE_DEPENDENCIES = {
     "machine_capabilities": "MachineOpTypes.op_type_id", "machines": "Machines.op_type_id",
     "legacy_suppliers": "Suppliers.op_type_id", "supplier_capabilities": "WorkbenchSupplierOpTypes.op_type_id",
     "skills": "OperatorSkill.op_type_id", "part_operations": "PartOperations.op_type_id",
@@ -27,9 +25,10 @@ _OP_TYPE_DEPENDENCIES = {
 def _change_relations(repo, roots, machine_authorizations):
     authorizations = repo.relation_rows("authorizations", (("operator_id", roots["operator"]),
         ("machine_id", roots["machine"] if machine_authorizations else ())))
-    # Permissions compare complete states for old and newly requested machines.
-    # Expand these owners before reading machine capabilities and group bindings.
-    roots["machine"].update(row["machine_id"] for row in authorizations if row["operator_id"] in roots["operator"])
+    if machine_authorizations:
+        # Permissions compare complete states for old and newly requested machines.
+        # Expand these owners before reading machine capabilities and group bindings.
+        roots["machine"].update(row["machine_id"] for row in authorizations if row["operator_id"] in roots["operator"])
     scopes = {
         "groups": (("machine_id", roots["machine"]), ("group_id", roots["machine_group"])),
         "operator_profiles": (("operator_id", roots["operator"]), ("shift_profile_id", roots["shift_profile"])),
@@ -53,11 +52,14 @@ def _related_change_codes(data, roots):
     return codes
 
 
-def capture_change_facts(metrics, *, refs, codes, selected_refs=(), selected_codes=None, machine_authorizations=False):
+def capture_change_facts(metrics, *, refs, codes, selected_refs=(), selected_codes=None,
+                         machine_authorizations=False, known_identities=()):
     """Feed the same state projections with only this command's resource closure."""
     repo = WorkbenchResourceTableRepository(metrics.conn, metrics.logger)
-    roots = {kind: set((codes or {}).get(kind, ())) for kind in _KEYS}
-    current = repo.identities_by_refs(refs)
+    roots = {kind: set((codes or {}).get(kind, ())) for kind in RESOURCE_KEYS}
+    known_by_ref = {row["ref"]: row for row in known_identities}
+    missing_refs = [ref for ref in refs if ref not in known_by_ref]
+    current = list(known_identities) + (repo.identities_by_refs(missing_refs) if missing_refs else [])
     identities = {(row["kind"], row["entity_key"]): row for row in current}
     for identity in current:
         if identity["kind"] in roots:
@@ -69,7 +71,8 @@ def capture_change_facts(metrics, *, refs, codes, selected_refs=(), selected_cod
             identities[(identity["kind"], identity["entity_key"])] = identity
     data = {kind: repo.raw_rows(kind, values) if values else [] for kind, values in wanted.items()}
     data.update(_change_relations(repo, roots, machine_authorizations))
-    additional_machines = roots["machine"] - wanted["machine"]
+    authorized_machines = {row["machine_id"] for row in data["authorizations"] if row["operator_id"] in roots["operator"]}
+    additional_machines = (roots["machine"] | authorized_machines) - wanted["machine"]
     if additional_machines:
         data["machine"].extend(repo.raw_rows("machine", additional_machines))
         wanted["machine"].update(additional_machines)
@@ -80,27 +83,26 @@ def capture_change_facts(metrics, *, refs, codes, selected_refs=(), selected_cod
             data[kind].extend(repo.raw_rows(kind, missing))
             wanted[kind].update(missing)
     shifts = sorted(roots["shift_profile"] | related["shift_profile"])
-    data["shift_pattern"] = []
-    for start in range(0, len(shifts), 400):
-        chunk = shifts[start:start + 400]
-        patterns = repo.page_relations("shift_profile", chunk)["pattern"]
-        data["shift_pattern"].extend(row for code in chunk for row in patterns[code])
+    patterns = repo.page_relations("shift_profile", shifts)["pattern"] if shifts else {}
+    data["shift_pattern"] = [row for code in shifts for row in patterns[code]]
     for kind, values in wanted.items():
-        missing = values - {code for current_kind, code in identities if current_kind == kind}
+        missing = [code for code in values if (kind, code) not in identities]
         if missing:
             identities.update(((row["kind"], row["entity_key"]), row) for row in repo.identities_by_codes(kind, missing))
-    metrics.facts = {name: data.get(name, []) for name in _READ_FACTS["op_type"]}
+    metrics.facts = {name: data.get(name, []) for name in READ_FACTS["op_type"]}
     return ResourceTableFacts(metrics, identities.values())
 
 
 class ResourceTableFacts:
-    def __init__(self, metrics, identities, *, scope_state=None, identity_kinds=None):
+    def __init__(self, metrics, identities, *, scope_state=None, identity_kinds=None, report_revisions=None):
         self.metrics = metrics
-        self.identities = {(row["kind"], row["entity_key"]): row for row in identities if row["active"] == 1}
-        self.identity_kinds = set(identity_kinds) if identity_kinds is not None else set(_KEYS)
+        self.identities = {(row["kind"], row["entity_key"]): row for row in identities}
+        self.identities_by_ref = {row["ref"]: row for row in self.identities.values()}
+        self.identity_kinds = set(identity_kinds) if identity_kinds is not None else set(RESOURCE_KEYS)
         self._maps, self._groups = {}, {}
         self._raw_maps = {}
         self.repo = WorkbenchResourceTableRepository(metrics.conn, metrics.logger)
+        self.report_revisions = report_revisions
         self._dependency_counts = (None if scope_state is None else {
             name: {row["resource_key"]: row["amount"] for row in rows}
             for name, rows in scope_state["dependencies"].items()
@@ -109,11 +111,18 @@ class ResourceTableFacts:
     def load_identity_kinds(self, kinds):
         missing = sorted(set(kinds) - self.identity_kinds)
         if missing:
-            self.identities.update(
-                ((row["kind"], row["entity_key"]), row)
-                for row in self.repo.identities(missing) if row["active"] == 1
-            )
+            loaded = self.repo.identities(missing)
+            self.identities.update(((row["kind"], row["entity_key"]), row) for row in loaded)
+            self.identities_by_ref.update((row["ref"], row) for row in loaded)
             self.identity_kinds.update(missing)
+
+    def find_by_ref(self, kind, ref):
+        if kind not in self.identity_kinds:
+            self.load_identity_kinds([kind])
+        row = self.identities_by_ref.get(ref)
+        if row is None or row["kind"] != kind:
+            return None
+        return self.identity(kind, row["entity_key"])
 
     def identity(self, kind, code):
         if kind not in self.identity_kinds:
@@ -135,7 +144,7 @@ class ResourceTableFacts:
         return self._raw_maps[lookup_key]
 
     def raw_record(self, kind, code):
-        raw = self.raw_lookup(kind, _KEYS[kind]).get(code)
+        raw = self.raw_lookup(kind, RESOURCE_KEYS[kind]).get(code)
         if raw is None:
             raise WorkbenchCommandRejected("storage_failure", "这条资源的编号和实际记录对不上，操作没有执行。请联系维护人员核对数据。", 500)
         return raw
@@ -149,7 +158,7 @@ class ResourceTableFacts:
         lookup_key = (name, key)
         if lookup_key not in self._maps:
             self.metrics._load([name])
-            self._maps[lookup_key] = _index(self.metrics.facts[name], key)
+            self._maps[lookup_key] = index_resource_rows(self.metrics.facts[name], key)
         return self._maps[lookup_key]
 
     def grouped(self, name, key):
@@ -177,7 +186,11 @@ class ResourceTableFacts:
         return self._project_dependency_counts(codes, names)
 
     def op_type_dependencies(self, codes):
-        return self._project_dependency_counts(codes, _OP_TYPE_DEPENDENCIES)
+        if self._dependency_counts is None or any(
+            source not in self._dependency_counts for source in OP_TYPE_DEPENDENCIES.values()
+        ):
+            return self.metrics.repo.op_type_dependencies(codes)
+        return self._project_dependency_counts(codes, OP_TYPE_DEPENDENCIES)
 
     def shift_patterns(self, codes):
         if "shift_pattern" not in self.metrics.facts:
@@ -186,8 +199,6 @@ class ResourceTableFacts:
         return {code: grouped[code] for code in codes}
 
     def related(self, kind, code):
-        if code is None:
-            return None
         self.identity(kind, code)
         raw = self.records(kind).get(code)
         if raw is None:
@@ -204,7 +215,7 @@ class ResourceTableFacts:
         explicit = {row["op_type_id"] for row in self.grouped("machine_capabilities", "machine_id")[code]}
         return sorted(explicit | ({legacy} if legacy else set()))
 
-    def _relation_labels(self, kind, code, raw):
+    def _relation_labels(self, kind, code):
         if kind == "machine":
             member = self.mapped("groups", "machine_id").get(code)
             return {"op_type_ref": ("op_type", self.machine_types(code)),
@@ -222,12 +233,10 @@ class ResourceTableFacts:
             result.update(self._op_type_cells(code, raw, category))
         else:
             result["status"] = status_cell(kind, status)
-            for column, (related_kind, codes) in self._relation_labels(kind, code, raw).items():
+            for column, (related_kind, codes) in self._relation_labels(kind, code).items():
                 labels = []
                 for key in codes:
                     related = self.related(related_kind, key)
-                    if related is None:
-                        raise WorkbenchCommandRejected("storage_failure", "这条资源的关联缺少编号。请到资料总览核对后重试。", 500)
                     labels.append(related["name"])
                 result[column] = relation_cell(labels)
             if kind == "supplier":
@@ -249,15 +258,13 @@ class ResourceTableFacts:
 
     def index(self, query, codes):
         rows, cells, legacy_values = {}, {}, {}
-        required_columns = set(table_columns(query.kind, query.category))
+        records = self.records(query.kind)
+        statuses = None if query.kind == "op_type" else self.metrics._statuses(query.kind)
         for code in codes:
             identity = self.identity(query.kind, code)
             rows[code] = {"ref": identity.ref, "revision": identity.revision, "business_code": code}
-            raw = self.records(query.kind)[code]
-            profiles = self.mapped(query.kind + "_profiles", query.kind + "_id") if query.kind in ("operator", "supplier") else {}
-            status = None if query.kind == "op_type" else public_resource_status(query.kind, raw["status"], profiles.get(code))
+            raw = records[code]
+            status = None if statuses is None else statuses[code]
             cells[code] = self.cells(query.kind, code, query.category, raw=raw, status=status)
             legacy_values[code] = {"business_code": code, "label": raw["name"], "status": status, "default_days": raw.get("default_days")}
-            if not required_columns.issubset(cells[code]):
-                raise WorkbenchCommandRejected("invalid_input", "当前视图和这些列对不上，列表没有打开。请刷新页面后重试。", 400)
         return ResourceTableIndex(rows, cells, legacy_values)

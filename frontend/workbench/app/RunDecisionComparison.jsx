@@ -243,7 +243,7 @@
     function choose(candidate) {
       if (data && candidate.candidate_ref === data.scope.selected_candidate_ref) return;
       setQuery(value => ({ ...value, selected_candidate_ref: candidate.candidate_ref }));
-      setFullPaused(false);
+      setRangeOpen(false); setRangeError(null); setHistoryOpen(false); setFullPaused(false);
       setDetailQueries(values => { const next = freshDetailQueries(values); if (next.process && !unified) delete next.process.process_candidate_ref; if (next['completion-batches']) delete next['completion-batches'].completion_candidate_ref; return next; });
     }
     function reference(candidate) { setQuery(value => ({ ...value, comparison_mode: 'candidates', reference_candidate_ref: candidate.candidate_ref })); resetDetailPages(); }
@@ -260,6 +260,18 @@
       onNavigate('analysis', { ...comparisonContext(data), ...context, ...historyOrigin, comparison_tab: pane, metric_view: metricView, selected_batch_ref: context.batch_ref || selectedBatchRef,
         detail_queries: { ...freshDetailQueries(detailQueries), [pane]: detail, ...(context.comparison_tab === 'operations' ? { 'difference-chain': { ...context.detail_query, page: 1 } } : {}) },
         return_recommendation_context: remembered });
+    }
+    function selectBatch(ref) {
+      if (ref === selectedBatchRef) return;
+      setSelectedBatchRef(ref);
+      setDetailQueries(queries => {
+        if ((!queries.delivery || queries.delivery.snapshot_ref === undefined) && (!queries.differences || queries.differences.snapshot_ref === undefined)) return queries;
+        const next = { ...queries };
+        for (const key of ['delivery', 'differences']) if (next[key] && next[key].snapshot_ref !== undefined) {
+          next[key] = { ...next[key] }; delete next[key].snapshot_ref;
+        }
+        return next;
+      });
     }
     function detailQuery(section, value) { setDetailQueries(queries => ({ ...queries, [section]: value })); }
     function chainQuery(section, value) { setDetailQueries(queries => ({ ...queries, [section === 'differences' ? 'difference-chain' : 'delivery-chain']: value })); }
@@ -331,7 +343,7 @@
               : panel === 'completion' ? selected ? <window.RunDecisionCompletion.Pane adapter={adapter} result={result} query={completionQuery} onQuery={completionQueryChange} onSupport={onNavigate && support} enabled={tab === panel} /> : <p className="rc-empty">选择当前方案查看工序安排。</p>
               : selected && selected.persisted_status === 'completed' ? panel === 'resources' ? <window.RunDecisionResources.Pane adapter={adapter} result={result} query={detailQueries[panel] || {}} onQuery={value => detailQuery(panel, value)} onView={resourceView} onRange={changeRange} onDrill={onNavigate && drill} enabled={tab === panel} />
                 : ['preparation', 'changeovers'].includes(panel) ? <window.RunDecisionPreparation.Pane adapter={adapter} result={result} section={panel} query={detailQueries[panel] || {}} onQuery={value => detailQuery(panel, value)} onDrill={onNavigate && drill} enabled={tab === panel} />
-                  : <window.RunDecisionDetails.Pane adapter={adapter} result={result} section={panel === 'differences' ? 'differences' : 'delivery'} query={detailQueries[panel] || {}} onQuery={value => detailQuery(panel, value)} selectedBatchRef={selectedBatchRef} onSelectBatch={setSelectedBatchRef} chainQuery={detailQueries[panel === 'differences' ? 'difference-chain' : 'delivery-chain'] || {}} onChainQuery={value => chainQuery(panel, value)} onDrill={onNavigate && drill} onChooseReference={() => { const target = referenceChoice.current && referenceChoice.current.querySelector('select'); if (target) target.focus(); }} enabled={tab === panel} />
+                  : <window.RunDecisionDetails.Pane adapter={adapter} result={result} section={panel === 'differences' ? 'differences' : 'delivery'} query={detailQueries[panel] || {}} onQuery={value => detailQuery(panel, value)} selectedBatchRef={selectedBatchRef} onSelectBatch={selectBatch} chainQuery={detailQueries[panel === 'differences' ? 'difference-chain' : 'delivery-chain'] || {}} onChainQuery={value => chainQuery(panel, value)} onDrill={onNavigate && drill} onChooseReference={() => { const target = referenceChoice.current && referenceChoice.current.querySelector('select'); if (target) target.focus(); }} enabled={tab === panel} />
                 : <div className="rc-empty"><p>{selected ? (selected.label || '当前候选') + '：' + window.WorkbenchTerms.candidate_statuses[selected.persisted_status] : '请选择候选查看明细。'}</p>{selected && selected.source && selected.source.reason && <p>{selected.source.reason.message}</p>}</div>}
           </div>)}
         </div></section>

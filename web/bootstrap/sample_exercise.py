@@ -4,18 +4,16 @@ No SQL, fabricated schedule, altered worker, or alternate adoption path.
 Failures remain in the sample report at the stage where they happened.
 """
 
-import csv
-import io
 import json
 import time
 import uuid
 from datetime import datetime, timedelta
+from functools import partial
 from pathlib import Path
-from urllib.error import HTTPError
 from urllib.parse import urlencode
-from urllib.request import urlopen
 
 from .sample_constraint_checks import check_candidate, require
+from .sample_exports import verify_exports
 from .sample_formal_read import read_formal
 from .sample_http import BASE, SampleAPIError, SampleClient, SampleProgress
 
@@ -78,132 +76,6 @@ def _summary_run(artifacts):
             "candidate_ref": artifacts["candidate_ref"], "task_count": artifacts["workspace"]["data"]["task_count"],
             "selected_batch_count": len(artifacts["selected_batch_codes"]), "skipped_candidates": skipped,
             "optimizer_coverage": "存在未执行候选；只验收实际完整候选，未宣称优化方案全部通过。" if skipped else "本轮候选状态见真实目录记录。"}
-
-
-def _export_cells(document):
-    if "candidate" in document["data"]:
-        from core.services.workbench.run.candidate_export import HEADERS, export_rows
-    else:
-        from core.services.workbench.plan.export import HEADERS, export_rows
-    return HEADERS, list(export_rows(document["data"], document["meta"]))
-
-
-def _decoded_cell(value, fmt):
-    if not isinstance(value, str):
-        return value
-    if fmt == "csv" and value.startswith("'"):
-        value = value[1:]
-    if value == r"\N":
-        return None
-    return value[1:] if value.startswith("\\\\") else value
-
-
-def _same_cell(actual, expected, fmt):
-    if type(expected) in (int, float):
-        # XLSX numeric cells use the writer's 16 significant digit format.
-        # This is its actual file precision, not an arbitrary comparison slack.
-        number = float(format(expected, ".16g")) if fmt == "xlsx" else float(expected)
-        return actual is not None and float(actual) == number
-    return actual == expected
-
-
-def _read_export_rows(content, fmt):
-    if fmt == "csv":
-        return list(csv.reader(io.StringIO(content.decode("utf-8-sig"))))
-    from openpyxl import load_workbook
-
-    require(content.startswith(b"PK"), "实际XLSX不是有效文件。")
-    book = load_workbook(io.BytesIO(content), read_only=True, data_only=False)
-    try:
-        sheet = book.active
-        if sheet is None:
-            raise RuntimeError("实际XLSX缺少工作表。")
-        return [list(row) for row in sheet.iter_rows(values_only=True)]
-    finally:
-        book.close()
-
-
-def _download(client, path, fmt, document, folder, name):
-    client.request_count += 1
-    try:
-        response = urlopen(client.base_url + path, timeout=client.timeout)
-    except HTTPError as exc:
-        body = json.loads(exc.read().decode("utf-8"))
-        raise SampleAPIError(path, exc.code, body) from exc
-    with response:
-        content, headers = response.read(), dict(response.headers)
-        require(response.getcode() == 200, "实际文件下载没有成功。")
-    if folder is not None:
-        folder.mkdir(parents=True, exist_ok=True)
-        (folder / (name + "." + fmt)).write_bytes(content)
-    rows = _read_export_rows(content, fmt)
-    expected = document["data"]["tasks"]
-    expected_header, expected_rows = _export_cells(document)
-    require(tuple(rows[0]) == expected_header and len(rows) - 1 == len(expected_rows), "导出列或行数与真实候选/正式计划范围不一致。")
-    decoded = [[_decoded_cell(value, fmt) for value in row] for row in rows[1:]]
-    require(all(len(row) == len(wanted) and all(_same_cell(value, target, fmt) for value, target in zip(row, wanted))
-                for row, wanted in zip(decoded, expected_rows)), "导出列内容与本段真实快照的资料或派生结果不一致。")
-    header = rows[0]
-    columns = {key: header.index(key) for key in ("工序编号", "安排开始", "安排结束")}
-    exported = {row[columns["工序编号"]]: (row[columns["安排开始"]], row[columns["安排结束"]]) for row in decoded}
-    original = {row["operation_ref"]: (row["start"], row["end"]) for row in expected}
-    require(exported == original, "导出工序身份/开完工与当前真实完整范围不一致。")
-    return {"bytes": len(content), "rows": len(rows) - 1, "format": fmt,
-            "content_type": headers.get("Content-Type"), "content_disposition": headers.get("Content-Disposition"),
-            "operation_times_identical": True, "all_columns_match_real_scope": True,
-            "file": str(folder / (name + "." + fmt)) if folder else None}
-
-
-def _task_core(row):
-    fields = ("task_ref", "operation_ref", "plan_ref", "batch_id", "sequence", "process_label", "machine_ref", "operator_ref",
-              "supplier_ref", "quantity", "batch_quantity", "piece_id", "quantity_basis", "quantity_reason", "start", "end")
-    return {key: row[key] for key in fields if key in row}
-
-
-def _export_document(client, document, base, folder, name):
-    source_scope = document["data"].get("scope", {})
-    scope = {key: source_scope[key] for key in ("range_start", "range_end") if source_scope.get(key) is not None}
-    metadata = {"scope": scope, "snapshot_ref": document["meta"]["snapshot_ref"], "as_of": document["meta"]["as_of"]}
-    for fmt in ("csv", "xlsx"):
-        args = dict(scope, snapshot_ref=document["meta"]["snapshot_ref"], format=fmt)
-        metadata[fmt] = _download(client, _query(base + "/export", args), fmt, document, folder, name)
-    return metadata
-
-
-def _collect_export_tasks(document, wanted, seen):
-    for row in document["data"]["tasks"]:
-        core = _task_core(row)
-        require(core == wanted.get(row["task_ref"]), "本段导出的真实任务与完整正式身份、数量、资源或原始时间不一致。")
-        previous = seen.setdefault(row["task_ref"], core)
-        require(previous == core, "跨段重叠的同一任务业务资料发生变化，不能去重。")
-    return len(document["data"]["tasks"])
-
-
-def _segmented_export_result(segments, seen, physical_rows):
-    result = {"mode": "segmented_http", "segments": segments, "segment_count": len(segments),
-              "unique_task_count": len(seen), "physical_rows": physical_rows, "duplicate_overlap_rows": physical_rows - len(seen),
-              "scope_rule": "各段派生结果与原文件按各自scope保留；跨段仅去重相同任务业务核心，不合成全局风险或全量快照。"}
-    for fmt in ("csv", "xlsx"):
-        result[fmt] = {"mode": "segmented_http", "rows": len(seen), "physical_rows": sum(row[fmt]["rows"] for row in segments),
-                       "bytes": sum(row[fmt]["bytes"] for row in segments), "segment_count": len(segments),
-                       "operation_times_identical": True, "all_columns_match_real_scope": True,
-                       "files": [row[fmt]["file"] for row in segments], "single_full_scope_file": False}
-    return result
-
-
-def _exports(client, document, base, folder, name):
-    assembly = document.get("assembly")
-    if not assembly:
-        segment = _export_document(client, document, base, folder, name)
-        return {fmt: segment[fmt] for fmt in ("csv", "xlsx")}
-    wanted = {row["task_ref"]: _task_core(row) for row in document["data"]["tasks"]}
-    segments, seen, physical_rows = [], {}, 0
-    for index, segment in enumerate(assembly["segments"], 1):
-        filename = name + f"-segment-{index:03d}"
-        segments.append(_export_document(client, segment, base, folder, filename))
-        physical_rows += _collect_export_tasks(segment, wanted, seen)
-    require(seen == wanted, "真实分段导出没有覆盖完整正式计划。")
-    return _segmented_export_result(segments, seen, physical_rows)
 
 
 def _formal(client, plan_ref, expected):
@@ -287,8 +159,7 @@ def _directory(client):
             "candidates": candidates, "plans": [(row["plan_ref"], row["version"], row["kind"], row["is_current_official"]) for row in plans["plans"]]}
 
 
-def _partial_replan_blocked(client, seed, reports, batch_codes, expected_code):
-    before = _directory(client)
+def _blocked_replan_request(client, seed, batch_codes, expected_code):
     value = dict(seed["schedule_window"], batch_refs=sorted(seed["refs"]["batch"][code] for code in batch_codes), hold_window=None)
     preflight = client.post(BASE + "/scheduling/preflight", value)["data"]
     preview = client.post(BASE + "/scheduling/runs/preview", {"input_ref": preflight["input_ref"]})["data"]
@@ -307,6 +178,10 @@ def _partial_replan_blocked(client, seed, reports, batch_codes, expected_code):
         raise RuntimeError("已知不可排的范围仍创建了新排产任务。")
     lookup = client.get(BASE + "/scheduling/requests/" + key)
     require(lookup["found"] is False and lookup["run"] is None, "被拒绝的排产创建了新job或受理receipt。")
+    return {"blockers": context["blocked_reasons"], "admission_error": rejection["error"]}
+
+
+def _check_replan_invariants(client, before, reports):
     require(before == _directory(client), "被拒绝的排产改变了已有run/candidate/plan目录。")
     for report in reports:
         fresh = client.get(BASE + "/execution/tasks/" + report["task_ref"])["task"]["execution"]
@@ -315,127 +190,157 @@ def _partial_replan_blocked(client, seed, reports, batch_codes, expected_code):
                 and fresh["remaining_quantity"] == report["remaining_quantity"] and fresh["execution_state"] == "partial"
                 and len(fresh["reports"]) == report["report_count"] and all(original[key] == value for key, value in report["input"].items()),
                 "被拒的重排改动了原分次报工。")
+
+
+def _partial_replan_blocked(client, seed, reports, batch_codes, expected_code):
+    before = _directory(client)
+    rejection = _blocked_replan_request(client, seed, batch_codes, expected_code)
+    _check_replan_invariants(client, before, reports)
     return {"expected_rejection": True, "reason": "未完成实际工序缺少可信剩余安排，当前产品不能在此状态下再次排产。",
             "selected_batch_count": len(batch_codes), "selected_operation_count": sum(len(seed["operation_refs"][code]) for code in batch_codes),
-            "blockers": context["blocked_reasons"], "partial_actuals_unchanged": True,
-            "admission_error": rejection["error"], "new_job_or_receipt": False, "existing_directories_unchanged": True}
+            "blockers": rejection["blockers"], "partial_actuals_unchanged": True,
+            "admission_error": rejection["admission_error"], "new_job_or_receipt": False, "existing_directories_unchanged": True}
 
 
-def exercise(client, seed_state, report=None):
-    """Use an injected client; report may be the injector's SampleProgress."""
-    progress = report if report is not None else SampleProgress(None, client)
+def _baseline_run(client, seed, progress, artifacts):
+    artifacts["baseline"] = _run(client, seed, progress, "baseline")
+    return _summary_run(artifacts["baseline"])
+
+
+def _verify_candidate(client, seed, artifacts):
+    baseline = artifacts["baseline"]
+    checks = check_candidate(baseline["workspace"]["data"], seed, baseline["preflight"])
+    preview = client.post(BASE + "/scheduling/candidates/" + baseline["candidate_ref"] + "/adopt-preview", {})["data"]
+    require(preview["validation"]["can_adopt"] is True and preview["scope_complete"] is True,
+            "完整候选没有通过真实采用前的日历/停机/依赖/报工约束复核：{}".format(preview["validation"]))
+    require(preview["task_count"] == seed["counts"]["operations"], "采用复核没有覆盖全部样例工序。")
+    artifacts["adoption_preview"] = preview
+    return {"independent_checks": checks, "full_business_validation": preview["validation"], "task_count": preview["task_count"]}
+
+
+def _adopt_candidate(client, artifacts):
+    baseline = artifacts["baseline"]
+    receipt = client.command(BASE + "/scheduling/candidates/" + baseline["candidate_ref"] + "/adopt",
+                             artifacts["adoption_preview"]["write_context"],
+                             {"confirm": True, "reason": "独立复杂样例真实排产验收", "declared_operator": "复杂样例验收"})
+    artifacts["plan_ref"] = receipt["data"]["official_plan"]["plan_ref"]
+    artifacts["formal"] = _formal(client, artifacts["plan_ref"], baseline["workspace"]["data"]["tasks"])
+    return {"result": receipt["result"], "receipt_ref": receipt["receipt_ref"],
+            "official_plan": receipt["data"]["official_plan"], "task_count": artifacts["formal"]["data"]["task_count"]}
+
+
+def _adopted_projections(client, seed, artifacts):
+    plan_ref = artifacts["plan_ref"]
+    dashboard = client.get(BASE + "/dashboard")
+    analysis_document = client.document(_query(BASE + "/dashboard/analysis", {"plan_ref": plan_ref}))
+    analysis = analysis_document["data"]
+    actual = client.get(_query(BASE + "/actual-gantt", {"plan_ref": plan_ref}))
+    require(dashboard["plan"]["plan_ref"] == plan_ref, "值班台没有读取刚采用的正式计划。")
+    require(dashboard["analysis_error"] is None and dashboard["analysis"]["plan"]["plan_ref"] == plan_ref,
+            "复杂样例的值班台分析没有正常读取：{}".format(dashboard["analysis_error"]))
+    require(analysis["plan"]["plan_ref"] == plan_ref
+            and analysis["pagination"]["totals"]["tasks"] == seed["counts"]["operations"], "全局交付与产能分析没有覆盖当前真实完整正式计划。")
+    require(actual["plan"]["plan_ref"] == plan_ref and actual["items_complete"] is True
+            and actual["task_count"] == seed["counts"]["operations"], "实际甘特没有读取当前正式计划的完整工序范围。")
+    return {"plan_ref": plan_ref, "dashboard_items": len(dashboard["items"]), "dashboard_categories": dashboard["categories"],
+            "analysis_task_count": analysis["pagination"]["totals"]["tasks"], "actual_gantt_summary": {key: actual[key]
+                for key in ("task_count", "items_complete", "report_count", "availability", "scope")},
+            "delivery": analysis["deliveries"], "pressure": analysis["pressure"], "resource_pressure": analysis["resources"],
+            "global_metrics_source": "/api/workbench/v1/dashboard/analysis", "global_analysis_snapshot": analysis_document["meta"]["snapshot_ref"],
+            "resource_count": len(artifacts["formal"]["data"]["resources"])}
+
+
+def _sample_exports(client, artifacts, folder):
+    baseline = artifacts["baseline"]
+    return {"candidate": verify_exports(client, baseline["workspace"], BASE + "/scheduling/candidates/" + baseline["candidate_ref"], folder, "baseline-candidate"),
+            "official": verify_exports(client, artifacts["formal"], BASE + "/plans/" + artifacts["plan_ref"], folder, "baseline-official")}
+
+
+def _second_run(client, seed, progress, artifacts):
+    again = _run(client, seed, progress, "existing-formal-plan-before-partial-reports")
+    checks = check_candidate(again["workspace"]["data"], seed, again["preflight"])
+    preview = client.post(BASE + "/scheduling/candidates/" + again["candidate_ref"] + "/adopt-preview", {})["data"]
+    require(preview["validation"]["can_adopt"] is True and preview["scope_complete"] is True
+            and preview["task_count"] == seed["counts"]["operations"], "已有正式计划下的完整再次排产，没有通过真实采用复核。")
+    reopened = client.get(BASE + "/scheduling/candidates/" + again["candidate_ref"] + "/workspace")
+    require(reopened["tasks"] == again["workspace"]["data"]["tasks"], "保存的第二轮真实候选回读不一致。")
+    _formal(client, artifacts["plan_ref"], artifacts["baseline"]["workspace"]["data"]["tasks"])
+    artifacts["second"] = again
+    return dict(_summary_run(again), independent_checks=checks, adoption_validation=preview["validation"],
+                candidate_reopened=True, formally_adopted=False, original_formal_plan_unchanged=True)
+
+
+def _available_partial_report_tasks(client, artifacts):
+    formal = {row["operation_ref"]: row for row in artifacts["formal"]["data"]["tasks"]}
+    baseline = {row["operation_ref"]: row for row in artifacts["baseline"]["workspace"]["data"]["tasks"]}
+    now = client.document(_query(BASE + "/execution/tasks", {"plan_ref": artifacts["plan_ref"], "size": 1}))["meta"]["as_of"]
+    server_now = datetime.fromisoformat(now)
+    available = [row for row in formal.values() if row["sequence"] == 1 and row["quantity"] > 1
+                 and baseline[row["operation_ref"]]["source"] == "internal" and datetime.fromisoformat(row["end"]) <= server_now]
+    available.sort(key=lambda row: (row["start"], row["batch_id"]))
+    return formal, available, now
+
+
+def _select_partial_report_tasks(client, seed, artifacts, progress):
+    formal, available, now = _available_partial_report_tasks(client, artifacts)
+    wanted, skipped = [], []
+    for request in seed["blueprint"]["actual_report_requests"]:
+        refs = seed["operation_refs"][request["batch_code"]]
+        ref = refs.get(str(request["operation_seq"]))
+        if formal[ref] in available:
+            wanted.append(formal[ref])
+        else:
+            skipped.append({"batch_code": request["batch_code"], "operation_ref": ref,
+                            "reason": "此选择的正式任务还在未来，改选已采用计划中真正过去的首道自制任务。", "planned_end": formal[ref]["end"]})
+    selected = wanted + [row for row in available if row not in wanted]
+    report_limit = min(len(seed["blueprint"]["actual_report_requests"]), len(seed["refs"]["batch"]) - 1)
+    selected = selected[:report_limit]
+    require(selected, "当前正式计划没有已过去的首道自制任务，尚不能完成真实分次报工验收。")
+    selection = {"server_as_of": now,
+                 "selected_operation_refs": [row["operation_ref"] for row in selected],
+                 "skipped_original_selectors": skipped}
+    progress.report["actual_report_selection"] = selection
+    artifacts["partial_report_tasks"] = selected
+    return selection
+
+
+def _verify_replan_blocks(client, seed, artifacts, progress, reports):
+    all_codes = list(seed["refs"]["batch"])
+    affected = {row["batch_id"] for row in reports}
+    remaining = [code for code in all_codes if code not in affected]
+    progress.step("exercise:partial-actual-replan-blocked",
+                  partial(_partial_replan_blocked, client, seed, reports, all_codes, "execution_review_required"))
+
+    def _outside_blocked():
+        result = _partial_replan_blocked(client, seed, reports, remaining, "execution_ledger_requires_reconciliation")
+        _formal(client, artifacts["plan_ref"], artifacts["baseline"]["workspace"]["data"]["tasks"])
+        return result
+
+    progress.step("exercise:outside-partial-replan-blocked", _outside_blocked)
+
+
+def exercise(client, seed_state, progress):
+    """Use an injected client and the caller's SampleProgress."""
     progress.report = seed_state
     progress.report.update(state="exercising", exercise_state="running")
     progress.save()
     artifacts = {}
     folder = progress.output.parent / "sample-downloads" if progress.output is not None else None
-
-    def baseline_run():
-        artifacts["baseline"] = _run(client, seed_state, progress, "baseline")
-        return _summary_run(artifacts["baseline"])
-
-    def verify():
-        baseline = artifacts["baseline"]
-        checks = check_candidate(baseline["workspace"]["data"], seed_state, baseline["preflight"])
-        preview = client.post(BASE + "/scheduling/candidates/" + baseline["candidate_ref"] + "/adopt-preview", {})["data"]
-        require(preview["validation"]["can_adopt"] is True and preview["scope_complete"] is True,
-                "完整候选没有通过真实采用前的日历/停机/依赖/报工约束复核：{}".format(preview["validation"]))
-        require(preview["task_count"] == seed_state["counts"]["operations"], "采用复核没有覆盖全部样例工序。")
-        artifacts["adoption_preview"] = preview
-        return {"independent_checks": checks, "full_business_validation": preview["validation"], "task_count": preview["task_count"]}
-
-    def adopt():
-        baseline = artifacts["baseline"]
-        receipt = client.command(BASE + "/scheduling/candidates/" + baseline["candidate_ref"] + "/adopt",
-                                 artifacts["adoption_preview"]["write_context"],
-                                 {"confirm": True, "reason": "独立复杂样例真实排产验收", "declared_operator": "复杂样例验收"})
-        artifacts["plan_ref"] = receipt["data"]["official_plan"]["plan_ref"]
-        artifacts["formal"] = _formal(client, artifacts["plan_ref"], baseline["workspace"]["data"]["tasks"])
-        return {"result": receipt["result"], "receipt_ref": receipt["receipt_ref"],
-                "official_plan": receipt["data"]["official_plan"], "task_count": artifacts["formal"]["data"]["task_count"]}
-
-    def projections():
-        dashboard = client.get(BASE + "/dashboard")
-        analysis_document = client.document(_query(BASE + "/dashboard/analysis", {"plan_ref": artifacts["plan_ref"]}))
-        analysis = analysis_document["data"]
-        actual = client.get(_query(BASE + "/actual-gantt", {"plan_ref": artifacts["plan_ref"]}))
-        require(dashboard["plan"]["plan_ref"] == artifacts["plan_ref"], "值班台没有读取刚采用的正式计划。")
-        require(dashboard["analysis_error"] is None and dashboard["analysis"]["plan"]["plan_ref"] == artifacts["plan_ref"],
-                "复杂样例的值班台分析没有正常读取：{}".format(dashboard["analysis_error"]))
-        require(analysis["plan"]["plan_ref"] == artifacts["plan_ref"]
-                and analysis["pagination"]["totals"]["tasks"] == seed_state["counts"]["operations"], "全局交付与产能分析没有覆盖当前真实完整正式计划。")
-        require(actual["plan"]["plan_ref"] == artifacts["plan_ref"] and actual["items_complete"] is True
-                and actual["task_count"] == seed_state["counts"]["operations"], "实际甘特没有读取当前正式计划的完整工序范围。")
-        return {"plan_ref": artifacts["plan_ref"], "dashboard_items": len(dashboard["items"]), "dashboard_categories": dashboard["categories"],
-                "analysis_task_count": analysis["pagination"]["totals"]["tasks"], "actual_gantt_summary": {key: actual[key]
-                    for key in ("task_count", "items_complete", "report_count", "availability", "scope")},
-                "delivery": analysis["deliveries"], "pressure": analysis["pressure"], "resource_pressure": analysis["resources"],
-                "global_metrics_source": "/api/workbench/v1/dashboard/analysis", "global_analysis_snapshot": analysis_document["meta"]["snapshot_ref"],
-                "resource_count": len(artifacts["formal"]["data"]["resources"])}
-
-    def exports():
-        baseline = artifacts["baseline"]
-        return {"candidate": _exports(client, baseline["workspace"], BASE + "/scheduling/candidates/" + baseline["candidate_ref"], folder, "baseline-candidate"),
-                "official": _exports(client, artifacts["formal"], BASE + "/plans/" + artifacts["plan_ref"], folder, "baseline-official")}
-
-    def second_run():
-        again = _run(client, seed_state, progress, "existing-formal-plan-before-partial-reports")
-        checks = check_candidate(again["workspace"]["data"], seed_state, again["preflight"])
-        preview = client.post(BASE + "/scheduling/candidates/" + again["candidate_ref"] + "/adopt-preview", {})["data"]
-        require(preview["validation"]["can_adopt"] is True and preview["scope_complete"] is True
-                and preview["task_count"] == seed_state["counts"]["operations"],
-                "已有正式计划下的完整再次排产，没有通过真实采用复核。")
-        reopened = client.get(BASE + "/scheduling/candidates/" + again["candidate_ref"] + "/workspace")
-        require(reopened["tasks"] == again["workspace"]["data"]["tasks"], "保存的第二轮真实候选回读不一致。")
-        _formal(client, artifacts["plan_ref"], artifacts["baseline"]["workspace"]["data"]["tasks"])
-        artifacts["second"] = again
-        return dict(_summary_run(again), independent_checks=checks, adoption_validation=preview["validation"],
-                    candidate_reopened=True, formally_adopted=False, original_formal_plan_unchanged=True)
-
     try:
-        progress.step("exercise:real-preflight-worker-candidates", baseline_run)
-        progress.step("exercise:complete-candidate-constraints", verify)
-        progress.step("exercise:adopt-and-formal-readback", adopt)
-        progress.step("exercise:dashboard-gantt-delivery", projections)
-        progress.step("exercise:exact-csv-xlsx-exports", exports)
-        progress.step("exercise:independent-conflict-trial", lambda: _conflict_trial(client, artifacts["plan_ref"]))
-        progress.step("exercise:existing-formal-real-rerun", second_run)
-        formal_by_operation = {row["operation_ref"]: row for row in artifacts["formal"]["data"]["tasks"]}
-        baseline_by_operation = {row["operation_ref"]: row for row in artifacts["baseline"]["workspace"]["data"]["tasks"]}
-        now_document = client.document(_query(BASE + "/execution/tasks", {"plan_ref": artifacts["plan_ref"], "size": 1}))
-        server_now = datetime.fromisoformat(now_document["meta"]["as_of"])
-        available = [row for row in formal_by_operation.values() if row["sequence"] == 1 and row["quantity"] > 1
-                     and baseline_by_operation[row["operation_ref"]]["source"] == "internal"
-                     and datetime.fromisoformat(row["end"]) <= server_now]
-        available.sort(key=lambda row: (row["start"], row["batch_id"]))
-        wanted = []
-        skipped = []
-        for request in seed_state["blueprint"]["actual_report_requests"]:
-            refs = seed_state["operation_refs"][request["batch_code"]]
-            ref = refs.get(request["operation_seq"], refs.get(str(request["operation_seq"])))
-            if formal_by_operation[ref] in available:
-                wanted.append(formal_by_operation[ref])
-            else:
-                skipped.append({"batch_code": request["batch_code"], "operation_ref": ref,
-                                "reason": "此选择的正式任务还在未来，改选已采用计划中真正过去的首道自制任务。",
-                                "planned_end": formal_by_operation[ref]["end"]})
-        selected = wanted + [row for row in available if row not in wanted]
-        report_limit = min(len(seed_state["blueprint"]["actual_report_requests"]), len(seed_state["refs"]["batch"]) - 1)
-        selected = selected[:report_limit]
-        require(selected, "当前正式计划没有已过去的首道自制任务，尚不能完成真实分次报工验收。")
-        progress.report["actual_report_selection"] = {"server_as_of": now_document["meta"]["as_of"],
-            "selected_operation_refs": [row["operation_ref"] for row in selected], "skipped_original_selectors": skipped}
-        progress.save()
+        progress.step("exercise:real-preflight-worker-candidates", partial(_baseline_run, client, seed_state, progress, artifacts))
+        progress.step("exercise:complete-candidate-constraints", partial(_verify_candidate, client, seed_state, artifacts))
+        progress.step("exercise:adopt-and-formal-readback", partial(_adopt_candidate, client, artifacts))
+        progress.step("exercise:dashboard-gantt-delivery", partial(_adopted_projections, client, seed_state, artifacts))
+        progress.step("exercise:exact-csv-xlsx-exports", partial(_sample_exports, client, artifacts, folder))
+        progress.step("exercise:independent-conflict-trial", partial(_conflict_trial, client, artifacts["plan_ref"]))
+        progress.step("exercise:existing-formal-real-rerun", partial(_second_run, client, seed_state, progress, artifacts))
+        progress.step("exercise:select-partial-report-tasks",
+                      partial(_select_partial_report_tasks, client, seed_state, artifacts, progress))
         reports = []
-        for task in selected:
+        for task in artifacts["partial_report_tasks"]:
             reports.append(progress.step("exercise:partial-report:" + task["batch_id"],
-                           lambda task=task: _partial_report(client, task, max(1, task["quantity"] // 3))))
-        all_codes = list(seed_state["refs"]["batch"])
-        affected = {row["batch_id"] for row in reports}
-        remaining = [code for code in all_codes if code not in affected]
-        progress.step("exercise:partial-actual-replan-blocked", lambda: _partial_replan_blocked(client, seed_state, reports, all_codes, "execution_review_required"))
-        progress.step("exercise:outside-partial-replan-blocked", lambda: _partial_replan_blocked(client, seed_state, reports, remaining, "execution_ledger_requires_reconciliation"))
-        _formal(client, artifacts["plan_ref"], artifacts["baseline"]["workspace"]["data"]["tasks"])
+                           partial(_partial_report, client, task, max(1, task["quantity"] // 3))))
+        _verify_replan_blocks(client, seed_state, artifacts, progress, reports)
         limitation = "未完成实际工序缺少可信剩余安排，当前产品不支持报工后再次排产（即使只选未报工批次）；已验证准确拒绝并保留原计划/报工。"
         progress.report.setdefault("limitations", []).append(limitation)
         progress.report.setdefault("unsupported", []).append(limitation)
@@ -446,7 +351,7 @@ def exercise(client, seed_state, report=None):
         progress.save()
         return progress.report
     except Exception:
-        progress.report["exercise_state"] = "failed"
+        progress.report.update(state="failed", exercise_state="failed")
         progress.save()
         raise
 

@@ -124,10 +124,17 @@ def size_guard_public_error_detail(raw: Any) -> Dict[str, Any]:
     message = public_error_message_from_detail(raw)
     if message:
         out["message"] = message
-    _copy_guarded_int_fields(raw, out, ("seq",))
+    _copy_guarded_int_fields(raw, out, ("op_id", "seq"))
     batch_id = public_safe_identifier(raw.get("batch_id"))
     if batch_id:
         out["batch_id"] = batch_id
+    # message 由 op_code / failed_op_code 现场重算；投影必须保留它们，才能对自身输出重复投影不坍塌成 "-"。
+    op_code = public_safe_identifier(raw.get("op_code"))
+    if op_code:
+        out["op_code"] = op_code
+    failed_op_code = public_safe_identifier(raw.get("failed_op_code"))
+    if failed_op_code:
+        out["failed_op_code"] = failed_op_code
     fields = _guard_missing_fields(raw.get("missing_fields"))
     if fields:
         out["missing_fields"] = fields
@@ -260,6 +267,25 @@ def _minimal_due_count_field(minimal: Dict[str, Any], result_summary_obj: Dict[s
         minimal[key] = {"count": size_guard_scalar(payload.get("count"), max_chars=40)}
 
 
+def _minimal_incomplete_batches_field(minimal: Dict[str, Any], result_summary_obj: Dict[str, Any]) -> None:
+    payload = result_summary_obj.get("incomplete_batches")
+    if not isinstance(payload, dict) or not payload:
+        return
+    raw_items = payload.get("items")
+    items: List[Dict[str, Any]] = []
+    if isinstance(raw_items, list):
+        for raw in raw_items[:10]:
+            if not isinstance(raw, dict):
+                continue
+            batch_id = public_safe_identifier(raw.get("batch_id"))
+            if batch_id:
+                items.append({"batch_id": batch_id})
+    minimal["incomplete_batches"] = {
+        "count": size_guard_scalar(payload.get("count"), max_chars=40),
+        "items": items,
+    }
+
+
 def minimal_summary_for_size_guard(
     result_summary_obj: Dict[str, Any],
     *,
@@ -276,15 +302,12 @@ def minimal_summary_for_size_guard(
         "readiness": size_guard_dict(result_summary_obj.get("readiness"), max_items=4, max_value_chars=40),
         "version": size_guard_scalar(result_summary_obj.get("version"), max_chars=40),
         "strategy": size_guard_scalar(result_summary_obj.get("strategy"), max_chars=80),
-        "result_status": size_guard_scalar(result_summary_obj.get("result_status"), max_chars=80),
         "counts": size_guard_dict(result_summary_obj.get("counts"), max_items=20, max_value_chars=40),
         "time_cost_ms": size_guard_scalar(result_summary_obj.get("time_cost_ms"), max_chars=40),
         "summary_truncated": True,
         "original_size_bytes": int(original_size),
     }
 
-    if result_summary_obj.get("result_status_detail") is not None:
-        minimal["result_status_detail"] = size_guard_scalar(result_summary_obj.get("result_status_detail"), max_chars=200)
     if result_summary_obj.get("degraded_success") is not None:
         minimal["degraded_success"] = bool(result_summary_obj.get("degraded_success"))
     if result_summary_obj.get("invalid_due_count") is not None:
@@ -293,6 +316,7 @@ def minimal_summary_for_size_guard(
         minimal["unscheduled_batch_count"] = size_guard_scalar(result_summary_obj.get("unscheduled_batch_count"), max_chars=40)
     _minimal_due_count_field(minimal, result_summary_obj, "overdue_batches")
     _minimal_due_count_field(minimal, result_summary_obj, "near_due_batches")
+    _minimal_incomplete_batches_field(minimal, result_summary_obj)
     _copy_minimal_error_fields(minimal, result_summary_obj)
     _copy_minimal_missing_resource_fields(minimal, result_summary_obj)
     _copy_minimal_degradation_fields(minimal, result_summary_obj)

@@ -18,13 +18,6 @@ class FieldPolicy:
 
 _FIELD_POLICIES = (
     FieldPolicy(
-        field="default_days",
-        value_kind=VALUE_FLOAT,
-        strict_reason_code="invalid_number",
-        compat_reason_code="invalid_number",
-        blank_reason_code="blank_required",
-    ),
-    FieldPolicy(
         field="ext_days",
         value_kind=VALUE_FLOAT,
         strict_reason_code="invalid_number",

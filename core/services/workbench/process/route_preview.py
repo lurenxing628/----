@@ -8,9 +8,9 @@ from collections import defaultdict
 from contextlib import contextmanager
 from types import SimpleNamespace
 
+from core.models.process_route_text import serialize_route_rows
 from core.models.resource_capabilities import supplier_capability_rows, supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_process_route import (
     append_duplicate_diagnostics,
     check_route_capacity,
@@ -25,30 +25,7 @@ from core.services.process.route_parser_tokens import (
     preprocess_route_string,
     route_format_errors,
     route_tokens,
-    serialize_route_rows,
 )
-from data.repositories.supplier_repo import SupplierRepository
-from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
-from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
-
-
-class _OpTypeSnapshot:
-    def __init__(self, records):
-        self.records = {row["op_type_id"]: SimpleNamespace(**row) for row in records}
-
-    def list(self):
-        return list(self.records.values())
-
-    def get(self, key):
-        return self.records.get(key)
-
-
-class _CapabilitySnapshot:
-    def __init__(self, records):
-        self.records = records
-
-    def list_capabilities(self, status=None):
-        return self.records
 
 
 def _segment_ambiguities(segment):
@@ -132,8 +109,8 @@ def _text_rows(raw, diagnostics):
         explicit = parse_explicit_route(raw)
     except ValueError as exc:
         diagnostics.append(route_diagnostic("explicit_route_invalid", str(exc)))
-        return []
-    return _explicit_rows(explicit, diagnostics) if explicit is not None else _compact_rows(raw, diagnostics)
+        return [], False
+    return (_explicit_rows(explicit, diagnostics), False) if explicit is not None else (_compact_rows(raw, diagnostics), True)
 
 
 def _structured_name_warnings(rows, diagnostics):
@@ -144,9 +121,8 @@ def _structured_name_warnings(rows, diagnostics):
             diagnostics.append(route_diagnostic("structured_name_preserved", "工种名称已原样保留；系统会在整条路线中保留工序号和名称的边界，可直接导出后继续维护。", severity="warning", sequence=seq))
 
 
-def _persisted_refs(repo, kind, keys, cached=None):
+def _persisted_refs(identities, keys):
     keys = set(keys)
-    identities = repo.active_map(kind, keys) if cached is None else cached
     if any(key not in identities or type(identities[key].ref) is not str or
            re.fullmatch(r"[0-9a-f]{48}", identities[key].ref) is None for key in keys):
         raise WorkbenchCommandRejected("storage_failure", "工艺参考资料找不到编号，或者编号无效，请联系维护人员核对资料。", 500)
@@ -175,7 +151,7 @@ def _append_operation_diagnostics(operations, diagnostics):
 
 
 class ProcessRoutePreviewService:
-    def __init__(self, conn, logger=None, facts=None):
+    def __init__(self, conn, logger=None, *, facts):
         self.conn, self.logger = conn, logger
         self._batch = None
         self._facts = facts
@@ -187,51 +163,28 @@ class ProcessRoutePreviewService:
             raise RuntimeError("Batch route previews require a caller-owned read transaction.")
         previous = self._batch
         facts = self._reference_facts()
-        types, capabilities, context, _ = facts
-        if self._facts is not None:
-            identities = {"op_type": {}, "supplier": {}}
-            for row in self._facts["identities"]:
-                if row["active"] and row["kind"] in identities:
-                    identities[row["kind"]][row["entity_key"]] = WorkbenchEntityIdentity(
-                        row["ref"], row["kind"], row["entity_key"], row["revision"], bool(row["active"]))
-
-        def refs(kind, keys):
-            if self._facts is None:
-                return WorkbenchIdentityRepository(self.conn, self.logger).active_map(kind, keys)
-            return identities[kind]
-        self._batch = {"facts": facts, "candidates": self._candidates(types, capabilities),
-                       "op_refs": refs("op_type", [row.op_type_id for row in context.op_types.values()]),
-                       "supplier_refs": refs("supplier", [value[0] for value in context.suppliers.values()])}
+        self._batch = {"facts": facts, "candidates": self._candidates(facts[0], facts[1]), "refs": ({}, {})}
         try:
             yield self
         finally:
             self._batch = previous
 
     def _reference_facts(self):
-        if self._facts is not None:
-            references = self._facts["references"]
-            types = _OpTypeSnapshot(references["OpTypes"])
-            capabilities = supplier_capability_rows(references["Suppliers"], references["WorkbenchSupplierOpTypes"], "active")
-            parser = RouteParser(types, _CapabilitySnapshot(capabilities), logger=self.logger)
-            return types, capabilities, parser.build_parse_context(), {row["supplier_id"]: row for row in references["Suppliers"]}
-        repo = WorkbenchProcessQueryRepository(self.conn, self.logger)
-        types = _OpTypeSnapshot(repo.op_type_reference_rows())
-        capabilities = SupplierRepository(self.conn, self.logger).list_capabilities(status="active")
-        parser = RouteParser(types, _CapabilitySnapshot(capabilities), logger=self.logger)
-        context = parser.build_parse_context()
-        suppliers = {row["supplier_id"]: row for row in repo.supplier_reference_rows()}
-        return types, capabilities, context, suppliers
+        references = self._facts.references
+        types = {row["op_type_id"]: SimpleNamespace(**row) for row in references["OpTypes"]}
+        capabilities = supplier_capability_rows(references["Suppliers"], references["WorkbenchSupplierOpTypes"], "active")
+        parser = RouteParser(types, capabilities, logger=self.logger)
+        return types, capabilities, parser.build_parse_context(), {row["supplier_id"]: row for row in references["Suppliers"]}
 
     def preview(self, body):
         request = normalize_route_preview_input(body)
         diagnostics = list(request.diagnostics)
-        rows = _text_rows(request.route_raw, diagnostics) if request.mode == "text" else request.rows
+        rows, compact = _text_rows(request.route_raw, diagnostics) if request.mode == "text" else (request.rows, False)
         if request.mode == "rows":
             _structured_name_warnings(rows, diagnostics)
         if not rows:
             diagnostics.append(route_diagnostic("empty_route", "这条工艺路线里没有可检查的工序。请先填写工序。"))
-        operations = self._interpret_operations(rows, diagnostics,
-                                                compact=request.mode == "text" and not re.search(r"[0-9０-９]\s*[:：]", request.route_raw))
+        operations = self._interpret_operations(rows, diagnostics, compact=compact)
         _append_operation_diagnostics(operations, diagnostics)
         recognized = sum(op["op_type_ref"] is not None for op in operations)
         return {"mode": request.mode, "route_raw": request.route_raw,
@@ -240,11 +193,11 @@ class ProcessRoutePreviewService:
                 "can_confirm_route": bool(operations) and not any(d["severity"] == "error" for d in diagnostics),
                 "counts": {"operations": len(operations), "recognized": recognized, "unknown": len(operations) - recognized}}
 
-    def _interpret_operations(self, rows, diagnostics, compact=False):
+    def _interpret_operations(self, rows, diagnostics, compact):
         types, capabilities, context, suppliers = self._reference_facts() if self._batch is None else self._batch["facts"]
         if compact:
             diagnostics.extend(route_diagnostic("ambiguous_numeric_name", message, sequence=seq)
-                               for seq, message in compact_name_ambiguities(rows, context.op_types))
+                               for seq, message in compact_name_ambiguities(rows, context.numeric_names))
         op_refs, supplier_refs = self._route_refs(context, {name for _, name in rows})
         candidates = self._candidates(types, capabilities) if self._batch is None else self._batch["candidates"]
         for issue in context.supplier_global_issues:
@@ -255,12 +208,20 @@ class ProcessRoutePreviewService:
                 for seq, name in sorted(rows, key=lambda row: row[0])]
 
     def _route_refs(self, context, names):
-        identities = WorkbenchIdentityRepository(self.conn, self.logger) if self._batch is None else None
-        op_refs = _persisted_refs(identities, "op_type", [ot.op_type_id for name, ot in context.op_types.items() if name in names],
-                                  None if self._batch is None else self._batch["op_refs"])
-        supplier_refs = _persisted_refs(identities, "supplier", [value[0] for name, value in context.suppliers.items()
-                                       if name in names and context.op_types[name].category == "external"],
-                                        None if self._batch is None else self._batch["supplier_refs"])
+        op_ids = [context.op_types[name].op_type_id for name in names if name in context.op_types]
+        sup_ids = [context.suppliers[name] for name in names
+                   if name in context.suppliers and context.op_types[name].category == "external"]
+        if self._batch is not None:
+            cached_ops, cached_suppliers = self._batch["refs"]
+            op_keys = [op_id for op_id in op_ids if op_id not in cached_ops]
+            if op_keys:
+                cached_ops.update(_persisted_refs(self._facts.identities_by_kind["op_type"], op_keys))
+            sup_keys = [supplier_id for supplier_id in sup_ids if supplier_id not in cached_suppliers]
+            if sup_keys:
+                cached_suppliers.update(_persisted_refs(self._facts.identities_by_kind["supplier"], sup_keys))
+            return cached_ops, cached_suppliers
+        op_refs = _persisted_refs(self._facts.identities_by_kind["op_type"], op_ids)
+        supplier_refs = _persisted_refs(self._facts.identities_by_kind["supplier"], sup_ids)
         return op_refs, supplier_refs
 
     @staticmethod
@@ -295,11 +256,10 @@ class ProcessRoutePreviewService:
     @staticmethod
     def _supplier_suggestion(result, context, candidates, suppliers, supplier_refs):
         name = result["op_type_name"]
-        selected = context.suppliers.get(name)
-        if selected is None:
+        key = context.suppliers.get(name)
+        if key is None:
             result["issues"].append({"code": "supplier_missing", "message": "没有能承接这个工种的供应商，供应商和外协周期还要确认。"})
             return
-        key = selected[0]
         raw = candidates[name][key]
         if key not in suppliers or type(suppliers[key]["name"]) is not str:
             raise WorkbenchCommandRejected("storage_failure", "建议的供应商名称缺失或无效。请到资料总览核对。", 500)

@@ -19,7 +19,7 @@ class BackupIntegrityError(RuntimeError):
 def run_sqlite_integrity_check(conn, *, logger, check_label: str, execute_failed_hint: str) -> None:
     """在同一连接校验 SQLite 完整性与业务表；失败抛出 BackupIntegrityError。"""
     try:
-        rows = conn.execute("PRAGMA integrity_check").fetchall() or []
+        rows = conn.execute("PRAGMA integrity_check").fetchall()
         has_user_table = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name <> 'SchemaVersion' AND name NOT LIKE 'sqlite_%' LIMIT 1"
         ).fetchone()

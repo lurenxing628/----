@@ -18,8 +18,21 @@
   const matchesScope = (task, scope, batchRefs) => (!scope.range_start || window.PointContract.overlaps(task, scope.range_start, scope.range_end))
     && (!batchRefs || batchRefs.has(task.batch_ref))
     && (!scope.resource_ref || (scope.resource_type === 'batch' ? task.batch_ref : task[scope.resource_type + '_ref']) === scope.resource_ref);
-  const matchesQuery = (task, needle, name) => !needle
-    || [task.batch_id, task.part_no, task.part_name, task.process_label, task.piece_id, name(task.machine_ref), name(task.operator_ref)].join(' ').toLowerCase().includes(needle);
+  const compareText = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+  const searchCache = new WeakMap();
+  function matchesQuery(task, needle, name) {
+    if (!needle) return true;
+    const machine = name(task.machine_ref), operator = name(task.operator_ref);
+    let cached = searchCache.get(task);
+    if (!cached || cached.batch_id !== task.batch_id || cached.part_no !== task.part_no || cached.part_name !== task.part_name
+      || cached.process_label !== task.process_label || cached.piece_id !== task.piece_id || cached.machine !== machine || cached.operator !== operator) {
+      cached = { batch_id: task.batch_id, part_no: task.part_no, part_name: task.part_name, process_label: task.process_label,
+        piece_id: task.piece_id, machine, operator,
+        text: [task.batch_id, task.part_no, task.part_name, task.process_label, task.piece_id, machine, operator].join(' ').toLowerCase() };
+      searchCache.set(task, cached);
+    }
+    return cached.text.includes(needle);
+  }
   function matching(data, scope, query, changed, name, batchRefs) {
     const needle = query.trim().toLowerCase();
     return data.tasks.filter(t => (!changed || t.changed) && matchesScope(t, scope, batchRefs) && matchesQuery(t, needle, name));
@@ -49,7 +62,7 @@
         entries.push({ t, group: t[key], ghost: false });
         if (baseline && view !== 'batch' && t.original[key] !== t[key]) entries.push({ t, group: t.original[key], ghost: true });
       });
-      return entries.sort((a, b) => String(a.group).localeCompare(String(b.group)) || a.t.start.localeCompare(b.t.start) || a.t.task_ref.localeCompare(b.t.task_ref));
+      return entries.sort((a, b) => compareText(String(a.group), String(b.group)) || compareText(a.t.start, b.t.start) || compareText(a.t.task_ref, b.t.task_ref));
     }, [filtered, view, baseline]);
     const current = Math.min(page, Math.max(1, Math.ceil(rows.length / 30))), visible = rows.slice((current - 1) * 30, current * 30);
     const bounds = React.useMemo(() => {
@@ -57,7 +70,7 @@
       data.tasks.forEach(t => { start = Math.min(start, wall(t.start), wall(t.original.start)); end = Math.max(end, wall(t.end), wall(t.original.end)); });
       const pad = Math.max(60000, (end - start) * .025); return { start: start - pad, end: end + pad };
     }, [data]);
-    const axis = window.GanttPresentation.axis({ ...bounds, ...chart });
+    const axis = React.useMemo(() => window.GanttPresentation.axis({ ...bounds, ...chart }), [bounds, chart]);
     const measure = () => {
       const node = board.current, track = axisHost.current;
       if (node && track) setChart({ width: track.clientWidth, viewport: node.clientWidth - node.querySelector('.tt-corner').getBoundingClientRect().width, left: node.scrollLeft });
@@ -79,10 +92,16 @@
         selected={selected === t.task_ref} onSelect={() => { setHover(null); onSelect(t.task_ref); }}
         onHover={event => setHover(event ? { title, x: event.clientX, y: event.clientY } : null)} />;
     }
+    const rowIndexByTask = React.useMemo(() => {
+      const map = new Map();
+      rows.forEach((row, index) => { if (!row.ghost && !map.has(row.t.task_ref)) map.set(row.t.task_ref, index); });
+      return map;
+    }, [rows]);
+    const taskByRef = React.useMemo(() => new Map(data.tasks.map(task => [task.task_ref, task])), [data.tasks]);
     const { selectedIndex, hiddenSelectedTask } = React.useMemo(() => {
-      const selectedIndex = selected ? rows.findIndex(row => !row.ghost && row.t.task_ref === selected) : -1;
-      return { selectedIndex, hiddenSelectedTask: selected && selectedIndex < 0 ? data.tasks.find(task => task.task_ref === selected) || null : null };
-    }, [rows, selected, data.tasks]);
+      const selectedIndex = selected && rowIndexByTask.has(selected) ? rowIndexByTask.get(selected) : -1;
+      return { selectedIndex, hiddenSelectedTask: selected && selectedIndex < 0 ? taskByRef.get(selected) || null : null };
+    }, [rowIndexByTask, taskByRef, selected]);
     React.useEffect(() => {
       if (selectedIndex >= 0) setPage(Math.floor(selectedIndex / 30) + 1);
     }, [selected, selectedIndex]);

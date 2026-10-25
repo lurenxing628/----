@@ -12,18 +12,18 @@ from core.services.personnel.operator_qualification import OperatorQualification
 from data.repositories.workbench_resource_metrics_repo import WorkbenchResourceMetricsRepository
 
 AVAILABILITY_BASIS = "enabled_authorized_matching"
-_KEYS = {"op_type": "op_type_id", "machine": "machine_id", "operator": "operator_id",
+RESOURCE_KEYS = {"op_type": "op_type_id", "machine": "machine_id", "operator": "operator_id",
          "supplier": "supplier_id", "machine_group": "group_id", "shift_profile": "profile_id"}
 _INTERNAL = {"op_type", "machine_capabilities", "machine", "operator", "operator_profiles", "skills", "authorizations"}
 _EXTERNAL = {"op_type", "supplier", "supplier_profiles", "capabilities", "policies"}
-_READ_FACTS = {
+READ_FACTS = {
     "machine": {"machine", "machine_capabilities", "op_type", "groups", "machine_group"},
     "operator": {"operator", "operator_profiles", "skills", "authorizations", "op_type", "machine", "shift_profile", "shift_pattern"},
     "supplier": _EXTERNAL,
     "machine_group": {"machine_group", "groups", "machine"},
     "shift_profile": {"shift_profile", "shift_pattern", "operator_profiles", "operator"},
 }
-_READ_FACTS["op_type"] = set().union(_INTERNAL, _EXTERNAL, *_READ_FACTS.values())
+READ_FACTS["op_type"] = set().union(_INTERNAL, _EXTERNAL, *READ_FACTS.values())
 _BASIS = {
     "machines": "启用并绑定了对应自制工种的设备；没算班表和当前占用。",
     "operators": "启用、对匹配设备有授权、并符合技能资格规则的人数，同一人只算一次；没算班表和当前占用。",
@@ -44,7 +44,7 @@ def _invalid(message):
     raise ResourceMetricFactsError("storage_failure", message + "，这一项没有统计出来，资料没有被改动。请到资料总览核对后重试。", 500)
 
 
-def _index(rows, key):
+def index_resource_rows(rows, key):
     result = {}
     for row in rows:
         value = row[key]
@@ -79,25 +79,25 @@ class WorkbenchResourceMetricsService:
 
     def fingerprint_facts(self, kind):
         # Fingerprinting raw facts must not make another domain's validation a read gate.
-        names = _READ_FACTS[kind]
+        names = READ_FACTS[kind]
         self._load(names)
         return {name: self.facts[name] for name in sorted(names)}
 
     @staticmethod
     def identity_kinds(kind):
-        return sorted(_READ_FACTS[kind] & set(_KEYS))
+        return sorted(READ_FACTS[kind] & set(RESOURCE_KEYS))
 
     def _records(self, kind):
         if kind not in self.records:
             self._load([kind])
-            self.records[kind] = _index(self.facts[kind], _KEYS[kind])
+            self.records[kind] = index_resource_rows(self.facts[kind], RESOURCE_KEYS[kind])
         return self.records[kind]
 
     def _statuses(self, kind):
         if kind not in self.statuses:
             if kind in ("operator", "supplier"):
                 self._load([kind + "_profiles"])
-                self.profiles[kind] = _index(self.facts[kind + "_profiles"], kind + "_id")
+                self.profiles[kind] = index_resource_rows(self.facts[kind + "_profiles"], kind + "_id")
             self.statuses[kind] = {code: public_resource_status(kind, row["status"], self.profiles.get(kind, {}).get(code))
                                    for code, row in self._records(kind).items()}
         return self.statuses[kind]
@@ -128,7 +128,7 @@ class WorkbenchResourceMetricsService:
             _relation(row["supplier_id"], self.records["supplier"], "供应商能力")
             self._work_type(row["op_type_id"], "external")
 
-    def _active_qualifications(self, qualification):
+    def _active_qualifications(self):
         active = {code for code, status in self._statuses("operator").items() if status == "active"}
         profiles = [{"operator_id": code, "profile_operator_id": code if code in self.profiles["operator"] else None,
                      "skills_declared": self.profiles["operator"].get(code, {}).get("skills_declared")}
@@ -136,8 +136,8 @@ class WorkbenchResourceMetricsService:
         stored_skills = [dict(row, category=self.records["op_type"].get(row["op_type_id"], {}).get("category"))
                          for row in self.facts["skills"]]
         # The planning service interprets the already captured qualification facts once.
-        all_skills = qualification.project_facts(sorted(self.records["operator"]), profiles, stored_skills)
-        return active, {code: all_skills[code] for code in active}
+        all_skills = OperatorQualificationService.project_facts(sorted(self.records["operator"]), profiles, stored_skills)
+        return {code: all_skills[code] for code in active}
 
     def _internal_capacity(self):
         if "internal" in self._computed:
@@ -155,9 +155,8 @@ class WorkbenchResourceMetricsService:
                     self.active_machines[work_type].add(code)
             if row["status"] == "active":
                 machines.append(SimpleNamespace(machine_id=code, op_type_id=row["op_type_id"], op_type_ids=tuple(capabilities[code])))
-        qualification = OperatorQualificationService(self.conn, logger=self.logger)
-        _, skills = self._active_qualifications(qualification)
-        links = qualification.eligible_links(self.facts["authorizations"], machines, [], qualifications=skills)
+        skills = self._active_qualifications()
+        links = OperatorQualificationService.eligible_links(self.facts["authorizations"], machines, [], qualifications=skills)
         for link in links:
             for work_type in capabilities[link["machine_id"]]:
                 if skills[link["operator_id"]] is None or work_type in skills[link["operator_id"]]:
@@ -180,7 +179,7 @@ class WorkbenchResourceMetricsService:
     def op_type_records(self):
         self._load(["op_type", "policies"])
         if "policies" not in self._computed:
-            self.policies = _index(self.facts["policies"], "op_type_id")
+            self.policies = index_resource_rows(self.facts["policies"], "op_type_id")
             self._computed.add("policies")
         return self._records("op_type")
 
@@ -223,12 +222,14 @@ class WorkbenchResourceMetricsService:
             issues.append({"code": "resource_status_unknown", "count": counts["unknown"],
                            "message": "有旧资源的状态或停用原因读不出来，既没算成启用，也没算成停用。"})
         if kind == "op_type":
-            categories = {self.records[kind][code]["category"] for code in selected}
             unavailable = {"internal": ["linked_machines", "available_operators", "without_machines"],
                            "external": ["available_suppliers"]}
-            for category in sorted(categories & set(self._failed)):
-                issues.append({"code": "resource_availability_unavailable", "message": self._failed[category],
-                               "unavailable_fields": unavailable[category]})
+            for category in ("internal", "external"):
+                if category in self._failed and any(
+                    supports_source(self.records[kind][code]["category"], category) for code in selected
+                ):
+                    issues.append({"code": "resource_availability_unavailable", "message": self._failed[category],
+                                   "unavailable_fields": unavailable[category]})
         return {"scope": scope, "counts": counts, "basis": dict(_BASIS), "issues": issues}
 
     def _status_counts(self, kind, codes):
@@ -244,7 +245,7 @@ class WorkbenchResourceMetricsService:
         if kind == "machine":
             self._load(["groups", "machine_group"])
             if not self.groups:
-                self.groups = _index(self.facts["groups"], "machine_id")
+                self.groups = index_resource_rows(self.facts["groups"], "machine_id")
             groups = self._records("machine_group")
             for code in codes:
                 if code in self.groups:
@@ -281,7 +282,7 @@ class WorkbenchResourceMetricsService:
         return {"merged": modes["merged"], "separate": modes["separate"], "merge_mode_unset": modes["unset"]}
 
     def summary_metrics(self):
-        groups = {kind: self._summary_group(kind) for kind in _KEYS if kind != "op_type"}
+        groups = {kind: self._summary_group(kind) for kind in RESOURCE_KEYS if kind != "op_type"}
         for category in ("internal", "external"):
             groups[category + "_op_type"] = self._summary_group("op_type", category)
         return {"scope": "all", "groups": groups}
@@ -289,7 +290,9 @@ class WorkbenchResourceMetricsService:
     def _summary_group(self, kind, category=None):
         try:
             records = self._records(kind)
-            codes = records if category is None else [code for code, row in records.items() if row["category"] == category]
+            codes = (records if category is None else
+                     [code for code, row in records.items()
+                      if supports_source(row["category"], category) or row["category"] not in OP_TYPE_CATEGORIES])
             return self.metrics(kind, codes, scope="all")
         except ResourceMetricFactsError as exc:
             return {"scope": "all", "counts": {}, "basis": dict(_BASIS),

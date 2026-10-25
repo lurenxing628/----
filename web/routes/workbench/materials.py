@@ -95,14 +95,10 @@ def _command_body():
 
 @api_endpoint
 def material_command(action, ref=None):
-    if action not in ("create", "update", "delete") or (action == "create") != (ref is None):
-        raise WorkbenchCommandRejected("invalid_input", "这个操作入口不对，物料没有改动。请刷新页面后重试。", 400)
     body = _command_body()
     reader, domain = _services()
     normalized = domain.normalize_input(action, body["input"])
-    subject = _COLLECTION if action == "create" else ref
-    if not isinstance(subject, str) or not subject:
-        raise WorkbenchCommandRejected("invalid_input", "没有指明要改哪一条物料，物料没有改动。请刷新页面后重新选择。", 400)
+    subject = _COLLECTION if ref is None else ref
     command = "material." + action
 
     def guard():

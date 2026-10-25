@@ -9,7 +9,7 @@ from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRe
 from .plan_query import SchedulePlanQueryService
 
 
-class _PagePlanQueryService(SchedulePlanQueryService):
+class PagePlanQueryService(SchedulePlanQueryService):
     """Reuse strict resolution, replacing only its all-history identity read."""
 
     def __init__(self, repo: WorkbenchPlanCatalogRepository, latest: Optional[int]):

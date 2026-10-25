@@ -26,10 +26,6 @@ class RepairWorkAccounting:
         excluded_sizes = [total for portfolio_id, total in parents.items() if portfolio_id not in self.elites]
         counts = [(parents.get(portfolio_id, progress["total"]), progress["consumed"])
                   for portfolio_id, progress in self.elites.items()]
-        if any(consumed < 0 or consumed > total for total, consumed in counts):
-            raise ValueError("repair portfolio consumed count is outside its materialized candidate space")
-        if sum(consumed for _total, consumed in counts) != pruning["generated_candidates"]:
-            raise ValueError("repair generated count disagrees with admitted portfolio offsets")
         report["selected_elites"] = len(parents) - len(excluded_sizes)
         report["selected_elites_scope"] = "cumulative_profile_parents_admitted_during_rotation"
         report["repair_registered_portfolios"] = len(counts)

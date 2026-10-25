@@ -15,8 +15,6 @@ def require_template(repo, template_operation_ref):
 
 def adopt_checked_quota(repo, template, value):
     """Use the shared current-template hours writer in the adoption transaction."""
-    if not repo.conn.in_transaction:
-        raise RuntimeError("Quota adoption requires the caller write transaction.")
     current = {**template, "ref": template["template_operation_ref"], "revision": template["template_revision"]}
     ProcessTemplateHours(repo.conn).revise_current(current, {"unit_hours": value},
                                                   expected_revision=template["template_revision"])

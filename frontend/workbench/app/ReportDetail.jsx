@@ -30,7 +30,18 @@
     const request = useRead(signal => api.detail(operationRef, input, signal), identity);
     const detail = request.result && request.result.data.detail;
     const [page, setPage] = React.useState(initialView ? initialView.page : 1), [size, setSize] = React.useState(initialView ? initialView.size : 10);
-    React.useEffect(() => setPage(initialView ? initialView.page : 1), [operationRef, input.snapshot_ref]);
+    const prevRef = React.useRef({ operationRef, snapshotRef: input.snapshot_ref });
+    React.useEffect(() => {
+      const prev = prevRef.current;
+      prevRef.current = { operationRef, snapshotRef: input.snapshot_ref };
+      if (prev.operationRef !== operationRef) {
+        setPage(initialView ? initialView.page : 1);
+        setSize(initialView ? initialView.size : 10);
+      } else if (prev.snapshotRef !== input.snapshot_ref) {
+        setPage(1);
+        if (onView) onView({ page: 1, size });
+      }
+    }, [operationRef, input.snapshot_ref]);
     const row = detail && detail.operation;
     const actions = <div className="rw-actions">
         <Button icon="arrow-right" disabled={!row || request.busy} reasonDisplay="inline" reason={typeof onOpenOperation !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : ''}
@@ -38,7 +49,14 @@
         <Button icon="chart-gantt" disabled={!row || request.busy} reasonDisplay="inline" reason={typeof onOpenOperation !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : ''}
           onClick={() => onOpenOperation(operationRef, input, row, 'fieldgantt')}>查看现场实际甘特</Button>
         </div>;
-    const records = detail ? detail.records.slice((page - 1) * size, page * size) : [];
+    const pages = detail ? Math.max(1, Math.ceil(detail.records.length / size)) : 1, currentPage = Math.min(page, pages);
+    React.useEffect(() => {
+      if (detail && currentPage !== page) {
+        setPage(currentPage);
+        if (onView) onView({ page: currentPage, size });
+      }
+    }, [detail, currentPage, page, size]);
+    const records = React.useMemo(() => detail ? detail.records.slice((currentPage - 1) * size, currentPage * size) : [], [detail, currentPage, size]);
     return <window.WorkbenchDetailPanel className="rw-detail" detailKey={operationRef} title={row ? row.batch_label + ' · ' + row.operation_label : '工序详情'}
       subtitle="工序报表详情" actions={actions} onClose={onClose}>
       <ErrorBox error={request.error} />{request.busy && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取工序记录" />}
@@ -47,7 +65,7 @@
         <p>{row.data_gaps.join(' ')}</p><Table data={{ topic: 'records', rows: records }} empty={{ title: '这道工序暂无报工记录', hint: '' }}
           onLocate={typeof onOpenOperation === 'function' ? record => onOpenOperation(operationRef, input, row, 'fieldgantt', record.report_ref) : undefined} />
         {records.map(record => <Evidence key={record.record_kind + ':' + record.projection_index} record={record} />)}
-        <div className="rw-detail-pager"><window.ReportControls.Page page={{ number: page, size, total: detail.records.length, pages: Math.max(1, Math.ceil(detail.records.length / size)) }} onChange={patch => {
+        <div className="rw-detail-pager"><window.ReportControls.Page page={{ number: currentPage, size, total: detail.records.length, pages }} onChange={patch => {
           setPage(patch.page); if (patch.size) setSize(patch.size); if (onView) onView({ page: patch.page, size: patch.size || size });
         }} /></div></>}
     </window.WorkbenchDetailPanel>;

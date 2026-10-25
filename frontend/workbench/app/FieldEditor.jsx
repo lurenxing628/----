@@ -30,8 +30,12 @@
       const timer = setTimeout(() => onDone({ continueAfter, previousContext: context, taskRef: task.task_ref, operationRef: task.operation_ref }), 0);
       return () => clearTimeout(timer);
     }, [command.phase, command.result, continueAfter, context, task.task_ref, task.operation_ref, onDone]);
+    function clearRejected() {
+      const code = command.error && (command.error.code || command.error.error && command.error.error.code);
+      if (command.phase === 'rejected' && !['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code) && typeof command.reset === 'function') command.reset();
+    }
     function change(key, value) {
-      setDraft(current => ({ ...current, [key]: value })); setError(null);
+      setDraft(current => ({ ...current, [key]: value })); setError(null); clearRejected();
       setSuggestions(current => { const next = { ...current }; delete next[key]; return next; });
     }
     async function save(value, next = false) {
@@ -48,7 +52,7 @@
       } catch (failure) { setError(failure); }
     }
     function copy() {
-      const value = M.copyPrevious(draft, task); setDraft(value); setError(null);
+      const value = M.copyPrevious(draft, task); setDraft(value); setError(null); clearRejected();
       setSuggestions(Object.fromEntries(['actual_start', 'actual_end'].filter(key => value[key]).map(key => [key, '复制自同任务上一条报工，请重新核对'])));
     }
     const fresh = action === 'create' && !legacy;

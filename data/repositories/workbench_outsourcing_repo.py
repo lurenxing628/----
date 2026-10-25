@@ -80,10 +80,6 @@ class WorkbenchOutsourcingRepository:
         row = self.conn.execute("SELECT * FROM WorkbenchOutsourcingFacts WHERE outsourcing_ref=? ORDER BY sequence DESC LIMIT 1", (ref,)).fetchone()
         return dict(row) if row is not None else None
 
-    def membership(self, refs):
-        marks = ",".join("?" for _ in refs)
-        return [dict(row) for row in self.conn.execute("SELECT * FROM WorkbenchOutsourcingMembers WHERE operation_ref IN (" + marks + ") ORDER BY operation_ref", refs)]
-
     def refs(self, batch_ref, limit):
         """Up to limit + 1 receipt refs (optionally within a batch) so the caller can detect the cap."""
         where, params = (" WHERE batch_ref=?", (batch_ref,)) if batch_ref else ("", ())

@@ -26,9 +26,9 @@ def read_process_json(label, maximum):
 
     try:
         body = json.loads(raw, object_pairs_hook=unique)
+    except WorkbenchCommandRejected:
+        raise
     except (ValueError, UnicodeError) as exc:
-        if isinstance(exc, WorkbenchCommandRejected):
-            raise
         raise WorkbenchCommandRejected("invalid_input", label + "没有执行：提交的内容格式不正确。请刷新页面后重新提交。", 400) from exc
     if type(body) is not dict:
         raise WorkbenchCommandRejected("invalid_input", label + "没有执行：提交的内容不完整。请刷新页面后重新提交。", 400)

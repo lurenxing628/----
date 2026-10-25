@@ -13,7 +13,7 @@
       <Button icon="search" type="submit" aria-label="搜索" disabled={disabled} />
       <div className="field"><select aria-label="状态筛选" value={scope.status} disabled={disabled} onChange={event => filter({ status: event.target.value })}>
         <option value="">全部状态</option><option value="active">启用</option><option value="inactive">停用</option><option value="unknown">旧状态 / 原因未知</option></select></div>
-      <Button icon="refresh-cw" aria-label="刷新列表" disabled={disabled} busy={list.loading} onClick={() => { filter({}); list.reload(); }} />
+      <Button icon="refresh-cw" aria-label="刷新列表" disabled={disabled} busy={list.loading} onClick={() => { if (scope.page === 1 && scope.snapshot_ref === undefined) list.reload(); else filter({}); }} />
       <span className="tb-spacer" /><Button icon="plus" className="btn primary" disabled={disabled} reason={C.blocked(data && data.create_context, kind, 'create', list.result && list.result.meta.source)} onClick={() => onOpen('create')}>新增{M.names[kind]}</Button>
     </form><ErrorBox error={list.error} />{list.loading && <EmptyState kind="loading" title="正在读取列表" />}
       {data && <><Issues issues={list.result.warnings} /><div className="wb-table-frame rc-list-scroll" data-sticky-head data-sticky-actions><table className="tbl wb-table rc-list"><caption className="wb-visually-hidden">{M.names[kind]}列表</caption><thead><tr>
@@ -96,7 +96,11 @@
       if (!(options.guardConfirmed && options.guardOwner === guardOwner) && !await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) return;
       back(target);
     }
-    function change(key, value) { setEditor(current => ({ ...current, draft: { ...current.draft, [key]: value } })); setError(null); }
+    function change(key, value) {
+      setEditor(current => ({ ...current, draft: { ...current.draft, [key]: value } })); setError(null);
+      const code = command.error && (command.error.code || command.error.error && command.error.error.code);
+      if (!needsReview && command.phase === 'rejected' && !['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code) && typeof command.reset === 'function') command.reset();
+    }
     function acknowledge(value) { setEditor(current => ({ ...current, acknowledged: value })); }
     function acceptReview() {
       if (!review || locked || !command.reset()) return;

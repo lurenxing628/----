@@ -38,8 +38,8 @@ def project_plan(entry, plan_ref):
     if entry.can_view and version is None:
         raise WorkbenchCommandRejected("plan_unavailable", "计划的版本号无效，不能开放查看。请刷新计划列表后重试。")
     return {"plan_ref": plan_ref, "version": version, "kind": entry.kind,
-            "is_current_official": bool(entry.can_view and identity is not None
-                                        and identity.is_current_executable_official_version),
+            "is_current_official": (entry.can_view and identity is not None
+                                    and identity.is_current_executable_official_version),
             "display_name": entry.display_name, "completeness": entry.completeness,
             "capabilities": {"view": entry.can_view, "export": entry.can_view,
                              "edit_draft": False, "adopt": False, "report_actual": False},
@@ -115,10 +115,8 @@ def _read_adopted_task_facts(conn, plan_ref, *, context=None):
     from core.services.workbench.facts.adoption_baseline_sources import read_adoption_operation_facts
     from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable, require
 
-    if conn is None:
-        return {}, "plan_target_not_recorded", None
     try:
-        evidence = context.adopted_source(plan_ref) if context is not None else _adopted_source_record(conn, plan_ref)
+        evidence = adopted_source_record(conn, plan_ref, context=context)
         if evidence is None:
             return {}, "plan_target_not_recorded", None
         basis, arranged = evidence["basis"], evidence["arranged"]
@@ -132,23 +130,9 @@ def _read_adopted_task_facts(conn, plan_ref, *, context=None):
         if exc.status == 413:
             raise
         return {}, "plan_target_unavailable", {}
-    except (KeyError, TypeError, ValueError, OverflowError):
-        return {}, "plan_target_unavailable", {}
 
 
-def read_adopted_source(conn, plan_ref, *, context=None):
-    """Read the audited immutable source; callers retain their read transaction."""
-    from core.infrastructure.read_evidence import verified_read
-
-    return verified_read(conn, ("adopted_plan_source", plan_ref), lambda: _read_adopted_source(conn, plan_ref, context=context))
-
-
-def _read_adopted_source(conn, plan_ref, *, context=None):
-    evidence = context.adopted_source(plan_ref) if context is not None else _adopted_source_record(conn, plan_ref)
-    return None if evidence is None else tuple(evidence[key] for key in ("basis", "audit", "tables", "arranged", "selected"))
-
-
-def _adopted_source_record(conn, plan_ref, *, context=None):
+def adopted_source_record(conn, plan_ref, *, context=None):
     from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
     from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
@@ -178,12 +162,11 @@ def _source_quantities(basis, arranged, source):
         for row in saved}
 
 
-def project_tasks(plan_ref, rows, task_refs, operation_refs, resources, *, conn=None, facts=None, context=None):
+def project_tasks(plan_ref, rows, task_refs, operation_refs, resources, *, conn, facts, context):
     tasks = []
     quantities, quantity_reason, origins = _adopted_task_facts(conn, plan_ref, context=context) if rows else ({}, None, None)
-    if facts is not None:
-        facts["resource_directory"] = [resource for row in rows for resource in
-            (origins or {}).get(row["op_id"], {}).get("resource_directory", [])]
+    facts["resource_directory"] = [resource for row in rows for resource in
+        (origins or {}).get(row["op_id"], {}).get("resource_directory", [])]
     for row in rows:
         start, end = (tuple(value.replace(" ", "T") for value in context.row_times(plan_ref, row)) if context is not None else
                       (public_time(row["start_time"]), public_time(row["end_time"])))

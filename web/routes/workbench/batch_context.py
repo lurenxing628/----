@@ -81,8 +81,8 @@ def load_preview(token, action, ref):
     expired = retry_message(action, noun + "已过期，系统没有自动重做")
     try:
         binding = resolve_public_token(PREVIEW_SCOPE, token, message=expired, field="preview_ref")
-    except (ValidationError, ValueError, TypeError) as exc:
+    except ValidationError as exc:
         raise WorkbenchCommandRejected("stale_write", expired) from exc
-    if binding.get("action") != action or binding.get("ref") != ref:
+    if binding["action"] != action or binding["ref"] != ref:
         raise WorkbenchCommandRejected("stale_write", retry_message(action, noun + "和当前批次操作对不上"))
     return binding

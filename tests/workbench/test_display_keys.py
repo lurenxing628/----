@@ -5,6 +5,8 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from core.models.workbench_calibration import normalize_calibration_filters
 from core.models.workbench_command import canonical_json
 from core.models.workbench_master_overview import MasterOverviewScope
@@ -54,6 +56,7 @@ def test_exact_issue_and_cell_keys_filter_and_restore_the_same_business_values()
     assert len(graph._issue_index) == 2 and all(isinstance(key, tuple) for key in graph._issue_index)
     service = MasterOverviewService(None)
     service.graph, service.entities = graph, graph.finalize()
+    service.entity_by_key = {(row["domain"], row["ref"]): row for row in service.entities}
     service.facts = SimpleNamespace(available=lambda *_: True, gaps=[])
     service.issues = [{**row, "issue_count": entity["issue_count"], "relation_count": entity["relation_count"]}
                       for row in entity["issues"]]
@@ -174,3 +177,25 @@ for(const kind of ['logs','backups']) {
 const selected=A.recordContext({filters,page:3,selection:{key:data.file.key,record_kind:'backup_file'}},'backups');
 assert.equal(selected.selection.key,data.file.key); assert.equal(selected.migration_notice,undefined);
 """)
+
+
+@pytest.mark.parametrize("damaged", ("part_name", "shift_name"))
+def test_overview_labels_and_evidence_show_non_text_names_without_concatenating_raw_values(schema_conn, damaged):
+    from tests.workbench.identity_metadata_support import seed_resources
+
+    conn = schema_conn
+    seed_resources(conn)
+    blob = b"\x01"
+    conn.execute("UPDATE Parts SET part_name=? WHERE part_no='P1'", (blob if damaged == "part_name" else "part",))
+    conn.execute("INSERT INTO WorkbenchShiftProfiles(profile_id,name,cycle_days,anchor_date,status) VALUES ('SP-BLOB',?,1,'2026-09-01','inactive')",
+                 (blob if damaged == "shift_name" else "night",))
+    conn.execute("INSERT INTO WorkbenchOperatorProfiles(operator_id,shift_profile_id) VALUES ('O1','SP-BLOB')")
+    conn.commit()
+    overview = MasterOverviewService(conn)
+    with overview.read_snapshot():
+        route = next(row for row in overview.entities if row["domain"] == "route" and row["business_code"] == "P1")
+        person = next(row for row in overview.entities if row["domain"] == "personnel" and row["business_code"] == "O1")
+    shift = next(row["evidence"] for row in person["issues"] if row["rule"] == "shift.inactive")
+    # 名称不是有效文本时路线回退用图号；班次名照资料总览的显示规则转成可读文本。
+    assert route["label"] == ("P1" if damaged == "part_name" else "part") + " · 工艺路线"
+    assert shift.startswith("所在班次是" + ('{"hex": "01", "storage_type": "blob"}' if damaged == "shift_name" else "night") + "，")

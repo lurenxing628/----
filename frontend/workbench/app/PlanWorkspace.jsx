@@ -56,11 +56,11 @@
     window.WorkbenchPageContext.useSnapshot(remembered, !!data && !read.loading && !read.error && !paused);
     function choose(plan) {
       initialTask.current = null;
-      setSelection(plan); setScope({}); setRange({ start: '', end: '' }); setRangeOpen(false); setRangeError(null); setPaused(false); setQuery(''); setSelected(null); setRelatedRef(null); setProjectionPage(0); read.reload();
+      setSelection(plan); setScope({}); setRange({ start: '', end: '' }); setRangeOpen(false); setRangeError(null); setPaused(false); setQuery(''); setSelected(null); setRelatedRef(null); setDetailsOpen(false); setProjectionPage(0); read.reload();
     }
     function refresh() {
       initialTask.current = null;
-      const next = { ...scope }; delete next.snapshot_ref; setScope(next); setPaused(false); setSelected(null); setProjectionPage(0); read.reload();
+      const next = { ...scope }; delete next.snapshot_ref; setScope(next); setRangeError(null); setPaused(false); setSelected(null); setRelatedRef(null); setProjectionPage(0); read.reload();
     }
     function selectTask(task, before = false, locate = false) { initialTask.current = null; setSelected(task ? { task, before, result, ...(locate ? { locate: true } : {}) } : null); }
     function openResource(resource) {
@@ -70,7 +70,7 @@
       if (task) Object.assign(target, { selected_task_ref: task.task_ref, selected_task_side: 'current' });
       onNavigate('gantt', target);
     }
-    function collapseDetails() { setDetailsOpen(false); detailsToggle.current.querySelector('button').focus(); }
+    function collapseDetails() { setDetailsOpen(false); const button = detailsToggle.current && detailsToggle.current.querySelector('button'); if (button) button.focus(); }
     function toggleRange() {
       if (!rangeOpen && data) setRange({ start: scope.range_start || data.time_scope.range_start, end: scope.range_end || data.time_scope.range_end });
       setRangeOpen(!rangeOpen);
@@ -89,6 +89,7 @@
       if (task) setSelected({ task, before: false, result, locate: true });
       else {
         const node = prepared.graph.nodes.get(ref);
+        if (!node) return;
         setRelatedRef(ref); changeScope(P.workspaceScope(selection.plan_ref, { range_start: node.start,
           range_end: node.start === node.end ? window.WorkbenchDatePickerModel.nextInstant(node.end) : node.end }));
       }

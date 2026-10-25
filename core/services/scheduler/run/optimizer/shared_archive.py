@@ -168,6 +168,9 @@ class SharedScheduleArchive:
         stored = self._entries[entry_id]
         return dict(stored.payload, score=stored.evaluations[objective].score, _shared_entry_id=entry_id)
 
+    def results(self, entry_id: int) -> List[ScheduleResult]:
+        return self._entries[entry_id].payload["results"]
+
     def materialize(self, entry_id: int, *, objective: Optional[str] = None) -> Dict[str, Any]:
         """Give a public result independent ownership at its publication boundary."""
         objective = self.primary_objective if objective is None else objective
@@ -294,29 +297,54 @@ class SharedScheduleArchive:
     @staticmethod
     def _has_completed_payload(candidate: Dict[str, Any]) -> bool:
         return (isinstance(candidate, dict) and isinstance(candidate.get("results"), list)
-                and all(isinstance(result, ScheduleResult) for result in candidate["results"])
+                and (not candidate["results"] or isinstance(candidate["results"][0], ScheduleResult))
                 and isinstance(candidate.get("summary"), ScheduleSummary)
                 and isinstance(candidate.get("metrics"), ScheduleMetrics))
 
     def _score_scope(self, candidate: Dict[str, Any]) -> ScheduleScoreScope:
-        arranged = [result for result in candidate["results"]
+        results = candidate["results"]
+        summary = candidate["summary"]
+        completion = candidate["metrics"].completion
+        if (
+            completion is not None
+            and completion.missing_operation_count == 0
+            and completion.unexpected_result_count == 0
+            and len(results) == len(self.expected_operation_ids)
+            and summary.failed_ops == 0
+            and not completion.incomplete_batch_ids
+        ):
+            is_complete = bool(
+                summary.success is True
+                and completion.objective_defined
+                and completion.complete_batch_count == len(self.batch_ids)
+            )
+            return ScheduleScoreScope(
+                self.expected_operation_ids,
+                self.batch_ids,
+                completion.objective_scope,
+                completion.components_known,
+                is_complete,
+            )
+        arranged = [result for result in results
                     if isinstance(result.start_time, datetime) and isinstance(result.end_time, datetime)
                     and result.end_time >= result.start_time]
         operation_ids = frozenset(result.op_id for result in arranged)
-        completion = candidate["metrics"].completion
         if completion is None:
             return ScheduleScoreScope(operation_ids, frozenset(), OBJECTIVE_SCOPE_UNKNOWN, False, False)
-        complete_batches = self.batch_ids - frozenset(completion.incomplete_batch_ids)
+        complete_batches = (
+            self.batch_ids
+            if not completion.incomplete_batch_ids
+            else self.batch_ids - frozenset(completion.incomplete_batch_ids)
+        )
         is_complete = bool(
             operation_ids == self.expected_operation_ids and len(arranged) == len(operation_ids)
-            and len(arranged) == len(candidate["results"]) and candidate["summary"].failed_ops == 0
-            and candidate["summary"].success is True
+            and len(arranged) == len(results) and summary.failed_ops == 0
+            and summary.success is True
             and completion.missing_operation_count == 0 and completion.unexpected_result_count == 0
             and completion.objective_defined and completion.complete_batch_count == len(self.batch_ids)
         )
         return ScheduleScoreScope(operation_ids, complete_batches, completion.objective_scope,
                                   completion.components_known, is_complete)
-
     def _update_best(self, stored: _StoredSchedule) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
         entry_id = stored.identity.entry_id
         if stored.score_scope.is_complete:

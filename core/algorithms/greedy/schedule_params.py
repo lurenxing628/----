@@ -9,6 +9,7 @@ from core.algorithm_contracts.dispatch_rules import DispatchRule, DispatchRuleSp
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_runtime.algo_stats import ensure_algo_stats, increment_counter
 from core.errors import ValidationError
+from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 from core.models.scheduler_degradation_messages import public_degradation_event_message
 from core.shared.degradation import DegradationCollector
 from core.shared.field_parse import parse_field_float
@@ -93,6 +94,8 @@ def _config_default_for(key: str) -> Any:
 
 
 def _build_runtime_snapshot(config: Any, *, strict_mode: bool) -> Any:
+    if isinstance(config, ScheduleConfigSnapshot):
+        return config
     from core.models.schedule_config_runtime import ensure_schedule_config_snapshot
 
     return ensure_schedule_config_snapshot(
@@ -137,10 +140,6 @@ def _validate_runtime_weight_triplet(config: Any) -> Tuple[float, float, float]:
         values["priority_weight"],
         values["due_weight"],
         values["ready_weight"],
-        require_sum_1=True,
-        priority_field="优先级权重",
-        due_field="交期权重",
-        ready_field="齐套权重",
     )
 
 
@@ -282,7 +281,7 @@ def _runtime_weighted_params(
     strict_mode: bool,
     snapshot_value: Callable[..., Any],
 ) -> Dict[str, Any]:
-    if strict_mode:
+    if strict_mode and not isinstance(config, ScheduleConfigSnapshot):
         priority_weight, due_weight, _ready_weight = _validate_runtime_weight_triplet(config)
         return {
             "priority_weight": float(priority_weight),
@@ -417,7 +416,7 @@ def resolve_schedule_params(
 
     def _snapshot_value(field: str, *, counter_key: str) -> Any:
         snapshot = _runtime_snapshot()
-        if strict_mode:
+        if strict_mode and not isinstance(config, ScheduleConfigSnapshot):
             _validate_runtime_field(config, field)
         value = _snapshot_attr(snapshot, field)
         _record_snapshot_degradations(field, counter_key=counter_key)

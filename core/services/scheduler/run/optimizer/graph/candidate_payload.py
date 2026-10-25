@@ -8,7 +8,6 @@ from core.algorithms import ScheduleResult, ScheduleSummary, SortStrategy
 from core.algorithms.evaluation import ScheduleMetrics, objective_score
 from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     GraphReadyWeightProfile,
-    profile_payload,
 )
 
 from .reporting import public_params
@@ -18,8 +17,8 @@ def build_graph_ready_candidate_payload(
     *, res: List[ScheduleResult], summ: ScheduleSummary, used_strat: SortStrategy,
     used_params: Dict[str, Any], metrics: ScheduleMetrics, profile: GraphReadyWeightProfile,
     order: List[str], dispatch_rule: str, objective_name: str, algo_stats: Dict[str, Any],
-    resource_pool: Optional[Dict[str, Any]], version: int, runtime_ms: int,
-    repair_decision: Optional[Any] = None, profile_dict: Optional[Dict[str, Any]] = None,
+    resource_pool: Optional[Dict[str, Any]], runtime_ms: int,
+    profile_dict: Dict[str, Any], repair_decision: Optional[Any] = None,
 ) -> Dict[str, Any]:
     decoded_order = decoded_batch_order(res)
     result_order = _result_batch_order(decoded_order, decision_order=order)
@@ -38,13 +37,12 @@ def build_graph_ready_candidate_payload(
         "resource_pool": resource_pool or {},
         "candidate_origin": profile.candidate_origin,
         "runtime_ms": int(runtime_ms),
-        "graph_ready_profile": profile_dict if profile_dict is not None else profile_payload(profile, version=int(version)),
+        "graph_ready_profile": profile_dict,
     }
-    decision = repair_decision
-    if decision is not None:
+    if repair_decision is not None:
         payload["repair_decision"] = {
-            "batch_order": list(decision.batch_order), "operation_order": list(decision.operation_order),
-            "resource_overrides": [list(item) for item in decision.resource_overrides],
+            "batch_order": list(repair_decision.batch_order), "operation_order": list(repair_decision.operation_order),
+            "resource_overrides": [list(item) for item in repair_decision.resource_overrides],
         }
     return payload
 

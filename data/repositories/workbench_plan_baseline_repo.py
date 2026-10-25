@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from core.infrastructure.connection_guards import schema_contract_memo
+
 from .base_repo import BaseRepository
 
 _RAW_TABLES = {
@@ -34,7 +36,7 @@ class WorkbenchPlanBaselineRepository(BaseRepository):
     def _raw_select(self, table: str) -> Optional[Tuple[List[str], str]]:
         """(columns, "SELECT +col AS raw_i,... FROM <table>") or None when the table has no columns."""
         source = _RAW_TABLES[table]
-        columns = [row[0] for row in self.execute("SELECT name FROM pragma_table_info(?)", (table,))]
+        columns = [str(row[1]) for row in schema_contract_memo(self.conn).structure.table_info(table)]
         if not columns:
             return None
         # Unary + and synthetic aliases bypass both DECLTYPES and COLNAMES conversion.
@@ -72,10 +74,7 @@ class WorkbenchPlanBaselineRepository(BaseRepository):
     # ---- adoption source and lineage facts ----
     def source_exists(self, table: str, field: str, ref: Any) -> bool:
         """Whether an adoption source row exists; (table, field) must be in the fixed allowlist."""
-        sql = _SOURCE_LOOKUPS.get((table, field))
-        if sql is None:
-            raise ValueError("Adoption source lookup is not allowed: " + str(table) + "." + str(field))
-        return self.fetchone(sql, (ref,)) is not None
+        return self.fetchone(_SOURCE_LOOKUPS[table, field], (ref,)) is not None
 
     def list_scenario_row_bindings(self, scenario_ref: str) -> List[Tuple[Any, Any, Any]]:
         """(row_ref, task_ref, source_row_ref) tuples of one saved trial scenario."""

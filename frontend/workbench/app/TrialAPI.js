@@ -33,7 +33,8 @@
       if (!response.ok || value.ok !== true) {
         const error = new Error(value.error && value.error.message || window.WorkbenchTerms.outcomes.failure);
         error.code = value.error && value.error.code; error.fields = value.error && value.error.fields;
-        error.rejected = response.status >= 400 && response.status < 500 && value.ok === false && value.committed === false;
+        error.rejected = (response.status >= 400 && response.status < 500 || response.status === 503)
+          && value.ok === false && value.committed === false && error.code !== 'request_key_conflict';
         throw error;
       }
       return value;

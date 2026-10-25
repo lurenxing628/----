@@ -6,7 +6,7 @@ from core.models.workbench_run_candidate import local_time, reject
 from core.services.workbench.facts.candidate_store import CandidateStore
 
 from .decision import decision_summary
-from .decision_queries import _page
+from .decision_queries import parse_page
 from .decision_resources import normalize_resource_filters, resource_details
 from .decision_source import DecisionSource
 
@@ -17,8 +17,8 @@ def _resource_view(query):
               "pressure_threshold", "display_start", "display_end")
     filters = normalize_resource_filters("resources", **{key: query[key] for key in fields if key in query})
     value = {key: filters[key] for key in fields if filters[key] is not None}
-    value.update(page=_page(query.get("page", 1)), size=_page(query.get("size", 20), size=True),
-                 heatmap_page=_page(query.get("heatmap_page", 1)), heatmap_size=_page(query.get("heatmap_size", 7)))
+    value.update(page=parse_page(query.get("page", 1)), size=parse_page(query.get("size", 20), size=True),
+                 heatmap_page=parse_page(query.get("heatmap_page", 1)), heatmap_size=parse_page(query.get("heatmap_size", 7)))
     if value["heatmap_size"] not in (7, 14, 31):
         reject("invalid_input", "资源热力图每页请选择7、14或31个时段。", 422)
     if "snapshot_ref" in query:

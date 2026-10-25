@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 from .batch import Batch
-from .batch_material import BatchMaterial
 from .batch_operation import BatchOperation
 from .calendar import OperatorCalendar, WorkCalendar
 from .config import ScheduleConfig
@@ -24,26 +23,19 @@ from .enums import (
     MergeMode,
     OperatorStatus,
     ReadyStatus,
-    ResourceTeamStatus,
     SkillLevel,
     SourceType,
     SupplierStatus,
     YesNo,
 )
-from .external_group import ExternalGroup
 from .machine import Machine
-from .machine_downtime import MachineDowntime
 from .material import Material
 from .op_type import OpType
 from .operation_execution_event import OperationExecutionEvent
-from .operation_execution_state import OperationExecutionState
 from .operation_log import OperationLog
 from .operator import Operator
 from .operator_machine import OperatorMachine
 from .part import Part
-from .part_operation import PartOperation
-from .resource_team import ResourceTeam
-from .schedule import Schedule
 from .schedule_adjustment import ScheduleAdjustmentScenario
 from .schedule_history import ScheduleHistory
 from .supplier import Supplier
@@ -54,7 +46,6 @@ __all__ = [
     "YesNo",
     "OperatorStatus",
     "MachineStatus",
-    "ResourceTeamStatus",
     "SupplierStatus",
     "MaterialStatus",
     "SourceType",
@@ -70,25 +61,18 @@ __all__ = [
     "Operator",
     "OpType",
     "Machine",
-    "ResourceTeam",
-    "MachineDowntime",
     "OperatorMachine",
     "Supplier",
     "Part",
-    "PartOperation",
-    "ExternalGroup",
     "Batch",
     "BatchOperation",
-    "Schedule",
     "ScheduleAdjustmentScenario",
     "WorkCalendar",
     "OperatorCalendar",
     "ScheduleConfig",
     "OperationLog",
     "OperationExecutionEvent",
-    "OperationExecutionState",
     "ScheduleHistory",
     "SystemJobState",
     "Material",
-    "BatchMaterial",
 ]

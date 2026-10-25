@@ -44,7 +44,6 @@ class SummaryBuildContext:
     time_budget_seconds: int
     best_score: Optional[Tuple[float, ...]]
     best_metrics: Optional[SummaryMetrics]
-    best_order: List[str]
     attempts: List[Dict[str, Any]]
     improvement_trace: List[Dict[str, Any]]
     frozen_op_ids: Set[int]

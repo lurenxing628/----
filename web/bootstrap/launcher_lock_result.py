@@ -30,8 +30,8 @@ class RuntimeLockReadResult:
         return self.status == LOCK_STATUS_VALID
 
 
-def _parse_key_value_lines(lines: List[str]) -> Tuple[Dict[str, str], bool]:
-    data: Dict[str, str] = {}
+def _parse_key_value_lines(lines: List[str]) -> Tuple[Dict[str, Any], bool]:
+    data: Dict[str, Any] = {}
     invalid_seen = False
     for raw in lines:
         line = str(raw or "").strip()
@@ -45,14 +45,6 @@ def _parse_key_value_lines(lines: List[str]) -> Tuple[Dict[str, str], bool]:
         if key_s:
             data[key_s] = str(value or "").strip()
     return data, invalid_seen
-
-
-def read_key_value_file(path: str) -> Dict[str, str]:
-    result = read_runtime_lock_result_from_path(path)
-    if not result.ok:
-        return {}
-    payload = result.payload or {}
-    return {key: str(value) for key, value in payload.items() if key not in {"pid", "state_dir", "path"}}
 
 
 def read_runtime_lock_result(runtime_dir_or_state_dir: str) -> RuntimeLockReadResult:
@@ -114,7 +106,7 @@ def read_runtime_lock_result_from_path(path: str, *, state_dir: str = "") -> Run
             state_dir=state_dir_s,
             reason="missing_pid",
         )
-    payload: Dict[str, Any] = dict(data)
+    payload = data
     try:
         payload["pid"] = int(data.get("pid") or 0)
     except (TypeError, ValueError) as exc:
@@ -126,7 +118,7 @@ def read_runtime_lock_result_from_path(path: str, *, state_dir: str = "") -> Run
             reason="invalid_pid",
             error=str(exc),
         )
-    if int(payload["pid"] or 0) <= 0:
+    if payload["pid"] <= 0:
         return RuntimeLockReadResult(
             status=LOCK_STATUS_INVALID,
             payload=None,

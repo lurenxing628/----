@@ -76,9 +76,12 @@ class CalendarApi:
     def save(self, fields, day=NIGHT):
         return self.client.post(BASE + "/upsert", json=self.day_body(day, fields))
 
-    def preview(self, **changes):
+    def preview_response(self, **changes):
         payload = {"start_date": "2026-12-28", "end_date": "2027-01-03", "scope": "all", "operation": "upsert", "fields": WORK.copy(), **changes}
-        response = self.client.post(BASE + "/range/preview", json={"input": payload})
+        return self.client.post(BASE + "/range/preview", json={"input": payload})
+
+    def preview(self, **changes):
+        response = self.preview_response(**changes)
         assert response.status_code == 200, response.get_data(as_text=True)
         return response.get_json()["data"]
 
@@ -107,10 +110,18 @@ def seed_calendars(api):
         conn.execute("INSERT INTO WorkbenchOperatorProfiles(operator_id,shift_profile_id) VALUES ('CAL-O','CAL-SP')")
     with api.db() as conn:
         calendar = CalendarService(conn)
-        calendar.upsert(NIGHT, shift_start="22:30", shift_end="06:30", efficiency=0.875,
-                        allow_normal="no", allow_urgent="yes", remark="Original night")
-        calendar.upsert_operator_calendar("CAL-O", NIGHT, shift_start="23:15", shift_end="07:45",
-                                          efficiency=0.625, allow_normal="yes", allow_urgent="no", remark="Personal exception")
+        calendar._admin.repo.upsert_many([
+            calendar._admin._build_work_calendar(
+                date_value=NIGHT, shift_start="22:30", shift_end="06:30", efficiency=0.875,
+                allow_normal="no", allow_urgent="yes", remark="Original night"
+            )
+        ])
+        calendar._admin.operator_calendar_repo.upsert_many([
+            calendar._admin._build_operator_calendar(
+                operator_id="CAL-O", date_value=NIGHT, shift_start="23:15", shift_end="07:45",
+                efficiency=0.625, allow_normal="yes", allow_urgent="no", remark="Personal exception"
+            )
+        ])
 
 
 @pytest.fixture(name="calendar_api")
@@ -138,6 +149,24 @@ def assert_error(response, code, status=409, committed=False):
     result = response.get_json()
     assert result["ok"] is False and result["error"]["code"] == code
     assert result["committed"] == committed
+    return result
+
+
+def deny_table_reads(app, table):
+    """此后每个请求的连接都拒读 table；仓储把 SQLite 的拒绝翻成 AppError，与真实读库失败走同一条路。"""
+    from flask import g
+
+    @app.before_request
+    def deny():
+        g.db.set_authorizer(lambda action, name, *_: sqlite3.SQLITE_DENY
+                            if action == sqlite3.SQLITE_READ and name == table else sqlite3.SQLITE_OK)
+
+
+def assert_read_failure(response):
+    """只读预览读库失败：明确没有写入，也不给回执线索。"""
+    result = assert_error(response, "storage_failure", 500)
+    assert result["committed"] is False
+    assert not {"request_key", "result_target"} & set(result["error"])
     return result
 
 

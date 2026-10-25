@@ -14,47 +14,18 @@ from __future__ import annotations
 
 import math
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
 from core.algorithm_contracts.priority_constants import priority_weight_scaled
 from core.algorithm_contracts.value_domains import INTERNAL
+from core.algorithm_runtime.operation_effort import internal_operation_effort
+from core.errors import ValidationError
 from core.infrastructure.logging import safe_log
 
 
 class OrtoolsWarmstartError(RuntimeError):
     """OR-Tools warm-start 真失败：交给上层现有降级链路展示。"""
-
-
-def _finite_positive_hours(*, op: Any, batch: Any) -> Optional[float]:
-    op_id = getattr(op, "id", None) or getattr(op, "op_code", None) or "?"
-    raw_qty = getattr(batch, "quantity", 0)
-    raw_setup_hours = getattr(op, "setup_hours", 0)
-    raw_unit_hours = getattr(op, "unit_hours", 0)
-    for field, raw in (
-        ("quantity", raw_qty),
-        ("setup_hours", raw_setup_hours),
-        ("unit_hours", raw_unit_hours),
-    ):
-        if isinstance(raw, bool):
-            raise OrtoolsWarmstartError(f"OR-Tools 预热{field}不能是布尔值：op={op_id!r}")
-    try:
-        qty = float(raw_qty or 0)
-        setup_hours = float(raw_setup_hours or 0)
-        unit_hours = float(raw_unit_hours or 0)
-    except (TypeError, ValueError) as exc:
-        raise OrtoolsWarmstartError(f"OR-Tools 预热无法读取工序工时：op={op_id!r}") from exc
-    for field, number in (("quantity", qty), ("setup_hours", setup_hours), ("unit_hours", unit_hours)):
-        if not math.isfinite(number):
-            raise OrtoolsWarmstartError(f"OR-Tools 预热{field}不是有限数字：op={op_id!r}")
-        if number < 0:
-            raise OrtoolsWarmstartError(f"OR-Tools 预热{field}不能为负数：op={op_id!r}")
-    hours = float(setup_hours) + float(unit_hours) * float(qty)
-    if not math.isfinite(hours):
-        raise OrtoolsWarmstartError(f"OR-Tools 预热工时不是有限数字：op={op_id!r}")
-    if hours <= 0:
-        return None
-    return float(hours)
 
 
 def _status_value(cp_model: Any, name: str) -> Optional[int]:
@@ -109,8 +80,12 @@ def try_solve_bottleneck_batch_order(
         ot = str(getattr(op, "op_type_id", "") or "").strip()
         if not ot:
             continue
-        h = _finite_positive_hours(op=op, batch=batches.get(bid))
-        if h is None:
+        try:
+            effort = internal_operation_effort(op, batches[bid])
+        except (ValueError, ValidationError) as exc:
+            raise OrtoolsWarmstartError(f"OR-Tools 预热无法读取工序工时：{exc}") from exc
+        h = cast(float, effort.required_standard_hours)
+        if h <= 0:
             continue
         load_by_type[ot] = load_by_type.get(ot, 0.0) + float(h)
         per_batch_type_load[(bid, ot)] = per_batch_type_load.get((bid, ot), 0.0) + float(h)
@@ -125,13 +100,6 @@ def try_solve_bottleneck_batch_order(
     due_min_by_batch: Dict[str, int] = {}
 
     for bid, b in batches.items():
-        h = float(per_batch_type_load.get((bid, bottleneck_ot), 0.0) or 0.0)
-        if (not math.isfinite(float(h))) or h <= 0:
-            continue
-        dur_min = max(1, int(math.ceil(h * 60.0)))
-        w = priority_weight_scaled(getattr(b, "priority", None))
-        jobs.append((bid, dur_min, int(w)))
-
         due_d = parse_date(getattr(b, "due_date", None))
         if due_d:
             due_dt_exclusive = due_exclusive(due_d)
@@ -140,6 +108,13 @@ def try_solve_bottleneck_batch_order(
             due_min_by_batch[bid] = int(due_min)
         else:
             due_min_by_batch[bid] = 10**9  # 无交期：放到最后
+
+        h = float(per_batch_type_load.get((bid, bottleneck_ot), 0.0) or 0.0)
+        if (not math.isfinite(float(h))) or h <= 0:
+            continue
+        dur_min = max(1, int(math.ceil(h * 60.0)))
+        w = priority_weight_scaled(getattr(b, "priority", None))
+        jobs.append((bid, dur_min, int(w)))
 
     if len(jobs) < 2:
         return None

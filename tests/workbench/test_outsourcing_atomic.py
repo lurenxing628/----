@@ -10,6 +10,47 @@ from tests.workbench.outsourcing_support import original_rows
 from tests.workbench.outsourcing_support import outsourcing_case as _outsourcing_case  # noqa: F401
 
 
+def test_http_read_snapshot_reuses_shared_binding_and_keeps_stale_messages(outsourcing_case, monkeypatch):
+    from core.services.workbench import messages
+    from tests.workbench.outsourcing_support import ROOT, api
+    from web import public_token_registry
+    from web.routes.workbench import read_context
+
+    client = api(outsourcing_case, monkeypatch)
+    path, query = ROOT + "/targets", {"size": 1}
+    initial = client.get(path, query_string=query)
+    assert initial.status_code == 200, initial.get_json()
+    snapshot = initial.get_json()["meta"]["snapshot_ref"]
+    resolves, original_resolve = [], read_context.resolve_public_token
+
+    def resolved(*args, **kwargs):
+        resolves.append(args[1])
+        return original_resolve(*args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(read_context, "resolve_public_token", resolved)
+        repeated = client.get(path, query_string={**query, "snapshot_ref": snapshot})
+    assert repeated.status_code == 200, repeated.get_json()
+    assert repeated.get_json()["data"] == initial.get_json()["data"]
+    assert repeated.get_json()["meta"]["as_of"] == initial.get_json()["meta"]["as_of"]
+    assert resolves == [snapshot]
+    wrong_scope = client.get(path, query_string={**query, "query": "no-match", "snapshot_ref": snapshot})
+    assert wrong_scope.status_code == 409
+    assert wrong_scope.get_json()["error"]["code"] == "snapshot_stale"
+    assert wrong_scope.get_json()["error"]["message"] == messages.STALE
+    outsourcing_case.conn.execute("UPDATE BatchOperations SET op_type_name='Changed treatment' WHERE op_code='XO1'")
+    outsourcing_case.conn.commit()
+    changed = client.get(path, query_string={**query, "snapshot_ref": snapshot})
+    assert changed.status_code == 409 and changed.get_json()["error"]["code"] == "snapshot_stale"
+    assert changed.get_json()["error"]["message"] == "外协来源或登记内容有变化，还没有保存；系统没有偷偷用新数据。请点「刷新」后重新核对。"
+    now = public_token_registry.time.time()
+    with monkeypatch.context() as patch:
+        patch.setattr(public_token_registry.time, "time", lambda: now + 901)
+        expired = client.get(path, query_string={**query, "snapshot_ref": snapshot})
+    assert expired.status_code == 409 and expired.get_json()["error"]["code"] == "snapshot_stale"
+    assert expired.get_json()["error"]["message"] == messages.STALE
+
+
 def test_double_connection_stale_and_replay_before_expired_context(outsourcing_case):
     case = outsourcing_case
     other = get_connection(str(case.path))
@@ -22,7 +63,9 @@ def test_double_connection_stale_and_replay_before_expired_context(outsourcing_c
             validate_context=lambda *_: pytest.fail("committed replay must not resolve expired preview"))
         assert replay["replayed"] is True
         assert replay["receipt_ref"] == first["receipt_ref"]
-        assert WorkbenchCommandService(other).lookup(key)["data"] == first["data"]
+        receipt = WorkbenchCommandService(other).lookup(key)
+        assert receipt is not None
+        assert receipt["data"] == first["data"]
         with pytest.raises(WorkbenchCommandRejected) as conflict:
             case.confirm(preview, key=key, payload={**preview["input"], "reason": "different intent"})
         assert conflict.value.code == "request_key_conflict"

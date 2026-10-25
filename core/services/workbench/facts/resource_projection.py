@@ -8,7 +8,7 @@ calendar time or zero capacity. All arithmetic keeps its original precision.
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
-from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Tuple, cast
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.capacity.plan_calendar_intervals import IntervalIndex, hours, instant, intersection, union
@@ -322,18 +322,19 @@ class _ResourceMeasurement:
         zero_capacity_reason = None
         full_natural_window = (low < high and low == self.low and high == self.high and self.calendar.natural_day_window
                                and days and days[0].low == low and days[-1].high == high)
-        raw_days = known_prefix = None
+        prepared_days = None
         if full_natural_window and len(days) > 1:
             boundaries = [days[0].low] + [day.high for day in days]
             raw_days = self.metrics.windows_at_boundaries(boundaries, precision=None)
             known_prefix = self.known_span.prefix_values_at_sorted(boundaries)
             previous_known = next(known_prefix)
+            prepared_days = zip(raw_days, known_prefix)
         for day in days:
             first, last = day.low, day.high
             prepared = None
-            if raw_days is not None:
-                current_known = next(cast("Iterator[float]", known_prefix))
-                prepared = next(raw_days), (current_known - previous_known) / 3600.0
+            if prepared_days is not None:
+                raw_day, current_known = next(prepared_days)
+                prepared = raw_day, (current_known - previous_known) / 3600.0
                 previous_known = current_known
             value = self.values(first, last, [day], prepared=prepared,
                                 retain=self.retain_statistics_values if prepared is not None else True)

@@ -7,12 +7,14 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
+from core.services.process.template_source import TemplateSourceFacts
 from core.services.process.workflow_state import workflow_snapshot
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 
 from .projection import capabilities, project_group, project_operation, project_part, public_sequence
 from .route_choices import changed_route_sequences, preview_existing_route, route_choice_context
+from .route_facts import ProcessRouteFacts
 
 
 def _route_changes(active, proposed):
@@ -28,11 +30,12 @@ def _route_changes(active, proposed):
 
 
 class WorkbenchProcessQueryService:
-    def __init__(self, conn, logger=None):
+    def __init__(self, conn, logger=None, *, part_ref=None):
         self.conn = conn
-        self.repo = WorkbenchProcessQueryRepository(conn, logger=logger)
+        self.repo = WorkbenchProcessQueryRepository(conn, logger=logger, part_ref=part_ref)
         self.identities = WorkbenchIdentityRepository(conn, logger=logger)
         self._facts = None
+        self._identities_by_ref = None
         self._table = None
         self._details = {}
 
@@ -41,6 +44,12 @@ class WorkbenchProcessQueryService:
             return self._facts
         facts = {"parts": self.repo.parts(), "operations": self.repo.operations(), "groups": self.repo.groups(),
                  "references": self.repo.references(), "identities": self.repo.identities()}
+        if self.repo.part_ref is not None:
+            for kind, key, rows in (("template_operation", "id", facts["operations"]),
+                                    ("template_external_group", "group_id", facts["groups"])):
+                facts["identities"].extend({"ref": row["ref"], "kind": kind, "entity_key": str(row[key]),
+                    "alternate_key": row["ref_alternate_key"], "revision": row["revision"], "active": 1}
+                    for row in rows if row["ref"] is not None)
         try:
             workflow = workflow_snapshot(self.conn, tables={**facts["references"], "Parts": facts["parts"],
                 "PartOperations": facts["operations"], "ExternalGroups": facts["groups"],
@@ -53,15 +62,18 @@ class WorkbenchProcessQueryService:
     def read_snapshot(self):
         with TransactionManager(self.conn).transaction():
             previous = self._facts
+            previous_identities = self._identities_by_ref
             previous_table = self._table
             previous_details = self._details
             self._facts = self.facts()
+            self._identities_by_ref = {row["ref"]: row for row in self._facts["identities"]}
             self._table = None
             self._details = {}
             try:
                 yield content_text(self._facts)
             finally:
                 self._facts = previous
+                self._identities_by_ref = previous_identities
                 self._table = previous_table
                 self._details = previous_details
 
@@ -87,7 +99,8 @@ class WorkbenchProcessQueryService:
         if self._facts is None:
             identity = self.identities.get(ref)
         else:
-            row = next((row for row in self._facts["identities"] if row["ref"] == ref), None)
+            assert self._identities_by_ref is not None
+            row = self._identities_by_ref.get(ref)
             identity = WorkbenchEntityIdentity(row["ref"], row["kind"], row["entity_key"], row["revision"], bool(row["active"])) if row else None
         if identity is None or identity.kind != "part" or not identity.active:
             raise WorkbenchCommandRejected("entity_not_found", "这个零件已经不在了。请刷新列表后重新选择。", 404)
@@ -135,19 +148,30 @@ class WorkbenchProcessQueryService:
         operations = [row for row in facts["operations"] if row["part_no"] == identity.entity_key]
         workflow = facts["workflow"][identity.entity_key]
         part_groups = [row for row in facts["groups"] if row["part_no"] == identity.entity_key]
-        return self._project_detail(identity, row, operations, part_groups, workflow, facts["operations"])
+        return self._project_detail(identity, row, operations, part_groups, workflow, facts)
 
-    def _project_detail(self, identity, row, operations, part_groups, workflow, all_operations):
+    def _project_detail(self, identity, row, operations, part_groups, workflow, facts):
         entity = project_part(row, operations, workflow["workflow"])
-        group_ids = {group["group_id"] for group in part_groups}
+        references = facts["references"]
+        related_group_ids = {group["group_id"] for group in part_groups} | {
+            op["ext_group_id"] for op in operations if op["ext_group_id"] is not None
+        }
+        related_groups = (
+            [group for group in facts["groups"] if group["group_id"] in related_group_ids]
+            if related_group_ids
+            else []
+        )
         members = defaultdict(list)
-        if group_ids:
-            for operation in all_operations:
-                if operation["status"] == "active" and operation["ext_group_id"] in group_ids:
+        if related_group_ids:
+            for operation in facts["operations"]:
+                if operation["status"] == "active" and operation["ext_group_id"] in related_group_ids:
                     members[operation["ext_group_id"]].append(operation)
+        related_operations = [op for group_id in related_group_ids for op in members[group_id]]
+        source_facts = TemplateSourceFacts(related_operations, related_groups, references["Suppliers"],
+                                          references["WorkbenchSupplierOpTypes"], references["WorkbenchSupplierProfiles"])
         groups = {group["group_id"]: project_group(group, members[group["group_id"]]) for group in part_groups}
         missing = {key: {"state": "unconfirmed", "confirmed_at": None, "confirmed_by": None} for key in ("source", "hours")}
-        entity.update({"operations": [project_operation(row, workflow["operations"].get(row["ref"], missing),
+        entity.update({"operations": [project_operation(row, workflow["operations"].get(row["ref"], missing), source_facts,
                                                        groups.get(row["ext_group_id"])) for row in operations],
                        "external_groups": list(groups.values()),
                        "capabilities": capabilities()})
@@ -181,17 +205,18 @@ class WorkbenchProcessQueryService:
         facts = self.facts()
         checked = checked_process_facts(self.resolve(ref), facts)
         identity, part, operations, groups, _ = checked
-        parser = ProcessRoutePreviewService(self.conn, facts=facts)
+        route_facts = ProcessRouteFacts(facts)
+        parser = ProcessRoutePreviewService(self.conn, facts=route_facts)
         with parser.reference_snapshot():
             preview = parser.preview(body)
         # Invalid routes are still useful review results; preparation must not
         # reject them before the complete diagnostics reach the page.
         changed = changed_route_sequences({row["seq"]: row for row in operations}, preview["operations"])
-        preview = preview_existing_route(preview, operations, route_choice_context(self.conn, operations, facts),
+        preview = preview_existing_route(preview, operations, route_choice_context(operations, route_facts),
                                          changed=changed)
         affected = []
         if preview["can_confirm_route"]:
             affected = affected_group_rows(groups, operations, changed)
         entity = self._project_detail(identity, part, operations, groups, facts["workflow"][identity.entity_key],
-                                      facts["operations"])
+                                      facts)
         return self.route_difference(ref, preview, entity), checked, affected

@@ -2,15 +2,12 @@
 
 import json
 
-from core.models.content import packed as packed
-from core.models.content import same as same
-from core.models.content import unpacked
-from core.models.workbench_command import canonical_json
+from core.models.content import content_text, unpacked
 from core.models.workbench_trial import MAX_TRIAL_BYTES, reject
 
 
-def _encoded(value):
-    text = canonical_json(packed(value))
+def encode_trial_text(value):
+    text = content_text(value)
     encoded = text.encode("utf-8")
     if len(encoded) > MAX_TRIAL_BYTES:
         reject("query_too_large", "这次试调的数据超过 64 MB 上限，没有读取。请缩小批次范围。", 413)
@@ -18,12 +15,12 @@ def _encoded(value):
 
 
 def dump(value):
-    return _encoded(value)[0]
+    return encode_trial_text(value)[0]
 
 
 def dump_document(value):
     """Save the original document; the legacy digest column remains empty."""
-    text, _ = _encoded(value)
+    text, _ = encode_trial_text(value)
     return text, None
 
 

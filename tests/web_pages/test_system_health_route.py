@@ -69,25 +69,26 @@ def _assert_health(app, expected_ui_mode: str, factory_mod, monkeypatch) -> None
             raise RuntimeError("健康检查不应打开数据库连接")
 
 
-def _assert_runtime_shutdown(app, system_health_mod, factory_mod, monkeypatch) -> None:
+def _assert_runtime_shutdown(app_mod, factory_mod, monkeypatch) -> None:
     get_connection_calls = []
     shutdown_calls = []
     unavailable_calls = []
+    shutdown_available = True
 
     def _fail_get_connection(*args, **kwargs):
         get_connection_calls.append((args, kwargs))
         raise RuntimeError("停机路由不应触发数据库连接")
 
     def _fake_request_runtime_server_shutdown(logger=None):
-        shutdown_calls.append(bool(logger))
-        return True
-
-    def _fake_request_runtime_server_shutdown_unavailable(logger=None):
+        if shutdown_available:
+            shutdown_calls.append(bool(logger))
+            return True
         unavailable_calls.append(bool(logger))
         return False
 
-    monkeypatch.setattr(factory_mod, "get_connection", _fail_get_connection)
     monkeypatch.setattr(factory_mod, "request_runtime_server_shutdown", _fake_request_runtime_server_shutdown)
+    app = app_mod.create_app()
+    monkeypatch.setattr(factory_mod, "get_connection", _fail_get_connection)
     app.config["APS_RUNTIME_SHUTDOWN_TOKEN"] = "aps-shutdown-route-token"
     with app.test_client() as client:
         forbidden_remote = client.post(
@@ -122,7 +123,7 @@ def _assert_runtime_shutdown(app, system_health_mod, factory_mod, monkeypatch) -
         if get_connection_calls:
             raise RuntimeError("停机路由不应打开数据库连接")
 
-        monkeypatch.setattr(factory_mod, "request_runtime_server_shutdown", _fake_request_runtime_server_shutdown_unavailable)
+        shutdown_available = False
         unavailable_resp = client.post(
             "/system/runtime/shutdown",
             headers={"X-APS-Shutdown-Token": "aps-shutdown-route-token"},
@@ -154,5 +155,4 @@ def test_system_health_route(module_name, expected_ui_mode, prod_env, monkeypatc
 def test_system_runtime_shutdown_route(module_name, prod_env, monkeypatch):
     app_mod = _load_module(module_name, monkeypatch)
     factory_mod = importlib.import_module("web.bootstrap.factory")
-    system_health_mod = importlib.import_module("web.routes.workbench.system_runtime")
-    _assert_runtime_shutdown(app_mod.create_app(), system_health_mod, factory_mod, monkeypatch)
+    _assert_runtime_shutdown(app_mod, factory_mod, monkeypatch)

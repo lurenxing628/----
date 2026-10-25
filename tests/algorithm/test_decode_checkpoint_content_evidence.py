@@ -22,7 +22,7 @@ from core.services.scheduler.calendar.checkpoint_certificate import calendar_che
 from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.run.optimizer.graph import iterated_greedy as ig_module
 from core.services.scheduler.run.optimizer.graph.iterated_greedy_checkpoints import CheckpointStore
-from core.services.scheduler.run.optimizer.graph_ready_profiles import default_weight_profiles
+from core.services.scheduler.run.optimizer.graph_ready_profiles import resolve_weight_grid_profiles_and_summary
 from core.services.scheduler.run.optimizer.shared_archive import SharedScheduleArchive
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget
 from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession, decode_and_metrics
@@ -229,7 +229,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
     from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar
 
     search = object.__new__(ig_module._IteratedGreedySearch)
-    profile = default_weight_profiles(max_weight_profiles=1)[0][0]
+    profile = resolve_weight_grid_profiles_and_summary(max_weight_profiles=1)[0][0]
     search.profile = ig_module.ig_decode_profile(profile)
     search.parent = SimpleNamespace(batch_order=("B1",), order=(1,), inherited=(), prepared=None)
     search.scores, search.pending_outputs, search.decoded_entries = {}, OrderedDict(), OrderedDict()
@@ -247,7 +247,8 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         archive=oracle_archive, budget=oracle_budget, scheduler=oracle_scheduler, operations=[], batches={},
         seed_results=[], downtime_map={}, resource_pool=None, clock=search.clock, started_at=0.0, deadline=10.0,
     )
-    search.report = {"duplicate_decision_pruned": 0, "reference_capture_decodes": 0,
+    search.limits = SimpleNamespace(max_decodes=100)
+    search.report = {"decodes": 0, "duplicate_decision_pruned": 0, "reference_capture_decodes": 0,
                      "validation_decodes": 0, "context_switches": 0}
     search.incumbent = SimpleNamespace(best={"score": (0.0,)}, observe_trial=lambda candidate: None, report_state=None)
     search.attempts, search.strict_mode = [], True
@@ -366,7 +367,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
                                       event_sink=owner.record_event)
         owner.decode_session = session
         report = OptimizationSearchReportState(
-            algorithm_profile="graph_ready", seed=0, time_budget_seconds=10, objective_name="min_overdue",
+            objective_name="min_overdue",
             started_at=started, candidate_clock=clock,
             candidate_observer=lambda **kw: owner.observe("min_overdue", **kw),
             candidate_acceptance_observer=lambda **kw: owner.accept("min_overdue", **kw))
@@ -548,3 +549,36 @@ def test_shared_preparation_reuses_seed_resource_hours_and_checkpoint_records():
         reused = decode_and_metrics(decode_session=session, dispatch_rule="cr", **changes)
         assert reused.receipt["execution_kind"] == "decision_reused" and session.actual_decoder_calls == 2
         assert reused.results is second.results
+
+
+def test_resumed_decode_captures_carry_the_checkpoint_prefix_picks():
+    case = _saturated_case(batch_count=3, ops_per_batch=2)
+    with native_calendar() as calendar:
+        scheduler = GreedyScheduler(calendar_service=calendar, config_service={"auto_assign_enabled": "no"})
+        full_captures = []
+        full = scheduler.schedule(**case, decode_checkpoints=DecodeCheckpointRequest([1, 3, 5], full_captures.append))
+        resumed_captures = []
+        resumed = scheduler.schedule(**case, decode_resume=full_captures[0],
+                                     decode_checkpoints=DecodeCheckpointRequest([3, 5], resumed_captures.append))
+        assert resumed[0] == full[0]
+        # A capture taken while resuming describes the whole decode so far, exactly like the full decode's.
+        assert [(item.position, item.picked_op_ids, item.prefix_op_ids) for item in resumed_captures] == [
+            (item.position, item.picked_op_ids, item.prefix_op_ids) for item in full_captures[1:]]
+
+
+def test_seed_resource_segments_belong_to_the_checkpoint_signature():
+    from core.algorithms.greedy.seed import with_seed_resource_segments
+
+    case = _saturated_case(batch_count=2, ops_per_batch=2)
+    seed = ScheduleResult(99, "SEED", "FROZEN", 1, "M1", "O1", at(-2), at(), op_type_name="SAME LABEL", op_type_id="T0")
+    first_half = (at(-2), at(-1), "M1", "O1")
+    seeded = dict(case, seed_results=[with_seed_resource_segments(seed, (first_half, (at(-1), at(), "M2", "O2")))])
+    moved = dict(case, seed_results=[with_seed_resource_segments(seed, (first_half, (at(-1), at(), "M3", "O2")))])
+    with native_calendar() as calendar:
+        scheduler = GreedyScheduler(calendar_service=calendar, config_service={"auto_assign_enabled": "no"})
+        captured = []
+        full = scheduler.schedule(**seeded, decode_checkpoints=DecodeCheckpointRequest([1], captured.append))
+        assert scheduler.schedule(**seeded, decode_resume=captured[0])[0] == full[0]
+        with pytest.raises(ValidationError) as caught:
+            scheduler.schedule(**moved, decode_resume=captured[0])
+        assert caught.value.details["reason"] == "decode_checkpoint_signature_mismatch"

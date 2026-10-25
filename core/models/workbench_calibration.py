@@ -1,6 +1,6 @@
 """Read-only calibration contracts; lineage is evidence, never a join heuristic."""
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -86,7 +86,7 @@ class CalibrationQuery:
 
     def scope(self):
         return {"kind": "calibration", "method_version": METHOD_VERSION,
-                **{key: value for key, value in asdict(self).items() if key != "number" and (key != "column_filters" or value)}}
+                **{key: value for key, value in vars(self).items() if key != "number" and (key != "column_filters" or value)}}
 
 
 @dataclass(frozen=True)
@@ -102,7 +102,7 @@ class CalibrationTemplate:
     old_unit_hours: Optional[float]
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        return dict(vars(self))
 
 
 @dataclass(frozen=True)

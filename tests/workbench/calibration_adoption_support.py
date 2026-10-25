@@ -53,7 +53,7 @@ def adoption_case(lineage_case, monkeypatch):
     monkeypatch.setattr("web.routes.workbench.calibration_adoption._service", lambda: service(case.conn,
         integration_enabled=case.app.config["WORKBENCH_CALIBRATION_ADOPTION_ENABLED"]))
     case.client = case.app.test_client()
-    case.template_ref = case.lineage_repo.template(case.template_id)["template_operation_ref"]
+    case.template_ref = case.ref("template_operation", str(case.template_id))
     case.db_path = case.conn.execute("PRAGMA database_list").fetchone()[2]
     with case.app.app_context():
         yield case

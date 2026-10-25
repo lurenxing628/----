@@ -2,7 +2,6 @@
 
 from collections import defaultdict
 from copy import deepcopy
-from functools import cached_property
 from math import isfinite
 from typing import Any, Dict, Union
 
@@ -21,8 +20,8 @@ from core.services.workbench.facts.resource_projection import (
     resource_summary,
 )
 
-from .decision_impact import _drill
-from .decision_queries import _page
+from .decision_impact import drill_target
+from .decision_queries import parse_page
 
 KINDS = ("machine", "operator")
 SORTS = ("after_utilization", "utilization_delta", "after_peak_utilization", "after_demand_hours", "after_available_hours", "label")
@@ -90,10 +89,14 @@ def normalize_resource_filters(section, *, resource_kind="machine", resource_ref
 
 
 class DecisionResources:
-    def __init__(self, source):
+    def __init__(self, source, *, calendar=None):
         self.source = source
         self.start, self.end = source.scope["range_start"], source.scope["range_end"]
-        self.calendar = ArchivedCalendar(source.calendar_archive, source_ref=source.run["run_ref"])
+        self.calendar = (
+            ArchivedCalendar(source.calendar_archive, source_ref=source.run["run_ref"])
+            if calendar is None
+            else calendar
+        )
         saved = {(item["kind"], item["ref"]): item["saved_id"] for item in source.context["resources"] if item["kind"] in KINDS}
         self.resources = [{**item, "saved_id": saved.get((item["kind"], item["ref"]))} for item in source.resource_cohort["resources"]]
         self._resource_by_ref = {row["ref"]: row for row in self.resources}
@@ -211,13 +214,9 @@ class DecisionResources:
                 result[kind + "_" + field] = item
         return result
 
-    @cached_property
-    def _official(self):
-        return self.source.official
-
     def coverage(self, key, *, details=False):
         source = self.source
-        official_tasks = self._official["tasks"] if details else []
+        official_tasks = self.source.official["tasks"] if details else []
         members = source.official_members
         official = set(members["operation_refs"])
         arranged = official if key == "reference" and source.comparison_mode == "admission_official" else (
@@ -264,21 +263,19 @@ class DecisionResources:
             tasks = self.task_group(key)[resource["ref"]]
             tasks = [row for row in tasks if row["start"] is None or row["end"] is None or row.get("interval_comparable") is False or
                      local_time(row["start"]) < high and local_time(row["end"]) > low]
-        value = _drill(source, tasks=tasks, batch_ref=None, before=key == "reference", window=(low.isoformat(), high.isoformat()))
+        value = drill_target(source, tasks=tasks, batch_ref=None, before=key == "reference", window=(low.isoformat(), high.isoformat()))
         if value is None:
             return None
         value.update(resource_view=source.resource_view, resource_kind=resource["kind"], resource_ref=resource["ref"], comparison_tab="resources")
         return value
 
-    def rows(self, kind, *, include_drill=True):
+    def rows(self, kind):
         resources = [resource for resource in self.resources if resource["kind"] == kind]
         self._ensure_windows([self.source.selected_ref, "reference"], resources)
         result = []
         for resource in resources:
             ref = resource["ref"]
             row = {"resource_ref": ref, "resource_kind": kind, "label": resource["label"], **self.pair(resource)}
-            if include_drill:
-                row["drill"] = {"selected": self.drill(self.source.selected_ref, resource), "reference": self.drill("reference", resource)}
             result.append(row)
         return result
 
@@ -412,7 +409,7 @@ def resource_details(source, filters, *, page: Union[int, str] = 1, size: Union[
     engine = source.resources
     engine.configure(filters["pressure_threshold"])
     selected_resource: Any = engine.resource(ref, kind) if ref is not None else None
-    page, size = _page(page), _page(size, size=True)
+    page, size = parse_page(page), parse_page(size, size=True)
     offset = (page - 1) * size
     start, end = source.scope["range_start"], source.scope["range_end"]
     grain = filters["grain"]
@@ -454,7 +451,7 @@ def resource_details(source, filters, *, page: Union[int, str] = 1, size: Union[
                 "items": items, "summary": summary, "window_scope": _interval_scope(start, end, "full_resource_window"),
                 "display_scope": _interval_scope(items[0]["start"], items[-1]["end"], "selected_resource_periods") if items else None,
                 "page": {"number": page, "size": size, "total": total, "has_more": offset + size < total}}
-    heatmap_page, heatmap_size = _page(heatmap_page), _page(heatmap_size)
+    heatmap_page, heatmap_size = parse_page(heatmap_page), parse_page(heatmap_size)
     if heatmap_size not in (7, 14, 31):
         reject("invalid_input", "资源热力图每页请选择7、14或31个时段。", 422)
     buckets = _buckets(focus_start, focus_end, grain)
@@ -467,7 +464,7 @@ def resource_details(source, filters, *, page: Union[int, str] = 1, size: Union[
     if grain == "hour":
         filters.update(display_start=display_start, display_end=display_end)
     rows = []
-    for row in engine.rows(kind, include_drill=False):
+    for row in engine.rows(kind):
         if ref is not None and row["resource_ref"] != ref:
             continue
         resource = engine.resource(row["resource_ref"], kind)

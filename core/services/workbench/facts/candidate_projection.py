@@ -52,9 +52,12 @@ def validate_manifest(run, rows, receipt):
         corrupt()
     index = {}
     for row in expected:
-        if type(row) is not dict or row.get("candidate_ref") in index:
+        if type(row) is not dict:
             corrupt()
-        index[row.get("candidate_ref")] = row
+        ref = reference(row.get("candidate_ref"), stored=True)
+        if ref in index:
+            corrupt()
+        index[ref] = row
     for row in rows:
         item = index.get(row["candidate_ref"])
         if item is None or item.get("task_count") != row["task_count"] or item.get("status") != row["status"]:

@@ -4,16 +4,14 @@ import datetime
 import logging
 import os
 import sqlite3
-import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from .database_bootstrap import (
     build_schema_exec_script as _build_schema_exec_script,
 )
 from .migration_common import fallback_log
-from .migration_runner import migrate_with_backup as _migrate_with_backup_impl
-from .migration_runner import preflight_migration_contract as _preflight_migration_contract_impl
+from .migration_runner import migrate_with_backup, preflight_migration_contract
 from .migration_state import (
     CURRENT_SCHEMA_VERSION,
     MigrationContractError,
@@ -37,8 +35,8 @@ from .safe_files import (
     create_fixed_file_exclusive,
     guard_fixed_file_open_target,
 )
-from .schema_declaration import load_schema_sql
-from .schema_declaration import resolve_schema_path as _resolve_schema_path_impl
+from .schema_declaration import load_schema_sql, resolve_schema_path
+from .schema_probe import table_exists
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -117,17 +115,10 @@ def _rollback_failed_schema_initialization(conn: sqlite3.Connection, init_exc: E
         raise RuntimeError("数据库结构初始化失败，且回滚失败；数据库状态不可信") from rollback_exc
 
 
-def _has_schema_version_table(conn: sqlite3.Connection) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='SchemaVersion' LIMIT 1"
-    ).fetchone()
-    return row is not None
-
-
 def _ensure_no_user_tables_db_can_bootstrap(
-    conn: sqlite3.Connection, initial_version: int, *, full_data: bool = False
+    conn: sqlite3.Connection, initial_version: int, *, full_data: bool
 ) -> None:
-    if not full_data and int(initial_version) == 0 and not _has_schema_version_table(conn):
+    if not full_data and int(initial_version) == 0 and not table_exists(conn, "SchemaVersion"):
         return
     raise MigrationContractError(
         " ".join(
@@ -140,11 +131,6 @@ def _ensure_no_user_tables_db_can_bootstrap(
     )
 
 
-def _resolve_schema_path(schema_path: Optional[str]) -> str:
-    # 纯路径解析（无 DB / 无 logger / 无副作用）：源码根 → frozen exe 同目录 → cwd 兜底；实现归 schema_declaration。
-    return _resolve_schema_path_impl(schema_path)
-
-
 def ensure_schema(
     db_path: str, logger=None, schema_path: Optional[str] = None, backup_dir: Optional[str] = None, *, full_data: bool = False
 ) -> None:
@@ -153,11 +139,9 @@ def ensure_schema(
 
     新库按声明建表，当前版本普通启动只验证结构；迁移及 full_data=True 的外部恢复验证完整数据合同。
     """
-    schema_path = _resolve_schema_path(schema_path)
+    schema_path = resolve_schema_path(schema_path)
 
     conn = get_connection(db_path)
-    # 防御：确保即使未来 try 内出现局部异常吞掉，也不会在迁移判断处引用未定义变量
-    current_version: int = 0
     try:
         try:
             sql = load_schema_sql(schema_path)
@@ -176,13 +160,11 @@ def ensure_schema(
                 conn.executescript(_build_schema_exec_script(sql))
 
             # 确保 SchemaVersion 表存在，并获取当前版本
-            if initial_version == CURRENT_SCHEMA_VERSION:
+            if initial_version > 0:
                 current_version = initial_version
             else:
-                _ensure_schema_version(conn, logger=logger, schema_sql=sql)
-                current_version = _get_schema_version(conn)
+                current_version = _ensure_schema_version(conn, logger=logger, schema_sql=sql, full_data=full_data)
                 _ensure_schema_version_not_newer(current_version, supported_version=CURRENT_SCHEMA_VERSION)
-                _ensure_current_schema_contract(conn, schema_version=current_version, schema_sql=sql)
             conn.commit()
             fallback_log(logger, "info", "数据库结构检查完成（已确保所有表存在）。")
         except Exception as init_exc:
@@ -198,59 +180,21 @@ def ensure_schema(
     # 需要迁移（ALTER TABLE / 数据清洗等）：迁移前先备份，失败可回滚
     if current_version < CURRENT_SCHEMA_VERSION:
         try:
-            _preflight_migration_contract(
+            preflight_migration_contract(
                 db_path,
                 to_version=CURRENT_SCHEMA_VERSION,
                 schema_sql=sql,
+                connection_factory=get_connection,
             )
         except MigrationContractError as e:
             fallback_log(logger, "error", str(e))
             raise
-        _migrate_with_backup(
+        migrate_with_backup(
             db_path,
             from_version=current_version,
             to_version=CURRENT_SCHEMA_VERSION,
             backup_dir=backup_dir,
             schema_sql=sql,
             logger=logger,
+            connection_factory=get_connection,
         )
-
-
-def _preflight_migration_contract(
-    db_path: str,
-    *,
-    to_version: int,
-    schema_sql: str,
-) -> None:
-    _preflight_migration_contract_impl(
-        db_path,
-        to_version=to_version,
-        schema_sql=schema_sql,
-        connection_factory=get_connection,
-    )
-
-
-def _migrate_with_backup(
-    db_path: str,
-    from_version: int,
-    to_version: int,
-    backup_dir: Optional[str] = None,
-    *,
-    schema_sql: Optional[str] = None,
-    logger=None,
-) -> None:
-    """
-    迁移入口（带强制备份）。
-
-    安全约束：只要进入迁移流程，就必须在迁移前获得一个可用备份；否则直接阻断迁移。
-    原因：SQLite 的 DDL/DML 在异常时可能导致“半迁移”，没有备份将无法回滚到一致状态。
-    """
-    _migrate_with_backup_impl(
-        db_path,
-        from_version=from_version,
-        to_version=to_version,
-        backup_dir=backup_dir,
-        schema_sql=schema_sql,
-        logger=logger,
-        connection_factory=get_connection,
-    )

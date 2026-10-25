@@ -205,6 +205,7 @@ def make_public_error(
     op_code: Any = None,
     seq: Any = None,
     missing_fields: Optional[List[str]] = None,
+    failed_op_code: Any = None,
 ) -> Dict[str, Any]:
     full_message = _clean_text(message)
     clean_message = full_message[:500]
@@ -223,6 +224,9 @@ def make_public_error(
     safe_op_code = public_safe_identifier(op_code)
     if safe_op_code:
         item["op_code"] = safe_op_code
+    safe_failed_op_code = public_safe_identifier(failed_op_code)
+    if safe_failed_op_code:
+        item["failed_op_code"] = safe_failed_op_code
 
     op_id_number = _positive_int(op_id)
     if op_id_number > 0:
@@ -346,6 +350,7 @@ def _public_error_from_structured_failure(detail: Any) -> Optional[Dict[str, Any
         op_id=detail.get("op_id"),
         op_code=detail.get("op_code"),
         seq=detail.get("seq"),
+        failed_op_code=detail.get("failed_op_code"),
     )
 
 

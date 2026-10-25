@@ -2,7 +2,6 @@
 
 import getpass
 import re
-from contextlib import nullcontext
 
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_execution_input import reject
@@ -57,30 +56,19 @@ class WorkbenchProductionReportService:
 
         return self._execute(items, request_key, "execution." + action, ref, guard)
 
-    def execute_batch(self, items, *, context_ref, request_key, validate_context):
-        normalized = normalize_items(items)
-        self._batch_context(context_ref)
-
-        def guard():
-            prepared = self._prepare(normalized)
-            validate_context(context_ref, "batch", prepared.snapshot)
-            return prepared
-
-        return self._execute(normalized, request_key, "execution.batch", context_ref, guard)
-
     @staticmethod
     def _batch_context(ref):
         if not isinstance(ref, str) or re.fullmatch(r"[A-Za-z0-9_-]{32,48}", ref) is None:
             reject("本页数据已过期，请刷新后重试。", status=400)
 
-    def execute_import(self, preview_ref, *, request_key, load_items, validate_context, admission=None):
+    def execute_import(self, preview_ref, *, request_key, load_items, validate_context, admission):
         """Replay before resolving expiring retained bytes, with the same intent hash.
 
         load_items is server-owned: it must resolve the immutable original preview
         bytes/mode/rows or reject. It is never called for a committed replay.
-        It rebuilds the whole field cohort and returns a checked preparation (or
-        items for non-file callers). Facts are reused only while the write stamp
-        is unchanged; permanent refs and recording times are assigned at commit.
+        It rebuilds the whole field cohort and returns a checked preparation.
+        Facts are reused only while the write stamp is unchanged; permanent refs are
+        assigned during preparation, while recording times and actors are stamped at commit.
         """
         self._batch_context(preview_ref)
         intent = {"preview_ref": preview_ref}
@@ -93,22 +81,14 @@ class WorkbenchProductionReportService:
         if replayed is not None:
             return replayed
 
-        def prepare_loaded():
-            loaded = load_items()
-            if isinstance(loaded, ReportBatchPreparation):
-                if loaded.conn is not self.conn:
-                    raise ValueError("Imported report facts must belong to the command connection")
-                return loaded
-            return self._prepare(normalize_items(loaded))
-
         def prefetch():
-            with admission() if admission else nullcontext():
+            with admission():
                 with self.ledger.read_snapshot():
-                    return prepare_loaded(), write_stamp(self.conn)
+                    return load_items(), write_stamp(self.conn)
 
         def command(prefetched):
             def guard():
-                prepared = prefetched.current(prepare_loaded)
+                prepared = prefetched.current(load_items)
                 validate_context(preview_ref, "import_confirm", prepared.snapshot)
                 return prepared
 
@@ -129,11 +109,10 @@ class WorkbenchProductionReportService:
         def mutate(prepared):
             prepared.materialize(self.ledger.clock())
             repo = WorkbenchExecutionReportRepository(self.conn)
-            allocated = {}
+            pending_refs = list(dict.fromkeys(row["report_ref"] for row in prepared.appended if row.get("allocate_number")))
+            allocated = dict(zip(pending_refs, repo.allocate_numbers(len(pending_refs))))
             for row in prepared.appended:
                 if row.get("allocate_number"):
-                    if row["report_ref"] not in allocated:
-                        allocated[row["report_ref"]] = repo.allocate_number()
                     row["report_no"] = allocated[row["report_ref"]]
                 repo.append(row, request_key=request_key)
             for row in prepared.rows:

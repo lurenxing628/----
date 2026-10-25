@@ -3,27 +3,28 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.algorithm_contracts.changeover_events import type_transition
 from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
 
 
 def batch_id(result: Any) -> str:
-    return str(getattr(result, "batch_id", "") or "").strip()
+    return str(result.batch_id or "").strip()
 
 
 def latest_result(results: List[Any]) -> Optional[Any]:
     rows = [
         row
         for row in results or ()
-        if getattr(row, "end_time", None) is not None and batch_id(row)
+        if row.end_time is not None and batch_id(row)
     ]
     if not rows:
         return None
     return max(
         rows,
         key=lambda row: (
-            getattr(row, "end_time", datetime.min),
+            row.end_time,
             batch_id(row),
-            int(getattr(row, "seq", 0) or 0),
+            int(row.seq or 0),
         ),
     )
 
@@ -32,7 +33,7 @@ def finish_by_batch(results: List[Any]) -> Dict[str, datetime]:
     out: Dict[str, datetime] = {}
     for result in results or ():
         bid = batch_id(result)
-        end_time = getattr(result, "end_time", None)
+        end_time = result.end_time
         if not bid or not isinstance(end_time, datetime):
             continue
         current = out.get(bid)
@@ -42,7 +43,7 @@ def finish_by_batch(results: List[Any]) -> Dict[str, datetime]:
 
 
 def batch_due_date(batch: Any) -> Optional[date]:
-    due_raw = getattr(batch, "due_date", None)
+    due_raw = batch.due_date
     if isinstance(due_raw, date) and not isinstance(due_raw, datetime):
         return due_raw
     if isinstance(due_raw, datetime):
@@ -55,7 +56,7 @@ def most_tardy_batch(
     *,
     finish_by_batch_rows: Dict[str, datetime],
     batches: Dict[str, Any],
-) -> Optional[Tuple[str, float]]:
+) -> Optional[str]:
     best: Optional[Tuple[str, float]] = None
     for raw_batch_id, batch in (batches or {}).items():
         bid = str(raw_batch_id or "").strip()
@@ -69,23 +70,18 @@ def most_tardy_batch(
         tardiness = max((finish_time - due_end).total_seconds() / 3600.0, 0.0)
         if best is None or (tardiness, bid) > (best[1], best[0]):
             best = (bid, float(tardiness))
-    return best
-
-
-def prepare_batch_due_dates(batches: Dict[str, Any]) -> Tuple[Tuple[str, Optional[date]], ...]:
-    return tuple((str(raw_batch_id or "").strip(), batch_due_date(batch))
-                 for raw_batch_id, batch in (batches or {}).items())
+    return best[0] if best is not None else None
 
 
 def earliest_due_pressure_batch(
     *,
     finish_by_batch_rows: Dict[str, datetime],
     batches: Dict[str, Any],
-    prepared_due_dates: Optional[Tuple[Tuple[str, Optional[date]], ...]] = None,
 ) -> str:
     best: Optional[Tuple[date, str]] = None
-    due_dates = prepared_due_dates if prepared_due_dates is not None else prepare_batch_due_dates(batches)
-    for bid, due_date in due_dates:
+    for raw_batch_id, batch in (batches or {}).items():
+        bid = str(raw_batch_id or "").strip()
+        due_date = batch_due_date(batch)
         if not bid or due_date is None:
             continue
         finish_time = finish_by_batch_rows.get(bid)
@@ -97,46 +93,43 @@ def earliest_due_pressure_batch(
     return best[1] if best is not None else ""
 
 
-def bottleneck_machine_rows(results: List[Any]) -> Tuple[str, List[Any]]:
+def bottleneck_machine_rows(results: List[Any]) -> List[Any]:
     grouped: Dict[str, List[Any]] = {}
     for result in results or ():
-        machine_id = str(getattr(result, "machine_id", "") or "").strip()
+        machine_id = str(result.machine_id or "").strip()
         if machine_id:
             grouped.setdefault(machine_id, []).append(result)
     if not grouped:
-        return "", []
+        return []
     machine_id = max(grouped, key=lambda mid: (busy_hours(grouped[mid]), len(grouped[mid]), mid))
-    return machine_id, grouped[machine_id]
+    return grouped[machine_id]
 
 
 def busy_hours(rows: List[Any]) -> float:
     total = 0.0
     for row in rows:
-        start = getattr(row, "start_time", None)
-        end = getattr(row, "end_time", None)
+        start = row.start_time
+        end = row.end_time
         if isinstance(start, datetime) and isinstance(end, datetime) and end > start:
             total += (end - start).total_seconds() / 3600.0
     return float(total)
 
 
-def prepare_machine_rows(results: List[Any]) -> List[List[Any]]:
+def first_changeover_pair(results: List[Any]) -> Optional[Tuple[Any, Any]]:
     grouped: Dict[str, List[Any]] = {}
     for result in results or ():
-        machine_id = str(getattr(result, "machine_id", "") or "").strip()
+        machine_id = str(result.machine_id or "").strip()
         if machine_id:
             grouped.setdefault(machine_id, []).append(result)
-    return [sorted(rows, key=result_time_key) for rows in grouped.values()]
-
-
-def first_changeover_pair(results: List[Any], *, prepared_machine_rows: Optional[List[List[Any]]] = None
-                          ) -> Optional[Tuple[Any, Any]]:
-    groups = prepared_machine_rows if prepared_machine_rows is not None else prepare_machine_rows(results)
-    for rows in groups:
+    for rows in grouped.values():
         previous = None
         previous_type = ""
-        for row in rows:
+        for row in sorted(rows, key=result_time_key):
+            # Point events neither switch nor separate their timed neighbours; an unknown type does.
+            if row.start_time == row.end_time:
+                continue
             current_type = op_type(row)
-            if previous is not None and previous_type and current_type and previous_type != current_type:
+            if previous is not None and type_transition(previous_type, current_type, previous.op_id, row.op_id) == 1:
                 return previous, row
             previous, previous_type = row, current_type
     return None
@@ -144,28 +137,14 @@ def first_changeover_pair(results: List[Any], *, prepared_machine_rows: Optional
 
 def result_time_key(row: Any) -> Tuple[datetime, datetime, int]:
     return (
-        getattr(row, "start_time", datetime.min),
-        getattr(row, "end_time", datetime.min),
-        int(getattr(row, "op_id", 0) or 0),
+        row.start_time,
+        row.end_time,
+        int(row.op_id or 0),
     )
 
 
 def op_type(result: Any) -> str:
-    return str(getattr(result, "op_type_name", "") or "").strip()
-
-
-def changeover_count(results: List[Any], *, prepared_machine_rows: Optional[List[List[Any]]] = None) -> int:
-    count = 0
-    groups = prepared_machine_rows if prepared_machine_rows is not None else prepare_machine_rows(results)
-    for rows in groups:
-        previous = ""
-        for row in rows:
-            current = op_type(row)
-            if previous and current and previous != current:
-                count += 1
-            if current:
-                previous = current
-    return int(count)
+    return result.op_type_id or ""
 
 
 def pick_resource_pair(pool: Dict[str, Any]) -> Optional[Tuple[str, str, int]]:
@@ -182,26 +161,24 @@ def pick_resource_pair(pool: Dict[str, Any]) -> Optional[Tuple[str, str, int]]:
         ]
         if len(operators) < 2:
             continue
-        operator_id = operators[-1]
-        rank_value = pair_rank.get((operator_id, machine_id), 9999)
-        try:
-            rank = int(rank_value)
-        except (TypeError, ValueError, OverflowError):
-            rank = 9999
-        return operator_id, machine_id, rank
+        for operator_id in reversed(operators):
+            rank_value = pair_rank.get((operator_id, machine_id), 9999)
+            try:
+                rank = int(rank_value)
+            except (TypeError, ValueError, OverflowError):
+                rank = 9999
+            if rank > -1:
+                return operator_id, machine_id, rank
     return None
 
 
 __all__ = [
     "batch_id",
     "bottleneck_machine_rows",
-    "changeover_count",
     "earliest_due_pressure_batch",
     "finish_by_batch",
     "first_changeover_pair",
     "latest_result",
     "most_tardy_batch",
     "pick_resource_pair",
-    "prepare_batch_due_dates",
-    "prepare_machine_rows",
 ]

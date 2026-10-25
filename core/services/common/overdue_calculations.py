@@ -1,92 +1,72 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.algorithm_contracts.date_parsers import due_exclusive
 from core.shared.local_datetime import parse_local_datetime
 
 
-def due_exclusive(due_dt: Optional[date]) -> datetime:
-    if due_dt is None:
-        return datetime.max
-    if isinstance(due_dt, date) and not isinstance(due_dt, datetime):
-        due_date = due_dt
-    else:
-        due_date = due_dt.date()
-    if due_date == date.max:
-        # 9999-12-31 是 ERP 常见的“无交期”哨兵值（date.max）：再 +1 天会溢出
-        # OverflowError。这里显式定义其语义为“最晚”，与 None→datetime.max 合同同向。
-        return datetime.max
-    return datetime(due_date.year, due_date.month, due_date.day) + timedelta(days=1)
-
-
-def _int_value(value: Any) -> int:
-    try:
-        return int(value or 0)
-    except (TypeError, ValueError, OverflowError):
-        return 0
-
-
-def _invalid_time_item(row: Dict[str, Any], *, due_s: Any, as_of: str, now0: datetime, due_excl: datetime, invalid_time_count: int) -> Dict[str, Any]:
-    delay_sec = (now0 - due_excl).total_seconds()
+def _overdue_item(
+    row: Dict[str, Any],
+    *,
+    bucket: str,
+    bucket_label: str,
+    is_scheduled: bool,
+    as_of_time: Any,
+    due_date: Any,
+    finish_time: Any = None,
+    delay_sec: Optional[float] = None,
+    **extra: Any,
+) -> Dict[str, Any]:
     return {
-        "bucket": "schedule_time_invalid",
-        "bucket_label": "排程时间异常",
-        "is_scheduled": True,
-        "as_of_time": as_of,
+        "bucket": bucket,
+        "bucket_label": bucket_label,
+        "is_scheduled": is_scheduled,
+        "as_of_time": as_of_time,
         "batch_id": row.get("batch_id"),
         "part_no": row.get("part_no"),
         "part_name": row.get("part_name"),
         "quantity": row.get("quantity"),
-        "due_date": due_s,
-        "finish_time": None,
-        "delay_hours": round(delay_sec / 3600.0, 2),
-        "delay_days": round(delay_sec / 86400.0, 2),
-        "invalid_time_count": invalid_time_count or 1,
-        "data_issue_message": "有排程记录，但计划完成时间写法不对，不能当作未排程或准时完成。",
-    }
-
-
-def _invalid_due_date_item(row: Dict[str, Any], *, due_s: Any, as_of: str, invalid_time_count: int) -> Dict[str, Any]:
-    return {
-        "bucket": "due_date_invalid",
-        "bucket_label": "交期写法异常",
-        "is_scheduled": False,
-        "as_of_time": as_of,
-        "batch_id": row.get("batch_id"),
-        "part_no": row.get("part_no"),
-        "part_name": row.get("part_name"),
-        "quantity": row.get("quantity"),
-        "due_date": due_s,
-        "finish_time": row.get("finish_time"),
-        "delay_hours": None,
-        "delay_days": None,
-        "invalid_time_count": invalid_time_count,
-        "invalid_due_count": 1,
-        "data_issue_message": "批次交期写法不对，系统不能判断它是否超期，请先修正交期。",
+        "due_date": due_date,
+        "finish_time": finish_time,
+        "delay_hours": round(delay_sec / 3600.0, 2) if delay_sec is not None else None,
+        "delay_days": round(delay_sec / 86400.0, 2) if delay_sec is not None else None,
+        **extra,
     }
 
 
 def compute_overdue_bucket_groups(
     rows: List[Dict[str, Any]],
     *,
-    now_dt: Optional[datetime] = None,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]], str]:
-    now0 = now_dt or datetime.now()
-    as_of = now0.strftime("%Y-%m-%d %H:%M:%S")
+    now_dt: datetime,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[Dict[str, Any]]]:
+    as_of = now_dt.strftime("%Y-%m-%d %H:%M:%S")
 
     scheduled: List[Dict[str, Any]] = []
     unscheduled: List[Dict[str, Any]] = []
     invalid_time: List[Dict[str, Any]] = []
 
     for row in rows:
-        due_s = row.get("due_date")
-        finish_s = row.get("finish_time")
-        invalid_time_count = _int_value(row.get("invalid_time_count"))
-        schedule_row_count = _int_value(row.get("schedule_row_count"))
+        due_s = row["due_date"]
+        finish_s = row["finish_time"]
+        invalid_time_count = row.get("invalid_time_count", 0)
         due_d = parse_local_datetime(due_s)
         if not due_d:
-            invalid_time.append(_invalid_due_date_item(row, due_s=due_s, as_of=as_of, invalid_time_count=invalid_time_count))
+            invalid_time.append(
+                _overdue_item(
+                    row,
+                    bucket="due_date_invalid",
+                    bucket_label="交期写法异常",
+                    is_scheduled=False,
+                    as_of_time=as_of,
+                    due_date=due_s,
+                    finish_time=finish_s,
+                    invalid_time_count=invalid_time_count,
+                    invalid_due_count=1,
+                    data_issue_message="批次交期写法不对，系统不能判断它是否超期，请先修正交期。",
+                )
+            )
             continue
         due_excl = due_exclusive(due_d)
 
@@ -94,49 +74,50 @@ def compute_overdue_bucket_groups(
         if finish_dt is not None:
             if finish_dt < due_excl:
                 continue
-            delay_sec = (finish_dt - due_excl).total_seconds()
             scheduled.append(
-                {
-                    "bucket": "scheduled_overdue",
-                    "bucket_label": "已排程逾期",
-                    "is_scheduled": True,
-                    "as_of_time": finish_s,
-                    "batch_id": row.get("batch_id"),
-                    "part_no": row.get("part_no"),
-                    "part_name": row.get("part_name"),
-                    "quantity": row.get("quantity"),
-                    "due_date": due_s,
-                    "finish_time": finish_s,
-                    "delay_hours": round(delay_sec / 3600.0, 2),
-                    "delay_days": round(delay_sec / 86400.0, 2),
-                }
+                _overdue_item(
+                    row,
+                    bucket="scheduled_overdue",
+                    bucket_label="已排程逾期",
+                    is_scheduled=True,
+                    as_of_time=finish_s,
+                    due_date=due_s,
+                    finish_time=finish_s,
+                    delay_sec=(finish_dt - due_excl).total_seconds(),
+                )
             )
             continue
 
-        if invalid_time_count > 0 or (schedule_row_count > 0 and finish_s is not None):
-            if now0 < due_excl:
+        if invalid_time_count > 0:
+            if now_dt < due_excl:
                 continue
-            invalid_time.append(_invalid_time_item(row, due_s=due_s, as_of=as_of, now0=now0, due_excl=due_excl, invalid_time_count=invalid_time_count))
+            invalid_time.append(
+                _overdue_item(
+                    row,
+                    bucket="schedule_time_invalid",
+                    bucket_label="排程时间异常",
+                    is_scheduled=True,
+                    as_of_time=as_of,
+                    due_date=due_s,
+                    delay_sec=(now_dt - due_excl).total_seconds(),
+                    invalid_time_count=invalid_time_count,
+                    data_issue_message="有排程记录，但计划完成时间写法不对，不能当作未排程或准时完成。",
+                )
+            )
             continue
 
-        if now0 < due_excl:
+        if now_dt < due_excl:
             continue
-        delay_sec = (now0 - due_excl).total_seconds()
         unscheduled.append(
-            {
-                "bucket": "unscheduled_overdue",
-                "bucket_label": "未排程逾期",
-                "is_scheduled": False,
-                "as_of_time": as_of,
-                "batch_id": row.get("batch_id"),
-                "part_no": row.get("part_no"),
-                "part_name": row.get("part_name"),
-                "quantity": row.get("quantity"),
-                "due_date": due_s,
-                "finish_time": None,
-                "delay_hours": round(delay_sec / 3600.0, 2),
-                "delay_days": round(delay_sec / 86400.0, 2),
-            }
+            _overdue_item(
+                row,
+                bucket="unscheduled_overdue",
+                bucket_label="未排程逾期",
+                is_scheduled=False,
+                as_of_time=as_of,
+                due_date=due_s,
+                delay_sec=(now_dt - due_excl).total_seconds(),
+            )
         )
 
-    return scheduled, unscheduled, invalid_time, as_of
+    return scheduled, unscheduled, invalid_time

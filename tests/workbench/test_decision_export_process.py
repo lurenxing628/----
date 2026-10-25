@@ -12,7 +12,8 @@ from openpyxl import load_workbook
 from core.models.workbench_action_values import FileDownload
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.decision_file_export import write_decision_xlsx
-from core.services.workbench.history.export import read_history_export, write_history_export
+from core.services.workbench.history.export import write_history_export
+from core.services.workbench.history.queries import read_history_all
 from core.services.workbench.run.decision_export import read_decision_export, write_run_decision_export
 from tests.workbench.decision_history_support import exported_history_references, four_source_case
 
@@ -24,7 +25,7 @@ def materialized_exports(tmp_path_factory):
         refs = case.history_refs
         run, _scope, _state = read_decision_export(case.conn, refs["run_ref"], "overview",
             selected_candidate_ref=refs["candidate_ref"])
-        history, _scope, _state = read_history_export(case.conn, {
+        history, _scope, _state = read_history_all(case.conn, {
             "timeline": "official", "selected_entry_ref": "adoption:" + refs["trial_receipt_ref"],
             "reference_run_ref": refs["run_ref"],
             "metric_keys": ["expected_operation_count", "overdue_count", "makespan_hours", "machine_utilization_ratio"]})

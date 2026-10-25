@@ -14,18 +14,17 @@ Dense evaluation is capped at 3660 dates / 40000 resource-date cells / 50000 raw
 facts; sparse enormous spans return explicit unavailable, never a shortened range.
 """
 
-from collections import defaultdict
 from datetime import date, timedelta
 
 from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLimit, snapshot_values
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES, MAX_POLICY_CELLS
-from core.services.capacity.plan_calendar_windows import apply_resource, policy_projection, unavailable
+from core.services.capacity.plan_calendar_windows import policy_projection, project_resource_calendars, unavailable
 
 from .calendar_context import public_resource, resource_ids, selected_context
 
 
-def _range_days(start, end):
+def range_days(start, end):
     first = start.date() - timedelta(days=1) if start.date() > date.min else date.min
     last = end.date() if start == end else (end - timedelta(microseconds=1)).date()
     return first, last, (last - first).days + 1
@@ -33,19 +32,13 @@ def _range_days(start, end):
 
 def _resource_projections(engine, facts, ids, bounds, global_calendar, resources):
     first, last, start, end = bounds
-    downtime = defaultdict(list)
-    for row in facts["downtimes"]:
-        downtime[row["machine_id"]].append(row)
     private, public = {"machine": {}, "operator": {}}, []
-    for kind in ("machine", "operator"):
-        records = {row[kind + "_id"]: row for row in facts[kind + "s"]}
-        for key in ids[kind]:
-            raw = records.get(key)
-            base = global_calendar if kind == "machine" else policy_projection(engine, first, last, start, end, key)
-            item = apply_resource(base, raw, kind, downtime[key] if kind == "machine" else [], start, end)
-            item.update(public_resource(kind, key, resources, raw))
-            private[kind][key] = item
-            public.append(item)
+    for kind, key, raw, item in project_resource_calendars(
+        engine, facts, ids, first, last, start, end, global_calendar=global_calendar
+    ):
+        item.update(public_resource(kind, key, resources, raw))
+        private[kind][key] = item
+        public.append(item)
     return public, private
 
 
@@ -63,7 +56,7 @@ def project_plan_calendar(conn, *, entry, scope, rows, resources, plan_span, con
         selected = (context.calendar_selection(entry, scope, resources, plan_span) if context is not None else
                     selected_context(conn, entry, scope, rows, resources, plan_span))
     rows, start, end, time_scope, context = selected
-    first, last, dates = _range_days(start, end)
+    first, last, dates = range_days(start, end)
     point_days = [row["_point_work"] for row in rows if row.get("_point_work")]
     if point_days:
         last = max(last, end.date())

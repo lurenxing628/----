@@ -45,19 +45,20 @@ def _require_explicit_auto_work_types(operations: Sequence[Any], rows: List[Dict
     declared_machines = {row["machine_id"] for row in rows
                          if row["operator_id"] in qualifications and qualifications[row["operator_id"]] is not None}
     for op in operations:
-        if str(getattr(op, "source", "") or "").strip().lower() != "internal" or getattr(op, "operator_id", None):
+        if (op.source or "").strip().lower() != "internal" or op.operator_id:
             continue
-        if getattr(op, "machine_id", None) in declared_machines:
-            op_type_id = getattr(op, "op_type_id", None)
+        if op.machine_id in declared_machines:
+            op_type_id = op.op_type_id
             if not op_type_id:
                 raise _invalid_facts("固定设备的工序缺少真实工种编号，不能用设备工种猜测人员资格；请补齐工序工种后再自动选人。")
             _identifier(op_type_id)
 
 
 class OperatorQualificationService:
-    def __init__(self, conn, logger=None):
-        self.repo = OperatorQualificationRepository(conn, logger=logger)
-        self.authorizations = OperatorMachineRepository(conn, logger=logger)
+    def __init__(self, conn, logger=None, *, repo=None, authorizations=None):
+        self.repo = repo if repo is not None else OperatorQualificationRepository(conn, logger=logger)
+        self.authorizations = (authorizations if authorizations is not None
+                               else OperatorMachineRepository(conn, logger=logger))
 
     def load(self, operator_ids: Sequence[str]) -> Dict[str, Optional[Set[str]]]:
         ids = sorted({_identifier(value) for value in operator_ids})

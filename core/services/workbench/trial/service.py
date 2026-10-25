@@ -34,12 +34,12 @@ from .base import prepare_base
 from .facts import live_context
 from .preparation import apply_changeovers, apply_preparation, preparation_projection, trial_changeovers
 from .projection import (
-    _unplanned,
     draft_projection,
     scenario_capacity,
     scenario_comparison,
     scenario_rows,
     source_projection,
+    unplanned_operations,
     write_snapshot,
 )
 from .validation import TrialValidator
@@ -85,13 +85,13 @@ class WorkbenchTrialService:
                 self.context_validator(write_token, base_ref, CREATE, self._create_snapshot(admission, rows))
                 validator = TrialValidator(self.conn, admission, rows, live)
                 checked = validator.evaluate_current()
-                return admission, rows, live, checked, validator.frozen
+                return admission, rows, live, checked, validator.protection
 
         def mutate(prepared):
-            admission, rows, live, checked, frozen = prepared
+            admission, rows, live, checked, protection = prepared
             head, stored = self.repo.create(admission, rows, checked, request_key, self.actor_provider(), self._now())
             return WorkbenchCommandOutcome("committed", self._projection(head, stored, live,
-                                                                         (checked, frozen), changes=[]))
+                                                                         (checked, protection), changes=[]))
 
         return WorkbenchCommandService(self.conn).execute(request_key=request_key, action=CREATE,
             context_ref=base_ref, normalized_input=intent, guard=guard, mutate=mutate)
@@ -102,10 +102,10 @@ class WorkbenchTrialService:
         return head, rows, live
 
     def _projection(self, head, rows, live, checked=None, *, changes=None, source_prepared=None, scenario_ref=None):
-        """checked: (核对结果, 冻结的原安排)，与这些行同一次核对；不给时现核对。"""
+        """checked: (核对结果, 同一次核对得到的 TrialProtection)，与这些行同一次核对；不给时现核对。"""
         if checked is None:
             validator = TrialValidator(self.conn, head["admission"], rows, live)
-            checked = validator.evaluate_saved(), validator.frozen
+            checked = validator.evaluate_saved(), validator.protection
         result = draft_projection(head, rows, checked[0], live, self.context_factory, checked[1],
                                   source_prepared=source_prepared, scenario_ref=scenario_ref)
         result["change_history"] = self.repo.public_history(head["draft_ref"]) if changes is None else changes
@@ -141,16 +141,16 @@ class WorkbenchTrialService:
             before = row["current"]
             row["current"] = validator.adjusted(row, intent)
             checked = validator.evaluate_saved()
-            return head, rows, live, row, before, checked, validator.frozen
+            return head, rows, live, row, before, checked, validator.protection
 
         def mutate(prepared):
-            head, rows, live, row, before, checked, frozen = prepared
+            head, rows, live, row, before, checked, protection = prepared
             if before == row["current"]:
-                return WorkbenchCommandOutcome("unchanged", self._projection(head, rows, live, (checked, frozen)))
+                return WorkbenchCommandOutcome("unchanged", self._projection(head, rows, live, (checked, protection)))
             now = self._now()
             require_advanced(self.repo.change(head, row, before, checked, request_key, self.actor_provider(), now))
             current_head = dict(head, revision=head["revision"] + 1, status="editing", validation=checked, updated_at=now)
-            return WorkbenchCommandOutcome("committed", self._projection(current_head, rows, live, (checked, frozen)))
+            return WorkbenchCommandOutcome("committed", self._projection(current_head, rows, live, (checked, protection)))
 
         return self._execute(CHANGE, draft_ref, intent, write_token, request_key, prepare, mutate)
 
@@ -219,7 +219,7 @@ class WorkbenchTrialService:
                 if head is not None:
                     pairs, preparation = preparation_projection(projected, head["admission"], saved.get("operation_effort"),
                         current_evidence={"kind": "scenario", "scenario_ref": saved["scenario_ref"]}, contexts=contexts)
-                    result["unplanned_operations"] = _unplanned(contexts)
+                    result["unplanned_operations"] = unplanned_operations(contexts)
                     result["scope_complete"] = not result["unplanned_operations"]
                     apply_preparation(result["tasks"], result["unplanned_operations"], pairs)
                     result["comparison"]["preparation_common"] = preparation

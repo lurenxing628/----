@@ -4,7 +4,9 @@
   function valid(v) {
     try {
       return A.shape(v, ['schema_version', 'scenario_ref', 'request_key', 'input', 'preview', 'phase'], v.phase === 'committed' ? ['receipt'] : [])
-        && v.schema_version === 1 && A.key(v.request_key) && A.equal(A.overview(v.preview), v.preview) && v.scenario_ref === v.preview.scenario_ref
+        && v.schema_version === 1 && A.key(v.request_key)
+        && A.shape(v.preview, ['scenario_ref', 'draft_ref', 'baseline', 'task_count', 'scope_complete'], ['data_context_ref'])
+        && A.overview(v.preview) && v.scenario_ref === v.preview.scenario_ref
         && A.equal(A.input(v.input), v.input) && ['pending', 'rejected', 'committed'].includes(v.phase) && (v.phase !== 'committed' || !!A.receipt(v.receipt, v));
     } catch (_) { return false; }
   }
@@ -22,7 +24,7 @@
   }
   function begin(preview, values, previous) {
     const scope = A.overview(preview), input = A.input(values);
-    A.check(!previous || valid(previous) && previous.phase === 'rejected' && A.equal(previous.preview, scope) && A.equal(previous.input, input),
+    A.check(!previous || valid(previous) && previous.phase === 'rejected' && A.sameScope(previous.preview, scope) && A.equal(previous.input, input),
       '上次提交的试调方案、原因和经办人已绑定，改了内容不能沿用同一个操作编号。');
     const requestKey = previous ? previous.request_key : 'trial-adoption-' + Array.from(crypto.getRandomValues(new Uint8Array(24)), n => n.toString(16).padStart(2, '0')).join('');
     return save({ schema_version: 1, scenario_ref: scope.scenario_ref, request_key: requestKey, input, preview: scope, phase: 'pending' }, previous);
@@ -36,7 +38,7 @@
     const [draft, setDraft] = React.useState(() => initial.saved ? initial.saved.input : empty());
     const [open, setOpen] = React.useState(false), [preview, setPreview] = React.useState(null), [consent, setConsent] = React.useState(false);
     const [busy, setBusy] = React.useState(false), [checking, setChecking] = React.useState(false), [error, setError] = React.useState(''), [notice, setNotice] = React.useState('');
-    window.WorkbenchGuards.useDirtyGuard({ dirty: !saved && (!!draft.reason || draft.declared_operator !== remembered()),
+    window.WorkbenchGuards.useDirtyGuard({ dirty: open && !saved && (!!draft.reason || draft.declared_operator !== remembered()),
       message: '正式采用的原因或经办人还没提交。' });
     const [revision, refresh] = React.useReducer(v => v + 1, 0);
     const mounted = React.useRef(false), lock = React.useRef(false), request = React.useRef(null), active = React.useRef(saved), current = React.useRef(null);
@@ -49,7 +51,7 @@
     function sync(event) {
       try {
         const value = event && event.type === EVENT ? event.detail : read();
-        if (value !== active.current && !A.equal(value, active.current)) { active.current = value; setSaved(value); setPreview(null); setConsent(false); if (value) setDraft(value.input); }
+        if (value !== active.current && !A.equal(value, active.current)) { active.current = value; setSaved(value); setPreview(null); setConsent(false); setDraft(value ? value.input : empty()); }
         setStorageError('');
       } catch (e) { setStorageError(e.message); }
     }
@@ -79,10 +81,15 @@
       if (!intent || intent.phase === 'rejected' || lock.current || storageError) return;
       setChecking(true);
       try {
-        const found = await api.lookup(intent, signal);
+        const found = await api.lookup(intent, signal, { data_context_ref: intent.preview.data_context_ref });
         if (!mounted.current || signal && signal.aborted) return;
-        if (found) accept(found, intent);
-        else { setError(''); setNotice(window.WorkbenchTerms.outcomes.pending('采用')); }
+        if (found.state === 'not_observed') {
+          if (found.may_be_in_flight === false) {
+            if (!A.equal(active.current, intent)) { sync(); return; }
+            save(null, intent); setError('');
+            setNotice('上次采用记录的数据来源已失效，已结束本机待确认记录。请对当前试调方案重新预检。');
+          } else { setError(''); setNotice(window.WorkbenchTerms.outcomes.pending('采用')); }
+        } else accept(found, intent);
       } catch (e) { if (mounted.current && !(signal && signal.aborted)) setError('上次采用的结果还没查到。' + e.message); }
       finally { if (mounted.current && !(signal && signal.aborted)) setChecking(false); }
     }
@@ -93,7 +100,7 @@
     }, [saved, revision, storageError]);
     async function inspect() {
       if (lock.current || storageError || disabled || !original || saved && saved.phase !== 'rejected') return;
-      if (saved && !A.equal(saved.preview, original)) { setError('上次采用操作属于另一个试调方案或范围，请先查询那条记录的结果。'); return; }
+      if (saved && !A.sameScope(saved.preview, original)) { setError('上次采用操作属于另一个试调方案或范围，请先查询那条记录的结果。'); return; }
       lock.current = true; setBusy(true); setOpen(true); setPreview(null); setConsent(false); setError(''); setNotice('');
       const controller = new AbortController(); request.current = controller;
       try {
@@ -104,15 +111,15 @@
     }
     async function submit() {
       if (lock.current || storageError || disabled || !original || !preview || !preview.validation.can_adopt || !consent
-        || !A.equal(original, A.overview(preview)) || saved && saved.phase !== 'rejected') return;
+        || !A.sameScope(original, A.overview(preview)) || saved && saved.phase !== 'rejected') return;
       let values; try { values = A.input({ confirm: true, reason: draft.reason, declared_operator: draft.declared_operator }); }
       catch (e) { setError(e.message); return; }
       window.WorkbenchHandlerMemory.write(values.declared_operator);
       lock.current = true; setBusy(true); setError(''); setNotice('');
       try {
-        A.check(navigator.locks && typeof navigator.locks.request === 'function', '当前浏览器不支持这项操作，请用 Chrome 打开。');
+        if (!navigator.locks || typeof navigator.locks.request !== 'function') { if (mounted.current) setError('当前浏览器不支持这项操作，请用 Chrome 打开。'); return; }
         await navigator.locks.request(KEY, { ifAvailable: true }, async acquired => {
-          A.check(acquired, '另一个页面正在处理这次采用，请先在那个页面点「查询结果」。');
+          if (!acquired) { if (mounted.current) setError('另一个页面正在处理这次采用，请先在那个页面点「查询结果」。'); return; }
           if (!mounted.current || current.current.disabled || !A.equal(original, current.current.original)) return;
           const intent = begin(preview, values, active.current);
           active.current = intent; setSaved(intent); setDraft(intent.input); setPreview(null); setConsent(false);
@@ -135,7 +142,7 @@
         setError(''); setNotice(saved.phase === 'committed' ? '这次采用结果已确认完成。' : '本次操作已结束，未采用。');
       } catch (e) { setStorageError(e.message); }
     }
-    function close() { if (request.current) request.current.abort(); setOpen(false); setPreview(null); setConsent(false); }
+    function close() { if (request.current) request.current.abort(); setOpen(false); setPreview(null); setConsent(false); if (!active.current) { setError(''); setDraft(empty()); } }
     return { saved, result, draft, open, preview, consent, busy: busy || checking, error, notice, storageError, sourceError, original, disabled,
       setOpen, setConsent, change: value => { if (!active.current) { setDraft(value); setConsent(false); } }, inspect, submit, lookup: () => lookup(), sync, close, finish };
   }

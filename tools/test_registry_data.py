@@ -162,8 +162,6 @@ _DATA_IO_TESTS = (
     'tests/config/test_config_field_spec_contract.py',
     'tests/config/test_config_snapshot_strict_numeric.py',
     'tests/config/test_schedule_config_startup.py',
-    'tests/excel_data_io/test_batch_excel_import_strict_mode_hardfail_atomic.py',
-    'tests/excel_data_io/test_excel_import_executor_status_gate.py',
     'tests/excel_data_io/test_excel_import_hardening.py',
     'tests/excel_data_io/test_operator_machine_exception_paths.py',
 )
@@ -178,9 +176,7 @@ _DOMAIN_TESTS = (
     'tests/migration_db/test_transaction_savepoint_nested.py',
     'tests/migration_db/test_v41_source_reuse.py',
     'tests/models_domain/test_query_services.py',
-    'tests/models_domain/test_resource_reference_guard_schedule.py',
     'tests/operation_execution/test_operation_execution_state_flow.py',
-    'tests/operation_execution/test_operation_execution_state_revision.py',
 )
 
 _CALENDAR_TESTS = (
@@ -315,7 +311,7 @@ TEST_ONLY_HELPER_IMPACT = {}
 REQUIRED_REGRESSION_COMMON_SCOPES = {
     "input_file_scopes": (
         "tests/conftest.py", "conftest.py", "tests/_support/**/*.py",
-        "schema.sql", "app.py", "app_new_ui.py",
+        "schema.sql", "app.py", "app_new_ui.py", "core/errors.py",
         "core/infrastructure/**/*.py", "core/services/common/**/*.py", "web/bootstrap/**/*.py",
     ),
     "config_file_scopes": (

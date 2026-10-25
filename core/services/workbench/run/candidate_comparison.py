@@ -22,7 +22,7 @@ def _common_batches(settings, batch_ref):
     return sorted(refs)
 
 
-def _analysis_source(store, candidate_ref, *, range_start=None, range_end=None):
+def analysis_source(store, candidate_ref, *, range_start=None, range_end=None):
     return DecisionSource(store, store.candidate_run(candidate_ref), comparison_mode="admission_official",
                           selected_candidate_ref=candidate_ref, range_start=range_start, range_end=range_end,
                           resource_view="full_candidate")
@@ -40,7 +40,7 @@ def _comparison_interval(task):
     return result
 
 
-def _comparison_rows(source):
+def comparison_rows(source):
     """Use the legacy comparison rule on compact permanent-identity rows."""
     old = source.analysis_groups("reference")
     new = {row["operation_ref"]: row for row in source.analysis_tasks(source.selected_ref)}
@@ -58,7 +58,7 @@ def _comparison_rows(source):
     return result
 
 
-def _comparison_metadata(source, rows, scope=None):
+def comparison_metadata(source, rows, scope=None):
     captured = source.baseline["version"] is not None
     visible = rows
     if scope is not None:
@@ -82,12 +82,12 @@ def _comparison_metadata(source, rows, scope=None):
     return generation, baseline
 
 
-def _analysis_state(source):
+def analysis_state(source):
     return {"read_contract_version": 1, "run_ref": source.run["run_ref"],
             "candidate_ref": source.selected_ref, "official_sources": source.official["source_states"]}
 
 
-def _delivery_rows(before, after, refs):
+def delivery_rows(before, after, refs):
     old, new = ({row["batch_ref"]: row for row in rows} for rows in (before, after))
     if not set(refs) <= set(old) or not set(refs) <= set(new):
         reject("candidate_comparison_incomplete", "缺少排产时的批次数据，暂时无法比较。", 500)
@@ -114,11 +114,11 @@ def _projection(source, scope):
     refs = _common_batches(source.input, scope.batch_ref)
     before_delivery = [row for row in source.delivery("reference") if row["batch_ref"] in refs]
     after_delivery = [row for row in source.legacy_delivery(source.selected_ref) if row["batch_ref"] in refs]
-    batches = _delivery_rows(before_delivery, after_delivery, refs)
+    batches = delivery_rows(before_delivery, after_delivery, refs)
     before_tasks, after_tasks = source.analysis_tasks("reference"), source.analysis_tasks(source.selected_ref)
     before, after = ([row for row in tasks if row["batch_ref"] in refs] for tasks in (before_tasks, after_tasks))
-    rows = _comparison_rows(source)
-    generation, baseline = _comparison_metadata(source, rows, scope)
+    rows = comparison_rows(source)
+    generation, baseline = comparison_metadata(source, rows, scope)
     start, end = scope.range_start, scope.range_end
     old_intervals, new_intervals = source.task_intervals("reference"), source.task_intervals(source.selected_ref)
     old_cost = changeovers(before_tasks, baseline["available"], start=start, end=end,
@@ -159,6 +159,6 @@ def read_candidate_comparison(conn, scope):
         reject("invalid_input", "请选择共同的比较时间范围。", 400)
     store = CandidateStore(conn)
     with store.snapshot(), read_evidence_scope(conn):
-        source = _analysis_source(store, scope.candidate_ref, range_start=scope.range_start, range_end=scope.range_end)
+        source = analysis_source(store, scope.candidate_ref, range_start=scope.range_start, range_end=scope.range_end)
         data = _projection(source, scope)
-        return data, _analysis_state(source)
+        return data, analysis_state(source)

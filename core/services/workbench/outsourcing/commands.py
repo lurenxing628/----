@@ -20,7 +20,7 @@ class WorkbenchOutsourcingCommandService:
         self.context_factory = context_factory
 
     def _prepare(self, payload):
-        repo, ref = self.reader.repo, payload.get("outsourcing_ref")
+        ref = payload.get("outsourcing_ref")
         previous, header = None, None
         if ref is not None:
             header = self.reader.header(ref)
@@ -30,7 +30,7 @@ class WorkbenchOutsourcingCommandService:
         source = sources.load(target, new_registration=header is None)
         if header and source["identity"] != header["identity"]:
             reject("原登记的工序或所属批次已变化，请刷新后重新登记。", "identity_drift", 409)
-        memberships = repo.membership(target["operation_refs"])
+        memberships = sources.memberships(target["operation_refs"])
         if header is None and memberships:
             reject("这些工序已经有外协登记了；请打开原来的登记修改，不要重复登记或换组。", "constraint_conflict", 409)
         before = values(previous) if previous else None

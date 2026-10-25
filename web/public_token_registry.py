@@ -63,7 +63,7 @@ def _scope_state(scope: str) -> Dict[str, Any]:
     registry = _registry()
     state = registry.get(scope)
     if state is None:
-        state = {"tokens": {}, "by_value": {}}
+        state = {"tokens": {}, "by_value": {}, "next_expiry": float("inf")}
         registry[scope] = state
     return state
 
@@ -93,7 +93,7 @@ def _cleanup_scope(state: Dict[str, Any], now: float) -> None:
     tokens = state["tokens"]
     # 摊销清理:还没到最早到期时刻、也没超上限时不可能有可清的项,不逐条扫描整个作用域
     # (每签发一个 token 都全量扫描,一次签发几千个就是平方级)。过期即拒由 resolve 现查,不受影响。
-    if len(tokens) <= _MAX_SCOPE_TOKENS and now < float(state.get("next_expiry", 0.0)):
+    if len(tokens) <= _MAX_SCOPE_TOKENS and now < state["next_expiry"]:
         return
     expired = [token for token, entry in tokens.items() if entry["expires_at"] <= now]
     for token in expired:
@@ -176,15 +176,13 @@ class PublicTokenIssuer:
                         "last_used_at": now, "expires_at": expires,
                     }
                     index[index_key] = token
-                    state["next_expiry"] = min(float(state.get("next_expiry", float("inf"))), expires)
+                    state["next_expiry"] = min(state["next_expiry"], expires)
                     return token, expires
         raise RuntimeError("无法生成唯一公开 token。")
 
 
 def issue_public_token(scope: str, value: Any, *, ttl_seconds: int = _DEFAULT_TTL_SECONDS,
                        key: Any = None, group: Any = None) -> str:
-    if value is None or isinstance(value, str) and not value.strip():
-        return ""
     return PublicTokenIssuer(scope, group=group, ttl_seconds=ttl_seconds).issue_with_expiry(value, key=key)[0]
 
 

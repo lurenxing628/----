@@ -18,6 +18,7 @@ from core.services.common.excel_instruction_sheet import (
     append_instruction_sheet,
     close_write_only_sheets,
 )
+from core.services.workbench.facts.process_file_xml import preserve_carriage_returns
 
 from .file_codec import file_error
 
@@ -112,6 +113,7 @@ def _xlsx(kind, rows, filename, template, descriptor):
             ws.append(cells)
         ws.auto_filter.ref = "A1:" + get_column_letter(len(columns)) + str(count + 1)
         add_enum_dropdowns(ws, descriptor, count, write_only=True)
+        preserve_carriage_returns(ws)
         sheets.append(append_instruction_sheet(wb, descriptor))
         with SpooledTemporaryFile(max_size=4 * 1024 * 1024, mode="w+b") as buffer:
             wb.save(buffer)

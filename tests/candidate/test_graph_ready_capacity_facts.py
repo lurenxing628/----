@@ -14,7 +14,7 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
     def at(hours):
         return start + timedelta(hours=hours)
 
-    calls, merges, conversions, downtime_reads = [], [], [], []
+    calls, merges, downtime_reads = [], [], []
 
     class Calendar:
         def capacity_hours_between(self, low, high, *, priority, operator_id):
@@ -31,15 +31,11 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
     downtime = {"M1": [(at(4), at(5)), (start, start), (None, start)]}
     pool = {"machines_by_op_type": {"OT1": ["M1"]}, "operators_by_machine": {"M1": ["O1"]},
             "operator_skills": {"O1": ["OT1"]}}
-    original_merge, original_seed, original_downtime = v2_capacity._merge_segments, v2_capacity._seed_segments, v2_capacity._valid_segments
+    original_merge, original_downtime = v2_capacity._merge_segments, v2_capacity._valid_segments
 
     def merge(values):
         merges.append(list(values))
         return original_merge(values)
-
-    def seed(values):
-        conversions.append(list(values))
-        return original_seed(values)
 
     def valid_downtime(values):
         downtime_reads.append(list(values))
@@ -48,7 +44,6 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
     calendar = Calendar()
     with monkeypatch.context() as scoped:
         scoped.setattr(v2_capacity, "_merge_segments", merge)
-        scoped.setattr(v2_capacity, "_seed_segments", seed)
         scoped.setattr(v2_capacity, "_valid_segments", valid_downtime)
         result = enrich_graph_ready_v2_metrics(
             {1: {"bottleneck_machine_score": 1}, 2: {"bottleneck_machine_score": 1}},
@@ -56,24 +51,28 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
             resource_pool=pool, downtime_map=downtime,
             graph_ready_context={"predecessor_op_ids_by_op_id": {1: set(), 2: set()}})
 
-    assert len(merges) == 1 and len(conversions) == 2 and len(downtime_reads) == 1
-    assert len(calls) == 7 and calls.count((start, at(16), "normal", "O1")) == 2
+    assert len(merges) == 1 and len(downtime_reads) == 1
+    assert len(calls) == 5 and calls.count((start, at(16), "normal", "O1")) == 1
     assert (at(16), at(40), "urgent", "O1") in calls and (start, at(40), "urgent", "O1") in calls
     fields = ("residual_capacity_window_hours", "residual_capacity_blocked_hours", "residual_capacity_hours")
     views = (result[1], result[2], result[2][BASELINE_ORDERING_FIELD])
     assert [tuple(row[key] for key in fields) for row in views] == [(16, 4, 12), (12, 0, 12), (20, 2, 18)]
 
     resource_seeds = v2_capacity.seed_results_by_resource_id(seeds)
+    prepared_blocking = v2_capacity.FixedResourceBlockingFacts(
+        downtime_map=downtime, seed_results_by_resource_id=resource_seeds
+    )
     for op in operations:
         row = result[op.id]
         standalone = v2_capacity.residual_capacity_for_operation(
             op, batch=batches[op.batch_id], start_dt=at(row["residual_capacity_start_offset_hours"]),
-            due_exclusive=at(16 if op.id == 1 else 40), calendar_service=calendar, downtime_map=downtime,
-            seed_results_by_resource_id=resource_seeds, resource_pool=pool)
+            due_exclusive=at(16 if op.id == 1 else 40), calendar_service=calendar,
+            resource_pool=pool, prepared=prepared_blocking)
         assert tuple(standalone[key] for key in fields) == tuple(row[key] for key in fields)
     changed = v2_capacity.residual_capacity_for_operation(
         operations[0], batch=batches["B1"], start_dt=start, due_exclusive=at(16), calendar_service=calendar,
-        downtime_map={}, seed_results_by_resource_id=resource_seeds, resource_pool=pool)
+        resource_pool=pool, prepared=v2_capacity.FixedResourceBlockingFacts(
+            downtime_map={}, seed_results_by_resource_id=resource_seeds))
     assert changed["residual_capacity_blocked_hours"] == 3 and changed["residual_capacity_hours"] == 13
 
 
@@ -108,3 +107,42 @@ def test_graph_resource_preparation_is_shared_by_full_and_per_operation_inputs(m
     assert full[0].candidate_machine_ids == full[1].candidate_machine_ids == full[4].candidate_machine_ids == ("M1", "M2")
     assert full[2].candidate_machine_ids == ("M2",) and full[2].candidate_operator_ids == ("O2",)
     assert full[3].candidate_machine_ids == ("M1",) and full[3].candidate_operator_ids == ()
+
+
+def test_multi_segment_seed_result_blocks_each_resource_only_during_its_segment():
+    from core.algorithm_contracts.types import ScheduleResult
+    from core.algorithms.greedy.seed import with_seed_resource_segments
+
+    start = datetime(2026, 10, 14, 8)
+    at = lambda hours: start + timedelta(hours=hours)
+    seed_base = ScheduleResult(
+        op_id=91, op_code="OP-SEED", batch_id="B0", seq=1,
+        machine_id="M1", operator_id="O1",
+        start_time=at(0), end_time=at(4), source="internal",
+    )
+    seed = with_seed_resource_segments(
+        seed_base,
+        [(at(0), at(2), "M1", "O1"), (at(2), at(4), "M2", "O2")],
+    )
+    pool = {
+        "machines_by_op_type": {"OT1": ["M1", "M2"]},
+        "operators_by_machine": {"M1": ["O1"], "M2": ["O2"]},
+        "operator_skills": {"O1": ["OT1"], "O2": ["OT1"]},
+    }
+    prepared = v2_capacity.FixedResourceBlockingFacts(
+        downtime_map={},
+        seed_results_by_resource_id=v2_capacity.seed_results_by_resource_id([seed]),
+    )
+    batch = SimpleNamespace(quantity=1, priority="normal", due_date="2026-10-14", ready_date=None)
+    for machine_id, operator_id in (("M1", "O1"), ("M2", "O2")):
+        op = SimpleNamespace(
+            id=1, batch_id="B1", seq=1, source="internal", setup_hours=0, unit_hours=2,
+            machine_id=machine_id, operator_id=operator_id, op_type_id="OT1", op_type_name="work",
+        )
+        cap = v2_capacity.residual_capacity_for_operation(
+            op, batch=batch, start_dt=start, due_exclusive=at(8),
+            calendar_service=None, resource_pool=pool, prepared=prepared,
+        )
+        assert cap["residual_capacity_window_hours"] == 8.0
+        assert cap["residual_capacity_blocked_hours"] == 2.0
+        assert cap["residual_capacity_hours"] == 6.0

@@ -4,13 +4,20 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
 from core.models.objective import objective_choice_labels as _objective_choice_labels
-from core.models.schedule_config_runtime_coercion import coerce_config_field as coerce_runtime_value
-from core.models.schedule_config_runtime_fields import RuntimeConfigFieldSpec
-from core.models.schedule_config_runtime_fields import get_field_spec as runtime_field_spec
+from core.models.schedule_config_runtime_coercion import (
+    MISSING_POLICY_ERROR,
+    MISSING_POLICY_FALLBACK_WITH_DEGRADATION,
+)
+from core.models.schedule_config_runtime_coercion import (
+    coerce_config_field as coerce_runtime_value,
+)
+from core.models.schedule_config_runtime_fields import (
+    RuntimeConfigFieldSpec,
+)
+from core.models.schedule_config_runtime_fields import (
+    get_field_spec as runtime_field_spec,
+)
 from core.shared.degradation import DegradationCollector
-
-MISSING_POLICY_ERROR = "error"
-MISSING_POLICY_FALLBACK_WITH_DEGRADATION = "fallback_with_degradation"
 
 
 @dataclass(frozen=True)
@@ -50,12 +57,6 @@ _GRAPH_ANALYSIS_MODE_LABELS = {
     "report": "只看分析报告",
     "on": "参与排产",
 }
-
-_FIELD_LABEL_ALIASES = {
-    "preset_name": "方案名称",
-    "preset": "方案数据",
-}
-
 
 _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
     ConfigFieldSpec(
@@ -205,7 +206,6 @@ _FIELD_SPECS: Tuple[ConfigFieldSpec, ...] = (
 )
 
 _FIELD_SPEC_BY_KEY: Dict[str, ConfigFieldSpec] = {spec.key: spec for spec in _FIELD_SPECS}
-_UNSET = object()
 
 
 def list_config_fields() -> Tuple[ConfigFieldSpec, ...]:
@@ -219,20 +219,9 @@ def get_field_spec(key: str) -> ConfigFieldSpec:
     return _FIELD_SPEC_BY_KEY[normalized_key]
 
 
-def default_for(key: str) -> Any:
-    return get_field_spec(key).default
-
-
 def choices_for(key: str) -> Tuple[str, ...]:
     spec = get_field_spec(key)
     return tuple(spec.choices)
-
-
-def field_label_for(key: str) -> str:
-    normalized_key = str(key or "").strip()
-    if normalized_key in _FIELD_SPEC_BY_KEY:
-        return _FIELD_SPEC_BY_KEY[normalized_key].label
-    return _FIELD_LABEL_ALIASES.get(normalized_key, normalized_key)
 
 
 def choice_label_map_for(key: str) -> Dict[str, str]:
@@ -250,11 +239,10 @@ def coerce_config_field(
     source: str,
     collector: Optional[DegradationCollector] = None,
     missing: bool = False,
-    fallback: Any = _UNSET,
+    fallback: Any = None,
     missing_policy: str = MISSING_POLICY_FALLBACK_WITH_DEGRADATION,
 ) -> Any:
     spec = get_field_spec(key)
-    effective_fallback = spec.default if fallback is _UNSET else fallback
     return coerce_runtime_value(
         key,
         value,
@@ -262,11 +250,7 @@ def coerce_config_field(
         source=source,
         collector=collector,
         missing=missing,
-        fallback=effective_fallback,
+        fallback=(spec.default if fallback is None else fallback),
         missing_policy=missing_policy,
         field_label=spec.label,
     )
-
-
-def default_snapshot_values() -> Dict[str, Any]:
-    return {spec.key: spec.default for spec in list_config_fields()}

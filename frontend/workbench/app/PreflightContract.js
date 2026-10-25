@@ -103,13 +103,24 @@
   function result(envelope, expected) {
     const d = envelope && envelope.data, normalized = input(expected), actual = d && input(d.normalized_input), scope = new Set(normalized.batch_refs);
     if (actual && normalized.time_budget_seconds === undefined && actual.time_budget_seconds !== undefined) normalized.time_budget_seconds = actual.time_budget_seconds;
+    const taskRefs = new Set(), statusCounts = { eligible: 0, auto_assign_required: 0, skipped: 0, blocked: 0, protected: 0 };
+    let heldCount = 0, actualFactCount = 0, invalidEligibleExecution = false;
+    const validTasks = Array.isArray(d && d.tasks) && d.tasks.every(row => {
+      if (!object(row) || !ref(row.operation_ref) || !scope.has(row.batch_ref)
+          || typeof row.batch_id !== 'string' || typeof row.label !== 'string' || !taskStates.includes(row.status) || typeof row.has_execution_facts !== 'boolean'
+          || !issues(row.issues) || !Array.isArray(row.predecessor_refs) || !row.predecessor_refs.every(ref) || !execution(row.execution) || !own(row, 'held') || !held(row.held)
+          || taskRefs.has(row.operation_ref)) return false;
+      taskRefs.add(row.operation_ref);
+      statusCounts[row.status]++;
+      if (row.held !== null) heldCount++;
+      if (row.has_execution_facts) actualFactCount++;
+      if ((row.status === 'eligible' || row.status === 'auto_assign_required') && row.execution.execution_state !== 'unreported') invalidEligibleExecution = true;
+      return true;
+    });
     if (!object(d) || !token(d.input_ref) || !date(String(d.input_expires_at).slice(0, 10)) || !object(d.counts) || !countKeys.every(key => count(d.counts[key]))
         || JSON.stringify(actual) !== JSON.stringify(normalized)
         || own(d, 'run_options') && (d.run_options === null ? !Array.isArray(d.blockers) || !d.blockers.some(row => row.code === 'config_error') : !window.RunGenerationContract.runOptions(d.run_options) || actual.time_budget_seconds !== d.run_options.time_budget_seconds)
-        || !Array.isArray(d.tasks) || !d.tasks.every(row => object(row) && ref(row.operation_ref) && scope.has(row.batch_ref)
-          && typeof row.batch_id === 'string' && typeof row.label === 'string' && taskStates.includes(row.status) && typeof row.has_execution_facts === 'boolean'
-          && issues(row.issues) && Array.isArray(row.predecessor_refs) && row.predecessor_refs.every(ref) && execution(row.execution) && own(row, 'held') && held(row.held))
-        || new Set(d.tasks.map(row => row.operation_ref)).size !== d.tasks.length
+        || !validTasks
         || !issues(d.blockers) || !issues(d.warnings) || !issues(d.run_blocked_reasons) || !d.run_blocked_reasons.length
         || d.calendar_check !== 'not_evaluated' || d.config_scope !== 'single_run' || d.run_blocked !== true
         || !object(d.write_context) || !object(d.write_context.capabilities) || d.write_context.capabilities['scheduling.run'] !== false || d.write_context.write_token !== null
@@ -119,21 +130,19 @@
         || !object(d.effective_config) || !fields.slice(3).every(key => (key === 'material_strategy' ? d.effective_config[key] || 'strict' : d.effective_config[key]) === normalized[key])
         || !effectiveHold(d.effective_config, normalized)
         || d.effective_start !== normalized.start_date + 'T00:00:00') throw fail('排产检查结果与本次范围或能力不一致，不能继续。');
-    const c = d.counts, heldRows = d.tasks.filter(row => row.held !== null);
-    ['ready_tasks', 'auto_assign_required', 'skipped_tasks', 'blocked_tasks', 'protected_tasks'].forEach((key, index) => {
-      if (c[key] !== d.tasks.filter(row => row.status === taskStates[index]).length) throw fail('排产检查计数不一致。');
-    });
-    if (c.held_tasks !== heldRows.length || c.hold_window_tasks !== heldRows.length
+    const c = d.counts;
+    if (c.ready_tasks !== statusCounts.eligible || c.auto_assign_required !== statusCounts.auto_assign_required
+        || c.skipped_tasks !== statusCounts.skipped || c.blocked_tasks !== statusCounts.blocked || c.protected_tasks !== statusCounts.protected
+        || c.held_tasks !== heldCount || c.hold_window_tasks !== heldCount
         || d.effective_config.hold_window === null && c.held_tasks !== 0) throw fail('排产检查计数不一致。');
     const batchRows = d.included_batches.concat(d.excluded_batches);
-    const taskRefs = new Set(d.tasks.map(row => row.operation_ref));
     if (c.selected_tasks !== d.tasks.length || c.selected_batches !== scope.size || c.eligible_tasks !== c.ready_tasks + c.auto_assign_required
         || d.eligible_tasks !== c.eligible_tasks || d.auto_assign_required !== c.auto_assign_required || d.skipped_tasks !== c.skipped_tasks
-        || c.actual_fact_tasks !== d.tasks.filter(row => row.has_execution_facts).length
+        || c.actual_fact_tasks !== actualFactCount
         || c.no_route_batches !== d.no_route_batches.length || c.unready_batches !== d.unready_batches.length
         || new Set(d.no_route_batches.map(row => row.batch_ref)).size !== c.no_route_batches || new Set(d.unready_batches.map(row => row.batch_ref)).size !== c.unready_batches
-        || !d.tasks.every(row => row.predecessor_refs.every(ref => taskRefs.has(ref)))
-        || d.tasks.some(row => ['eligible', 'auto_assign_required'].includes(row.status) && row.execution.execution_state !== 'unreported')
+        || !d.tasks.every(row => row.predecessor_refs.every(pred => taskRefs.has(pred)))
+        || invalidEligibleExecution
         || batchRows.length !== scope.size || new Set(batchRows.map(row => row.batch_ref)).size !== scope.size
         || !batchRows.concat(d.no_route_batches, d.unready_batches).every(row => object(row) && scope.has(row.batch_ref) && typeof row.batch_id === 'string'))
       throw fail('排产检查遗漏了选中批次，不能继续。');

@@ -83,9 +83,9 @@ class WorkbenchResourceRelationRepository(BaseRepository):
         queries = _OPERATOR_FACTS if relation == "operators" else _SUPPLIER_FACTS if relation == "suppliers" else {}
         result = {key: [] for key in queries}
         # Stay below the SQLite variable limit shipped with Python 3.8 on Win7.
-        for start in range(0, max(1, len(codes)), 400):
+        for start in range(0, len(codes), 400):
             chunk = codes[start:start + 400]
-            marks = ",".join("?" for _ in chunk) or "NULL"
+            marks = ",".join("?" for _ in chunk)
             for key, sql in queries.items():
                 result[key].extend(self.fetchall(sql.format(marks=marks), chunk))
         return result

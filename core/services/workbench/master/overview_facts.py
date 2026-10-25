@@ -18,8 +18,8 @@ SOURCES = {
 }
 RELATIONS = ("OperatorSkill", "OperatorMachine", "WorkbenchOperatorProfiles", "WorkbenchSupplierOpTypes",
              "WorkbenchSupplierProfiles", "WorkbenchMachineGroupMembers", "WorkbenchMachineGroups",
-             "WorkbenchShiftProfiles", "WorkbenchShiftPatternDays", "WorkbenchOpTypePolicies",
-             "Batches", "BatchMaterials", "BatchMaterialArrivals", "BatchMaterialReviews", "OperatorCalendar", "MachineOpTypes")
+             "WorkbenchShiftProfiles", "WorkbenchOpTypePolicies",
+             "Batches", "BatchMaterials", "BatchMaterialArrivals", "BatchMaterialReviews", "MachineOpTypes")
 WORKFLOW = ("WorkbenchProcessWorkflow", "WorkbenchProcessOperationConfirmations")
 # 整表白名单归仓储所有；合同测试锁定它等于 SOURCES/RELATIONS/WORKFLOW 的展开顺序。
 TABLES = MASTER_OVERVIEW_TABLES
@@ -94,10 +94,10 @@ class MasterOverviewFacts:
                     raise WorkbenchCommandRejected("storage_failure", "基础资料存在重复关联，请联系维护人员核对。", 500)
                 self.identities[key] = row
         required = ("Parts", "PartOperations", "ExternalGroups", "OpTypes", "Suppliers", "WorkbenchEntityRefs") + WORKFLOW
-        metadata_sources = {table for table, _ in RESOURCE_TABLES.values()}
-        if self.available(*required) and self.available(*RELATIONS[:10]) and metadata_sources <= present:
+        metadata_sources = {table for table, _ in RESOURCE_TABLES.values()} | {"WorkbenchShiftPatternDays"}
+        if self.available(*required) and self.available(*RELATIONS[:9]) and metadata_sources <= present:
             try:
-                self.workflow = workflow_snapshot(self.conn, tables=self.tables)
+                self.workflow = workflow_snapshot(self.conn, tables=self.tables, identities=self.identities)
             except RuntimeError as exc:
                 raise WorkbenchCommandRejected("storage_failure", "工艺确认的数据读得不完整，请联系维护人员核对资料。", 500) from exc
         else:

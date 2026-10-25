@@ -23,7 +23,7 @@ def parse_period_columns(values):
     if not set(values) & set(PERIOD_COLUMNS):
         return {}
     count = str(values.get("period_count", ""))
-    if not count.isdigit() or not 0 <= int(count) <= MAX_WORK_PERIODS:
+    if not count.isascii() or not count.isdigit() or not 0 <= int(count) <= MAX_WORK_PERIODS:
         raise ValidationError(f"分段时间须同时填写工作时段数（0 至 {MAX_WORK_PERIODS}）；0 表示没有工作时段。",
                               field="period_count")
     count, periods = int(count), []

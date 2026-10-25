@@ -5,7 +5,7 @@ from io import BytesIO
 from flask import Blueprint
 from openpyxl import load_workbook
 
-from core.services.personnel.operator_machine_service import OperatorMachineService
+from data.repositories.operator_machine_repo import OperatorMachineRepository
 from data.repositories.workbench_execution_report_repo import WorkbenchExecutionReportRepository, new_ref
 from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.field_workspace_support import BASE, FieldAPI, _ledger_fixture, success  # noqa: F401
@@ -79,8 +79,8 @@ def test_legacy_supplement_keeps_known_facts_through_correction(ledger_case):
     case.install()
     case.conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T2','New craft')")
     case.conn.execute("UPDATE Machines SET op_type_id='T2' WHERE machine_id='M1'")
+    OperatorMachineRepository(case.conn).remove("O1", "M1")
     case.conn.commit()
-    OperatorMachineService(case.conn).remove_link("O1", "M1")
     api = FieldAPI(case)
     reports = Blueprint("legacy_report_hours", __name__)
     register_report_routes(reports)
@@ -182,7 +182,7 @@ def test_file_confirmation_retains_source_after_read_expiry_and_rechecks_write_e
 def test_report_and_task_contexts_locate_shared_operation_facts_once(field_api, record_property):
     from core.models.content import content_text
     from core.services.workbench.facts.execution_projection import attach_context
-    from web.routes.workbench.execution import field_context
+    from web.routes.workbench.write_context import issue_write_context
 
     class SharedFacts(str):
         equalities = 0
@@ -201,10 +201,10 @@ def test_report_and_task_contexts_locate_shared_operation_facts_once(field_api, 
         snapshot = SharedFacts(content_text(api.case.ledger.fact_snapshot(facts, task['operation_ref'])))
     # The common attachment owner serves every report and the task in either ledger path.
     with api.app.app_context():
-        first = attach_context(projection, field_context, snapshot)
+        first = attach_context(projection, issue_write_context, snapshot)
         same_content = SharedFacts(snapshot)
         SharedFacts.equalities = 0
-        reopened = attach_context(projection, field_context, same_content)
+        reopened = attach_context(projection, issue_write_context, same_content)
     assert SharedFacts.equalities == 1
     assert first.write_context['write_token'] == reopened.write_context['write_token']
     assert [row.write_context['write_token'] for row in first.reports] == [row.write_context['write_token'] for row in reopened.reports]

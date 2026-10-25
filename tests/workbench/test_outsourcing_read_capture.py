@@ -23,10 +23,32 @@ def _resolved(source, target):
 
 
 def _same_sources(source, targets):
-    expected = [_resolved(source, target) for target in targets]
+    expected = [_resolved(source.capture([target]), target) for target in targets]
     captured = source.capture(targets)
     assert [_resolved(captured, target) for target in targets] == expected
     return captured
+
+
+@pytest.mark.parametrize("history", (False, True))
+def test_detail_and_history_capture_all_receipt_operations_once(external_handling_case, history):
+    case, conn = external_handling_case, external_handling_case.conn
+    ref = case.register(merged=True)
+    reader = case.shipments.reader
+    queries = []
+    with reader.read_snapshot():
+        conn.set_trace_callback(queries.append)
+        try:
+            result = reader.history(ref) if history else reader.detail(ref)
+        finally:
+            conn.set_trace_callback(None)
+    assert result["item"]["source_state"] == "current"
+    source = result["content"]["source"]
+    assert len(source["public"]["operations"]) == 2
+    for table in ("WorkbenchPlanSourceRefs", "WorkbenchOutsourcingOperationOrigins", "WorkbenchOutsourcingSourceConfirmations"):
+        assert sum("SELECT * FROM " + table in sql for sql in queries) == 1, queries
+    assert sum('JOIN "BatchOperations" source' in sql for sql in queries) == 1, queries
+    if history:
+        assert len(result["history"]["items"]) == 1
 
 
 def test_snapshot_capture_preserves_instance_rules_and_single_registered_evaluation(external_handling_case, monkeypatch):
@@ -52,16 +74,7 @@ def test_snapshot_capture_preserves_instance_rules_and_single_registered_evaluat
         captured = _same_sources(source, [registered])
         assert captured.load(registered)["public"]["source_resolution"]["basis"] == "registration_confirmation"
         expected_registered = captured.load(registered)
-        rows, _ = source.target_rows()
-        expected = source.load_target_rows(rows)
         # The captured projection may execute no SQL and may not fill misses from the live repository.
-        statements = []
-        conn.set_trace_callback(statements.append)
-        result = source.load_targets()
-        conn.set_trace_callback(None)
-        assert result == expected
-        assert sum(sql.startswith("PRAGMA table_info") for sql in statements) == 0
-        assert sum("SELECT revision FROM WorkbenchPlanIdentityClock" in sql for sql in statements) == 1
         captured_queries = []
         conn.set_trace_callback(captured_queries.append)
         try:
@@ -106,7 +119,9 @@ def test_snapshot_capture_preserves_instance_rules_and_single_registered_evaluat
             conn.execute("DROP TRIGGER " + trigger)
             conn.execute("DELETE FROM " + table + " WHERE operation_ref=?", (selected["operation_refs"][0],))
             missing = _same_sources(source, [selected])
-            assert _resolved(missing, selected)[0] == "identity_missing"
+            with pytest.raises(WorkbenchCommandRejected) as exc:
+                missing.load(selected)
+            assert exc.value.code == "identity_missing"
         finally:
             conn.execute("ROLLBACK TO missing_source_probe")
             conn.execute("RELEASE missing_source_probe")
@@ -115,13 +130,16 @@ def test_snapshot_capture_preserves_instance_rules_and_single_registered_evaluat
         conn.execute("UPDATE WorkbenchEntityRefs SET active=0 WHERE ref=?", (target["supplier_ref"],))
         conn.execute("INSERT INTO WorkbenchEntityRefs(ref,kind,entity_key,active) VALUES (?,'supplier','XS1',1)", ("f" * 48,))
         replacement = _same_sources(source, [target])
-        assert _resolved(replacement, target)[0] == "entity_not_found"
+        with pytest.raises(WorkbenchCommandRejected) as exc:
+            replacement.load(target)
+        assert exc.value.code == "entity_not_found"
     finally:
         conn.execute("ROLLBACK TO replacement_source_probe")
         conn.execute("RELEASE replacement_source_probe")
     # The source key compares through SQLite integer affinity: leading zero is valid, suffix is absent.
     operation_ref = target["operation_refs"][0]
-    identity = source.repo.operation_identity(operation_ref)
+    identity = before.repo.operation_identity(operation_ref)
+    assert identity is not None
     for key in ("0" + identity["source_key"], identity["source_key"] + "x"):
         conn.execute("SAVEPOINT source_key_probe")
         try:

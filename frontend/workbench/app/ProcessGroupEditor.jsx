@@ -106,7 +106,7 @@
         {validPreview && <section role="status" ref={reviewRoot} tabIndex={-1}><h3>保存前核对</h3><div className="wb-table-frame"><table className="tbl wb-table" aria-label="外协段变更预检"><thead><tr><th scope="col">操作</th><th scope="col">保存前</th><th scope="col">保存后</th></tr></thead><tbody>
           {validPreview.response.data.changes.map((row, index) => <tr key={index}><td>{{ create: '新增段', update: '修改段', discard: '解除段' }[row.action]}</td><td>{label(row.before)}</td><td>{label(row.after)}</td></tr>)}
           {!validPreview.response.data.changes.length && <tr><td colSpan={3}>与已保存内容一致，无需改变现有段。</td></tr>}</tbody></table></div></section>}
-        {discard && <section className="match-note is-block" role="alert"><p>本次外协段修改尚未保存。</p><Button disabled={blocked} onClick={() => setDiscard(false)}>继续编辑</Button><Button className="btn danger" disabled={blocked} onClick={onClose}>放弃段修改并返回</Button></section>}
+        {discard && model.dirty && <section className="match-note is-block" role="alert"><p>本次外协段修改尚未保存。</p><Button disabled={blocked} onClick={() => setDiscard(false)}>继续编辑</Button><Button className="btn danger" disabled={blocked} onClick={onClose}>放弃段修改并返回</Button></section>}
       </div></Modal>{picker && <window.ProcessSourcePicker adapter={adapter} target={picker} disabled={blocked || checking} onClose={() => setPicker(null)} onSelect={row => {
         patch({ supplier_ref: row.ref, supplier_label: row.label, ...(!current.ref && !current.total_days && row.fields.default_days > 0 ? { total_days: String(row.fields.default_days) } : {}) }); setPicker(null);
       }} />}</div>, document.body);

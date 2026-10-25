@@ -2,6 +2,7 @@
 
 import math
 from datetime import date, datetime, timezone
+from typing import Any
 
 import pytest
 
@@ -121,9 +122,112 @@ def test_same_plan_duplicate_operation_mapping_is_still_rejected_without_writes(
     assert all_rows(case.conn) == before
 
 
+def test_cross_layer_schema_checks_share_leaf_contracts_in_one_snapshot(candidate_case, monkeypatch):
+    from collections import Counter
+
+    from core.infrastructure import workbench_execution_ledger_schema
+    from core.infrastructure.transaction import TransactionManager
+    from core.services.workbench.facts import candidate_archive
+    from core.services.workbench.run import preflight_execution
+    from core.services.workbench.run.preflight_facts import PreflightFacts
+    from data.repositories import (
+        workbench_calibration_query_repo,
+        workbench_dashboard_external_repo,
+        workbench_execution_repo,
+        workbench_plan_identity_repo,
+        workbench_template_lineage_repo,
+    )
+
+    calls = Counter()
+    checks = (
+        ("ledger", "execution_ledger_contract_issues", (workbench_execution_repo, workbench_execution_ledger_schema)),
+        ("void", "execution_void_contract_issues", (workbench_execution_repo,)),
+        ("metadata", "workbench_metadata_contract_issues", (workbench_calibration_query_repo, workbench_template_lineage_repo)),
+        ("process", "workbench_process_contract_issues", (workbench_calibration_query_repo, workbench_template_lineage_repo)),
+        ("identity", "workbench_plan_identity_contract_issues",
+         (workbench_plan_identity_repo, workbench_template_lineage_repo, candidate_archive)),
+        ("lineage", "template_lineage_contract_issues", (workbench_template_lineage_repo,)),
+        ("external", "contract_issues", (workbench_dashboard_external_repo,)),
+    )
+    for name, symbol, modules in checks:
+        original = vars(modules[0])[symbol]
+
+        def checked(conn, *, structure, _name=name, _original=original):
+            calls[_name] += 1
+            return _original(conn, structure=structure)
+
+        for module in modules:
+            monkeypatch.setattr(module, symbol, checked)
+
+    conn = candidate_case.conn
+    execution = WorkbenchExecutionRepository(conn)
+    lineage = workbench_template_lineage_repo.WorkbenchTemplateLineageRepository(conn)
+    calibration = workbench_calibration_query_repo.WorkbenchCalibrationQueryRepository(conn)
+    external = workbench_dashboard_external_repo.WorkbenchDashboardExternalRepository(conn)
+    identities = workbench_plan_identity_repo.WorkbenchPlanIdentityRepository(conn)
+    with TransactionManager(conn).transaction():
+        for _ in range(2):
+            assert execution.schema_issues() == []
+            assert lineage.schema_state() == "loaded" and not lineage.identity_schema_broken()
+            assert calibration.schema_installed() and external.schema_installed()
+            candidate_archive.require_adoption_schema(conn)
+            identities.read_revision()
+            projections, reasons = preflight_execution.execution_projections(PreflightFacts(conn), [])
+            assert projections == {} and reasons == []
+        assert calls == {name: 1 for name, _, _ in checks}
+
+
+def test_schema_checks_refresh_after_explicit_ledger_installation(ledger_case):
+    from core.infrastructure.connection_guards import schema_contract_scope
+
+    repo = WorkbenchExecutionRepository(ledger_case.conn)
+    with schema_contract_scope(ledger_case.conn):
+        assert repo.schema_issues()
+    ledger_case.install()
+    with schema_contract_scope(ledger_case.conn):
+        assert repo.schema_issues() == []
+
+
+@pytest.mark.parametrize("version,has_receipt,allowed", [(24, False, True), (25, False, False), (24, True, False)])
+def test_batch_execution_uses_captured_version_and_receipts_for_legacy_boundary(ledger_case, version, has_receipt, allowed):
+    from core.infrastructure.migration_state import set_schema_version
+    from core.infrastructure.transaction import TransactionManager
+    from core.services.workbench.batch.execution import load_execution
+    from data.repositories.workbench_batch_facts_repo import WorkbenchBatchFactsRepository
+
+    conn = ledger_case.conn
+    set_schema_version(conn, version)
+    if has_receipt:
+        conn.execute("""INSERT INTO WorkbenchCommandReceipts
+            (request_key,receipt_ref,action,context_ref,input_hash,outcome_json)
+            VALUES (?,?,'execution.report_create',?,NULL,'{}')""",
+                     ("legacy-execution-receipt", "e" * 32, "o" * 48))
+    conn.commit()
+    trace = []
+    conn.set_trace_callback(trace.append)
+    try:
+        with TransactionManager(conn).transaction():
+            state = WorkbenchBatchFactsRepository(conn).versioned_facts()
+            if allowed:
+                result = load_execution(conn, [], schema_version=state["version"],
+                                        has_execution_commands=state["has_execution_commands"])
+                assert not result["available"] and result["snapshot_facts"] == {"schema_version": 24}
+                assert result["issues"][0]["code"] == "execution_ledger_not_installed"
+            else:
+                with pytest.raises(WorkbenchCommandRejected) as error:
+                    load_execution(conn, [], schema_version=state["version"],
+                                   has_execution_commands=state["has_execution_commands"])
+                assert error.value.code == "execution_ledger_unavailable"
+    finally:
+        conn.set_trace_callback(None)
+    assert sum("FROM SCHEMAVERSION " in sql.upper() for sql in trace) == 1
+    assert sum("FROM WORKBENCHCOMMANDRECEIPTS " in sql.upper() for sql in trace) == 1
+
+
 def _admission(case):
     _, candidates = compute(case)
     run, _, scope, _, capture, _ = load_adoption_candidate(case.conn, candidates[0])
+    assert scope is not None
     return scope, capture, run["accepted_at"]
 
 
@@ -137,16 +241,16 @@ def test_admission_decodes_saved_execution_once_without_replaying_disposition_or
     ref = capture["execution"][0]["operation_ref"]
     scope[ref]["execution"]["data_gaps"] = [{"earlier_disposition_copy": True}]
     calls = Counter()
-    decode = candidate_facts._table
+    decode = candidate_facts.archived_table
 
     def table(archive, name):
         calls[name] += 1
         return decode(archive, name)
 
-    monkeypatch.setattr(candidate_facts, "_table", table)
+    monkeypatch.setattr(candidate_facts, "archived_table", table)
     facts = GenerationFacts(capture)
-    first = AdmissionBaseline(capture, facts, scope, accepted_at)
-    second = AdmissionBaseline(capture, facts, scope, accepted_at)
+    first = AdmissionBaseline(capture, facts, scope)
+    second = AdmissionBaseline(capture, facts, scope)
     calendar = ArchivedCalendar(facts.archive, facts=facts)
     assert calendar.table("Machines") is facts.table("Machines")
     assert first.selected == second.selected == set(scope)
@@ -159,9 +263,9 @@ def test_archived_labels_and_arrangements_keep_saved_work_without_formula_replay
     from core.services.workbench.facts import candidate_projection
 
     case = candidate_case
-    scope, capture, accepted_at = _admission(case)
+    scope, capture, _accepted_at = _admission(case)
     original = GenerationFacts(capture)
-    AdmissionBaseline(capture, original, scope, accepted_at)
+    AdmissionBaseline(capture, original, scope)
     ref = capture["execution"][0]["operation_ref"]
     first, _ = operation_labels(original, ref, {"op_id": original.operations[ref]})
     second, _ = operation_labels(original, ref)
@@ -220,8 +324,8 @@ def test_archived_labels_and_arrangements_keep_saved_work_without_formula_replay
         assert summary["completeness"] == "complete"
         assert len(scheduled_checks) == 1
         assert ready_source.scheduled_op_ids is source._scheduled_op_ids[candidate["candidate_ref"]]
-    assert rich == repeated and candidate["candidate_ref"] not in source._verified
-    assert source.core_tasks(candidate["candidate_ref"]) is rich
+    assert rich == repeated
+    assert source.tasks(candidate["candidate_ref"]) is rich
     assert source.delivery(candidate["candidate_ref"]) == delivery
     assert intervals == {row["row_ref"]: (datetime.fromisoformat(row["start"]), datetime.fromisoformat(row["end"])) for row in projected}
     assert all("intervals" not in row and "task_intervals" not in row for row in projected)
@@ -238,18 +342,18 @@ def test_archived_labels_and_arrangements_keep_saved_work_without_formula_replay
     # Historical interpretation retains the saved value; generation owns the
     # formula and adoption validates against its current facts.
     saved = GenerationFacts(capture)
-    AdmissionBaseline(capture, saved, scope, accepted_at)
+    AdmissionBaseline(capture, saved, scope)
     assert saved.execution[ref]["target_quantity"] == quantity
 
 
 def test_admission_duplicate_operation_dtos_with_distinct_values_are_still_rejected(candidate_case):
-    scope, capture, accepted_at = _admission(candidate_case)
+    scope, capture, _accepted_at = _admission(candidate_case)
     facts = GenerationFacts(capture)
     duplicate = dict(capture["execution"][0])
     duplicate["target_quantity"] += 1
     capture["execution"].append(duplicate)
     with pytest.raises(WorkbenchCommandRejected) as error:
-        AdmissionBaseline(capture, facts, scope, accepted_at)
+        AdmissionBaseline(capture, facts, scope)
     assert error.value.code == "candidate_baseline_invalid"
 
 
@@ -293,7 +397,7 @@ def _original_plain(value):
     raise TypeError("Unsupported private plan fact type: " + type(value).__name__)
 
 
-def _original_typed(value):
+def _original_typed(value: Any) -> Any:
     if isinstance(value, set):
         return sorted(_original_typed(item) for item in value)
     if isinstance(value, dict):
@@ -346,7 +450,8 @@ def test_primitive_fastpath_retains_original_storage_types_and_failures(value, p
 
 
 class _UnhashableMeta(type):
-    __hash__ = None
+    def __eq__(cls, other):
+        return cls is other
 
 
 class _HashFailureMeta(type):

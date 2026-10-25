@@ -40,7 +40,7 @@ def _allocation_state(ref, runtime, tasks, *, available, deferred_refs):
 
 
 def project_decision_preparation_row(facts, operation_ref, tasks, operation_efforts, *, run_ref,
-                                     available=True, deferred_refs=(), official=None, standards: Any = None):
+                                     available, deferred_refs, official, standards: Any):
     """Project one actual allocation, keeping official and admission evidence distinct."""
     formal = official is not None
     operation = facts.tables["BatchOperations"].get(facts.operations.get(operation_ref), {})

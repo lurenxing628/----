@@ -24,17 +24,16 @@ from core.infrastructure.safe_files import (
     open_fixed_file_for_write_binary,
     remove_fixed_file,
 )
+from web.runtime_host import normalize_runtime_db_path
 
 from . import launcher_win32
 from .launcher_lock_result import (
     LOCK_STATUS_MISSING,
     RuntimeLockReadResult,
-    read_runtime_lock_result,
     read_runtime_lock_result_from_path,
 )
 from .launcher_observability import launcher_log_warning
 from .launcher_paths import (
-    _normalize_db_path_for_runtime,
     current_runtime_owner,
     db_scope_lock_path,
     resolve_runtime_state_dir,
@@ -45,14 +44,7 @@ from .launcher_processes import _pid_matches_contract, _pid_state, set_process_l
 
 
 class RuntimeLockError(RuntimeError):
-    def __init__(self, message: str, *, owner: str = "", pid: int = 0):
-        super().__init__(message)
-        self.owner = str(owner or "").strip()
-        try:
-            self.pid = int(pid or 0)
-        except (TypeError, ValueError) as exc:
-            launcher_log_warning(None, "解析运行时锁 pid 失败，已按 0 处理：pid=%r error=%s", pid, exc)
-            self.pid = 0
+    pass
 
 
 @contextmanager
@@ -91,11 +83,6 @@ def _change_mutation_guard_lock(fd: int, *, release: bool) -> None:
         fcntl.flock(fd, fcntl.LOCK_UN if release else fcntl.LOCK_EX | fcntl.LOCK_NB)
 
 
-def read_runtime_lock(runtime_dir_or_state_dir: str) -> Optional[Dict[str, Any]]:
-    result = read_runtime_lock_result(runtime_dir_or_state_dir)
-    return result.payload if result.ok else None
-
-
 def _raise_uncertain_runtime_lock(result: RuntimeLockReadResult) -> None:
     launcher_log_warning(
         None,
@@ -109,16 +96,10 @@ def _raise_uncertain_runtime_lock(result: RuntimeLockReadResult) -> None:
     raise RuntimeLockError("检测到运行时锁但无法确认归属，为避免重复启动或误删他人锁，请稍后重试。") from None
 
 
-def _is_runtime_lock_active(lock_payload: Dict[str, Any], expected_exe_path: str = "", *, local_probe_only: bool = False) -> bool:
+def is_runtime_lock_active(lock_payload: Dict[str, Any], expected_exe_path: str = "", *, local_probe_only: bool = False) -> bool:
     state_dir = str(lock_payload.get("state_dir") or "")
     set_process_log_context(state_dir=state_dir)
-    try:
-        pid = int(lock_payload.get("pid") or 0)
-    except (TypeError, ValueError) as exc:
-        launcher_log_warning(None, "运行时锁 pid 非法，已按非活跃处理：%s", exc, state_dir=str(lock_payload.get("state_dir") or ""))
-        pid = 0
-    if pid <= 0:
-        return False
+    pid = lock_payload["pid"]
     if local_probe_only and os.name == "nt":
         return _native_runtime_lock_active(pid, lock_payload, expected_exe_path)
     pid_state = _pid_state(pid)
@@ -159,7 +140,7 @@ def _runtime_lock_payload(owner: Optional[str], exe_path: Optional[str], db_path
         "exe_path": exe_path_s,
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
-    db_path_s = _normalize_db_path_for_runtime(db_path)
+    db_path_s = normalize_runtime_db_path(db_path)
     if db_path_s:
         # B03 方案丙补充：锁 payload 记录被保护的 DB 身份，供诊断与读取端核对
         #（bat 的 :read_lock_file 只取 owner/pid，多余键按合同被忽略）。
@@ -201,52 +182,42 @@ def _raise_if_runtime_lock_active(
     *,
     db_label: str = "",
 ) -> None:
-    if not _is_runtime_lock_active(existing, expected_exe_path=exe_path_s, local_probe_only=True):
+    if not is_runtime_lock_active(existing, expected_exe_path=exe_path_s, local_probe_only=True):
         return
     existing_owner = str(existing.get("owner") or "").strip()
-    existing_pid = int(existing.get("pid") or 0)
     if db_label:
         if existing_owner and existing_owner != owner_s:
             raise RuntimeLockError(
                 f"数据库（{db_label}）当前正由 {existing_owner} 的实例使用，请等待其退出后再试。",
-                owner=existing_owner,
-                pid=existing_pid,
             ) from None
         raise RuntimeLockError(
             f"数据库（{db_label}）已被当前账户的另一实例使用，请直接使用现有窗口，不要重复启动。",
-            owner=existing_owner or owner_s,
-            pid=existing_pid,
         ) from None
     if existing_owner and existing_owner != owner_s:
         raise RuntimeLockError(
             f"系统当前正由 {existing_owner} 使用，请等待其退出后再试。",
-            owner=existing_owner,
-            pid=existing_pid,
         ) from None
     raise RuntimeLockError(
         "系统已在当前账户运行，请直接使用现有窗口，不要重复启动。",
-        owner=existing_owner or owner_s,
-        pid=existing_pid,
     ) from None
 
 
-def _lock_identity_fields(payload: Dict[str, Any]) -> Tuple[str, str, str, str, str]:
-    data = payload or {}
-    return (
-        str(data.get("pid") or ""),
-        str(data.get("owner") or "").strip(),
-        str(data.get("exe_path") or "").strip(),
-        str(data.get("started_at") or "").strip(),
-        str(data.get("db_path") or "").strip(),
-    )
-
-
-def _lock_process_identity_fields(payload: Dict[str, Any]) -> Tuple[str, str, str, str]:
+def lock_identity_fields(payload: Dict[str, Any]) -> Tuple[str, str, str, str, str]:
     return (
         str(payload.get("pid") or ""),
         str(payload.get("owner") or "").strip(),
-        _normalize_db_path_for_runtime(payload.get("exe_path")),
-        _normalize_db_path_for_runtime(payload.get("db_path")),
+        str(payload.get("exe_path") or "").strip(),
+        str(payload.get("started_at") or "").strip(),
+        str(payload.get("db_path") or "").strip(),
+    )
+
+
+def lock_process_identity_fields(payload: Dict[str, Any]) -> Tuple[str, str, str, str]:
+    return (
+        str(payload.get("pid") or ""),
+        str(payload.get("owner") or "").strip(),
+        normalize_runtime_db_path(payload.get("exe_path")),
+        normalize_runtime_db_path(payload.get("db_path")),
     )
 
 
@@ -285,7 +256,7 @@ def _acquire_db_scope_lock(db_path: str, *, owner_s: str, exe_path_s: str) -> Di
         owner_s,
         exe_path_s,
         state_dir=lock_dir,
-        db_label=_normalize_db_path_for_runtime(db_path),
+        db_label=normalize_runtime_db_path(db_path),
     )
     acquired["path"] = lock_path
     return acquired
@@ -299,7 +270,7 @@ def _rollback_own_runtime_lock(lock_path: str, own_payload: Dict[str, Any]) -> N
             result = read_runtime_lock_result_from_path(lock_path)
             if result.status == LOCK_STATUS_MISSING:
                 return
-            removed = result.ok and _lock_identity_fields(cast(Dict[str, Any], result.payload)) == _lock_identity_fields(own_payload)
+            removed = result.ok and lock_identity_fields(cast(Dict[str, Any], result.payload)) == lock_identity_fields(own_payload)
             if removed:
                 remove_fixed_file(lock_path)
     except (RuntimeLockError, OSError) as exc:
@@ -354,7 +325,6 @@ def _release_lock_from_result(
     result: RuntimeLockReadResult,
     expected_pid: Optional[int],
     *,
-    fallback_state_dir: str,
     expected_payload: Optional[Dict[str, Any]] = None,
 ) -> bool:
     if result.status == LOCK_STATUS_MISSING:
@@ -372,11 +342,11 @@ def _release_lock_from_result(
         return False
     existing = cast(Dict[str, Any], result.payload)
     if expected_payload is not None:
-        if _lock_identity_fields(existing) != _lock_identity_fields(expected_payload):
+        if lock_identity_fields(existing) != lock_identity_fields(expected_payload):
             launcher_log_warning(None, "释放运行时锁时归属已变化，已保留当前实例锁：path=%s", result.path, state_dir=result.state_dir)
             return False
-    pid0 = int(existing.get("pid") or 0)
-    state_dir = str(existing.get("state_dir") or fallback_state_dir)
+    pid0 = existing["pid"]
+    state_dir = existing["state_dir"]
     if expected_pid is None and expected_payload is not None:
         expected_pid = expected_payload.get("pid")
     if expected_pid is None:
@@ -396,14 +366,14 @@ def _release_lock_from_result(
     if pid_expected <= 0:
         launcher_log_warning(None, "释放运行时锁时 expected_pid 非正，跳过释放：expected_pid=%s", pid_expected, state_dir=state_dir)
         return False
-    if pid0 > 0 and pid0 != pid_expected:
+    if pid0 != pid_expected:
         return False
     try:
-        remove_fixed_file(str(existing.get("path") or ""))
+        remove_fixed_file(existing["path"])
     except FileNotFoundError:
         pass
-    except (OSError, TypeError, ValueError) as exc:
-        launcher_log_warning(None, "释放运行时锁失败，已继续：path=%s error=%s", existing.get("path"), exc, state_dir=state_dir)
+    except OSError as exc:
+        launcher_log_warning(None, "释放运行时锁失败，已继续：path=%s error=%s", existing["path"], exc, state_dir=state_dir)
         return False
     return True
 
@@ -420,7 +390,6 @@ def _release_lock_file(
             return _release_lock_from_result(
                 read_runtime_lock_result_from_path(lock_path, state_dir=state_dir),
                 expected_pid,
-                fallback_state_dir=state_dir,
                 expected_payload=expected_payload,
             )
     except RuntimeLockError as exc:
@@ -436,20 +405,20 @@ def release_runtime_lock(
     expected_payload: Optional[Dict[str, Any]] = None,
 ) -> bool:
     state_dir = resolve_runtime_state_dir_for_read(runtime_dir_or_state_dir)
+    db_path_s = str(db_path or "").strip()
+    db_lock_path = db_scope_lock_path(db_path_s) if db_path_s else ""
+    expected_database = expected_payload.get("db_lock") if expected_payload is not None else None
+    if db_path_s and expected_payload is not None and not isinstance(expected_database, dict):
+        launcher_log_warning(None, "缺少原数据库锁身份，已保留数据库运行锁：path=%s", db_lock_path, state_dir=state_dir)
+        return False
     shell_released = _release_lock_file(
         runtime_lock_path(state_dir),
         expected_pid,
         state_dir=state_dir,
         expected_payload=expected_payload,
     )
-    db_path_s = str(db_path or "").strip()
     if not db_path_s:
         return shell_released
-    db_lock_path = db_scope_lock_path(db_path_s)
-    expected_database = expected_payload.get("db_lock") if expected_payload is not None else None
-    if expected_payload is not None and not isinstance(expected_database, dict):
-        launcher_log_warning(None, "缺少原数据库锁身份，已保留数据库运行锁：path=%s", db_lock_path, state_dir=state_dir)
-        return False
     database_released = _release_lock_file(
         db_lock_path,
         expected_pid,

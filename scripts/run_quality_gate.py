@@ -87,7 +87,11 @@ from tools.quality_gate_support import (  # noqa: E402
     iter_quality_gate_required_tests,
     parse_pytest_collect_nodeids,
 )
-from web.bootstrap import launcher  # noqa: E402
+from web.bootstrap.launcher_contract_result import read_runtime_contract_result  # noqa: E402
+from web.bootstrap.launcher_health import probe_runtime_health_result  # noqa: E402
+from web.bootstrap.launcher_lock_result import read_runtime_lock_result  # noqa: E402
+from web.bootstrap.launcher_paths import resolve_runtime_state_paths  # noqa: E402
+from web.bootstrap.launcher_processes import _pid_matches_contract, _pid_state  # noqa: E402
 
 STARTUP_REGRESSION_ARGS = list(QUALITY_GATE_STARTUP_REGRESSION_ARGS)
 REQUIRED_TEST_ARGS = list(iter_quality_gate_required_tests())
@@ -162,16 +166,6 @@ def _safe_relpath(path: str, start: str) -> str:
         return os.path.relpath(path, start).replace(os.sep, "/")
     except ValueError:
         return os.path.abspath(path).replace(os.sep, "/")
-
-
-def _coerce_runtime_probe_state(value: Any) -> RuntimeProbeState:
-    if isinstance(value, RuntimeProbeState):
-        return value
-    normalized = str(value or "").strip().lower()
-    for state in RuntimeProbeState:
-        if state.value == normalized:
-            return state
-    raise QualityGateError(f"未知运行时探针状态：{value}")
 
 
 def _run_command(
@@ -1463,26 +1457,22 @@ def _require_quality_gate_command_proofs(
 
 
 def _state_paths() -> Dict[str, str]:
-    return launcher.resolve_runtime_state_paths(REPO_ROOT)
+    return resolve_runtime_state_paths(REPO_ROOT)
 
 
-def _load_runtime_state() -> Tuple[Optional[Dict[str, object]], Optional[Dict[str, object]], Dict[str, str]]:
+def _load_runtime_state() -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Dict[str, str]]:
     paths = _state_paths()
     contract_exists = os.path.exists(paths["contract_path"])
     lock_exists = os.path.exists(paths["lock_path"])
-    contract = launcher.read_runtime_contract(REPO_ROOT)
-    lock = launcher.read_runtime_lock(REPO_ROOT)
+    contract_result = read_runtime_contract_result(REPO_ROOT)
+    contract = contract_result.payload if contract_result.ok else None
+    lock_result = read_runtime_lock_result(REPO_ROOT)
+    lock = lock_result.payload if lock_result.ok else None
     if contract_exists and contract is None:
         raise QualityGateError("仓库根运行时契约存在但无法解析：{}".format(paths["contract_path"]))
     if lock_exists and lock is None:
         raise QualityGateError("仓库根运行时锁存在但无法解析：{}".format(paths["lock_path"]))
     return contract, lock, paths
-
-
-def _coerce_int(value: object) -> int:
-    if value is None:
-        return 0
-    return int(cast(Any, value))
 
 
 def _describe_runtime_endpoint(host: Optional[str], port: Optional[int]) -> str:
@@ -1499,36 +1489,29 @@ def _describe_cleanup_hint(paths: Dict[str, str]) -> str:
 
 
 def _describe_uncertain_reason(
-    pid_state: RuntimeProbeState, health_state: RuntimeProbeState, exe_path: str, port: Optional[int]
+    pid_state: RuntimeProbeState, health_state: RuntimeProbeState, exe_path: str
 ) -> str:
     reasons = []
     if pid_state == RuntimeProbeState.UNKNOWN:
         reasons.append("缺少 exe_path 或无法确认 PID 对应可执行文件路径" if not exe_path else "无法确认 PID 对应可执行文件路径")
     if health_state == RuntimeProbeState.ABSENT:
         reasons.append("缺少运行时契约，无法做健康探测")
-    if health_state == RuntimeProbeState.UNKNOWN:
-        reasons.append("缺少合法 port" if port is None or int(port) <= 0 else "健康探测前置条件不完整")
     return "；".join(reasons)
 
 
-def _pid_signal(payload: Optional[Dict[str, object]]) -> Tuple[RuntimeProbeState, Optional[int], Optional[bool], str]:
+def _pid_signal(payload: Optional[Dict[str, Any]]) -> Tuple[RuntimeProbeState, Optional[int], Optional[bool], str]:
     if not payload:
         return RuntimeProbeState.ABSENT, None, None, ""
-    try:
-        pid = _coerce_int(payload.get("pid"))
-    except Exception as exc:
-        raise QualityGateError(f"运行时 pid 非法：{exc}") from exc
+    pid = payload["pid"]
     exe_path = str(payload.get("exe_path") or "").strip()
-    if pid <= 0:
-        return RuntimeProbeState.STALE, pid, False, exe_path
-    pid_state = launcher.runtime_pid_state(pid)
+    pid_state = _pid_state(pid)
     if pid_state is False:
         return RuntimeProbeState.STALE, pid, False, exe_path
     if pid_state is None:
         return RuntimeProbeState.UNKNOWN, pid, None, exe_path
     if not exe_path:
         return RuntimeProbeState.UNKNOWN, pid, None, exe_path
-    pid_match = launcher.runtime_pid_matches_executable(pid, exe_path)
+    pid_match = _pid_matches_contract(pid, exe_path)
     if pid_match is False:
         return RuntimeProbeState.STALE, pid, False, exe_path
     if pid_match is True:
@@ -1536,27 +1519,42 @@ def _pid_signal(payload: Optional[Dict[str, object]]) -> Tuple[RuntimeProbeState
     return RuntimeProbeState.UNKNOWN, pid, None, exe_path
 
 
-def _health_signal(contract: Optional[Dict[str, object]]) -> Tuple[RuntimeProbeState, Optional[str], Optional[int]]:
+_PROBE_PRIORITY = {
+    RuntimeProbeState.ABSENT: 0,
+    RuntimeProbeState.STALE: 1,
+    RuntimeProbeState.UNKNOWN: 2,
+    RuntimeProbeState.ACTIVE: 3,
+}
+
+
+def _effective_pid_signal(
+    contract: Optional[Dict[str, Any]],
+    lock: Optional[Dict[str, Any]],
+) -> Tuple[RuntimeProbeState, Optional[int], Optional[bool], str]:
+    contract_sig = _pid_signal(contract)
+    if lock is None:
+        return contract_sig
+    if contract is None:
+        return _pid_signal(lock)
+    if (lock["pid"], str(lock.get("exe_path") or "").strip()) == (contract_sig[1], contract_sig[3]):
+        return contract_sig
+    lock_sig = _pid_signal(lock)
+    return lock_sig if _PROBE_PRIORITY[lock_sig[0]] > _PROBE_PRIORITY[contract_sig[0]] else contract_sig
+
+
+def _health_signal(contract: Optional[Dict[str, Any]]) -> Tuple[RuntimeProbeState, Optional[str], Optional[int]]:
     if not contract:
         return RuntimeProbeState.ABSENT, None, None
-    host = str(contract.get("host") or "").strip() or "127.0.0.1"
-    try:
-        port = _coerce_int(contract.get("port"))
-    except Exception as exc:
-        raise QualityGateError(f"运行时契约 port 非法：{exc}") from exc
-    if port <= 0:
-        return RuntimeProbeState.UNKNOWN, host, port
-    healthy = bool(launcher.probe_runtime_health(host, port, timeout_s=1.0))
+    host = contract["host"]
+    port = contract["port"]
+    healthy = probe_runtime_health_result(f"http://{host}:{port}", timeout_s=1.0, log_failures=True).ok
     return (RuntimeProbeState.ACTIVE if healthy else RuntimeProbeState.STALE), host, port
 
 
 def _runtime_state_snapshot() -> Dict[str, Any]:
     contract, lock, paths = _load_runtime_state()
-    pid_payload = contract if contract is not None else lock
-    pid_state, pid, pid_match, exe_path = _pid_signal(pid_payload)
+    pid_state, pid, pid_match, exe_path = _effective_pid_signal(contract, lock)
     health_state, host, port = _health_signal(contract)
-    pid_state = _coerce_runtime_probe_state(pid_state)
-    health_state = _coerce_runtime_probe_state(health_state)
     return {
         "contract_present": contract is not None,
         "lock_present": lock is not None,
@@ -1576,40 +1574,49 @@ def _assert_no_active_runtime() -> None:
     if contract is None and lock is None:
         return
 
-    pid_payload = contract if contract is not None else lock
-    pid_state, pid, _pid_match, exe_path = _pid_signal(pid_payload)
+    contract_pid_state, contract_pid, _contract_match, contract_exe = _pid_signal(contract)
     health_state, host, port = _health_signal(contract)
-    pid_state = _coerce_runtime_probe_state(pid_state)
-    health_state = _coerce_runtime_probe_state(health_state)
     endpoint_text = _describe_runtime_endpoint(host, port)
     cleanup_hint = _describe_cleanup_hint(paths)
 
     if (
-        pid_state == RuntimeProbeState.ACTIVE and health_state == RuntimeProbeState.STALE
+        contract_pid_state == RuntimeProbeState.ACTIVE and health_state == RuntimeProbeState.STALE
     ) or (
-        pid_state == RuntimeProbeState.STALE and health_state == RuntimeProbeState.ACTIVE
+        contract_pid_state == RuntimeProbeState.STALE and health_state == RuntimeProbeState.ACTIVE
     ):
         raise QualityGateError(
             "活动实例判定出现矛盾："
-            f"pid_state={pid_state.value} health_state={health_state.value} pid={pid} {endpoint_text} exe_path={exe_path}。{cleanup_hint}"
+            f"pid_state={contract_pid_state.value} health_state={health_state.value} pid={contract_pid} {endpoint_text} exe_path={contract_exe}。{cleanup_hint}"
         )
-    if (
-        pid_state == RuntimeProbeState.UNKNOWN and health_state != RuntimeProbeState.ACTIVE
-    ) or (
-        health_state == RuntimeProbeState.UNKNOWN and pid_state != RuntimeProbeState.ACTIVE
-    ):
-        reason_text = _describe_uncertain_reason(pid_state, health_state, exe_path, port)
+    if contract_pid_state == RuntimeProbeState.UNKNOWN and health_state != RuntimeProbeState.ACTIVE:
+        reason_text = _describe_uncertain_reason(contract_pid_state, health_state, contract_exe)
         raise QualityGateError(
             "活动实例判定不确定："
-            f"pid_state={pid_state.value} health_state={health_state.value} pid={pid} {endpoint_text} exe_path={exe_path}"
+            f"pid_state={contract_pid_state.value} health_state={health_state.value} pid={contract_pid} {endpoint_text} exe_path={contract_exe}"
             + (f"；原因：{reason_text}" if reason_text else "")
             + f"。{cleanup_hint}"
         )
-
-    if pid_state == RuntimeProbeState.ACTIVE or health_state == RuntimeProbeState.ACTIVE:
+    if contract_pid_state == RuntimeProbeState.ACTIVE or health_state == RuntimeProbeState.ACTIVE:
         raise QualityGateError(
-            f"检测到仓库根存在活动 APS 实例，请先退出后再执行门禁：pid={pid} {endpoint_text} exe_path={exe_path}"
+            f"检测到仓库根存在活动 APS 实例，请先退出后再执行门禁：pid={contract_pid} {endpoint_text} exe_path={contract_exe}"
         )
+
+    if lock is not None and (
+        contract is None or (lock["pid"], str(lock.get("exe_path") or "").strip()) != (contract_pid, contract_exe)
+    ):
+        lock_pid_state, lock_pid, _lock_match, lock_exe = _pid_signal(lock)
+        if lock_pid_state == RuntimeProbeState.UNKNOWN:
+            reason_text = _describe_uncertain_reason(lock_pid_state, RuntimeProbeState.ABSENT, lock_exe)
+            raise QualityGateError(
+                "活动实例判定不确定："
+                f"pid_state={lock_pid_state.value} health_state={health_state.value} pid={lock_pid} {endpoint_text} exe_path={lock_exe}"
+                + (f"；原因：{reason_text}" if reason_text else "")
+                + f"。{cleanup_hint}"
+            )
+        if lock_pid_state == RuntimeProbeState.ACTIVE:
+            raise QualityGateError(
+                f"检测到仓库根存在活动 APS 实例，请先退出后再执行门禁：pid={lock_pid} {endpoint_text} exe_path={lock_exe}"
+            )
 
     print(
         "提示：检测到仓库根存在陈旧运行时痕迹，将继续执行；未自动删除：contract={} lock={}".format(

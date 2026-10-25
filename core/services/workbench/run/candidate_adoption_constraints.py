@@ -1,18 +1,21 @@
 """Prove resources, occupied intervals, calendar duration and readiness explicitly."""
 
 from collections import defaultdict
-from dataclasses import asdict
 from datetime import datetime
 
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.services.scheduler.execution.execution_ledger_guard import fact_resource_segments
+from core.services.scheduler.run.schedule_execution_reservations import reserve_execution_machines
 from core.services.scheduler.run.schedule_input_seed_metadata import (
     merged_actual_group_intervals,
     merged_external_group_identity,
 )
 from core.services.workbench.facts.preflight_checks import stored_date
-from core.services.workbench.facts.zero_duration import candidate_point_validator
+from core.services.workbench.facts.zero_duration import (
+    estimate_point_event,
+    internal_duration_hours,
+)
 
 from .input_runtime import runtime_resource_facts
 
@@ -40,32 +43,41 @@ def _resource_overlaps(rows, execution_facts):
             previous_end = end
 
 
-def adoption_downtimes(conn, prepared, payload):
-    actual = prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids
-    rows = [row for row in payload.schedule_rows if row.source == "internal" and row.op_id not in actual]
-    if not rows:
-        return {}
+def adoption_downtimes(prepared, payload=None):
+    if payload is not None:
+        actual = prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids
+        rows = [row for row in payload.schedule_rows if row.source == "internal" and row.op_id not in actual]
+        if not rows:
+            return {}
     # Locked seeds may precede the requested run window. Prove every planned
     # arrangement against downtime at its own time and assigned machine.
-    return runtime_resource_facts(prepared.preflight_facts).downtimes
+    downtimes = runtime_resource_facts(prepared.preflight_facts).downtimes
+    return reserve_execution_machines(downtimes, prepared.execution_reservations)
 
 
-def calendar_duration_conflict(calendar, row, op, batch, machine_downtimes):
+def calendar_duration_conflict(calendar, row, op, batch, machine_downtimes, *, quantity):
     """按真实班次、效率、停机和工时从安排的开工时刻重算一遍；开完工对不上（或效率要兜底）即冲突。"""
+    if row.start_time == row.end_time:
+        start, end = estimate_point_event(calendar, setup_hours=op.setup_hours, unit_hours=op.unit_hours,
+            quantity=quantity, machine_id=row.machine_id, operator_id=row.operator_id,
+            priority=batch.priority, start=row.start_time)
+        return (start, end) != (row.start_time, row.end_time)
+    total = internal_duration_hours(op.setup_hours, op.unit_hours, quantity)
     estimate = estimate_internal_slot(calendar=calendar, op=op, batch=batch,
         machine_id=row.machine_id, operator_id=row.operator_id, base_time=row.start_time,
         prev_end=row.start_time, machine_timeline=(), operator_timeline=(), end_dt_exclusive=None,
         machine_downtimes=machine_downtimes,
-        last_op_type_by_machine=None, abort_after=None)
-    return bool(estimate.efficiency_fallback_used or estimate.start_time != row.start_time
-                or estimate.end_time != row.end_time)
+        last_op_type_by_machine=None, abort_after=None, total_hours_base=total)
+    return (estimate.efficiency_fallback_used or estimate.start_time != row.start_time
+            or estimate.end_time != row.end_time)
 
 
-def _internal(prepared, row, op, batch, validate_point, downtime):
+def _internal(prepared, row, op, batch, downtime):
     if row.start_time == row.end_time:
-        validate_point(row)
+        # validate_candidate 已按同一份 prepared 核对点事件。
         return
-    if calendar_duration_conflict(prepared.cal_svc, row, op, batch, downtime.get(row.machine_id, ())):
+    if calendar_duration_conflict(prepared.cal_svc, row, op, batch, downtime.get(row.machine_id, ()),
+                                  quantity=batch.quantity):
         _block("candidate_calendar_duration_conflict", "候选开完工时间与真实班次、效率、停机或工时不一致。")
 
 
@@ -81,13 +93,18 @@ def external_holds_resources(row):
     return row.machine_id is not None or row.operator_id is not None
 
 
+def external_duration_conflict(calendar, row, op, actual_intervals):
+    expected = actual_intervals.get(row.op_id)
+    if expected is None:
+        days = op.ext_group_total_days if op.ext_merge_mode == "merged" else op.ext_days
+        expected = row.start_time, calendar.add_calendar_days(row.start_time, days)
+    return expected != (row.start_time, row.end_time)
+
+
 def _external(prepared, row, op, actual_intervals):
     if external_holds_resources(row):
         _block("candidate_external_resource_conflict", "外协候选带有未支持的内部资源占用。")
-    actual_period = actual_intervals.get(row.op_id)
-    days = op.ext_group_total_days if op.ext_merge_mode == "merged" else op.ext_days
-    expected = actual_period if actual_period is not None else (row.start_time, prepared.cal_svc.add_calendar_days(row.start_time, days))
-    if expected != (row.start_time, row.end_time):
+    if external_duration_conflict(prepared.cal_svc, row, op, actual_intervals):
         _block("candidate_external_duration_conflict", "外协候选与真实外协周期不一致。")
 
 
@@ -130,27 +147,26 @@ def _protected_arrangement(prepared, checks, row, raw, algo, actual_ids, actual_
     return True
 
 
-def validate_adoption_constraints(conn, prepared, payload):
+def validate_adoption_constraints(prepared, payload):
     checks = prepared.preflight_facts.checks()
     ops = {op.id: op for op in prepared.operations}
+    raw_batches = {batch_id: vars(batch) for batch_id, batch in prepared.batches.items()}
     algo_ops = {op.id: op for op in prepared.algo_ops}
     actual_ids = prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids
-    validate_point = candidate_point_validator(prepared)
-    downtime = adoption_downtimes(conn, prepared, payload)
+    downtime = adoption_downtimes(prepared, payload)
     actual_intervals = adoption_external_intervals(prepared)
     _resource_overlaps(payload.schedule_rows, prepared.execution_facts)
     for row in payload.schedule_rows:
         op, batch = ops[row.op_id], prepared.batches[ops[row.op_id].batch_id]
-        raw = asdict(op)
-        raw.update(machine_id=row.machine_id, operator_id=row.operator_id)
+        raw = {**vars(op), "machine_id": row.machine_id, "operator_id": row.operator_id}
         # Actual production is a fact, not a duration that may be recomputed.
         # validate_candidate + execution guard retain its exact seed and identity.
         if _protected_arrangement(prepared, checks, row, raw, algo_ops[row.op_id], actual_ids, actual_intervals):
             continue
-        code = arrangement_problem(checks, asdict(batch), raw, row.start_time, prepared.normalized_input)
+        code = arrangement_problem(checks, raw_batches[op.batch_id], raw, row.start_time, prepared.normalized_input)
         if code is not None:
             _block(code, _ARRANGEMENT_MESSAGES[code])
         if row.source == "internal":
-            _internal(prepared, row, algo_ops[row.op_id], batch, validate_point, downtime)
+            _internal(prepared, row, algo_ops[row.op_id], batch, downtime)
         else:
             _external(prepared, row, algo_ops[row.op_id], actual_intervals)

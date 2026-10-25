@@ -15,9 +15,15 @@ class BatchExternalContextRepository(BaseRepository):
         return self.fetchone("SELECT * FROM BatchExternalContexts WHERE operation_id=?", (operation_id,))
 
     def for_operations(self, operation_ids):
+        ids = sorted(set(operation_ids))
+        if not ids:
+            return []
         if not self.available():
-            return self._missing_table_rows()
-        ids, rows = sorted(set(operation_ids)), []
+            version = self.fetchone("SELECT version FROM SchemaVersion WHERE id=1")
+            if version is not None and version["version"] < 33:
+                return []
+            raise RuntimeError("Current database is missing BatchExternalContexts.")
+        rows = []
         for start in range(0, len(ids), 400):
             group = ids[start:start + 400]
             rows.extend(self.fetchall("SELECT * FROM BatchExternalContexts WHERE operation_id IN ("
@@ -30,17 +36,6 @@ class BatchExternalContextRepository(BaseRepository):
             JOIN BatchOperations o ON o.id=c.operation_id
             WHERE o.batch_id=? AND c.group_ref=? AND o.piece_id IS ? ORDER BY o.seq,o.id""",
             (batch_id, group_ref, piece_id))
-
-    def _missing_table_rows(self):
-        version = self.fetchone("SELECT version FROM SchemaVersion WHERE id=1")
-        if version is not None and version["version"] < 33:
-            return []
-        raise RuntimeError("Current database is missing BatchExternalContexts.")
-
-    def rows_for_readonly_preflight(self):
-        if not self.available():
-            return self._missing_table_rows()
-        return self.fetchall("SELECT * FROM BatchExternalContexts ORDER BY operation_id")
 
     def mark_template_copy(self, operation_id):
         return self.execute("UPDATE BatchExternalContexts SET origin='template_copy' WHERE operation_id=?", (operation_id,)).rowcount

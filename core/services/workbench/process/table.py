@@ -14,10 +14,6 @@ _STAGE_LABELS = dict(zip(PROCESS_STAGES, ("待导入路线", "待定归属", "�
 def process_table_cells(entity):
     workflow = entity["workflow"]
     stage = workflow["stage"]
-    if stage not in PROCESS_STAGES or workflow["ready"] is not (stage == "ready"):
-        raise WorkbenchCommandRejected("storage_failure", "工艺阶段记录前后不一致，系统不猜确认状态。请刷新重试；仍不行请联系维护人员。", 500)
-    if stage == "ready" and workflow["origin"] != "managed":
-        raise WorkbenchCommandRejected("storage_failure", "这条历史遗留工艺没有单独确认过，不能算已就绪。请到基础资料逐道工序确认。", 500)
     cell = text_cell(_STAGE_LABELS[stage])
     return {"business_code": text_cell(entity["business_code"]), "label": text_cell(entity["label"]),
             "operation_count": number_cell(entity["relationships"]["operation_count"]),
@@ -80,7 +76,7 @@ class ProcessTable:
         index = ResourceTableIndex({ref: self.rows[ref] for ref in refs}, self.cells)
         return index._options(column, search), len(refs)
 
-    def facets(self, query, column, search="", number=1, size=100):
+    def facets(self, query, column, search, number, size):
         validate_process_facet_request(column, search, number, size)
         options, row_count = self._facet_options(query, column, search)
         total = len(options)
@@ -94,7 +90,7 @@ class ProcessTable:
         return {"column": column, "basis": "toolbar_scope", "options": values, "row_count": row_count,
                 "page": {"number": number, "size": size, "total": total, "pages": pages}}
 
-    def facet_selection(self, query, column, search="", size=100):
+    def facet_selection(self, query, column, search, size):
         validate_process_facet_request(column, search, 1, size)
         options, _ = self._facet_options(query, column, search)
         if len(options) > MAX_FACET_KEYS:

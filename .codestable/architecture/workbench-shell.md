@@ -171,7 +171,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 - 共享控件：`ResourceControls.jsx` 的 Modal 在打开时记住启动器按钮，关闭后按“启动器 → 父弹窗启动器 → 最近可聚焦容器（`#wb-view-panel[tabindex=-1]`）”恢复焦点（vm 合同 `tests/workbench/modal_focus_restore_contract.cjs`）；带 tooltip 原因的 Button 改用 `aria-disabled="true"` 保持可聚焦并拦截点击。
 - 壳层：`main.jsx` 最前面加 `.wb-skip-link` 跳到主内容；帮助链接带 `page=<view id>`，`page_manuals_registry.py` 以视图 id 为键；`theme.js`/`WorkbenchDensity.js` 值未变不通知；滚动记忆 200 ms 尾沿节流并在 `pagehide` 一次性写入。
 - 样式 token：主按钮走 `--wb-primary-button-bg/-text/-hover-bg`（深色映射 `--ui-primary-hover` 底 + `--ui-bg` 字）；深色弹窗遮罩靠 `--wb-modal-backdrop-dim`（`backdrop-filter`）；深色表头底色统一 `--ui-surface-muted`；固定操作列阴影 `--wb-scroll-shadow-right/-left`；产能链收起态由 `section.rail[data-collapsed]` 驱动。
-- 文案：`tools/ui_copy_glossary.json` 新增停用词“证据”，`scan.backend` 扩到 `core/services/execution` 及会经 `_domain_failure`/`WorkbenchCommandRejected` 原样上屏的领域服务文件；`WorkbenchTerms.js` 新增 `refresh_latest`、`accept_latest`、`personal_calendar`、`plan_version`、`download_started`、`data_as_of`、`run_statuses`、`candidate_statuses` 等共享叫法。
+- 文案：`tools/ui_copy_glossary.json` 新增停用词“证据”，`scan.backend` 扩到 `core/services/execution` 及会经 `domain_failure`/`WorkbenchCommandRejected` 原样上屏的领域服务文件；`WorkbenchTerms.js` 新增 `refresh_latest`、`accept_latest`、`personal_calendar`、`plan_version`、`download_started`、`data_as_of`、`run_statuses`、`candidate_statuses` 等共享叫法。
 
 ### 2026-10-13 同次候选方案比较
 

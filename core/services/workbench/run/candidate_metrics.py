@@ -7,6 +7,7 @@ from core.services.workbench.facts.resource_pressure import pressure_from_index
 from core.services.workbench.facts.resource_projection import (
     RESOURCE_METRIC_VERSION,
     ResourceTaskIndex,
+    normalize_resource_calendar,
     resource_summary,
 )
 
@@ -46,7 +47,8 @@ def resource_comparison(before, after, start, end, baseline_available, resources
                                                  (after, True, task_intervals))]
     result = []
     for resource, (_, calendar) in zip(resources, factory.iter_resources(specs, start, end)):
-        sides = [pressure_from_index(index, resource, calendar) for index in indexes]
+        normalized_calendar = normalize_resource_calendar(calendar, start, end)
+        sides = [pressure_from_index(index, resource, normalized_calendar) for index in indexes]
         previous, current = (side["peak_utilization"] for side in sides)
         result.append({"resource_ref": resource["ref"], "kind": resource["kind"], "label": resource["label"],
                        "before": sides[0], "after": sides[1],

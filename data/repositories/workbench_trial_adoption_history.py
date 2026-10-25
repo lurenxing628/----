@@ -14,10 +14,6 @@ class TrialAdoptionHistoryRepository:
         row = self.conn.execute("SELECT * FROM WorkbenchCommandReceipts WHERE request_key=?", (key,)).fetchone()
         return None if row is None else dict(row)
 
-    def history_rows(self, version):
-        return [dict(row) for row in self.conn.execute(
-            "SELECT * FROM ScheduleHistory WHERE version=? ORDER BY schedule_time DESC,id DESC LIMIT 2", (version,))]
-
     def receipt_action(self, request_key):
         row = self.conn.execute("SELECT action,context_ref FROM WorkbenchCommandReceipts WHERE request_key=?", (request_key,)).fetchone()
         return None if row is None else tuple(row)

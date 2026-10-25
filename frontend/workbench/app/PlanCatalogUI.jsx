@@ -68,5 +68,5 @@
           onPrevious={() => setIndex(index - 1)} onNext={next} /></div>}
     </section>;
   }
-  window.PlanCatalogUI = { Catalog, Identity };
+  window.PlanCatalogUI = { Catalog };
 })();

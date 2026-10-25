@@ -59,6 +59,7 @@
     const [chainTarget, setChainTarget] = React.useState(null);
     const [locateNotice, setLocateNotice] = React.useState('');
     const [exportError, setExportError] = React.useState(null), [exportNotice, setExportNotice] = React.useState(''), [restore, setRestore] = React.useState(saved ? saved.position : seed.persisted ? seed.persisted.position : null);
+    const [chainOpen, setChainOpen] = React.useState(false);
     const board = React.useRef(null), detailsPanel = React.useRef(null), frame = React.useRef(null), pending = React.useRef(!saved && !seed.persisted && seed.report && seed.selected ? { task: seed.selected } : null), downloadController = React.useRef(null);
     const defaultWindowApplied = React.useRef(!!saved || !!seed.persisted);
     const measuredWidth = React.useRef(null), zoomRef = React.useRef(zoom), restoreRef = React.useRef(restore);
@@ -70,7 +71,8 @@
     }, [view.details]);
     function collapseDetails() {
       patch({ details: false });
-      document.querySelector('[aria-controls="actual-gantt-detail"]').focus();
+      const button = typeof document !== 'undefined' && typeof document.querySelector === 'function' ? document.querySelector('[aria-controls="actual-gantt-detail"]') : null;
+      if (button) button.focus();
     }
     React.useEffect(() => {
       const controller = new AbortController(); let active = true;
@@ -181,11 +183,11 @@
     function pan(left) { if (board.current) { board.current.scrollLeft = Math.max(0, left); measure(); } }
     function locate(taskRef = view.selected) {
       if (!model) return;
-      if (!data.items.some(item => item.task.task_ref === taskRef)) {
+      if (!(taskIndex ? taskIndex.has(taskRef) : data.items.some(item => item.task.task_ref === taskRef))) {
         setLocateNotice('这道工序不在当前日期、资源或批次范围内，请调整范围后定位。'); return;
       }
       setLocateNotice('');
-      const hidden = !model.items.some(item => item.task.task_ref === taskRef);
+      const hidden = !(model.shownRefs ? model.shownRefs.has(taskRef) : model.items.some(item => item.task.task_ref === taskRef));
       const collapsed = { ...view.collapsed };
       model.groups.filter(g => g.members.has(taskRef)).forEach(g => delete collapsed[g.id]);
       pending.current = { task: taskRef }; patch({ selected: taskRef, report: taskRef === view.selected ? view.report : null, collapsed: hidden ? {} : collapsed,
@@ -214,6 +216,8 @@
     const geometry = React.useMemo(() => model ? window.GanttGraph.paths(active, model, width, {
       top: Math.max(0, position.top - 52), height: position.height, left: position.left, width: viewport
     }, { locationIndex }) : null, [active, model, width, position.top, position.left, position.height, viewport, locationIndex]);
+    const axis = React.useMemo(() => model ? window.GanttPresentation.axis({ start: model.start, end: model.end, width, left: position.left, viewport }) : null,
+      [model && model.start, model && model.end, width, position.left, viewport]);
     function clearTarget() { setHover(null); setChainTarget(null); patch({ selected: null, report: null, onlySelected: false }); }
     const hoverMark = value => { setHover(value); setChainTarget(value && value.item ? [value.item.task.task_ref] : null); };
     const viewScope = () => ({ ...scope, snapshot_ref: result.meta.snapshot_ref, format: 'csv', local_query: view.query.trim(), late_filter: view.late,
@@ -270,11 +274,11 @@
           <window.GanttGraphLayer.Controls graph={data.gantt_graph} enabled={view.chain} onChange={chain => patch({ chain })}
             active={active} geometry={geometry} onClear={clearTarget} />
           {locateNotice && <p className="fg-note" role="status">{locateNotice}</p>}
-          {view.selected && !model.items.some(i => i.task.task_ref === view.selected) && <div role="status" className="fg-note">选中工序在当前筛选范围外，请调整筛选。</div>}
+          {view.selected && !(model.shownRefs ? model.shownRefs.has(view.selected) : model.items.some(i => i.task.task_ref === view.selected)) && <div role="status" className="fg-note">选中工序在当前筛选范围外，请调整筛选。</div>}
           {view.report && selected && !report && <div role="alert" className="fg-note">原报工记录不在所选工序中，未改指其他记录。</div>}
           <div className="fg-board" ref={board} data-actual-scroll tabIndex={0} aria-label="分次报工甘特" style={{ '--fg-label': labelWidth + 'px' }} onScroll={() => { cancelAnimationFrame(frame.current); frame.current = requestAnimationFrame(measure); }}>
             <div className="fg-board-inner" style={{ width: labelWidth + width, height: model.height + 52 }}><div className="fg-axis"><div className="fg-corner">{M.views[view.mode]} / 工序<small className="fg-muted fg-corner-note">含夜间</small></div>
-              <div className="fg-ticks" style={{ width }}><window.GanttPresentationUI.Axis axis={window.GanttPresentation.axis({ start: model.start, end: model.end, width, left: position.left, viewport })} width={width} />
+              <div className="fg-ticks" style={{ width }}><window.GanttPresentationUI.Axis axis={axis} width={width} />
                 <i className="fg-clock" style={{ left: (model.asOf - model.start) / (model.end - model.start) * width }} title={'数据截至 ' + M.time(result.meta.as_of)} aria-hidden="true" /></div></div>
               <window.ActualGanttRows {...{ model, view, width, viewport, labelWidth, patch }} left={position.left} top={position.top} height={position.height} dense={data.task_count >= 1000}
                 onSelect={select} onHover={hoverMark} onChainTarget={setChainTarget} active={active} />
@@ -296,11 +300,11 @@
               {onNavigate && <Button icon="arrow-right" onClick={() => navigate('field')}>到现场记录核对或补齐</Button>}
             </div></details>
             <details className="wb-gantt-detail-section" open><summary>完整工艺路线</summary><div className="wb-gantt-detail-section-body">
-              <window.GanttRouteList index={graph} targetRef={selected.task.task_ref} loadedRefs={new Set(model.items.map(item => item.task.task_ref))}
+              <window.GanttRouteList index={graph} targetRef={selected.task.task_ref} loadedRefs={model.shownRefs}
                 onSelect={ref => { locate(ref); }} />
             </div></details>
-            {data.gantt_graph.state === 'available' && data.gantt_graph.critical_task_refs.length > 0 && <details className="wb-gantt-detail-section"><summary>计划关键链</summary><div className="wb-gantt-detail-section-body">
-              <Chain index={graph} model={model} onLocate={locate} /></div></details>}
+            {data.gantt_graph.state === 'available' && data.gantt_graph.critical_task_refs.length > 0 && <details className="wb-gantt-detail-section" open={chainOpen} onToggle={e => setChainOpen(e.currentTarget.open)}><summary>计划关键链</summary>{chainOpen && <div className="wb-gantt-detail-section-body">
+              <Chain index={graph} model={model} onLocate={locate} /></div>}</details>}
           </> : <p className="fg-muted">点击工序查看详情与完整工艺路线。</p>}</div>
         </aside>}</div></>}
       {hover && model && <div className="fg-tip" role="tooltip" style={{ left: Math.max(8, Math.min(hover.x + 12, window.innerWidth - 368)), top: Math.max(8, Math.min(hover.y + 12, window.innerHeight - 360)) }}>{hover.title || M.describe(hover.item, model.labels, hover.report).join('\n')}</div>}

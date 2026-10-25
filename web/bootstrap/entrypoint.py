@@ -19,25 +19,23 @@ from .factory import (
     resolve_startup_debug_flag,
     serve_runtime_app,
     should_own_runtime_resources,
-    should_register_runtime_lifecycle_handlers,
     should_use_runtime_reloader,
 )
-from .launcher import (
-    acquire_runtime_lock,
+from .launcher_cleanup_result import delete_runtime_contract_files_result
+from .launcher_contracts import (
     clear_launch_error,
-    current_runtime_owner,
-    default_chrome_profile_dir,
-    delete_runtime_contract_files,
-    pick_bind_host,
-    pick_port,
-    release_runtime_lock,
-    resolve_prelaunch_log_dir,
-    stop_runtime_from_dir,
-    write_launch_error,
     write_runtime_contract_file,
 )
+from .launcher_network import pick_bind_host, pick_port
 from .launcher_observability import launcher_log_warning
-from .launcher_paths import resolve_runtime_db_path
+from .launcher_paths import (
+    current_runtime_owner,
+    default_chrome_profile_dir,
+    resolve_prelaunch_log_dir,
+    resolve_runtime_db_path,
+)
+from .launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
+from .launcher_stop import stop_runtime_from_dir
 from .paths import runtime_base_dir
 from .workbench_request_lifecycle import WorkbenchRequestHandler
 from .workbench_run_lifecycle import install_run_lifecycle, release_runtime_after_jobs, stop_run_runtime
@@ -50,7 +48,6 @@ PUBLIC_LAUNCH_ERROR_MESSAGE = "应用启动失败：程序没有正常启动，�
 class EntryPointDeps:
     create_app: Callable[[], Flask]
     clear_launch_error: Callable[..., Any]
-    write_launch_error: Callable[..., Any]
     current_runtime_owner: Callable[[], str]
     resolve_prelaunch_log_dir: Callable[[str], str]
     acquire_runtime_lock: Callable[..., Any]
@@ -64,7 +61,6 @@ class EntryPointDeps:
     serve_runtime_app: Callable[..., Any]
     should_use_runtime_reloader: Callable[[bool], bool]
     should_own_runtime_resources: Callable[[bool], bool]
-    should_register_runtime_lifecycle_handlers: Callable[[bool], bool]
     atexit_register: Callable[..., Any]
     # 锁先于 create_app 的归属判定所需（app 尚不存在时解析 DEBUG）；带默认值以兼容既有直接构造。
     resolve_startup_debug_flag: Callable[[], bool] = resolve_startup_debug_flag
@@ -98,12 +94,11 @@ def _default_deps(ui_mode: str) -> EntryPointDeps:
     return EntryPointDeps(
         create_app=lambda: create_app_with_mode(ui_mode),
         clear_launch_error=clear_launch_error,
-        write_launch_error=write_launch_error,
         current_runtime_owner=current_runtime_owner,
         resolve_prelaunch_log_dir=resolve_prelaunch_log_dir,
         acquire_runtime_lock=acquire_runtime_lock,
         release_runtime_lock=release_runtime_lock,
-        delete_runtime_contract_files=delete_runtime_contract_files,
+        delete_runtime_contract_files=delete_runtime_contract_files_result,
         write_runtime_contract_file=write_runtime_contract_file,
         default_chrome_profile_dir=default_chrome_profile_dir,
         pick_bind_host=pick_bind_host,
@@ -112,7 +107,6 @@ def _default_deps(ui_mode: str) -> EntryPointDeps:
         serve_runtime_app=serve_runtime_app,
         should_use_runtime_reloader=should_use_runtime_reloader,
         should_own_runtime_resources=should_own_runtime_resources,
-        should_register_runtime_lifecycle_handlers=should_register_runtime_lifecycle_handlers,
         atexit_register=__import__("atexit").register,
         resolve_startup_debug_flag=resolve_startup_debug_flag,
         resolve_runtime_db_path=resolve_runtime_db_path,
@@ -122,17 +116,16 @@ def _default_deps(ui_mode: str) -> EntryPointDeps:
 
 
 def _write_launch_error_with_observability(
-    deps: EntryPointDeps,
     runtime_dir: str,
     message: str,
     log_dir: Optional[str],
     *,
     logger,
     context: str,
-) -> bool:
+) -> None:
     public_message = PUBLIC_LAUNCH_ERROR_MESSAGE
     result = launcher_log_warning(
-        None,
+        logger,
         "%s：%s",
         context,
         message,
@@ -143,18 +136,16 @@ def _write_launch_error_with_observability(
         public_launch_error_message=public_message,
     )
     if not result.file_ok:
-        return False
+        return
     if not result.error_file_ok:
         launcher_log_warning(
-            None,
+            logger,
             "写入启动错误提示文件失败。",
             runtime_dir=runtime_dir,
             state_dir=log_dir,
             write_launch_error=False,
             logger_level="error",
         )
-        return False
-    return True
 
 
 def configure_runtime_contract(
@@ -224,15 +215,7 @@ def app_main(
     lock_scope_target = prelaunch_log_dir if is_frozen else runtime_dir
     lock_scope_log_dir = prelaunch_log_dir if is_frozen else None
     runtime_owner = deps.current_runtime_owner()
-    try:
-        deps.clear_launch_error(prelaunch_log_dir)
-    except Exception as exc:
-        launcher_log_warning(
-            None,
-            "清理历史启动错误文件失败，已继续启动：%s",
-            exc,
-            state_dir=prelaunch_log_dir,
-        )
+    deps.clear_launch_error(prelaunch_log_dir)
 
     # 双开防线：运行时锁必须先于 create_app 的一切共享库副作用（ensure_schema 迁移、atexit 退出备份注册）。
     # 锁被占的第二实例在触库前即退出（rc=13）——不会在运行实例底下迁移 schema，也不会挂上退出备份。
@@ -257,7 +240,7 @@ def app_main(
         app = deps.create_app()
     except Exception as e:
         _write_launch_error_with_observability(
-            deps, runtime_dir, str(e), prelaunch_log_dir, logger=None, context="应用启动失败"
+            runtime_dir, str(e), prelaunch_log_dir, logger=None, context="应用启动失败"
         )
         return 14
     return _serve_created_app(
@@ -277,7 +260,7 @@ def _serve_created_app(deps, app, *, ui_mode, runtime_dir, prelaunch_log_dir,
     try:
         if recovery_required and (not owns_runtime_resources or deps.install_run_runtime is None):
             _write_launch_error_with_observability(
-                deps, runtime_dir, "恢复宿主必须持有原数据库运行锁。", prelaunch_log_dir,
+                runtime_dir, "恢复宿主必须持有原数据库运行锁。", prelaunch_log_dir,
                 logger=app.logger, context="恢复宿主启动失败")
             return 14
         if owns_runtime_resources:
@@ -291,7 +274,7 @@ def _serve_created_app(deps, app, *, ui_mode, runtime_dir, prelaunch_log_dir,
                                      cfg_log_dir=app.config["LOG_DIR"], logger_level="info")
             except Exception as exc:
                 _write_launch_error_with_observability(
-                    deps, runtime_dir, str(exc), prelaunch_log_dir, logger=app.logger,
+                    runtime_dir, str(exc), prelaunch_log_dir, logger=app.logger,
                     context="排产运行恢复检查失败",
                 )
                 return 14
@@ -305,7 +288,7 @@ def _serve_created_app(deps, app, *, ui_mode, runtime_dir, prelaunch_log_dir,
                 host, port = prepared_server.server_address[:2]
             except Exception as exc:
                 _write_launch_error_with_observability(
-                    deps, runtime_dir, str(exc), prelaunch_log_dir, logger=app.logger,
+                    runtime_dir, str(exc), prelaunch_log_dir, logger=app.logger,
                     context="监听端口绑定失败",
                 )
                 return 16
@@ -316,7 +299,7 @@ def _serve_created_app(deps, app, *, ui_mode, runtime_dir, prelaunch_log_dir,
         if owns_runtime_resources:
             rc = _publish_runtime_contract(
                 deps, app, runtime_dir=runtime_dir, host=host, port=port,
-                runtime_owner=runtime_owner, ui_mode=ui_mode, debug=debug,
+                runtime_owner=runtime_owner, ui_mode=ui_mode,
                 lock_state=runtime_lock_state,
             )
             if rc is not None:
@@ -353,7 +336,7 @@ def _preferred_listen_port(*, logger) -> int:
     if raw_port is not None and str(raw_port).strip() != "":
         try:
             preferred_port = int(str(raw_port).strip())
-        except Exception as exc:
+        except ValueError as exc:
             preferred_port = 5000
             safe_log(logger, "warning", "APS_PORT=%r 非法，已回退到默认候选端口 5000：%s", raw_port, exc)
     return preferred_port
@@ -403,11 +386,9 @@ def _acquire_runtime_lock_before_app(
             exe_path=sys.executable,
             db_path=runtime_db_path,
         )
-        if not isinstance(acquired, dict):
-            raise RuntimeError("未取得可核对的数据库运行锁，不能启动排产后台。")
     except Exception as e:
         _write_launch_error_with_observability(
-            deps, runtime_dir, str(e), prelaunch_log_dir, logger=None, context="获取运行时锁失败"
+            runtime_dir, str(e), prelaunch_log_dir, logger=None, context="获取运行时锁失败"
         )
         return 13
     runtime_lock_state["payload"] = acquired
@@ -425,7 +406,6 @@ def _publish_runtime_contract(
     port,
     runtime_owner,
     ui_mode,
-    debug,
     lock_state: Dict[str, Any],
 ) -> Optional[int]:
     # 契约失败用 app.logger（区别于锁/create_app 失败用 None），文案不统一化。返回 None=成功继续；15=契约失败。
@@ -443,10 +423,9 @@ def _publish_runtime_contract(
         lock_state["contract"] = publication["payload"]
     except Exception as e:
         _write_launch_error_with_observability(
-            deps, runtime_dir, str(e), app.config.get("LOG_DIR"), logger=app.logger, context="写入运行时契约失败"
+            runtime_dir, str(e), app.config.get("LOG_DIR"), logger=app.logger, context="写入运行时契约失败"
         )
         return 15
-    if deps.should_register_runtime_lifecycle_handlers(debug):
-        # First registered, this callback runs after the factory's backup.
-        lock_state["contract_cleanup_dir"] = os.path.dirname(publication["path"])
+    # First registered, this callback runs after the factory's backup.
+    lock_state["contract_cleanup_dir"] = os.path.dirname(publication["path"])
     return None

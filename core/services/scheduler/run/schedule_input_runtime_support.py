@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+from functools import partial
+from itertools import groupby
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.algorithm_runtime.internal_slot import validate_internal_hours
@@ -8,21 +10,12 @@ from core.errors import AppError, ErrorCode, ValidationError
 from core.models import BatchOperation
 from core.models.enums import SourceType
 
-from .schedule_execution_reservations import ExecutionResourceReservation, reserve_execution_machines
-from .schedule_input_contracts import _build_freeze_window_seed_with_meta, _op_seq
 from .schedule_input_seed_metadata import (
     merged_external_group_identity,
     protected_interval_problem,
     with_external_seed_metadata,
     with_merged_actual_group_seeds,
 )
-
-
-def _algo_op_id(op: Any) -> int:
-    try:
-        return int(getattr(op, "id", 0) or 0)
-    except (TypeError, ValueError):
-        return 0
 
 
 def _resolve_algo_ops_to_schedule(
@@ -34,16 +27,16 @@ def _resolve_algo_ops_to_schedule(
     raise_schedule_empty_result_fn: Any,
     derived_group_op_ids: Optional[Set[int]] = None,
 ) -> List[Any]:
-    fixed_seed_op_ids = set(frozen_op_ids) | set(execution_fixed_op_ids or set())
-    algo_ops_to_schedule = [op for op in algo_ops if _algo_op_id(op) not in fixed_seed_op_ids]
+    fixed_seed_op_ids = frozen_op_ids | execution_fixed_op_ids
+    algo_ops_to_schedule = [op for op in algo_ops if op.id not in fixed_seed_op_ids]
     if algo_ops_to_schedule:
         return algo_ops_to_schedule
     if derived_group_op_ids:
         # Unreported members still produce a plan result, but their already
         # started physical cycle has been represented by exact derived seeds.
         return []
-    algo_op_ids = {_algo_op_id(op) for op in list(algo_ops or []) if _algo_op_id(op) > 0}
-    if algo_op_ids and algo_op_ids <= set(execution_fixed_op_ids or set()):
+    algo_op_ids = {op.id for op in algo_ops}
+    if algo_op_ids and algo_op_ids <= execution_fixed_op_ids:
         raise_schedule_empty_result_fn(
             f"所选工序都已经开工或暂停，不能自动移动，本次未执行{run_label}。请先按现场情况处理。",
             reason="all_operations_fixed_by_execution_facts",
@@ -56,13 +49,13 @@ def _resolve_algo_ops_to_schedule(
 
 
 def _ensure_internal_runtime_hours(batches: Dict[str, Any], algo_ops: List[Any]) -> None:
-    for op in list(algo_ops or []):
-        if str(getattr(op, "source", "") or "").strip().lower() != SourceType.INTERNAL.value:
+    for op in algo_ops:
+        if op.source != SourceType.INTERNAL.value:
             continue
-        batch_id = str(getattr(op, "batch_id", "") or "").strip()
+        batch_id = op.batch_id
         batch = batches.get(batch_id)
         if batch is None:
-            raise ValidationError(f"自制工序 {getattr(op, 'op_code', '-') or '-'} 找不到所属批次，无法计算总工时。", field="batch_id")
+            raise ValidationError(f"自制工序 {op.op_code or '-'} 找不到所属批次，无法计算总工时。", field="batch_id")
         # 单一真相源：直接复用算法层 internal_slot.validate_internal_hours 校验自制工时。
         # 它把 setup/unit/quantity 的缺失/0 统一按 0 处理、只拦非有限数与负总工时（`< 0`），
         # 与录入/导入/编辑/模型默认“缺失补 0、总工时 0 合法”的全系统口径一致（含 quantity==0：
@@ -72,19 +65,18 @@ def _ensure_internal_runtime_hours(batches: Dict[str, Any], algo_ops: List[Any])
             validate_internal_hours(op, batch)
         except ValueError as exc:
             raise ValidationError(
-                f"自制工序 {getattr(op, 'op_code', '-') or '-'} 的工时不合法，请检查换型时间、单件工时和数量。",
+                f"自制工序 {op.op_code or '-'} 的工时不合法，请检查换型时间、单件工时和数量。",
                 field="work_hours",
                 details={
                     "reason": "invalid_internal_work_hours",
-                    "op_id": int(getattr(op, "id", 0) or 0),
+                    "op_id": int(op.id),
                     "batch_id": batch_id,
-                    "op_code": str(getattr(op, "op_code", "") or ""),
+                    "op_code": op.op_code or "",
                 },
             ) from exc
 
 
 def _load_runtime_resource_inputs(
-    svc: Any,
     *,
     cfg: Any,
     algo_ops: List[Any],
@@ -102,7 +94,6 @@ def _load_runtime_resource_inputs(
         meta=downtime_meta,
     )
     resource_pool = build_resource_pool_fn(
-        svc,
         cfg=cfg,
         algo_ops=resource_pool_ops,
         meta=resource_pool_meta,
@@ -117,67 +108,40 @@ def _load_runtime_resource_inputs(
     return downtime_meta, resource_pool_meta, downtime_map, resource_pool
 
 
-def _build_runtime_support_inputs(
+def prepare_runtime_seeds(
     svc: Any,
     *,
-    cfg: Any,
-    prev_version: int,
-    start_dt_norm: datetime,
     run_label: str,
     batches: Dict[str, Any],
     operations: List[BatchOperation],
-    reschedulable_operations: List[BatchOperation],
     algo_ops: List[Any],
+    frozen_op_ids: Set[int],
+    freeze_seed_results: List[Dict[str, Any]],
     execution_fixed_op_ids: Set[int],
     execution_completed_op_ids: Set[int],
     execution_seed_results: List[Dict[str, Any]],
-    execution_reservations: List[ExecutionResourceReservation],
-    strict_mode: bool,
-    build_freeze_window_seed_fn: Any,
-    load_machine_downtimes_fn: Any,
-    build_resource_pool_fn: Any,
-    extend_downtime_map_for_resource_pool_fn: Any,
     raise_schedule_empty_result_fn: Any,
     validate_fixed_operator_qualifications_fn: Any,
     validate_completed_seed_constraints_fn: Any = None,
-) -> Tuple[
-    Set[int],
-    List[Dict[str, Any]],
-    List[str],
-    Dict[str, Any],
-    List[Any],
-    Dict[str, Any],
-    Dict[str, Any],
-    Dict[str, Any],
-    Any,
-    int,
-]:
-    frozen_op_ids, seed_results, algo_warnings, freeze_meta = _build_freeze_window_seed_with_meta(
-        build_freeze_window_seed_fn,
-        svc,
-        cfg=cfg,
-        prev_version=prev_version,
-        start_dt=start_dt_norm,
-        operations=operations,
-        reschedulable_operations=reschedulable_operations,
-        strict_mode=bool(strict_mode),
-    )
-
-    actual_op_ids = set(execution_fixed_op_ids or ()) | set(execution_completed_op_ids or ())
+) -> Tuple[Set[int], List[Dict[str, Any]], List[Any]]:
+    actual_op_ids = execution_fixed_op_ids | execution_completed_op_ids
     seed_results = _merge_execution_and_freeze_seed_results(
         execution_seed_results=execution_seed_results,
-        freeze_seed_results=seed_results,
+        freeze_seed_results=freeze_seed_results,
     )
+    # 合并外协组身份按本次 algo_ops 算一次，组内派生原安排和完工下游校验（含分件校验）共用。
+    groups = {op.id: merged_external_group_identity(op) for op in algo_ops}
     seed_results, derived_group_ids = with_merged_actual_group_seeds(seed_results, algo_ops=algo_ops,
-        actual_op_ids=actual_op_ids)
+        groups=groups, actual_op_ids=actual_op_ids)
     frozen_op_ids = frozen_op_ids | derived_group_ids
     seed_results = with_external_seed_metadata(seed_results, algo_ops=algo_ops)
-    validate_seeds = validate_completed_seed_constraints_fn or _validate_completed_downstream_seed_constraints
+    validate_seeds = validate_completed_seed_constraints_fn or partial(
+        _validate_completed_downstream_seed_constraints, operations=operations,
+    )
     validate_seeds(
         seed_results=seed_results,
-        operations=operations,
-        algo_ops=algo_ops,
-        execution_completed_op_ids=set(execution_completed_op_ids or set()),
+        groups=groups,
+        execution_completed_op_ids=execution_completed_op_ids,
     )
     algo_ops_to_schedule = _resolve_algo_ops_to_schedule(
         algo_ops=algo_ops,
@@ -189,57 +153,11 @@ def _build_runtime_support_inputs(
     )
     _ensure_internal_runtime_hours(batches, algo_ops_to_schedule)
     validate_fixed_operator_qualifications_fn(svc.conn, algo_ops_to_schedule, logger=svc.logger)
-    downtime_meta, resource_pool_meta, downtime_map, resource_pool = _load_runtime_resource_inputs(
-        svc,
-        cfg=cfg,
-        algo_ops=algo_ops,
-        resource_pool_ops=algo_ops_to_schedule,
-        start_dt_norm=start_dt_norm,
-        load_machine_downtimes_fn=load_machine_downtimes_fn,
-        build_resource_pool_fn=build_resource_pool_fn,
-        extend_downtime_map_for_resource_pool_fn=extend_downtime_map_for_resource_pool_fn,
-    )
-    optimizer_seed_version = max(int(prev_version) + 1, 1)
-    downtime_map = reserve_execution_machines(downtime_map, execution_reservations)
-
-    return (
-        frozen_op_ids,
-        seed_results,
-        algo_warnings,
-        freeze_meta,
-        algo_ops_to_schedule,
-        downtime_meta,
-        resource_pool_meta,
-        downtime_map,
-        resource_pool,
-        optimizer_seed_version,
-    )
-
-
-def _seed_op_id(seed: Dict[str, Any]) -> int:
-    try:
-        return int(seed.get("op_id") or 0)
-    except (TypeError, ValueError):
-        return 0
+    return frozen_op_ids, seed_results, algo_ops_to_schedule
 
 
 def _seed_resource(value: Any) -> str:
     return str(value or "").strip()
-
-
-def _seed_batch_id(seed: Dict[str, Any]) -> str:
-    return str(seed.get("batch_id") or "").strip()
-
-
-def _seed_seq(seed: Dict[str, Any]) -> int:
-    try:
-        return int(seed.get("seq") or 0)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"工序 seq 值无效（无法转为整数）：{seed.get('seq')!r}") from exc
-
-
-def _seed_end(seed: Dict[str, Any]) -> Any:
-    return seed.get("end_time")
 
 
 def _raise_downstream_seed_conflict(*, op_id: int, completed_op_id: int) -> None:
@@ -269,48 +187,84 @@ def _validate_downstream_seed_pair(completed_seed, seed, *, completed_op_id, op_
         _raise_downstream_seed_conflict(op_id=int(op_id), completed_op_id=int(completed_op_id))
 
 
+def _update_latest_completed(best, second, cand):
+    rank = (cand[0], -cand[1])
+    if best is None:
+        return cand, None
+    best_rank = (best[0], -best[1])
+    if best[3] is not None and best[3] == cand[3]:
+        return (cand if rank > best_rank else best), second
+    if rank > best_rank:
+        return cand, best
+    if second is None or rank > (second[0], -second[1]):
+        second = cand
+    return best, second
+
+
+def validate_completed_downstream_intervals(
+    *,
+    operations_in_scope: Any,
+    groups: Dict[int, Any],
+    completed_intervals: Dict[int, Dict[str, Any]],
+    validate_pair_fn: Any,
+) -> None:
+    if not completed_intervals:
+        return
+    by_batch, by_group = {}, {}
+    for batch_id, seq, op_id in operations_in_scope:
+        by_batch.setdefault(batch_id, []).append((seq, op_id))
+        group = groups.get(op_id)
+        if group is not None:
+            by_group.setdefault(group, []).append(op_id)
+    for group_op_ids in by_group.values():
+        completed_in_group = [oid for oid in group_op_ids if oid in completed_intervals]
+        if not completed_in_group:
+            continue
+        anchor_op_id = min(completed_in_group)
+        anchor_interval = completed_intervals[anchor_op_id]
+        for op_id in group_op_ids:
+            if op_id != anchor_op_id:
+                validate_pair_fn(anchor_interval, op_id, completed_op_id=anchor_op_id)
+    for pairs in by_batch.values():
+        pairs.sort()
+        best, second = None, None
+        for _, same_seq_pairs in groupby(pairs, key=lambda item: item[0]):
+            seq_op_ids = [op_id for _, op_id in same_seq_pairs]
+            if best is not None:
+                for op_id in seq_op_ids:
+                    op_group = groups.get(op_id)
+                    chosen = second if (best[3] is not None and best[3] == op_group) else best
+                    if chosen is not None:
+                        validate_pair_fn(chosen[2], op_id, completed_op_id=chosen[1])
+            for op_id in seq_op_ids:
+                interval = completed_intervals.get(op_id)
+                if interval is not None:
+                    best, second = _update_latest_completed(
+                        best, second, (interval["end_time"], op_id, interval, groups.get(op_id)))
+
+
 def _validate_completed_downstream_seed_constraints(
     *,
     seed_results: List[Dict[str, Any]],
     operations: List[BatchOperation],
-    algo_ops: List[Any],
+    groups: Dict[int, Any],
     execution_completed_op_ids: Set[int],
 ) -> None:
     if not seed_results or not execution_completed_op_ids:
         return
-    seed_by_op_id = {
-        _seed_op_id(seed): seed
-        for seed in list(seed_results or [])
-        if _seed_op_id(seed) > 0
+    seed_by_op_id = {int(seed["op_id"]): seed for seed in seed_results}
+    completed_intervals = {
+        completed_op_id: seed_by_op_id[completed_op_id]
+        for completed_op_id in execution_completed_op_ids
     }
-    groups = {op.id: merged_external_group_identity(op) for op in algo_ops}
-    by_batch, by_group = {}, {}
-    for op in operations:
-        op_id = _algo_op_id(op)
-        by_batch.setdefault(str(getattr(op, "batch_id", "") or "").strip(), []).append(op)
-        group = groups.get(op_id)
-        if group is not None:
-            by_group.setdefault(group, set()).add(op_id)
-    for completed_op_id in sorted(set(execution_completed_op_ids or set())):
-        completed_seed = seed_by_op_id.get(int(completed_op_id))
-        if completed_seed is None or not isinstance(_seed_end(completed_seed), datetime):
-            continue
-        completed_batch_id = _seed_batch_id(completed_seed)
-        completed_seq = _seed_seq(completed_seed)
-        if not completed_batch_id or completed_seq <= 0:
-            continue
-        downstream = {_algo_op_id(op) for op in by_batch.get(completed_batch_id, ())
-                      if _op_seq(op) > completed_seq}
-        group = groups.get(completed_op_id)
-        if group is not None:
-            downstream.update(by_group.get(group, ()))
-        downstream.discard(completed_op_id)
-        for op_id in sorted(downstream):
-            seed = seed_by_op_id.get(int(op_id))
-            if seed is None:
-                continue
-            _validate_downstream_seed_pair(completed_seed, seed,
-                completed_op_id=completed_op_id, op_id=op_id, groups=groups)
+    validate_completed_downstream_intervals(
+        operations_in_scope=((op.batch_id, op.seq, op.id) for op in operations if op.id in seed_by_op_id),
+        groups=groups,
+        completed_intervals=completed_intervals,
+        validate_pair_fn=lambda completed_seed, op_id, *, completed_op_id: _validate_downstream_seed_pair(
+            completed_seed, seed_by_op_id[op_id], completed_op_id=completed_op_id, op_id=op_id, groups=groups
+        ),
+    )
 
 
 def _seed_conflicts(execution_seed: Dict[str, Any], freeze_seed: Dict[str, Any]) -> bool:
@@ -331,9 +285,9 @@ def _raise_seed_conflict(op_id: int) -> None:
 
 
 def _with_seed_source(seed: Dict[str, Any], source: str) -> Dict[str, Any]:
-    out = dict(seed)
-    out["seed_source"] = source
-    return out
+    if seed.get("seed_source") == source:
+        return seed
+    return {**seed, "seed_source": source}
 
 
 def _merge_execution_and_freeze_seed_results(
@@ -342,15 +296,12 @@ def _merge_execution_and_freeze_seed_results(
     freeze_seed_results: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
     execution_by_op_id = {
-        _seed_op_id(seed): _with_seed_source(seed, "execution_fact")
-        for seed in list(execution_seed_results or [])
-        if _seed_op_id(seed) > 0
+        int(seed["op_id"]): _with_seed_source(seed, "execution_fact")
+        for seed in execution_seed_results
     }
     merged: Dict[int, Dict[str, Any]] = {}
-    for seed in list(freeze_seed_results or []):
-        op_id = _seed_op_id(seed)
-        if op_id <= 0:
-            continue
+    for seed in freeze_seed_results:
+        op_id = int(seed["op_id"])
         freeze_seed = _with_seed_source(seed, "freeze_window")
         execution_seed = execution_by_op_id.get(op_id)
         if execution_seed is not None:
@@ -360,5 +311,5 @@ def _merge_execution_and_freeze_seed_results(
             continue
         merged[op_id] = freeze_seed
     for op_id, seed in execution_by_op_id.items():
-        merged[int(op_id)] = seed
+        merged[op_id] = seed
     return [merged[op_id] for op_id in sorted(merged)]

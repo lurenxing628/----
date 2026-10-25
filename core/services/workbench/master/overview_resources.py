@@ -102,7 +102,12 @@ def resource_links(graph):
     machine_types = machine_type_index(facts.rows("Machines"), facts.rows("MachineOpTypes"))
     for row in facts.rows("Machines"):
         entity = graph.by_key[("equipment", row["machine_id"])]
-        for code in sorted(machine_types[row["machine_id"]]) or [None]:
+        codes = sorted(machine_types[row["machine_id"]])
+        if not facts.available("MachineOpTypes"):
+            graph.unknown(entity, "可做工种", "MachineOpTypes", relation=True)
+            if not codes:
+                continue
+        for code in codes or [None]:
             target = graph.related(entity, "opType", code, "可做工种", "Machines + MachineOpTypes", "关联设备", required=True)
             if target and not supports_source(facts.index("OpTypes", "op_type_id")[code]["category"], "internal"):
                 graph.issue(entity, "machine.category", "设备能力不支持自制", "请核对设备所选工种的适用归属。")
@@ -166,7 +171,7 @@ def _person_fields(graph, entity, row, profiles, shifts):
         else:
             graph.field(entity, "班次状态", _shown(shift["status"], STATUS_TEXT), "WorkbenchShiftProfiles.status")
             if shift["status"] != "active":
-                graph.issue(entity, "shift.inactive", "人员班次未启用", "所在班次是" + shift["name"] + "，这个班次当前不是启用状态。")
+                graph.issue(entity, "shift.inactive", "人员班次未启用", "所在班次是" + text(shift["name"]) + "，这个班次当前不是启用状态。")
         declared = bool(profile and profile["skills_declared"] or any(item["relation"] == "登记技能" for item in entity["relations"]))
         graph.field(entity, "技能登记情况", "已明确登记" if declared else "老数据，未单独登记", "WorkbenchOperatorProfiles.skills_declared + OperatorSkill")
         if not declared:
@@ -186,12 +191,15 @@ def _op_resources(graph):
         entity = graph.by_key[("opType", row["op_type_id"])]
         checks = []
         if supports_source(row["category"], "internal"):
-            checks.extend((("关联设备", "Machines", "设备"), ("技能人员", "OperatorSkill", "技能人员")))
+            checks.extend((
+                ("关联设备", ("Machines", "MachineOpTypes"), "Machines", "设备"),
+                ("技能人员", ("OperatorSkill",), "OperatorSkill", "技能人员"),
+            ))
         if supports_source(row["category"], "external"):
-            checks.append(("关联供应商", "Suppliers", "供应商"))
-        for relation, source, label in checks:
-            if not graph.facts.available(source):
-                graph.unknown(entity, label + "关联数", source, relation=True)
+            checks.append(("关联供应商", ("Suppliers", "WorkbenchSupplierOpTypes"), "Suppliers", "供应商"))
+        for relation, sources, source, label in checks:
+            if not graph.facts.available(*sources):
+                graph.unknown(entity, label + "关联数", " + ".join(sources), relation=True)
             else:
                 count = sum(item["relation"] == relation for item in entity["relations"])
                 graph.field(entity, label + "关联数", count, source)

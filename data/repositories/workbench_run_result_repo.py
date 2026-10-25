@@ -19,9 +19,11 @@ class WorkbenchRunResultRepository:
 
     def save(self, run_ref, candidates):
         for row in candidates:
-            self.conn.execute("INSERT INTO WorkbenchRunCandidates VALUES (?,?,?,?,?,?,?)",
+            self.conn.execute(
+                "INSERT INTO WorkbenchRunCandidates(candidate_ref,run_ref,candidate_key,sequence,status,task_count,artifact_json) VALUES (?,?,?,?,?,?,?)",
                 (row["candidate_ref"], run_ref, row["key"], row["sequence"], row["status"], row["task_count"], row["artifact_json"]))
-            self.conn.executemany("INSERT INTO WorkbenchRunCandidateTasks VALUES (?,?,?,?,?)",
+            self.conn.executemany(
+                "INSERT INTO WorkbenchRunCandidateTasks(row_ref,candidate_ref,operation_ref,ordinal,payload_json) VALUES (?,?,?,?,?)",
                 [(task["row_ref"], row["candidate_ref"], task["operation_ref"], ordinal, task["payload_json"])
                  for ordinal, task in enumerate(row["tasks"])])
 

@@ -49,28 +49,48 @@ def date_text(value, issues, label):
     return str(value)
 
 
+def _active_refs(facts):
+    return {(row["kind"], row["entity_key"]): row["ref"] for row in facts["WorkbenchEntityRefs"] if row["active"]}
+
+
+def _entity_ref(refs, kind, key):
+    if key is None:
+        return None
+    value = refs.get((kind, str(key)))
+    if value is None:
+        raise WorkbenchCommandRejected("storage_failure", "有资料缺少系统编号，请联系维护人员核对资料。", 500)
+    return value
+
+
+def batch_choices(facts, links):
+    refs = _active_refs(facts)
+    return {"parts": [{"ref": _entity_ref(refs, "part", row["part_no"]), "business_code": row["part_no"], "label": row["part_name"]}
+                      for row in facts["Parts"]],
+            **{name: [{"ref": _entity_ref(refs, kind, row[key]), "business_code": row[key], "label": row["name"], "status": row.get("status")}
+                      for row in facts[table]]
+               for name, kind, table, key in (("machines", "machine", "Machines", "machine_id"),
+                                              ("operators", "operator", "Operators", "operator_id"),
+                                              ("suppliers", "supplier", "Suppliers", "supplier_id"))},
+            "authorizations": [{"machine_ref": _entity_ref(refs, "machine", mid), "operator_ref": _entity_ref(refs, "operator", oid)}
+                               for oid, mid in sorted(links)]}
+
+
 class BatchProjection:
     def __init__(self, facts):
         self.facts = facts
+        self.resources = BatchResourceFacts(facts)
+        self.refs = _active_refs(facts)
+        self.catalogs = self.resources.catalogs
         self.material_day = facts["material_day"]
         self.material_availability = MaterialAvailability(facts)
         self.relations = index_relations(facts)
-        self.refs = {(row["kind"], row["entity_key"]): row["ref"] for row in facts["WorkbenchEntityRefs"] if row["active"]}
         self.parts = {row["part_no"]: row for row in facts["Parts"]}
-        self.resources = BatchResourceFacts(facts)
-        self.catalogs = self.resources.catalogs
         self.external_contexts = {row["operation_id"]: row for row in facts["BatchExternalContexts"]}
         self.external_members = member_index(self.external_contexts, facts["BatchOperations"])
         self.machine_types = self.resources.machine_types
-        self.links = self.resources.links
 
     def ref(self, kind, key):
-        if key is None:
-            return None
-        value = self.refs.get((kind, str(key)))
-        if value is None:
-            raise WorkbenchCommandRejected("storage_failure", "有资料缺少系统编号，请联系维护人员核对资料。", 500)
-        return value
+        return _entity_ref(self.refs, kind, key)
 
     def resource(self, kind, key):
         if key is None:
@@ -105,6 +125,8 @@ class BatchProjection:
                 issues.append(issue("这家供应商没有登记这道外协工序的能力。"))
             if group and group["merge_mode"] == "merged":
                 group["total_days"] = numeric(group["total_days"], issues, "整组周期", positive=True)
+                # 合并组按整段周期排产，成员保留的逐序旧周期不生效，不再当工时原值校验或展示。
+                numbers["ext_days"] = None
             else:
                 numbers["ext_days"] = numeric(row["ext_days"], issues, "外协周期", positive=True)
         else:
@@ -146,7 +168,7 @@ class BatchProjection:
         _, _, execution, issues, _, _ = self._operation_values(batch, row, include_details=False)
         return {"completed": execution["completed"], "execution_state": execution["execution_state"], "issues": issues}
 
-    def operation(self, batch, row, protected=False):
+    def operation(self, batch, row, protected):
         group, numbers, execution, issues, context, ref = self._operation_values(batch, row, include_details=True)
         resources = {kind: self.resource(kind, row[kind + "_id"]) for kind in ("machine", "operator", "supplier", "op_type")}
         return {"ref": ref, "operation_ref": ref, "business_code": row["op_code"], "sequence": public_sequence(row["seq"]),
@@ -168,8 +190,14 @@ class BatchProjection:
         part = self.parts.get(row["part_no"])
         if part is None:
             raise WorkbenchCommandRejected("storage_failure", "这个批次对应的零件已经不在了。请刷新重试；仍不行请联系维护人员。", 500)
-        ops = [self.operation(row, op, facts["protected"]) if include_operations else self.operation_summary(row, op)
-               for op in sorted(facts["operations"], key=lambda op: (op["seq"], op["id"]))]
+        if include_operations:
+            # 存量工序号可能混入非整数，先排整数，坏值排在后面照常展示，不让排序本身报错。
+            ops = [self.operation(row, op, facts["protected"])
+                   for op in sorted(facts["operations"], key=lambda op: (0, op["seq"], op["id"])
+                                    if type(op["seq"]) is int else (1, repr(op["seq"]), op["id"]))]
+        else:
+            # 摘要只取件数和完工统计，不需要工序顺序。
+            ops = [self.operation_summary(row, op) for op in facts["operations"]]
         fields = {key: row[key] for key in FIELDS}
         fields["quantity"] = numeric(row["quantity"], issues, "数量", integer=True)
         for key in ("due_date", "ready_date"):
@@ -213,7 +241,8 @@ class BatchProjection:
                          "available_quantity": numeric(row["available_qty"], issues, "到料数量"),
                          "ready_status": row["ready_status"], "issues": issues,
                          "operation_ref": self.facts["operation_refs"].get(availability.stages.get(row["id"])),
-                         "arrivals": [{"arrival_date": item["arrival_date"], "quantity": item["quantity"]}
+                         "arrivals": [{"arrival_date": date_text(item["arrival_date"], issues, "到料日期"),
+                                       "quantity": numeric(item["quantity"], issues, "分批到料数量", positive=True)}
                                       for item in availability.arrivals[row["id"]]]})
         return {"basis": "batch_material_requirements_not_stock", "requirements": rows, "count": len(rows),
                 "display_status": availability.readiness_state(batch, self.material_day)[0], "display_date": date_text(batch["ready_date"], [], "齐套日期")}

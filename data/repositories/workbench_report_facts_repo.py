@@ -3,18 +3,10 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Iterable
 
 from .base_repo import BaseRepository
 from .schedule_detail_query import build_schedule_detail_sql
 from .schedule_time_sql import register_schedule_time_sql_functions, time_dt
-
-_NAME_SQL_PREFIX = {
-    "machine": "SELECT machine_id, name FROM Machines WHERE machine_id IN (",
-    "operator": "SELECT operator_id, name FROM Operators WHERE operator_id IN (",
-}
-RESOURCE_NAME_KINDS = tuple(_NAME_SQL_PREFIX)
-_NAME_CHUNK = 400
 
 
 class WorkbenchReportFactsRepository(BaseRepository):
@@ -22,7 +14,7 @@ class WorkbenchReportFactsRepository(BaseRepository):
         super().__init__(conn, logger=logger)
         register_schedule_time_sql_functions(conn)
 
-    def plan_rows(self, version, *, date_from=None, date_to=None, batch_id=None, limit):
+    def plan_rows(self, version, *, date_from, date_to, batch_id, limit):
         where, params = ["s.version = ?"], [version]
         if date_from is not None:
             # 和报表投影一致：按工厂当地的计划完工日（含起止日期），不是工序时间重叠。
@@ -34,8 +26,15 @@ class WorkbenchReportFactsRepository(BaseRepository):
         return self.fetchall(build_schedule_detail_sql(where_clauses=where) + " LIMIT ?", params + [limit])
 
     def plan_resource_keys(self, version):
-        return self.fetchall("""SELECT DISTINCT bo.batch_id, s.machine_id, s.operator_id
-            FROM Schedule s LEFT JOIN BatchOperations bo ON bo.id=s.op_id WHERE s.version=?""", (version,))
+        return self.fetchall(
+            """SELECT DISTINCT bo.batch_id, s.machine_id, m.name AS machine_name, s.operator_id, o.name AS operator_name
+            FROM Schedule s
+            LEFT JOIN BatchOperations bo ON bo.id = s.op_id
+            LEFT JOIN Machines AS m ON m.machine_id = s.machine_id
+            LEFT JOIN Operators AS o ON o.operator_id = s.operator_id
+            WHERE s.version = ?""",
+            (version,),
+        )
 
     def actual_resource_refs(self, plan_ref):
         """Only resource identities used by the plan's operations; no ledger projections."""
@@ -58,16 +57,3 @@ class WorkbenchReportFactsRepository(BaseRepository):
             values = json.loads(row["values_json"])
             refs.update(values[field] for field in ("actual_machine_ref", "actual_operator_ref") if values.get(field))
         return refs
-
-    def resource_names(self, kind: str, keys: Iterable[str]) -> Dict[str, Any]:
-        """{str(业务键): name}，按 400 个一批查询；kind 只能是 machine / operator。"""
-        if kind not in _NAME_SQL_PREFIX:
-            raise ValueError("unsupported resource kind: " + repr(kind))
-        prefix = _NAME_SQL_PREFIX[kind]
-        values = list(keys)
-        labels: Dict[str, Any] = {}
-        for start in range(0, len(values), _NAME_CHUNK):
-            chunk = values[start:start + _NAME_CHUNK]
-            sql = prefix + ",".join("?" for _ in chunk) + ")"
-            labels.update((str(row[0]), row[1]) for row in self.execute(sql, chunk))
-        return labels

@@ -66,6 +66,7 @@ class MaterialAvailability:
         self._review_checks = set()
         self._strict_releases = {}
         self._stage_releases = {}
+        self._readiness = {}
         for row in self.operations.values():
             self.operations_by_batch[row["batch_id"]].append(row)
         for row in tables.get("BatchMaterials", []):
@@ -79,6 +80,20 @@ class MaterialAvailability:
             self._use_sequences[requirement_id] = self._use_sequence(requirement)
         return self._use_sequences[requirement_id]
 
+    def _group_bounds(self, batch_id):
+        if batch_id not in self._group_sequences:
+            lows, highs, keys = {}, {}, {}
+            for item in self.operations_by_batch[batch_id]:
+                member_context = self.contexts.get(item["id"])
+                if member_context is not None and member_context["merge_mode"] == "merged":
+                    key = context_group_key(member_context)
+                    keys[item["id"]] = key
+                    lows[key] = min(lows.get(key, item["seq"]), item["seq"])
+                    piece_key = item.get("piece_id"), key
+                    highs[piece_key] = max(highs.get(piece_key, item["seq"]), item["seq"])
+            self._group_sequences[batch_id] = lows, highs, keys
+        return self._group_sequences[batch_id]
+
     def _use_sequence(self, requirement):
         op_id = self.stages.get(requirement["id"])
         if op_id is None:
@@ -90,18 +105,8 @@ class MaterialAvailability:
             raise WorkbenchCommandRejected("material_stage_invalid", "分阶段用料请选择整批工序，单件分支须先合并核对。")
         context = self.contexts.get(op_id)
         if context and context["merge_mode"] == "merged":
-            batch_id = op["batch_id"]
-            if batch_id not in self._group_sequences:
-                groups, keys = {}, {}
-                for item in self.operations_by_batch[batch_id]:
-                    member_context = self.contexts.get(item["id"])
-                    if member_context is not None:
-                        key = context_group_key(member_context)
-                        keys[item["id"]] = key
-                        groups[key] = min(groups.get(key, item["seq"]), item["seq"])
-                self._group_sequences[batch_id] = groups, keys
-            groups, keys = self._group_sequences[batch_id]
-            return groups[keys[op_id]]
+            lows, _highs, keys = self._group_bounds(op["batch_id"])
+            return lows[keys[op_id]]
         return op["seq"]
 
     def _amount(self, requirement, field, *, positive=False):
@@ -156,38 +161,72 @@ class MaterialAvailability:
         self._review_checks.add(key)
 
     def readiness_state(self, batch, day):
-        rows = self.requirements[batch["batch_id"]]
-        if not any(row["id"] in self.reviews for row in rows):
-            return self._unreviewed_state(batch, rows)
-        try:
-            self.verify_review(batch)
-            amounts = [(self.available(row, day), self._amount(row, "required_qty", positive=True)) for row in rows]
-        except WorkbenchCommandRejected as exc:
-            return None, [{"code": exc.code, "message": str(exc)}]
-        return ("yes" if all(covers_quantity(available, required) for available, required in amounts) else
-                "partial" if any(available > 0 for available, _required in amounts) else "no"), []
+        diagnosis = self.readiness_diagnostics(batch, day)
+        problems = diagnosis["batch_problems"] + [problem for row in diagnosis["requirements"].values()
+                                                   for problem in row["problems"]]
+        return diagnosis["status"], problems
 
-    def _unreviewed_state(self, batch, rows):
-        """未核对（v36 前）的需求与排产检查同一规则：批次标记为齐套，且每条需求都已到齐。
+    def readiness_diagnostics(self, batch, day):
+        """Keep requirement defects separate from shared batch evidence.
 
-        这类需求没有分次到料记录，只看保存的到料数量和需求自身的齐套标记。
+        This is a display/preflight assessment, independent of the lazy release
+        checks: inspecting a later requirement must not block an earlier stage.
+        Unreviewed requirements retain the original batch readiness mark, but an
+        invalid quantity makes effective readiness unknown for every raw mark.
         """
-        if batch["ready_status"] != "yes" or not rows:
-            return batch["ready_status"], []
-        try:
-            amounts = [(self._amount(row, "available_qty"), self._amount(row, "required_qty", positive=True)) for row in rows]
-        except WorkbenchCommandRejected as exc:
-            return None, [{"code": exc.code, "message": str(exc)}]
-        if all(covers_quantity(available, required) and row["ready_status"] == "yes"
-               for row, (available, required) in zip(rows, amounts)):
-            return "yes", []
-        return ("partial" if any(available > 0 for available, _required in amounts) else "no"), []
+        key = batch["batch_id"], batch["quantity"], batch["ready_status"], day
+        if key in self._readiness:
+            return self._readiness[key]
+        rows = self.requirements[batch["batch_id"]]
+        reviewed = any(row["id"] in self.reviews for row in rows)
+        batch_problems = []
+        if reviewed:
+            try:
+                self.verify_review(batch)
+            except WorkbenchCommandRejected as exc:
+                batch_problems.append({"code": exc.code, "message": str(exc)})
+        requirements = {}
+        for row in rows:
+            row_reviewed = row["id"] in self.reviews
+            amounts, problems = {}, []
+            for field, positive in (("required_qty", True), ("available_qty", False)):
+                try:
+                    amounts[field] = self._amount(row, field, positive=positive)
+                except WorkbenchCommandRejected as exc:
+                    amounts[field] = None
+                    problems.append({"code": exc.code, "message": str(exc), "field": field})
+            available, required = amounts["available_qty"], amounts["required_qty"]
+            if row_reviewed and available is not None:
+                try:
+                    available = self.available(row, day)
+                except WorkbenchCommandRejected as exc:
+                    available = None
+                    problems.append({"code": exc.code, "message": str(exc), "field": "arrivals"})
+            requirements[row["id"]] = {"available": available, "required": required, "problems": problems,
+                "ready": not problems and covers_quantity(available, required) and (row_reviewed or row["ready_status"] == "yes")}
+        if batch_problems or any(item["problems"] for item in requirements.values()):
+            status = None
+        elif not reviewed and (batch["ready_status"] != "yes" or not rows):
+            status = batch["ready_status"]
+        elif all(item["ready"] for item in requirements.values()):
+            status = "yes"
+        else:
+            status = "partial" if any(item["available"] > 0 for item in requirements.values()) else "no"
+        result = {"status": status, "batch_problems": batch_problems, "requirements": requirements}
+        self._readiness[key] = result
+        return result
 
     def operation_release(self, batch, operation, strategy):
         self.verify_review(batch)
         batch_id = batch["batch_id"]
         if strategy == "stage":
-            return self._stage_release(batch_id, operation["seq"])
+            op_id = operation.get("id")
+            context = self.contexts.get(op_id) if op_id is not None else None
+            seq = operation["seq"]
+            if context and context["merge_mode"] == "merged":
+                _lows, highs, keys = self._group_bounds(batch_id)
+                seq = highs.get((operation.get("piece_id"), keys[op_id]), seq)
+            return self._stage_release(batch_id, seq)
         if batch_id not in self._strict_releases:
             rows = self.requirements[batch_id]
             for row in rows:

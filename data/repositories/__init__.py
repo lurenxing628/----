@@ -34,7 +34,6 @@ if TYPE_CHECKING:
     from .operator_repo import OperatorRepository
     from .part_operation_repo import PartOperationRepository
     from .part_repo import PartRepository
-    from .resource_team_repo import ResourceTeamRepository
     from .schedule_history_repo import ScheduleHistoryRepository
     from .schedule_repo import ScheduleRepository
     from .supplier_repo import SupplierRepository
@@ -66,7 +65,6 @@ _EXPORTS = {
     "OperatorRepository": ".operator_repo",
     "PartOperationRepository": ".part_operation_repo",
     "PartRepository": ".part_repo",
-    "ResourceTeamRepository": ".resource_team_repo",
     "ScheduleHistoryRepository": ".schedule_history_repo",
     "ScheduleRepository": ".schedule_repo",
     "SupplierRepository": ".supplier_repo",
@@ -97,7 +95,6 @@ __all__ = [
     "OperatorRepository",
     "PartOperationRepository",
     "PartRepository",
-    "ResourceTeamRepository",
     "ScheduleHistoryRepository",
     "ScheduleRepository",
     "SupplierRepository",

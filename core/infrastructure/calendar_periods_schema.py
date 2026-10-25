@@ -1,7 +1,7 @@
 """Optional multiple daily work periods without reinterpreting legacy rows."""
 
-from .migration_common import column_exists
-from .schema_structure import SchemaStructure, schema_objects
+from .schema_probe import cached_structure
+from .schema_structure import SchemaStructure
 from .workbench_metadata_schema import canonical_sql
 
 
@@ -25,14 +25,13 @@ def objects():
 
 
 def contract_issues(conn, *, structure=None):
-    actual = schema_objects(conn, structure=structure)
+    structure = structure or cached_structure(conn) or SchemaStructure(conn)
+    actual = structure.sql
     issues = [("missing_calendar_periods:" if name not in actual else "invalid_calendar_periods:") + name
               for name, sql in objects().items()
               if name not in actual or canonical_sql(sql) != canonical_sql(actual[name] or "")]
     for table in ("WorkCalendar", "OperatorCalendar"):
-        present = ("periods_json" in {row[1] for row in structure.table_info(table)} if structure is not None
-                   else column_exists(conn, table, "periods_json"))
-        if not present:
+        if "periods_json" not in {row[1] for row in structure.table_info(table)}:
             issues.append("missing_calendar_periods:" + table + ".periods_json")
     return issues
 

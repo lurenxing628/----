@@ -25,6 +25,14 @@
     return [31, year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
   }
   function monthKey(year, month) { return String(year).padStart(4, '0') + '-' + String(month).padStart(2, '0'); }
+  function monthRange(target) {
+    const prefix = monthKey(target.year, target.month);
+    return { start_date: prefix + '-01', end_date: prefix + '-' + monthDays(target.year, target.month) };
+  }
+  function isStale(command) {
+    const error = command && command.error, code = error && (error.code || error.error && error.error.code);
+    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
+  }
   function DayEditor({ day, draft, setDraft, disabled, error, onSave, onClear, saveReason, clearReason, clearing, onClearing }) {
     const rest = draft.type === 'rest';
     // 上班但工作时段全部移除：能保存，但排产按 0 工时不排这个人，与全局日历同一句提醒。
@@ -104,8 +112,7 @@
     const [editBase, setEditBase] = React.useState(null);
     const [selected, setSelected] = React.useState(null), [draft, setDraft] = React.useState(null);
     const [mode, setMode] = React.useState('day');
-    const [range, setRange] = React.useState(() => ({ start_date: monthKey(month.year, month.month) + '-01',
-      end_date: monthKey(month.year, month.month) + '-' + monthDays(month.year, month.month) }));
+    const [range, setRange] = React.useState(() => monthRange(month));
     const [preview, setPreview] = React.useState(null), [busy, setBusy] = React.useState(false);
     const [error, setError] = React.useState(null), [clearing, setClearing] = React.useState(false);
     const mounted = React.useRef(true), lastResult = React.useRef(null);
@@ -156,7 +163,16 @@
     async function changeMonth(next) {
       if (!next || !await confirmDraftTransition()) return;
       if (!command.reset()) return;
-      setError(null); setClearing(false); setSelected(null); setDraft(null); setMonth(next);
+      setError(null); setPreview(null); setClearing(false); setSelected(null); setDraft(null);
+      setMonth(next); setRange(monthRange(next));
+    }
+    function updateDraft(next) {
+      setDraft(next); setError(null);
+      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+    }
+    function updateRange(next) {
+      setRange(next); setPreview(null); setError(null);
+      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
     }
     async function toggleMode() {
       const abandonDraft = dirty;
@@ -210,6 +226,10 @@
     const clearReason = done ? '' : capability('calendar_delete');
     const rangeReason = done ? '' : !preview ? '请先预检要清除的日期。' : !preview.data.count ? '这段时间没有要清除的日期。'
       : capability('calendar_range_clear');
+    const shownError = error || command.error;
+    const activePaths = !editorData ? [] : mode === 'range' ? ['start_date', 'end_date']
+      : current && draft && !(clearing && (current.explicit || done))
+        ? [...(draft.type !== 'rest' && draft.periods == null ? ['fields.shiftStart', 'fields.shiftEnd'] : []), 'fields.eff', 'fields.note'] : [];
     return <div className="plana resource-calendar wb-operator-calendar">
       <Modal title={(entity.business_code || '') + ' · ' + window.WorkbenchTerms.personal_calendar} icon="calendar-days" onClose={close} guardOwner={owner} locked={command.locked}
         footer={<Button onClick={close} reason={command.locked ? '结果还没确认，暂时不能关闭。' : ''}>{done ? '完成' : '关闭'}</Button>}>
@@ -245,13 +265,13 @@
                 onClick={() => openDay(cell)}><span className="d">{cell.day}</span>
                 <span className="tag" style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{meta.text}</span></button>;
             })}</div>}
-          {editorData && mode === 'day' && current && draft && <DayEditor day={current} draft={draft} setDraft={setDraft}
-            disabled={disabled} error={error} onSave={save} onClear={clearDay} saveReason={saveReason} clearReason={clearReason}
-            clearing={clearing && (current.explicit || done)} onClearing={value => { setClearing(value); setError(null); }} />}
+          {editorData && mode === 'day' && current && draft && <DayEditor day={current} draft={draft} setDraft={updateDraft}
+            disabled={disabled} error={shownError} onSave={save} onClear={clearDay} saveReason={saveReason} clearReason={clearReason}
+            clearing={clearing && (current.explicit || done)} onClearing={value => { setClearing(value); setError(null); if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset(); }} />}
           {editorData && mode === 'day' && !current && <p role="status">点一天开始维护。</p>}
-          {editorData && mode === 'range' && <RangeClear range={range} setRange={next => { setRange(next); setPreview(null); }} disabled={disabled} error={error}
+          {editorData && mode === 'range' && <RangeClear range={range} setRange={updateRange} disabled={disabled} error={shownError}
             preview={preview} onPreview={previewRange} onConfirm={confirmRange} reason={rangeReason} busy={busy} />}
-          <ErrorBox error={error} /><Feedback command={command} />
+          <ErrorBox error={error} excludePaths={activePaths} /><Feedback command={command} excludePaths={error ? [] : activePaths} />
           {staleDraft && <div role="status"><p>这一天已被修改，旧草稿不会覆盖最新配置。采用最新配置会放弃本次未保存的内容。</p><Button disabled={command.locked || request.loading} onClick={() => { setDraft({ ...O.draftOf(current), date: current.date }); setEditBase(current); setError(null); command.reset(); }}>采用最新配置并重新填写</Button></div>}
           {done && <RefreshResult state={combinedRefresh} onRefresh={() => {
             if (refreshState && refreshState.error && onRefresh) onRefresh();

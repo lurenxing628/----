@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from core.infrastructure.safe_files import remove_fixed_file
 
@@ -18,7 +18,7 @@ from .launcher_paths import (
     runtime_lock_path,
     runtime_log_dir,
 )
-from .launcher_runtime_lock import RuntimeLockError, _lock_identity_fields, runtime_lock_mutation_guard
+from .launcher_runtime_lock import RuntimeLockError, lock_identity_fields, runtime_lock_mutation_guard
 
 _MIRROR_CONTRACT_MATCH_KEYS = (
     "contract_version",
@@ -103,13 +103,13 @@ def _cleanup_ownership_failure(
     if lock_result.status != LOCK_STATUS_MISSING:
         if not lock_result.ok:
             return RuntimeCleanupFailure(lock_result.path, "ownership_unavailable", lock_result.reason or lock_result.error)
-        if expected_lock is None or _lock_identity_fields(lock_result.payload or {}) != _lock_identity_fields(expected_lock):
+        if expected_lock is None or lock_identity_fields(cast(Dict[str, Any], lock_result.payload)) != lock_identity_fields(expected_lock):
             return RuntimeCleanupFailure(lock_result.path, "ownership_changed", "运行时锁归属已变化，已保留当前实例文件。")
     contract_result = read_runtime_contract_result(log_dir)
     if contract_result.status != CONTRACT_STATUS_MISSING:
         if not contract_result.ok:
             return RuntimeCleanupFailure(contract_result.path, "ownership_unavailable", contract_result.reason or contract_result.error)
-        if expected_contract is None or not _contracts_match(contract_result.payload or {}, expected_contract):
+        if expected_contract is None or not contracts_match(cast(Dict[str, Any], contract_result.payload), expected_contract):
             return RuntimeCleanupFailure(contract_result.path, "ownership_changed", "运行时契约归属已变化，已保留当前实例文件。")
     if expected_lock is None and expected_contract is None and any(os.path.lexists(path) for path in _cleanup_paths(log_dir)):
         return RuntimeCleanupFailure(runtime_lock_path(log_dir), "ownership_unavailable", "缺少原实例身份，已保留运行时文件。")
@@ -127,7 +127,7 @@ def _remove_contract_artifacts(
         attempted_paths.append(path)
         try:
             removed = remove_fixed_file(path, allow_symlink=False)
-        except Exception as exc:
+        except OSError as exc:
             launcher_log_warning(None, "删除运行时契约相关文件失败：path=%s error=%s", path, exc, state_dir=log_dir)
             failures.append(RuntimeCleanupFailure(path=path, reason="remove_failed", error=str(exc)))
         else:
@@ -196,7 +196,7 @@ def _normalize_contract_value(key: str, value: Any) -> str:
     return text
 
 
-def _contracts_match(left: dict, right: dict) -> bool:
+def contracts_match(left: dict, right: dict) -> bool:
     for key in _MIRROR_CONTRACT_MATCH_KEYS:
         if _normalize_contract_value(key, left.get(key)) != _normalize_contract_value(key, right.get(key)):
             return False
@@ -208,9 +208,9 @@ def _matching_contract_error(mirror_log_dir_abs: str, payload: dict) -> str:
     # 服务退出和停止端会先后清理同一镜像；缺失表示已清理，删除前仍会复核当前归属。
     if result.status == CONTRACT_STATUS_MISSING:
         return ""
-    if not result.ok or not isinstance(result.payload, dict):
+    if not result.ok:
         return f"matching_contract_{result.status}:{result.reason or result.error or 'unavailable'}"
-    if not _contracts_match(payload, result.payload):
+    if not contracts_match(payload, cast(Dict[str, Any], result.payload)):
         return "matching_contract_mismatch"
     return ""
 

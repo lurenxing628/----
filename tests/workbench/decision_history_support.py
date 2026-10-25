@@ -213,7 +213,7 @@ def _save_cloned_read_models(conn, run_ref):
     for candidate in packet["rows"]:
         _prepare_candidate(store, packet, candidate)
     resolver = decision_baseline_source_resolver(conn, candidate_provider=_candidate_provider(store, repo, packet))
-    official = read_decision_baseline(packet["capture"], packet["facts"], packet["disposition"], run["accepted_at"],
+    official = read_decision_baseline(packet["capture"], packet["facts"], packet["disposition"],
                                       source_resolver=resolver)
     states = official["source_states"]
     dependencies = repo.dependency_heads(

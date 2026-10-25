@@ -85,7 +85,7 @@ def _read_plan_delivery(conn, *, scope, identity, logger, context):
     return public, facts
 
 
-def _delivery_rows(conn, rows, source_table, *, context=None):
+def _delivery_rows(conn, rows, source_table, *, context):
     try:
         return annotate_plan_points(conn, rows, source_table=source_table, context=context)
     except WorkbenchCommandRejected as exc:

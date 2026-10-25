@@ -9,7 +9,9 @@ import pytest
 from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
+from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.workbench.run import piece_adoption
+from core.services.workbench.run.compute_validation import validate_candidate
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.piece_adoption_support import START, checked_read_only, lower_input, payload, slot_payload, split
 from tests.workbench.piece_chain_support import piece_candidate, piece_layout, saved_trial
@@ -143,9 +145,8 @@ def test_closed_partial_piece_publication_keeps_adoption_and_protection_boundari
             publish(candidate_rows)
         assert caught.value.code == reason
 
-    evidence = checked_read_only(case, lambda: piece_adoption.validate_piece_candidate(
+    checked_read_only(case, lambda: piece_adoption.validate_piece_candidate(
         case.conn, prepared=prepared, payload=known))
-    assert evidence.protected_op_ids == (common,)
     with pytest.raises(PieceAdoptionBlocked) as caught:
         checked_read_only(case, lambda: piece_adoption.validate_piece_adoption(
             case.conn, prepared=prepared, payload=known))
@@ -157,7 +158,10 @@ def test_closed_partial_piece_publication_keeps_adoption_and_protection_boundari
             case.conn, prepared=prepared, payload=full))
     assert caught.value.code == "official_scope_not_covered"
 
-    reject([row for row in rows if row.op_id != ids["item-A", 20]], "piece_precedence_violation")
+    with pytest.raises(CandidateRunInputError) as caught:
+        validate_candidate(prepared, [row for row in rows if row.op_id != ids["item-A", 20]], [],
+                           prepared_payload=payload(prepared, [row for row in rows if row.op_id != ids["item-A", 20]]))
+    assert caught.value.code == "candidate_predecessor_missing"
     reject([row for row in rows if row.op_id != common], "piece_protected_seed_missing")
     reject([replace(row, start_time=row.start_time + timedelta(days=30),
                     end_time=row.end_time + timedelta(days=30)) if row.op_id == ids["item-A", 30] else row

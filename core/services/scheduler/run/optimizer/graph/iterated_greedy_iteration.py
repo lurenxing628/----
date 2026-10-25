@@ -56,7 +56,6 @@ class IGIteration:
             idle = final == reference.order
             entry = None if idle else search._decode_entry(final)
             if not idle and search.last_decode_skip is not None:
-                yield
                 generator.record(self.seconds(), improved=False, fully_solved=False, idle=False)
                 report["interrupted_iterations"] += 1
                 return

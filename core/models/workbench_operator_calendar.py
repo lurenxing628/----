@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import math
 import re
-from datetime import date, timedelta
-from typing import Any, Dict, List, Optional
+from datetime import date
+from typing import Any, Dict, Optional
 
 from core.errors import ValidationError
 from core.models.calendar_periods import normalize_periods
@@ -53,9 +53,12 @@ def _object(value: Any, allowed, field: str) -> Dict[str, Any]:
 
 
 def _efficiency(raw: Any, path: str) -> float:
-    if type(raw) is bool or type(raw) not in (int, float):
+    if type(raw) not in (int, float):
         raise ValidationError("效率必须填数字。", field=path)
-    number = float(raw)
+    try:
+        number = float(raw)
+    except OverflowError as exc:
+        raise ValidationError("效率须大于 0 且不超过 200%。", field=path) from exc
     if not math.isfinite(number) or number <= 0 or number > 200:
         raise ValidationError("效率须大于 0 且不超过 200%。", field=path)
     return number
@@ -97,19 +100,25 @@ def _field_value(key: str, raw: Any) -> Any:
     return _choice(key, raw, path)
 
 
+def apply_rest_day_rules(fields: Dict[str, Any]) -> None:
+    rest = {"allowNormal": "no", "allowUrgent": "no"}
+    for key, expected in rest.items():
+        if key in fields and fields[key] != expected:
+            raise ValidationError("休息日的普通件和急件都不可排产。", field="fields." + key)
+    if fields.get("periods"):
+        raise ValidationError("休息日不能填写工作时段。", field="fields.periods")
+    fields.update(rest)
+    # 休息日没有班次可言，交给领域层按零工时处理。
+    fields.pop("shiftStart", None)
+    fields.pop("shiftEnd", None)
+
+
 def _fields(value: Any) -> Dict[str, Any]:
     fields = _object(value, _FIELDS, "fields")
     result = {key: _field_value(key, raw) for key, raw in fields.items()}
     if result.get("type") == "rest":
-        rest = {"allowNormal": "no", "allowUrgent": "no"}
-        if any(key in result and result[key] != expected for key, expected in rest.items()):
-            raise ValidationError("休息日的普通件和急件都不可排产。", field="fields")
-        if result.get("periods"):
-            raise ValidationError("休息日不能填写工作时段。", field="fields.periods")
-        result.update(rest)
-        # 休息日没有班次可言，交给领域层按零工时处理。
-        result.pop("shiftEnd", None)
-    elif "shiftStart" not in result and "periods" not in result:
+        apply_rest_day_rules(result)
+    elif "shiftStart" not in result and not result.get("periods"):
         raise ValidationError("上班的日子必须填班次开始时刻。", field="fields.shiftStart")
     return result
 
@@ -149,9 +158,3 @@ def operator_domain_fields(fields: Dict[str, Any]) -> Dict[str, Any]:
     if "eff" in fields:
         patch["efficiency"] = fields["eff"] / 100.0
     return patch
-
-
-def operator_range_dates(start_date: str, end_date: str) -> List[str]:
-    start = date.fromisoformat(start_date)
-    count = (date.fromisoformat(end_date) - start).days + 1
-    return [(start + timedelta(days=offset)).isoformat() for offset in range(count)]

@@ -1,6 +1,6 @@
 """DB-free maintenance receipt transport; never forwards a privileged app request.
 
-The host can also serve RestoreStatusTransport(None, journal, status) alone when
+The host can also serve RestoreStatusTransport(None, journal_factory, status) alone when
 startup refuses a pending journal. That recovery server must keep the original
 launcher lock and must not construct the normal app, open SQLite or start workers.
 """
@@ -24,29 +24,16 @@ def request_restore_status(environ, controller):
     return environ[RESTORE_STATUS_ENV]
 
 
-class RecoveryJournal:
-    """Invalid configuration still permits host status, never a database read."""
-
-    def __init__(self, directory, database_path):
-        self.directory, self.database_path = directory, database_path
-
-    def _journal(self):
-        from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
-        return SystemMaintenanceJournal(self.directory, self.database_path)
-
-    def lookup(self, key):
-        return self._journal().lookup(key)
-
-    def records(self):
-        return self._journal().records()
-
-    def public(self, row, replayed=False):
-        return self._journal().public(row, replayed)
+def validate_maintenance_reference(kind, reference):
+    if kind == "request":
+        validate_request_key(reference)
+    elif not re.fullmatch(r"[a-f0-9]{32}", reference):
+        raise WorkbenchCommandRejected("invalid_input", "这个维护记录编号无效，请重新打开维护页。", 400)
 
 
 class RestoreStatusTransport:
-    def __init__(self, application, journal, status, *, static_status=None):
-        self.application, self.journal, self.status = application, journal, status
+    def __init__(self, application, journal_factory, status, *, static_status=None):
+        self.application, self.journal_factory, self.status = application, journal_factory, status
         self.static_status = static_status
 
     def __call__(self, environ, start_response):
@@ -55,7 +42,7 @@ class RestoreStatusTransport:
         stopped = status["state"] != "ready"
         if stopped and environ.get("REQUEST_METHOD") == "GET" and path in ("/", "/workbench", "/workbench/", "/workbench/trial"):
             from .workbench_system_restore_view import recovery_response
-            return recovery_response(environ, self.journal, status, self._result)(environ, start_response)
+            return recovery_response(environ, self.journal_factory, status, self._result)(environ, start_response)
         status_path = path == BASE + "/restore-host"
         result_path = path.startswith(BASE + "/results/") or path.startswith(BASE + "/jobs/")
         if not status_path and not (stopped and result_path):
@@ -67,7 +54,14 @@ class RestoreStatusTransport:
         if environ.get("REQUEST_METHOD") != "GET" or environ.get("QUERY_STRING"):
             return self._error("invalid_input", "这个地址只能直接打开查看，不能带查询条件。", 400)(environ, start_response)
         try:
-            data = {"kind": "restore_host", "host": status} if status_path else self._result(path, status)
+            if status_path:
+                data = {"kind": "restore_host", "host": status}
+            else:
+                kind = "request" if path.startswith(BASE + "/results/") else "job"
+                prefix = BASE + ("/results/" if kind == "request" else "/jobs/")
+                reference = path[len(prefix):]
+                validate_maintenance_reference(kind, reference)
+                data = self._result(kind, reference, status, self.journal_factory())
             payload = {"ok": True, "schema_version": 1, "data": data, "warnings": [],
                        "meta": {"source": "production", "result_source": "external_maintenance_journal",
                                 "request_ref": uuid.uuid4().hex, "time_basis": "factory_local"}}
@@ -89,20 +83,15 @@ class RestoreStatusTransport:
             return environ[RESTORE_STATUS_ENV]
         return self.status()
 
-    def _result(self, path, status):
-        if path.startswith(BASE + "/results/"):
-            key = path[len(BASE + "/results/"):]
-            validate_request_key(key)
-            row = self.journal.lookup(key)
+    def _result(self, kind, reference, status, journal):
+        if kind == "request":
+            row = journal.lookup(reference)
         else:
-            reference = path[len(BASE + "/jobs/"):]
-            if not re.fullmatch(r"[a-f0-9]{32}", reference):
-                raise WorkbenchCommandRejected("invalid_input", "这个维护记录编号无效，请重新打开维护页。", 400)
-            row = next((item for item in self.journal.records() if item["job_ref"] == reference), None)
+            row = journal.lookup_job(reference)
         if row is None:
             return {"kind": "not_recorded", "host": status,
                     "message": "外部维护记录里没有这次操作，不能就此认定没有执行。请重启本软件后再查一次结果。"}
-        return {"kind": "file_operation", "operation": self.journal.public(row, True), "host": status}
+        return {"kind": "file_operation", "operation": journal.public(row, True), "host": status}
 
     @staticmethod
     def _response(payload, status):
@@ -116,5 +105,9 @@ class RestoreStatusTransport:
 
 
 def install_restore_status_transport(app, controller):
-    app.wsgi_app = RestoreStatusTransport(app.wsgi_app, controller.journal, lambda: controller.status,
+    from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
+
+    app.wsgi_app = RestoreStatusTransport(app.wsgi_app,
+                                        lambda: SystemMaintenanceJournal(controller.journal.directory, controller.db_path),
+                                        lambda: controller.status,
                                         static_status=controller.static_status)

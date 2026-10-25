@@ -15,6 +15,7 @@ BATCH_FACT_TABLES = ("Batches", "BatchOperations", "Parts", "PartOperations", "E
                      "Machines", "MachineOpTypes", "Operators", "OperatorMachine", "OperatorSkill", "OpTypes", "Suppliers", "WorkbenchSupplierOpTypes",
                      "WorkbenchSupplierProfiles", "WorkbenchOperatorProfiles", "WorkbenchEntityRefs")
 VERSIONED_FACT_TABLES = ("WorkbenchOutsourcingReceipts", "BatchExternalContexts")
+CHOICE_CATALOG_TABLES = ("Parts", "Machines", "Operators", "Suppliers", "OperatorMachine")
 
 
 class WorkbenchBatchFactsRepository(BaseRepository):
@@ -35,14 +36,24 @@ class WorkbenchBatchFactsRepository(BaseRepository):
         """按 BATCH_FACT_TABLES 顺序整表读取（rowid 序），返回 {表名: [行 dict]}。"""
         return {table: self.fetchall('SELECT * FROM "' + table + '" ORDER BY rowid') for table in BATCH_FACT_TABLES}
 
+    def choice_tables(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Creation choices need only base catalogs, authorizations and existing refs."""
+        tables = {table: self.fetchall('SELECT * FROM "' + table + '" ORDER BY rowid') for table in CHOICE_CATALOG_TABLES}
+        tables["WorkbenchEntityRefs"] = self.fetchall('''SELECT * FROM "WorkbenchEntityRefs"
+            WHERE kind IN ('part', 'machine', 'operator', 'supplier') ORDER BY rowid''')
+        return tables
+
     def batch_row(self, batch_id: str) -> Optional[Dict[str, Any]]:
         return self.fetchone("SELECT * FROM Batches WHERE batch_id=?", (batch_id,))
 
     def versioned_facts(self):
         """Return absent tables as None so the service can distinguish old schemas from damage."""
         structure = schema_contract_memo(self.conn).structure
-        return {"version": self.fetchone("SELECT version FROM SchemaVersion WHERE id=1"),
-                "has_outsourcing_commands": self.fetchone(
-                    "SELECT 1 FROM WorkbenchCommandReceipts WHERE action='outsourcing.confirm' LIMIT 1") is not None,
+        outsourcing_commands, execution_commands = self.execute("""SELECT
+            EXISTS(SELECT 1 FROM WorkbenchCommandReceipts WHERE action='outsourcing.confirm'),
+            EXISTS(SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*')""").fetchone()
+        return {"version": self.fetchvalue("SELECT version FROM SchemaVersion WHERE id=1"),
+                "has_outsourcing_commands": bool(outsourcing_commands),
+                "has_execution_commands": bool(execution_commands),
                 "tables": {name: self.fetchall('SELECT * FROM "' + name + '" ORDER BY rowid') if structure.has_table(name) else None
                            for name in VERSIONED_FACT_TABLES}}

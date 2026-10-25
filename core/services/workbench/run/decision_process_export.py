@@ -7,7 +7,7 @@ from core.services.workbench.facts.candidate_process import PROCESS_VERSION
 from core.services.workbench.facts.candidate_values import corrupt
 from core.services.workbench.facts.unified_process import project_unified_process
 
-from .decision_recommendation_export import COMMON_HEADERS, _common
+from .decision_recommendation_export import COMMON_HEADERS, common_export_columns
 
 PROCESS_COMMON_FIELDS = ("过程版本", "查看过程候选编号", "查看过程候选名称", "求解来源候选编号", "过程来源类型", "过程来源可用", "过程证据版本", "过程证据状态",
                          "主目标", "主指标key", "主指标", "主指标单位")
@@ -131,11 +131,11 @@ def _records(saved):
 def process_export_tables(data, snapshot):
     unified = _unified_export(data)
     if unified is not None:
-        common = _common(data, snapshot)
+        common = common_export_columns(data, snapshot)
         records = _unified_records(unified)
         return {title: (COMMON_HEADERS + fields, [common + [row.get(field) for field in fields] for row in records[title]])
                 for title, fields in _UNIFIED_TABLE_FIELDS}
-    common = _common(data, snapshot)
+    common = common_export_columns(data, snapshot)
     records = [_records(saved) for saved in data["export_process"]]
     definitions = (("候选计算", CANDIDATE_FIELDS), ("进步事件", PROGRESS_FIELDS), ("搜索阶段", STAGE_FIELDS), ("代表尝试", ATTEMPT_FIELDS))
     return {title: (PROCESS_HEADERS + fields, [common + [row.get(field) for field in PROCESS_COMMON_FIELDS + fields]
@@ -145,11 +145,11 @@ def process_export_tables(data, snapshot):
 def process_csv(data, snapshot):
     unified = _unified_export(data)
     if unified is not None:
-        common = dict(zip(COMMON_HEADERS, _common(data, snapshot)))
+        common = dict(zip(COMMON_HEADERS, common_export_columns(data, snapshot)))
         records = _unified_records(unified)
         return UNIFIED_PROCESS_CSV_HEADERS, [[{**common, **row}.get(field) for field in UNIFIED_PROCESS_CSV_HEADERS]
             for rows in records.values() for row in rows]
-    common = dict(zip(COMMON_HEADERS, _common(data, snapshot)))
+    common = dict(zip(COMMON_HEADERS, common_export_columns(data, snapshot)))
     return PROCESS_CSV_HEADERS, [[{**common, **row}.get(field) for field in PROCESS_CSV_HEADERS]
         for saved in data["export_process"] for rows in _records(saved).values() for row in rows]
 

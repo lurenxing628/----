@@ -11,12 +11,12 @@ from core.services.workbench.facts.zero_duration import point_event_dto
 from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
 
 
-def _tasks(rows, field):
+def capacity_tasks(rows, field):
     result = []
     for row in rows:
         original = row["original"]
         current = row["current"] if field == "current" else original["arrangement"]
-        task = {"task_ref": row["task_ref"], "operation_ref": row["operation_ref"],
+        task = {"row_ref": row["row_ref"], "task_ref": row["task_ref"], "operation_ref": row["operation_ref"],
                 "source": original["operation"]["source"], "start": current["start"], "end": current["end"],
                 **{kind: {"ref": current[kind + "_ref"], "label": None} if current[kind + "_ref"] is not None else None
                    for kind in ("machine", "operator")}}
@@ -27,8 +27,8 @@ def _tasks(rows, field):
     return result
 
 
-def trial_capacity(rows, archive, *, source_ref=None):
-    tasks, original = _tasks(rows, "current"), _tasks(rows, "original")
+def trial_capacity(rows, archive, *, source_ref):
+    tasks, original = capacity_tasks(rows, "current"), capacity_tasks(rows, "original")
     start, end = min(row["start"] for row in tasks), max(row["end"] for row in tasks)
     scope = {"start": start, "end": end, "basis": "selected_trial_only", "source": "archived_resource_calendar",
              "metric_version": RESOURCE_METRIC_VERSION, "time_basis": "factory_local"}

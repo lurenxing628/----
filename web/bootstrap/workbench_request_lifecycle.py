@@ -21,7 +21,8 @@ Installation/lookup never opens a DB or acquires/replaces a launcher lock.
 import os
 import threading
 
-from .launcher_paths import _normalize_db_path_for_runtime
+from web.runtime_host import normalize_runtime_db_path
+
 from .workbench_request_lifecycle_server import WorkbenchRequestHandler
 from .workbench_request_lifecycle_state import WorkbenchRequestLifecycle
 from .workbench_request_lifecycle_wsgi import (
@@ -46,7 +47,7 @@ def _database_key(path):
     raw = os.fspath(path).strip()
     if not raw or raw == ":memory:" or raw.startswith("file:") or "\x00" in raw:
         raise ValueError("Request lifecycle requires an explicit file database path")
-    return _normalize_db_path_for_runtime(raw)
+    return normalize_runtime_db_path(raw)
 
 
 def lookup_workbench_request_lifecycle(db_path):

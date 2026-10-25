@@ -10,7 +10,7 @@ from flask import Blueprint, Flask, g
 from core.infrastructure.database import ensure_schema
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES, install_workbench_trial_schema
 from core.models.content import same
-from core.services.scheduler.config.config_field_spec import default_snapshot_values
+from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from core.services.workbench.trial.service import WorkbenchTrialService
 from tests.workbench.run_jobs_support import JobCase

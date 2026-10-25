@@ -3,15 +3,8 @@
 from dataclasses import replace
 from datetime import datetime, timedelta
 
-from core.errors import ValidationError
 from core.models.objective import normalize_objective_name, target_objectives_for
 from core.models.workbench_preflight import hold_window_bounds, local_date
-from core.services.scheduler.config.config_snapshot import build_schedule_config_snapshot
-from data.repositories.config_repo import ConfigRepository
-
-
-def configuration_snapshot(conn, *, rows=None):
-    return build_schedule_config_snapshot(ConfigRepository(conn), strict_mode=True, rows=rows)
 
 
 def run_options(settings, snapshot):
@@ -23,11 +16,10 @@ def run_options(settings, snapshot):
             "algo_mode": snapshot.algo_mode, "graph_analysis_mode": snapshot.graph_analysis_mode}
 
 
-def candidate_config(conn, settings, *, snapshot=None):
+def candidate_config(settings, *, snapshot):
     # 工作台不按配置里的冻结开关和天数推算窗口：不重排时段由 hold_window() 定好后显式交给冻结逻辑。
-    base = configuration_snapshot(conn) if snapshot is None else snapshot
     return replace(
-        base, time_budget_seconds=settings.get("time_budget_seconds", base.time_budget_seconds),
+        snapshot, time_budget_seconds=settings.get("time_budget_seconds", snapshot.time_budget_seconds),
         enforce_ready_default="yes" if settings["ready_check"] else "no",
         auto_assign_enabled="yes" if settings["missing_resource_policy"] == "auto_assign" else "no",
         auto_assign_persist="no",
@@ -36,24 +28,19 @@ def candidate_config(conn, settings, *, snapshot=None):
     )
 
 
-def hold_window(conn, settings, *, snapshot=None):
+def hold_window(settings, *, snapshot):
     """本次不重排时段 ((开始, 结束) 或 None, 来源)。
 
     本次参数带了 hold_window 就照它（null 即不设，来源 explicit）；没带这个键（旧调用、旧排产记录、页面还没动过）
     按交付设置推算：「锁定近期排程」开着且天数 N>0 时为 [排产起日 00:00, 起日后 N 天 00:00)，来源 default。
-    交付设置读不出来时按不设处理，由排产计算按原样报出是哪项参数。
     """
     if "hold_window" in settings:
         return hold_window_bounds(settings["hold_window"]), "explicit"
-    try:
-        cfg = configuration_snapshot(conn) if snapshot is None else snapshot
-    except ValidationError:
-        return None, "default"
-    if cfg.freeze_window_enabled != "yes" or cfg.freeze_window_days <= 0:
+    if snapshot.freeze_window_enabled != "yes" or snapshot.freeze_window_days <= 0:
         return None, "default"
     start = datetime.combine(local_date(settings["start_date"]), datetime.min.time())
     try:
-        end = start + timedelta(days=cfg.freeze_window_days)
+        end = start + timedelta(days=snapshot.freeze_window_days)
     except OverflowError:
         end = datetime.max.replace(second=0, microsecond=0)  # 天数大到越过 9999 年：按一直保留到最后处理
     return (start, end), "default"

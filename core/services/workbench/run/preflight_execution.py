@@ -2,9 +2,9 @@
 
 from collections import defaultdict
 from datetime import datetime
-from importlib.util import find_spec
 
 from core.infrastructure.connection_guards import schema_contract_memo
+from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_contract_issues
 from core.models.operation_execution_event import (
     OperationExecutionEvent,
     parse_operation_event_time,
@@ -40,7 +40,7 @@ def legacy_guard(op, events):
         except ValueError:
             gaps.append(issue("legacy_execution_invalid", "旧报工记录的编号或先后顺序不完整，这道工序先保持保护，等人工复核。"))
     complete = bool(finishes)
-    protected = bool(events or op["status"] in ("processing", "completed", "paused", "exception"))
+    protected = bool(events or op["status"] in ("processing", "completed"))
     return {"execution_state": "complete" if complete else "started" if starts else "unreported",
             "completion_basis": "legacy_finish_event" if complete else None,
             "first_actual_start": min(starts) if starts else None, "confirmed_finish": max(finishes) if finishes else None,
@@ -50,18 +50,13 @@ def legacy_guard(op, events):
 
 
 def execution_projections(facts, operations, *, prepared=None):
-    module = "core.infrastructure.workbench_execution_ledger_schema"
-    installed = find_spec(module) is not None
-    if installed:
-        from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_contract_issues
-
-        installed = not execution_ledger_contract_issues(facts.conn, structure=schema_contract_memo(facts.conn).structure)
+    installed = not schema_contract_memo(facts.conn).get_schema(execution_ledger_contract_issues)
     if installed:
         from core.services.workbench.execution.ledger import ExecutionLedgerService
         from core.services.workbench.facts.run_input_codec import validate_projection_dto
 
         refs = [facts.operation_ref(op) for op in operations]
-        service = getattr(facts, "execution_service", None) or ExecutionLedgerService(facts.conn)
+        service = facts.execution_service or ExecutionLedgerService(facts.conn)
         facts.execution_service = service
         projections = []
         for offset in range(0, len(refs), 10000):
@@ -85,4 +80,4 @@ def execution_projections(facts, operations, *, prepared=None):
 def is_protected(projection, op):
     return bool(projection.get("protected") or projection.get("reports") or projection.get("legacy_facts")
                 or projection["first_actual_start"] or projection["confirmed_finish"]
-                or projection["execution_state"] != "unreported" or op["status"] in ("processing", "completed", "paused", "exception"))
+                or projection["execution_state"] != "unreported" or op["status"] in ("processing", "completed"))

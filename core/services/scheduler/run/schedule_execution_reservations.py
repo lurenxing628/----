@@ -76,10 +76,15 @@ def build_execution_resource_reservations(
 def reserve_execution_machines(
     downtime_map: Dict[str, Any], reservations: List[ExecutionResourceReservation],
 ) -> Dict[str, Any]:
-    result = {key: list(value) for key, value in downtime_map.items()}
+    if not reservations:
+        return downtime_map
+    result = dict(downtime_map)
+    added: Dict[str, List[Tuple[datetime, datetime]]] = {}
     for reservation in reservations:
-        result.setdefault(reservation.machine_id, []).append((reservation.start_time, reservation.end_time))
-    return {key: sorted(value) for key, value in result.items()}
+        added.setdefault(reservation.machine_id, []).append((reservation.start_time, reservation.end_time))
+    for machine_id, spans in added.items():
+        result[machine_id] = sorted([*result.get(machine_id, ()), *spans])
+    return result
 
 
 class ExecutionResourceCalendar:

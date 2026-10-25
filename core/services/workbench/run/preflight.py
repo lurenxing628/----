@@ -11,7 +11,8 @@ from core.models.workbench_preflight import issue, normalize_preflight_input
 from core.services.scheduler.repository_bundle import build_schedule_repository_bundle
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 from core.services.workbench.facts.preflight_checks import stored_date
-from core.services.workbench.facts.preflight_dependencies import link_predecessors, piece_scope_problem
+from core.services.workbench.facts.preflight_dependencies import link_predecessors
+from core.services.workbench.facts.run_input_rows import OPERATION_STATES, mutable_classification
 
 from .input_config import hold_window, run_options
 from .input_external import external_resource_issues, preflight_external_cycles
@@ -38,6 +39,7 @@ class PreparedPreflight:
     prepared_input: object = None
     config_error: Optional[ValidationError] = None
     run_options: object = None
+    held_arrangements: object = None
     data_context_ref: str = field(init=False, repr=False, compare=False)
 
 
@@ -59,7 +61,7 @@ def operation_gaps(checks, batch, op, projection):
         gaps.append(issue("ready_date_invalid", "批次的齐套日期格式不对。请到批次管理改正。"))
     if batch["status"] not in ("pending", "scheduled", "processing", "completed", "cancelled"):
         gaps.append(issue("batch_status_invalid", "批次状态无效，请到批次管理核对。"))
-    if op["status"] not in ("pending", "scheduled"):
+    if op["status"] not in OPERATION_STATES:
         gaps.append(issue("operation_status_invalid", "工序状态无效，请到批次管理核对。"))
     return gaps
 
@@ -85,22 +87,10 @@ def classify(checks, batch, op, projection, settings, ready_reasons, *, external
         return "blocked", gaps + checks.resources(op)
     if external_cycle is not None:
         return "protected", [issue("external_group_actuals_preserved", "合并外协组已有实际记录，整组保留同一固定周期。")]
-    if batch["status"] in ("completed", "cancelled"):
-        return "skipped", [issue("batch_closed", "批次已完成或取消，不进入本次排产。")]
-    if batch["quantity"] == 0 and op["source"] != "internal":
-        return "skipped", [issue("zero_quantity", "批次数量填的是 0，没有要排的量。")]
-    if ready_reasons:
-        return "skipped", ready_reasons
-    ready_date = stored_date(batch["ready_date"])
-    if settings["ready_check"] and ready_date and ready_date > settings["end_date"]:
-        return "skipped", [issue("ready_after_window", "齐套日期晚于这次排产日期范围，排不进来。请放宽日期范围，或到批次管理调齐套日期。")]
-    missing = checks.resources(op)
-    if missing:
-        return ("auto_assign_required" if settings["missing_resource_policy"] == "auto_assign" else "skipped"), missing
-    return "eligible", []
+    return mutable_classification(checks, batch, op, settings, ready_reasons)
 
 
-def batch_dependencies(batch, operations, rows, settings):
+def batch_dependencies(batch, operations, rows):
     if not any(op["piece_id"] is not None for op in operations):
         link_predecessors(rows)
         return []
@@ -115,8 +105,7 @@ def batch_dependencies(batch, operations, rows, settings):
             row["issues"].append(problem)
         return [problem]
     link_predecessors(rows, piece_scope=scope)
-    problem = piece_scope_problem(rows, settings)
-    return [dict(problem, batch_ref=batch["ref"])] if problem else []
+    return []
 
 
 class PreflightService:
@@ -168,31 +157,36 @@ class PreflightService:
                     if op["id"] in cycles:
                         row["external_execution_cycle"] = cycles[op["id"]]
                     batch_rows.append(row)
-                dependency_reasons.extend(batch_dependencies(batch, ops, batch_rows, settings))
+                dependency_reasons.extend(batch_dependencies(batch, ops, batch_rows))
                 rows.extend(batch_rows)
-            hold = (None, "default") if config_error is not None else hold_window(self.facts.conn, settings, snapshot=config)
-            held, notes, marks = self._arrangement_reasons(settings, batches, operations, rows, projections, ledger_reasons,
-                                                           checks, cycles, hold_window_bounds=hold[0])
+            hold = (None, "default") if config_error is not None else hold_window(settings, snapshot=config)
+            held, notes, marks, held_obj = self._arrangement_reasons(
+                settings, batches, operations, rows, projections, ledger_reasons,
+                checks, cycles, hold_window_bounds=hold[0],
+            )
             for row in rows:
                 row["held"] = marks.get(row["op_id"])
             data = summarize(settings, batches, rows, no_route, unready, ledger_reasons,
                              dependency_reasons + arrangement_reasons + held, notes,
                              hold=hold)
             data["run_options"] = options
-            return PreparedPreflight(data, fingerprint, settings, self.facts.capture, self.facts,
-                                     config, prepared_projections, config_error=config_error, run_options=options)
+            return PreparedPreflight(
+                data, fingerprint, settings, self.facts.capture, self.facts,
+                config, prepared_projections, config_error=config_error, run_options=options,
+                held_arrangements=held_obj,
+            )
 
     def _external_cycles(self, batches, operations, projections):
         try:
             return preflight_external_cycles(self.facts, batches, operations, projections)
-        except (AppError, ValueError, TypeError, KeyError, OverflowError):
+        except AppError:
             # 周期核对不了是这次排产的阻断，不是报工台账没开通；具体原因（如外协报工带本厂资源）另行列出。
             return {}, [issue("external_execution_cycle_unproven", "合并外协组的实际周期无法核对，请检查现场记录和原安排后重新检查。")]
 
     def _arrangement_reasons(self, settings, batches, operations, rows, projections, ledger_reasons, checks, cycles,
                              *, hold_window_bounds):
         """排产计算或采用才会发现、却在开始前就能看出的冲突：外协记录占了本厂资源，
-        不重排时段保留的原安排按现在的资料已不成立。返回 (阻断原因, 提醒, {工序: 保留标记})。"""
+        不重排时段保留的原安排按现在的资料已不成立。返回 (阻断原因, 提醒, {工序: 保留标记}, 保留安排结果)。"""
         svc = build_schedule_repository_bundle(self.facts.conn)
         capture = cast("ProductionFactsCapture", self.facts.capture)
         version = max((row["version"] for row in capture.table("ScheduleHistory")), default=0)
@@ -200,6 +194,8 @@ class PreflightService:
         reasons = external_resource_issues(self.facts, svc, operations, version) if ledger_ready else []
         # 与排产计算查不重排时段的范围一致：这次要重排的工序，加上合并外协组按实际周期派生保留的成员。
         held_ids = {row["op_id"] for row in rows if row["status"] in ("eligible", "auto_assign_required")} | set(cycles)
-        held, notes, marks = held_arrangement_reasons(self.facts, svc, checks, settings, version, batches, operations,
-                                                      held_ids, cycles, projections, hold_window_bounds=hold_window_bounds)
-        return reasons + held, notes, marks
+        held, notes, marks, held_obj = held_arrangement_reasons(
+            self.facts, svc, checks, settings, version, batches, operations,
+            held_ids, cycles, projections, hold_window_bounds=hold_window_bounds,
+        )
+        return reasons + held, notes, marks, held_obj

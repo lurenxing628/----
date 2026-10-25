@@ -9,10 +9,13 @@ from typing import Any, Collection, Dict, List, Protocol
 
 
 class FrozenScopeInput(Protocol):
-    """排产输入里持久化候选任务时唯一需要读的事实：冻结工序集合。"""
+    """持久化候选任务和分析依据所需的冻结范围、运行工时事实。"""
 
     @property
     def frozen_op_ids(self) -> Collection[int]: ...
+
+    @property
+    def operation_efforts(self) -> Collection[Any]: ...
 
 
 class OrchestrationOutcome(Protocol):

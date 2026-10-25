@@ -12,12 +12,8 @@ import pytest
 
 from core.errors import ValidationError
 from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema
-from core.services.scheduler.repository_bundle import build_schedule_repository_bundle
 from core.services.scheduler.run.schedule_payload_contract import (
-    ValidatedSchedulePayload,
-    ValidatedScheduleRow,
     build_validated_schedule_payload,
-    validate_payload_before_persist,
 )
 from tests._support.migration_schema_helpers import load_legacy_migration_schema
 from tests._support.paths import REPO_ROOT
@@ -252,120 +248,6 @@ def _seed_common(conn: sqlite3.Connection, rows: Iterable[tuple]) -> None:
         ],
     )
     conn.commit()
-
-
-def test_persist_schedule_revalidates_manual_payload_before_writing() -> None:
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    _load_schema(conn)
-    try:
-        _seed_common(conn, [(1, "internal", "ready", "MC_A", "OP_A")])
-        svc = build_schedule_repository_bundle(conn)
-        operations = [svc.op_repo.get(1)]
-        payload = ValidatedSchedulePayload(
-            schedule_rows=[
-                ValidatedScheduleRow(
-                    op_id=1,
-                    machine_id="",
-                    operator_id="OP_A",
-                    start_time=_make_dt(0),
-                    end_time=_make_dt(1),
-                    source="internal",
-                )
-            ],
-            scheduled_op_ids={1},
-            assigned_by_op_id={},
-        )
-
-        with pytest.raises(ValidationError) as exc_info:
-            validate_payload_before_persist(payload, reschedulable_operations=operations)
-
-        details = dict(getattr(exc_info.value, "details", {}) or {})
-        assert details.get("reason") == "invalid_schedule_rows", details
-        assert "internal 工序必须有设备和人员" in "\n".join(details.get("validation_errors") or []), details
-        assert int(conn.execute("SELECT COUNT(1) AS cnt FROM Schedule WHERE version=31").fetchone()["cnt"] or 0) == 0
-    finally:
-        conn.close()
-
-
-@pytest.mark.parametrize(
-    "payload, operations, expected_text",
-    [
-        (
-            ValidatedSchedulePayload(
-                schedule_rows=[
-                    ValidatedScheduleRow(
-                        op_id=1,
-                        machine_id="",
-                        operator_id="",
-                        start_time=_make_dt(0),
-                        end_time=_make_dt(1),
-                        source="external",
-                    )
-                ],
-                scheduled_op_ids={1},
-                assigned_by_op_id={},
-            ),
-            [SimpleNamespace(id=1, source="internal")],
-            "source 与原工序不一致",
-        ),
-        (
-            ValidatedSchedulePayload(
-                schedule_rows=[
-                    ValidatedScheduleRow(
-                        op_id=1,
-                        machine_id="MC_A",
-                        operator_id="OP_A",
-                        start_time=_make_dt(0),
-                        end_time=_make_dt(1),
-                        source="internal",
-                    )
-                ],
-                scheduled_op_ids={1},
-                assigned_by_op_id={},
-            ),
-            [],
-            "工序超出本次可重排范围",
-        ),
-        (
-            ValidatedSchedulePayload(
-                schedule_rows=[
-                    ValidatedScheduleRow(
-                        op_id=1,
-                        machine_id="MC_A",
-                        operator_id="OP_A",
-                        start_time=_make_dt(0),
-                        end_time=_make_dt(1),
-                        source="internal",
-                    )
-                ],
-                scheduled_op_ids=[1, 1],  # type: ignore[arg-type]
-                assigned_by_op_id={},
-            ),
-            [SimpleNamespace(id=1, source="internal")],
-            "payload.scheduled_op_ids: 重复工序编号 1",
-        ),
-    ],
-)
-def test_persist_schedule_revalidates_manual_payload_scope_source_and_ids(payload, operations, expected_text) -> None:
-    conn = sqlite3.connect(":memory:", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON;")
-    _load_schema(conn)
-    try:
-        _seed_common(conn, [(1, "internal", "ready", "MC_A", "OP_A")])
-
-        with pytest.raises(ValidationError) as exc_info:
-            validate_payload_before_persist(payload, reschedulable_operations=operations)
-
-        details = dict(getattr(exc_info.value, "details", {}) or {})
-        assert details.get("reason") == "invalid_schedule_rows", details
-        assert expected_text in "\n".join(details.get("validation_errors") or []), details
-        assert int(conn.execute("SELECT COUNT(1) AS cnt FROM Schedule WHERE version=32").fetchone()["cnt"] or 0) == 0
-        assert int(conn.execute("SELECT COUNT(1) AS cnt FROM ScheduleHistory WHERE version=32").fetchone()["cnt"] or 0) == 0
-    finally:
-        conn.close()
 
 
 def test_schedule_schema_rejects_duplicate_version_op_rows() -> None:

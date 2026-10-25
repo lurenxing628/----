@@ -22,7 +22,6 @@ from tests.workbench.legacy_migration_current_support import (
 )
 from tests.workbench.legacy_migration_current_support import missing_v31_issues as missing_v31_issues
 from tests.workbench.outsourcing_identity_migration_support import seed_v29
-from tests.workbench.outsourcing_support import OutsourcingCase
 from tests.workbench.run_schema_migration_support import connect, snapshot, source_ddl
 
 FIXTURE_V30 = Path(__file__).parent / "fixtures" / "schema-v30.sql"
@@ -39,8 +38,9 @@ def fixed_v30_connection(path):
 
 
 def external_case_for(path, conn):
-    case = ExternalCase(path, conn)
-    case.shipments = OutsourcingCase(path, conn)
+    operation = conn.execute("SELECT id FROM BatchOperations WHERE op_code='XO1'").fetchone()
+    assert operation is not None
+    case = ExternalCase(path, conn, operation[0])
     return case
 
 

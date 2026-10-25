@@ -5,7 +5,6 @@ from .workbench_metadata_schema import canonical_sql
 from .workbench_run_schema import workbench_run_contract_issues
 
 READ_MODEL_TABLES = ("WorkbenchRunAdmissionReadModels", "WorkbenchRunDecisionReadModels", "WorkbenchRunCandidateReadModels")
-PROJECTION_VERSION = "decision-read-v1"
 _REF = "TEXT NOT NULL CHECK(length({0})=48 AND {0} NOT GLOB '*[^0-9a-f]*')"
 
 

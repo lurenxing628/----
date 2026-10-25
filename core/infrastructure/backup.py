@@ -32,7 +32,7 @@ from core.infrastructure.migration_common import fallback_log
 from core.infrastructure.safe_files import (
     UnsafeFixedFileError,
     create_fixed_file_exclusive,
-    guard_fixed_file_replace_target,
+    guard_fixed_file_open_target,
     remove_fixed_file,
     stat_regular_file,
 )
@@ -121,7 +121,7 @@ class BackupManager:
                             check_label="备份后的数据库完整性检查",
                             execute_failed_hint="视为不可信备份，不落地",
                         )
-                guard_fixed_file_replace_target(backup_path)
+                guard_fixed_file_open_target(backup_path)
                 os.replace(tmp_path, backup_path)
                 fallback_log(self.logger, "info", f"数据库已备份：{backup_path}")
                 return backup_path

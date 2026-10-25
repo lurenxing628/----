@@ -27,24 +27,16 @@ class WriteBinding:
 class WriteContextFactory:
     """A single context or a batch of subjects bound to one canonical snapshot."""
 
-    def __init__(self, snapshot_value: Callable[[Any], tuple] = fact_value):
-        self._snapshot_value = snapshot_value
-
     def __call__(self, subject_ref: str, actions: Iterable[str], snapshot: Any) -> Dict[str, Any]:
         return self.for_snapshot(snapshot)(subject_ref, actions)
 
     def for_snapshot(self, snapshot: Any) -> Callable[[str, Iterable[str]], Dict[str, Any]]:
         """The actual page/operation owns this issuer; rows supply only small keys."""
-        facts = self._snapshot_value(snapshot)
+        facts = fact_value(snapshot)
         issuer = PublicTokenIssuer(_SCOPE, group=facts, ttl_seconds=_TTL_SECONDS)
 
         def issue(subject_ref: str, actions: Iterable[str]) -> Dict[str, Any]:
-            if not isinstance(subject_ref, str) or not subject_ref:
-                raise ValueError("缺少要编辑的对象。")
-            allowed = list(actions) if not isinstance(actions, str) else []
-            if not allowed or any(not isinstance(action, str) or not action for action in allowed):
-                raise ValueError("未提供允许执行的操作。")
-            actions_value = tuple(sorted(set(allowed)))
+            actions_value = tuple(sorted(set(actions)))
             token, expiry = issuer.issue_bound_with_expiry(
                 lambda canonical: WriteBinding(subject_ref, actions_value, canonical), key=(subject_ref, actions_value))
             return {"write_token": token, "expires_at": datetime.fromtimestamp(expiry).isoformat(timespec="seconds"),

@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import fields
-from datetime import datetime
 
 from flask import current_app, g, request, send_file
 
-from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_report import ReportPage, ReportScope, reference
 from core.services.workbench import messages
@@ -17,34 +15,15 @@ from core.services.workbench.report.facts import WorkbenchReportFacts
 from core.services.workbench.report.queries import SORTS, report_detail, report_workspace
 from web.api_responses import query_success
 
-from . import read_context
 from .api_responses import api_endpoint
 from .read_budget import PLAN_READ_SLOTS
-from .read_context import bind_read_snapshot, resolve_read_snapshot
-
-
-def report_read_time(token, binding=None):
-    if token is None:
-        return read_context.datetime.now().replace(microsecond=0)
-    try:
-        payload = resolve_read_snapshot(token) if binding is None else binding
-        as_of = datetime.fromisoformat(payload.as_of)
-        if as_of.tzinfo is not None:
-            raise ValueError("factory local time required")
-        return as_of
-    except (ValidationError, ValueError, TypeError, KeyError) as exc:
-        raise WorkbenchCommandRejected("snapshot_stale", messages.STALE) from exc
+from .read_context import bind_read_snapshot, page_integer, read_snapshot_time
 
 
 def _report_page(topic):
-    try:
-        raw_page, raw_size = request.args.get("page", "1"), request.args.get("size", "20")
-        if not raw_page.isascii() or not raw_page.isdigit() or not raw_size.isascii() or not raw_size.isdigit():
-            raise ValueError("page integer")
-        sort = request.args["sort"] if "sort" in request.args else SORTS[topic][0]
-        return ReportPage(int(raw_page), int(raw_size), sort, request.args.get("direction", "asc"))
-    except ValueError as exc:
-        raise WorkbenchCommandRejected("invalid_input", "页码或每页数量填写不对，列表没有变化。请回到第 1 页重新查询。", 400) from exc
+    sort = request.args["sort"] if "sort" in request.args else SORTS[topic][0]
+    return ReportPage(page_integer(request.args.get("page", "1")), page_integer(request.args.get("size", "20")),
+                      sort, request.args.get("direction", "asc"))
 
 
 def arguments(export=False, detail=False):
@@ -79,16 +58,15 @@ def _read(export=False, operation_ref=None):
     if operation_ref is not None:
         reference(operation_ref)
     reader = WorkbenchReportFacts(g.db, current_app.logger)
-    binding = resolve_read_snapshot(token) if token is not None else None
-    as_of = report_read_time(token, binding)
+    as_of, binding = read_snapshot_time(token)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
             facts = reader.read(scope, as_of=as_of)
             snapshot = bind_read_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of=as_of, binding=binding)
             if operation_ref is not None:
-                data = report_detail(reader, facts, snapshot, operation_ref)
+                data = report_detail(facts, snapshot, operation_ref)
             else:
-                data, rows, _ = report_workspace(reader, facts, snapshot, topic, page)
+                data, rows, _ = report_workspace(facts, snapshot, topic, page)
                 data["columns"] = public_columns(topic)
                 if not export:
                     data["exports"] = {"url": "/api/workbench/v1/analytics/export", "formats": ["csv", "xlsx"], "scope": "all_filtered_rows"}

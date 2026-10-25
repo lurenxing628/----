@@ -1,11 +1,13 @@
 """Read-only proof of the launcher's current, exact database lock ownership."""
 
 import os
+import stat
 import sys
+
+from web.runtime_host import normalize_runtime_db_path
 
 from .launcher_lock_result import read_runtime_lock_result_from_path
 from .launcher_paths import (
-    _normalize_db_path_for_runtime,
     current_runtime_owner,
     db_scope_lock_path,
     runtime_lock_path,
@@ -28,13 +30,13 @@ def _read_owned(path, db_path):
     payload = result.payload
     if (payload["pid"] != os.getpid()
             or payload.get("owner") != current_runtime_owner()
-            or _normalize_db_path_for_runtime(payload.get("exe_path")) !=
-            _normalize_db_path_for_runtime(sys.executable)
-            or _normalize_db_path_for_runtime(payload.get("db_path")) != db_path
+            or normalize_runtime_db_path(payload.get("exe_path")) !=
+            normalize_runtime_db_path(sys.executable)
+            or normalize_runtime_db_path(payload.get("db_path")) != db_path
             or not payload.get("started_at")):
         raise RunRuntimeOwnershipError("runtime_lock_owner_mismatch: " + path)
-    stat = os.stat(path)
-    return _identity(payload), (stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_size)
+    st = os.stat(path)
+    return _identity(payload), (st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
 
 
 class RunRuntimeLockProof:
@@ -46,15 +48,15 @@ class RunRuntimeLockProof:
     """
 
     def __init__(self, db_path, runtime_lock):
-        self.db_path = _normalize_db_path_for_runtime(db_path)
+        self.db_path = normalize_runtime_db_path(db_path)
         if not isinstance(runtime_lock, dict) or not self.db_path:
             raise RunRuntimeOwnershipError("runtime_lock_not_supplied")
         self.claim = dict(runtime_lock)
         state_dir = str(self.claim.get("state_dir") or "")
         self.shell_path = str(self.claim.get("path") or "")
         if (not state_dir or not self.shell_path
-                or _normalize_db_path_for_runtime(self.shell_path) !=
-                _normalize_db_path_for_runtime(runtime_lock_path(state_dir))):
+                or normalize_runtime_db_path(self.shell_path) !=
+                normalize_runtime_db_path(runtime_lock_path(state_dir))):
             raise RunRuntimeOwnershipError("runtime_lock_shell_path_mismatch")
         self.db_lock_path = db_scope_lock_path(self.db_path)
         self._require_database()
@@ -65,8 +67,12 @@ class RunRuntimeLockProof:
 
     def _require_database(self):
         # The legacy lock is lexical. Aliases would have a second lock namespace.
+        try:
+            st = os.stat(self.db_path)
+        except FileNotFoundError as exc:
+            raise RunRuntimeOwnershipError("runtime_database_missing_or_aliased") from exc
         if (self.db_path != os.path.normcase(os.path.realpath(self.db_path))
-                or not os.path.isfile(self.db_path) or os.stat(self.db_path).st_nlink != 1):
+                or not stat.S_ISREG(st.st_mode) or st.st_nlink != 1):
             raise RunRuntimeOwnershipError("runtime_database_missing_or_aliased")
 
     def verify(self):
@@ -76,5 +82,5 @@ class RunRuntimeLockProof:
             raise RunRuntimeOwnershipError("runtime_lock_replaced")
 
     def matches(self, db_path, runtime_lock):
-        return (self.db_path == _normalize_db_path_for_runtime(db_path)
+        return (self.db_path == normalize_runtime_db_path(db_path)
                 and isinstance(runtime_lock, dict) and runtime_lock == self.claim)

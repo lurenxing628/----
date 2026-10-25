@@ -1,17 +1,38 @@
 """The only execution aggregation, shared by reads, previews and command guards."""
 
+from typing import Set
+
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution import ExecutionProjection, ProductionReport
-from core.models.workbench_execution_input import closed_write_context
+from core.models.workbench_execution_input import closed_write_context, public_ref, reject
 
 from .quality import classify_quality, gap, operation_target
 from .totals import merge_legacy_totals, quantity_consistency, report_totals
 
 
-def report_dto(history):
+def projection_resource_refs(projection: ExecutionProjection) -> Set[str]:
+    refs = {ref for report in projection.reports
+            for ref in (report.actual_machine_ref, report.actual_operator_ref) if ref}
+    refs.update(fact[field] for fact in projection.legacy_facts
+                for field in ("actual_machine_ref", "actual_operator_ref") if fact[field])
+    return refs
+
+
+def report_dto(history, *, operation_ref, report_ref):
     latest = history[-1]
     corrections = []
     previous = None
-    for row in history:
+    previous_ref = None
+    for sequence, row in enumerate(history, 1):
+        try:
+            public_ref(row["revision_ref"])
+        except WorkbenchCommandRejected:
+            reject("报工来源或更正记录损坏，请核对报工数据；仍不行请联系维护人员。", "storage_failure", 500)
+        if (row["sequence"] != sequence or row["previous_revision_ref"] != previous_ref
+                or row["operation_ref"] != operation_ref or row["report_ref"] != report_ref
+                or row["action"] not in (("create",) if sequence == 1 else ("supplement", "correct"))):
+            reject("报工来源或更正记录损坏，请核对报工数据；仍不行请联系维护人员。", "storage_failure", 500)
+        previous_ref = row["revision_ref"]
         corrections.append({"revision_ref": row["revision_ref"], "previous_revision_ref": row["previous_revision_ref"],
                             "action": row["action"], "before": previous, "after": row["values"], "reason": row["reason"],
                             "local_operator": row["local_operator"], "declared_operator": row["declared_operator"],

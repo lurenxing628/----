@@ -90,7 +90,7 @@ def test_preview_drift_and_injected_second_write_rollback(batch_client, monkeypa
     class LocalDateTime(datetime):
         @classmethod
         def now(cls):
-            return clock[0]
+            return cls.fromtimestamp(clock[0].timestamp())
 
     monkeypatch.setattr(batch_facts, "date", LocalDate)
     monkeypatch.setattr(read_context, "datetime", LocalDateTime)
@@ -208,9 +208,43 @@ def test_plan_counts_protect_batches_without_binding_plan_contents(batch_client)
     assert WorkbenchBatchFactsRepository(conn).plan_reference_counts()[op_id] == 3
 
 
+def test_batch_creation_choices_read_only_base_catalogs(batch_client):
+    from core.services.workbench.batch.queries import WorkbenchBatchQueryService
+
+    client, conn = batch_client, batch_client.batch_conn
+    changes, trace = conn.total_changes, []
+    conn.set_trace_callback(trace.append)
+    try:
+        response = client.get(BASE + "/choices")
+    finally:
+        conn.set_trace_callback(None)
+    assert response.status_code == 200, response.get_json()
+    result = response.get_json()
+    choices = result["data"]
+    assert set(choices) == {"parts", "machines", "operators", "suppliers", "authorizations"}
+    assert choices["parts"] == [{"ref": ref_for(client, "part", "P1"), "business_code": "P1", "label": "part"}]
+    assert next(row for row in choices["machines"] if row["business_code"] == "M1")["ref"] == ref_for(client, "machine", "M1")
+    assert next(row for row in choices["operators"] if row["business_code"] == "O1")["ref"] == ref_for(client, "operator", "O1")
+    assert next(row for row in choices["suppliers"] if row["business_code"] == "S1")["ref"] == ref_for(client, "supplier", "S1")
+    assert choices["authorizations"] == [{"machine_ref": ref_for(client, "machine", "M1"), "operator_ref": ref_for(client, "operator", "O1")}]
+    assert result["meta"]["snapshot_ref"] and result["meta"]["as_of"]
+    assert conn.total_changes == changes
+    reads = [sql for sql in trace if sql.lstrip().upper().startswith("SELECT")]
+    assert len(reads) == 6, reads
+    assert all(any('"' + table + '"' in sql for table in (
+        "Parts", "Machines", "Operators", "Suppliers", "OperatorMachine", "WorkbenchEntityRefs")) for sql in reads)
+    reader = WorkbenchBatchQueryService(conn)
+    assert reader.choices() == choices
+    assert conn.total_changes == changes
+    conn.execute("UPDATE WorkbenchEntityRefs SET active=0 WHERE kind='part' AND entity_key='P1'")
+    conn.commit()
+    changes = conn.total_changes
+    assert_error(client.get(BASE + "/choices"), "storage_failure", 500)
+    assert conn.total_changes == changes
+
+
 def test_batch_qualification_uses_captured_skills_authorizations_and_supplier_bindings(batch_client, monkeypatch):
     from core.services.personnel.operator_qualification import OperatorQualificationService
-    from data.repositories.supplier_repo import SupplierRepository
 
     client, conn = batch_client, batch_client.batch_conn
     conn.execute("UPDATE OpTypes SET category='both' WHERE op_type_id='OT1'")
@@ -221,7 +255,6 @@ def test_batch_qualification_uses_captured_skills_authorizations_and_supplier_bi
         raise AssertionError('Resource qualification facts were already captured.')
 
     monkeypatch.setattr(OperatorQualificationService, 'load', reread)
-    monkeypatch.setattr(SupplierRepository, 'list_capabilities', reread)
     entity = detail(client)['data']
     operation_ref = entity['operations'][0]['ref']
     choices = client.get(BASE + '/choices', query_string={'batch_ref': ref_for(client), 'operation_ref': operation_ref}).get_json()['data']
@@ -255,6 +288,28 @@ def test_batch_qualification_uses_captured_skills_authorizations_and_supplier_bi
         assert next(row for row in choices['suppliers'] if row['business_code'] == 'S1')['eligible']
         response = post(client, 'operation_update', {'operation_ref': operation_ref, 'fields': {'external_days': index + 2}}, key='captured-supplier-update-00' + str(index))
         assert response.status_code == 200, response.get_json()
+    conn.execute("UPDATE BatchExternalContexts SET merge_mode='merged',total_days=NULL")
+    conn.commit()
+    rejected = assert_error(post(client, 'operation_update', {'operation_ref': operation_ref, 'fields': {'external_days': 5}},
+                                 key='captured-supplier-update-corrupt-001'), 'constraint_conflict')
+    assert '整组外协周期未填写或无效' in rejected['error']['message']
+    conn.execute("UPDATE BatchExternalContexts SET total_days=4,supplier_id='S1'")
+    conn.commit()
+    unchanged = post(client, 'operation_update', {
+        'operation_ref': operation_ref,
+        'fields': {'supplier_ref': ref_for(client, 'supplier', 'S1'), 'external_days': 3},
+    }, key='captured-supplier-update-merged-unchanged')
+    assert unchanged.status_code == 200 and unchanged.get_json()['result'] == 'unchanged'
+    rejected = assert_error(post(client, 'operation_update', {'operation_ref': operation_ref, 'fields': {'external_days': 5}},
+                                 key='captured-supplier-update-merged-days'), 'constraint_conflict')
+    assert '合并外协组不能逐道改周期' in rejected['error']['message']
+    conn.execute("UPDATE BatchExternalContexts SET supplier_id='S2'")
+    conn.commit()
+    rejected = assert_error(post(client, 'operation_update', {
+        'operation_ref': operation_ref,
+        'fields': {'supplier_ref': ref_for(client, 'supplier', 'S1')},
+    }, key='captured-supplier-update-merged-conflict'), 'constraint_conflict')
+    assert '合并外协段的供应商与保存的规则不一致' in rejected['error']['message']
 
 
 def test_bulk_and_import_prepare_all_changes_before_writing(batch_client, monkeypatch):
@@ -284,7 +339,8 @@ def test_bulk_and_import_prepare_all_changes_before_writing(batch_client, monkey
     reader = BatchFacts(conn)
     with TransactionManager(conn).transaction(begin_immediate=True):
         with reader.command_snapshot():
-            result = WorkbenchBatchBulkService(conn, reader=reader).apply({'action': 'update', 'refs': refs, 'patch': {'remark': 'prepared-bulk'}})
+            result = WorkbenchBatchBulkService(conn, reader=reader).apply_normalized(
+                {'action': 'update', 'refs': sorted(refs), 'patch': {'remark': 'prepared-bulk'}})
     assert result.result == 'committed' and len(reads) == 1 and set(writes) == {'FREE-001', 'B1'}
     reads.clear()
     writes.clear()
@@ -314,6 +370,41 @@ def test_sync_confirm_applies_templates_without_rebuilding_preview(batch_client,
     response = confirm(client, document, path='/' + ref_for(client) + '/sync-confirm', key='batch-sync-without-preview-01')
     assert response.status_code == 200, response.get_json()
     assert response.get_json()['data']['operation_count'] == 1
+
+
+def test_legacy_batch_sync_rejects_cross_part_external_group(batch_client):
+    from core.infrastructure.transaction import TransactionManager
+    from core.models.workbench_command import WorkbenchCommandRejected
+    from core.services.workbench.batch.operations import WorkbenchBatchOperationService
+    from tests.workbench.identity_metadata_support import insert_row
+
+    client, conn = batch_client, batch_client.batch_conn
+    conn.execute("DELETE FROM WorkbenchProcessWorkflow")
+    conn.execute("UPDATE OpTypes SET category='external' WHERE op_type_id='OT1'")
+    conn.execute("UPDATE Suppliers SET op_type_id='OT1', status='active' WHERE supplier_id='S1'")
+    conn.execute("UPDATE PartOperations SET source='external', supplier_id='S1', ext_days=2, ext_group_id='EG1' WHERE part_no='P1'")
+    conn.execute("UPDATE ExternalGroups SET part_no='P1', start_seq=1, end_seq=1, merge_mode='separate', supplier_id='S1' WHERE group_id='EG1'")
+    insert_row(conn, "Parts", dict(part_no="P-CROSS", part_name="cross-part"))
+    insert_row(conn, "PartOperations", dict(part_no="P-CROSS", seq=1, op_type_id="OT1", op_type_name="turning",
+                                            source="external", supplier_id="S1", ext_days=2, ext_group_id="EG1", status="active"))
+    conn.commit()
+    before = state(client)
+    context = detail(client)
+    template = context["data"]["template"]
+    assert template["origin"] == "legacy" and template["complete"] is False
+    assert any("的外协组被其他零件引用" in row["message"] for row in template["diagnostics"])
+    preview_resp = client.post(BASE + "/" + ref_for(client) + "/sync-preview",
+                               json={"input": {}, "snapshot_ref": context["meta"]["snapshot_ref"]})
+    rejected = assert_error(preview_resp, "constraint_conflict", 409)
+    assert "的外协组被其他零件引用" in rejected["error"]["message"]
+    with TransactionManager(conn).transaction(begin_immediate=True):
+        try:
+            WorkbenchBatchOperationService(conn).sync_normalized(ref_for(client))
+        except WorkbenchCommandRejected as exc:
+            assert exc.code == "constraint_conflict" and "的外协组被其他零件引用" in str(exc)
+        else:
+            raise AssertionError("Expected sync_normalized to reject cross-part external group")
+    assert state(client) == before
 
 
 def test_quantity_split_with_bound_material_returns_the_created_batch_reference(batch_client):
@@ -386,3 +477,35 @@ def test_reopened_batch_page_locates_shared_write_facts_once(batch_client, monke
     assert first["data"]["create_context"]["write_token"] == second["data"]["create_context"]["write_token"]
     record_property("shared_facts_equalities", comparisons)
     record_property("tokens_reused", first_tokens == second_tokens)
+
+
+def test_batch_import_preview_rejects_legacy_padded_batch_or_part_without_binding_trimmed_sibling(batch_client):
+    from core.services.workbench.batch.files import WorkbenchBatchFileService
+    from core.services.workbench.batch.queries import WorkbenchBatchQueryService
+    from tests.workbench.identity_metadata_support import insert_row
+
+    client, conn = batch_client, batch_client.batch_conn
+    insert_row(conn, "Batches", dict(batch_id=" B1 ", part_no="P1", quantity=5, part_name="spaced-batch",
+                                     priority="normal", ready_status="no", status="pending"))
+    insert_row(conn, "Parts", dict(part_no=" P1 ", part_name="spaced-part"))
+    conn.commit()
+    b1_ref = ref_for(client, key="B1")
+    reader = WorkbenchBatchQueryService(conn)
+    with reader.detached_read_snapshot():
+        exported = WorkbenchBatchFileService.export(
+            [row for row in reader.matched({}) if row["business_code"] == " B1 "]
+        )
+    service = WorkbenchBatchFileService(conn)
+    upload = service.read(exported, "overwrite")
+    preview_doc = service.preview("overwrite", upload)
+    assert preview_doc["can_confirm"] is False
+    row, = preview_doc["rows"]
+    assert row["action"] == "rejected"
+    assert row["entity_ref"] is None and row["entity_ref"] != b1_ref
+    assert any("批次号或图号存在首尾空格，请先核对原记录。" in err for err in row["errors"])
+
+    part_preview = service.preview("overwrite", ([{"row": 2, "values": {"批次号": "NEW-BATCH", "图号": " P1 ", "数量": 3}, "errors": []}], []))
+    assert part_preview["can_confirm"] is False
+    part_row, = part_preview["rows"]
+    assert part_row["action"] == "rejected"
+    assert any("批次号或图号存在首尾空格，请先核对原记录。" in err for err in part_row["errors"])

@@ -6,24 +6,11 @@ GRASP_ORIGIN = "grasp"
 IG_ORIGIN = "ig"
 
 
-def _construction_limits(candidate_construction: Dict[str, Any], family: str) -> Dict[str, Any]:
-    value = candidate_construction.get(family)
-    return value if isinstance(value, dict) else {}
-
-
-def _positive_int(value: Any, *, default: int) -> int:
-    try:
-        number = int(value)
-    except (TypeError, ValueError, OverflowError):
-        return int(default)
-    return number if number > 0 else int(default)
-
-
 def _grasp_order(base_order: List[str], *, rnd: Any, rcl_size: int) -> List[str]:
     remaining = list(base_order)
     out: List[str] = []
     while remaining:
-        window = min(max(int(rcl_size), 1), len(remaining))
+        window = min(rcl_size, len(remaining))
         index = rnd.randrange(window)
         out.append(remaining.pop(index))
     return out
@@ -33,7 +20,7 @@ def _ig_order(parent_order: List[str], *, rnd: Any, destruction_size: int) -> Li
     if len(parent_order) < 2:
         return list(parent_order)
     order = list(parent_order)
-    remove_count = min(max(int(destruction_size), 1), len(order) - 1)
+    remove_count = min(destruction_size, len(order) - 1)
     positions = sorted(rnd.sample(range(len(order)), remove_count), reverse=True)
     removed: List[str] = []
     for position in positions:
@@ -53,12 +40,12 @@ def build_grasp_ig_candidate_specs(
     dispatch_rule_cfg: str,
     rng_factory: Callable[[int], Any],
 ) -> List[Dict[str, Any]]:
-    grasp_limits = _construction_limits(candidate_construction, "grasp")
-    ig_limits = _construction_limits(candidate_construction, "iterated_greedy")
-    grasp_restarts = _positive_int(grasp_limits.get("effective_restarts"), default=0)
-    ig_restarts = _positive_int(ig_limits.get("effective_restarts"), default=0)
-    rcl_size = _positive_int(grasp_limits.get("effective_rcl_size"), default=3)
-    destruction_size = _positive_int(ig_limits.get("effective_destruction_size"), default=3)
+    grasp_limits = candidate_construction["grasp"]
+    ig_limits = candidate_construction["iterated_greedy"]
+    grasp_restarts = grasp_limits["effective_restarts"]
+    ig_restarts = ig_limits["effective_restarts"]
+    rcl_size = grasp_limits["effective_rcl_size"]
+    destruction_size = ig_limits["effective_destruction_size"]
     rule = str(dispatch_rule_cfg or "").strip().lower()
     specs: List[Dict[str, Any]] = []
 
@@ -71,7 +58,6 @@ def build_grasp_ig_candidate_specs(
                 "dispatch_mode": "batch_order",
                 "dispatch_rule": rule,
                 "order": _grasp_order(base_order, rnd=rnd, rcl_size=rcl_size),
-                "construction": {"family": GRASP_ORIGIN, "restart_index": index, "rcl_size": rcl_size},
             }
         )
 
@@ -84,11 +70,6 @@ def build_grasp_ig_candidate_specs(
                 "dispatch_mode": "batch_order",
                 "dispatch_rule": rule,
                 "order": _ig_order(parent_order, rnd=rnd, destruction_size=destruction_size),
-                "construction": {
-                    "family": "iterated_greedy",
-                    "restart_index": index,
-                    "destruction_size": destruction_size,
-                },
             }
         )
     return specs

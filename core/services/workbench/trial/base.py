@@ -14,7 +14,7 @@ from core.services.scheduler.contracts.external_context import (
     merged_supplier_problem,
 )
 from core.services.workbench.facts.candidate_archive import require_candidate_scope
-from core.services.workbench.facts.candidate_facts import GenerationFacts, _table
+from core.services.workbench.facts.candidate_facts import GenerationFacts, archived_table
 from core.services.workbench.facts.candidate_projection import candidate_summary, dispositions, validate_manifest
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import validate_saved_tasks
@@ -35,14 +35,12 @@ from .facts import ProductionFactsCapture, entity_maps, live_context
 from .materials import plan_material_policy
 
 
-def _arrangement(payload, refs, interval=None):
-    from datetime import datetime
-
+def _arrangement(payload, refs, interval):
     result = {}
     for field, source in (("start", "start_time"), ("end", "end_time")):
         raw = payload.get(source)
         try:
-            parsed = interval[0 if field == "start" else 1] if interval is not None else datetime.fromisoformat(raw)
+            parsed = interval[0 if field == "start" else 1]
             canonical = parsed.isoformat()
             accepted = {canonical}
             if parsed.second == 0 and parsed.microsecond == 0:
@@ -63,7 +61,7 @@ def _arrangement(payload, refs, interval=None):
     return result
 
 
-def _row(payload, op, batch, refs, *, source_task_ref, source_row_ref, operation_ref, detail=None, interval=None):
+def _row(payload, op, batch, refs, *, source_task_ref, source_row_ref, operation_ref, interval, detail=None):
     current = _arrangement(payload, refs, interval)
     return {"row_ref": new_ref(), "task_ref": new_ref(), "operation_ref": operation_ref,
             "source_task_ref": source_task_ref, "source_row_ref": source_row_ref,
@@ -214,7 +212,7 @@ def _candidate(conn, ref):
                  "trial_operation_types": operation_types(result, facts.entity_refs, work_types),
                  "operation_types": operation_types(result, facts.entity_refs, work_types,
                       candidate["artifact"].get("results", []))}
-        return result, extra, facts.tables["BatchOperations"], {key: ref for ref, key in facts.operations.items()}, issues, facts
+        return result, extra, facts.tables["BatchOperations"], facts.operation_refs, issues, facts
 
 
 def prepare_base(conn, intent, *, execution_service):
@@ -232,6 +230,7 @@ def prepare_base(conn, intent, *, execution_service):
     issues.extend(_date_issues(rows))
     _predecessors(rows, all_ops, operation_refs, issues)
     live = live_context(conn, [row["operation_ref"] for row in rows], capture, execution_service=execution_service)
+    live["source_facts"] = source_facts
     admission = {"input": intent, "source": source, "facts": live["facts"],
                  "baseline": live["baseline"], "execution": live["execution"], "base_issues": issues}
     _attach_original_context(rows, source, key, live, source_facts)
@@ -240,19 +239,19 @@ def prepare_base(conn, intent, *, execution_service):
 
 
 def _original_external_facts(rows, original_tables, live):
-    contexts = (_table(original_tables, "BatchExternalContexts") if original_tables is not None
+    contexts = (archived_table(original_tables, "BatchExternalContexts") if original_tables is not None
                 else live["facts"]["tables"].get("BatchExternalContexts"))
     if contexts is None and original_tables is not None:
         selected = {row["original"]["operation"]["id"] for row in rows
                     if row["original"]["operation"]["source"] == "external"}
         contexts = archived_contexts(original_tables, selected)
     by_operation = {item["operation_id"]: item for item in contexts or []}
-    operations = (_table(original_tables, "BatchOperations") if original_tables is not None
+    operations = (archived_table(original_tables, "BatchOperations") if original_tables is not None
                   else live["facts"]["tables"]["BatchOperations"])
     return by_operation, member_index(by_operation, operations or [])
 
 
-def _attach_original_context(rows, source, key, live, facts=None):
+def _attach_original_context(rows, source, key, live, facts):
     original_execution = ({row["operation_ref"]: row for row in source["capture"]["execution"]}
                           if key == "candidate_ref" else live["execution"])
     original_tables = facts.archive if facts is not None else None

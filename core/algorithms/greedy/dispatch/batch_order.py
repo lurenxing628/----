@@ -5,7 +5,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.ordering import normalize_text_id
 from core.algorithm_contracts.value_domains import EXTERNAL, INTERNAL
-from core.algorithm_runtime.dispatch_context import DispatchContextContractError, ensure_dispatch_context
+from core.algorithm_runtime.dispatch_context import DispatchContextContractError
+from core.algorithm_runtime.piece_input import operation_batch
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.errors import ValidationError
 
@@ -23,7 +24,7 @@ def dispatch_batch_order(
     resource_pool: Optional[Dict[str, Any]],
     strict_mode: bool = False,
 ) -> Tuple[int, int]:
-    ctx = ensure_dispatch_context(context)
+    ctx = context
     for op in sorted_ops:
         _dispatch_one(
             ctx,
@@ -58,10 +59,11 @@ def _dispatch_one(
         batch_id = normalize_text_id(getattr(op, "batch_id", ""))
         if not _validate_batch(op=op, batch_id=batch_id, batches=batches, state=state):
             return
-        result, _blocked = _schedule_op(
+        errors_before = len(state.errors)
+        result, _blocked = schedule_op(
             ctx,
             op=op,
-            batch=batches[batch_id],
+            batch=operation_batch(op, batches[batch_id]),
             state=state,
             base_time=base_time,
             end_dt_exclusive=end_dt_exclusive,
@@ -73,7 +75,12 @@ def _dispatch_one(
         if result and result.start_time and result.end_time:
             state.record_dispatch_success(result)
         else:
-            state.record_dispatch_failure(batch_id, block=True, failed_op=op)
+            state.record_dispatch_failure(
+                batch_id,
+                block=True,
+                failed_op=op,
+                error_message=(state.errors[-1] if len(state.errors) > errors_before else ""),
+            )
     except (ValidationError, DispatchContextContractError):
         raise
     except Exception:
@@ -90,7 +97,7 @@ def _validate_batch(*, op: Any, batch_id: str, batches: Dict[str, Any], state: S
     return True
 
 
-def _schedule_op(
+def schedule_op(
     ctx: Any,
     *,
     op: Any,
@@ -106,7 +113,6 @@ def _schedule_op(
     if (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() == EXTERNAL:
         return ctx.schedule_external(
             op=op,
-            batch=batch,
             batch_progress=state.batch_progress,
             external_group_cache=state.external_group_cache,
             base_time=base_time,
@@ -134,6 +140,5 @@ def _schedule_op(
 
 
 def _record_dispatch_exception(ctx: Any, *, op: Any, batch_id: str, state: ScheduleRunState) -> None:
-    op_code = state._safe_text_attr(op, "op_code", "-") or "-"
     state.record_dispatch_exception(op, batch_id, dispatch_mode="batch_order")
-    ctx.log_exception(f"工序 {op_code} 排产异常")
+    ctx.log_exception(f"工序 {op.op_code} 排产异常")

@@ -20,7 +20,7 @@ def runtime_base_dir(anchor_file: Optional[str] = None) -> str:
         if anchor_file:
             return str(Path(anchor_file).resolve().parent)
         return str(Path.cwd().resolve())
-    except Exception as exc:
+    except (OSError, RuntimeError) as exc:
         if getattr(sys, "frozen", False):
             fallback = os.path.abspath(os.path.dirname(sys.executable) or ".")
         elif anchor_file:

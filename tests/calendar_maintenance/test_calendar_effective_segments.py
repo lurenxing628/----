@@ -26,7 +26,8 @@ def engine(today_normal='yes', previous_normal='yes', *, start='05:00', end='13:
         night = day == '2026-10-05'
         return SimpleNamespace(date=day, day_type='workday', shift_hours=8, shift_start='22:00' if night else start,
                                shift_end='06:00' if night else end, efficiency=efficiency,
-                               allow_normal=previous_normal if night else today_normal, allow_urgent='yes')
+                               allow_normal=previous_normal if night else today_normal, allow_urgent='yes',
+                               periods_json=None)
     result._resolve_calendar_row = resolve
     return result
 
@@ -60,7 +61,9 @@ def test_people_share_public_dates_and_shift_facts_then_maintenance_reloads(sche
                  ('[{"start":"09:00","end":"12:00","day_offset":0},{"start":"13:00","end":"17:00","day_offset":0}]',))
     conn.executemany("INSERT INTO WorkbenchOperatorProfiles(operator_id,shift_profile_id) VALUES (?,'S')", [("O1",), ("O2",)])
     service = CalendarService(conn)
-    service.upsert("2026-10-12", shift_hours=8)
+    service._admin.repo.upsert_many([service._admin._build_work_calendar(date_value="2026-10-12", shift_hours=8)])
+    conn.commit()
+    service._engine.clear_policy_cache()
     cal, counts = service._engine, {}
     built, build = [], service._engine._policy_from_calendar
 
@@ -99,7 +102,9 @@ def test_people_share_public_dates_and_shift_facts_then_maintenance_reloads(sche
     conn.execute("UPDATE WorkbenchShiftPatternDays SET shift_start='10:00',shift_end='16:00' WHERE profile_id='S'")
     conn.execute("UPDATE WorkbenchShiftDayPeriods SET periods_json=? WHERE profile_id='S'",
                  ('[{"start":"10:00","end":"12:00","day_offset":0},{"start":"13:00","end":"16:00","day_offset":0}]',))
-    service.upsert("2026-10-12", shift_hours=4)
+    service._admin.repo.upsert_many([service._admin._build_work_calendar(date_value="2026-10-12", shift_hours=4)])
+    conn.commit()
+    service._engine.clear_policy_cache()
     assert not cal._policy_operator_keys
     for who in ("O1", "O2"):
         policies = [cal._policy_for_date(day, who) for day in days]
@@ -110,7 +115,11 @@ def test_people_share_public_dates_and_shift_facts_then_maintenance_reloads(sche
     assert len(parsed) == 2
     assert cal.default_periods() == [{"start": "09:00", "end": "15:00", "day_offset": 0}]
     assert cal.default_periods() is not defaults
-    service.upsert_operator_calendar("O2", "2026-10-13", shift_start="11:00", shift_end="13:00")
+    service._admin.operator_calendar_repo.upsert_many(
+        [service._admin._build_operator_calendar(operator_id="O2", date_value="2026-10-13", shift_start="11:00", shift_end="13:00")]
+    )
+    conn.commit()
+    service._engine.clear_policy_cache()
     assert cal._policy_for_date("2026-10-13", "O2").shift_hours == 2
     assert len(built) == 7
 

@@ -41,14 +41,14 @@ class CalibrationAdoptionEvidence:
     snapshot: Dict[str, Any]
     generated_at: str
     blockers: list
-    _audit_json: str = field(init=False, repr=False, compare=False)
+    _audit_json: str = field(default="", init=False, repr=False, compare=False)
 
     def __post_init__(self):
         # The snapshot owns the recommendation; samples stay at their durable
         # location consumed by report-void dependency checks, including old audits.
         object.__setattr__(self, "_audit_json", canonical_json({"snapshot": self.snapshot, "samples": self.samples}))
 
-    def audit_document(self):
+    def audit_document(self) -> str:
         return self._audit_json
 
     def require_adoptable(self):

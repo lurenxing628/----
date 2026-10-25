@@ -14,6 +14,43 @@ from web import public_token_registry
 from web.routes.workbench.calibration import register_calibration_routes
 
 
+@pytest.mark.parametrize("suffix", ("", "/facets/operation_label"))
+def test_calibration_captures_current_clock_in_snapshot_and_reuses_token_clock(lineage_case, monkeypatch, suffix):
+    from tests.workbench.execution_ledger_support import NOW
+    from web.routes.workbench import calibration, calibration_table
+
+    case = lineage_case
+    app = Flask("calibration-snapshot-clock")
+    app.config.update(TESTING=True, SECRET_KEY="temporary-calibration-snapshot-clock")
+    bp = Blueprint("calibration_snapshot_clock", __name__)
+    register_calibration_routes(bp)
+    app.register_blueprint(bp)
+
+    @app.before_request
+    def database():
+        g.db = case.conn
+
+    clocks = []
+
+    def current_clock():
+        clocks.append(case.conn.in_transaction)
+        return NOW
+
+    module = calibration_table if suffix else calibration
+    monkeypatch.setattr(module, "current_snapshot_time", current_clock)
+    client, path = app.test_client(), "/api/workbench/v1/calibration" + suffix
+    initial = client.get(path)
+    assert initial.status_code == 200, initial.get_json()
+    body = initial.get_json()
+    assert body["meta"]["as_of"] == NOW.isoformat(timespec="seconds")
+    assert clocks == [True]
+    repeated = client.get(path, query_string={"snapshot_ref": body["meta"]["snapshot_ref"]})
+    assert repeated.status_code == 200, repeated.get_json()
+    assert repeated.get_json()["data"] == body["data"]
+    assert repeated.get_json()["meta"]["as_of"] == body["meta"]["as_of"]
+    assert clocks == [True]
+
+
 def test_calibration_restores_page_once_and_keeps_scope_source_and_expiry(lineage_case, monkeypatch, record_property):
     case = lineage_case
     case.conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,setup_hours,unit_hours) "

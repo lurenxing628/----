@@ -58,10 +58,7 @@ def _catalog_identity_matches(record, locator, expected) -> bool:
 def _requested_task_ids(rows: Iterable[Mapping[str, Any]], target_version: int) -> Dict[int, int]:
     expected = {}
     for row in rows:
-        try:
-            row_id, op_id, version = row["schedule_id"], row["op_id"], row["version"]
-        except (KeyError, TypeError):
-            _fail("task_binding_invalid")
+        row_id, op_id, version = row["schedule_id"], row["op_id"], row["version"]
         if not all(_positive_int(value) for value in (row_id, op_id, version)) or version != target_version:
             _fail("task_binding_invalid")
         if row_id in expected and expected[row_id] != op_id:
@@ -82,24 +79,37 @@ def _locator(value) -> WorkbenchPlanLocator:
 class WorkbenchPlanIdentityRepository(BaseRepository):
     def __init__(self, conn, logger=None):
         super().__init__(conn, logger=logger)
-        self._checked_schema_version = None
         self._binding_facts = None
-        self._history_reader: Optional[Callable[[int], List[Dict[str, Any]]]] = None
-        self._scenario_reader: Optional[Callable[[str], Optional[Dict[str, Any]]]] = None
 
     @contextmanager
-    def read_bindings(self):
-        """Own binding facts for this read-only transaction; nested reads reuse them."""
+    def read_bindings(self, *, history_reader: Optional[Callable[[int], List[Dict[str, Any]]]] = None,
+                      scenario_reader: Optional[Callable[[str], Optional[Dict[str, Any]]]] = None):
+        """Own binding facts for this read-only transaction; nested reads reuse them.
+
+        The readers serve plan history and scenario rows the caller already reads in this
+        transaction; without them those rows come from SQL. A nested scope that brings its
+        own readers uses them until it exits.
+        """
         if not self.conn.in_transaction:
             raise RuntimeError("Plan binding facts require the caller's read transaction")
         previous = self._binding_facts
         if previous is not None:
             self._check_schema()
-            yield
+            if history_reader is None and scenario_reader is None:
+                yield
+                return
+            outer = previous["history_reader"], previous["scenario_reader"]
+            previous["history_reader"], previous["scenario_reader"] = history_reader, scenario_reader
+            try:
+                yield
+            finally:
+                previous["history_reader"], previous["scenario_reader"] = outer
             return
         with read_evidence_scope(self.conn):
-            facts = {"changes": self.conn.total_changes, "history": {}, "roles": {}, "role_rows": {}, "sources": {},
-                     "resolved": {}, "operations": {}, "tasks": {}}
+            facts: Dict[str, Any] = {
+                "changes": self.conn.total_changes, "history": {}, "roles": {}, "role_rows": {}, "sources": {},
+                "resolved": {}, "operations": {}, "tasks": {},
+                "history_reader": history_reader, "scenario_reader": scenario_reader}
             self._binding_facts = facts
             try:
                 self._check_schema()
@@ -120,7 +130,8 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
         cached = self._binding_cache("history")
         if cached is not None and version in cached:
             return cached[version]
-        present = (bool(self._history_reader(version)) if self._history_reader is not None else
+        history_reader = self._binding_cache("history_reader")
+        present = (bool(history_reader(version)) if history_reader is not None else
                    self.fetchone("SELECT 1 FROM ScheduleHistory WHERE version = ? LIMIT 1", (version,)) is not None)
         if cached is not None:
             cached[version] = present
@@ -131,12 +142,9 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
             self._binding_cache("history")
             if "revision" in self._binding_facts:
                 return self._binding_facts["revision"]
-        version = self.fetchvalue("SELECT schema_version FROM pragma_schema_version")
-        if version != self._checked_schema_version:
-            issues = workbench_plan_identity_contract_issues(self.conn, structure=schema_contract_memo(self.conn).structure)
-            if issues:
-                raise RuntimeError("Workbench plan identity schema unavailable: " + "; ".join(issues))
-            self._checked_schema_version = version
+        issues = schema_contract_memo(self.conn).get_schema(workbench_plan_identity_contract_issues)
+        if issues:
+            raise RuntimeError("Workbench plan identity schema unavailable: " + "; ".join(issues))
         revision = self.fetchvalue("SELECT revision FROM WorkbenchPlanIdentityClock WHERE singleton = 1")
         if not _positive_int(revision):
             _fail("identity_missing")
@@ -162,7 +170,7 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
         cached = self._binding_cache("roles")
         if cached is not None and version in cached:
             return cached[version]
-        rows = self._role_rows(version)
+        rows = self.role_rows([version])[version]
         roles = {row["role"]: row for row in rows}
         if rows and "adopted" not in roles:
             _fail("plan_binding_invalid")
@@ -172,32 +180,36 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
             cached[version] = roles
         return roles
 
-    def _role_rows(self, version):
+    def role_rows(self, versions):
         cached = self._binding_cache("role_rows")
-        if cached is not None and version in cached:
-            return cached[version]
-        rows = self.fetchall(f"""SELECT s.*, c.id AS resolved_id, c.candidate_key,
-            c.candidate_label,c.candidate_kind,c.status AS candidate_status,c.detail_saved,
-            CAST(s.id AS TEXT) AS selection_identity_key,CAST(s.candidate_id AS TEXT) AS selection_owner_key,
-            m.ref AS selection_ref, m.version AS mapped_version, m.plan_role AS mapped_role,
-            m.source_table AS mapped_source, m.owner_key AS mapped_owner,
-            m.parent_ref, p.ref AS candidate_ref
-            FROM ScheduleCandidateSelection s
-            LEFT JOIN ScheduleCandidate c ON c.id = s.candidate_id AND c.version = s.version
-            LEFT JOIN WorkbenchPlanSourceRefs m ON m.kind = 'selection'
-                AND m.source_key = CAST(s.id AS TEXT) AND m.active = 1
-            LEFT JOIN WorkbenchPlanSourceRefs p ON p.kind = 'candidate'
-                AND p.source_key = CAST(c.id AS TEXT) AND p.version = c.version AND p.active = 1
-            WHERE s.version = ? ORDER BY {plan_role_order_sql("s.role")}""", (version,))
-        if cached is not None:
-            cached[version] = rows
-        return rows
+        result = cached if cached is not None else {}
+        pending = [version for version in dict.fromkeys(versions) if version not in result]
+        for start in range(0, len(pending), 400):
+            chunk = pending[start:start + 400]
+            marks = ",".join("?" for _ in chunk)
+            result.update((version, []) for version in chunk)
+            rows = self.fetchall(f"""SELECT s.*, c.id AS resolved_id, c.candidate_key,
+                c.candidate_label,c.candidate_kind,c.status AS candidate_status,c.detail_saved,
+                CAST(s.id AS TEXT) AS selection_identity_key,CAST(s.candidate_id AS TEXT) AS selection_owner_key,
+                m.ref AS selection_ref, m.version AS mapped_version, m.plan_role AS mapped_role,
+                m.source_table AS mapped_source, m.owner_key AS mapped_owner,
+                m.parent_ref, p.ref AS candidate_ref
+                FROM ScheduleCandidateSelection s
+                LEFT JOIN ScheduleCandidate c ON c.id = s.candidate_id AND c.version = s.version
+                LEFT JOIN WorkbenchPlanSourceRefs m ON m.kind = 'selection'
+                    AND m.source_key = CAST(s.id AS TEXT) AND m.active = 1
+                LEFT JOIN WorkbenchPlanSourceRefs p ON p.kind = 'candidate'
+                    AND p.source_key = CAST(c.id AS TEXT) AND p.version = c.version AND p.active = 1
+                WHERE s.version IN ({marks}) ORDER BY s.version,{plan_role_order_sql("s.role")}""", chunk)
+            for row in rows:
+                result[row["version"]].append(row)
+        return result
 
     def read_role_options(self, version):
         fields = ("role", "source_table", "candidate_key", "candidate_label", "candidate_kind", "candidate_status", "detail_saved")
         return [{**{key: row[key] for key in fields}, "selection_candidate_id": row["candidate_id"],
                  "resolved_candidate_id": row["resolved_id"], "candidate_id": row["resolved_id"]}
-                for row in self._role_rows(version)]
+                for row in self.role_rows([version])[version]]
 
     @staticmethod
     def _validate_role_binding(row, roles) -> None:
@@ -247,7 +259,8 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
             _fail("plan_binding_invalid")
 
     def _validate_scenario(self, record, locator, roles) -> None:
-        scenario = (self._scenario_reader(locator.scenario_id) if self._scenario_reader is not None else
+        scenario_reader = self._binding_cache("scenario_reader")
+        scenario = (scenario_reader(locator.scenario_id) if scenario_reader is not None else
                     self.fetchone("SELECT * FROM ScheduleAdjustmentScenario WHERE scenario_id = ?", (locator.scenario_id,)))
         if scenario is None or (scenario["base_version"], scenario["base_plan_role"]) != (locator.version, locator.plan_role):
             _fail("plan_binding_invalid")
@@ -301,7 +314,8 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
 
     def _catalog_source(self, locator: WorkbenchPlanLocator) -> Optional[Tuple[str, str, Dict[str, Any]]]:
         if locator.scenario_id is not None:
-            source = (self._scenario_reader(locator.scenario_id) if self._scenario_reader is not None else
+            scenario_reader = self._binding_cache("scenario_reader")
+            source = (scenario_reader(locator.scenario_id) if scenario_reader is not None else
                       self.fetchone("SELECT scenario_id, base_version, base_plan_role, source_draft_id "
                                      "FROM ScheduleAdjustmentScenario WHERE scenario_id = ?", (locator.scenario_id,)))
             if source is None:
@@ -311,11 +325,12 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
                 "source_table": "adjustment_scenario_rows", "alternate_key": source["source_draft_id"],
             }
         if locator.plan_role == "adopted":
-            if self._history_reader is None:
+            history_reader = self._binding_cache("history_reader")
+            if history_reader is None:
                 source = self.fetchone("SELECT version, CAST(version AS TEXT) AS identity_key FROM ScheduleHistory "
                                         "WHERE version = ? LIMIT 1", (locator.version,))
             else:
-                rows = self._history_reader(locator.version)
+                rows = history_reader(locator.version)
                 source = {"version": rows[0]["version"], "identity_key": str(rows[0]["version"])} if rows else None
             if self._binding_facts is not None:
                 self._binding_facts["history"][locator.version] = source is not None
@@ -331,7 +346,7 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
                 return None
             key, owner_key = str(source["id"]), source["owner_key"]
         else:
-            source = next((row for row in self._role_rows(locator.version) if row["role"] == locator.plan_role), None)
+            source = next((row for row in self.role_rows([locator.version])[locator.version] if row["role"] == locator.plan_role), None)
             if source is None:
                 return None
             key, owner_key = source["selection_identity_key"], source["selection_owner_key"]

@@ -22,10 +22,10 @@ def wire(value):
 
 
 def union(intervals):
-    return _union_sorted(sorted(intervals))
+    return union_sorted(sorted(intervals))
 
 
-def _union_sorted(intervals):
+def union_sorted(intervals):
     """Merge sorted input in one pass, including adjacent positive intervals."""
     result = []
     for start, end in intervals:

@@ -1,7 +1,6 @@
 """In-memory candidate computation. No worker admission, version allocation or publish."""
 
 from functools import partial
-from typing import Callable, Optional
 
 from core.infrastructure.connection_guards import is_query_only
 from core.infrastructure.read_evidence import read_evidence_scope
@@ -14,33 +13,27 @@ from core.services.workbench.facts.run_input_rows import fail
 from core.services.workbench.facts.zero_duration import candidate_point_validator
 
 from .compute_graph import piece_graph_preparer
-from .compute_validation import validate_candidate
-from .input import CandidateRunInput, prepare_candidate_run_input
-from .piece_adoption import validate_piece_candidate
-from .preflight_facts import PreflightFacts, full_facts_content
+from .compute_validation import prepare_candidate_validation_context, validate_candidate
+from .input import prepare_candidate_run_input
+from .piece_adoption import prepare_piece_validation_context, validate_piece_candidate
+from .preflight_facts import PreflightFacts
 
 
 def compute_candidate_run(conn, normalized_input, execution_projections, *, version_override=None,
-                          on_progress: Optional[Callable[[int, int], None]] = None, capture=None,
+                          capture=None,
                           validated_projections=None) -> CandidateRunComputation:
-    """Compute actual candidate rows under one read snapshot; worker owns run lock.
-
-    ``on_progress(done, total)`` is only a progress sink for the worker's status ledger; it never
-    receives prepared input or results and cannot influence the computation.
-    """
+    """Compute actual candidate rows under one read snapshot; worker owns run lock."""
     with candidate_read_snapshot(conn):
         return _prepare_and_compute_in_snapshot(
-            conn, normalized_input, execution_projections, version_override, on_progress, capture,
+            conn, normalized_input, execution_projections, version_override, capture,
             validated_projections=validated_projections)
 
 
 def _prepare_and_compute_in_snapshot(
     conn, normalized_input, execution_projections, version_override,
-    on_progress: Optional[Callable[[int, int], None]] = None,
-    capture=None, validated_projections=None,
+    capture, validated_projections,
 ):
     # The private continuation consumes this preparation in the same read snapshot.
-    # Independent prepared inputs still capture and recheck their complete fingerprint.
     facts = None
     if capture is not None:
         facts = PreflightFacts(conn, capture=capture)
@@ -48,32 +41,36 @@ def _prepare_and_compute_in_snapshot(
     prepared = prepare_candidate_run_input(
         conn, normalized_input, execution_projections, capture_fingerprint=False, facts=facts,
         validated_projections=validated_projections)
-    version = _prepared_version(conn, prepared, version_override)
-    return _compute_in_read_snapshot(conn, prepared, version, on_progress)
+    version = _prepared_version(prepared, version_override)
+    return _compute_in_read_snapshot(conn, prepared, version)
 
 
-def _prepared_version(conn, schedule_input, version_override):
-    if not isinstance(schedule_input, CandidateRunInput):
-        raise TypeError("schedule_input must come from prepare_candidate_run_input")
-    if schedule_input.cal_svc.conn is not conn:
-        fail("candidate_connection_mismatch", "Prepared calendar and worker must use the same SQLite connection.")
+def _prepared_version(schedule_input, version_override):
     version = schedule_input.prev_version if version_override is None else version_override
     if type(version) is not int or version < 0:
         fail("invalid_version_context", "Version context must be an explicit non-negative integer.")
     return version
 
 
-def _candidate_payloads(conn, schedule_input, comparison, *, selected_payload=None):
+def _candidate_payloads(conn, schedule_input, comparison, *, selected_payload):
     payloads = {}
     with read_evidence_scope(conn):
+        validation_context = prepare_candidate_validation_context(schedule_input)
+        piece_context = (prepare_piece_validation_context(conn, schedule_input)
+                         if any(op.piece_id is not None for op in schedule_input.operations) else None)
         for candidate in comparison.candidates:
             if candidate.status == "completed":
                 payloads[candidate.candidate_key] = validate_candidate(
                     schedule_input, candidate.results, list(candidate.summary.errors),
                     prepared_payload=(selected_payload if candidate.candidate_key == comparison.selection.selected_candidate_key else None),
+                    context=validation_context,
                 )
-                if any(op.piece_id is not None for op in schedule_input.operations):
-                    validate_piece_candidate(conn, prepared=schedule_input, payload=payloads[candidate.candidate_key])
+                if piece_context is not None:
+                    validate_piece_candidate(
+                        conn, prepared=schedule_input,
+                        payload=payloads[candidate.candidate_key], context=piece_context,
+                        candidate_validated=True,
+                    )
     return payloads
 
 
@@ -86,21 +83,8 @@ def _computation_state(schedule_input, comparison, payloads):
     return "partial" if is_partial else "complete"
 
 
-def compute_prepared_candidate_run(conn, schedule_input: CandidateRunInput, *, version_override=None) -> CandidateRunComputation:
-    """Reject a stale prepared input; return internal artifacts, not a public RunResult.
-
-    version_override is output context only. It never allocates a version.
-    Caller must not mutate prepared artifacts or use a connection from another DB.
-    """
-    version = _prepared_version(conn, schedule_input, version_override)
-    with candidate_read_snapshot(conn):
-        if full_facts_content(conn) != schedule_input.facts_fingerprint:
-            fail("candidate_input_stale", "排产资料在这中间变了，这次排产没有开始。请重新做一次排产检查。")
-        return _compute_in_read_snapshot(conn, schedule_input, version)
-
-
-def _compute_in_read_snapshot(conn, schedule_input, version, on_progress: Optional[Callable[[int, int], None]] = None):
-    """Private continuation after preparation or full freshness validation."""
+def _compute_in_read_snapshot(conn, schedule_input, version):
+    """Private continuation after preparation in the current snapshot."""
     if not conn.in_transaction or not is_query_only(conn):
         fail("candidate_read_snapshot_lost", "Candidate computation requires its active read-only snapshot.")
     compare = run_candidate_comparison
@@ -113,8 +97,6 @@ def _compute_in_read_snapshot(conn, schedule_input, version, on_progress: Option
         candidate_comparison_fn=compare,
     )
     comparison = orchestration.candidate_comparison
-    if comparison is None:
-        fail("candidate_comparison_missing", "这次排产没有算出可比较的方案，排产没有完成。请刷新重试；仍不行请联系维护人员。")
     payloads = _candidate_payloads(conn, schedule_input, comparison,
                                    selected_payload=orchestration.validated_schedule_payload)
     state = _computation_state(schedule_input, comparison, payloads)

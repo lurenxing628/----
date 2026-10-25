@@ -1,31 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
-
-from ._helpers import RowLike, get, parse_int
-from .enums import SkillLevel, YesNo
 
 
 @dataclass
 class OperatorMachine:
-    id: Optional[int]
     operator_id: str
     machine_id: str
-    skill_level: str = SkillLevel.NORMAL.value  # 正式写入口径：beginner/normal/expert；skilled 仅历史兼容别名
-    is_primary: str = YesNo.NO.value  # yes/no（预留）
-    created_at: Optional[str] = None
+    skill_level: str  # 正式写入口径：beginner/normal/expert；skilled 仅历史兼容别名
+    is_primary: str  # yes/no（预留）
 
-    @classmethod
-    def from_row(cls, row: RowLike) -> OperatorMachine:
-        raw_id = get(row, "id")
-        return cls(
-            id=parse_int(raw_id, default=None),
-            operator_id=str(get(row, "operator_id") or ""),
-            machine_id=str(get(row, "machine_id") or ""),
-            skill_level=(
-                str(get(row, "skill_level") or SkillLevel.NORMAL.value).strip().lower() or SkillLevel.NORMAL.value
-            ),
-            is_primary=(str(get(row, "is_primary") or YesNo.NO.value).strip().lower() or YesNo.NO.value),
-            created_at=get(row, "created_at"),
-        )

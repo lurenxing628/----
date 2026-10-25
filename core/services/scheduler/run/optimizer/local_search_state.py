@@ -55,13 +55,11 @@ def candidate_can_update_best(
     *,
     candidate: Dict[str, Any],
     best: Dict[str, Any],
-    fingerprint: Optional[CandidateFingerprint],
+    fingerprint: CandidateFingerprint,
     candidate_origin: str,
     incumbent_origin: str,
     incumbent_fingerprint_changed: bool,
 ) -> bool:
-    if fingerprint is None:
-        return False
     if fingerprint.same_as_parent or fingerprint.same_as_seen:
         return False
     return candidate_is_preferred(

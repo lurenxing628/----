@@ -34,7 +34,7 @@ def process_facets(column, selection=False):
         raise WorkbenchCommandRejected("invalid_input", "列筛选的查询条件有重复或不支持的项，筛选没有变化。请刷新页面后重新打开列筛选。", 400)
     try:
         scope = json.loads(request.args.get("scope", "{}"), object_pairs_hook=unique_process_table_object)
-    except (ValueError, TypeError) as exc:
+    except json.JSONDecodeError as exc:
         raise WorkbenchCommandRejected("invalid_input", "筛选内容读不出来，筛选没有变化。请点「清除筛选」后重新选择。", 400) from exc
     query = process_table_request(scope)
     search, number, size = request.args.get("query", ""), _positive("page", 1), _positive("size", 100)

@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 PRELAUNCH_PUBLIC_MESSAGE = "应用启动失败：程序文件加载失败，请把 launcher.log 发给维护人员排查。"
 
 
-def _record_prelaunch_import_failure(exc: BaseException) -> bool:
+def _record_prelaunch_import_failure(exc: BaseException) -> None:
     from web.bootstrap.launcher_observability import launcher_log_warning
     from web.bootstrap.launcher_paths import resolve_prelaunch_log_dir
     from web.bootstrap.paths import runtime_base_dir
@@ -37,7 +37,6 @@ def _record_prelaunch_import_failure(exc: BaseException) -> bool:
             write_launch_error=False,
             logger_level="error",
         )
-    return bool(result.file_ok)
 
 
 def _entrypoint_module() -> Any:

@@ -8,15 +8,14 @@ from core.models.calendar import OperatorCalendar, WorkCalendar
 from core.models.calendar_periods import encode_periods
 from core.services.scheduler.calendar.defaults import default_periods_from_row
 from core.services.scheduler.calendar.engine import CalendarEngine
-from data.repositories.operator_shift_repo import OperatorShiftRepository
 
 
-class _ShiftRows(OperatorShiftRepository):
-    """Connection-free overrides for the two reads used by apply_policy."""
+class _ShiftRows:
+    """Connection-free stand-in for the two shift-repository reads used by apply_policy."""
 
     def __init__(self, facts):
         self.profiles = {row["operator_id"]: dict(row) for row in facts["profiles"]}
-        self.patterns = {(row["profile_id"], row["day_offset"]): dict(row, periods_json=row.get("periods_json")) for row in facts["patterns"]}
+        self.patterns = {(row["profile_id"], row["day_offset"]): row for row in facts["patterns"]}
         offsets = defaultdict(list)
         for row in facts["patterns"]:
             offsets[row["profile_id"]].append(row["day_offset"])
@@ -70,15 +69,35 @@ def _calendar_index(rows, *, personal=False):
     return index
 
 
+def _deferred_index(rows, *, personal=False):
+    """Index one calendar table, or keep its rejection for every policy that reads it."""
+    try:
+        return _calendar_index(rows, personal=personal), None
+    except ValidationError as exc:
+        return {}, exc.with_traceback(None)
+
+
 class SnapshotCalendarEngine(CalendarEngine):
     def __init__(self, facts):
-        super().__init__(None)
-        self._default_periods_json = encode_periods(default_periods_from_row(next(iter(facts.get("defaults", [])), None)))
-        self.legacy_defaults = facts.get("legacy_defaults", False)
-        self.global_rows = _calendar_index(facts["global"])
-        self.personal_rows = _calendar_index(facts["personal"], personal=True)
         self._shift_rows = _ShiftRows(facts)
-        self.operator_shift_calendar.repo = self._shift_rows
+        super().__init__(None, shift_repo=self._shift_rows)
+        self._default_rows = tuple(facts.get("defaults", ()))
+        self.legacy_defaults = facts.get("legacy_defaults", False)
+        # 坏日历表的错误留给真正读它的策略抛出：个人日历表坏了不连累全局与设备日历，
+        # 全局表坏了也不连累当天已有个人日历的人员。
+        self.global_rows, self._global_error = _deferred_index(facts["global"])
+        self.personal_rows, self._personal_error = _deferred_index(facts["personal"], personal=True)
+
+    def default_periods(self):
+        if self._default_periods is None:
+            if self.legacy_defaults:
+                periods = [{"start": "08:00", "end": "16:00", "day_offset": 0}]
+            else:
+                periods = default_periods_from_row(next(iter(self._default_rows), None))
+            self._default_periods = periods
+            self._default_periods_json = encode_periods(periods, normalized=True)
+            _, self._default_period_hours = self._period_facts_for_json(self._default_periods_json, periods)
+        return self._default_periods
 
     def _default_for_date(self, date_str):
         row = super()._default_for_date(date_str)
@@ -87,9 +106,14 @@ class SnapshotCalendarEngine(CalendarEngine):
         return row
 
     def _resolve_calendar_row(self, date_str, op_id):
+        # 重抛同一个错误对象前清掉旧 traceback，逐日重抛才不会越叠越长、拖住已结束的调用帧。
+        if op_id is not None and self._personal_error is not None:
+            raise self._personal_error.with_traceback(None)
         personal = self.personal_rows.get((op_id, date_str))
         if personal is not None:
             return _calendar_row(personal, OperatorCalendar)
+        if self._global_error is not None:
+            raise self._global_error.with_traceback(None)
         if date_str not in self._public_calendar_rows:
             row = self.global_rows.get(date_str)
             self._public_calendar_rows[date_str] = _calendar_row(row, WorkCalendar) if row is not None else self._default_for_date(date_str)

@@ -80,7 +80,7 @@ def _display_gaps(raw, public):
     missing = []
     for kind in ("machine", "operator"):
         field = "actual_" + kind + "_ref"
-        if raw[field] is None and raw.get(f"actual_{kind}_id") is not None:
+        if raw[field] is None and raw[f"actual_{kind}_id"] is not None:
             missing.append(field)
     if missing:
         result.append(gap("legacy_resource_identity_unresolved", "这条旧记录里的实际设备或人员对不上现在的资料。筛选需要判断这条记录的实际设备或人员时，系统会停止并提示，避免静默漏掉这条记录；请先核对资料。",

@@ -10,15 +10,12 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench import messages
 from core.services.workbench.facts.system_reads import backup_signature
 
-from .system_context import resolve_context, system_endpoint
+from .system_context import journal, resolve_context, system_endpoint
 from .system_reads import collection
 
 
 def _selected_filename(selected, rows):
     name = selected["filename"]
-    if (not isinstance(name, str) or os.path.basename(name) != name or "\\" in name
-            or not name.startswith("aps_backup_") or not name.endswith(".db")):
-        raise WorkbenchCommandRejected("invalid_input", "这个备份文件的编号已失效，没有开始下载。请刷新页面后重新选择备份。", 400)
     row = next((row for row in rows if row["record_kind"] == "backup_file" and row["filename"] == name), None)
     if row is None:
         raise WorkbenchCommandRejected("entity_not_found", "所选备份不在当前清单里，没有开始下载。请刷新页面后重新选择备份。", 404)
@@ -49,8 +46,11 @@ def _selected_bytes(selected, rows):
 def system_backup_export(backup_ref):
     if not request.args.get("snapshot_ref"):
         raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
-    selected = resolve_context("backup", backup_ref)
-    rows, _sources, _query, _snapshot = collection("backups")
+    event_journal = journal() if current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR") else None
+    records = event_journal.collection() if event_journal is not None else None
+    database = event_journal.scope_from_records(records) if event_journal is not None else None
+    selected = resolve_context("backup", backup_ref, database=database)
+    rows, _sources, _query, _snapshot = collection("backups", event_journal=event_journal, journal_records=records)
     data, name = _selected_bytes(selected, rows)
     response = Response(data, content_type="application/vnd.sqlite3")
     response.headers["Content-Disposition"] = "attachment; filename=aps-backup.db; filename*=UTF-8''" + quote(name, safe="")

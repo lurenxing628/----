@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
-import sys
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple, Union
+from itertools import islice
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Union
 
 from core.errors import AppError, ErrorCode
 
@@ -10,10 +10,7 @@ Params = Union[Sequence[Any], Dict[str, Any]]
 
 
 def _row_to_dict(row: Union[sqlite3.Row, Dict[str, Any]]) -> Dict[str, Any]:
-    if isinstance(row, dict):
-        return dict(row)
-    # sqlite3.Row 支持 keys()
-    return {k: row[k] for k in row.keys()}
+    return dict(row)
 
 
 def strict_non_negative_int(value: Any, *, field: str) -> int:
@@ -87,7 +84,7 @@ class BaseRepository:
     # 统一异常翻译
     # -------------------------
     def _translate_integrity_error(self, e: sqlite3.IntegrityError) -> AppError:
-        msg = str(e) or ""
+        msg = str(e)
 
         # UNIQUE 约束冲突
         if "UNIQUE constraint failed" in msg:
@@ -126,7 +123,7 @@ class BaseRepository:
     def _log_db_error(self, sql: str, params: Optional[Params], e: Exception) -> None:
         if not self.logger:
             return
-        def _truncate(s: str, max_len: int = 200) -> str:
+        def _truncate(s: str, max_len: int) -> str:
             s = s.replace("\r", "\\r").replace("\n", "\\n")
             return s if len(s) <= max_len else (s[: max_len - 3] + "...")
 
@@ -138,10 +135,7 @@ class BaseRepository:
             if v is None:
                 return None
             if isinstance(v, (bytes, bytearray, memoryview)):
-                try:
-                    return f"<{type(v).__name__} len={len(v)}>"
-                except Exception:
-                    return f"<{type(v).__name__}>"
+                return f"<{type(v).__name__} len={len(v)}>"
             try:
                 return _truncate(repr(v), max_len=200)
             except Exception:
@@ -153,24 +147,19 @@ class BaseRepository:
             try:
                 if isinstance(p, dict):
                     out: Dict[str, Any] = {}
-                    items = list(p.items())
-                    for k, v in items[:30]:
+                    for k, v in islice(p.items(), 30):
                         ks = _truncate(str(k), max_len=80)
                         out[ks] = "<redacted>" if _is_sensitive_key(ks) else _safe_value(v)
-                    if len(items) > 30:
-                        out["..."] = f"+{len(items) - 30} more"
+                    if len(p) > 30:
+                        out["..."] = f"+{len(p) - 30} more"
                     return out
                 if isinstance(p, (list, tuple)):
-                    seq = list(p)
-                    out2 = [_safe_value(v) for v in seq[:30]]
-                    if len(seq) > 30:
-                        out2.append(f"...+{len(seq) - 30} more")
+                    out2 = [_safe_value(v) for v in islice(p, 30)]
+                    if len(p) > 30:
+                        out2.append(f"...+{len(p) - 30} more")
                     return out2
                 return _safe_value(p)
             except Exception:
                 return "<unloggable params>"
 
-        try:
-            self.logger.error("数据库错误：%s；SQL=%s；params=%s", e, sql, _safe_params(params))
-        except Exception as log_exc:
-            print(f"数据库错误日志写入失败：{log_exc}", file=sys.stderr)
+        self.logger.error("数据库错误：%s；SQL=%s；params=%s", e, sql, _safe_params(params))

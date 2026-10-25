@@ -63,64 +63,102 @@ def _prune_empty_diagnostics(result_summary_obj: Dict[str, Any], diagnostics_dic
         result_summary_obj.pop("diagnostics", None)
 
 
-def _trim_trace(algo_dict: Dict[str, Any], limit: int) -> None:
+def _trim_trace(algo_dict: Dict[str, Any], limit: int) -> bool:
     trace = algo_dict.get("improvement_trace")
-    if isinstance(trace, list):
+    if isinstance(trace, list) and len(trace) > limit:
         algo_dict["improvement_trace"] = trace[:limit]
+        return True
+    return False
 
 
-def _trim_warnings(result_summary_obj: Dict[str, Any], limit: int) -> None:
+def _trim_warnings(result_summary_obj: Dict[str, Any], limit: int) -> bool:
     warnings = result_summary_obj.get("warnings")
     if isinstance(warnings, list):
         _remember_warning_summary(result_summary_obj, warnings, limit=limit)
-        result_summary_obj["warnings"] = warnings[:limit]
+        if len(warnings) > limit:
+            result_summary_obj["warnings"] = warnings[:limit]
+            return True
+    return False
 
 
-def _trim_errors(result_summary_obj: Dict[str, Any], limit: int) -> None:
+def _trim_errors(result_summary_obj: Dict[str, Any], limit: int) -> bool:
     public_error_details = result_summary_obj.get("public_error_details")
     errors = result_summary_obj.get("errors")
-    if isinstance(public_error_details, list):
-        result_summary_obj["public_error_details"] = guarded_items(public_error_details, limit, size_guard_public_error_detail)
+    changed = False
+    if isinstance(public_error_details, list) and public_error_details:
+        trimmed_details = guarded_items(public_error_details, limit, size_guard_public_error_detail)
+        if trimmed_details != public_error_details:
+            result_summary_obj["public_error_details"] = trimmed_details
+            changed = True
         if len(public_error_details) > limit:
             result_summary_obj["errors_truncated"] = True
-    if isinstance(errors, list):
-        result_summary_obj["errors"] = [str(item)[:500] for item in errors[:limit]]
+            changed = True
+    if isinstance(errors, list) and errors:
+        trimmed_errors = [str(item)[:500] for item in errors[:limit]]
+        if trimmed_errors != errors:
+            result_summary_obj["errors"] = trimmed_errors
+            changed = True
         if len(errors) > limit:
             result_summary_obj["errors_truncated"] = True
+            changed = True
+    return changed
 
 
-def _trim_missing_internal_resource_ops(result_summary_obj: Dict[str, Any], limit: int) -> None:
+def _trim_missing_internal_resource_ops(result_summary_obj: Dict[str, Any], limit: int) -> bool:
     items = result_summary_obj.get("missing_internal_resource_ops")
-    if isinstance(items, list):
-        result_summary_obj["missing_internal_resource_ops"] = guarded_items(items, limit, size_guard_missing_resource_item)
+    if isinstance(items, list) and items:
+        trimmed_items = guarded_items(items, limit, size_guard_missing_resource_item)
+        changed = trimmed_items != items
+        if changed:
+            result_summary_obj["missing_internal_resource_ops"] = trimmed_items
         if len(items) > limit:
             result_summary_obj["missing_internal_resource_ops_truncated"] = True
+            changed = True
+        return changed
+    return False
 
 
-def _trim_attempts(algo_dict: Dict[str, Any], limit: int) -> None:
+def _trim_attempts(algo_dict: Dict[str, Any], limit: int) -> bool:
     attempts = algo_dict.get("attempts")
-    if isinstance(attempts, list):
+    if isinstance(attempts, list) and len(attempts) > limit:
         algo_dict["attempts"] = attempts[:limit]
+        return True
+    return False
 
 
-def _trim_selected_batch_ids(result_summary_obj: Dict[str, Any], limit: int) -> None:
+def _trim_selected_batch_ids(result_summary_obj: Dict[str, Any], limit: int) -> bool:
     selected_batch_ids = result_summary_obj.get("selected_batch_ids")
-    if isinstance(selected_batch_ids, list):
+    if isinstance(selected_batch_ids, list) and len(selected_batch_ids) > limit:
         result_summary_obj["selected_batch_ids"] = selected_batch_ids[:limit]
+        return True
+    return False
 
 
-def _trim_overdue_items(result_summary_obj: Dict[str, Any], limit: int) -> None:
+def _trim_overdue_items(result_summary_obj: Dict[str, Any], limit: int) -> bool:
     overdue_batches = result_summary_obj.get("overdue_batches")
     overdue_items = overdue_batches.get("items") if isinstance(overdue_batches, dict) else None
-    if isinstance(overdue_batches, dict) and isinstance(overdue_items, list):
+    if isinstance(overdue_batches, dict) and isinstance(overdue_items, list) and len(overdue_items) > limit:
         overdue_batches["items"] = overdue_items[:limit]
+        return True
+    return False
 
 
-def _trim_near_due_items(result_summary_obj: Dict[str, Any], limit: int) -> None:
+def _trim_near_due_items(result_summary_obj: Dict[str, Any], limit: int) -> bool:
     near_due_batches = result_summary_obj.get("near_due_batches")
     near_due_items = near_due_batches.get("items") if isinstance(near_due_batches, dict) else None
-    if isinstance(near_due_batches, dict) and isinstance(near_due_items, list):
+    if isinstance(near_due_batches, dict) and isinstance(near_due_items, list) and len(near_due_items) > limit:
         near_due_batches["items"] = near_due_items[:limit]
+        return True
+    return False
+
+
+def _trim_incomplete_items(result_summary_obj: Dict[str, Any], limit: int) -> bool:
+    incomplete_batches = result_summary_obj.get("incomplete_batches")
+    incomplete_items = incomplete_batches.get("items") if isinstance(incomplete_batches, dict) else None
+    if isinstance(incomplete_batches, dict) and isinstance(incomplete_items, list) and len(incomplete_items) > limit:
+        incomplete_batches["items"] = incomplete_items[:limit]
+        return True
+    return False
 
 
 def _trim_diagnostic_attempts(
@@ -130,11 +168,14 @@ def _trim_diagnostic_attempts(
     diagnostics_dict: Dict[str, Any],
     diagnostic_attempts: Any,
     limit: int,
-) -> None:
-    if isinstance(diagnostic_attempts, list) and len(diagnostic_attempts) > limit:
-        optimizer_diagnostics["attempts"] = diagnostic_attempts[:limit]
+) -> bool:
+    current_attempts = optimizer_diagnostics.get("attempts", diagnostic_attempts)
+    if isinstance(current_attempts, list) and len(current_attempts) > limit:
+        optimizer_diagnostics["attempts"] = current_attempts[:limit]
         _mark_diagnostics_truncated(state)
         _prune_empty_diagnostics(state.result_summary_obj, diagnostics_dict)
+        return True
+    return False
 
 
 def _apply_truncation_tiers(
@@ -146,38 +187,43 @@ def _apply_truncation_tiers(
     diagnostic_attempts: Any,
 ) -> Optional[Dict[str, Any]]:
     obj = state.result_summary_obj
+    obj["summary_truncated"] = True
+    obj["original_size_bytes"] = int(state.original_size)
     for tier in DEFAULT_TRUNCATION_TIERS:
-        _trim_trace(algo_dict, tier.trace_limit)
-        _trim_warnings(obj, tier.warning_limit)
-        _trim_attempts(algo_dict, tier.attempt_limit)
-        _trim_diagnostic_attempts(
-            state,
-            optimizer_diagnostics=optimizer_diagnostics,
-            diagnostics_dict=diagnostics_dict,
-            diagnostic_attempts=diagnostic_attempts,
-            limit=tier.attempt_limit,
+        changed = False
+        changed = _trim_trace(algo_dict, tier.trace_limit) or changed
+        changed = _trim_warnings(obj, tier.warning_limit) or changed
+        changed = _trim_attempts(algo_dict, tier.attempt_limit) or changed
+        changed = (
+            _trim_diagnostic_attempts(
+                state,
+                optimizer_diagnostics=optimizer_diagnostics,
+                diagnostics_dict=diagnostics_dict,
+                diagnostic_attempts=diagnostic_attempts,
+                limit=tier.attempt_limit,
+            )
+            or changed
         )
         if tier.selected_ids_limit is not None:
-            _trim_selected_batch_ids(obj, tier.selected_ids_limit)
+            changed = _trim_selected_batch_ids(obj, tier.selected_ids_limit) or changed
         if tier.overdue_items_limit is not None:
-            _trim_overdue_items(obj, tier.overdue_items_limit)
+            changed = _trim_overdue_items(obj, tier.overdue_items_limit) or changed
+            changed = _trim_incomplete_items(obj, tier.overdue_items_limit) or changed
         if tier.near_due_items_limit is not None:
-            _trim_near_due_items(obj, tier.near_due_items_limit)
+            changed = _trim_near_due_items(obj, tier.near_due_items_limit) or changed
         if tier.errors_limit is not None:
-            _trim_errors(obj, tier.errors_limit)
+            changed = _trim_errors(obj, tier.errors_limit) or changed
         if tier.missing_resource_limit is not None:
-            _trim_missing_internal_resource_ops(obj, tier.missing_resource_limit)
-        obj["summary_truncated"] = True
-        obj["original_size_bytes"] = int(state.original_size)
-        if summary_size_bytes(obj) <= SUMMARY_SIZE_LIMIT_BYTES:
+            changed = _trim_missing_internal_resource_ops(obj, tier.missing_resource_limit) or changed
+        if changed and summary_size_bytes(obj) <= SUMMARY_SIZE_LIMIT_BYTES:
             return obj
     return None
 
 
-def _drop_diagnostic_fallback_samples(state: _SizeGuardState, *, optimizer_diagnostics: Dict[str, Any]) -> None:
+def _drop_diagnostic_fallback_samples(state: _SizeGuardState, *, optimizer_diagnostics: Dict[str, Any]) -> bool:
     attempts_value = optimizer_diagnostics.get("attempts")
     if not isinstance(attempts_value, list):
-        return
+        return False
     changed = False
     for attempt in attempts_value:
         if not isinstance(attempt, dict):
@@ -188,6 +234,7 @@ def _drop_diagnostic_fallback_samples(state: _SizeGuardState, *, optimizer_diagn
             changed = True
     if changed:
         _mark_diagnostics_truncated(state)
+    return changed
 
 
 def _drop_diagnostic_field(
@@ -196,10 +243,10 @@ def _drop_diagnostic_field(
     optimizer_diagnostics: Dict[str, Any],
     diagnostics_dict: Dict[str, Any],
     field: str,
-) -> None:
+) -> bool:
     attempts_value = optimizer_diagnostics.get("attempts")
     if not isinstance(attempts_value, list):
-        return
+        return False
     changed = False
     for attempt in attempts_value:
         if isinstance(attempt, dict) and field in attempt:
@@ -208,23 +255,28 @@ def _drop_diagnostic_field(
     if changed:
         _mark_diagnostics_truncated(state)
         _prune_empty_diagnostics(state.result_summary_obj, diagnostics_dict)
+    return changed
 
 
 def _drop_optimizer_diagnostics(
     state: _SizeGuardState,
     *,
     diagnostics_dict: Dict[str, Any],
-) -> None:
+) -> bool:
     if "optimizer" in diagnostics_dict:
         diagnostics_dict.pop("optimizer", None)
         _mark_diagnostics_truncated(state)
         _prune_empty_diagnostics(state.result_summary_obj, diagnostics_dict)
+        return True
+    return False
 
 
-def _drop_all_diagnostics(state: _SizeGuardState) -> None:
+def _drop_all_diagnostics(state: _SizeGuardState) -> bool:
     if "diagnostics" in state.result_summary_obj:
         state.result_summary_obj.pop("diagnostics", None)
         _mark_diagnostics_truncated(state)
+        return True
+    return False
 
 
 def _apply_diagnostic_drop_sequence(
@@ -250,13 +302,13 @@ def _apply_diagnostic_drop_sequence(
         lambda: _drop_optimizer_diagnostics(state, diagnostics_dict=diagnostics_dict),
         lambda: _drop_all_diagnostics(state),
     )
+    state.result_summary_obj["summary_truncated"] = True
+    state.result_summary_obj["original_size_bytes"] = int(state.original_size)
     for trim_action in actions:
-        trim_action()
-        state.result_summary_obj["summary_truncated"] = True
-        state.result_summary_obj["original_size_bytes"] = int(state.original_size)
+        changed = trim_action()
         if state.diagnostics_truncated:
             state.result_summary_obj["diagnostics_truncated"] = True
-        if summary_size_bytes(state.result_summary_obj) <= SUMMARY_SIZE_LIMIT_BYTES:
+        if changed and summary_size_bytes(state.result_summary_obj) <= SUMMARY_SIZE_LIMIT_BYTES:
             return state.result_summary_obj
     return None
 

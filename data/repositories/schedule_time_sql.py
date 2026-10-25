@@ -51,11 +51,11 @@ class _IntervalSummary:
     def __init__(self):
         self.first, self.last, self.invalid = None, None, 0
 
-    def step(self, row_id: Any, start: Any, end: Any) -> None:
+    def step(self, row_id: Any, start: Any, end: Any, allow_points: int) -> None:
         if row_id is None:
             return
         start, end = _interval_values(start, end)
-        if start is None or end is None or end <= start:
+        if start is None or end is None or (end < start if allow_points else end <= start):
             self.invalid += 1
             return
         self.first = start if self.first is None else min(self.first, start)
@@ -66,14 +66,24 @@ class _IntervalSummary:
 
 
 class _IntervalAggregateConnection(Protocol):
-    """SQLite accepts this three-input aggregate and its TEXT final value."""
+    """SQLite accepts this four-input aggregate and its TEXT final value."""
 
     def create_aggregate(self, name: str, num_params: int,
                          aggregate_class: Callable[[], _IntervalSummary]) -> None: ...
 
 
-def interval_summary_sql(alias=None):
-    return "aps_interval_summary(" + _time_column(alias, "id") + "," + _time_text(alias, "start_time") + "," + _time_text(alias, "end_time") + ")"
+def interval_summary_sql(alias=None, *, allow_points: bool = False):
+    return (
+        "aps_interval_summary("
+        + _time_column(alias, "id")
+        + ","
+        + _time_text(alias, "start_time")
+        + ","
+        + _time_text(alias, "end_time")
+        + ","
+        + ("1" if allow_points else "0")
+        + ")"
+    )
 
 
 def decode_interval_summary(value):
@@ -81,16 +91,13 @@ def decode_interval_summary(value):
 
 
 def register_schedule_time_sql_functions(conn: sqlite3.Connection) -> None:
-    register = getattr(conn, "create_function", None)
-    if not callable(register):
-        return
     for name, count, function in ((_SQL_PARSE_FUNCTION, 1, parse_dt_for_sql),
                                   ("aps_interval_admitted", 4, _interval_admitted)):
         try:
-            register(name, count, function, deterministic=True)
+            conn.create_function(name, count, function, deterministic=True)
         except sqlite3.NotSupportedError:
-            register(name, count, function)
-    cast(_IntervalAggregateConnection, conn).create_aggregate("aps_interval_summary", 3, _IntervalSummary)
+            conn.create_function(name, count, function)
+    cast(_IntervalAggregateConnection, conn).create_aggregate("aps_interval_summary", 4, _IntervalSummary)
 
 
 def overlap_or_bad_time_sql(alias: Optional[str]) -> str:

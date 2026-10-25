@@ -15,7 +15,7 @@ from core.services.workbench.facts.adoption_baseline_values import REASONS, Adop
 from core.services.workbench.facts.material_deferral_evidence import archived_deferred_payload_evidence
 
 from .candidate_baseline import AdmissionBaseline, ArchivedAdmissionPlan, invalid_baseline
-from .candidate_facts import _index
+from .candidate_facts import index_rows
 from .candidate_tasks import operation_labels
 from .candidate_values import bounded_size, gap
 from .operation_effort_evidence import saved_operation_efforts
@@ -23,7 +23,7 @@ from .operation_effort_evidence import saved_operation_efforts
 
 def _last_official_rows(rows, version):
     """Retain all segments of each operation's last archived official version."""
-    _index(rows, "id")
+    index_rows(rows, "id")
     latest = {}
     for row in rows:
         op, saved_version = row.get("op_id"), row.get("version")
@@ -91,8 +91,6 @@ def _same_arrangements(saved, arranged):
 
 def _resolved_source(source, audit, resolver, saved):
     missing = {"code": "adoption_not_recorded", "message": "此正式版本缺少可核对的原采用资料。"}
-    if resolver is None:
-        return {"available": False, "origins": {}, "point_work": None, "issue": missing}
     try:
         value = resolver(plan_ref=source["plan_ref"], version=source["version"], history=source["history_record"])
     except AdoptionBaselineUnavailable as exc:
@@ -248,7 +246,7 @@ def read_decision_baseline_members(capture, facts):
     return {"identity": identity, "operation_refs": sorted({row["operation_ref"] for row in rows})}
 
 
-def read_decision_baseline(capture, facts, disposition, accepted_at, *, source_resolver=None):
+def read_decision_baseline(capture, facts, disposition, *, source_resolver):
     """Project a verified admission without mutating it or consulting live entities.
 
     ``source_resolver`` is called once per archived version with keyword arguments
@@ -261,13 +259,15 @@ def read_decision_baseline(capture, facts, disposition, accepted_at, *, source_r
     supplier and point witnesses use original adoption work. The caller owns any
     resolver's read snapshot.
     """
-    admission = AdmissionBaseline(capture, facts, disposition, accepted_at)
+    admission = AdmissionBaseline(capture, facts, disposition)
     version = admission.baseline["version"]
     identity = _official_identity(admission)
     if version is None:
         return {"identity": identity, "tasks": [], "source_refs": [], "source_states": [], "deferred_operation_ids": [],
                 "operation_efforts": {}, "operation_standards": {}, "operation_types": {}}
-    schedule = admission.schedule
+    saved_by_version = defaultdict(list)
+    for row in admission.schedule:
+        saved_by_version[row["version"]].append(row)
     bound, sources = _official_plan_rows(admission)
     tasks, source_refs = [], []
     source_states = []
@@ -278,7 +278,7 @@ def read_decision_baseline(capture, facts, disposition, accepted_at, *, source_r
         by_version[row["version"]].append(row)
     for selected_version, source in sources.items():
         source, audit = _adoption_identity(source)
-        saved = [row for row in schedule if row["version"] == selected_version]
+        saved = saved_by_version[selected_version]
         resolved = _resolved_source(source, audit, source_resolver, saved)
         source_states.append({"plan_ref": source["plan_ref"], "version": selected_version,
             "source_kind": audit.get("source") if audit is not None else "legacy_official",
@@ -311,5 +311,6 @@ def read_decision_baseline(capture, facts, disposition, accepted_at, *, source_r
             identity.update({key: source[key] for key in ("source_candidate_ref", "source_run_ref")})
     tasks.sort(key=lambda row: (row["operation_ref"], row["official_version"], row["row_ref"]))
     return {"identity": identity, "tasks": tasks, "source_refs": source_refs, "source_states": source_states,
-            "deferred_operation_ids": sorted(deferred_ids), "operation_efforts": effort_by_ref,
+            "deferred_operation_ids": sorted(deferred_ids - {row["op_id"] for row in bound}),
+            "operation_efforts": effort_by_ref,
             "operation_standards": standards_by_ref, "operation_types": types_by_ref}

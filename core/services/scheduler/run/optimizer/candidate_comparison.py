@@ -24,7 +24,7 @@ CANDIDATE_ORIGIN_ORDER = (
 
 
 def candidate_origin_rank(origin: str) -> int:
-    text = str(origin or "").strip()
+    text = origin.strip()
     try:
         return CANDIDATE_ORIGIN_ORDER.index(text)
     except ValueError:
@@ -80,7 +80,7 @@ def candidate_is_preferred(
         return False
 
     candidate_changed = bool(candidate_fingerprint and candidate_fingerprint.fingerprint_changed)
-    if candidate_changed != bool(incumbent_fingerprint_changed):
+    if candidate_changed != incumbent_fingerprint_changed:
         return candidate_changed
 
     candidate_runtime = candidate_runtime_ms(candidate)

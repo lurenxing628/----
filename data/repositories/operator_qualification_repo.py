@@ -11,10 +11,9 @@ class OperatorQualificationRepository(BaseRepository):
     def read_skill_facts(self, operator_ids: Sequence[str]) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         profiles: List[Dict[str, Any]] = []
         skills: List[Dict[str, Any]] = []
-        ids = sorted(set(operator_ids))
         # Even an empty candidate set must not disguise a missing qualification table.
-        for offset in range(0, max(len(ids), 1), 400):
-            chunk = ids[offset:offset + 400]
+        for offset in range(0, max(len(operator_ids), 1), 400):
+            chunk = operator_ids[offset:offset + 400]
             marks = ",".join("?" for _ in chunk) or "NULL"
             profiles.extend(self.fetchall(f"""
                 SELECT o.operator_id, p.operator_id AS profile_operator_id, p.skills_declared

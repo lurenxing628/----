@@ -71,8 +71,6 @@ if exist vendor (
     --add-data "schema.sql;." ^
     --hidden-import networkx ^
     --hidden-import core.services.scheduler.calendar.service ^
-    --hidden-import core.services.scheduler.operation_execution_feedback_service ^
-    --hidden-import core.services.scheduler.schedule_service ^
     --name "排产系统" ^
     app.py
 ) else (
@@ -85,8 +83,6 @@ if exist vendor (
     --add-data "schema.sql;." ^
     --hidden-import networkx ^
     --hidden-import core.services.scheduler.calendar.service ^
-    --hidden-import core.services.scheduler.operation_execution_feedback_service ^
-    --hidden-import core.services.scheduler.schedule_service ^
     --name "排产系统" ^
     app.py
 )

@@ -55,6 +55,8 @@ class PointPlanCatalogRepository(WorkbenchPlanCatalogRepository):
                 else:
                     rows = annotate_plan_points(self.conn, rows, source_table=source_table, context=self.context, intervals=intervals)
             except WorkbenchCommandRejected as exc:
+                if exc.status == 413:
+                    raise
                 raise ValueError(str(exc)) from exc
             self._parsed_intervals[key] = intervals
             self._prepared_rows[key] = rows
@@ -98,19 +100,15 @@ class PlanMetadataRepository(WorkbenchPlanCatalogRepository):
         self._metadata_spans = {}
 
     def get_first_plan_identity_row(self, *, version, source_table, candidate_id, scenario_id=None):
-        sql, extra = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id)
-        return self.fetchone("SELECT id AS source_row_id, lock_status FROM (" + sql + ") raw ORDER BY id ASC LIMIT 1",
-                             [version] + extra)
+        return self.first_raw_plan_identity_row(version=version, source_table=source_table,
+                                                candidate_id=candidate_id, scenario_id=scenario_id)
 
     def get_plan_time_span(self, *, version, source_table, candidate_id, scenario_id=None):
         key = (version, source_table, candidate_id, scenario_id)
         if key not in self._metadata_spans:
-            sql, extra = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id)
-            fields = ("id", "op_id", "machine_id", "operator_id", "start_time", "end_time", "lock_status", "version")
-            selected = ", ".join("CASE WHEN 1 THEN raw." + field + " END AS " + field for field in fields)
-            sql = "SELECT " + selected + " FROM (" + sql + ") raw ORDER BY raw.id ASC"
             low, high, points, point_intervals = None, None, [], []
-            for row in self.iter_rows(sql, [version] + extra):
+            for row in self.iter_raw_plan_rows(version=version, source_table=source_table,
+                                               candidate_id=candidate_id, scenario_id=scenario_id):
                 start, end = _interval(row)
                 low = start if low is None else min(low, start)
                 high = end if high is None else max(high, end)
@@ -120,6 +118,8 @@ class PlanMetadataRepository(WorkbenchPlanCatalogRepository):
             try:
                 annotate_plan_points(self.conn, points, source_table=source_table, intervals=point_intervals)
             except WorkbenchCommandRejected as exc:
+                if exc.status == 413:
+                    raise
                 raise ValueError(str(exc)) from exc
             self._metadata_spans[key] = None if low is None else {
                 "version": version, "start_time": low, "end_time": high,

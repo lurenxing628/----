@@ -15,7 +15,7 @@ from core.models.workbench_run_baseline import RunCandidateBaselineScope, _resou
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_projection import algorithm_facts
-from core.services.workbench.facts.candidate_tasks import _resource
+from core.services.workbench.facts.candidate_tasks import task_resource
 from core.services.workbench.run.candidate_analysis import read_candidate_analysis
 from core.services.workbench.run.candidate_baseline import WorkbenchRunCandidateBaselineQueryService
 from core.services.workbench.run.worker import WorkbenchRunWorker
@@ -195,7 +195,7 @@ def test_archived_resource_identity_survives_missing_display_directory(candidate
     ref = facts.entity_refs["machine", "M1"]
     facts.tables["Machines"].clear()
     gaps = []
-    resource = _resource(facts, "machine", "M1", gaps)
+    resource = task_resource(facts, "machine", "M1", gaps)
     assert resource == {"ref": ref, "label": None}
     assert any(row["field"] == "machine" and row["code"] == "source_missing" for row in gaps)
     assert _resource_change({"machine": resource, "data_gaps": gaps},

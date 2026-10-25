@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.models.enums import YesNo
+from core.models.schedule_config_runtime import ScheduleConfigSnapshot
 from core.models.scheduler_degradation_messages import (
     RESOURCE_POOL_BUILD_FAILED_MESSAGE,
     public_degradation_event_message,
@@ -11,20 +12,7 @@ from core.services.common.build_outcome import BuildOutcome
 from core.services.scheduler.contracts.summary_count_parse import _meta_bool_state
 from core.shared.degradation import DegradationCollector, degradation_events_to_dicts
 
-from .schedule_summary_downtime_degradation import compute_downtime_degradation as _compute_downtime_degradation
-
 _LEGACY_MERGE_CONTEXT_CODES = {"template_missing", "external_group_missing"}
-
-
-def _event_identity(event: Dict[str, Any]) -> Tuple[str, str, str, str, str, int]:
-    return (
-        str(event.get("code") or "").strip(),
-        str(event.get("scope") or "").strip(),
-        str(event.get("field") or "").strip(),
-        str(event.get("message") or "").strip(),
-        str(event.get("sample") or "").strip(),
-        _event_count(event),
-    )
 
 
 def _legacy_merge_context_events(event_dicts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -50,12 +38,7 @@ def _input_build_state(input_build_outcome: Optional[BuildOutcome[Any]]) -> Dict
     event_dicts = degradation_events_to_dicts(input_build_outcome.events)
     merge_context_events = _legacy_merge_context_events(event_dicts)
     merge_context_degraded = bool(merge_context_events)
-    merge_context_event_ids = {_event_identity(event) for event in merge_context_events}
-    input_fallback_events = [
-        event
-        for event in event_dicts
-        if _event_identity(event) not in merge_context_event_ids
-    ]
+    input_fallback = any(str(e.get("code") or "").strip() not in _LEGACY_MERGE_CONTEXT_CODES for e in event_dicts)
     degradation_counters = dict(input_build_outcome.counters or {})
     return {
         "degraded": bool(input_build_outcome.has_events or merge_context_degraded),
@@ -64,7 +47,7 @@ def _input_build_state(input_build_outcome: Optional[BuildOutcome[Any]]) -> Dict
         "empty_reason": input_build_outcome.empty_reason,
         "merge_context_degraded": merge_context_degraded,
         "merge_context_events": merge_context_events,
-        "input_fallback": bool(input_fallback_events),
+        "input_fallback": input_fallback,
     }
 
 
@@ -129,7 +112,7 @@ def _add_counted_event(
 ) -> None:
     if count <= 0:
         return
-    collector.add(code=code, scope=scope, field=field, message=message, count=int(count), sample=sample)
+    collector.add(code=code, scope=scope, field=field, message=message, count=count, sample=sample)
 
 
 def _add_state_event(
@@ -144,12 +127,12 @@ def _add_state_event(
 ) -> None:
     if not enabled:
         return
-    collector.add(code=code, scope=scope, field=field, message=str(message or default_message))
+    collector.add(code=code, scope=scope, field=field, message=message or default_message)
 
 
 def _summary_degradation_state(
     *,
-    cfg: Any,
+    cfg: ScheduleConfigSnapshot,
     input_state: Dict[str, Any],
     invalid_due_count: int,
     invalid_due_batch_ids_sample: List[str],
@@ -164,10 +147,10 @@ def _summary_degradation_state(
     warning_merge_status: Dict[str, Any],
 ) -> Dict[str, Any]:
     collector = DegradationCollector()
-    _add_existing_degradation_events(collector, getattr(cfg, "degradation_events", None))
+    _add_existing_degradation_events(collector, cfg.degradation_events)
     _add_state_event(
         collector,
-        enabled=bool(getattr(cfg, "degradation_events", ())),
+        enabled=bool(cfg.degradation_events),
         code="config_fallback",
         scope="schedule.summary.config_snapshot",
         field="config_snapshot",
@@ -186,7 +169,7 @@ def _summary_degradation_state(
     )
     _add_counted_event(
         collector,
-        count=int(invalid_due_count),
+        count=invalid_due_count,
         code="invalid_due_date",
         scope="schedule.summary",
         field="due_date",
@@ -195,7 +178,7 @@ def _summary_degradation_state(
     )
     _add_counted_event(
         collector,
-        count=int(legacy_external_days_defaulted_count),
+        count=legacy_external_days_defaulted_count,
         code="legacy_external_days_defaulted",
         scope="greedy.external",
         field="ext_days",
@@ -203,7 +186,7 @@ def _summary_degradation_state(
     )
     _add_counted_event(
         collector,
-        count=int(ortools_warmstart_failed_count),
+        count=ortools_warmstart_failed_count,
         code="ortools_warmstart_failed",
         scope="optimizer.warmstart",
         field="ortools_enabled",
@@ -229,7 +212,7 @@ def _summary_degradation_state(
     )
     _add_state_event(
         collector,
-        enabled=bool(resource_pool_enabled and resource_pool_degraded),
+        enabled=resource_pool_enabled and resource_pool_degraded,
         code="resource_pool_degraded",
         scope="schedule.summary.resource_pool",
         field="resource_pool",
@@ -238,7 +221,7 @@ def _summary_degradation_state(
     )
     _add_state_event(
         collector,
-        enabled=bool(merge_context_degraded),
+        enabled=merge_context_degraded,
         code="merge_context_degraded",
         scope="schedule.summary.merge_context",
         field="warnings",
@@ -257,9 +240,8 @@ def _summary_degradation_state(
     return {"events": degradation_events_to_dicts(collector.to_list()), "counters": collector.to_counters()}
 
 
-def _compute_resource_pool_degradation(cfg: Any, *, resource_pool_meta: Optional[Dict[str, Any]]) -> Tuple[bool, bool, Optional[str], bool]:
-    snapshot = cfg
-    auto_assign_enabled = str(snapshot.auto_assign_enabled).strip().lower() == YesNo.YES.value
+def _compute_resource_pool_degradation(cfg: ScheduleConfigSnapshot, *, resource_pool_meta: Optional[Dict[str, Any]]) -> Tuple[bool, bool, Optional[str], bool]:
+    auto_assign_enabled = cfg.auto_assign_enabled == YesNo.YES.value
     meta = resource_pool_meta if isinstance(resource_pool_meta, dict) else {}
     attempted, attempted_parse_failed = _meta_bool_state(meta, "resource_pool_attempted", default=False)
     build_ok, build_ok_parse_failed = _meta_bool_state(meta, "resource_pool_build_ok", default=True)
@@ -267,15 +249,15 @@ def _compute_resource_pool_degradation(cfg: Any, *, resource_pool_meta: Optional
         if attempted_parse_failed:
             attempted = True
         build_ok = False
-    degraded = bool(auto_assign_enabled and attempted and (not build_ok))
+    degraded = auto_assign_enabled and attempted and not build_ok
     reason = RESOURCE_POOL_BUILD_FAILED_MESSAGE if degraded else None
-    return bool(auto_assign_enabled), bool(degraded), reason, bool(attempted)
+    return auto_assign_enabled, degraded, reason, attempted
 
 
 def _hard_constraints(*, downtime_degraded: bool, freeze_applied: bool) -> List[str]:
     hard_constraints: List[str] = ["precedence", "calendar", "resource_machine_operator"]
     if not downtime_degraded:
         hard_constraints.append("downtime_avoid")
-    if bool(freeze_applied):
+    if freeze_applied:
         hard_constraints.append("freeze_window")
     return hard_constraints

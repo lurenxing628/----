@@ -1,7 +1,7 @@
 """Append-only current-source confirmations; never rewrite operation birth evidence."""
 
 from core.infrastructure.workbench_metadata_schema import canonical_sql
-from core.infrastructure.workbench_outsourcing_schema import contract_issues as outsourcing_issues
+from core.infrastructure.workbench_outsourcing_schema import workbench_outsourcing_contract_issues as outsourcing_issues
 
 from .schema_structure import SchemaStructure, schema_objects
 

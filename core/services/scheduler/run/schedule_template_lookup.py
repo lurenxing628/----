@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, Mapping, Optional
 
 from core.errors import BusinessError, ErrorCode, ValidationError
-from core.models import ExternalGroup, PartOperation
 from core.services.scheduler.contracts.external_context import (
     context_group_key,
     member_index,
@@ -56,19 +55,3 @@ def verified_external_context_for_op(svc, op: Any) -> FrozenExternalContext:
         if problem:
             raise ValidationError(problem, field="external_context")
     return FrozenExternalContext(row, group_key)
-
-
-def get_template_and_group_for_op(svc, op):
-    """Adapt verified frozen facts to the template-shaped scheduling view."""
-    facts = verified_external_context_for_op(svc, op)
-    row, group_key = facts.row, facts.group_key
-    # The permanent group identity prevents a reused business code merging unrelated groups.
-    template = PartOperation(id=row["template_operation_id"], part_no=row["part_no"], seq=row["sequence"],
-                             source="external", ext_group_id=group_key, status=row["template_status"])
-    group = None
-    if group_key is not None:
-        group = ExternalGroup(group_id=group_key, part_no=row["group_part_no"],
-                              start_seq=row["start_sequence"], end_seq=row["end_sequence"],
-                              merge_mode=row["merge_mode"], total_days=row["total_days"],
-                              supplier_id=row["supplier_id"], created_at=row["captured_at"])
-    return template, group

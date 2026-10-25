@@ -10,7 +10,6 @@ from .schedule_time_sql import parse_dt_for_sql
 TABLES = {"SchemaVersion", "BatchMaterialReviews", "BatchMaterialArrivals", "Batches", "BatchMaterials", "Materials", "MachineDowntimes", "Machines",
           "WorkbenchDashboardDowntimeRefs"}
 # Fixed identifier expansion: caller-supplied names only select an entry, never reach SQL text.
-_QUOTED = {name: '"' + name + '"' for name in TABLES}
 _FROM = {name: ' FROM "' + name + '"' for name in TABLES}
 
 
@@ -51,20 +50,19 @@ def source_gap_rows(conn, limit):
 class DashboardSourceRepository:
     def __init__(self, conn):
         self.conn = conn
-        self.present = {name for name, (kind, _table, _sql) in schema_contract_memo(conn).structure.objects.items() if kind == "table"}
+        self.structure = schema_contract_memo(conn).structure
+        self.present = {name for name, (kind, _table, _sql) in self.structure.objects.items() if kind == "table"}
 
     def _select_list(self, name):
-        columns = [row[1] for row in self.conn.execute("PRAGMA table_info(" + _QUOTED[name] + ")")]
+        columns = [row[1] for row in self.structure.table_info(name)]
         return ",".join('CASE WHEN 1 THEN "' + column + '" END AS "' + column + '"' for column in columns)
 
-    def table(self, name, *, limit=MAX_FACT_ROWS):
-        if name not in TABLES:
-            raise ValueError("Not a dashboard source")
+    def table(self, name):
         if name not in self.present:
             return None
-        return bounded(rows(self.conn, "SELECT " + self._select_list(name) + _FROM[name] + " ORDER BY rowid LIMIT ?", (limit + 1,)), limit)
+        return bounded(rows(self.conn, "SELECT " + self._select_list(name) + _FROM[name] + " ORDER BY rowid LIMIT ?", (MAX_FACT_ROWS + 1,)), MAX_FACT_ROWS)
 
-    def downtime_capture(self, *, machine_ids, limit=MAX_FACT_ROWS):
+    def downtime_capture(self, *, machine_ids):
         """Keep raw rowid order and SQLite's time/status/order facts from one SELECT."""
         if "MachineDowntimes" not in self.present:
             return None, None
@@ -84,7 +82,7 @@ class DashboardSourceRepository:
         cursor = None
         try:
             cursor = self.conn.execute("SELECT " + self._select_list("MachineDowntimes") + "," + ",".join(private) +
-                                      " FROM MachineDowntimes md ORDER BY rowid LIMIT ?", (limit + 1,))
+                                      " FROM MachineDowntimes md ORDER BY rowid LIMIT ?", (MAX_FACT_ROWS + 1,))
             names = [column[0] for column in cursor.description]
             boundary = len(names) - len(private)
             captured, prepared, size = [], [], 0
@@ -102,7 +100,7 @@ class DashboardSourceRepository:
                 else:
                     interval["__calendar_valid"] = None
                 prepared.append((raw, interval))
-            bounded(captured, limit)
+            bounded(captured, MAX_FACT_ROWS)
             return captured, prepared
         finally:
             if cursor is not None:
@@ -112,7 +110,6 @@ class DashboardSourceRepository:
     def entity_ref_rows(self, kind, keys):
         """Active WorkbenchEntityRefs rows for the keys, in key order; duplicates are returned as-is."""
         result = []
-        keys = sorted(set(keys))
         for start in range(0, len(keys), 300):
             chunk = keys[start:start + 300]
             result.extend(rows(self.conn, "SELECT * FROM WorkbenchEntityRefs WHERE kind=? AND active=1 AND entity_key IN (" +

@@ -4,8 +4,8 @@ _role_entry(query, history, latest, role, raw_option) and _scenario_entry(query,
 history, latest) build one PlanCatalogEntry each for the workbench catalog
 (core/services/workbench/plan/queries.py). The caller owns the connection, the
 read snapshot and the paging; query.repo must provide validate_detail_times
-(PointPlanCatalogRepository in production), which raises ValueError for any
-empty, unparsable or non-positive detail time range.
+(PointPlanCatalogRepository in production), which raises ValueError for invalid
+detail times or unproven zero-duration work. Capacity rejections propagate.
 
 Shape is frozen dataclasses, not a public JSON contract:
 * locator: PlanCatalogLocator(version, plan_role, scenario_id); internal only.
@@ -40,7 +40,8 @@ from core.models.schedule_adjustment import ScheduleAdjustmentScenario
 from core.models.schedule_plan_identity import PlanIdentity
 from core.models.schedule_plan_resolution import SchedulePlanResolution, SchedulePlanRoleOption
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE, plan_role_label
-from core.models.scheduler_history_parser import parse_result_summary_payload
+from core.models.scheduler_history_parser import ResultSummaryParseResult
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.common.plan_query import SchedulePlanQueryService
 
 Completeness = Literal["complete", "partial", "invalid", "unknown"]
@@ -76,16 +77,18 @@ class PlanCatalogEntry:
     resolution: Optional[SchedulePlanResolution] = None
 
 
-def _history_state(history: Dict[str, Any]) -> Tuple[Completeness, Tuple[PlanCatalogIssue, ...]]:
-    parsed = parse_result_summary_payload(history.get("result_summary"))
-    if parsed.parse_failed:
-        return "invalid", (PlanCatalogIssue("summary_invalid", parsed.reason),)
-    if parsed.payload is None:
+def _history_state(
+    history: Dict[str, Any],
+    summary_parse: ResultSummaryParseResult,
+) -> Tuple[Completeness, Tuple[PlanCatalogIssue, ...]]:
+    if summary_parse.parse_failed:
+        return "invalid", (PlanCatalogIssue("summary_invalid", summary_parse.reason),)
+    if summary_parse.payload is None:
         return "unknown", (PlanCatalogIssue("summary_missing", "排产摘要缺失，无法确认方案身份。"),)
     status = str(history.get("result_status") or "").strip().lower()
     statuses: Dict[str, Completeness] = {"success": "complete", "partial": "partial", "failed": "invalid"}
     state = statuses.get(status, "unknown")
-    if parsed.payload.get("is_simulation"):
+    if summary_parse.payload.get("is_simulation"):
         state = "unknown"
     return state, ()
 
@@ -99,19 +102,12 @@ def _check_role_binding(resolution: SchedulePlanResolution, option: SchedulePlan
             raise ValueError("共用正式排程的对比角色没有指向正式采用候选。")
 
 
-def _check_detail_times(query: SchedulePlanQueryService, resolution: SchedulePlanResolution) -> None:
-    validate = getattr(query.repo, "validate_detail_times", None)
-    if not callable(validate):
-        raise RuntimeError("计划目录条目需要能校验明细时间的目录仓储，收到 " + type(query.repo).__name__)
-    validate(resolution)
-
-
 def _role_entry(
     query: SchedulePlanQueryService, history: Dict[str, Any], latest: Optional[int],
     role: str, raw_option: Optional[Dict[str, Any]],
 ) -> PlanCatalogEntry:
     version = int(history["version"])
-    completeness, issues = _history_state(history)
+    completeness, issues = _history_state(history, query.parse_history_summary(history))
     option = None
     identity = None
     resolution = None
@@ -119,9 +115,11 @@ def _role_entry(
         resolution = query.resolve_existing_plan(version, role)
         option = next(item for item in resolution.available_roles if item.role == role)
         _check_role_binding(resolution, option)
-        _check_detail_times(query, resolution)
+        query.repo.validate_detail_times(resolution)
         identity = resolution.plan_identity
     except (ValueError, TypeError, OverflowError) as exc:
+        if isinstance(exc, WorkbenchCommandRejected) and exc.status == 413:
+            raise
         if option is None and raw_option is not None:
             try:
                 option = query._role_option_from_row(raw_option)
@@ -161,7 +159,7 @@ def _scenario_resolution(query: SchedulePlanQueryService, scenario: ScheduleAdju
     )
     if span is None:
         raise ValueError("模拟方案没有可查看的有效时间明细。")
-    _check_detail_times(query, resolution)
+    query.repo.validate_detail_times(resolution)
     if resolution.plan_identity is None:
         raise ValueError("模拟方案没有可确认的计划身份。")
     # Existing scenario resolution has no role detail_saved flag for its own rows.
@@ -180,7 +178,7 @@ def _scenario_entry(
         issues = (PlanCatalogIssue("history_missing", "模拟方案的基础排产历史不存在。"),)
         completeness = "invalid"
     else:
-        history_state, issues = _history_state(history)
+        history_state, issues = _history_state(history, query.parse_history_summary(history))
         if issues and history_state == "invalid":
             completeness = "invalid"
     if scenario.status != "active":
@@ -191,6 +189,8 @@ def _scenario_entry(
             resolution = _scenario_resolution(query, scenario)
             identity = resolution.plan_identity
         except (ValueError, TypeError, OverflowError) as exc:
+            if isinstance(exc, WorkbenchCommandRejected) and exc.status == 413:
+                raise
             issues += (PlanCatalogIssue("scenario_unavailable", str(exc)),)
             completeness = "invalid"
     return PlanCatalogEntry(

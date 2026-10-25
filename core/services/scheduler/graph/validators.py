@@ -2,18 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
+from .metrics import node_sort_key
 from .nx_runtime import import_networkx
 from .types import GraphWarning
-
-
-def _node_sort_key(graph: Any, node_id: str) -> Tuple[str, int, str, str]:
-    data = graph.nodes[node_id]
-    return (
-        str(data["batch_id"]),
-        int(data["seq"]),
-        str(data["op_code"]),
-        str(node_id),
-    )
 
 
 def find_cycle_edges(graph: Any) -> List[Dict[str, Any]]:
@@ -48,25 +39,22 @@ def find_isolated_nodes(graph: Any) -> List[str]:
             for node_id in graph.nodes
             if graph.in_degree(node_id) == 0 and graph.out_degree(node_id) == 0
         ),
-        key=lambda item: _node_sort_key(graph, item),
+        key=lambda item: node_sort_key(graph, item),
     )
 
 
 def find_duplicate_seq_warnings(graph: Any) -> List[GraphWarning]:
-    grouped: Dict[Tuple[str, int], List[str]] = {}
+    # 顺序号只在同一批次的同一分件内唯一；共同工序（piece_id 为 None）自成一组。
+    grouped: Dict[Tuple[str, str, int], List[str]] = {}
 
     for node_id, data in graph.nodes(data=True):
-        batch_id = data["batch_id"]
-        seq = data["seq"]
-        key = (str(batch_id), int(seq))
+        key = (str(data["batch_id"]), data["piece_id"] or "", int(data["seq"]))
         grouped.setdefault(key, []).append(node_id)
 
     warnings: List[GraphWarning] = []
-    for key in sorted(grouped):
-        batch_id, seq = key
-        if len(grouped[key]) <= 1:
-            continue
-        node_ids = sorted(grouped[key], key=lambda item: _node_sort_key(graph, item))
+    for key in sorted(k for k, v in grouped.items() if len(v) > 1):
+        batch_id, _piece_id, seq = key
+        node_ids = sorted(grouped[key], key=lambda item: node_sort_key(graph, item))
         op_codes = [str(graph.nodes[node_id]["op_code"]) for node_id in node_ids]
         warnings.append(
             GraphWarning(

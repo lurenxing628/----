@@ -30,17 +30,8 @@ def chunks(values, size=300):
 class WorkbenchExecutionRepository(BaseRepository):
     def schema_issues(self):
         """Ledger and void contract issues in storage order; empty when the schema is complete."""
-        structure = schema_contract_memo(self.conn).structure
-        return (list(execution_ledger_contract_issues(self.conn, structure=structure)) +
-                list(execution_void_contract_issues(self.conn, structure=structure)))
-
-    def schema_version_row(self):
-        """SchemaVersion 单行（id=1）原始行；不存在时为 None。"""
-        return self.fetchone("SELECT version FROM SchemaVersion WHERE id=1")
-
-    def has_execution_receipts(self):
-        """是否已有任何 execution.* 命令回执。"""
-        return self.fetchone("SELECT 1 FROM WorkbenchCommandReceipts WHERE action GLOB 'execution.*' LIMIT 1") is not None
+        memo = schema_contract_memo(self.conn)
+        return memo.get_schema(execution_ledger_contract_issues) + memo.get_schema(execution_void_contract_issues)
 
     def clock(self):
         """Ledger and plan identity revisions; None when either singleton row is missing."""
@@ -78,8 +69,6 @@ class WorkbenchExecutionRepository(BaseRepository):
     def task_rows(self, operation_refs, plan_ref):
         """Active task rows of plan_ref for the operations, in storage order; duplicates are returned as stored."""
         rows = []
-        if plan_ref is None:
-            return rows
         for chunk in chunks(list(operation_refs)):
             marks = ",".join("?" for _ in chunk)
             rows.extend(self.fetchall(_TASK_ROWS_SQL + f" AND r.operation_ref IN ({marks})", [plan_ref] + chunk))
@@ -93,39 +82,39 @@ class WorkbenchExecutionRepository(BaseRepository):
         as they arrive; requested duplicate bindings remain visible to the reader.
         """
         selected = set(operation_refs)
-        if plan_ref is None or not selected:
-            return iter(())
         return (row for row in self.iter_rows(_TASK_ROWS_SQL, (plan_ref,)) if row["operation_ref"] in selected)
 
-    def page_tasks(self, plan_ref, size, after):
-        """Up to size + 1 task rows after the cursor so the caller can detect a further page."""
-        return self.fetchall("""SELECT t.ref AS task_ref, r.operation_ref FROM WorkbenchTaskRefs t
-            JOIN WorkbenchPlanSourceRefs r ON r.ref=t.row_ref AND r.active=1
-            WHERE t.plan_ref=? AND t.ref>? ORDER BY t.ref LIMIT ?""", (plan_ref, after or "", size + 1))
-
     def reports(self, refs, limit):
-        """Report revisions grouped by operation then report; stops once more than limit rows were read.
+        """Report revisions and all report heads, grouped by operation.
 
-        Returns (result, count). count > limit means the cap was exceeded and result is partial.
+        Returns (revisions, heads, count). Heads without revisions remain visible
+        in heads only. count includes their outer-join rows; count > limit means
+        the cap was exceeded and both results are partial.
         """
-        result, count = {}, 0
+        result, heads, count = {}, {}, 0
         for chunk in chunks(list(refs)):
             marks = ",".join("?" for _ in chunk)
             rows = self.fetchall(f"""SELECT p.*, v.revision_ref, v.sequence, v.previous_revision_ref,
                 v.action, v.values_json, v.reason, v.local_operator, v.declared_operator,
                 v.recorded_at AS revision_at, v.request_key, c.receipt_ref
                 FROM WorkbenchProductionReports p
-                JOIN WorkbenchProductionReportRevisions v ON v.report_ref=p.report_ref
+                LEFT JOIN WorkbenchProductionReportRevisions v ON v.report_ref=p.report_ref
                 LEFT JOIN WorkbenchCommandReceipts c ON c.request_key=v.request_key
                 WHERE p.operation_ref IN ({marks}) ORDER BY p.report_ref, v.sequence LIMIT ?""",
                                  chunk + [limit + 1 - count])
             count += len(rows)
             if count > limit:
                 break
+            previous_report_ref = None
             for row in rows:
+                if row["report_ref"] != previous_report_ref:
+                    heads.setdefault(row["operation_ref"], []).append(row["report_ref"])
+                    previous_report_ref = row["report_ref"]
+                if row["revision_ref"] is None:
+                    continue
                 row["values"] = json.loads(row.pop("values_json"))
                 result.setdefault(row["operation_ref"], {}).setdefault(row["report_ref"], []).append(row)
-        return result, count
+        return result, heads, count
 
     def legacy(self, refs, limit):
         """Legacy facts grouped by operation; (result, count) with the same cap semantics as reports."""
@@ -166,10 +155,8 @@ class WorkbenchExecutionRepository(BaseRepository):
             result.update(ids[row["op_id"]] for row in rows)
         return result
 
-    def report_header(self, *, report_ref=None, report_no=None):
-        if report_ref is not None:
-            return self.fetchone("SELECT * FROM WorkbenchProductionReports WHERE report_ref=?", (report_ref,))
-        return self.fetchone("SELECT * FROM WorkbenchProductionReports WHERE report_no=?", (report_no,))
+    def report_header(self, *, report_ref):
+        return self.fetchone("SELECT * FROM WorkbenchProductionReports WHERE report_ref=?", (report_ref,))
 
     def report_headers(self, values, *, by_number=False):
         field = "report_no" if by_number else "report_ref"
@@ -182,7 +169,7 @@ class WorkbenchExecutionRepository(BaseRepository):
 
     def resources(self, refs):
         rows = []
-        for chunk in chunks(sorted(set(refs))):
+        for chunk in chunks(refs):
             marks = ",".join("?" for _ in chunk)
             rows.extend(self.fetchall(f"""SELECT e.ref, e.kind, e.entity_key AS business_code, e.active,
                 CASE WHEN e.active=0 THEN NULL WHEN e.kind='machine' THEN m.name

@@ -28,10 +28,10 @@ class WorkbenchTrialRepository:
         row = self.conn.execute("SELECT * FROM WorkbenchTrialDrafts WHERE draft_ref=?", (draft_ref,)).fetchone()
         return None if row is None else dict(row)
 
-    def draft_rows(self, draft_ref, *, limit=MAX_TRIAL_TASKS + 1):
+    def draft_rows(self, draft_ref):
         """All WorkbenchTrialRows of one draft in stored ordinal order (JSON columns undecoded)."""
         return [dict(raw) for raw in self.conn.execute(
-            "SELECT * FROM WorkbenchTrialRows WHERE draft_ref=? ORDER BY ordinal LIMIT ?", (draft_ref, limit))]
+            "SELECT * FROM WorkbenchTrialRows WHERE draft_ref=? ORDER BY ordinal LIMIT ?", (draft_ref, MAX_TRIAL_TASKS + 1))]
 
     def create(self, admission, rows, checked, request_key, actor, now):
         self._transaction()
@@ -96,7 +96,7 @@ class WorkbenchTrialRepository:
             (row_ref,task_ref,scenario_ref,source_row_ref,payload_json) VALUES (?,?,?,?,?)""",
             [(row["row_ref"], row["task_ref"], ref, row["source_row_ref"], text)
              for row, text in zip(snapshot["tasks"], encoded.tasks)])
-        return self.transition(head, "saved", snapshot["validation"], now)
+        return self._transition(head, "saved", dump(snapshot["validation"]), now)
 
     def scenario_header(self, ref):
         """The whole WorkbenchTrialScenarios row of one scenario, or None."""
@@ -107,7 +107,7 @@ class WorkbenchTrialRepository:
         cursor = self.conn.execute("SELECT row_ref,payload_json FROM WorkbenchTrialScenarioRows WHERE scenario_ref=?", (ref,))
         return (dict(row) for row in cursor)
 
-    def changes(self, draft_ref, *, through_revision=None):
+    def changes(self, draft_ref, *, through_revision):
         if through_revision is None:
             cursor = self.conn.execute("""SELECT change_ref,task_ref,before_json,after_json,validation_json,
                 recorded_at,local_operator FROM WorkbenchTrialChanges WHERE draft_ref=? ORDER BY revision""", (draft_ref,))

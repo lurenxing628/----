@@ -5,13 +5,14 @@ capture times and journal identities locate evidence; they are not production
 conditions. Experimental settings have their own projection and objective gate.
 """
 
-from collections import defaultdict
+from collections import ChainMap, defaultdict
 from datetime import datetime, timedelta
 from decimal import Decimal
+from typing import MutableMapping
 
 from core.models.resource_capabilities import machine_type_index, supports_source
 from core.services.capacity.plan_calendar_intervals import instant
-from core.services.common.enum_normalizers import skill_rank
+from core.services.common.normalization_matrix import skill_level_rank
 from core.services.workbench.trial.archived_external_context import archived_contexts
 from core.shared.boolean_normalize import to_yes_no
 
@@ -34,7 +35,7 @@ def _reason(code="not_recorded", message="原保存资料缺少这一项，条�
     return {"code": code, "message": message}
 
 
-def _side(source, value=_MISSING, *, present=True, nullable=False, reason=None):
+def _side(source, value, *, present=True, nullable=False, reason=None):
     known = value is not _MISSING and (value is not None or nullable or not present)
     return {"present": present, "state": "known" if known else "unknown", "value": value if known else None,
             "source": source, "reason": None if known else reason or _reason()}
@@ -42,7 +43,9 @@ def _side(source, value=_MISSING, *, present=True, nullable=False, reason=None):
 
 class _Projection:
     def __init__(self, source):
-        self.source, self.rows, self.families = source, {}, {}
+        self.source = source
+        self.rows: MutableMapping = {}
+        self.families: MutableMapping = {}
 
     def declare(self, category, family, path, known, *, origin="environment", reason=None):
         provenance = self.source.source(path, origin)
@@ -93,9 +96,9 @@ def _compare(before, after, categories):
             "page": {"number": 1, "size": len(rows), "total": len(rows), "has_more": False}}
 
 
-def _table(source, name, *, original=False, introduced=None):
-    rows = source.original_table(name) if original else source.table(name)
-    if rows is None and introduced is not None and source.calendar.version is not None and source.calendar.version < introduced:
+def _table(source, name, *, introduced):
+    rows = source.table(name)
+    if rows is None and source.calendar.version is not None and source.calendar.version < introduced:
         return []
     return rows
 
@@ -336,7 +339,7 @@ def _resources(projection, operations):
         entity = _ref_key(machine, row["machine_id"]) + ":operator:" + _ref_key(operator, row["operator_id"])
         path = "tables.OperatorMachine[" + str(index) + "]"
         projection.add(category, entity, row["operator_id"] + " / " + row["machine_id"], "authorization", True, path, "authorizations")
-        for field, value in (("is_primary", to_yes_no(row.get("is_primary"), default="no")), ("skill_rank", skill_rank(row.get("skill_level")))):
+        for field, value in (("is_primary", to_yes_no(row.get("is_primary"), default="no")), ("skill_rank", skill_level_rank(row.get("skill_level")))):
             projection.add(category, entity, row["operator_id"], field, value, path + "." + ("skill_level" if field == "skill_rank" else field), "authorizations")
     return result, known
 
@@ -488,21 +491,20 @@ def _freeze(projection, operations):
                        "" if source.kind == "run" else "saved.tasks", "frozen_members", origin="tasks" if source.kind == "run" else "saved")
 
 
-def _production(source, window):
+def _production(source):
     projection = _Projection(source)
     if not source.available:
         for category, _ in _CATEGORIES:
-            projection.declare(category, category, "", False, reason=getattr(source, "issue", None) or _reason(
+            projection.declare(category, category, "", False, reason=source.issue or _reason(
                 "production_conditions_not_saved", "该历史记录未保存可核对的原生产条件。"))
-        return projection
+        return projection, [], False
     batches, operations = _scope(projection)
     _work(projection, batches, operations)
     _materials(projection, batches, operations)
     resources, known = _resources(projection, operations)
-    _calendar(projection, resources, known, window)
     _execution(projection, operations, resources)
     _freeze(projection, operations)
-    return projection
+    return projection, resources, known
 
 
 def _saved_objective(source, packet, artifact, algo, native):
@@ -650,12 +652,21 @@ def prepare_history_condition_source(packet):
     """Prepare the saved source, settings and objective independently of the window."""
     source = ConditionSource(packet)
     configurations, objective = _experiments(source, packet)
-    return {"source": source, "configurations": configurations, "objective": objective}
+    return {"source": source, "production": None,
+            "configurations": configurations, "objective": objective}
 
 
 def prepare_history_condition_side(prepared, window):
     """Project one saved source's production conditions for the actual window."""
-    return {"conditions": _production(prepared["source"], window),
+    if prepared["production"] is None:
+        prepared["production"] = _production(prepared["source"])
+    baseline, resources, known = prepared["production"]
+    conditions = _Projection(prepared["source"])
+    if prepared["source"].available:
+        _calendar(conditions, resources, known, window)
+    conditions.rows = ChainMap(conditions.rows, baseline.rows)
+    conditions.families = ChainMap(conditions.families, baseline.families)
+    return {"conditions": conditions,
             "configurations": prepared["configurations"], "objective": prepared["objective"]}
 
 

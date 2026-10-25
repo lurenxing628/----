@@ -41,6 +41,7 @@ def build_graph_dispatch_projections(
     ready = build_graph_ready_context(
         schedule_input, nodes=nodes, edges=edges,
         enabled=(mode == "on" and bool(payload["is_dag"])),
+        score_context=score,
     )
     resource_public, resource_diagnostics = build_graph_resource_matching_projection(
         mode=mode,
@@ -50,8 +51,6 @@ def build_graph_dispatch_projections(
         edges=edges,
         graph_ready_context=ready,
     )
-    if ready is not None and score:
-        ready.update(score)
     return GraphDispatchProjections(
         ready, score_public, score_diagnostics, resource_public, resource_diagnostics,
     )

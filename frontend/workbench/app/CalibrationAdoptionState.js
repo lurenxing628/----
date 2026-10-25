@@ -40,9 +40,15 @@
     React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; if (request.current) request.current.abort(); }; }, []);
     React.useEffect(() => { setPreview(null); setConsent(false); if (request.current) request.current.abort(); }, [identity, stale]);
     function sync(event) {
-      try { const value = event && event.type === EVENT ? event.detail : read();
-        active.current = value; setSaved(value); setStorageError(''); }
-      catch (e) { setStorageError(e.message); }
+      try {
+        const value = event && event.type === EVENT ? event.detail : read();
+        if (value !== active.current && !A.equal(value, active.current)) {
+          active.current = value; setSaved(value); setPreview(null); setConsent(false);
+          setDraft(value ? { reason: value.input.reason, declared_operator: value.input.declared_operator } : { reason: '', declared_operator: '' });
+          if (!value || value.phase === 'committed') { setError(''); setNotice(''); }
+        }
+        setStorageError('');
+      } catch (e) { setStorageError(e.message); }
     }
     React.useEffect(() => {
       const changed = e => { if (!e.key || e.key === KEY) sync(e); };
@@ -51,8 +57,8 @@
     }, []);
     function accept(value, original) {
       const committed = { ...original, phase: 'committed', receipt: value };
-      save(committed, original);
-      if (mounted.current) { setSaved(committed); setError(''); setNotice(''); }
+      try { save(committed, original); active.current = committed; if (mounted.current) { setSaved(committed); setError(''); setNotice(''); } }
+      catch (e) { if (mounted.current) setStorageError(e.message); }
     }
     React.useEffect(() => {
       if (!saved || saved.phase !== 'pending' || storageError || lock.current) return undefined;
@@ -77,13 +83,13 @@
       finally { lock.current = false; if (mounted.current) setBusy(false); }
     }
     async function submit() {
-      if (lock.current || stale || storageError || !preview || !preview.validation.can_adopt || !consent || !detail
+      if (lock.current || stale || storageError || !preview || !preview.validation.can_adopt || !consent || !detail || saved && saved.phase !== 'rejected'
         || !A.equal(A.binding(detail.suggestion), A.binding(preview.suggestion)) || !A.equal(A.input(draft), preview.input)) return;
       lock.current = true; setBusy(true); setError(''); setNotice('');
       try {
-        A.check(navigator.locks && typeof navigator.locks.request === 'function', '当前浏览器不支持这一步，请用 Chrome 打开后重试。');
+        if (!navigator.locks || typeof navigator.locks.request !== 'function') { if (mounted.current) setError('当前浏览器不支持这一步，请用 Chrome 打开后重试。'); return; }
         await navigator.locks.request(KEY, { ifAvailable: true }, async acquired => {
-          A.check(acquired, '另一个页面正在采用，请先在那边查询结果。');
+          if (!acquired) { if (mounted.current) setError('另一个页面正在采用，请先在那边查询结果。'); return; }
           const original = begin(preview, active.current);
           active.current = original; setSaved(original); setPreview(null); setConsent(false);
           try { accept(await api.adopt(original, preview.write_context.write_token), original); }
@@ -96,7 +102,11 @@
       finally { lock.current = false; if (mounted.current) { setBusy(false); refresh(); } }
     }
     function finish() {
-      try { A.check(saved && saved.phase !== 'pending', '结果还不确定，不能丢弃这次操作。'); save(null, saved); setOpen(false); setPreview(null); setConsent(false); }
+      try {
+        A.check(saved && saved.phase !== 'pending', '结果还不确定，不能丢弃这次操作。');
+        save(null, saved); setOpen(false); setPreview(null); setConsent(false);
+        setError(''); setNotice(''); setDraft({ reason: '', declared_operator: '' });
+      }
       catch (e) { setStorageError(e.message); }
     }
     return { saved, draft, open, preview, consent, busy, error, notice, storageError, setOpen, setConsent, change, inspect, submit, finish,

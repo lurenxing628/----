@@ -64,7 +64,7 @@ def effective_config(settings, hold):
     return {**{key: settings[key] for key in keys}, "hold_window": window_text(hold[0]), "hold_window_source": hold[1]}
 
 
-def summarize(settings, batches, rows, no_route, unready, ledger_reasons, dependency_reasons=(), notes=(), hold=(None, "default")):
+def summarize(settings, batches, rows, no_route, unready, ledger_reasons, dependency_reasons, notes, hold):
     """hold 是本次不重排时段 ((开始, 结束) 或 None, 来源 explicit/default)，原样写进 effective_config。"""
     counts = result_counts(batches, rows, no_route, unready)
     blockers = result_blockers(rows, no_route, counts)

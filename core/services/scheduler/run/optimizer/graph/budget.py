@@ -17,6 +17,8 @@ class GraphReadySearchBudget:
         self.stop_reason: Optional[str] = None
 
     def available(self) -> bool:
+        if self.stop_reason is not None:
+            return False
         if self.clock() >= self.deadline:
             self.stop_reason = "time_budget"
             return False

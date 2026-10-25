@@ -52,43 +52,42 @@ def get_batch_row_validate_and_normalize(
     """使用已有零件缓存构建“批次信息”Excel 原地归一化校验器。"""
 
     def _validate_and_normalize(row: dict) -> Optional[str]:
-        target = row
-        batch_id = normalize_text(target.get("批次号"))
+        batch_id = normalize_text(row.get("批次号"))
 
         if batch_id is None:
             return "“批次号”不能为空"
-        pn = normalize_text(target.get("图号"))
+        pn = normalize_text(row.get("图号"))
         if pn is None:
             return "“图号”不能为空"
         if pn not in parts_cache:
             return f"图号“{pn}”不存在，请先在工艺管理中维护零件。"
 
-        qty = target.get("数量")
+        qty = row.get("数量")
         try:
             q = parse_required_int(qty, field="数量")
             if q <= 0:
                 return "“数量”必须大于 0"
-            target["数量"] = q
+            row["数量"] = q
         except ValidationError as e:
             return e.message
 
-        target["优先级"] = normalize_batch_priority_value(target.get("优先级"), default=BatchPriority.NORMAL.value)
-        if target["优先级"] not in BATCH_PRIORITY_VALUES:
+        row["优先级"] = normalize_batch_priority_value(row.get("优先级"), default=BatchPriority.NORMAL.value)
+        if row["优先级"] not in BATCH_PRIORITY_VALUES:
             return "“优先级”不合法，可填写：普通 / 急件 / 特急。以前的 Excel 如果写过英文，系统会尽量按中文意思读取；新文件请直接填中文。"
 
-        target["齐套"] = normalize_ready_status_value(target.get("齐套"), default=ReadyStatus.YES.value)
-        if target["齐套"] not in READY_STATUS_VALUES:
+        row["齐套"] = normalize_ready_status_value(row.get("齐套"), default=ReadyStatus.YES.value)
+        if row["齐套"] not in READY_STATUS_VALUES:
             return "“齐套”不合法，新文件请填写：齐套 / 未齐套 / 部分齐套。以前的 Excel 如果写过 是 / 否 或英文，系统会尽量按中文意思读取；新文件请直接填中文推荐值。"
 
-        ready_value, error = _normalize_batch_date_cell(target.get("齐套日期"), field_label="齐套日期")
+        ready_value, error = _normalize_batch_date_cell(row.get("齐套日期"), field_label="齐套日期")
         if error:
             return error
-        target["齐套日期"] = ready_value
+        row["齐套日期"] = ready_value
 
-        due_value, error = _normalize_batch_date_cell(target.get("交期"), field_label="交期")
+        due_value, error = _normalize_batch_date_cell(row.get("交期"), field_label="交期")
         if error:
             return error
-        target["交期"] = due_value
+        row["交期"] = due_value
         return None
 
     return _validate_and_normalize

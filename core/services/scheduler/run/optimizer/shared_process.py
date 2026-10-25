@@ -21,7 +21,7 @@ def score_scope_payload(scope: Any) -> Dict[str, Any]:
     }
 
 
-def _numeric_score(score: Any, *, components_known: bool) -> List[Any]:
+def numeric_score(score: Any, *, components_known: bool) -> List[Any]:
     values = [value if isinstance(value, (int, float)) and isfinite(value) else None for value in score]
     if not components_known:
         values = values[:1] + [None] * max(len(values) - 1, 0)
@@ -53,7 +53,7 @@ def build_shared_process(search: Any, *, runtime_ms: int, stop_reason: str,
                 objective: {
                     **evaluation,
                     "field_order": list(evaluation["field_order"]),
-                    "score": _numeric_score(evaluation["score"], components_known=scope.components_known),
+                    "score": numeric_score(evaluation["score"], components_known=scope.components_known),
                 }
                 for objective, evaluation in row.get("evaluations", {}).items()
             }
@@ -86,7 +86,7 @@ def build_shared_process(search: Any, *, runtime_ms: int, stop_reason: str,
                 flags.append("strict_improvement")
             point = {key: value for key, value in row.items() if key not in ("score_scope", "score")}
             point.update(scope_ref=scope_ref,
-                         score=_numeric_score(row["score"], components_known=scope.components_known),
+                         score=numeric_score(row["score"], components_known=scope.components_known),
                          segment=segment, flags=flags)
             points.append(point)
         improvements = [point["elapsed_ms"] for point in points if "strict_improvement" in point["flags"]]
@@ -102,7 +102,7 @@ def build_shared_process(search: Any, *, runtime_ms: int, stop_reason: str,
                 "source_event_id": search.evidence_event_ids.get(selected_id),
                 "search_objective": selected.evidence_origin.get("search_objective"),
                 "origin": selected.evidence_origin.get("origin"),
-                "score": _numeric_score(evaluation.score, components_known=scope.components_known),
+                "score": numeric_score(evaluation.score, components_known=scope.components_known),
                 "field_order": list(evaluation.field_order), "scope_ref": scope_reference(scope),
                 "segment": segment, "flags": ["final"],
             })

@@ -312,7 +312,10 @@
       else onChange(ref);
     }
     const changePage = next => { setSnapshot(response.meta.snapshot_ref); setPage(next); };
-    const runSearch = () => { setQuery(search); setPage(1); setSnapshot(undefined); request.reload(); };
+    const runSearch = () => {
+      if (query === search && page === 1 && snapshot === undefined) request.reload();
+      else { setQuery(search); setPage(1); setSnapshot(undefined); }
+    };
     const options = Array.from(available.values());
     return <div className={'field wb-field wb-choice' + (field.multiple ? ' full' : '') + (invalid ? ' err' : '')} data-field-path={'relationships.' + field.key}>
       <label htmlFor={id}>{field.label}</label>
@@ -331,7 +334,7 @@
       {invalid && <span id={describedBy} className="wb-field-error">{Array.from(new Set(errors.map(row => row.message))).join(' ')}</span>}
       {request.loading && <span role="status" className="fhint">正在读取选项…</span>}
       <ErrorBox error={request.error} />
-      {request.error && <Button disabled={disabled} onClick={() => { setPage(1); setSnapshot(undefined); request.reload(); }}>刷新选项</Button>}
+      {request.error && <Button disabled={disabled} onClick={() => { if (page === 1 && snapshot === undefined) request.reload(); else { setPage(1); setSnapshot(undefined); } }}>刷新选项</Button>}
       {response && <Pager page={response.data.page} unit="项" label={field.label} disabled={disabled} onPage={changePage} />}
       {field.catalog && <Button icon="plus" busy={catalogBusy} disabled={disabled} reason={typeof adapter.openCatalog !== 'function' ? '维护' + field.label + '尚未开通。' : ''} onClick={() => onCatalog(field, request.reload)}>维护{field.label}</Button>}
     </div>;

@@ -13,7 +13,6 @@ from .graph_ready_feature_basis import BATCH_WORKLOAD_BASIS, SUCCESSOR_WORKLOAD_
 GRAPH_READY_PHASE = "graph_ready_candidate_search"
 GRAPH_READY_BASE_ORIGIN = "graph_ready_base"
 GRAPH_READY_WEIGHT_GRID_ORIGIN = "graph_ready_weight_grid"
-GRAPH_READY_LOCAL_SEARCH_ORIGIN = "graph_ready_local_search"
 GRAPH_READY_V2_GENERATED_ORIGIN = "graph_ready_v2_generated"
 GRAPH_READY_V2_REPAIRED_ORIGIN = "graph_ready_v2_repaired"
 GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN = "graph_ready_v2_iterated_greedy"
@@ -63,15 +62,12 @@ class GraphReadyWeightProfile:
     feature_basis: str = SUCCESSOR_WORKLOAD_BASIS
 
 
-def graph_ready_weight_profile_summary(max_weight_profiles: int = 9) -> Dict[str, Any]:
-    _profiles, summary = resolve_weight_grid_profiles_and_summary(max_weight_profiles=max_weight_profiles)
-    return summary
-
-
 def resolve_weight_grid_profiles_and_summary(
     *, max_weight_profiles: int = 9, objective_name: str = "min_overdue",
 ) -> Tuple[List[GraphReadyWeightProfile], Dict[str, Any]]:
-    profiles, truncated, reason = default_weight_profiles(max_weight_profiles=max_weight_profiles)
+    limit = _positive_limit(max_weight_profiles)
+    profiles = [_build_profile(index, raw) for index, raw in enumerate(GRAPH_READY_DEFAULT_WEIGHT_PROFILES[:limit])]
+    truncated = len(GRAPH_READY_DEFAULT_WEIGHT_PROFILES) > len(profiles)
     objective_name = normalize_objective_name(objective_name)
     profiles = [replace(profile, objective_name=objective_name) for profile in profiles]
     summary = {
@@ -84,7 +80,7 @@ def resolve_weight_grid_profiles_and_summary(
         "effective_weight_profile_count": len(profiles),
         "weight_profile_slugs": [profile.slug for profile in profiles],
         "truncated": bool(truncated),
-        "truncation_reason": reason,
+        "truncation_reason": "max_weight_profiles" if truncated else None,
         "selection_tiebreaker": list(GRAPH_READY_SELECTION_TIEBREAKER),
     }
     return profiles, summary
@@ -128,21 +124,6 @@ def resolve_v2_profiles_and_summary(
         "selection_tiebreaker": list(GRAPH_READY_SELECTION_TIEBREAKER),
     }
     return profiles, summary
-
-
-def default_weight_profiles(*, max_weight_profiles: int) -> Tuple[List[GraphReadyWeightProfile], bool, Optional[str]]:
-    limit = _positive_limit(max_weight_profiles)
-    profiles = [_build_profile(index, raw) for index, raw in enumerate(GRAPH_READY_DEFAULT_WEIGHT_PROFILES[:limit])]
-    truncated = len(GRAPH_READY_DEFAULT_WEIGHT_PROFILES) > len(profiles)
-    return profiles, truncated, ("max_weight_profiles" if truncated else None)
-
-
-def graph_ready_v2_profiles(*, max_candidate_profiles: int, seed: int = 0, objective_name: str = "min_overdue",
-                           shared_search: bool = False) -> Tuple[List[GraphReadyWeightProfile], bool, Optional[str]]:
-    profiles, truncated, reason, _ = _graph_ready_v2_profile_data(
-        max_candidate_profiles=max_candidate_profiles, seed=seed,
-        objective_name=objective_name, shared_search=shared_search)
-    return profiles, truncated, reason
 
 
 def _graph_ready_v2_profile_data(

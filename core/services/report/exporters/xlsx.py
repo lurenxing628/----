@@ -2,9 +2,19 @@ from __future__ import annotations
 
 import io
 import tempfile
-from typing import Any, BinaryIO, Dict, List, Optional, cast
+from functools import lru_cache
+from typing import Any, BinaryIO, Dict, List, cast
 
 from core.services.common.excel_templates import sanitize_export_cell
+from core.services.report.utilization import utilization_availability_note, utilization_percent
+
+
+@lru_cache(maxsize=None)
+def _cell_styles():
+    """表头加粗字体、表头对齐和正文对齐；样式按值登记进工作簿，所有单元格共用这三个对象。"""
+    from openpyxl.styles import Alignment, Font
+
+    return Font(bold=True), Alignment(horizontal="center", vertical="center"), Alignment(vertical="top", wrap_text=True)
 
 
 def _auto_width(ws) -> None:
@@ -25,30 +35,29 @@ def _append_row(ws, values: List[Any]) -> None:
 
 def _append_write_only_row(ws, values: List[Any], *, is_header: bool = False) -> None:
     from openpyxl.cell import WriteOnlyCell
-    from openpyxl.styles import Alignment, Font
 
+    bold, header_alignment, body_alignment = _cell_styles()
     row_cells: List[Any] = []
     for value in values:
         cell = WriteOnlyCell(ws, value=sanitize_export_cell(value))
         if is_header:
-            cell.font = Font(bold=True)
-            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.font = bold
+            cell.alignment = header_alignment
         else:
-            cell.alignment = Alignment(vertical="top", wrap_text=True)
+            cell.alignment = body_alignment
         row_cells.append(cell)
     ws.append(row_cells)
 
 
 def _format_sheet(ws) -> None:
-    from openpyxl.styles import Alignment, Font
-
+    bold, header_alignment, body_alignment = _cell_styles()
     ws.freeze_panes = "A2"
     for cell in ws[1]:
-        cell.font = Font(bold=True)
-        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.font = bold
+        cell.alignment = header_alignment
     for row in ws.iter_rows(min_row=2):
         for cell in row:
-            cell.alignment = Alignment(vertical="top", wrap_text=True)
+            cell.alignment = body_alignment
     _auto_width(ws)
 
 
@@ -58,12 +67,7 @@ def _make_output_buffer(*, write_only: bool) -> BinaryIO:
     return io.BytesIO()
 
 
-def _utilization_percent(value: Optional[float]) -> Optional[float]:
-    return round(value * 100.0, 2) if value is not None else None
-
-
 _OVERDUE_HEADERS = ["类别", "批次号", "图号", "名称", "数量", "交期", "完工/截至时间", "超期(天)", "超期(小时)"]
-_DIAGNOSIS_HEADERS = ["本次诊断编号", "生成依据摘要", "核对信息", "证据来源", "证据缺口", "生成时间", "筛选条件"]
 _EXECUTION_REVIEW_HEADERS = [
     "批次",
     "工序",
@@ -91,16 +95,16 @@ _EXECUTION_REVIEW_HEADERS = [
 SUMMARY_IDENTITY_LABELS = ("计划编号", "数据版本编号")
 
 
-def _append_summary_row(ws, values: List[Any], *, write_only: bool) -> None:
+def append_summary_row(ws, values: List[Any], *, write_only: bool) -> None:
     if len(values) == 2 and values[0] in SUMMARY_IDENTITY_LABELS:
         from openpyxl.cell import WriteOnlyCell
-        from openpyxl.styles import Alignment
 
+        body_alignment = _cell_styles()[2]
         cells = [WriteOnlyCell(ws, value=sanitize_export_cell(values[0])),
                  WriteOnlyCell(ws, value=values[1])]
         cells[1].data_type = "s"
         for cell in cells:
-            cell.alignment = Alignment(vertical="top", wrap_text=True)
+            cell.alignment = body_alignment
         ws.append(cells)
     elif write_only:
         _append_write_only_row(ws, values)
@@ -108,37 +112,33 @@ def _append_summary_row(ws, values: List[Any], *, write_only: bool) -> None:
         _append_row(ws, values)
 
 
-def _append_summary_sheet(wb, summary_rows: Optional[List[List[Any]]], *, write_only: bool) -> None:
-    from openpyxl.styles import Alignment, Font
-
-    rows = summary_rows
-    if not rows:
-        return
+def _append_summary_sheet(wb, summary_rows: List[List[Any]], *, write_only: bool) -> None:
     if write_only:
         ws = wb.create_sheet("查询摘要")
         _append_write_only_row(ws, ["项目", "内容"], is_header=True)
-        for row in rows:
-            _append_summary_row(ws, row, write_only=True)
+        for row in summary_rows:
+            append_summary_row(ws, row, write_only=True)
         return
 
     ws = wb.worksheets[0]
     ws.title = "查询摘要"
     _append_row(ws, ["项目", "内容"])
-    for row in rows:
-        _append_summary_row(ws, row, write_only=False)
+    for row in summary_rows:
+        append_summary_row(ws, row, write_only=False)
     ws.freeze_panes = "A2"
     ws.column_dimensions["A"].width = 18
     ws.column_dimensions["B"].width = 42
+    bold, _header_alignment, body_alignment = _cell_styles()
     for row in ws.iter_rows():
-        row[0].font = Font(bold=True)
+        row[0].font = bold
         for cell in row:
-            cell.alignment = Alignment(vertical="top", wrap_text=True)
+            cell.alignment = body_alignment
 
 
 def export_overdue_xlsx(
     items: List[Dict[str, Any]],
     *,
-    summary_rows: Optional[List[List[Any]]] = None,
+    summary_rows: List[List[Any]],
     write_only: bool = False,
 ) -> BinaryIO:
     import openpyxl
@@ -146,7 +146,7 @@ def export_overdue_xlsx(
     wb = openpyxl.Workbook(write_only=write_only)
     try:
         _append_summary_sheet(wb, summary_rows, write_only=write_only)
-        ws = wb.create_sheet("超期清单") if (write_only or summary_rows) else wb.worksheets[0]
+        ws = wb.create_sheet("超期清单")
         if write_only:
             _append_write_only_row(ws, _OVERDUE_HEADERS, is_header=True)
         else:
@@ -160,7 +160,6 @@ def export_overdue_xlsx(
                         item.get("delay_days"), item.get("delay_hours")])
         if not write_only:
             _format_sheet(ws)
-        _append_diagnosis_sheet(wb, write_only=write_only)
 
         buf = _make_output_buffer(write_only=write_only)
         wb.save(buf)
@@ -170,21 +169,11 @@ def export_overdue_xlsx(
         wb.close()
 
 
-def _append_diagnosis_sheet(wb, *, write_only: bool) -> None:
-    ws = wb.create_sheet("诊断依据")
-    if write_only:
-        _append_write_only_row(ws, _DIAGNOSIS_HEADERS, is_header=True)
-        return
-
-    _append_row(ws, _DIAGNOSIS_HEADERS)
-    _format_sheet(ws)
-
-
 def export_utilization_xlsx(
     machines: List[Dict[str, Any]],
     operators: List[Dict[str, Any]],
     *,
-    summary_rows: Optional[List[List[Any]]] = None,
+    summary_rows: List[List[Any]],
     write_only: bool = False,
 ) -> BinaryIO:
     import openpyxl
@@ -196,7 +185,7 @@ def export_utilization_xlsx(
             ("machine", "设备负荷", ["设备编号", "设备名称"], machines),
             ("operator", "人员负荷", ["工号", "姓名"], operators),
         ):
-            sheet = wb.create_sheet(title) if write_only or summary_rows or kind == "operator" else wb.worksheets[0]
+            sheet = wb.create_sheet(title)
             sheet.title = title
             header = labels + ["班表内占用(小时)", "任务数", "可用工时(小时)", "整窗占用率(%)",
                                "累计负荷(小时)", "重叠负荷(小时)", "班表外占用(小时)", "计算方式版本", "计算说明"]
@@ -205,13 +194,10 @@ def export_utilization_xlsx(
             else:
                 _append_row(sheet, header)
             for row in rows:
-                note = "此范围无可用工时" if row.get("reason") == "zero_available_capacity" else (
-                    "；".join(issue["message"] for issue in row.get("calendar_issues", [])) or "日历资料不完整"
-                    if row.get("reason") == "calendar_unavailable" else "")
                 values = [row.get(kind + "_id"), row.get(kind + "_name"), row.get("hours"),
-                          row.get("task_count"), row.get("capacity_hours"), _utilization_percent(row.get("utilization")),
+                          row.get("task_count"), row.get("capacity_hours"), utilization_percent(row.get("utilization")),
                           row.get("summed_load_hours"), row.get("overlap_hours"), row.get("outside_calendar_hours"),
-                          row.get("metric_version"), note]
+                          row.get("metric_version"), utilization_availability_note(row)]
                 if write_only:
                     _append_write_only_row(sheet, values)
                 else:
@@ -229,7 +215,7 @@ def export_utilization_xlsx(
 def export_downtime_impact_xlsx(
     machines: List[Dict[str, Any]],
     *,
-    summary_rows: Optional[List[List[Any]]] = None,
+    summary_rows: List[List[Any]],
     write_only: bool = False,
 ) -> BinaryIO:
     import openpyxl
@@ -237,7 +223,7 @@ def export_downtime_impact_xlsx(
     wb = openpyxl.Workbook(write_only=write_only)
     try:
         _append_summary_sheet(wb, summary_rows, write_only=write_only)
-        ws = wb.create_sheet("停机影响") if (write_only or summary_rows) else wb.worksheets[0]
+        ws = wb.create_sheet("停机影响")
         header = ["设备编号", "设备名称", "停机时长(小时)", "停机次数", "与排程重叠(小时)", "重叠次数"]
         if write_only:
             _append_write_only_row(ws, header, is_header=True)
@@ -263,7 +249,7 @@ def export_downtime_impact_xlsx(
 def export_execution_review_xlsx(
     rows: List[Dict[str, Any]],
     *,
-    summary_rows: Optional[List[List[Any]]] = None,
+    summary_rows: List[List[Any]],
     write_only: bool = False,
 ) -> BinaryIO:
     import openpyxl
@@ -271,9 +257,8 @@ def export_execution_review_xlsx(
     wb = openpyxl.Workbook(write_only=write_only)
     try:
         _append_summary_sheet(wb, summary_rows, write_only=write_only)
-        ws = wb.create_sheet("计划和现场实际") if (write_only or summary_rows) else wb.worksheets[0]
+        ws = wb.create_sheet("计划和现场实际")
         if not write_only:
-            ws.title = "计划和现场实际"
             _append_row(ws, _EXECUTION_REVIEW_HEADERS)
             for row in rows:
                 _append_row(ws, _execution_review_values(row))

@@ -145,6 +145,41 @@ def test_shared_budget_admits_costs_rotates_useful_opportunities_and_requires_bo
     assert measured["deadline_overrun_seconds"] == pytest.approx(0.15)
     assert measured["stop_reason"] == "time_budget"
 
+    # Pruned sgs_full calls must not mask the higher cost of an unpruned sgs_full call,
+    # both before any unpruned sgs_full has run (cold start) and after its sliding window fills.
+    clock = _Clock()
+    unpruned_costs = budget_at(clock, 20.0)
+    unpruned_costs.require_decode("batch_order_full", first_construction=True)
+    clock.advance(2.85)
+    unpruned_costs.record_decode("batch_order_full", 2.85)
+    for seconds in (2.56, 2.54, 2.58, 1.0, 1.0, 1.0):
+        unpruned_costs.require_decode("sgs_full")
+        clock.advance(seconds)
+        unpruned_costs.record_decode("sgs_full", seconds)
+    clock.advance(4.605)
+    assert unpruned_costs.remaining() == pytest.approx(1.865)
+    assert unpruned_costs.estimate("sgs_full") == pytest.approx(1.25)
+    unpruned_costs.require_decode("sgs_full")
+    with pytest.raises(SharedSearchSkip) as cold_unpruned_refused:
+        unpruned_costs.require_decode("sgs_full", unpruned_sgs=True)
+    assert cold_unpruned_refused.value.reason == "estimated_decode_cost"
+
+    clock = _Clock()
+    warm_unpruned = budget_at(clock, 12.0)
+    warm_unpruned.require_decode("sgs_full", first_construction=True, unpruned_sgs=True)
+    clock.advance(2.8)
+    warm_unpruned.record_decode("sgs_full", 2.8, unpruned_sgs=True)
+    for _ in range(3):
+        warm_unpruned.require_decode("sgs_full")
+        clock.advance(1.0)
+        warm_unpruned.record_decode("sgs_full", 1.0)
+    clock.advance(4.2)
+    assert warm_unpruned.remaining() == pytest.approx(2.0)
+    warm_unpruned.require_decode("sgs_full")
+    with pytest.raises(SharedSearchSkip) as warm_unpruned_refused:
+        warm_unpruned.require_decode("sgs_full", unpruned_sgs=True)
+    assert warm_unpruned_refused.value.reason == "estimated_decode_cost"
+
     # Short and long runs differ only in the specified probe/stall thresholds.
     # Initial completion and later strict progress each reset stagnation.
     for seconds, probe_limit, decision_limit, stall_seconds in ((10.0, 2, 6, 2.0), (30.0, 4, 10, 5.0)):

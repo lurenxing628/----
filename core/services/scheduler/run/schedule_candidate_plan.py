@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
+
+if TYPE_CHECKING:
+    from core.services.scheduler.contracts.schedule_summary_types import SummaryMetrics
 
 CANDIDATE_KIND_CRITICAL_CHAIN = "critical_chain"
 UNCERTIFIED = "uncertified"
@@ -21,9 +26,9 @@ class CandidatePlan:
     graph_critical_weight: Optional[int]
     graph_impact_weight: Optional[int]
     graph_downstream_weight: Optional[int]
-    results: List[Any] = field(default_factory=list)
-    summary: Any = None
-    metrics: Any = None
+    results: List[ScheduleResult] = field(default_factory=list)
+    summary: Optional[ScheduleSummary] = None
+    metrics: Optional[SummaryMetrics] = None
     health: Optional[Dict[str, Any]] = None
     graph_analysis_public: Optional[Dict[str, Any]] = None
     graph_analysis_diagnostics: Optional[Dict[str, Any]] = None
@@ -35,7 +40,7 @@ class CandidatePlan:
     algo_mode: str = ""
     objective_name: str = ""
     algo_stats: Dict[str, Any] = field(default_factory=dict)
-    time_budget_seconds: int = 0
+    time_budget_seconds: float = 0
     search_report: Dict[str, Any] = field(default_factory=dict)
     sort_strategy: str = ""
     # Dispatch mode the plan really decoded with; a graph tier forces ``sgs`` whatever was configured.

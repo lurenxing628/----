@@ -28,18 +28,19 @@ def test_operator_calendar_bulk_reads_cross_chunks_and_preserve_histories(schema
     finally:
         conn.set_trace_callback(None)
     reads = [sql for sql in trace if sql.lstrip().upper().startswith("SELECT")]
-    assert len(reads) == 6
+    assert len(reads) == 8
     for code in (codes[0], codes[1], codes[-1]):
         assert states[code] == WorkbenchOperatorCalendarService(conn, code).range_states(DAY, DAY)
     assert states[codes[0]][DAY]["row"] is None and states[codes[0]][DAY]["history"]
     assert rows[-1]["values"]["operator_label"] == "姓名工:号%"
     trace.clear()
-    conn.set_trace_callback(trace.append)
-    try:
-        exported = service._rows_for(DAY, DAY, codes)
-    finally:
-        conn.set_trace_callback(None)
-    assert len(exported) == 400 and len(trace) == 6
+    with TransactionManager(conn).transaction():
+        conn.set_trace_callback(trace.append)
+        try:
+            _, exported = service._states_and_rows(DAY, DAY)
+        finally:
+            conn.set_trace_callback(None)
+    assert len(exported) == 400 and len(trace) == 7
     assert next(row for row in exported if row["operator_code"] == codes[-1])["operator_label"] == "姓名工:号%"
     record_property("operator_calendar_read_queries_401_people", len(reads))
 
@@ -76,3 +77,28 @@ def test_operator_calendar_confirmation_reloads_current_operator_rows(schema_con
             service.confirm_import(preview, content, file_format="csv")
     assert rejected.value.code == "stale_write"
     assert conn.execute("SELECT COUNT(*) FROM OperatorCalendar").fetchone()[0] == 0
+
+
+def test_operator_calendar_rest_day_rejects_allow_flags_and_periods(schema_conn):
+    conn = schema_conn
+    conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('OP','姓名')")
+    conn.commit()
+    content = file_bytes(
+        [
+            ("OP", "2026-10-05", "假期", "", "", "", "是", "否", ""),
+            ("OP", "2026-10-06", "假期", "09:00", "17:00", "", "否", "否", "1"),
+        ],
+        headers=(
+            "operator_code", "date", "day_type", "shift_start", "shift_end",
+            "efficiency", "allow_normal", "allow_urgent", "period_count",
+        ),
+    )
+    preview = WorkbenchOperatorCalendarFileService(conn).preview_import(content, file_format="csv").as_dict()
+    assert preview["summary"]["rejected"] == 2
+    assert [row["result"] for row in preview["rows"]] == ["rejected", "rejected"]
+    assert preview["rows"][0]["errors"] == [
+        {"row": 2, "field": "allow_normal", "code": "invalid_input", "message": "休息日的普通件和急件都不可排产。"}
+    ]
+    assert preview["rows"][1]["errors"] == [
+        {"row": 3, "field": "period_count", "code": "invalid_input", "message": "休息日不能填写工作时段。"}
+    ]

@@ -27,7 +27,6 @@ def resolve_schema_path(schema_path: Optional[str]) -> str:
             absolute = os.path.abspath(candidate)
             if os.path.exists(absolute):
                 return absolute
-    if not schema_path:
         raise FileNotFoundError("找不到数据库结构文件：schema.sql（请确认工作目录或打包参数包含该文件）")
     schema_path = os.path.abspath(schema_path)
     if not os.path.exists(schema_path):
@@ -68,13 +67,12 @@ def _parse(schema_sql: str) -> Tuple[List[str], Dict[str, List[str]]]:
 
 
 def _declared(schema_sql: str) -> Tuple[List[str], Dict[str, List[str]]]:
-    key = str(schema_sql or "")
-    cached = _DECLARED_CACHE.get(key)
+    cached = _DECLARED_CACHE.get(schema_sql)
     if cached is None:
-        cached = _parse(str(schema_sql or ""))
+        cached = _parse(schema_sql)
         if len(_DECLARED_CACHE) >= 8:
             _DECLARED_CACHE.clear()
-        _DECLARED_CACHE[key] = cached
+        _DECLARED_CACHE[schema_sql] = cached
     return cached
 
 

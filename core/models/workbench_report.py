@@ -32,7 +32,7 @@ def _validate_finish_dates(start: Optional[str], end: Optional[str]) -> None:
             if any(type(value) is not str or re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) is None for value in (start, end)):
                 raise ValueError("date format")
             sd, ed = date.fromisoformat(start), date.fromisoformat(end)
-            if ed < sd:
+            if ed < sd or ed == date.max:
                 raise ValueError("date order")
         except ValueError as exc:
             raise WorkbenchCommandRejected("invalid_input", "计划完工日期无效或结束早于开始。", 400) from exc

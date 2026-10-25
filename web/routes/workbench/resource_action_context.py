@@ -10,9 +10,8 @@ from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError, ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_resource_action import public_action_row, resource_scope
+from core.models.workbench_resource_action import public_action_row, resource_page_scope
 from core.models.workbench_resource_file import INSTRUCTIONS, TEMPLATE_VERSION, public_columns
-from core.models.workbench_resource_query import ResourcePageRequest
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
 from .api_responses import api_endpoint
@@ -38,13 +37,12 @@ def read_endpoint(function):
             raise
         except Exception as exc:
             raise WorkbenchCommandRejected("storage_failure", "资源预检或下载没有完成，数据没有改动。请刷新重试；仍不行请联系维护人员，并告知下方编号。", 500) from exc
-    return api_endpoint(wrapped)
+    return api_endpoint(wrapped, readonly=True)
 
 
 def scope_input(kind, body):
-    scope = resource_scope(kind, body["scope"])
-    query = ResourcePageRequest(kind=kind, **scope, size=body.get("page_size", 20))
-    return scope, query.scope(), opaque_ref(body["snapshot_ref"], "snapshot_ref")
+    _, query = resource_page_scope(kind, body["scope"], size=body.get("page_size", 20))
+    return query, query.scope(), opaque_ref(body["snapshot_ref"], "snapshot_ref")
 
 
 def retain_context(namespace, document, content=None, *, key=None):
@@ -85,7 +83,7 @@ def issue_preview(kind, preview, content=None):
     return result
 
 
-def issue_file_preview(preview, content, *, columns, instructions, template_version, extra=None):
+def issue_file_preview(preview, content, *, columns, instructions, template_version):
     """导入预检的公开响应。关联资料与日历文件家族共用；资源家族的 issue_preview 还要兼顾批量删除，不并进来。"""
     ref, expires_at = retain_context(PREVIEW_SCOPE, preview.document, content)
     body = preview.as_dict()
@@ -101,10 +99,10 @@ def issue_file_preview(preview, content, *, columns, instructions, template_vers
             "can_confirm": not rejected, "write_context": context, "columns": columns,
             "scope": body["request"]["scope"], "actual_source_ref": body["request"]["actual_source_ref"],
             "format": body["request"]["format"], "mode": body["request"]["mode"],
-            "template_version": template_version, "instructions": instructions, **(extra or {})}
+            "template_version": template_version, "instructions": instructions}
 
 
-def upload_body(*, modes=("upsert",)):
+def upload_body():
     """导入预检的 multipart 请求：恰好一个文件，外加格式与导入方式，多一项少一项都拒绝。"""
     from flask import request
 
@@ -113,7 +111,7 @@ def upload_body(*, modes=("upsert",)):
             or any(len(request.form.getlist(key)) != 1 for key in request.form)):
         raise WorkbenchCommandRejected("invalid_input", "请上传一个文件并选好格式和导入方式；数据没有改动。选好后点「开始预检」。", 400)
     fmt, mode = request.form["format"], request.form["mode"]
-    if fmt not in ("csv", "xlsx") or mode not in modes:
+    if fmt not in ("csv", "xlsx") or mode not in ("upsert",):
         raise WorkbenchCommandRejected("invalid_input", "只支持 CSV 或 XLSX 按编号增量导入；数据没有改动。请换用正确的文件后点「开始预检」。", 400)
     content = request.files["file"].read()
     limit = int(current_app.config.get("EXCEL_MAX_UPLOAD_BYTES") or current_app.config.get("MAX_CONTENT_LENGTH") or 0)

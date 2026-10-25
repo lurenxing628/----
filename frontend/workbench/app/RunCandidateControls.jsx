@@ -101,7 +101,7 @@
   }
   function Detail({ data, prepared, task, onClose, onRelated, onCollapse }) {
     const M = window.RunCandidateModel;
-    const loadedRefs = React.useMemo(() => new Set(data.tasks.map(row => row.row_ref)), [data.tasks]);
+    const loadedRefs = React.useMemo(() => prepared && prepared.loadedRefs || new Set(data.tasks.map(row => row.row_ref)), [prepared, data.tasks]);
     const segments = task && data.tasks.filter(row => row.operation_ref === task.operation_ref);
     const compact = !!onCollapse, execution = task && task.execution_at_generation;
     const routineUnreported = execution && execution.execution_state === 'unreported' && ['complete', 'incomplete'].includes(execution.data_quality);

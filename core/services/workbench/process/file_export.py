@@ -1,10 +1,10 @@
 """Complete process exports; selection never depends on the visible page."""
 
+from core.models.process_route_text import serialize_route_rows
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_file import check_format, file_columns, file_error
 from core.models.workbench_process_table_query import process_table_request, process_table_scope
 from core.models.workbench_resource_action import resource_refs
-from core.services.process.route_parser_tokens import serialize_route_rows
 from core.services.workbench.facts.file_writer import XLSX_MAX_ROWS
 
 from .file_values import export_value
@@ -47,6 +47,11 @@ def select_export_parts(reader, request, *, scope):
     return [parts[ref] for ref in selected], {} if target_ref is not None else normalized
 
 
+def _seq_key(row):
+    """存量工序号可能混入非整数；先排整数，坏值随后由逐格校验报出结构化的文件错误。"""
+    return (0, row["seq"]) if type(row["seq"]) is int else (1, repr(row["seq"]))
+
+
 def process_export_rows(kind, parts, facts):
     file_columns(kind)
     grouped = {}
@@ -54,17 +59,20 @@ def process_export_rows(kind, parts, facts):
         if row["status"] == "active":
             grouped.setdefault(row["part_no"], []).append(row)
     if kind == "route":
-        for part in parts:
-            operations = grouped.get(part["part_no"], [])
-            raw = serialize_route_rows([(row["seq"], row["op_type_name"]) for row in
-                                        sorted(operations, key=lambda row: row["seq"])]) if operations else part["route_raw"]
+        for index, part in enumerate(parts, 2):
+            operations = sorted(grouped.get(part["part_no"], []), key=_seq_key)
+            # 路线文本由工序号和工种拼成，与工时导出同一逐格规则校验存量值，坏值报出所在行。
+            for row in operations:
+                export_value(row["seq"], "sequence", index, "csv")
+                export_value(row["op_type_name"], "op_type_name", index, "csv")
+            raw = serialize_route_rows([(row["seq"], row["op_type_name"]) for row in operations]) if operations else part["route_raw"]
             yield {"business_code": part["part_no"], "label": part["part_name"],
                    "route_raw": raw, "remark": part["remark"]}
         return
     groups = {row["group_id"]: row for row in facts["groups"]}
     for part in parts:
         written_groups = set()
-        for row in sorted(grouped.get(part["part_no"], []), key=lambda row: row["seq"]):
+        for row in sorted(grouped.get(part["part_no"], []), key=_seq_key):
             exported = _hours_export_row(part["part_no"], row, groups)
             if row["ext_group_id"] in written_groups:
                 exported.pop("group_total_days", None)
@@ -79,9 +87,11 @@ def _hours_export_row(part_no, row, groups):
     if row["ext_group_id"] is not None and (group is None or group["part_no"] != part_no):
         raise WorkbenchCommandRejected("constraint_conflict", "工序关联的外协组找不到，或者属于别的零件。请到基础资料核对外协组。")
     internal = row["source"] == "internal"
+    merged = group is not None and group["merge_mode"] == "merged"
+    # 合并外协组按整段周期排产，成员保留的逐序旧周期不生效（可能是未清理的旧值），不导出。
     return {"business_code": part_no, "sequence": row["seq"], "op_type_name": row["op_type_name"],
             "source": row["source"], "setup_hours": row["setup_hours"] if internal else None,
             "unit_hours": row["unit_hours"] if internal else None,
-            "external_days": row["ext_days"] if row["source"] == "external" else None,
+            "external_days": row["ext_days"] if row["source"] == "external" and not merged else None,
             "group_start": group["start_seq"] if group else None, "group_end": group["end_seq"] if group else None,
-            "group_total_days": group["total_days"] if group and group["merge_mode"] == "merged" else None}
+            "group_total_days": group["total_days"] if merged else None}

@@ -84,6 +84,7 @@ class ReportBatchPreparation:
         self.resolved = []
         self.appended, self.rows = [], []
         self.by_number = {}
+        self.now = None
 
     def _resolve_rows(self):
         repo = self.ledger.repo
@@ -123,6 +124,7 @@ class ReportBatchPreparation:
     def prepare(self):
         self.resolve()
         now = self.ledger.clock()
+        self.now = now
         before = {row.operation_ref: row for row in self.ledger.project_loaded(self.before, contexts=False)}
         self.before_projections = before
         for index, (item, resolved) in enumerate(zip(self.items, self.resolved), 1):
@@ -139,15 +141,29 @@ class ReportBatchPreparation:
         changed_by_operation = {}
         for row in self.appended:
             changed_by_operation.setdefault(row["operation_ref"], []).append(row)
+        revisions_by_operation = {
+            after.operation_ref: [row for row in changed_by_operation.get(after.operation_ref, []) if row["sequence"] > 1]
+            for after in self.projections
+        }
+        downstream_refs = dependencies.downstream_refs(
+            self.facts["operations"][after.operation_ref]
+            for after in self.projections
+            if facts_changed[after.operation_ref] and revisions_by_operation[after.operation_ref]
+        )
+        task_map = (
+            self.ledger.task_map(downstream_refs, self.facts["plan"]["plan_ref"])
+            if downstream_refs
+            else {}
+        )
         for after in self.projections:
             changed = changed_by_operation.get(after.operation_ref, [])
+            revisions = revisions_by_operation[after.operation_ref]
             try:
                 validate_projection_change(before[after.operation_ref], after)
                 validate_merged_cycle(dependencies, self.facts["operations"][after.operation_ref], before[after.operation_ref],
                                       after, changed)
-                revisions = [row for row in changed if row["sequence"] > 1]
                 conflicts = (execution_conflicts(self.ledger, self.facts, before[after.operation_ref], after, revisions,
-                    dependencies=dependencies, protect_plan=bool(revisions))
+                    dependencies=dependencies, protect_plan=bool(revisions), task_map=task_map)
                     if facts_changed[after.operation_ref] else [])
                 if conflicts:
                     raise ReportBatchRejected("constraint_conflict", "这次报工会影响前后道工序或已采用的排产安排。请先处理下面列出的影响。",
@@ -230,24 +246,15 @@ class ReportBatchPreparation:
                 "report_no": row["report_no"], "revision_ref": row["revision_ref"], "operation_ref": row["operation_ref"], "result": result}
 
     def materialize(self, now):
-        """Convert this checked simulation into commit identities and current server timestamps."""
+        """Stamp commit-time timestamps and operator onto already-allocated report/revision identities."""
         stamp = now.isoformat(timespec="seconds")
-        report_refs, revision_refs = {}, {}
+        recheck_now = now < self.now
         for row in self.appended:
-            validate_actual_values(row["values"], now)
-            if row["sequence"] == 1:
-                report_refs[row["report_ref"]] = new_ref()
-            revision_refs[row["revision_ref"]] = new_ref()
-        for row in self.appended:
-            row["report_ref"] = report_refs.get(row["report_ref"], row["report_ref"])
-            row["revision_ref"] = revision_refs[row["revision_ref"]]
-            row["previous_revision_ref"] = revision_refs.get(row["previous_revision_ref"], row["previous_revision_ref"])
+            if recheck_now:
+                validate_actual_values(row["values"], now)
             if row["sequence"] == 1:
                 row["recorded_at"] = stamp
             row["revision_at"], row["local_operator"] = stamp, self.actor
-        for row in self.rows:
-            row["report_ref"] = report_refs.get(row["report_ref"], row["report_ref"])
-            row["revision_ref"] = revision_refs.get(row["revision_ref"], row["revision_ref"])
 
     def public(self):
         return {"rows": self.rows, "summary": {"total": len(self.rows), "changed": len(self.appended),

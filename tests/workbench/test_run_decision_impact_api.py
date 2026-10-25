@@ -69,6 +69,18 @@ def test_mixed_due_values_keep_nulls_last_and_permanent_ties_across_pages(candid
     client, _ = api(case)
     query = {"selected_candidate_ref": refs[-1], "reference_candidate_ref": refs[-1],
              "sort": "after_delay_hours", "order": "desc"}
+    with CandidateStore(case.conn).snapshot():
+        batch_source = DecisionSource(
+            CandidateStore(case.conn), run_ref,
+            selected_candidate_ref=refs[-1], reference_candidate_ref=refs[-1],
+        )
+        _ = batch_source.batch_impacts
+        from core.services.workbench.run.decision_impact import filter_options
+        _ = filter_options(batch_source, "batches")
+        _ = filter_options(batch_source, "operations")
+        assert "facts" not in batch_source.__dict__
+        _ = batch_source.operation_impacts
+        assert not batch_source._raw_tasks and not batch_source._projected
     first = detail(client, run_ref, "batches", **query)
     assert first["data"]["candidate"]["candidate_ref"] == refs[-1]
     page = first["data"]["page"]

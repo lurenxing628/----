@@ -12,7 +12,8 @@
     }
     return <U.Modal title={save ? '保存试调方案' : '确认放弃草稿'} icon={save ? 'check' : 'x'} locked={commands.busy || !!commands.key} guardOwner={guardOwner} onClose={close}
       footer={<><U.Button icon="x" disabled={commands.busy || !!commands.key} onClick={close}>取消</U.Button>
-        <U.Button icon="refresh-cw" disabled={commands.busy || !!commands.key} onClick={() => { setConfirm(false); onRecheck(); }}>刷新草稿</U.Button><U.Button className="btn primary" icon={save ? 'check' : 'x'}
+        <U.Button icon="refresh-cw" disabled={commands.busy || !!commands.key} onClick={() => { setConfirm(false); onRecheck(); }}>刷新草稿</U.Button>
+        {commands.key && <U.Button icon="refresh-cw" busy={commands.busy} onClick={commands.lookup}>{window.WorkbenchTerms.actions.query_result}</U.Button>}<U.Button className="btn primary" icon={save ? 'check' : 'x'}
         disabled={!confirm || save && !name.trim() || commands.blocked || !data.write_context || data.write_context.capabilities['trial.' + kind] !== true}
         onClick={() => commands.execute({ action: kind, draft_ref: data.draft_ref, input: save ? { name } : { confirm: true } }, data.write_context.write_token)}>
         {save ? '确认保存试调方案' : '确认放弃'}</U.Button></>}><div className="trial-modal-body">
@@ -21,6 +22,7 @@
         {save && <label className="tt-naming">试调方案名称<input aria-label="试调方案名称" maxLength={120} value={name} onChange={e => { setName(e.target.value); setConfirm(false); }} autoComplete="off" /></label>}
         <label className="tt-check"><input type="checkbox" checked={confirm} onChange={e => setConfirm(e.target.checked)} />{save ? '确认保存试调方案，冲突和未安排工序一并保留' : '确认放弃当前草稿'}</label>
         <U.ErrorBox error={commands.error} />
+        {commands.key && <section className="tt-notice" aria-label="待确认的试调提交"><p>{commands.note || '上次提交结果尚未确认。'}</p><window.WorkbenchReference value={commands.key} /></section>}
       </div></U.Modal>;
   }
   function Session({ initialTarget, onNavigate, renderAdoption, onTargetChange }) {
@@ -43,7 +45,7 @@
     }, []);
     const [target, setTarget] = React.useState(initialTarget.base ? {} : initialTarget), [base, setBase] = React.useState(initialTarget.base || null);
     const [modal, setModal] = React.useState(initialTarget.base ? 'create' : null), [revision, refresh] = React.useReducer(n => n + 1, 0);
-    const [stored, setStored] = React.useState(null), [selected, setSelected] = React.useState(null), [editing, setEditing] = React.useState(false);
+    const stored = React.useRef(null), [selected, setSelected] = React.useState(null), [editing, setEditing] = React.useState(false);
     const [detailsOpen, setDetailsOpen] = React.useState(false);
     const inspectFocus = React.useRef(null);
     const [error, setError] = React.useState(null), [notice, setNotice] = React.useState(''), [directory, setDirectory] = React.useState(!initialTarget.draft_ref && !initialTarget.scenario_ref);
@@ -57,8 +59,9 @@
     const read = S.useRead(async signal => {
       const v = await A.read('/trial/' + (isScenario ? 'scenarios/' : 'drafts/') + key, {}, signal); C.workspace(v.data, target); return v;
     }, [key, isScenario, revision], !!key);
-    React.useEffect(() => { if (read.result) { setStored({ key, result: read.result }); setBase(read.result.data.base); } }, [read.result]);
-    const result = read.result || stored && stored.key === key && stored.result, data = result && result.data;
+    if (read.result) stored.current = { key, result: read.result };
+    React.useEffect(() => { if (read.result) setBase(read.result.data.base); }, [read.result]);
+    const result = read.result || stored.current && stored.current.key === key && stored.current.result, data = result && result.data;
     const originalTask = React.useMemo(() => {
       if (!origin || !read.result) return { task: null, error: null };
       try { return { task: C.originTask(read.result.data, origin), error: null }; }
@@ -75,8 +78,8 @@
     } : null);
     const commands = S.useCommands(receipt => {
       const d = receipt.data, next = d.scenario_ref ? { scenario_ref: d.scenario_ref } : { draft_ref: d.draft_ref };
-      setModal(null); setEditing(false); setTarget(next); setDirectory(false); if (d.scenario_ref) { setSelected(null); setOrigin(null); } refresh();
-      setNotice(d.scenario_ref ? '试调方案已保存，正在刷新。' : d.status === 'discarded' ? '草稿已放弃。' : '试调已保存。');
+      setModal(null); setEditing(false); resetEditor(); setTarget(next); setDirectory(false); if (d.scenario_ref) { setSelected(null); setOrigin(null); } refresh();
+      setNotice(d.scenario_ref ? '试调方案已保存。' : d.status === 'discarded' ? '草稿已放弃。' : '试调已保存。');
       notifyTarget(next);
     });
     const actions = { ...commands, blocked: commands.blocked || !!key && (!read.result || !!read.error || read.busy || !!origin && !originalTask.task) };
@@ -84,7 +87,7 @@
       message: '上次提交的结果还没查到，请先留在这个页面。' });
     async function guard() {
       if (!await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) return false;
-      setError(null); if (editing) { setEditing(false); resetEditor(); } return true;
+      setError(null); if (editing) { if (commands.clearError) commands.clearError(); setEditing(false); resetEditor(); } return true;
     }
     async function select(ref) { if (ref !== selected && !await guard()) return false; setSelected(ref); return true; }
     async function inspectTask(ref) {
@@ -100,11 +103,14 @@
       try {
         C.check(!origin || !!next.draft_ref, '原任务定位只能打开试调草稿，不能把已保存的试调方案当成草稿。');
         C.target(next); const canonical = next.scenario_ref ? { scenario_ref: next.scenario_ref } : { draft_ref: next.draft_ref };
-        setTarget(canonical); setStored(null); setSelected(null); setDetailsOpen(false); locatedOrigin.current = null; setNotice(''); setDirectory(false); refresh(); notifyTarget(canonical);
+        if (commands.clearError) commands.clearError();
+        setTarget(canonical); stored.current = null; setSelected(null); setDetailsOpen(false); locatedOrigin.current = null; setNotice(''); setDirectory(false); refresh(); notifyTarget(canonical);
       }
       catch (error) { setError(error); }
     }
     function reload() { commands.restore(); refresh(); }
+    // An actually rendered dialog owns the command feedback; the page below does not repeat it.
+    const finishing = !!data && ['save', 'discard'].includes(modal), dialog = modal === 'create' || finishing;
     return <div className="plana trial-workspace" data-trial-workspace data-open-ref={key} data-open-kind={isScenario ? 'scenario' : 'draft'}>
       <h2 className="wb-page-title">试调排产方案</h2><header className="tt-tools">
         {onNavigate && <U.Button icon="chevron-left" onClick={() => onNavigate('analysis', base || {})}>返回方案</U.Button>}
@@ -123,10 +129,10 @@
           </div>
         </details></>}
       </header>
-      <U.ErrorBox error={error} /><U.ErrorBox error={commands.error} /><U.ErrorBox error={originalTask.error} />
+      <U.ErrorBox error={error} />{!dialog && !editing && <U.ErrorBox error={commands.error} />}<U.ErrorBox error={originalTask.error} />
       {!commands.key && commands.note && <p role="status">{commands.note}</p>}
       {commands.error && !commands.key && <U.Button icon="refresh-cw" onClick={reload} disabled={commands.busy}>刷新试调内容和操作记录</U.Button>}
-      {commands.key && <section className="tt-notice" aria-label="待确认的试调提交"><strong>上次试调提交待确认</strong><p>{commands.note || '上次提交结果尚未确认。'}</p>
+      {!dialog && commands.key && <section className="tt-notice" aria-label="待确认的试调提交"><strong>上次试调提交待确认</strong><p>{commands.note || '上次提交结果尚未确认。'}</p>
         <div className="tt-tools"><U.Button icon="refresh-cw" onClick={commands.lookup} busy={commands.busy}>查询结果</U.Button><window.WorkbenchReference value={commands.key} /></div></section>}
       {notice && <p role="status" className="tt-notice">{notice}</p>}
       {directory && <window.TrialCatalog.Directory revision={revision} onOpen={open} filterBase={base}
@@ -146,8 +152,8 @@
               <U.Button icon="check" reason={data.scenario_ref ? window.WorkbenchTerms.outcomes.unavailable : '请先保存试调方案，再做正式采用。'}>采用方案</U.Button>}</div></footer>
         </>}
       {modal === 'create' && <window.TrialCatalog.Create initialBase={origin ? { plan_ref: origin.plan_ref } : base} initialScope={initialTarget.base ? initialTarget.scope || {} : {}}
-        fixedBase={!!origin} onExisting={origin ? () => { setModal(null); setDirectory(true); } : undefined} commands={commands} onClose={() => setModal(null)} />}
-      {data && ['save', 'discard'].includes(modal) && <Finish data={data} kind={modal} commands={actions} onClose={() => setModal(null)} onRecheck={reload} />}
+        fixedBase={!!origin} onExisting={origin ? () => { if (commands.clearError) commands.clearError(); setModal(null); setDirectory(true); } : undefined} commands={commands} onClose={() => { if (commands.clearError) commands.clearError(); setModal(null); }} />}
+      {finishing && <Finish data={data} kind={modal} commands={actions} onClose={() => { if (commands.clearError) commands.clearError(); setModal(null); }} onRecheck={reload} />}
     </div>;
   }
   // Load after TrialContract/API/Session/Controls/Catalog/Gantt/Details/Results.

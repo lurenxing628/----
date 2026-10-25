@@ -6,7 +6,7 @@ from core.models.workbench_run_candidate import local_time
 
 from .candidate_projection import scheduled_ids, uses_task_rows
 from .candidate_values import corrupt, gap, number, text
-from .zero_duration import point_event_dto
+from .zero_duration import PointEventError, point_event_dto
 from .zero_duration_evidence import CandidatePointReader, overlaps
 
 
@@ -22,7 +22,7 @@ def _date(value, field, gaps):
     return None
 
 
-def _resource(facts, kind, key, gaps):
+def task_resource(facts, kind, key, gaps):
     if key is None or key == "":
         return None
     table = {"machine": "Machines", "operator": "Operators", "supplier": "Suppliers"}[kind]
@@ -120,20 +120,30 @@ def _expected_task_rows(rows, candidate, scheduled_op_ids):
     return expected
 
 
-def _check_task_payload(payload, expected, seen):
+def validate_task_payload(payload, expected=None, seen=None):
     if set(payload) != {"op_id", "machine_id", "operator_id", "start_time", "end_time", "source", "locked"}:
         corrupt()
     op = payload.get("op_id")
-    if type(op) is not int or op <= 0 or op in seen:
+    if type(op) is not int or op <= 0 or (seen is not None and op in seen):
         corrupt()
-    seen.add(op)
+    if seen is not None:
+        seen.add(op)
     if expected is not None:
         if op not in expected or (expected[op] is not None and
                 {key: value for key, value in payload.items() if key != "locked"} != expected[op]):
             corrupt()
+    try:
+        start, end = local_time(payload.get("start_time")), local_time(payload.get("end_time"))
+    except (ValueError, TypeError):
+        corrupt()
+    if (start > end or payload.get("source") not in ("internal", "external")
+            or type(payload.get("locked")) is not bool
+            or any(payload[key] is not None and type(payload[key]) is not str for key in ("machine_id", "operator_id"))):
+        corrupt()
+    return op, start, end
 
 
-def _task_dto(row, facts, start, end, *, prepared=None):
+def _task_dto(row, facts, start, end, *, prepared):
     ref, payload = row["operation_ref"], row["payload"]
     task, operation = operation_labels(facts, ref, payload, prepared=prepared)
     gaps = task["data_gaps"]
@@ -142,8 +152,8 @@ def _task_dto(row, facts, start, end, *, prepared=None):
     if start == end:
         task.update(point_event_dto(start, end))
     for kind in ("machine", "operator"):
-        task[kind] = _resource(facts, kind, payload.get(kind + "_id"), gaps)
-    task["supplier"] = _resource(facts, "supplier", operation.get("supplier_id"), gaps)
+        task[kind] = task_resource(facts, kind, payload.get(kind + "_id"), gaps)
+    task["supplier"] = task_resource(facts, "supplier", operation.get("supplier_id"), gaps)
     return task
 
 
@@ -159,20 +169,19 @@ def validate_saved_tasks(rows, candidate, facts, *, prepared_tasks=None):
     intervals, seen, point_reader = {}, set(), None
     for row in rows:
         ref, payload = row["operation_ref"], row["payload"]
-        _check_task_payload(payload, expected, seen)
+        _op, start, end = validate_task_payload(payload, expected, seen)
         operation_gaps = []
-        operation = facts.operation(ref, payload, operation_gaps)
         point_work = None
-        try:
-            start, end = local_time(payload.get("start_time")), local_time(payload.get("end_time"))
-            if start > end or payload.get("source") not in ("internal", "external") or type(payload.get("locked")) is not bool:
-                corrupt()
-            if start == end:
+        if start == end:
+            try:
                 if point_reader is None:
-                    point_reader = CandidatePointReader(candidate, facts)
+                    point_reader = CandidatePointReader(candidate, facts, ids=ids)
                 point_work = point_reader.work(ref, payload)
-        except (ValueError, TypeError):
-            corrupt()
+            except (PointEventError, ValueError, TypeError):
+                corrupt()
+            operation = point_work["operation"]
+        else:
+            operation = facts.operation(ref, payload, operation_gaps)
         intervals[row["row_ref"]] = (start, end)
         if prepared_tasks is not None:
             prepared_tasks[row["row_ref"]] = {"operation": operation, "operation_gaps": operation_gaps,

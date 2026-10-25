@@ -135,6 +135,7 @@
     const stored = Object.fromEntries(Object.entries(query).filter(([key]) => detailKeys.includes(key) && !['delivery_filter', 'selected_batch_ref'].includes(key)));
     const q = window.RunDecisionAPI.detailScope(runRef, { ...stored, comparison_mode: scope.comparison_mode, resource_view: scope.resource_view, selected_candidate_ref: scope.selected_candidate_ref, ...(scope.comparison_mode === 'candidates' ? { reference_candidate_ref: scope.reference.candidate_ref } : {}), range_start: scope.range_start, range_end: scope.range_end, batch_ref: batch.batch_ref, change_kind: difference ? stored.change_kind || 'changed' : 'all', sort: stored.sort || 'sequence', order: stored.order || 'asc' }, 'operations');
     const [paused, setPaused] = React.useState(false), key = JSON.stringify(q);
+    React.useEffect(() => { setPaused(false); }, [runRef, key, result.meta.snapshot_ref]);
     const read = window.APSResourceSession.useQuery(signal => adapter.decisionDetails(runRef, q, 'operations', signal), [adapter, runRef, key, result.meta.snapshot_ref], enabled && !paused), detailResult = read.result, data = detailResult && detailResult.data;
     function update(change, paging = false) { const next = { ...stored, batch_ref: batch.batch_ref, ...change, page: paging ? change.page : 1 }; delete next.snapshot_ref; if (paging && detailResult) next.snapshot_ref = detailResult.meta.snapshot_ref; setPaused(false); onQuery(next); }
     return <section className="rd-batch-detail" aria-label={difference ? '选中批次的工序安排差异' : '选中批次的完整当前工序链'}><div className="rd-batch-detail-heading"><div><h3 tabIndex={-1} ref={headingRef}>{batch.batch_id} · {difference ? '工序安排差异' : '完整工序链'}</h3><p>{batch.part_no || '图号未记录'} · {batch.part_label || T.name_missing} · {amount(batch.quantity, ' 件')} · 优先级 {window.APSBatchContract.label('priority', batch.priority)}</p><small>{T.due_date(batch.due_date, batch.due_state, batch.due_issue)}</small></div><div className="rc-tools"><Locate row={batch} onDrill={onDrill} /><C.Button icon="refresh-cw" aria-label="刷新选中批次工序链" disabled={read.loading} onClick={() => { update({}); read.reload(); }} /></div></div>
@@ -156,6 +157,7 @@
     const stored = Object.fromEntries(Object.entries(query).filter(([name]) => detailKeys.includes(name)));
     const q = window.RunDecisionAPI.detailScope(runRef, { delivery_filter: difference ? 'all' : 'attention', change_kind: difference ? 'changed' : 'all', sort: 'current_priority', order: 'asc', ...stored, ...shared, ...(selectedBatchRef ? { selected_batch_ref: selectedBatchRef } : {}) }, 'batches'), key = JSON.stringify(q);
     const [paused, setPaused] = React.useState(false), headingRef = React.useRef(null), focusRequested = React.useRef(false);
+    React.useEffect(() => { setPaused(false); }, [runRef, key, section, result.meta.snapshot_ref]);
     const read = window.APSResourceSession.useQuery(signal => adapter.decisionDetails(runRef, q, 'batches', signal), [adapter, runRef, key, section, result.meta.snapshot_ref], enabled && !paused && !sameCandidate);
     const detailResult = read.result, data = detailResult && detailResult.data, options = data && data.filter_options;
     const changed = data && data.summary.operation_changes.changed_operation_count;
@@ -166,6 +168,7 @@
     React.useEffect(() => { if (enabled && focusRequested.current && headingRef.current) { headingRef.current.focus(); focusRequested.current = false; } }, [enabled, selectedRef, chainQuery.batch_ref, chainQuery.change_kind]);
     function selectBatch(ref) {
       focusRequested.current = true;
+      if (ref !== selectedBatchRef && onQuery && query && query.snapshot_ref !== undefined) onQuery(Object.fromEntries(Object.entries(query).filter(([name]) => detailKeys.includes(name) && name !== 'snapshot_ref')));
       if (onChainQuery && (chainQuery.batch_ref !== ref || arrangementsEqual && chainQuery.change_kind !== 'all')) onChainQuery({ ...chainQuery, batch_ref: ref,
         ...(arrangementsEqual ? { change_kind: 'all' } : {}), page: 1, snapshot_ref: undefined });
       onSelectBatch(ref); if (ref === selectedRef && headingRef.current) { headingRef.current.focus(); focusRequested.current = false; }

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from core.models.enums import read_source_type
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.execution.processing_hours import hour_totals
+from core.services.report.plan_labels import planned_review_labels
 from core.services.workbench.execution.actual_gantt_scope import matches_execution_resource
-from core.services.workbench.facts.execution_values import execution_deviation, hour_totals, local_time
+from core.services.workbench.facts.execution_values import execution_deviation, local_dt, local_time
 
 from .review_export_labels import export_labels
 from .review_legacy import legacy_review
@@ -19,17 +22,19 @@ def resource(facts, kind, key):
 
 
 def project_operation(row, projection, label, facts, as_of):
-    planned_start, planned_end = local_time(row.get("start_time")), local_time(row.get("end_time"))
+    planned_start = local_time(row["start_time"])
+    planned_end_dt = local_dt(row["end_time"])
+    planned_end = planned_end_dt.isoformat() if planned_end_dt is not None else None
     confirmed_finish = projection["confirmed_finish"]
-    deviation = execution_deviation(planned_end, projection, as_of)
+    deviation = execution_deviation(planned_end_dt, projection, as_of)
     complete = deviation["complete"]
     batch = resource(facts, "batch", row["batch_id"])
-    machine, operator = resource(facts, "machine", row.get("machine_id")), resource(facts, "operator", row.get("operator_id"))
+    machine, operator = resource(facts, "machine", row["machine_id"]), resource(facts, "operator", row["operator_id"])
     invalid_time = any(gap["code"] == "invalid_legacy_sequence" for gap in projection["data_gaps"])
     status = "invalid" if invalid_time and not complete else projection["execution_state"]
     return {"operation_ref": projection["operation_ref"], "task_ref": facts["task_refs"][row["schedule_id"]],
             "batch_ref": batch["ref"], "batch_label": batch["label"], "operation_label": label["operation_label"],
-            "operation_source": row.get("source"),
+            "operation_source": read_source_type(row["source"]),
             "planned_start": planned_start, "planned_end": planned_end, "actual_start": projection["first_actual_start"],
             "confirmed_finish": confirmed_finish, "completion_basis": projection["completion_basis"],
             "execution_state": status, "ledger_execution_state": projection["execution_state"],
@@ -40,8 +45,7 @@ def project_operation(row, projection, label, facts, as_of):
             "operator_ref": operator["ref"], "operator_label": operator["label"],
             **{key: deviation[key] for key in ("due", "complete", "unclosed", "late_open", "finish_late",
                                                "finish_deviation_minutes", "elapsed_since_planned_minutes")},
-            "data_gaps": [gap["message"] for gap in projection["data_gaps"]], "execution_data_gaps": projection["data_gaps"],
-            **legacy_review(projection)}
+            "data_gaps": [gap["message"] for gap in projection["data_gaps"]], "execution_data_gaps": projection["data_gaps"]}
 
 
 def _resource_selected(scope, operation, projection):
@@ -64,16 +68,18 @@ def _selected(scope, operation, projection, *, needle):
     return selected and (not scope.resource_ref or _resource_selected(scope, operation, projection))
 
 
-def _Complete_entry(operation, projection, directory, as_of):
+def _complete_entry(operation, projection, directory, as_of):
+    operation.update(legacy_review(projection))
     events = project_records(projection, operation, directory, as_of)
     operation.update(hour_totals(events))
     operation.update({"event_count": len(projection["legacy_facts"]), "record_count": len(events),
                       "production_report_count": len(projection["reports"])})
     for kind in ("machine", "operator"):
         refs = list(dict.fromkeys(event[kind + "_ref"] for event in events if event[kind + "_ref"] is not None))
-        actual = actual_resource(directory, kind, refs[0] if len(refs) == 1 else None)
+        resolved = [actual_resource(directory, kind, ref) for ref in refs]
+        actual = resolved[0] if len(resolved) == 1 else actual_resource(directory, kind, None)
         operation.update({"actual_" + kind + "_ref": actual["ref"], "actual_" + kind + "_refs": refs,
-            "actual_" + kind + "_label": " / ".join(actual_resource(directory, kind, ref)["label"] for ref in refs) or actual["label"]})
+            "actual_" + kind + "_label": " / ".join(item["label"] for item in resolved) or actual["label"]})
     return operation, events
 
 
@@ -81,39 +87,35 @@ def project_cohort(facts, as_of):
     needle = facts["scope"].query.strip().casefold()
     projections = {row["operation_ref"]: row for row in facts["ledger"]["projections"]}
     directory = resource_directory(facts)
+    clock = local_dt(as_of)
     operations, records, labels = [], [], {}
-    for row, label in zip(facts["rows"], facts["labels"]):
+    for row in facts["rows"]:
+        # 工序名参与关键字筛选，所以每行都算标签；只有选中的行留给导出。
+        label = planned_review_labels(row)
         projection = projections[facts["operation_refs"][row["op_id"]]]
-        operation = project_operation(row, projection, label, facts, as_of)
+        operation = project_operation(row, projection, label, facts, clock)
         if _selected(facts["scope"], operation, projection, needle=needle):
-            operation, events = _Complete_entry(operation, projection, directory, as_of)
+            operation, events = _complete_entry(operation, projection, directory, as_of)
             operations.append(operation)
             records.extend(events)
-            labels[operation["operation_ref"]] = export_labels(label, operation, directory)
+            labels[operation["operation_ref"]] = label
     return operations, records, labels
+
+
+def project_export_rows(facts, rows, labels):
+    directory = resource_directory(facts)
+    return [export_labels(labels[row["operation_ref"]], row, directory) for row in rows]
 
 
 def project_detail(facts, as_of, operation_ref):
     needle = facts["scope"].query.strip().casefold()
-    projection = next((row for row in facts["ledger"]["projections"] if row["operation_ref"] == operation_ref), None)
-    if projection is not None:
-        directory = resource_directory(facts)
-        for row, label in zip(facts["rows"], facts["labels"]):
-            if facts["operation_refs"][row["op_id"]] != operation_ref:
-                continue
-            operation = project_operation(row, projection, label, facts, as_of)
-            if _selected(facts["scope"], operation, projection, needle=needle):
-                operation, records = _Complete_entry(operation, projection, directory, as_of)
-                return {"operation": operation, "records": records}
-            break
+    row = next((row for row in facts["rows"] if facts["operation_refs"][row["op_id"]] == operation_ref), None)
+    if row is not None:
+        # 台账按计划行的工序取齐，计划行在就必有它的投影。
+        projection = next(item for item in facts["ledger"]["projections"] if item["operation_ref"] == operation_ref)
+        operation = project_operation(row, projection, planned_review_labels(row), facts, local_dt(as_of))
+        if _selected(facts["scope"], operation, projection, needle=needle):
+            directory = resource_directory(facts)
+            operation, records = _complete_entry(operation, projection, directory, as_of)
+            return {"operation": operation, "records": records}
     raise WorkbenchCommandRejected("entity_not_found", "这道工序不在当前筛选结果里，详情没有打开。请调整筛选条件后重新点这一行。", 404)
-
-
-def validate_selected_refs(scope, facts):
-    kind, ref = scope.resource_type, scope.resource_ref
-    if ref and ref != "unassigned":
-        if kind in ("machine", "operator") and ref in facts["choices"][kind]:
-            return
-        identity = facts["reader"].plans.entities.get(ref)
-        if identity is None or identity.kind != kind or not identity.active:
-            raise WorkbenchCommandRejected("entity_not_found", "筛选记录已失效或类型不符，请重新选择。", 404)

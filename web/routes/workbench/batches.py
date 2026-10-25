@@ -15,7 +15,7 @@ from core.services.workbench.batch.service import WorkbenchBatchService
 from core.services.workbench.commands import WorkbenchCommandService
 from web.api_responses import json_response, query_success
 
-from .api_responses import api_endpoint
+from .api_responses import api_endpoint, read_endpoint
 from .batch_context import command_body, json_body, load_preview, read_scope, retry_hint, retry_message, save_preview
 from .read_budget import batch_read_snapshot
 from .read_context import bind_read_snapshot
@@ -74,12 +74,12 @@ def batch_list():
     return _list(read_scope())
 
 
-@api_endpoint
+@read_endpoint
 def batch_query():
     return _list(batch_scope(json_body()))
 
 
-@api_endpoint
+@read_endpoint
 def batch_selection():
     scope = batch_scope(json_body())
     if not scope.get("snapshot_ref"):
@@ -107,9 +107,14 @@ def batch_choices():
     if set(args) - {"batch_ref", "operation_ref"} or any(len(args.getlist(key)) != 1 for key in args) or bool(args.get("batch_ref")) != bool(args.get("operation_ref")):
         raise WorkbenchCommandRejected("invalid_input", "请选择完整的批次及工序后再读取候选资源。", 400)
     reader = WorkbenchBatchQueryService(g.db, current_app.logger)
-    with batch_read_snapshot(reader) as fingerprint:
-        data = reader.choices(args.get("batch_ref"), args.get("operation_ref"))
-        snapshot = bind_read_snapshot({"kind": "batch_choices", **dict(args)}, fingerprint)
+    scope = {"kind": "batch_choices", **dict(args)}
+    if not args:
+        data = reader.choices()
+        snapshot = bind_read_snapshot(scope, data)
+    else:
+        with batch_read_snapshot(reader) as fingerprint:
+            data = reader.choices(args.get("batch_ref"), args.get("operation_ref"))
+            snapshot = bind_read_snapshot(scope, fingerprint)
     return query_success(data, snapshot)
 
 
@@ -122,12 +127,14 @@ def batch_command(action, ref=None):
         normalized = normalize_material_changes(body["input"])
     else:
         normalized = normalize_operation_input(body["input"]) if action == "operation_update" else normalize_batch_input(action, body["input"])
-    subject = COLLECTION if action == "create" else public_ref(ref)
+    ref = None if action == "create" else public_ref(ref)
+    subject = COLLECTION if ref is None else ref
 
     def guard():
+        fingerprint = reader.fingerprint()
         if ref is not None:
             reader.resolve(ref)
-        validate_write_context(body["write_token"], subject, "batch." + action, reader.fingerprint())
+        validate_write_context(body["write_token"], subject, "batch." + action, fingerprint)
 
     def mutate(_checked):
         if action == "materials_update":
@@ -144,7 +151,7 @@ def batch_command(action, ref=None):
             action="batch." + action, context_ref=subject, normalized_input=normalized, guard=guard, mutate=mutate))
 
 
-@api_endpoint
+@read_endpoint
 def batch_preview(action, ref=None):
     body = json_body()
     required = ("input", "snapshot_ref", "scope") if action == "bulk_confirm" else ("input", "snapshot_ref")
@@ -175,7 +182,7 @@ def batch_preview(action, ref=None):
     return query_success(data, snapshot)
 
 
-@api_endpoint
+@read_endpoint
 def batch_facets():
     from core.models.workbench_batch import SORTS
     from core.services.workbench.batch.queries import cell

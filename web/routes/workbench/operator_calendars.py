@@ -34,7 +34,7 @@ def _service(operator_code):
 
 def _operator_state(reader, ref):
     identity = reader.resolve(ref)
-    return identity.entity_key, reader.domain.snapshot_current(identity)
+    return identity.entity_key, reader.current_with_identity(identity)
 
 
 def _month_input():
@@ -79,8 +79,8 @@ def operator_calendar_month(ref):
     return query_success(data, snapshot)
 
 
-def _command_body(extra=()):
-    body = json_body({"request_key", "write_token", "input"}, extra)
+def _command_body():
+    body = json_body({"request_key", "write_token", "input"})
     validate_request_key(body["request_key"])
     g.workbench_request_key = body["request_key"]
     return body
@@ -94,6 +94,8 @@ def _guarded_day(ref, action, write_token, day):
     validate_write_context(write_token, ref, ACTIONS[action], _month_binding(resource_state, month))
     state = next(item for item in month["days"] if item["date"] == day)
     checked_state = {key: state[key] for key in ("date", "explicit", "calendar_ref", "revision", "row", "identity", "history")}
+    if "reading" in state:
+        checked_state["reading"] = state["reading"]
     return service, checked_state
 
 

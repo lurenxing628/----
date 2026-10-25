@@ -1,6 +1,7 @@
 """Real calendar, qualification, execution ledger and editable business conflicts."""
 
 from datetime import datetime
+from typing import Optional
 
 import pytest
 
@@ -9,9 +10,11 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from core.services.scheduler.template_lineage import TemplateLineageWriter
+from core.services.workbench.batch.facts import BatchFacts
 from core.services.workbench.run.compute import compute_candidate_run
 from core.services.workbench.run.input import prepare_candidate_run_input
 from core.services.workbench.run.preflight import PreflightService
+from core.services.workbench.trial.constraints import _actual_reservations
 from tests.workbench.trial_adoption_support import INTENT
 from tests.workbench.trial_adoption_support import service as adoption_service
 from tests.workbench.trial_support import change, create, service, snapshot
@@ -126,10 +129,14 @@ def _mixed_external_cycle(case, *, legacy_start="2026-09-09T11:00:00", legacy_fi
                       "VALUES ('G','P1',2,3,'merged',1,'S1')")
     members = []
     with TransactionManager(case.conn).transaction():
+        writer = TemplateLineageWriter(case.conn)
+        template_rows = []
         for seq in (2, 3):
             cursor = case.conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,supplier_id,"
                 "ext_group_id,setup_hours,unit_hours) VALUES ('P1',?,'T1','Turning','external','S1','G',0,0)", (seq,))
-            members.append(TemplateLineageWriter(case.conn).copy_template('B1', cursor.lastrowid))
+            template_rows.append({"id": cursor.lastrowid})
+        for prepared in writer.prepare_templates(template_rows, facts=BatchFacts(case.conn).load()):
+            members.append(writer.copy_prepared_template('B1', prepared))
     case.batch('B2')
     movable = case.operation('B2', machine_id='M2', operator_id='O2')
     case.plan(1, [case.op_id, *members, movable], end="2026-09-09T11:00:00")
@@ -215,3 +222,78 @@ def test_unselected_external_orphan_resource_blocks_preflight_and_input(trial_ca
     assert any(item['code'] == 'external_actual_resource_conflict' for item in checked['blockers'])
     with pytest.raises(AppError):
         prepare_candidate_run_input(case.conn, settings, case.projections('B2'))
+
+
+def test_merged_external_cycle_preflight_reports_mismatched_started_member(trial_case):
+    case = trial_case
+    _mixed_external_cycle(case, legacy_start='2026-09-09T11:15:00')
+    checked, _ = PreflightService(case.conn).evaluate(case.settings('B1', 'B2'))
+    differ = [item for item in checked['blockers'] if item['code'] == 'external_cycle_actuals_differ']
+    assert len(differ) == 1
+    assert '尚未登记实际完工' in differ[0]['message']
+
+
+def test_inactive_operation_ref_does_not_fabricate_self_overlap_with_official_schedule(trial_case):
+    from tests.workbench.run_candidate_support import corrupt_update
+
+    case = trial_case
+    draft = create(case)
+    corrupt_update(
+        case.conn,
+        "WorkbenchPlanSourceRefs",
+        "UPDATE WorkbenchPlanSourceRefs SET active=0 WHERE kind='operation' AND source_key=?",
+        (str(case.op_id),),
+    )
+    refreshed = service(case.conn).get(draft["draft_ref"])
+    assert not codes(refreshed) & {"machine_overlap", "operator_overlap"}
+
+
+def _report(start, end, hours, machine: Optional[str] = "MR1", operator: Optional[str] = "OR1"):
+    return {"actual_start": start, "actual_end": end, "effective_processing_hours": hours,
+            "actual_machine_ref": machine, "actual_operator_ref": operator}
+
+
+def _reservation_codes(*, unit_hours, reports=(), legacy_facts=(), finish="2026-09-09T10:00:00",
+                       window=("2026-09-09T09:00:00", "2026-09-09T12:00:00"), data_gaps=()):
+    execution = {"execution_state": "complete", "reports": list(reports), "legacy_facts": list(legacy_facts),
+                 "first_actual_start": "2026-09-09T10:00:00", "confirmed_finish": finish, "target_quantity": 3,
+                 "data_gaps": list(data_gaps)}
+    live = {"facts": {"tables": {
+                "BatchOperations": [{"id": 7, "source": "internal", "setup_hours": 0, "unit_hours": unit_hours}],
+                "WorkbenchPlanSourceRefs": [{"ref": "op-actual", "source_key": "7", "kind": "operation"}]}},
+            "execution": {"op-actual": execution}}
+    row = {"operation_ref": "op-trial", "task_ref": "task-trial", "original": {"operation": {"source": "internal"}},
+           "current": {"start": window[0], "end": window[1], "machine_ref": "MR1", "operator_ref": "OR1"}}
+    return sorted(item["code"] for item in _actual_reservations([row], live))
+
+
+def test_completed_point_work_zero_duration_reports_hold_no_resources():
+    point = "2026-09-09T10:00:00"
+    assert _reservation_codes(unit_hours=0, reports=[
+        _report(point, point, 0), _report(point, point, 0, machine=None, operator=None)]) == []
+    legacy = {"actual_machine_ref": None, "actual_operator_ref": None, "effective_processing_hours": None}
+    assert _reservation_codes(unit_hours=0, legacy_facts=[legacy]) == []
+    mixed = [_report(point, point, 0, machine=None, operator=None),
+             _report(point, "2026-09-09T11:00:00", 1)]
+    assert _reservation_codes(unit_hours=0, reports=mixed, finish="2026-09-09T11:00:00") == [
+        "execution_resource_overlap", "execution_resource_overlap"]
+    # 正工时工序的零时长报工不是合法点报工，占用区间无法证明。
+    assert _reservation_codes(unit_hours=1, reports=[_report(point, point, 0)]) == [
+        "execution_resource_interval_unknown", "execution_resource_interval_unknown"]
+
+
+def test_completed_legacy_finish_may_omit_resources_recorded_by_its_start_event():
+    started = {"event_type": "start", "actual_machine_ref": "MR1", "actual_operator_ref": "OR1",
+               "effective_processing_hours": None}
+    finished = {"event_type": "finish", "actual_machine_ref": None, "actual_operator_ref": None,
+                "effective_processing_hours": None}
+    finish = "2026-09-09T11:00:00"
+    assert _reservation_codes(unit_hours=1, legacy_facts=[started, finished], finish=finish,
+                              window=("2026-09-09T12:00:00", "2026-09-09T13:00:00")) == []
+    # 开工事件记下的设备人员仍按整道工序的实际起止占用。
+    assert _reservation_codes(unit_hours=1, legacy_facts=[started, finished], finish=finish) == [
+        "execution_resource_overlap", "execution_resource_overlap"]
+    # 旧记录的设备身份对不上现在的资料时，占用仍算不清。
+    unresolved = {"code": "legacy_resource_identity_unresolved", "fields": ["actual_machine_ref"]}
+    assert _reservation_codes(unit_hours=1, legacy_facts=[started, finished], finish=finish, data_gaps=[unresolved],
+                              window=("2026-09-09T12:00:00", "2026-09-09T13:00:00")) == ["execution_resource_unknown"]

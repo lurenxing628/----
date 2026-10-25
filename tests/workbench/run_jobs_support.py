@@ -12,14 +12,14 @@ from core.infrastructure.workbench_execution_void_schema import install_executio
 from core.infrastructure.workbench_metadata_schema import install_metadata
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
 from core.infrastructure.workbench_run_schema import install_workbench_run_schema
+from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.models.workbench_command import canonical_json
 from core.models.workbench_run_job import new_run_ref
-from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from core.services.workbench.run.jobs import WorkbenchRunService
 from core.services.workbench.run.preflight import PreflightService
 from tests.workbench.run_compute_support import RunCase
 from web.public_token_registry import issue_public_token_with_expiry
-from web.routes.workbench.preflight import INPUT_SCOPE, evaluate_preflight_input
+from web.routes.workbench.preflight import INPUT_SCOPE, evaluate_preflight_input_prepared
 from web.routes.workbench.write_context import issue_write_context, validate_write_context
 
 
@@ -31,7 +31,7 @@ def connection(path):
 
 
 def service(conn, enabled=True):
-    return WorkbenchRunService(conn, integration_enabled=enabled, input_resolver=evaluate_preflight_input,
+    return WorkbenchRunService(conn, integration_enabled=enabled, input_resolver=evaluate_preflight_input_prepared,
         context_factory=issue_write_context, context_validator=validate_write_context,
         clock=lambda: datetime(2026, 9, 10, 12))
 

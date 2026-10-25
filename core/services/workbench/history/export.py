@@ -9,9 +9,9 @@ from core.services.common.excel_instruction_sheet import close_write_only_sheets
 from core.services.workbench.facts.file_writer import ILLEGAL, XLSX_MAX_CELL_CHARACTERS, check_capacity
 from core.services.workbench.facts.process_file_xml import preserve_carriage_returns
 
-from ..run.decision_export import _append as append_excel_row
-from ..run.decision_export import _csv as csv_content
-from ..run.decision_export import _csv_cell as csv_cell
+from ..run.decision_export import append_sheet_row as append_excel_row
+from ..run.decision_export import csv_bytes as csv_content
+from ..run.decision_export import csv_cell as csv_cell
 
 FILENAME = "排产历史趋势"
 HISTORY_EXPORT_VERSION = 2
@@ -82,12 +82,6 @@ DEFINITION_FIELDS = (("指标键", "key"), ("指标", "label"), ("分组", "grou
 DEFINITION_HEADERS = tuple(label for label, _field in DEFINITION_FIELDS)
 SCOPE_HEADERS = ("项目", "原值类型", "数值或说明")
 ISSUE_HEADERS = COMMON_HEADERS + ("条目编号", "缺项类别", "指标或字段", "状态", "原因编码", "说明", "来源类型", "来源编号", "来源字段")
-
-
-def read_history_export(conn, query=None):
-    from .queries import read_history_all
-
-    return read_history_all(conn, query)
 
 
 def _at(document, path):
@@ -231,7 +225,7 @@ def issue_rows(data, snapshot):
                         conclusion["reason"]["code"], conclusion["reason"]["message"], None, None, None]
 
 
-def write_history_export(data, snapshot, fmt, section="entries"):
+def write_history_export(data, snapshot, fmt, section):
     sections = tuple(SECTION_TITLES) if section == "all" else (section,)
     tables, count = {}, 0
 

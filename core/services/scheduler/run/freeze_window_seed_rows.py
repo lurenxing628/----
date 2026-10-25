@@ -3,23 +3,28 @@
 from types import SimpleNamespace
 from typing import Any, Dict, List, Set
 
-from core.algorithm_contracts.schedule_point_evidence import verified_point
+from core.algorithm_contracts.schedule_point_evidence import SchedulePointEvidence
 from core.algorithm_contracts.value_domains import INTERNAL
 from core.shared.local_datetime import parse_local_datetime as parse_dt
 
 
-def cache_seed_for_prefix(*, prefix, schedule_map, seed_tmp, point_validator=None):
+def cache_seed_for_prefix(*, prefix, schedule_map, op_by_id, seed_tmp, point_validator):
+    """零工时点事件按最终 seed 的来源口径取一次见证，随 seed 一起保存，下游直接使用。"""
     for oid in prefix:
         row = schedule_map[int(oid)]
-        start = parse_dt(row.get("start_time"))
-        end = parse_dt(row.get("end_time"))
+        parsed_times = row.get("_parsed_times")
+        start, end = parsed_times if parsed_times is not None else (parse_dt(row.get("start_time")), parse_dt(row.get("end_time")))
         if not start or not end or end < start:
             return int(oid)
+        seed = {"row": row, "start_time": start, "end_time": end}
         if start == end:
-            parsed = SimpleNamespace(**dict(row, source=INTERNAL, start_time=start, end_time=end))
-            if not verified_point(parsed, point_validator):
+            source = (op_by_id[int(oid)].source or INTERNAL).strip()
+            parsed = SimpleNamespace(**dict(row, source=source, start_time=start, end_time=end))
+            evidence = point_validator(parsed)
+            if type(evidence) is not SchedulePointEvidence or not evidence.matches(parsed):
                 return int(oid)
-        seed_tmp[int(oid)] = {"row": row, "start_time": start, "end_time": end}
+            seed["point_evidence"] = evidence
+        seed_tmp[int(oid)] = seed
     return 0
 
 
@@ -31,14 +36,16 @@ def discard_seed_cache(prefix, seed_tmp):
 def build_seed_results(frozen_op_ids: Set[int], *, op_by_id: Dict[int, Any],
                        seed_tmp: Dict[int, Dict[str, Any]]) -> List[Dict[str, Any]]:
     results = []
-    for oid in sorted(frozen_op_ids):
-        op, seed = op_by_id.get(oid), seed_tmp.get(oid)
-        if not op or not seed:
-            continue
+    for oid in frozen_op_ids:
+        op, seed = op_by_id[oid], seed_tmp[oid]
         row, start, end = seed["row"], seed["start_time"], seed["end_time"]
-        results.append({"op_id": oid, "op_code": op.op_code, "batch_id": op.batch_id,
-                        "seq": int(op.seq or 0), "machine_id": row.get("machine_id"),
-                        "operator_id": row.get("operator_id"), "start_time": start, "end_time": end,
-                        "source": (op.source or INTERNAL).strip(), "op_type_name": getattr(op, "op_type_name", None),
-                        "op_type_id": getattr(op, "op_type_id", None)})
+        result = {"op_id": oid, "op_code": op.op_code, "batch_id": op.batch_id,
+                  "seq": int(op.seq or 0), "machine_id": row.get("machine_id"),
+                  "operator_id": row.get("operator_id"), "start_time": start, "end_time": end,
+                  "source": (op.source or INTERNAL).strip(), "op_type_name": op.op_type_name,
+                  "op_type_id": op.op_type_id, "seed_source": "freeze_window"}
+        if start == end:
+            result["_point_evidence"] = seed["point_evidence"]
+        results.append(result)
+    results.sort(key=lambda x: (x["start_time"], x["op_id"]))
     return results

@@ -43,14 +43,6 @@ def safe_non_negative_int(value: Any) -> Any:
     return None
 
 
-def public_float(value: Any) -> Any:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    return None
-
-
 def safe_attempt_text(value: Any) -> str:
     text = str(value or "").strip()
     if not text or contains_internal_identifier(text):
@@ -167,7 +159,6 @@ __all__ = [
     "project_public_metrics",
     "safe_attempt_text",
     "safe_counter_dict",
-    "public_float",
     "public_int",
     "safe_metric_key",
     "safe_non_negative_int",

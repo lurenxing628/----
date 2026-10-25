@@ -28,13 +28,13 @@ class RuntimeContractReadResult:
     def ok(self) -> bool:
         return self.status == CONTRACT_STATUS_VALID
 
-def _runtime_contract_path(state_dir: str) -> str:
+def runtime_contract_path(state_dir: str) -> str:
     return os.path.join(str(state_dir), "aps_runtime.json")
 
 
 def read_runtime_contract_result(runtime_dir: str) -> RuntimeContractReadResult:
     state_dir = resolve_runtime_state_dir_for_read(runtime_dir)
-    contract_path = _runtime_contract_path(state_dir)
+    contract_path = runtime_contract_path(state_dir)
     try:
         payload = read_fixed_json(contract_path)
     except FileNotFoundError:
@@ -92,7 +92,7 @@ def read_runtime_contract_result(runtime_dir: str) -> RuntimeContractReadResult:
 def _normalize_runtime_contract_payload(payload: Any) -> Tuple[Optional[Dict[str, Any]], str, str]:
     if not isinstance(payload, dict):
         return None, "contract_not_object", ""
-    normalized = dict(payload)
+    normalized = payload
     try:
         normalized["contract_version"] = int(normalized.get("contract_version") or 0)
     except (TypeError, ValueError) as exc:
@@ -107,7 +107,7 @@ def _normalize_runtime_contract_payload(payload: Any) -> Tuple[Optional[Dict[str
             normalized[key] = int(normalized.get(key) or 0)
         except (TypeError, ValueError) as exc:
             return None, f"invalid_{key}", str(exc)
-        if int(normalized[key] or 0) <= 0:
+        if normalized[key] <= 0:
             return None, f"invalid_{key}", "must_be_positive"
     for key in ("host", "instance_id", "shutdown_token", "exe_path", "runtime_dir", "chrome_profile_dir"):
         value = str(normalized.get(key) or "").strip()

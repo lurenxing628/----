@@ -107,19 +107,19 @@ def _unreported_snapshot():
     ).to_dict()
 
 
-def test_worker_snapshot_restore_chunks_more_than_one_ledger_read_without_losing_rows(monkeypatch):
+def test_worker_snapshot_restore_prepares_full_archived_scope_once_without_losing_rows(monkeypatch):
     original = _unreported_snapshot()
     payload = [dict(original, operation_ref=f"{index:048x}") for index in range(MAX_OPERATIONS + 1)]
     prepare = run_input_codec.prepare_execution_projections
-    chunks = []
+    preparations = []
 
-    def prepare_once(rows):
-        chunks.append(len(rows))
-        return prepare(rows)
+    def prepare_once(rows, *, max_operations):
+        preparations.append((len(rows), max_operations))
+        return prepare(rows, max_operations=max_operations)
 
     monkeypatch.setattr(run_input_codec, "prepare_execution_projections", prepare_once)
     restored = restore_execution_projections(payload)
-    assert chunks == [MAX_OPERATIONS, 1]
+    assert preparations == [(MAX_OPERATIONS + 1, None)]
     assert len(restored) == MAX_OPERATIONS + 1
     assert [row.operation_ref for row in restored] == [row["operation_ref"] for row in payload]
     assert all(type(row) is ExecutionProjection and row.remaining_quantity == 3 for row in restored)
@@ -128,8 +128,7 @@ def test_worker_snapshot_restore_chunks_more_than_one_ledger_read_without_losing
         prepare(payload)
 
 
-def test_worker_snapshot_restore_rejects_cross_chunk_duplicates_and_invalid_top_level(monkeypatch):
-    monkeypatch.setattr(run_input_codec, "MAX_OPERATIONS", 2)
+def test_worker_snapshot_restore_rejects_duplicate_operations_and_invalid_top_level():
     row = _unreported_snapshot()
     for payload in ([row, dict(row, operation_ref="2" * 48), row], [row, row]):
         with pytest.raises(CandidateRunInputError) as exc:

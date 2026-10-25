@@ -3,9 +3,10 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Tuple
+from typing import List, Optional
 
 from .launcher_observability import launcher_log_warning
+from .launcher_processes import kill_runtime_pid, run_powershell_text
 
 
 @dataclass(frozen=True)
@@ -97,11 +98,7 @@ def _parse_chrome_pid_output(output: str) -> List[int]:
     return pids
 
 
-def _list_aps_chrome_pids(
-    profile_dir: str,
-    *,
-    run_powershell_text: Callable[[str, float], Tuple[Optional[int], str]],
-) -> Optional[List[int]]:
+def _list_aps_chrome_pids(profile_dir: str) -> Optional[List[int]]:
     target_profile = os.path.abspath(str(profile_dir or "").strip()) if str(profile_dir or "").strip() else ""
     if os.name != "nt":
         return []
@@ -113,25 +110,20 @@ def _list_aps_chrome_pids(
     return _parse_chrome_pid_output(output)
 
 
-def _stop_aps_chrome_with_result(
-    profile_dir: Optional[str],
-    *,
-    list_pids: Callable[[str], Optional[List[int]]],
-    kill_pid: Callable[[int], bool],
-) -> _StopChromeResult:
+def _stop_aps_chrome_with_result(profile_dir: Optional[str]) -> _StopChromeResult:
     target_profile = str(profile_dir or "").strip()
     if not target_profile:
         return _StopChromeResult(True, "profile_missing", target_profile, [], [], [])
-    pids = list_pids(target_profile)
+    pids = _list_aps_chrome_pids(target_profile)
     if pids is None:
         return _StopChromeResult(False, "process_list_unavailable", target_profile, [], [], [], "list_failed")
-    failed_pids = [int(pid) for pid in pids if not kill_pid(pid)]
-    remaining_pids = list_pids(target_profile)
+    failed_pids = [pid for pid in pids if not kill_runtime_pid(pid)]
+    remaining_pids = _list_aps_chrome_pids(target_profile)
     if remaining_pids is None:
-        return _StopChromeResult(False, "final_recheck_unavailable", target_profile, list(pids), [], failed_pids, "recheck_failed")
+        return _StopChromeResult(False, "final_recheck_unavailable", target_profile, pids, [], failed_pids, "recheck_failed")
     if remaining_pids:
-        return _StopChromeResult(False, "profile_processes_still_running", target_profile, list(pids), list(remaining_pids), failed_pids)
-    return _StopChromeResult(True, "stopped", target_profile, list(pids), [], failed_pids)
+        return _StopChromeResult(False, "profile_processes_still_running", target_profile, pids, remaining_pids, failed_pids)
+    return _StopChromeResult(True, "stopped", target_profile, pids, [], failed_pids)
 
 
 def _log_chrome_stop_failure(result: _StopChromeResult, *, logger: Optional[logging.Logger], state_dir: str = "") -> None:

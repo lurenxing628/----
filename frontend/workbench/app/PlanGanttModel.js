@@ -76,7 +76,7 @@
     const fact = (task, baseline) => ({ task, baseline, start: instant(task.start), end: instant(task.end), search: searchText(task, labels), point: window.PointContract.isPoint(task) });
     const items = data.tasks.map(task => fact(task, false)), comparison = data.projections.baseline;
     const before = comparison.state === 'available' ? comparison.items.filter(item => item.before).map(item => fact(item.before, true)) : [];
-    const taskIndex = new Map(items.map(item => [item.task.task_ref, item])), resourceMembers = new Map();
+    const taskIndex = new Map(items.map(item => [item.task.task_ref, item])), loadedRefs = new Set(items.map(item => item.task.task_ref)), resourceMembers = new Map();
     for (const item of items) for (const ref of [item.task.machine_ref, item.task.operator_ref]) {
       if (!ref) continue;
       if (!resourceMembers.has(ref)) resourceMembers.set(ref, []); resourceMembers.get(ref).push(item);
@@ -88,7 +88,9 @@
     const changed = new Set(comparison.state === 'available' ? comparison.items.filter(item => item.change !== 'unchanged').map(item => item.operation_ref) : []);
     const occupancy = new Map(data.projections.occupancy.resources.map(row => [row.resource_ref, { resource: row,
       segments: row.segments.filter(item => item.concurrent_operations > 1).map(item => ({ start: instant(item.start), end: instant(item.end) })) }]));
-    return { labels, directory, items, before, taskIndex, beforeIndex, comparisons, changed, occupancy, resourceMembers,
+    const deliveryRisks = data.projections.delivery_risks && Array.isArray(data.projections.delivery_risks.items)
+      ? new Map(data.projections.delivery_risks.items.map(row => [row.batch_id, row])) : null;
+    return { labels, directory, items, before, taskIndex, loadedRefs, beforeIndex, comparisons, changed, occupancy, deliveryRisks, resourceMembers,
       start: instant(data.plan_span.start), end: instant(data.plan_span.end) };
   }
   function groupPrepared(prepared, mode) {
@@ -128,15 +130,17 @@
   }
   function selectPrepared(prepared, query = '', changedOnly = false, baseline = false) {
     const needle = query.trim().toLocaleLowerCase(), selected = matchingItems(prepared, needle, changedOnly), shown = new Set(selected);
+    const tasks = selected.map(item => item.task), shownRefs = new Set(tasks.map(task => task.task_ref));
+    const taskOrder = new Map(tasks.map((task, index) => [task.task_ref, index]));
     for (const item of baseline ? prepared.before : []) if ((!changedOnly || prepared.changed.has(item.task.operation_ref)) && (!needle || item.search.includes(needle))) shown.add(item);
     const groups = prepared.groups.map(fact => ({ ...fact, shown,
       group: { ...fact.group, tasks: fact.group.tasks.filter(item => shown.has(item)), before: baseline ? fact.group.before.filter(item => shown.has(item)) : [] },
       currentNormal: fact.currentNormal.map(lane => lane.filter(item => shown.has(item))),
       oldNormal: baseline ? fact.oldNormal.map(lane => lane.filter(item => shown.has(item))) : [], oldPoints: baseline ? fact.oldPoints : [] }));
-    return { ...prepared, groups, tasks: selected.map(item => item.task), start: baseline ? prepared.baselineStart : prepared.start, end: baseline ? prepared.baselineEnd : prepared.end };
+    return { ...prepared, groups, tasks, shownRefs, taskOrder, start: baseline ? prepared.baselineStart : prepared.start, end: baseline ? prepared.baselineEnd : prepared.end };
   }
   function layoutPrepared(prepared, width = 1000) {
-    const { mode, labels, start, end, conflicts, tasks } = prepared;
+    const { mode, labels, start, end, conflicts, tasks, shownRefs, taskOrder } = prepared;
     const rows = [], locations = new Map(), baselineLocations = new Map(), G = window.PointGanttModel;
     let top = 0, groupCount = 0;
     for (const fact of prepared.groups) {
@@ -160,7 +164,10 @@
         oldNormal.length + lane, oldPoints.length, lane + 1, currentCount + oldNormal.length + lane));
       if (rows.length > firstRow) groupCount++;
     }
-    return { mode, labels, rows, height: top, start, end, conflicts, locations, baselineLocations, tasks, groupCount };
+    return { mode, labels, rows, height: top, start, end, conflicts, locations, baselineLocations, tasks,
+      shownRefs: shownRefs || new Set((tasks || []).map(task => task.task_ref)),
+      taskOrder: taskOrder || new Map((tasks || []).map((task, index) => [task.task_ref, index])),
+      groupCount };
   }
   function firstIntersecting(items, start) {
     let low = 0, high = items.length;
@@ -181,15 +188,16 @@
     return result;
   }
   function tickStep(start, end, width) {
-    const target = (end - start) / Math.max(1, width / 125);
+    const span = end > start ? end - start : 1;
+    const target = span / Math.max(1, width / 125);
     const steps = [1000, 5000, 15000, 30000, 60000, 300000, 900000, 1800000, 3600000, 10800000, 21600000, 43200000, 86400000, 172800000, 604800000, 2592000000, 31536000000];
     return steps.find(value => value >= target) || Math.ceil(target / 31536000000) * 31536000000;
   }
   function ticks(start, end, width, left, visibleWidth) {
-    const step = tickStep(start, end, width);
-    const low = start + Math.max(0, left - 150) / width * (end - start), high = Math.min(end, start + (left + visibleWidth + 150) / width * (end - start));
+    const span = end > start ? end - start : 1, step = tickStep(start, end, width);
+    const low = start + Math.max(0, left - 150) / width * span, high = Math.min(end, start + (left + visibleWidth + 150) / width * span);
     const result = [];
-    for (let at = Math.ceil(low / step) * step; at < high; at += step) result.push({ at, x: (at - start) / (end - start) * width, label: wire(at) });
+    for (let at = Math.ceil(low / step) * step; at < high; at += step) result.push({ at, x: (at - start) / span * width, label: wire(at) });
     return result;
   }
   function taskTitle(task, labels, conflict) {

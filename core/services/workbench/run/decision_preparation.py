@@ -1,6 +1,5 @@
 """One saved requirement ledger, allocated by each candidate's actual task rows."""
 
-from collections import defaultdict
 from functools import cached_property
 
 from core.services.workbench.facts.candidate_tasks import operation_labels
@@ -15,7 +14,7 @@ from core.services.workbench.facts.preparation_projection import (
     public_preparation_roles,
 )
 
-from .decision_impact import _drill
+from .decision_impact import drill_target
 
 _HOURS = ("setup_standard_hours", "processing_standard_hours", "required_standard_hours")
 
@@ -23,7 +22,7 @@ _HOURS = ("setup_standard_hours", "processing_standard_hours", "required_standar
 class DecisionPreparation:
     def __init__(self, source):
         self.source = source
-        self._rows, self._rows_by_ref, self._summaries, self._groups = {}, {}, {}, {}
+        self._rows, self._rows_by_ref, self._summaries = {}, {}, {}
 
     def available(self, key):
         key = self.source.computation_key(key)
@@ -32,17 +31,10 @@ class DecisionPreparation:
         return next(row["status"] for row in self.source.rows if row["candidate_ref"] == key) == "completed"
 
     def tasks(self, key):
-        key = self.source.computation_key(key)
-        return self.source.before_tasks if key == "reference" else self.source.tasks(key)
+        return self.source.analysis_tasks(key)
 
     def groups(self, key):
-        key = self.source.computation_key(key)
-        if key not in self._groups:
-            groups = defaultdict(list)
-            for task in self.tasks(key):
-                groups[task["operation_ref"]].append(task)
-            self._groups[key] = groups
-        return self._groups[key]
+        return self.source.analysis_groups(key)
 
     @cached_property
     def labels(self):
@@ -84,13 +76,6 @@ class DecisionPreparation:
             deferred_refs=self.reference_deferred if key == "reference" else source.deferred_refs,
             official=source.official_details if formal else None, standards=None if formal else self.current_standards)
 
-    @cached_property
-    def formal_task_groups(self):
-        result = defaultdict(list)
-        for task in self.source.official_details["tasks"]:
-            result[task["operation_ref"]].append(task)
-        return result
-
     def summary(self, key):
         key = self.source.computation_key(key)
         if key not in self._summaries:
@@ -107,7 +92,7 @@ class DecisionPreparation:
         key = self.source.computation_key(key)
         self.rows(key)
         if ref not in self._rows_by_ref[key] and key == "reference" and self.source.comparison_mode == "admission_official":
-            self._rows_by_ref[key][ref] = self._row(key, ref, self.formal_task_groups[ref])
+            self._rows_by_ref[key][ref] = self._row(key, ref, self.groups("reference")[ref])
         return {field: value for field, value in self._rows_by_ref[key][ref].items()
                 if field not in ("operation_ref", "arranged")}
 
@@ -139,8 +124,8 @@ class DecisionPreparation:
             row = {**{field: labels[field] for field in ("operation_ref", "batch_ref", "batch_label", "part_label", "sequence", "process_label", "piece_id")},
                          "batch_id": labels["batch_label"], "before": previous, "after": selected, "deltas": deltas,
                          "data_gaps": labels["data_gaps"],
-                         "drill": {"selected": _drill(self.source, tasks=self.groups(self.source.selected_ref)[ref], batch_ref=labels["batch_ref"], operation_ref=ref),
-                                   "reference": _drill(self.source, tasks=self.groups("reference")[ref], batch_ref=labels["batch_ref"], operation_ref=ref, before=True)}}
+                         "drill": {"selected": drill_target(self.source, tasks=self.groups(self.source.selected_ref)[ref], batch_ref=labels["batch_ref"], operation_ref=ref),
+                                   "reference": drill_target(self.source, tasks=self.groups("reference")[ref], batch_ref=labels["batch_ref"], operation_ref=ref, before=True)}}
             for drill in row["drill"].values():
                 if drill is not None:
                     drill.update(resource_view=self.source.resource_view, comparison_tab="preparation")

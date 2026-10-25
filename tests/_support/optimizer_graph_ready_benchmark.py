@@ -64,6 +64,16 @@ class ContinuousCalendar:
     ) -> float:
         return (end - start).total_seconds() / 3600.0
 
+    def capacity_hours_between(
+        self,
+        start: datetime,
+        end: datetime,
+        *,
+        priority: Any = None,
+        operator_id: Any = None,
+    ) -> float:
+        return (end - start).total_seconds() / 3600.0
+
 
 register_stateless_checkpoint_calendar(ContinuousCalendar)
 

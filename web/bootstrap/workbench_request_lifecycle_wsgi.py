@@ -67,7 +67,10 @@ class RequestIterable:
             finally:
                 self._frame.finish()
         for callback in self._close_callbacks:
-            callback()
+            try:
+                callback()
+            except Exception:
+                self._frame.app.logger.exception("Request close callback failed")
 
 
 def wrap_wsgi(app, gate):

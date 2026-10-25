@@ -70,22 +70,27 @@ class WorkbenchDashboardRepository:
         if not self.conn.in_transaction:
             raise RuntimeError("Dashboard persistence requires the command transaction")
         ref, stamp = item["item_ref"], now.isoformat(timespec="seconds")
-        row = self.conn.execute("SELECT revision FROM " + self.states_table + " WHERE item_ref=?", (ref,)).fetchone()
-        sequence = row[0] + 1 if row else 1
+        # 命令 guard 已在同一写事务里核对过这个版本；0 表示还没有处置记录。
+        revision = item["_guard"]["revision"]
+        sequence = revision + 1
         source = {key: item[key] for key in ("item_ref", "category", "subject", "source", "risk", "navigation")}
         before_text, after_text = canonical_json(before), canonical_json(after)
         source_text, facts_text = canonical_json(source), content_text(facts)
         # These exact fields are stored below. Count their logical document once.
         document_size = sum(len(value.encode("utf-8")) for value in (before_text, after_text, source_text, facts_text))
         bounded(range(document_size + len('{"after":,"before":,"facts":,"source":}')), MAX_BYTES)
-        if row:
+        if revision:
             self.conn.execute("UPDATE " + self.states_table + " SET revision=?,handling_json=?,updated_at=? WHERE item_ref=?",
                               (sequence, after_text, stamp, ref))
         else:
-            self.conn.execute("INSERT INTO " + self.states_table + " VALUES (?,?,?,?,?)",
-                              (ref, sequence, after_text, source_text, stamp))
+            self.conn.execute(
+                "INSERT INTO " + self.states_table + "(item_ref,revision,handling_json,origin_json,updated_at) VALUES (?,?,?,?,?)",
+                (ref, sequence, after_text, source_text, stamp),
+            )
         history_ref = uuid.uuid4().hex + uuid.uuid4().hex[:16]
-        self.conn.execute("INSERT INTO " + self.history_table + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                          (history_ref, ref, sequence, action, before_text, after_text, source_text,
-                           facts_text, None, reason, actor, stamp, request_key))
+        self.conn.execute(
+            "INSERT INTO " + self.history_table + "(history_ref,item_ref,sequence,action,before_json,after_json,source_json,source_facts_json,source_hash,reason,local_operator,recorded_at,request_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (history_ref, ref, sequence, action, before_text, after_text, source_text,
+             facts_text, None, reason, actor, stamp, request_key),
+        )
         return history_ref

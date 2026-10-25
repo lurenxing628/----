@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from core.algorithms.evaluation import objective_score
 
-from .neighborhood_moves import NeighborhoodMove
 from .shared_decode import decode_and_metrics
 
 if TYPE_CHECKING:
@@ -26,7 +25,6 @@ def evaluate_local_search_candidate(
     objective_name: str,
     optimizer_algo_stats: Optional[Dict[str, Any]],
     readiness_gate_enabled: bool,
-    neighborhood_move: NeighborhoodMove,
     decode_session: SharedDecodeSession,
     resource_pair_rank: Optional[Dict[Tuple[str, str], int]] = None,
 ) -> Dict[str, Any]:
@@ -61,7 +59,6 @@ def evaluate_local_search_candidate(
         "metrics": metrics,
         "score": (float(summary.failed_ops),) + objective_score(objective_name, metrics),
         "resource_pool": resource_pool or {},
-        "neighborhood_move": neighborhood_move.to_report_dict(),
     }
     candidate["resource_pair_rank"] = resource_pair_rank or {}
     candidate["_shared_entry_id"] = decoded.entry_id

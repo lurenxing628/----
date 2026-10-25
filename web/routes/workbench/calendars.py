@@ -15,6 +15,7 @@ the first actual save allocates a permanent reference through existing triggers.
 import re
 
 from flask import current_app, g, request
+from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -22,7 +23,7 @@ from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.calendars import WorkbenchCalendarService
 from web.api_responses import failure, json_response, query_success
 
-from .api_responses import api_endpoint
+from .api_responses import api_endpoint, read_endpoint
 from .calendar_defaults import register_calendar_defaults_routes
 from .calendars_preview import calendar_now, release_preview, resolve_preview, retain_preview
 from .calendars_projection import calendar_day, calendar_preview, calendar_snapshot
@@ -101,15 +102,9 @@ def _preview_input():
     return body["input"]
 
 
-@api_endpoint
+@read_endpoint
 def calendar_range_preview():
-    try:
-        return _build_preview(_service(), _preview_input())
-    except (AppError, WorkbenchCommandRejected):
-        raise
-    except Exception:
-        current_app.logger.exception("工作台日历预览读取失败")
-        return failure("storage_failure", "预览变更没有算出来，日历没有修改。请刷新重试；仍不行请联系维护人员，并告知下方编号。", 500)
+    return _build_preview(_service(), _preview_input())
 
 
 def _build_preview(domain, payload):

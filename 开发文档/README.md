@@ -60,6 +60,8 @@ hook 字段与返回协议见 [OpenAI Hooks 文档](https://learn.chatgpt.com/do
 
 这条命令是给日常开发用的快速检查。它先判断本次改动：只改 README、开发文档或 CodeStable 记录时，只做运行产物拦截和应用启动、离线静态资源两项冒烟；改了 Python 文件时，对还存在的改动文件跑 `ruff check`，并从登记表选择相关职责组；改了公共配置、门禁工具，或判断不出范围时，跑全仓 `ruff check` 和全部保留的 required 测试。
 
+只要跑了 `ruff check`，紧接着依次跑三个边界棘轮扫描器：`tools.scan_sql_boundary --rule all`（服务层不写 SQL、数据策略）、`tools.scan_private_imports`（禁跨模块导入私有符号）、`tools.scan_dead_path_literals`（失效仓库路径字面量），都带 `--fail-on-new --quiet-when-clean`。它们扫全仓、与 `.codestable/checkup/` 下各自的基线比较：出现新增或计数增加就失败；某条债务清掉后基线条目失效也会失败，这时用对应扫描器的 `--refresh` 收紧基线（基线只减不增，增长必须人工核对后加 `--allow-growth`）。这几份基线文件必须随提交跟踪，pre-push 的临时 worktree 里缺基线会直接报错。
+
 所有选中的测试和尚未覆盖的冒烟节点合并为一次单进程 pytest。已经选中冒烟文件时直接复用该文件的执行，不重复跑节点，也不启动 xdist worker。日常入口由这一次 pytest 收集实际选中的目标；全仓收集证明仍由完整门禁负责。旧 `--workbench-ui-evidence` 浏览器证据入口已退役，保留的 UI Node 契约进入普通 pytest。
 
 pre-push 从 Git 原始输入识别待推送提交，在对应的临时 worktree 执行快门禁；成功缓存绑定目标 refs、影响范围、工具内容和环境。当前 checkout 的无关 README 修改或提交不触发同一目标重测。手工运行且未指定目标 refs 时，缓存仍要求当前工作区干净。

@@ -32,7 +32,7 @@ from .resource_validation import (
     RESOURCE_REASON_MANUAL_MISSING,
     internal_resource_validation_message,
 )
-from .sgs_due_span import _external_candidate_window, due_span_inputs
+from .sgs_due_span import due_span_inputs, external_candidate_window
 
 
 class _ScoringResources(NamedTuple):
@@ -60,7 +60,7 @@ def _parse_native_due_text(value: str, *, strict_mode: bool) -> Optional[date]:
     return result
 
 
-def _parse_due_date(value: Any, *, strict_mode: bool = False) -> Optional[date]:
+def parse_due_date(value: Any, *, strict_mode: bool = False) -> Optional[date]:
     if strict_mode:
         if value is None or type(value) is date:
             return value
@@ -100,22 +100,22 @@ def _dispatch_key(
             due_date=due_date,
             est_start=est_start,
             est_end=est_end,
-            proc_hours=float(proc_hours),
-            avg_proc_hours=float(avg_proc_hours),
-            changeover_penalty=int(changeover_penalty),
-            batch_order=int(batch_order.get(batch_id, 999999)),
-            seq=int(seq),
-            op_id=int(op_id),
+            proc_hours=proc_hours,
+            avg_proc_hours=avg_proc_hours,
+            changeover_penalty=changeover_penalty,
+            batch_order=batch_order.get(batch_id, 999999),
+            seq=seq,
+            op_id=op_id,
             atc_k=spec.atc_k,
-            slack_hours=float(slack_hours),
-            time_left_hours=float(time_left_hours),
+            slack_hours=slack_hours,
+            time_left_hours=time_left_hours,
         )
     )
-    return (float(score_penalty),) + tuple(base_key)
+    return (score_penalty,) + base_key
 
 
 def with_graph_priority_key(base_key: Tuple[float, ...], graph_key: Tuple[float, ...]) -> Tuple[float, ...]:
-    return tuple(base_key[:1]) + tuple(graph_key) + tuple(base_key[1:])
+    return base_key[:1] + graph_key + base_key[1:]
 
 
 def _collect_sgs_candidates(
@@ -127,8 +127,8 @@ def _collect_sgs_candidates(
 ) -> List[Tuple[str, Any]]:
     candidates: List[Tuple[str, Any]] = []
     for batch_id in batch_ids_in_order:
-        idx = int(next_idx.get(batch_id, 0) or 0)
-        operations = ops_by_batch.get(batch_id) or []
+        idx = next_idx[batch_id]
+        operations = ops_by_batch[batch_id]
         if batch_id not in blocked_batches and idx < len(operations):
             candidates.append((batch_id, operations[idx]))
     return candidates
@@ -159,7 +159,7 @@ def _score_external_candidate(
     dispatch_key_builder: Callable[[DispatchInputs], Tuple[float, ...]] = build_dispatch_key,
 ) -> Tuple[float, ...]:
     meta = _candidate_meta(op=op, batch=batch, batch_id=batch_id, state=state, strict_mode=strict_mode)
-    window = _external_candidate_window(ctx, state, op=op, prev_end=meta["prev_end"], strict_mode=strict_mode)
+    window = external_candidate_window(ctx, state, op=op, prev_end=meta["prev_end"], strict_mode=strict_mode)
     est_start, est_end = window
     proc_hours = max((est_end - est_start).total_seconds() / 3600.0, 0.0)
     slack_hours, time_left_hours = due_span_inputs(
@@ -212,7 +212,7 @@ def _score_internal_candidate(
         batch=batch,
         strict_mode=strict_mode,
         total_hours_by_op_id=total_hours_by_op_id,
-        op_id=int(meta["op_id"]),
+        op_id=meta["op_id"],
     )
     resources = _scoring_resources(
         ctx,
@@ -304,7 +304,7 @@ def _score_internal_candidate(
 def _candidate_meta(*, op: Any, batch: Any, batch_id: str, state: ScheduleRunState, strict_mode: bool) -> Dict[str, Any]:
     return {
         "priority": getattr(batch, "priority", None),
-        "due_date": _parse_due_date(getattr(batch, "due_date", None), strict_mode=bool(strict_mode)),
+        "due_date": parse_due_date(getattr(batch, "due_date", None), strict_mode=strict_mode),
         "seq": parse_required_int(getattr(op, "seq", 0), field="seq"),
         "op_id": parse_required_int(getattr(op, "id", 0), field="id"),
         "batch_id": batch_id,
@@ -322,14 +322,14 @@ def _scoring_total_hours(
 ) -> float:
     cache_key = op_id if op_id > 0 else None
     if total_hours_by_op_id is not None and cache_key is not None and cache_key in total_hours_by_op_id:
-        return float(total_hours_by_op_id[cache_key])
+        return total_hours_by_op_id[cache_key]
     try:
         total_hours = validate_internal_hours_for_mode(op, batch, strict_mode=strict_mode)
     except ValueError as exc:
         raise_strict_internal_hours_validation(op, batch, exc)
     if total_hours_by_op_id is not None and cache_key is not None:
-        total_hours_by_op_id[cache_key] = float(total_hours)
-    return float(total_hours)
+        total_hours_by_op_id[cache_key] = total_hours
+    return total_hours
 
 
 def _scoring_resources(
@@ -462,8 +462,8 @@ def _estimate_scoring_slot(
 
 _NATIVE_SCORING_HELPERS = {name: globals()[name] for name in (
     "_candidate_meta", "_scoring_total_hours", "_scoring_resources", "_estimate_scoring_slot", "_dispatch_key",
-    "_parse_due_date", "parse_optional_date", "parse_date", "_score_internal_candidate", "_score_external_candidate",
-    "due_span_inputs", "_external_candidate_window",
+    "parse_due_date", "parse_optional_date", "parse_date", "_score_internal_candidate", "_score_external_candidate",
+    "due_span_inputs", "external_candidate_window",
 )}
 
 

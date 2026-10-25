@@ -21,6 +21,10 @@ def storage(conn):
 
 
 class ExternalCase(DashboardCase):
+    def __init__(self, path, conn, operation_id: int):
+        super().__init__(path, conn, operation_id)
+        self.shipments = OutsourcingCase(path, conn)
+
     def register(self, index=1, **patch):
         payload = self.shipments.payload(**patch)
         if not patch.get("merged"):
@@ -50,8 +54,6 @@ def external_case(dashboard_case):
         conn.execute("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_id,op_type_name,source,supplier_id,ext_days) "
                      "VALUES (?,'XB1',?,'XT1','Heat treatment','external','XS1',2)", ("XO" + str(index), index))
     conn.commit()
-    case = ExternalCase(dashboard_case.path, conn)
-    case.op = dashboard_case.op
-    case.shipments = OutsourcingCase(case.path, conn)
+    case = ExternalCase(dashboard_case.path, conn, dashboard_case.op)
     yield case
     conn.close()

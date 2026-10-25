@@ -6,8 +6,10 @@ from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_resource_input import normalize_resource_input
 from data.repositories import MachineRepository, OperatorRepository, OpTypeRepository
+from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
+from data.repositories.workbench_resource_state_repo import WorkbenchResourceStateRepository
 
-from .states import ResourceChange, WorkbenchResourceStateService
+from .states import ResourceChange
 
 
 class WorkbenchResourceService:
@@ -15,30 +17,12 @@ class WorkbenchResourceService:
         if kind not in ("op_type", "machine", "operator"):
             raise ValueError("Unsupported resource entity")
         self.conn, self.kind = conn, kind
-        self.state = WorkbenchResourceStateService(conn, logger)
-        self.repo = self.state.repo
+        self.repo = WorkbenchResourceStateRepository(conn, logger=logger)
+        self.identities = WorkbenchIdentityRepository(conn, logger=logger)
         self.rows = {"op_type": OpTypeRepository, "machine": MachineRepository, "operator": OperatorRepository}[kind](conn, logger=logger)
 
     def normalize_input(self, action, payload):
         return normalize_resource_input(self.kind, action, payload)
-
-    def snapshot(self, identity):
-        return self.state.snapshot(identity, kind=self.kind)
-
-    def snapshot_current(self, identity):
-        return self.state.snapshot_current(identity)
-
-    def apply(self, action, payload, identity=None):
-        from .queries import WorkbenchResourceQueryService
-
-        payload = self.normalize_input(action, payload)
-        preparation = WorkbenchResourceQueryService(self.conn, self.kind).preparation_for(
-            action, payload, ref=getattr(identity, "ref", None))
-        if action == "create" and identity is not None:
-            raise WorkbenchCommandRejected("invalid_input", "新增资源时请使用新增入口。", 400)
-        checked = None if action == "create" else preparation.state(self.kind,
-            preparation.current(self.kind, identity).entity_key)
-        return self.apply_prepared(self.prepare(action, payload, checked, preparation))
 
     def prepare(self, action, payload, checked, preparation):
         identity = None if action == "create" else preparation.identity(self.kind, checked["identity"]["ref"])
@@ -71,13 +55,15 @@ class WorkbenchResourceService:
             if owner is not None and owner != code:
                 raise BusinessError(ErrorCode.DUPLICATE_ENTRY, "工种名称“" + fields["name"] + "”已存在，请改用其他名称。")
         category = fields.get("category", raw.get("category", "internal"))
+        profile = checked["profile"] if checked is not None else None
         if "default_merge_mode" in fields:
             mode = fields.pop("default_merge_mode")
             if mode is not None and not supports_source(category, "external"):
                 raise WorkbenchCommandRejected("constraint_conflict", "自制工种不能设置外协周期规则，请核对工种归属。")
-            profile = checked["profile"] if checked is not None else None
             if mode != (profile["default_merge_mode"] if profile else None):
                 related["policy"] = mode
+        elif action != "create" and not supports_source(category, "external") and profile is not None and profile["default_merge_mode"] is not None:
+            related["policy"] = None
         if action != "create" and category != raw["category"] and category != "both" and any(checked["dependencies"].values()):
             raise WorkbenchCommandRejected("constraint_conflict", "还有设备人员或工序在用这个工种，请先解除关联后再修改归属。")
 
@@ -86,16 +72,34 @@ class WorkbenchResourceService:
         profile = checked["profile"] if checked is not None else None
         old_group = profile["group_id"] if profile else None
         if "group_ref" in relations:
-            group = preparation.selected("machine_group", relations["group_ref"])
+            if relations["group_ref"] is None:
+                group = None
+            else:
+                identity = preparation.identity("machine_group", relations["group_ref"])
+                if identity.entity_key != old_group:
+                    preparation.selected_record("machine_group", identity)
+                group = identity.entity_key
             if group != old_group:
                 related["group"] = group
         if "op_type_ref" in relations:
-            fields["op_type_id"] = preparation.selected("op_type", relations["op_type_ref"], category="internal")
+            if relations["op_type_ref"] is None:
+                fields["op_type_id"] = None
+            else:
+                identity = preparation.identity("op_type", relations["op_type_ref"])
+                if identity.entity_key != raw.get("op_type_id"):
+                    preparation.selected_record("op_type", identity, category="internal")
+                fields["op_type_id"] = identity.entity_key
         if "op_type_refs" in relations:
-            codes = [preparation.selected("op_type", ref, category="internal") for ref in relations["op_type_refs"]]
+            existing = {row["op_type_id"] for row in preparation.facts.grouped("machine_capabilities", "machine_id")[code]}
+            existing_all = existing | ({raw.get("op_type_id")} if raw.get("op_type_id") else set())
+            codes = []
+            for ref in relations["op_type_refs"]:
+                identity = preparation.identity("op_type", ref)
+                if identity.entity_key not in existing_all:
+                    preparation.selected_record("op_type", identity, category="internal")
+                codes.append(identity.entity_key)
             primary = raw.get("op_type_id") if raw.get("op_type_id") in codes else (codes[0] if codes else None)
             fields["op_type_id"] = primary
-            existing = {row["op_type_id"] for row in preparation.facts.grouped("machine_capabilities", "machine_id")[code]}
             desired = set(codes) - {primary}
             if existing != desired:
                 related["capabilities"] = existing, desired
@@ -113,10 +117,21 @@ class WorkbenchResourceService:
             if fields["status"] != raw.get("status"):
                 previous["inactive_reason"] = None
         if "shift_profile_ref" in relations:
-            profile["shift_profile_id"] = preparation.selected("shift_profile", relations["shift_profile_ref"])
+            if relations["shift_profile_ref"] is None:
+                profile["shift_profile_id"] = None
+            else:
+                identity = preparation.identity("shift_profile", relations["shift_profile_ref"])
+                if identity.entity_key != previous["shift_profile_id"]:
+                    preparation.selected_record("shift_profile", identity)
+                profile["shift_profile_id"] = identity.entity_key
         if "skill_refs" in relations:
-            desired = {preparation.selected("op_type", ref, category="internal") for ref in relations["skill_refs"]}
             existing = {row["op_type_id"] for row in checked["skills"]} if checked is not None else set()
+            desired = set()
+            for ref in relations["skill_refs"]:
+                identity = preparation.identity("op_type", ref)
+                if identity.entity_key not in existing:
+                    preparation.selected_record("op_type", identity, category="internal")
+                desired.add(identity.entity_key)
             if existing != desired:
                 related["skills"] = existing, desired
             profile["skills_declared"] = 1
@@ -132,7 +147,7 @@ class WorkbenchResourceService:
         elif change.action == "create":
             model, key = {"op_type": (OpType, "op_type_id"), "machine": (Machine, "machine_id"), "operator": (Operator, "operator_id")}[self.kind]
             self.rows.create(model(**{key: code, **change.fields}))
-            identity = self.state.identities.find_active(self.kind, code)
+            identity = self.identities.find_active(self.kind, code)
             if identity is None:
                 raise RuntimeError("新增资源没有永久引用。")
         elif change.fields:

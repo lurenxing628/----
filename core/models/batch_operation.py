@@ -47,12 +47,6 @@ class BatchOperation:
     status: str = BatchOperationStatus.PENDING.value  # pending/scheduled/processing/completed/skipped
     created_at: Optional[str] = None
 
-    def is_external(self) -> bool:
-        return str(self.source or "").strip().lower() == SourceType.EXTERNAL.value
-
-    def is_internal(self) -> bool:
-        return str(self.source or "").strip().lower() == SourceType.INTERNAL.value
-
     @classmethod
     def from_row(cls, row: RowLike) -> BatchOperation:
         # cls(...) 关键字实参从上到下求值——顺序即多坏字段时 ValueError 的先后契约，禁重排。

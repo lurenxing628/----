@@ -131,6 +131,16 @@ def test_duplicate_operation_segments_keep_raw_rows_without_self_conflicts():
     assert conflicting["events"][0]["overlap"] is True and conflicting["events"][0]["state"] == "partial"
 
 
+def test_blank_type_segment_stays_unknown_without_making_its_operation_inconsistent():
+    rows = [task("a", "", "车削", at("08:00:00"), at("09:00:00")),
+            task("a2", "T1", "车削", at("09:00:00"), at("10:00:00"), operation_ref="operation:a"),
+            task("b", "T2", "铣削", at("10:00:00"), at("11:00:00"))]
+    result = changeover_projection(rows)
+    assert [(item["code"], item["row_ref"]) for item in result["issues"]] == [("process_type_unknown", "row:a")]
+    assert result["count"] is None and result["known_count"] == 1
+    assert (result["events"][0]["previous_row_ref"], result["events"][0]["next_row_ref"]) == ("row:a2", "row:b")
+
+
 def test_missing_type_is_a_barrier_and_missing_time_does_not_invent_adjacency():
     rows = [task("a", "T1", "车削", at("08:00:00"), at("09:00:00")),
             task("missing", None, "精车", at("09:00:00"), at("10:00:00")),

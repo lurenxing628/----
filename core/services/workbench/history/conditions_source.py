@@ -1,34 +1,14 @@
 """Saved condition facts with separate trial work and environment provenance."""
 
-from core.models.workbench_run_candidate import reference
 from core.services.workbench.facts.archived_calendar import ArchivedCalendar
-from core.services.workbench.facts.candidate_facts import GenerationFacts, _index
+from core.services.workbench.facts.candidate_facts import (
+    GenerationFacts,
+    entity_ref_rows,
+    index_rows,
+    operation_ref_rows,
+)
 from core.services.workbench.facts.candidate_values import corrupt
 from core.services.workbench.facts.trial_origin import operation_contexts
-
-
-def _entity_refs(rows):
-    result = {}
-    for row in rows or []:
-        if row.get("active") != 1:
-            continue
-        key = (row.get("kind"), row.get("entity_key"))
-        if any(type(value) is not str for value in key) or key in result:
-            corrupt()
-        result[key] = reference(row.get("ref"), stored=True)
-    return result
-
-
-def _operation_refs(rows):
-    result = {}
-    for row in rows or []:
-        if row.get("kind") != "operation" or row.get("active") != 1:
-            continue
-        ref, key = reference(row.get("ref"), stored=True), row.get("source_key")
-        if type(key) is not str or not key.isdigit() or str(int(key)) != key or ref in result:
-            corrupt()
-        result[ref] = int(key)
-    return result
 
 
 def _table_paths(rows, key, prefix):
@@ -115,7 +95,7 @@ class ConditionSource:
         admission = packet["head"]["admission"]
         self.archive, self.execution, self.baseline = admission["facts"], admission["execution"], admission["baseline"]
         self.calendar = ArchivedCalendar(self.archive, source_ref=self.ref)
-        self.entity_refs = _entity_refs(self.table("WorkbenchEntityRefs"))
+        self.entity_refs = entity_ref_rows(self.table("WorkbenchEntityRefs"))
         for index, row in enumerate(self.trial_rows):
             original, ref = row["original"], row["operation_ref"]
             self.operations[ref] = original["operation"]
@@ -142,8 +122,8 @@ class ConditionSource:
             prefix = "head.admission.source.capture.facts_text"
         else:
             self.original_archive, self._original_calendar = self.archive, self.calendar
-            operations, batches = _index(self.table("BatchOperations"), "id"), _index(self.table("Batches"), "batch_id")
-            refs, entity_refs = _operation_refs(self.table("WorkbenchPlanSourceRefs")), self.entity_refs
+            operations, batches = index_rows(self.table("BatchOperations"), "id"), index_rows(self.table("Batches"), "batch_id")
+            refs, entity_refs = operation_ref_rows(self.table("WorkbenchPlanSourceRefs")), self.entity_refs
             prefix = self._origins["environment"]
         self.original_entity_refs = entity_refs
         self._origins["original"] = prefix

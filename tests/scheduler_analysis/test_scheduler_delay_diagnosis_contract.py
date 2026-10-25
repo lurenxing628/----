@@ -210,7 +210,7 @@ def test_overdue_bad_finish_time_has_its_own_bucket(tmp_path):
         conn.commit()
         query = SchedulePlanQueryService(conn)
         resolution = query.resolve_plan_view(VERSION, ROLE_ADOPTED)
-        scheduled, unscheduled, invalid, _ = compute_overdue_bucket_groups(
+        scheduled, unscheduled, invalid = compute_overdue_bucket_groups(
             _overdue_rows(query, resolution), now_dt=datetime.fromisoformat(AS_OF_TIME))
         assert not scheduled
         assert {row['batch_id'] for row in unscheduled} == {'B_UNSCHEDULED'}
@@ -263,3 +263,74 @@ def test_overdue_scenario_source_remains_strict_and_read_only(tmp_path):
             query.resolve_plan_view(VERSION, ROLE_ADOPTED, scenario_id)
     finally:
         conn.close()
+
+
+def test_overdue_allow_points_recognizes_zero_duration_point_event_batches(tmp_path):
+    from datetime import datetime
+
+    from core.services.common.overdue_calculations import compute_overdue_bucket_groups
+
+    conn, _ = _seed_db(tmp_path)
+    try:
+        conn.executescript(
+            """
+            INSERT INTO Batches(batch_id, part_no, part_name, quantity, due_date, priority, ready_status, status)
+            VALUES
+              ('B_PURE_POINT', 'P001', '零件一', 1, '2026-05-03', 'normal', 'yes', 'scheduled'),
+              ('B_TAIL_POINT', 'P002', '零件二', 1, '2026-05-03', 'normal', 'yes', 'scheduled');
+
+            INSERT INTO BatchOperations(id, op_code, batch_id, piece_id, seq, op_type_name, source, status)
+            VALUES
+              (50, 'OP-PP-10', 'B_PURE_POINT', 'piece-pp', 10, '检验', 'internal', 'scheduled'),
+              (60, 'OP-TP-10', 'B_TAIL_POINT', 'piece-tp', 10, '车削', 'internal', 'scheduled'),
+              (70, 'OP-TP-20', 'B_TAIL_POINT', 'piece-tp', 20, '终检', 'internal', 'scheduled');
+
+            INSERT INTO Schedule(id, op_id, machine_id, operator_id, start_time, end_time, lock_status, version)
+            VALUES
+              (150, 50, 'M1', 'O1', '2026-05-04 12:00:00', '2026-05-04 12:00:00', 'unlocked', 11),
+              (160, 60, 'M1', 'O1', '2026-05-04 08:00:00', '2026-05-04 09:00:00', 'unlocked', 11),
+              (170, 70, 'M1', 'O1', '2026-05-04 15:30:00', '2026-05-04 15:30:00', 'unlocked', 11);
+            """
+        )
+        conn.commit()
+        query = SchedulePlanQueryService(conn)
+        resolution = query.resolve_plan_view(VERSION, ROLE_ADOPTED)
+        rows = query.list_plan_overdue_base_rows_for_resolution(
+            version=resolution.version,
+            source_table=resolution.source_table,
+            candidate_id=resolution.candidate_id,
+            scenario_id=resolution.scenario_id,
+            allow_points=True,
+        )
+        by_batch = {row["batch_id"]: row for row in rows}
+        assert by_batch["B_PURE_POINT"]["finish_time"] == "2026-05-04 12:00:00"
+        assert by_batch["B_PURE_POINT"]["invalid_time_count"] == 0
+        assert by_batch["B_TAIL_POINT"]["finish_time"] == "2026-05-04 15:30:00"
+        assert by_batch["B_TAIL_POINT"]["invalid_time_count"] == 0
+
+        scheduled, unscheduled, invalid = compute_overdue_bucket_groups(
+            rows, now_dt=datetime.fromisoformat(AS_OF_TIME)
+        )
+        assert not invalid
+        assert {row["batch_id"] for row in unscheduled} == {"B_UNSCHEDULED"}
+        assert {row["batch_id"] for row in scheduled} == {
+            "B_SCHEDULED",
+            "B_PURE_POINT",
+            "B_TAIL_POINT",
+        }
+    finally:
+        conn.close()
+
+
+def test_cell_value_evaluates_active_section_for_multisection_number_formats():
+    from types import SimpleNamespace
+
+    from core.services.common.excel_cell_values import cell_value
+
+    assert cell_value(SimpleNamespace(value=1, number_format="0;0%")) == 1
+    assert cell_value(SimpleNamespace(value=-0.5, number_format="0;0%")) == -50.0
+    assert cell_value(SimpleNamespace(value=0, number_format="0;0%;0.0")) == 0
+    assert cell_value(SimpleNamespace(value=0.25, number_format="[<=1]0%;0.00")) == 25.0
+    assert cell_value(SimpleNamespace(value=5, number_format="[<=1]0%;0.00")) == 5
+    assert cell_value(SimpleNamespace(value=0.25, number_format=r'0\"%\"')) == 25
+    assert cell_value(SimpleNamespace(value=0.25, number_format=r'0"%"')) == 0.25

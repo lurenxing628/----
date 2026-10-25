@@ -63,15 +63,19 @@
       }
       async function query() {
         if (!current() || querying || document.hidden || done) return;
-        querying = true; controller = new AbortController(); setChecking(true); const started = Date.now();
+        querying = true; const localController = new AbortController(); controller = localController; setChecking(true); const started = Date.now();
         try {
-          const found = A.lookup(await api.lookup(intent.request_key, controller.signal, intent.data_context_ref), intent.run_ref);
-          if (!current() || controller.signal.aborted) return;
+          const found = A.lookup(await api.lookup(intent.request_key, localController.signal, intent.data_context_ref), intent.run_ref);
+          if (!current() || localController.signal.aborted) return;
           setLastChecked(Date.now()); setResolution(found.resolution); clearError(); setNotice('');
           if (!found.found) {
             setVerified(false);
             if (found.resolution === 'context_replaced') {
-              A.pending().finish(activeIntent.current, 'context_replaced'); setPendingActive(false); setRun(null); done = true;
+              setRun(null); done = true;
+              try { A.pending().finish(activeIntent.current, 'context_replaced'); setPendingActive(false); }
+              catch (e) { setStorageError(e.message); }
+            } else if (!pendingActive) {
+              setRun(null); done = true;
             } else unresolved(started);
             return;
           }
@@ -84,13 +88,20 @@
           if (!result.recovery_required) attempt = 0;
           setRun(result); setVerified(true); unsettledSince = null; done = A.terminal(result);
           if (done && pendingActive) {
-            A.pending().finish(activeIntent.current, 'found'); setPendingActive(false);
+            try { A.pending().finish(activeIntent.current, 'found'); setPendingActive(false); }
+            catch (e) { setStorageError(e.message); return; }
             if (typeof onNavigate === 'function') onNavigate('run', { run_ref: result.run_ref });
           }
-        } catch (e) { if (current() && !controller.signal.aborted) { setLastChecked(Date.now()); setResolution('lookup_failed'); setVerified(false); fail(e, e.code === 'run_result_inconsistent' ? A.message(e) : '查询暂未成功，请点「查询结果」重试。'); unresolved(started); } }
+        } catch (e) { if (current() && !localController.signal.aborted) { setLastChecked(Date.now()); setResolution('lookup_failed'); setVerified(false); fail(e, e.code === 'run_result_inconsistent' ? A.message(e) : '查询暂未成功，请点「查询结果」重试。'); unresolved(started); } }
         finally {
-          querying = false;
-          if (current()) { setChecking(false); schedule(); }
+          if (controller === localController) {
+            querying = false;
+            if (current()) {
+              setChecking(false);
+              if (!localController.signal.aborted) schedule();
+              else if (!document.hidden && !done) query();
+            }
+          }
         }
       }
       function visibility() {
@@ -156,24 +167,27 @@
       if (locked.current || !confirmationSession.current || confirmationSession.current.rechecking || !preview || currentPreview.current !== preview
           || preview.input_ref !== activeInput.current || preview.write_context.capabilities['scheduling.run'] !== true || storageError) return;
       locked.current = true; setSubmitting(true); setBusy(true); clearError();
-      let original;
+      let original, storageFailed = false;
       try {
         // Keep admission and the durable identity claim serialized across browser tabs.
-        if (!navigator.locks || typeof navigator.locks.request !== 'function') throw new Error('当前浏览器不支持，请用 Chrome 打开。');
+        if (!navigator.locks || typeof navigator.locks.request !== 'function') { if (alive.current) fail(null, '当前浏览器不支持，请用 Chrome 打开。'); return; }
         await navigator.locks.request(A.PENDING_KEY, { ifAvailable: true }, async lock => {
-          if (!lock) throw new Error('另一个页面正在提交排产，请稍后点「查询结果」。');
+          if (!lock) { if (alive.current) fail(null, '另一个页面正在提交排产，请稍后点「查询结果」。'); return; }
           if (!alive.current || currentPreview.current !== preview || preview.input_ref !== activeInput.current) return;
-          if (pendingActive) throw new Error('上次排产还没确认结果，不能开始下一次排产。');
+          if (pendingActive) { fail(null, '上次排产还没确认结果，不能开始下一次排产。'); return; }
           original = A.pending().begin(preview.input_ref, null, preview.data_context_ref);
           confirmationSession.current = null; currentPreview.current = null;
           activeIntent.current = original; setIntent(original); setPendingActive(true); setResolution('unresolved'); setRun(null); setVerified(false); setConfirming(false);
           try {
             const receipt = A.accepted(await api.accept(original, preview.write_context.write_token));
-            const saved = A.pending().attach(original, receipt.run_ref);
-            if (alive.current && activeIntent.current && activeIntent.current.request_key === original.request_key) {
-              activeIntent.current = saved; setIntent(saved); setRun(receipt.data); setVerified(true);
+            const owned = alive.current && activeIntent.current && activeIntent.current.request_key === original.request_key;
+            // 服务端已受理：先发布这次排产，本机记录写入失败只报存储问题，不当成结果没查到。
+            if (owned) {
+              setRun(receipt.data); setVerified(true);
               setNotice(receipt.dispatch_pending ? '排产已接收，交给计算程序时没有确认。正在查询结果，没有重新提交。' : '');
             }
+            try { const saved = A.pending().attach(original, receipt.run_ref); if (owned) { activeIntent.current = saved; setIntent(saved); } }
+            catch (_) { if (alive.current) setStorageError('排产已接收，但本机没能保存这次排产的编号。请不要重新提交，到排产记录页查看结果。'); }
           } catch (e) {
             if (A.isRejected(e)) {
               A.pending().reject(original);
@@ -181,8 +195,15 @@
             } else if (alive.current) fail(null, window.WorkbenchTerms.outcomes.pending('排产'));
           }
         });
-      } catch (e) { if (alive.current) setStorageError(e.message); }
-      finally { locked.current = false; if (alive.current) { setSubmitting(false); setBusy(false); setPreview(null); setConfirming(false); refresh(); } }
+      } catch (e) { storageFailed = true; if (alive.current) setStorageError(e.message); }
+      finally {
+        locked.current = false;
+        if (alive.current) {
+          setSubmitting(false); setBusy(false);
+          // 锁被占用或前置检查拦下时保留这次确认，锁释放后可在同一弹窗里重试。
+          if (original || storageFailed) { setPreview(null); setConfirming(false); refresh(); }
+        }
+      }
     }
     function rereadStorage() {
       try { const saved = savedRecord(); setIntent(saved.intent); setPendingActive(saved.pending); setResolution(saved.resolution || 'unresolved'); setStorageError(''); setVerified(false); setRun(null); refresh(); }

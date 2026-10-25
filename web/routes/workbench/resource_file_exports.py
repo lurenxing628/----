@@ -23,28 +23,24 @@ from .resource_action_context import (
 )
 
 
-def _selection(kind, body, scope, reader):
-    selection = body["selection"]
-    if selection not in ("all", "filtered", "selected") or ("refs" in body) != (selection == "selected"):
-        raise WorkbenchCommandRejected("invalid_input", "请先选好导出全部、当前筛选还是选中的记录，没有开始下载。选好后重新点「导出」。", 400)
-    service = WorkbenchResourceFileService(g.db, kind, current_app.logger, reader=reader)
-    return service.preview_export(selection, scope=scope, selected_refs=body.get("refs"))
-
-
 @read_endpoint
 def resource_export_preview(kind):
     action_kind(kind)
     body = json_body({"selection", "scope", "snapshot_ref"}, {"refs", "page_size"})
+    selection = body["selection"]
+    if selection not in ("all", "filtered", "selected") or ("refs" in body) != (selection == "selected"):
+        raise WorkbenchCommandRejected("invalid_input", "请先选好导出全部、当前筛选还是选中的记录，没有开始下载。选好后重新点「导出」。", 400)
     scope, query_scope, snapshot_ref = scope_input(kind, body)
     reader = WorkbenchResourceQueryService(g.db, kind, current_app.logger)
+    service = WorkbenchResourceFileService(g.db, kind, current_app.logger, reader=reader)
     with reader.read_snapshot() as fingerprint:
         read_binding = resolve_read_snapshot(snapshot_ref)
         snapshot = bind_read_snapshot(query_scope, fingerprint, snapshot_ref, binding=read_binding)
-        arguments, count = _selection(kind, body, scope, reader)
+        arguments, count = service.preview_export(selection, scope=scope, selected_refs=body.get("refs"))
         document = {"kind": kind, "query_scope": query_scope, "snapshot_ref": snapshot_ref, "arguments": arguments}
         ref, expires_at = retain_context(EXPORT_SCOPE, document, read_binding,
                                          key=(kind, read_binding.scope, document["snapshot_ref"], content_text(arguments)))
-    return query_success({"export_ref": ref, "expires_at": expires_at, "selection": body["selection"],
+    return query_success({"export_ref": ref, "expires_at": expires_at, "selection": selection,
                           "row_count": count, "scope": arguments["scope"], "formats": ["csv", "xlsx"]}, snapshot)
 
 

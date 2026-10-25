@@ -11,6 +11,7 @@ from core.algorithm_runtime.piece_input import external_group_key
 from core.errors import ValidationError
 from core.shared.degradation import DegradationCollector
 from core.shared.field_parse import parse_field_float
+from core.shared.strict_parse import parse_required_float
 
 
 def rebuild_external_group_cache_from_seeds(
@@ -116,7 +117,6 @@ def schedule_external(
     scheduler: Any,
     *,
     op: Any,
-    batch: Any,
     batch_progress: Dict[str, datetime],
     external_group_cache: Dict[Tuple[str, ...], Tuple[datetime, datetime]],
     base_time: datetime,
@@ -146,16 +146,11 @@ def schedule_external(
             start, end = cached
         else:
             total_days = getattr(op, "ext_group_total_days", None)
-            collector = DegradationCollector()
             total_days_f = float(
-                parse_field_float(
+                parse_required_float(
                     total_days,
                     field="ext_group_total_days",
-                    strict_mode=bool(strict_mode),
-                    scope="greedy.external.schedule",
-                    fallback=0.0,
-                    collector=collector,
-                    min_value=0.0,
+                    min_value=0.0 if strict_mode else None,
                     min_inclusive=False,
                 )
             )
@@ -164,7 +159,6 @@ def schedule_external(
                 return None, False
             start = prev_end
             end = scheduler.calendar.add_calendar_days(start, total_days_f)
-            external_group_cache[cache_key] = (start, end)
 
         if end_dt_exclusive is not None and end >= end_dt_exclusive:
             deadline = (end_dt_exclusive - timedelta(seconds=1)).strftime("%Y-%m-%d")
@@ -172,6 +166,9 @@ def schedule_external(
                 f"排产窗口截止到 {deadline}：外协组 {ext_group_id}（批次 {bid}）预计完工 {end.strftime('%Y-%m-%d %H:%M')} 超出窗口"
             )
             return None, True
+        # Only a group block that fits the window becomes the shared start/end of its members.
+        if not cached:
+            external_group_cache[cache_key] = (start, end)
 
         return (
             ScheduleResult(

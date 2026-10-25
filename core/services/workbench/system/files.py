@@ -14,13 +14,20 @@ from core.services.workbench.facts.system_reads import backup_signature
 from .restore import SystemRestoreManager, restore_outcome
 
 
+def _is_within_directory(path, directory):
+    try:
+        return os.path.commonpath((path, directory)) == directory
+    except ValueError:
+        return False
+
+
 class SystemFileWorkspace:
     def __init__(self, *, database_path, backup_dir, journal_dir, logger):
         self.database_path, self.backup_dir, self.logger = database_path, backup_dir, logger
         self.journal = SystemMaintenanceJournal(journal_dir, database_path)
         self._restore_source = None
         root, backups = os.path.realpath(journal_dir), os.path.realpath(backup_dir)
-        if os.path.commonpath((root, backups)) == backups or root == os.path.dirname(os.path.realpath(database_path)):
+        if _is_within_directory(root, backups) or root == os.path.dirname(os.path.realpath(database_path)):
             raise WorkbenchCommandRejected("maintenance_unavailable", "维护记录必须放在单独的维护目录里，不能放在备份目录或数据库所在的文件夹。", 503)
 
     def selected_path(self, selected):
@@ -82,7 +89,9 @@ class SystemFileWorkspace:
     def finish_restore(self, row, path, *, restore_runner, audit, confirm_host):
         """Host already owns the HTTP lease, joined worker and original scheduler lock."""
         with maintenance_window(self.database_path, logger=self.logger, action="restore_host"):
-            if not same(row, self.journal.lookup(row["request_key"])) or row["state"] != "checking":
+            self.journal.refresh()
+            current = self.journal.lookup(row["request_key"])
+            if not same(row, current) or row["state"] != "checking":
                 raise RuntimeError("Restore record changed before exclusive execution")
             return self._finish(row, "restore", path, restore_runner, audit, confirm_host)
 

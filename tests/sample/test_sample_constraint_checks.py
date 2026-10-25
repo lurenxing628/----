@@ -20,7 +20,7 @@ def candidate_inputs():
                  "operator_machine_permissions": [{"operator_code": "O", "machine_codes": ["M"]}],
                  "schedule_window": {"start_date": "2026-09-01", "end_date": "2026-09-05"},
                  "calendar_days": [], "operator_calendar_days": [], "machine_downtimes": []}
-    seed = {"blueprint": blueprint, "operation_refs": {"B": {1: "OP1", 2: "OP2", 3: "OP3"}},
+    seed = {"blueprint": blueprint, "operation_refs": {"B": {"1": "OP1", "2": "OP2", "3": "OP3"}},
             "refs": {"batch": {"B": "batch-ref"}, "machine": {"M": "machine-ref"},
                      "operator": {"O": "operator-ref"}, "supplier": {"S": "supplier-ref"}}}
     tasks = [{"operation_ref": "OP1", "batch_ref": "batch-ref", "sequence": 1, "quantity": 2,
@@ -88,7 +88,7 @@ def test_shared_resource_overlap_is_still_rejected(candidate_inputs):
     other["business_code"] = "B2"
     seed["blueprint"]["batches"].append(other)
     seed["refs"]["batch"]["B2"] = "batch-two"
-    seed["operation_refs"]["B2"] = {1: "OTHER1", 2: "OTHER2", 3: "OTHER3"}
+    seed["operation_refs"]["B2"] = {"1": "OTHER1", "2": "OTHER2", "3": "OTHER3"}
     for task in copy.deepcopy(workspace["tasks"]):
         task.update(operation_ref="OTHER" + str(task["sequence"]), batch_ref="batch-two")
         if task["source"] == "internal":

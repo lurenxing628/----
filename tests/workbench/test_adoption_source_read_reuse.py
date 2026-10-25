@@ -5,6 +5,7 @@ import sqlite3
 from collections import Counter
 from datetime import datetime
 from types import SimpleNamespace
+from unittest.mock import Mock, create_autospec
 
 import pytest
 
@@ -15,11 +16,12 @@ from core.models.content import same
 from core.models.workbench_command import canonical_json
 from core.models.workbench_dashboard import DashboardAnalysisQuery
 from core.models.workbench_plan_scope import MAX_PLAN_RESPONSE_BYTES, PlanReadScope
-from core.services.batch.service import BatchService
 from core.services.workbench.dashboard.analysis import read_dashboard_analysis
 from core.services.workbench.facts import adoption_baseline_sources
-from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable
+from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable, stored
 from core.services.workbench.plan import adoption_baseline, adoption_baseline_identity, projection
+from core.services.workbench.plan.point_evidence import official_point_work
+from core.services.workbench.plan.process_order import project_process_order
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.plan.read_context import PlanReadContext
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
@@ -34,7 +36,8 @@ from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
 def adopted_versions(trial_case):
     case = trial_case
     first = adopt_candidate(case, "reuse-first")
-    BatchService(case.conn).update("B1", quantity=5)
+    case.conn.execute("UPDATE Batches SET quantity=5 WHERE batch_id='B1'")
+    case.conn.commit()
     second = adopt_candidate(case, "reuse-second")
     return case, first, second
 
@@ -55,6 +58,69 @@ def _track_sources(monkeypatch):
 
     monkeypatch.setattr(adoption_baseline_sources, "_candidate_source", observed)
     return calls
+
+
+def test_candidate_and_trial_adoption_reuse_frozen_inputs_without_optimizer_preparation(trial_case, monkeypatch):
+    from core.services.scheduler.resource_pool_builder import CapturedResourceFacts
+    from core.services.scheduler.run import schedule_input_runtime_support as runtime_support
+    from core.services.workbench.run import input as run_input
+    from core.services.workbench.run import input_runtime
+    from core.services.workbench.run.candidate_adoption_validation import validate_adoption
+    from tests.workbench.run_candidate_adoption_support import candidate
+    from tests.workbench.trial_adoption_support import saved_scenario
+    from tests.workbench.trial_adoption_support import service as trial_adoption_service
+
+    case = trial_case
+    successor = case.operation(seq=2)
+    case.plan(1, [case.op_id], end="2026-09-09T11:00:00")
+    case.conn.execute("INSERT INTO WorkCalendar(date,day_type,shift_start,shift_end,shift_hours,efficiency,"
+                      "allow_normal,allow_urgent) VALUES ('2026-09-09','workday','08:00','16:00',8,1,'yes','yes')")
+    case.conn.execute("INSERT INTO MachineDowntimes(machine_id,scope_type,scope_value,start_time,end_time,"
+                      "reason_code,status) VALUES ('M1','machine','M1','2026-09-09 16:00:00',"
+                      "'2026-09-09 17:00:00','maintenance','active')")
+    case.conn.commit()
+    ref = candidate(case, case.settings(hold_window={"start": "2026-09-09T09:00", "end": "2026-09-09T09:01"}))
+    saved = saved_scenario(case, {"base": {"candidate_ref": ref}}, changed=False)
+    before, changes = snapshot(case.conn), case.conn.total_changes
+    optimizer = (
+        (input_runtime, "_load_runtime_resource_inputs", input_runtime._load_runtime_resource_inputs),
+        (input_runtime, "reserve_execution_machines", input_runtime.reserve_execution_machines),
+        (run_input, "build_operation_efforts", run_input.build_operation_efforts),
+        (run_input, "saved_seed_efforts", run_input.saved_seed_efforts),
+    )
+    checks = (
+        (input_runtime, "_freeze_hold_window", input_runtime._freeze_hold_window),
+        (input_runtime, "_validate_calendar_row", input_runtime._validate_calendar_row),
+        (input_runtime, "_validate_downtime_row", input_runtime._validate_downtime_row),
+        (runtime_support, "_resolve_algo_ops_to_schedule", runtime_support._resolve_algo_ops_to_schedule),
+        (runtime_support, "_ensure_internal_runtime_hours", runtime_support._ensure_internal_runtime_hours),
+    )
+    calls = {}
+    for module, name, original in optimizer + checks:
+        calls[name] = Mock(wraps=original)
+        monkeypatch.setattr(module, name, calls[name])
+    qualifications = create_autospec(CapturedResourceFacts.validate_fixed, side_effect=CapturedResourceFacts.validate_fixed)
+    monkeypatch.setattr(CapturedResourceFacts, "validate_fixed", qualifications)
+
+    evidence = validate_adoption(case.conn, ref)
+    assert evidence.prepared.frozen_op_ids == {case.op_id}
+    rows = {row.op_id: row for row in evidence.payload.schedule_rows}
+    assert rows[case.op_id].start_time == datetime(2026, 9, 9, 8)
+    assert rows[case.op_id].end_time == datetime(2026, 9, 9, 11)
+    assert rows[successor].start_time >= rows[case.op_id].end_time
+    for _, name, _ in checks:
+        assert calls[name].call_count == 1, name
+    candidate_qualifications = qualifications.call_count
+    assert candidate_qualifications > 0
+
+    preview = trial_adoption_service(case.conn).preview(saved["scenario_ref"])
+    assert preview["validation"]["can_adopt"], preview
+    for _, name, _ in checks:
+        assert calls[name].call_count == 2, name
+    assert qualifications.call_count > candidate_qualifications
+    for _, name, _ in optimizer:
+        calls[name].assert_not_called()
+    assert snapshot(case.conn) == before and case.conn.total_changes == changes
 
 
 def test_full_workspace_keeps_two_version_quantities_and_exact_uncached_output(adopted_versions, monkeypatch):
@@ -92,7 +158,8 @@ def test_full_workspace_keeps_two_version_quantities_and_exact_uncached_output(a
 
 def test_dashboard_has_one_complete_source_proof_and_frozen_quantity(adopted_versions, monkeypatch):
     case, _, second = adopted_versions
-    BatchService(case.conn).update("B1", quantity=7)
+    case.conn.execute("UPDATE Batches SET quantity=7 WHERE batch_id='B1'")
+    case.conn.commit()
     before, changes = snapshot(case.conn), case.conn.total_changes
     calls = _track_sources(monkeypatch)
     data, _ = read_dashboard_analysis(case.conn, second["plan_ref"], query=DashboardAnalysisQuery("timeline"))
@@ -111,8 +178,8 @@ def test_task_facts_without_reuse_scope_still_verify_source_once(adopted_version
     # scope. It must use the facts returned with its proof, not reprove them.
     with reader.read_snapshot():
         quantities, reason, operations = projection._adopted_task_facts(case.conn, second["plan_ref"])
-    assert reason is None and quantities[case.op_id]["quantity"] == 5
-    assert operations[case.op_id]["source"] == "internal"
+    assert reason is None and quantities is not None and quantities[case.op_id]["quantity"] == 5
+    assert operations is not None and operations[case.op_id]["source"] == "internal"
     assert len(calls) == 1
     assert snapshot(case.conn) == before and case.conn.total_changes == changes
 
@@ -203,8 +270,9 @@ def test_caller_version_and_history_cannot_reuse_another_adoption(adopted_versio
     reader = WorkbenchPlanQueryService(case.conn)
     history = WorkbenchPlanBaselineRepository(case.conn).get_history_result_summary(second["version"])
     before = snapshot(case.conn)
+    assert history is not None
     with reader.read_snapshot(), read_evidence_scope(case.conn):
-        assert projection.read_adopted_source(case.conn, second["plan_ref"]) is not None
+        assert PlanReadContext(case.conn).adopted_source(second["plan_ref"]) is not None
         with pytest.raises(AdoptionBaselineUnavailable):
             adoption_baseline.read_adoption_baseline(case.conn, plan_ref=second["plan_ref"],
                 version=first["version"], history=history, facts={})
@@ -243,6 +311,60 @@ def test_new_request_rechecks_broken_source_and_rejects_old_snapshot(adopted_ver
     response = api.get(path, snapshot_ref=original["meta"]["snapshot_ref"])
     assert response.status_code == 409 and response.get_json()["error"]["code"] == "snapshot_stale"
     assert snapshot(case.conn) == before and case.conn.total_changes == changes
+
+
+def test_classified_source_failure_is_proved_once_per_workspace(adopted_versions, monkeypatch):
+    case, _, second = adopted_versions
+    corrupt_update(case.conn, "WorkbenchRunJobs", "UPDATE WorkbenchRunJobs SET facts_json='{' WHERE run_ref=?",
+                   (second["source_run_ref"],))
+    before, changes = snapshot(case.conn), case.conn.total_changes
+    calls = _track_sources(monkeypatch)
+    data, _ = _workspace(case, second)
+    assert data["tasks"][0]["quantity_reason"] == "plan_target_unavailable"
+    assert data["projections"]["baseline"]["reason_code"] == "adoption_snapshot_invalid"
+    assert data["projections"]["process_order"]["state"] == "unavailable"
+    assert len(calls) == 1
+    # The next request must recheck storage rather than retaining that failure.
+    _workspace(case, second)
+    assert len(calls) == 2
+    assert snapshot(case.conn) == before and case.conn.total_changes == changes
+
+
+@pytest.mark.parametrize("raw", ['{', '[]', '{"x":NaN}', '{"x":1e400}', '{"x":1,"x":2}'])
+def test_adoption_json_decode_classifies_invalid_documents(raw):
+    with pytest.raises(AdoptionBaselineUnavailable) as error:
+        stored(raw)
+    assert error.value.code == "adoption_snapshot_invalid"
+
+
+@pytest.mark.parametrize("error_type", [KeyError, TypeError, ValueError])
+def test_source_programming_errors_escape_all_readers_and_are_not_cached(adopted_versions, monkeypatch, error_type):
+    case, _, second = adopted_versions
+    original = adoption_baseline_sources._candidate_source
+    calls = []
+    def broken_source(conn, audit):
+        calls.append(True)
+        raise error_type("injected internal source failure")
+    monkeypatch.setattr(adoption_baseline_sources, "_candidate_source", broken_source)
+    reader = WorkbenchPlanQueryService(case.conn)
+    with reader.read_snapshot():
+        context = PlanReadContext(case.conn)
+        with context.read_scope():
+            history = context.history(second["version"])
+            readers = (
+                lambda: projection._adopted_task_facts(case.conn, second["plan_ref"], context=context),
+                lambda: project_process_order(case.conn, plan_ref=second["plan_ref"], context=context),
+                lambda: adoption_baseline.read_adoption_baseline(case.conn, plan_ref=second["plan_ref"],
+                    version=second["version"], history=history, facts={}, context=context),
+                lambda: official_point_work(case.conn, second["version"], context=context),
+            )
+            for read in readers:
+                with pytest.raises(error_type, match="injected internal source failure"):
+                    read()
+            assert len(calls) == len(readers)
+            monkeypatch.setattr(adoption_baseline_sources, "_candidate_source", original)
+            source = context.adopted_source(second["plan_ref"])
+            assert source is not None and source["audit"]["version"] == second["version"]
 
 
 def test_original_baseline_is_still_checked_independently(adopted_versions, monkeypatch):

@@ -212,20 +212,23 @@ class RequestFrame:
             ticket.connections.append(ConnectionState(conn))
         return conn
 
+    def _close_entry(self, ticket: RequestTicket, entry: ConnectionState) -> None:
+        if not entry.closed:
+            try:
+                entry.connection.close()
+            except BaseException:
+                ticket.failures.append("connection_close_failed")
+                raise
+            entry.closed = True
+
     def close_connection(self, conn: RequestConnection) -> None:
         ticket = self._active_ticket()
         entry = next((item for item in ticket.connections if item.connection is conn), None)
         if entry is None:
             ticket.failures.append("unregistered_connection")
-            self.track(conn)
-            entry = ticket.connections[-1]
-        if not entry.closed:
-            try:
-                conn.close()
-            except BaseException:
-                ticket.failures.append("connection_close_failed")
-                raise
-            entry.closed = True
+            entry = ConnectionState(conn)
+            ticket.connections.append(entry)
+        self._close_entry(ticket, entry)
 
     def finish(self) -> None:
         ticket = self.ticket
@@ -240,7 +243,7 @@ class RequestFrame:
             for entry in ticket.connections:
                 if not entry.closed:
                     try:
-                        self.close_connection(entry.connection)
+                        self._close_entry(ticket, entry)
                     except BaseException:
                         self.app.logger.exception("HTTP request DB cleanup failed; lifecycle drain is unsafe")
         finally:

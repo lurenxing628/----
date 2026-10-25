@@ -231,7 +231,9 @@
     }
     async function readAfterCommand() {
       if (command.phase !== 'done') return;
-      const generation = ++refreshGeneration.current, intent = command.intent;
+      const intent = command.intent;
+      if (intent && /^downtime_/.test(intent.action)) return;
+      const generation = ++refreshGeneration.current;
       if (intent.action === 'delete') setSelected(current => current.filter(ref => ref !== intent.ref));
       setRefreshState({ loading: true }); counts.summary.reload();
       try {
@@ -283,6 +285,7 @@
     }
     const editorEntity = detail.result && detail.result.data;
     const editorReady = dialog && (dialog.action === 'create' || editorEntity);
+    const entityRefs = React.useMemo(() => data ? new Set(data.entities.map(row => row.ref)) : null, [data]);
     return <div className="plana resource-workspace" data-resource-workspace="true">
       <Rail node={node} counts={counts} onNode={navigate} onNavigate={onNavigate} disabled={blocked || !!dialog} />
       <section className="content">
@@ -296,7 +299,7 @@
           {external.result && <Forms.Feedback command={{ phase: 'done', result: external.result }} action={external.action} />}
           {node === 'process' ? typeof renderPart === 'function' ? renderPart({ adapter, onNavigate, onRefresh: refresh, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'part' ? target.context : undefined }) : <p role="status" className="muted">工艺工作区尚未开通。</p> : node === 'calendar' ? typeof renderCalendar === 'function' ? renderCalendar({ onCommitted: refresh, externalRevision, summaryState: counts.summary, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'calendar' ? target.context : undefined }) : <Calendar adapter={adapter} disabled={blocked} onExternal={openExternal} /> : <>
             <window.ResourceMetrics node={node} data={data} />
-            {selected.length > 0 && <p className="muted" aria-live="polite">已选择 <b data-resource-selection-count>{selected.length}</b> 条{data && selected.some(ref => !data.entities.some(row => row.ref === ref)) && <> · <span>含非当前页记录</span></>}</p>}
+            {selected.length > 0 && <p className="muted" aria-live="polite">已选择 <b data-resource-selection-count>{selected.length}</b> 条{entityRefs && selected.some(ref => !entityRefs.has(ref)) && <> · <span>含非当前页记录</span></>}</p>}
             <Toolbar config={config} scope={effectiveScope} onFilter={filter} loading={list.loading} disabled={blocked} onRefresh={refresh} onCreate={() => open('create')}
               createReason={C.blocked(data && data.create_context, config.kind, 'create', list.result && list.result.meta.source)} onExternal={openExternal} adapter={adapter} selected={selected} ready={!!data} onClearSelection={() => setSelected([])} />
             {data && <Issues issues={list.result.warnings} />}
@@ -322,7 +325,7 @@
         writeContext={editContext ? editContext.context : editorEntity ? editorEntity.write_context : dialog.createContext} source={editContext ? editContext.source : editorEntity ? detail.result.meta.source : dialog.source}
         command={command} onClose={close} onReloadContext={reloadContext} refreshState={refreshState} onRefresh={readAfterCommand}
         contextError={contextError} contextBusy={contextBusy} contextReview={contextReview} /></>}
-      {!dialog && (command.locked || command.phase === 'done') && <Modal title="上次操作结果" icon="history" onClose={close} locked={command.locked} footer={<Button onClick={close} reason={command.locked ? '上次操作的结果还没确认。' : ''}>关闭</Button>}>
+      {!dialog && (command.locked || command.phase === 'done' || command.phase === 'rejected') && <Modal title="上次操作结果" icon="history" onClose={close} locked={command.locked} footer={<Button onClick={close} reason={command.locked ? '上次操作的结果还没确认。' : ''}>关闭</Button>}>
         <div className="modal-b"><Forms.Feedback command={command} /><ErrorBox error={refreshState.error} /></div></Modal>}
     </div>;
   }

@@ -51,7 +51,7 @@ def _filename(kind, file_format):
     return table_descriptor(kind)["file_stem"] + "." + file_format
 
 
-def write_xlsx(kind, rows, template=False):
+def write_xlsx(kind, rows, template):
     import openpyxl
     from openpyxl.cell import WriteOnlyCell
     from openpyxl.comments import Comment

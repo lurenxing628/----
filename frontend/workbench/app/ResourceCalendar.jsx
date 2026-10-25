@@ -80,7 +80,7 @@
             <span className="cal-title">{month.year} 年 {month.month} 月</span>
             <Button className="cal-nav" icon="chevron-right" aria-label="下一月" disabled={blocked || request.loading || !data || !data.next_month} onClick={() => setMonth(data.next_month)} />
             <Button className="cal-nav cal-today-btn" title="回到本月" style={{ width: 'auto', padding: '0 10px', fontSize: 12, fontWeight: 600 }} disabled={blocked}
-              onClick={() => { const now = new Date(); setMonth({ year: now.getFullYear(), month: now.getMonth() + 1 }); request.reload(); }}>本月</Button>
+              onClick={() => { const now = new Date(), next = { year: now.getFullYear(), month: now.getMonth() + 1 }; if (month.year === next.year && month.month === next.month) request.reload(); else setMonth(next); }}>本月</Button>
             <Button icon="refresh-cw" aria-label="刷新本月" busy={request.loading} disabled={blocked} onClick={request.reload} />
             <span className="tb-spacer" style={{ flex: 1 }} />
             <Button icon="file-input" transfer="import" disabled={blocked || !data || request.loading}

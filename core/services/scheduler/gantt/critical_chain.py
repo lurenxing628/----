@@ -5,9 +5,7 @@ from heapq import heappop, heappush
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.services.common.plan_task_identity import public_task_id as _public_task_id
-from core.services.scheduler._sched_display_utils import record_bad_time_row as _record_bad_time_row
 from core.services.scheduler._sched_utils import _safe_int
-from core.shared.degradation import DegradationCollector
 from core.shared.local_datetime import format_local_datetime as _fmt_dt
 from core.shared.local_datetime import parse_local_datetime
 
@@ -16,6 +14,13 @@ from .task_labels import public_task_label as _public_task_label
 
 def _clean_text(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _identity_text(value: Any) -> str:
+    if value is None:
+        return ""
+    text = value if type(value) is str else str(value)
+    return text if text.strip() else ""
 
 
 def _public_node_label(nodes: Dict[str, Dict[str, Any]], node_id: str) -> str:
@@ -61,17 +66,18 @@ def _unavailable_result(reason: str) -> Dict[str, Any]:
     return result
 
 
-def _build_nodes(rows: List[Dict[str, Any]], *, collector: Optional[DegradationCollector] = None,
-                 include_points: bool = False) -> Dict[str, Dict[str, Any]]:
+def _build_nodes(
+    rows: List[Dict[str, Any]], *, include_points: bool = False
+) -> Tuple[Dict[str, Dict[str, Any]], int]:
     nodes: Dict[str, Dict[str, Any]] = {}
+    dropped = 0
     for r in rows:
         st = parse_local_datetime(r.get("start_time"))
         et = parse_local_datetime(r.get("end_time"))
         if not st or not et or st > et or (st == et and not include_points):
-            if collector is not None:
-                _record_bad_time_row(collector, scope="gantt.critical_chain", row=r)
+            dropped += 1
             continue
-        op_code = (r.get("op_code") or "").strip()
+        op_code = _identity_text(r.get("op_code"))
         task_id = op_code or _public_task_id(r)
 
         nodes[task_id] = {
@@ -79,32 +85,32 @@ def _build_nodes(rows: List[Dict[str, Any]], *, collector: Optional[DegradationC
             "sort_id": str(r.get("operation_ref") or task_id),
             "start": st,
             "end": et,
-            "batch_id": str(r.get("batch_id") or "").strip(),
-            "piece_id": str(r.get("piece_id") or "").strip(),
+            "batch_id": _identity_text(r.get("batch_id")),
+            "piece_id": _identity_text(r.get("piece_id")),
             "seq": _safe_int(r.get("seq"), default=0),
-            "machine_id": str(r.get("machine_id") or "").strip(),
-            "operator_id": str(r.get("operator_id") or "").strip(),
+            "machine_id": _identity_text(r.get("machine_id")),
+            "operator_id": _identity_text(r.get("operator_id")),
             "label": _public_task_label(r),
         }
-    return nodes
+    return nodes, dropped
 
 
-def _build_process_prev(nodes: Dict[str, Dict[str, Any]]) -> Dict[str, str]:
+def _build_process_prev(nodes: Dict[str, Dict[str, Any]]) -> Dict[str, List[str]]:
     proc_groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
     for n in nodes.values():
-        bid = str(n.get("batch_id") or "").strip()
+        bid = n["batch_id"]
         if not bid:
             continue
-        key = (bid, str(n.get("piece_id") or "").strip())
+        key = (bid, n["piece_id"])
         proc_groups.setdefault(key, []).append(n)
 
-    proc_prev: Dict[str, str] = {}
+    proc_prev: Dict[str, List[str]] = {}
     for _, items in proc_groups.items():
         items.sort(key=lambda x: (int(x.get("seq") or 0), x.get("start"), str(x.get("id") or "")))
         prev: Optional[Dict[str, Any]] = None
         for n in items:
             if prev:
-                proc_prev[str(n.get("id") or "")] = str(prev.get("id") or "")
+                proc_prev[str(n.get("id") or "")] = [str(prev.get("id") or "")]
             prev = n
 
     return proc_prev
@@ -115,7 +121,7 @@ def _build_prev_by_resource(nodes: Dict[str, Dict[str, Any]], *, resource_key: s
     for n in nodes.values():
         if n.get("start") == n.get("end"):
             continue
-        rid = str(n.get(resource_key) or "").strip()
+        rid = n[resource_key]
         if not rid:
             continue
         groups.setdefault(rid, []).append(n)
@@ -222,9 +228,9 @@ def _edge_type_stats(edges: List[Dict[str, Any]]) -> Dict[str, int]:
 
 
 def _explicit_sink(rows: List[Dict[str, Any]], nodes: Dict[str, Dict[str, Any]], target_id: str) -> Tuple[str, str]:
-    if type(target_id) is not str or not target_id or target_id != target_id.strip():
+    if type(target_id) is not str or not target_id.strip():
         return "", "target_invalid"
-    identities = [(row.get("op_code") or "").strip() or _public_task_id(row) for row in rows]
+    identities = [_identity_text(row.get("op_code")) or _public_task_id(row) for row in rows]
     if len(set(identities)) != len(identities):
         return "", "target_identity_conflict"
     if target_id not in identities:
@@ -235,9 +241,7 @@ def _explicit_sink(rows: List[Dict[str, Any]], nodes: Dict[str, Dict[str, Any]],
 
 
 def _compute_critical_chain_from_loaded_rows(rows: List[Dict[str, Any]], *, target_id: Optional[str] = None) -> Dict[str, Any]:
-    collector = DegradationCollector()
-    nodes = _build_nodes(rows, collector=collector)
-    dropped = _dropped_count((collector.to_counters() or {}).get("bad_time_row_skipped"))
+    nodes, dropped = _build_nodes(rows)
     sink_id = ""
     if target_id is not None:
         sink_id, reason = _explicit_sink(rows, nodes, target_id)
@@ -246,11 +250,11 @@ def _compute_critical_chain_from_loaded_rows(rows: List[Dict[str, Any]], *, targ
     elif not nodes:
         return _empty_result(dropped_count=dropped)
 
-    proc_prev = {key: [value] for key, value in _build_process_prev(nodes).items()}
+    proc_prev = _build_process_prev(nodes)
     return _chain_result(nodes, proc_prev, dropped_count=dropped, sink_id=sink_id)
 
 
-def _chain_result(nodes, proc_prev, *, dropped_count=0, sink_id=""):
+def _chain_result(nodes, proc_prev, *, dropped_count, sink_id=""):
     mach_prev = _build_prev_by_resource(nodes, resource_key="machine_id")
     op_prev = _build_prev_by_resource(nodes, resource_key="operator_id")
 
@@ -278,19 +282,23 @@ def compute_critical_chain_from_dependencies(rows, predecessor_ids):
     Process order breaks equal-time ties and keeps downstream point stages in
     the chain; permanent operation identities keep adoption from changing it.
     """
-    nodes = _build_nodes(rows, include_points=True)
+    nodes, dropped = _build_nodes(rows, include_points=True)
     if not nodes:
-        return _empty_result()
-    previous = {key: [parent for parent in predecessor_ids.get(key, []) if parent in nodes] for key in nodes}
-    counts = {key: len(parents) for key, parents in previous.items()}
+        return _empty_result(dropped_count=dropped)
+    previous: Dict[str, List[str]] = {}
+    counts: Dict[str, int] = {}
     following: Dict[str, List[str]] = {key: [] for key in nodes}
-    for key, parents in previous.items():
-        for parent in parents:
-            following[parent].append(key)
     ready = []
-    for key, count in counts.items():
+    for key, node in nodes.items():
+        parents = [parent for parent in predecessor_ids.get(key, []) if parent in nodes]
+        previous[key] = parents
+        count = len(parents)
+        counts[key] = count
         if count == 0:
-            heappush(ready, (nodes[key]["start"], nodes[key]["end"], nodes[key]["sort_id"], key))
+            heappush(ready, (node["start"], node["end"], node["sort_id"], key))
+        else:
+            for parent in parents:
+                following[parent].append(key)
     order = 0
     while ready:
         _, _, _, key = heappop(ready)
@@ -302,12 +310,9 @@ def compute_critical_chain_from_dependencies(rows, predecessor_ids):
                 heappush(ready, (nodes[child]["start"], nodes[child]["end"], nodes[child]["sort_id"], child))
     if order != len(nodes):
         raise ValueError("工艺前后关系形成循环，无法计算关键链。")
-    return _chain_result(nodes, previous)
+    return _chain_result(nodes, previous, dropped_count=dropped)
 
 
 def compute_critical_chain_from_rows(rows: List[Dict[str, Any]], *, target_id: Optional[str] = None) -> Dict[str, Any]:
     """An explicit sink changes only backtracing, never the full input control graph."""
-    try:
-        return _compute_critical_chain_from_loaded_rows(list(rows or []), target_id=target_id)
-    except Exception:
-        return _unavailable_result("rows_exception")
+    return _compute_critical_chain_from_loaded_rows(list(rows or []), target_id=target_id)

@@ -112,16 +112,20 @@ def _write_contract(tmp_path, contract):
 
 def test_runtime_contract_producer_and_health_share_instance_identity(health_server):
     from web.bootstrap.launcher_contracts import read_runtime_contract_result
-    from web.bootstrap.launcher_paths import _normalize_db_path_for_runtime
-    from web.runtime_host import runtime_identity
+    from web.bootstrap.launcher_health import probe_runtime_health_result
+    from web.runtime_host import normalize_runtime_db_path, runtime_identity
 
     app, client, contract = health_server["app"], health_server["client"], health_server["contract"]
     response = client.get("/system/health")
     assert response.status_code == 200
     body = response.get_json()
+    probed = probe_runtime_health_result(f"http://127.0.0.1:{contract['port']}")
+    assert probed.ok and probed.status == 200
+    assert probed.payload is not None
     for key in ("owner", "pid", "db_path", "instance_id"):
         assert body[key] == contract[key]
-    assert body["db_path"] == _normalize_db_path_for_runtime(app.config["DATABASE_PATH"])
+        assert probed.payload[key] == contract[key]
+    assert body["db_path"] == normalize_runtime_db_path(app.config["DATABASE_PATH"])
     assert not {"db_path_hash", "shutdown_token"}.intersection(body)
     assert contract["shutdown_token"] not in response.get_data(as_text=True)
     app.extensions["workbench_system_restore_recovery"] = True

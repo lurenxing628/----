@@ -1,7 +1,6 @@
 """Read the immutable admission and candidate evidence without installing anything."""
 
 from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.schema_probe import object_sql
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
@@ -14,10 +13,11 @@ from .run_policy import require_admission
 
 
 def require_adoption_schema(conn):
-    if workbench_plan_identity_contract_issues(conn, structure=schema_contract_memo(conn).structure):
+    memo = schema_contract_memo(conn)
+    if memo.get_schema(workbench_plan_identity_contract_issues):
         raise WorkbenchCommandRejected("adoption_schema_unavailable", "正式计划编号结构不完整，无法采用。请联系维护人员。", 503)
     # The legacy allocator's CREATE IF NOT EXISTS must never become a repair path.
-    sql = object_sql(conn, "ScheduleVersionSeq")
+    sql = memo.structure.sql.get("ScheduleVersionSeq")
     if sql is None or "AUTOINCREMENT" not in sql.upper():
         raise WorkbenchCommandRejected("adoption_schema_unavailable", "排版本号用的结构还没装好，不能采用。请联系维护人员。", 503)
 

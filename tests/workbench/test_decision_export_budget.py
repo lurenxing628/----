@@ -14,8 +14,9 @@ from core.models.workbench_action_values import FileDownload
 def test_export_encodes_after_releasing_the_shared_plan_read_slot(monkeypatch, kind, fmt):
     routes = (importlib.import_module("web.routes.workbench.run_decision") if kind == "run" else
               importlib.import_module("web.routes.workbench.decision_history"))
-    owner = routes if kind == "run" else importlib.import_module("core.services.workbench.history.export")
-    reader_name = "read_decision_export" if kind == "run" else "read_history_export"
+    reader_owner = routes if kind == "run" else importlib.import_module("core.services.workbench.history.queries")
+    writer_owner = routes if kind == "run" else importlib.import_module("core.services.workbench.history.export")
+    reader_name = "read_decision_export" if kind == "run" else "read_history_all"
     writer_name = "write_run_decision_export" if kind == "run" else "write_history_export"
     active, steps = [], []
 
@@ -50,8 +51,8 @@ def test_export_encodes_after_releasing_the_shared_plan_read_slot(monkeypatch, k
         return FileDownload("saved.xlsx", "application/octet-stream", b"complete-saved-file", 17)
 
     monkeypatch.setattr(routes.PLAN_READ_SLOTS, "slot", slot)
-    monkeypatch.setattr(owner, reader_name, read)
-    monkeypatch.setattr(owner, writer_name, write)
+    monkeypatch.setattr(reader_owner, reader_name, read)
+    monkeypatch.setattr(writer_owner, writer_name, write)
     monkeypatch.setattr(routes, "write_decision_xlsx", write_xlsx)
     monkeypatch.setattr(routes, "bind_read_snapshot", bind)
     app = Flask(__name__)

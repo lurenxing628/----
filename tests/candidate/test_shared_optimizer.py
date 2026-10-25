@@ -2,11 +2,12 @@
 
 from copy import deepcopy
 from dataclasses import asdict, replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 from functools import partial
 from random import Random
 from time import monotonic
 from types import SimpleNamespace
+from typing import Callable, Union
 from unittest.mock import patch
 
 import pytest
@@ -16,9 +17,11 @@ from core.algorithms import evaluation_completion as evaluation_inputs
 from core.algorithms.evaluation import compute_metrics, objective_score, prepare_evaluation_context
 from core.algorithms.greedy import scheduler as native_scheduler_module
 from core.algorithms.greedy.dispatch.sgs_checkpoint import DecodeCheckpointRequest
+from core.models import Batch, BatchOperation
 from core.models.objective import objective_metric_keys, target_objectives_for
 from core.models.schedule_config_runtime import default_snapshot_values, ensure_schedule_config_snapshot
 from core.models.schedule_config_runtime_snapshot import snapshot_from_values
+from core.services.common.build_outcome import BuildOutcome
 from core.services.scheduler.graph.input_adapter import build_operation_nodes_from_rows
 from core.services.scheduler.graph.metrics import build_node_metrics
 from core.services.scheduler.graph.precedence_builder import build_precedence_graph
@@ -33,6 +36,7 @@ from core.services.scheduler.run.optimizer.graph.iterated_greedy_contract import
     ig_decode_profile,
     new_iterated_greedy_report,
 )
+from core.services.scheduler.run.optimizer.graph.iterated_greedy_iteration import IGIteration
 from core.services.scheduler.run.optimizer.graph.iterated_greedy_moves import _parent_from_candidate
 from core.services.scheduler.run.optimizer.graph.iterated_greedy_reference import capture_reference, decode_reference
 from core.services.scheduler.run.optimizer.graph.iterated_greedy_run import IteratedGreedyRun
@@ -44,20 +48,24 @@ from core.services.scheduler.run.optimizer.graph.stages import GraphSearchState,
 from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
 from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
-    default_weight_profiles,
-    graph_ready_v2_profiles,
+    resolve_v2_profiles_and_summary,
+    resolve_weight_grid_profiles_and_summary,
 )
+from core.services.scheduler.run.optimizer.local_search import LocalSearchStage
 from core.services.scheduler.run.optimizer.local_search_state import LocalSearchState
 from core.services.scheduler.run.optimizer.multi_start import _evaluate_multi_start_candidate
-from core.services.scheduler.run.optimizer.runtime import _default_runtime, _resolve_runtime
+from core.services.scheduler.run.optimizer.runtime import _default_runtime, resolve_runtime
 from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.search_stage import SearchStage
 from core.services.scheduler.run.optimizer.search_state import OptimizerSearchState
 from core.services.scheduler.run.optimizer.shared_archive import SharedScheduleArchive
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget, SharedSearchSkip
 from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession, decode_and_metrics
 from core.services.scheduler.run.schedule_candidate_runner import _business_representative, run_candidate_comparison
 from core.services.scheduler.run.schedule_graph_report import ScheduleGraphDispatchPreparation
+from core.services.scheduler.run.schedule_input_contracts import ScheduleRunInput
 from core.services.scheduler.run.schedule_shared_optimizer import _GoalView, _SharedSearch, optimize_shared_schedule
+from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 from core.services.workbench.run.compute_graph import piece_graph_preparer
 from tests._support.optimizer_graph_ready_benchmark import (
     START_DT,
@@ -92,6 +100,23 @@ class RecordingScheduler(GreedyScheduler):
         results, summary, strategy, params = super().schedule(**kwargs)
         record.update(results=[replace(row) for row in results], summary=deepcopy(summary))
         return results, summary, strategy, params
+
+
+class PausedIteration(IGIteration):
+    """Keep the in-flight trial paused while testing the shared adoption boundary."""
+
+    def step(self) -> bool:
+        return True
+
+
+class CallbackStage(SearchStage):
+    name = "local_search"
+
+    def __init__(self, action: Callable[[], object]) -> None:
+        self.action = action
+
+    def run_task(self) -> None:
+        self.action()
 
 
 def _config(*, mode="improve", graph="on"):
@@ -139,6 +164,25 @@ def _linear_fixture():
     return operations, batches, context, pool, downtime, _fixed_seed()
 
 
+def _comparison_input(*, cfg, calendar, operations, batches, seeds, pool, downtime):
+    batch_operations = [BatchOperation.from_row(vars(operation)) for operation in operations]
+    operation_ids = {operation.id for operation in operations}
+    frozen_ids = {row["op_id"] for row in seeds}
+    return ScheduleRunInput(
+        cfg=cfg, cfg_svc=cfg, cal_svc=calendar, start_dt_norm=START_DT, end_date_norm=None,
+        normalized_batch_ids=list(batches), t0=0.0, readiness_gate_enabled=False,
+        batches={batch_id: Batch(part_no=batch_id, **vars(batch)) for batch_id, batch in batches.items()},
+        operations=batch_operations, missing_internal_resource_op_ids=set(),
+        algo_input_outcome=BuildOutcome(operations), algo_ops=operations, algo_ops_to_schedule=operations,
+        prev_version=0, frozen_op_ids=frozen_ids, seed_results=seeds, execution_facts={},
+        execution_fixed_op_ids=set(), execution_completed_op_ids=set(), execution_seed_results=[],
+        execution_snapshot_revision="fixture", execution_snapshot_op_ids=[], execution_snapshot_op_count=0,
+        schedule_output_allowed_op_ids=operation_ids | frozen_ids, payload_validation_operations=batch_operations,
+        algo_warnings=[], freeze_meta={}, downtime_meta={}, resource_pool_meta={},
+        downtime_map=downtime, resource_pool=pool, optimizer_seed_version=0,
+    )
+
+
 def _piece_fixture(cfg):
     operations = graph_ready_benchmark_operations()
     for op, piece, sequence, machine, operator in (
@@ -160,7 +204,7 @@ def _piece_fixture(cfg):
     prepared = SimpleNamespace(
         operations=[fixed] + operations, batches=batches, algo_ops=[fixed] + operations,
         algo_ops_to_schedule=operations, frozen_op_ids={99}, seed_results=[asdict(seed)],
-        resource_pool=None, cfg=cfg,
+        resource_pool=None, cfg=cfg, piece_scope=build_piece_adoption_scope([fixed] + operations, batches),
     )
     return prepared, seed
 
@@ -228,7 +272,7 @@ def _assert_controlled_worse_reference_keeps_source():
     archive = SharedScheduleArchive("min_overdue", target_objectives_for("min_overdue"), {1, 2, 3}, set(batches))
     session = _SharedSearch(archive=archive, clock=monotonic, started_at=started_at)
     report = OptimizationSearchReportState(
-        algorithm_profile="unified_schedule_optimizer", seed=0, time_budget_seconds=1, objective_name="min_overdue",
+        objective_name="min_overdue",
         started_at=started_at, candidate_clock=monotonic,
         candidate_observer=partial(session.observe, "min_overdue"),
         candidate_acceptance_observer=partial(session.accept, "min_overdue"),
@@ -243,6 +287,7 @@ def _assert_controlled_worse_reference_keeps_source():
     session.sync(view)
     source = view.candidate
     source_id = view.entry_id
+    assert source is not None and source_id is not None
     source_snapshot = archive.entry(source_id)
     source_results = deepcopy(source["results"])
     nodes = build_operation_nodes_from_rows(operations, batches=batches, resource_pool=pool)
@@ -265,7 +310,7 @@ def _assert_controlled_worse_reference_keeps_source():
         calendar_service=scheduler.calendar, resource_pool=pool, downtime_map={}, graph_ready_context=context,
         seed_results=[],
     )
-    profile = ig_decode_profile(graph_ready_v2_profiles(max_candidate_profiles=60)[0][0])
+    profile = ig_decode_profile(resolve_v2_profiles_and_summary(max_candidate_profiles=60)[0][0])
     limits = IteratedGreedyLimits(due_date_seed=False, checkpoint_count=2, max_decodes=2, max_iterations=1)
     ig_report = new_iterated_greedy_report(limits, objective_name="min_overdue")
     owned_seeds, owned_downtime = [], {}
@@ -336,11 +381,19 @@ def _assert_controlled_worse_reference_keeps_source():
 
 
 def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work():
+    from core.services.scheduler.run.optimizer.candidate_profile import derive_grasp_ig_limits
+    from core.services.scheduler.run.optimizer.graph.budget import GraphReadySearchBudget
+    from core.services.scheduler.run.optimizer.graph.iterated_greedy_contract import _BudgetExhausted
+    from core.services.scheduler.run.optimizer.graph.predecode import GraphReadyProfileSearch
+    from core.services.scheduler.run.optimizer.graph.repair import EliteRepairRun
+    from core.services.scheduler.run.optimizer.graph.stages import ProfileStage, RepairStage
+    from core.services.scheduler.run.optimizer.grasp_ig_candidates import GraspIGStage
     from core.services.scheduler.run.optimizer.multi_start import MultiStartStage
     from core.services.scheduler.run.schedule_shared_optimizer import _next_stage
 
     session, view, search, reference, scheduler = _assert_controlled_worse_reference_keeps_source()
     decoder = session.decode_session
+    assert decoder is not None
     now = monotonic()
 
     def clock():
@@ -368,7 +421,7 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
     run.search, run.report, run.started_at = search, search.report, now
     ig = IteratedGreedyStage(run, startup_ready=lambda: True)
     ordinary = MultiStartStage(
-        keys=[SortStrategy.FIFO.value], dispatch_modes=["batch_order"], dispatch_rule_cfg="slack",
+        keys=[SortStrategy.FIFO.value], dispatch_modes=["sgs", "batch_order"], dispatch_rule_cfg="slack",
         valid_dispatch_rules=["slack"], start_dt=START_DT, end_date=None,
         cfg=scheduler.config, resource_pool=decoder.resource_pool,
         objective_name=view.objective, deadline=deadline, t_begin=now - 8.0,
@@ -386,15 +439,160 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
     assert decoder.actual_decoder_calls == before_calls and decoder.skipped_requests == before_skips + 1
     # A previously decoded reference still reuses its checkpoints without admission.
     assert search._decode_entry(reference.order) is reference
+    # MultiStart skips the unaffordable sgs mode once, then still runs the affordable batch_order mode.
+    assert _next_stage(view) is ordinary
+    ordinary.run_task()
+    assert ordinary.available()
+    assert decoder.actual_decoder_calls == before_calls and decoder.skipped_requests == before_skips + 2
     assert _next_stage(view) is ordinary
     ordinary.run_task()
     assert ordinary.efficiency["decoded_candidates"] == 1
-    assert decoder.actual_decoder_calls == before_calls + 1 and decoder.skipped_requests == before_skips + 1
+    assert decoder.actual_decoder_calls == before_calls + 1 and decoder.skipped_requests == before_skips + 2
     assert _next_stage(view) is None
-    assert decoder.skipped_requests == before_skips + 1
     ig.finish()
     assert run.report["status"] == "skipped_by_budget"
     assert run.report["stop_reason"] == "estimated_decode_cost"
+
+    # When sgs_resume + sgs_full exceeds the remaining time (or only one decode slot remains) but a single
+    # verified sgs_full still fits, _score_trial degrades to one full verified decode and never exceeds max_decodes.
+    budget.record_decode("sgs_full", 6.0, unpruned_sgs=True)
+    for _ in range(3):
+        budget.record_decode("sgs_full", 1.0)
+        budget.record_decode("sgs_resume", 0.8)
+        budget.record_decode("batch_order_full", 0.1)
+    capped_limits = replace(search.limits, max_decodes=2)
+    capped_report = new_iterated_greedy_report(capped_limits, objective_name=view.objective)
+    capped_search = _IteratedGreedySearch(
+        limits=capped_limits, parent=old_parent, profile=old_profile, pool=search.pool, evaluate=search.evaluate,
+        metrics_by_op_id=search.metrics, start_dt=search.start_dt, seed=2, deadline=deadline, clock=clock,
+        t_begin=now - 8.0, attempts=[], improvement_trace=[], report_state=view.report, strict_mode=True,
+        report=capped_report, operations=search.operations, graph_context=search.graph_context, decode_session=decoder,
+    )
+    capped_search.best, capped_search.reference = reference.candidate, reference
+    before_calls, before_skips = decoder.actual_decoder_calls, decoder.skipped_requests
+    trial_order = (reference.order[0], reference.order[2], reference.order[1])
+    assert capped_search.checkpoints.best_for(reference.checkpoints, base_order=reference.order, trial_order=trial_order) is not None
+    assert not budget.can_afford_decode("sgs_resume", reserve_full=True)
+    assert budget.can_afford_decode("sgs_full")
+    scored = capped_search._score_trial(trial_order, reference)
+    assert scored is not None and not capped_search.pending_outputs
+    assert capped_report["decodes"] == 1
+    assert decoder.actual_decoder_calls == before_calls + 1 and decoder.skipped_requests == before_skips
+    for _ in range(3):
+        budget.record_decode("sgs_resume", 0.1)
+    assert budget.can_afford_decode("sgs_resume", reserve_full=True)
+    next_order = (reference.order[2], reference.order[0], reference.order[1])
+    assert capped_search._score_trial(next_order, reference) is not None
+    assert not capped_search.pending_outputs and capped_report["decodes"] == capped_limits.max_decodes == 2
+    with pytest.raises(_BudgetExhausted) as cap_hit:
+        capped_search._decode((reference.order[1], reference.order[0], reference.order[2]))
+    assert cap_hit.value.reason == "decode_budget"
+    assert capped_report["decodes"] == capped_limits.max_decodes
+
+    # LocalSearchStage tracks cost rejections per dispatch_mode: when sgs is unaffordable and best adopts
+    # an affordable batch_order candidate, local search restarts into batch_order and switches VNS neighborhoods.
+    assert view.candidate is not None
+    sgs_best = dict(view.candidate, dispatch_mode="sgs", dispatch_rule="slack")
+    batch_best = dict(view.candidate, dispatch_mode="batch_order", dispatch_rule="slack",
+                      order=["B3", "B1", "B2"])
+    mode_stage = LocalSearchStage(
+        best=sgs_best, version=0, deadline=deadline, batches=decoder.batches,
+        start_dt=START_DT, end_date=None, dispatch_mode_cfg="sgs", dispatch_rule_cfg="slack",
+        resource_pool=decoder.resource_pool, objective_name=view.objective, attempts=[], improvement_trace=[],
+        optimizer_algo_stats=None, t_begin=now - 8.0, readiness_gate_enabled=False, strict_mode=True,
+        clock=clock, rng_factory=Random, search_report_state=view.report, decode_session=decoder,
+    )
+    assert mode_stage.vns_state.neighborhoods == ("sgs_dispatch_rule",)
+    mode_stage.run_task()
+    assert not mode_stage.available() and mode_stage.unavailable_reason() == "estimated_decode_cost"
+    mode_stage.best = batch_best
+    assert mode_stage.available() and mode_stage.pending_restart
+    mode_stage.run_task()
+    assert mode_stage.available()
+    assert mode_stage.strategy_state[2] == "batch_order"
+    assert mode_stage.vns_state.neighborhoods != ("sgs_dispatch_rule",)
+
+    # When every decode kind exceeds the remaining time, each stage stops on its first budget rejection
+    # instead of staying available and tail-spinning across thousands of no-decode actions.
+    for _ in range(3):
+        budget.record_decode("batch_order_full", 6.0)
+        budget.record_decode("sgs_full", 6.0, unpruned_sgs=True)
+        budget.record_decode("sgs_resume", 6.0)
+    local_stage = LocalSearchStage(
+        best=view.candidate, version=0, deadline=deadline, batches=decoder.batches,
+        start_dt=START_DT, end_date=None, dispatch_mode_cfg="sgs", dispatch_rule_cfg="slack",
+        resource_pool=decoder.resource_pool, objective_name=view.objective, attempts=[], improvement_trace=[],
+        optimizer_algo_stats=None, t_begin=now - 8.0, readiness_gate_enabled=False, strict_mode=True,
+        clock=clock, rng_factory=Random, search_report_state=view.report, decode_session=decoder,
+    )
+    grasp_stage = GraspIGStage(
+        version=7, candidate_construction=derive_grasp_ig_limits(10),
+        start_dt=START_DT, end_date=None, base_strategy=SortStrategy.FIFO, base_params={},
+        build_order=lambda strategy, params: list(reversed(decoder.batches)), dispatch_rule_cfg="cr",
+        resource_pool=decoder.resource_pool, objective_name=view.objective, deadline=deadline,
+        optimizer_algo_stats=None, t_begin=now - 8.0, readiness_gate_enabled=False, strict_mode=True,
+        clock=clock, rng_factory=Random, search_report_state=view.report, state=view.state, decode_session=decoder,
+    )
+    graph_budget = GraphReadySearchBudget(deadline=deadline, clock=clock)
+    profiles = resolve_v2_profiles_and_summary(max_candidate_profiles=60)[0][5:7]
+    graph_evaluate = partial(search.evaluate, decode_session=decoder)
+    profile_search = GraphReadyProfileSearch(evaluate=graph_evaluate, budget=graph_budget, profile_count=len(profiles))
+    repair_pool = EliteRepairPool(
+        limits=EliteRepairLimits(enabled=True), objective_name=view.objective, operations=search.operations,
+        metrics_by_op_id=search.metrics, start_dt=START_DT, seed=0, best=view.candidate, report_state=view.report,
+        graph_context=search.graph_context, resource_pool=decoder.resource_pool, decode_session=decoder,
+    )
+    assert view.candidate is not None
+    repair_pool.observe(view.candidate, profiles[0])
+    profile_stage = ProfileStage(
+        profiles=profiles, search=profile_search, pool=repair_pool, state=state,
+        order=list(decoder.batches), strict_mode=True, base_strategy=SortStrategy.FIFO,
+        dispatch_rule_cfg="slack", attempts=[], improvement_trace=[], search_report_state=view.report,
+        clock=clock, t_begin=now - 8.0,
+    )
+    repair_run = EliteRepairRun(
+        pool=repair_pool, state=state, evaluate=graph_evaluate, budget=graph_budget,
+        deadline=deadline, clock=clock, t_begin=now - 8.0, attempts=[], improvement_trace=[],
+        report_state=view.report, strict_mode=True,
+    )
+    repair_stage = RepairStage(repair_run)
+    trial_report = new_iterated_greedy_report(search.limits, objective_name=view.objective)
+    trial_search = _IteratedGreedySearch(
+        limits=search.limits, parent=old_parent, profile=old_profile, pool=repair_pool, evaluate=search.evaluate,
+        metrics_by_op_id=search.metrics, start_dt=search.start_dt, seed=1, deadline=deadline, clock=clock,
+        t_begin=now - 8.0, attempts=[], improvement_trace=[], report_state=view.report, strict_mode=True,
+        report=trial_report, operations=search.operations, graph_context=search.graph_context, decode_session=decoder,
+    )
+    trial_search.best, trial_search.reference = reference.candidate, reference
+    trial_run = IteratedGreedyRun(
+        limits=search.limits, state=state, parent_profile=lambda candidate: old_profile,
+        pool=repair_pool, evaluate=search.evaluate, operations=search.operations, graph_context=search.graph_context,
+        metrics_by_op_id=search.metrics, objective_name=view.objective, start_dt=search.start_dt,
+        seed=1, deadline=deadline, clock=clock, t_begin=now - 8.0, attempts=[], improvement_trace=[],
+        report_state=view.report, strict_mode=True, decode_session=decoder,
+    )
+    trial_run.search, trial_run.report, trial_run.started_at = trial_search, trial_report, now
+    trial_run.iteration = IGIteration(trial_search)
+    trial_ig_stage = IteratedGreedyStage(trial_run, startup_ready=lambda: True)
+    view.stages = [local_stage, grasp_stage, profile_stage, repair_stage, trial_ig_stage]
+    for stage in list(view.stages):
+        assert _next_stage(view) is stage
+        stage.run_task()
+        assert not stage.available()
+        assert stage.unavailable_reason() == "estimated_decode_cost"
+    assert _next_stage(view) is None
+    assert budget.select_goal(()) is None
+    assert budget.should_stop() == "search_exhausted"
+
+
+def test_piece_graph_repeats_sequences_per_piece_without_duplicate_seq_warnings():
+    """回归：两个分件各自使用 seq=20/30，分件图分析不能把它们当成同批重复顺序号。"""
+    prepared, _seed = _piece_fixture(_config(mode="greedy", graph="off"))
+    preparation = piece_graph_preparer(prepared)(prepared)
+    public, diagnostics = preparation.graph_analysis_public, preparation.graph_analysis_diagnostics
+    assert public is not None and diagnostics is not None
+    assert public["warning_count"] == 0
+    assert diagnostics["warnings_sample"] == []
 
 
 def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece_dag(monkeypatch, record_property):
@@ -402,25 +600,25 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
 
     from core.services.scheduler.run.optimizer.graph import candidates as graph_candidates
     from core.services.scheduler.run.optimizer.search_budget import SearchBudget
-    from core.services.scheduler.run.schedule_optimizer_steps import _run_ortools_warmstart
+    from core.services.scheduler.run.schedule_optimizer_steps import run_ortools_warmstart
 
     default = _default_runtime()
     assert tuple(field.name for field in fields(default)) == (
         "scheduler_factory", "clock", "rng_factory", "run_ortools_warmstart")
     assert default.clock is monotonic and default.rng_factory is Random
-    assert default.run_ortools_warmstart is _run_ortools_warmstart
+    assert default.run_ortools_warmstart is run_ortools_warmstart
     assert isinstance(default.scheduler_factory(calendar_service=ContinuousCalendar(), config_service=_config()), GreedyScheduler)
-    assert _resolve_runtime(default, None) is default
+    assert resolve_runtime(default, None) is default
 
     def budget_clock():
         return 100.0
 
     runtime_budget = SearchBudget(clock=budget_clock, started_at=100.0, deadline=101.0, assigned_seconds=1.0)
-    resolved = _resolve_runtime(default, runtime_budget)
+    resolved = resolve_runtime(default, runtime_budget)
     assert resolved is not default and resolved.clock is budget_clock and default.clock is monotonic
     assert all(getattr(resolved, field) is getattr(default, field) for field in (
         "scheduler_factory", "rng_factory", "run_ortools_warmstart"))
-    assert _resolve_runtime(None, runtime_budget).clock is budget_clock
+    assert resolve_runtime(None, runtime_budget).clock is budget_clock
 
     prepared_scopes = []
     original_scope_payload = shared_process.score_scope_payload
@@ -462,8 +660,9 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
     assert not scheduler.calls[0]["decode_checkpoints"]
     assert (operations, batches, context, pool, downtime, seed) == original
     assert shared.target_objectives == target_objectives_for("min_overdue")
-    assert shared.primary_outcome.summary.success and shared.primary_outcome.summary.failed_ops == 0
-    _assert_arrangement(shared.primary_outcome.results, operations=operations, seed=seed, context=context,
+    primary_materialized = shared.archive.materialize(shared.archive.best_by_objective[shared.target_objectives[0]])
+    assert primary_materialized["summary"].success and primary_materialized["summary"].failed_ops == 0
+    _assert_arrangement(primary_materialized["results"], operations=operations, seed=seed, context=context,
                         pool=pool, downtime=downtime)
     facts = shared.process_facts
     assert facts["initial_construction_count"] == 1
@@ -483,6 +682,11 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
     verified_events = [event for event in facts["events"] if event["event_type"] == "archive_observation"
                        and event["verified"] and event["entry_id"] is not None]
     assert verified_events and verified_events[0]["entry_id"] == initial_id
+    # A first decode carries its own integer runtime_ms, which binds as the request's source runtime.
+    first_decode_runtimes = [(event["phase"], event["decode_receipt"]["source_runtime_ms"]) for event in verified_events
+                             if event["decode_receipt"]["execution_kind"] == "new_decision"]
+    assert "multi_start" in {phase for phase, runtime in first_decode_runtimes if runtime is not None}
+    assert all(type(runtime) is int for _phase, runtime in first_decode_runtimes if runtime is not None)
     for event in verified_events:
         assert set(event["evaluations"]) == set(shared.target_objectives)
         assert event["phase"] and event["origin"]
@@ -582,7 +786,8 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
         assert opportunity["minimum_opportunity"] is any(
             action["search_objective"] == objective and action["new_decisions"] > 0
             and not action["initial_construction"] for action in ordinary_facts["actions"])
-    _assert_arrangement(ordinary.primary_outcome.results, operations=operations, seed=seed,
+    ordinary_primary = ordinary.archive.materialize(ordinary.archive.best_by_objective[ordinary.target_objectives[0]])
+    _assert_arrangement(ordinary_primary["results"], operations=operations, seed=seed,
                         context=context, pool=pool, downtime=downtime)
 
     # Graph-off piece work still carries its real fanout/join DAG into the unique ordinary SGS start.
@@ -611,8 +816,9 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
     assert piece_call["graph_ready_context"]["fixed_op_ids"] == {99}
     assert set(piece_call["graph_ready_context"]["predecessor_op_ids_by_op_id"][100]) == {3, 4}
     assert not piece_call["decode_checkpoints"] and not piece_call["decode_resume"]
-    assert piece.primary_outcome.summary.success and piece.primary_outcome.summary.failed_ops == 0
-    _assert_arrangement(piece.primary_outcome.results, operations=prepared.algo_ops_to_schedule,
+    piece_primary = piece.archive.materialize(piece.archive.best_by_objective[piece.target_objectives[0]])
+    assert piece_primary["summary"].success and piece_primary["summary"].failed_ops == 0
+    _assert_arrangement(piece_primary["results"], operations=prepared.algo_ops_to_schedule,
                         seed=piece_seed, context=piece_call["graph_ready_context"], pool=None, downtime={})
     assert piece.process_facts["initial_construction_count"] == 1
     assert piece.process_facts["graph_preparation_calls"] == 1
@@ -628,10 +834,9 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
         (ordinary, ordinary_cfg, operations, batches, [asdict(seed)], pool, downtime, ordinary_created),
         (piece, piece_cfg, prepared.algo_ops_to_schedule, prepared.batches, prepared.seed_results, None, {}, piece_created),
     ):
-        env = SimpleNamespace(cfg=actual_cfg, cfg_svc=actual_cfg, cal_svc=actual_created[0].calendar,
-            algo_ops_to_schedule=actual_ops, batches=actual_batches, seed_results=actual_seeds,
-            resource_pool=actual_pool, downtime_map=actual_downtime, optimizer_seed_version=0,
-            start_dt_norm=START_DT, end_date_norm=None, readiness_gate_enabled=False)
+        env = _comparison_input(cfg=actual_cfg, calendar=actual_created[0].calendar,
+            operations=actual_ops, batches=actual_batches, seeds=actual_seeds,
+            pool=actual_pool, downtime=actual_downtime)
         decoder_count = len(actual_created[0].calls)
         with patch("core.services.scheduler.run.schedule_candidate_runner.optimize_shared_schedule", return_value=actual) as solve:
             public = run_candidate_comparison(schedule_input=env, strict_mode=True)
@@ -651,6 +856,8 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
         assert [plan.candidate_key for plan in public.candidates] == ["business_" + str(index + 1) for index in range(len(entry_ids))]
         for plan, entry_id in zip(public.candidates, entry_ids):
             entry = actual.archive.entry(entry_id)
+            assert public.primary_objective is not None
+            assert plan.search_evidence_ref is not None and plan.origin is not None
             assert plan.kind == "business_objective" and plan.status == "completed" and plan.health is None
             assert schedule_content_key(plan.results) == entry.content_key
             assert plan.score == entry.evaluations[public.primary_objective].score
@@ -709,10 +916,8 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
             timer.value += 1.05 if seconds > 1 else 0.04
             return ScheduleGraphDispatchPreparation(None, None, None)
 
-        env = SimpleNamespace(cfg=ordinary_cfg, cfg_svc=ordinary_cfg, cal_svc=ContinuousCalendar(),
-            algo_ops_to_schedule=operations, batches=batches, seed_results=[asdict(seed)],
-            resource_pool=pool, downtime_map=downtime, optimizer_seed_version=0,
-            start_dt_norm=START_DT, end_date_norm=None, readiness_gate_enabled=False)
+        env = _comparison_input(cfg=ordinary_cfg, calendar=ContinuousCalendar(),
+            operations=operations, batches=batches, seeds=[asdict(seed)], pool=pool, downtime=downtime)
         with patch("core.services.scheduler.run.schedule_shared_optimizer.SharedSearchBudget", side_effect=build_shared_budget):
             fractional = run_candidate_comparison(schedule_input=env, strict_mode=True,
                 optimize_shared_schedule_fn=solve_once, prepare_graph_fn=prepare_without_graph,
@@ -723,6 +928,7 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
         assert shared_budget["configured_seconds"] == run_budget.assigned_seconds == seconds
         assert fractional.run_time_budget_seconds == seconds
         assert all(plan.time_budget_seconds == seconds for plan in fractional.candidates)
+        assert fractional.unified_process is not None
         assert fractional.unified_process["budget"]["configured_seconds"] == seconds
         assert fractional.unified_process["counts"]["actual_decoder_calls"] == len(decode_starts) >= 1
         assert all(start < run_budget.deadline for start in decode_starts)
@@ -759,19 +965,22 @@ def test_shared_decode_preserves_optimizer_and_current_parameter_fallbacks(missi
         seed_results=[], downtime_map=downtime, resource_pool=pool, clock=monotonic,
         started_at=started, deadline=started + 10, start_dt=START_DT,
     )
-    kwargs = dict(decode_session=session, objective_name=targets[0], optimizer_algo_stats=optimizer_stats,
+    decode = partial(decode_and_metrics, decode_session=session, objective_name=targets[0], optimizer_algo_stats=optimizer_stats,
                   strategy=config.strategy_enum, strategy_params=config.strategy_params,
                   batch_order_override=list(batches), dispatch_mode="sgs", dispatch_rule="slack")
     parsed_stats = {counter: 1, "start_dt_parsed_count": 1}
-    parsed = decode_and_metrics(start_dt=START_DT.strftime("%Y-%m-%d %H:%M:%S"), **kwargs)
-    parsed_reused = decode_and_metrics(start_dt=START_DT.strftime("%Y-%m-%d %H:%M:%S"), **kwargs)
+    parsed = decode(start_dt=START_DT.strftime("%Y-%m-%d %H:%M:%S"))
+    parsed_reused = decode(start_dt=START_DT.strftime("%Y-%m-%d %H:%M:%S"))
+    assert parsed.receipt is not None and parsed_reused.receipt is not None
+    assert parsed.entry_id is not None
     assert parsed.algo_stats["param_fallbacks"] == parsed_reused.algo_stats["param_fallbacks"] == parsed_stats
     assert parsed.receipt["actual_decoder_calls"] == 1
     assert parsed_reused.receipt["execution_kind"] == "decision_reused"
 
     # The datetime request has no native fallback; reuse must not copy the archive's parsed-time counter.
-    direct = decode_and_metrics(start_dt=START_DT, **kwargs)
-    direct_reused = decode_and_metrics(start_dt=START_DT, **kwargs)
+    direct = decode(start_dt=START_DT)
+    direct_reused = decode(start_dt=START_DT)
+    assert direct.receipt is not None and direct_reused.receipt is not None
     assert direct.entry_id == direct_reused.entry_id == parsed.entry_id
     assert direct.algo_stats["param_fallbacks"] == direct_reused.algo_stats["param_fallbacks"] == {counter: 1}
     assert direct.receipt["actual_decoder_calls"] == 1
@@ -785,7 +994,7 @@ def test_shared_decode_ledger_reuses_effective_requests_and_restores_only_explic
     operations, batches, context, pool, downtime, seed = _linear_fixture()
     scheduler = RecordingScheduler(calendar_service=ContinuousCalendar(), config_service=_config())
     seed_results, order = [seed], list(batches)
-    profile = default_weight_profiles(max_weight_profiles=9)[0][-1]
+    profile = resolve_weight_grid_profiles_and_summary(max_weight_profiles=9)[0][-1]
     metrics_by_op_id = context["node_metrics_by_op_id"]
     context = context_for_profile(graph_ready_context=context, metrics_by_op_id=metrics_by_op_id, profile=profile)
     targets = target_objectives_for("min_overdue")
@@ -797,19 +1006,16 @@ def test_shared_decode_ledger_reuses_effective_requests_and_restores_only_explic
         budget = SharedSearchBudget(clock=monotonic, started_at=started_at, deadline=started_at + 10,
                                     target_objectives=targets, configured_seconds=10)
         shared = _SharedSearch(archive=archive, clock=monotonic, started_at=started_at)
-        shared.decode_session = SharedDecodeSession(
+        decoder = SharedDecodeSession(
             archive=archive, budget=budget, scheduler=scheduler, operations=operations, batches=batches,
             seed_results=seed_results, downtime_map=downtime, resource_pool=pool, graph_ready_context=context,
             clock=monotonic, started_at=started_at, deadline=started_at + 10, event_sink=shared.record_event,
             start_dt=START_DT,
         )
-        return shared, archive, budget
+        shared.decode_session = decoder
+        return shared, archive, budget, decoder
 
-    shared, archive, budget = make_session()
-    common = dict(scheduler=scheduler, strict_mode=True, algo_ops_to_schedule=operations, batches=batches,
-                  strategy=SortStrategy.FIFO, params={}, start_dt=START_DT, end_date=None, downtime_map=downtime,
-                  order=order, seed_sr_list=seed_results, dispatch_rule="slack", resource_pool=pool,
-                  optimizer_algo_stats=None, readiness_gate_enabled=False, graph_ready_context=context)
+    shared, archive, budget, decoder = make_session()
 
     def observe(candidate, objective="min_overdue", origin="ledger_native", verified=True):
         shared.search_objective = objective
@@ -817,17 +1023,22 @@ def test_shared_decode_ledger_reuses_effective_requests_and_restores_only_explic
                        elapsed_ms=max(int((monotonic() - started_at) * 1000), 0))
         return candidate
 
-    def decode_candidate(*, objective="min_overdue", verified=True, origin="ledger_native", **overrides):
-        kwargs = dict(strategy=SortStrategy.FIFO, strategy_params={},
-                      start_dt=START_DT, end_date=None, batch_order_override=order,
-                      dispatch_mode="sgs", dispatch_rule="slack", strict_mode=True, readiness_gate_enabled=False,
-                      graph_enabled=True, graph_score_enabled=context["score_enabled"],
-                      graph_priority_key_by_op_id=context["graph_priority_key_by_op_id"])
-        kwargs.update(overrides)
-        decoded = decode_and_metrics(decode_session=shared.decode_session, objective_name=objective, **kwargs)
+    def decode_candidate(*, objective="min_overdue", verified=True, origin="ledger_native", start_dt: Union[datetime, str] = START_DT,
+                         end_date=None, dispatch_rule="slack", graph_priority_key_by_op_id=context["graph_priority_key_by_op_id"],
+                         operation_resources=None, resource_pair_rank=None, decode_resume=None,
+                         decode_checkpoints=None, redecode_reason=None):
+        decoded = decode_and_metrics(
+            decode_session=decoder, objective_name=objective, strategy=SortStrategy.FIFO, strategy_params={},
+            start_dt=start_dt, end_date=end_date, batch_order_override=order, dispatch_mode="sgs", dispatch_rule=dispatch_rule,
+            strict_mode=True, readiness_gate_enabled=False, graph_enabled=True, graph_score_enabled=context["score_enabled"],
+            graph_priority_key_by_op_id=graph_priority_key_by_op_id, operation_resources=operation_resources,
+            resource_pair_rank=resource_pair_rank, decode_resume=decode_resume, decode_checkpoints=decode_checkpoints,
+            redecode_reason=redecode_reason,
+        )
+        assert decoded.receipt is not None
         candidate = dict(results=decoded.results, summary=decoded.summary, metrics=decoded.metrics,
                          strategy=decoded.used_strategy, params=decoded.used_params, algo_stats=decoded.algo_stats,
-                         dispatch_mode=kwargs["dispatch_mode"], dispatch_rule=kwargs["dispatch_rule"], order=order,
+                         dispatch_mode="sgs", dispatch_rule=dispatch_rule, order=order,
                          resource_pool=pool, decode_receipt=decoded.receipt,
                          runtime_ms=decoded.receipt["source_runtime_ms"] or decoded.receipt["original_decode_ms"],
                          score=(float(decoded.summary.failed_ops),) + objective_score(objective, decoded.metrics),
@@ -837,21 +1048,22 @@ def test_shared_decode_ledger_reuses_effective_requests_and_restores_only_explic
     with patch("core.services.scheduler.run.optimizer.shared_decode.compute_metrics", wraps=compute_metrics) as metrics:
         shared.phase = "multi_start"
         source = _evaluate_multi_start_candidate(
-            dispatch_mode="sgs", objective_name=targets[0], decode_session=shared.decode_session,
-            **{k: v for k, v in common.items()
-               if k not in ("scheduler", "algo_ops_to_schedule", "batches", "downtime_map", "seed_sr_list")},
+            dispatch_mode="sgs", objective_name=targets[0], decode_session=decoder,
+            strict_mode=True, strategy=SortStrategy.FIFO, params={}, start_dt=START_DT, end_date=None,
+            order=order, dispatch_rule="slack", resource_pool=pool, optimizer_algo_stats=None,
+            readiness_gate_enabled=False, graph_ready_context=context,
         )
         observe(source, origin="ordinary_multi_start")
         source_id = source["_shared_entry_id"]
         source_entry = archive.entry(source_id)
         shared.phase = "graph_ready_candidate_search"
         # Two real caller families and two targets form exactly the same SGS request.
-        graph_common = {key: value for key, value in dict(common, strategy=SortStrategy.DUE_DATE_FIRST).items()
-                        if key not in ("scheduler", "batches", "downtime_map", "seed_sr_list")}
         reused = evaluate_graph_ready_candidate(
             profile=profile, metrics_by_op_id=metrics_by_op_id, objective_name=targets[1],
-            version=7, clock=monotonic,
-            decode_session=shared.decode_session, **graph_common,
+            version=7, clock=monotonic, decode_session=decoder, strict_mode=True, algo_ops_to_schedule=operations,
+            graph_ready_context=context, strategy=SortStrategy.DUE_DATE_FIRST, params={}, start_dt=START_DT,
+            end_date=None, order=order, dispatch_rule="slack", resource_pool=pool, optimizer_algo_stats=None,
+            readiness_gate_enabled=False,
         )
         observe(reused, objective=targets[1], origin=profile.candidate_origin)
         assert reused["decode_receipt"]["execution_kind"] == "decision_reused"
@@ -888,15 +1100,14 @@ def test_shared_decode_ledger_reuses_effective_requests_and_restores_only_explic
         tied = decode_candidate(graph_priority_key_by_op_id=changed_tie["graph_priority_key_by_op_id"])
         atc_one = decode_candidate(dispatch_rule="atc:k=1")
         atc_four = decode_candidate(dispatch_rule="atc:k=4")
-        ranked_pool = deepcopy(pool)
-        ranked_pool["pair_rank"] = {("OP-BENCH", "MC-BENCH"): 1, ("OP-ALT", "MC-ALT"): 2}
-        ranked = decode_candidate(resource_pair_rank=ranked_pool["pair_rank"])
-        ranked_pool["pair_rank"][("OP-ALT", "MC-ALT")] = 1
-        changed_rank = decode_candidate(resource_pair_rank=ranked_pool["pair_rank"])
+        pair_rank = {("OP-BENCH", "MC-BENCH"): 1, ("OP-ALT", "MC-ALT"): 2}
+        ranked = decode_candidate(resource_pair_rank=pair_rank)
+        pair_rank[("OP-ALT", "MC-ALT")] = 1
+        changed_rank = decode_candidate(resource_pair_rank=pair_rank)
         decisions = (source, tied, atc_one, atc_four, ranked, changed_rank)
         assert len({candidate["decode_receipt"]["request_id"] for candidate in decisions}) == 6
         assert all(candidate["decode_receipt"]["actual_decoder_calls"] == 1 for candidate in decisions)
-        assert metrics.call_count == len(scheduler.calls) == shared.decode_session.new_decisions == 7
+        assert metrics.call_count == len(scheduler.calls) == decoder.new_decisions == 7
 
         captured = []
         capture = decode_candidate(decode_checkpoints=DecodeCheckpointRequest([1], captured.append),
@@ -909,13 +1120,13 @@ def test_shared_decode_ledger_reuses_effective_requests_and_restores_only_explic
         assert trial["decode_receipt"]["execution_kind"] == "trial_decode" and not trial["decode_receipt"]["verified"]
         assert "observation_bound" not in trial["decode_receipt"]
         assert archive.retained_entry_ids == retained_before_trial
-        assert shared.decode_session.actual_decoder_calls == metrics.call_count == len(scheduler.calls) == 9
-        assert shared.decode_session.new_decisions == 7 and shared.decode_session.reused_decisions == 3
+        assert decoder.actual_decoder_calls == metrics.call_count == len(scheduler.calls) == 9
+        assert decoder.new_decisions == 7 and decoder.reused_decisions == 3
         assert budget.summary()["actual_decoder_count"] == 9
 
         # Evicted completed decisions remain seen. A real exploration-parent restore
         # keeps its original identity and first-found time without rewarding progress.
-        shared, archive, budget = make_session(retention_limit=1)
+        shared, archive, budget, decoder = make_session(retention_limit=1)
         forced = deepcopy(operations)
         for op in forced[2:]:
             op.machine_id, op.operator_id = "MC-BENCH", "OP-BENCH"
@@ -933,6 +1144,7 @@ def test_shared_decode_ledger_reuses_effective_requests_and_restores_only_explic
         with pytest.raises(SharedSearchSkip) as seen:
             decode_candidate(operation_resources={op.id: (op.machine_id, op.operator_id) for op in forced})
         assert seen.value.reason == "seen_without_payload"
+        assert seen.value.receipt is not None
         assert seen.value.receipt["actual_decoder_calls"] == 0
         assert len(scheduler.calls) == before_calls and metrics.call_count == before_metrics
         with archive.retention_scope():
@@ -944,8 +1156,8 @@ def test_shared_decode_ledger_reuses_effective_requests_and_restores_only_explic
         assert archive.entry(old_id).first_found_elapsed_ms == old_entry.first_found_elapsed_ms
         assert archive.best_by_objective[targets[0]] == better_id
         assert shared.events[-1]["restored"] and shared.events[-1]["improved_objectives"] == []
-        assert shared.decode_session.new_decisions == 2
-        assert shared.decode_session.actual_decoder_calls == budget.summary()["actual_decoder_count"] == 3
+        assert decoder.new_decisions == 2
+        assert decoder.actual_decoder_calls == budget.summary()["actual_decoder_count"] == 3
         assert len(scheduler.calls) == before_calls + 1 and metrics.call_count == before_metrics + 1
 
     assert all(not call["prepared_inputs"] for call in scheduler.calls)
@@ -953,7 +1165,7 @@ def test_shared_decode_ledger_reuses_effective_requests_and_restores_only_explic
     # Native calls share one static evaluation and downtime preparation. Changed
     # output still changes completion; an injected callable keeps its old kwargs.
     scheduler = GreedyScheduler(calendar_service=ContinuousCalendar(), config_service=_config())
-    native_kwargs = dict(strategy=SortStrategy.FIFO, strategy_params={}, start_dt=START_DT, end_date=None,
+    native_decode = partial(decode_and_metrics, strategy=SortStrategy.FIFO, strategy_params={}, start_dt=START_DT, end_date=None,
                          batch_order_override=order, dispatch_mode="sgs", dispatch_rule="slack",
                          strict_mode=True, readiness_gate_enabled=False, graph_enabled=True,
                          graph_score_enabled=context["score_enabled"],
@@ -967,29 +1179,30 @@ def test_shared_decode_ledger_reuses_effective_requests_and_restores_only_explic
             patch.object(native_scheduler_module, "_normalize_machine_downtimes",
                          wraps=native_scheduler_module._normalize_machine_downtimes) as normalized, \
             patch("core.services.scheduler.run.optimizer.shared_decode.compute_metrics", wraps=compute_metrics) as metrics:
-        shared, archive, budget = make_session()
+        shared, archive, budget, decoder = make_session()
         assert preparation.call_count == expected.call_count == normalized.call_count == 1
         assert priorities.call_count == due.call_count == len(batches)
-        assert shared.decode_session.native_preparation.normalized_machine_downtimes == downtime
+        assert decoder.native_preparation.normalized_machine_downtimes == downtime
         complete = decode_candidate()
-        partial = decode_candidate(end_date=START_DT.date())
+        partial_candidate = decode_candidate(end_date=START_DT.date())
         assert complete["results"] == source["results"]
         assert complete["metrics"].completion.objective_defined
-        assert partial["metrics"].completion.missing_operation_count > 0
-        assert not partial["metrics"].completion.objective_defined
-        assert partial["metrics"].completion.expected_operation_count == complete["metrics"].completion.expected_operation_count
-        assert shared.decode_session.actual_decoder_calls == metrics.call_count == scheduler._decode_invocations == 2
+        assert partial_candidate["metrics"].completion.missing_operation_count > 0
+        assert not partial_candidate["metrics"].completion.objective_defined
+        assert partial_candidate["metrics"].completion.expected_operation_count == complete["metrics"].completion.expected_operation_count
+        assert decoder.actual_decoder_calls == metrics.call_count == scheduler._decode_invocations == 2
         assert normalized.call_count == 1
         assert decode_candidate(end_date=START_DT.date())["decode_receipt"]["execution_kind"] == "decision_reused"
         assert metrics.call_count == 2
 
         # A partial-only publication archive consumes the same validated native output.
-        partial_entry = archive.entry(partial["_shared_entry_id"])
+        partial_entry = archive.entry(partial_candidate["_shared_entry_id"])
         assert partial_entry.score_scope.components_known and not partial_entry.score_scope.is_complete
         publication_archive = SharedScheduleArchive(targets[0], targets, archive.expected_operation_ids, archive.batch_ids)
-        published = publication_archive.register_decode(partial, verified=True,
+        published = publication_archive.register_decode(partial_candidate, verified=True,
             elapsed_ms=partial_entry.first_found_elapsed_ms)
-        publication_archive.finish_observation(published, partial, origin=partial_entry.evidence_origin)
+        publication_archive.finish_observation(published, partial_candidate, origin=partial_entry.evidence_origin)
+        assert published.entry_id is not None
         publication_entry = publication_archive.entry(published.entry_id)
         publication_search = _SharedSearch(archive=publication_archive, clock=monotonic, started_at=started_at)
         partial_public = _business_representative(
@@ -999,13 +1212,13 @@ def test_shared_decode_ledger_reuses_effective_requests_and_restores_only_explic
             publication_entry, sequence=0, primary=targets[0], targets=targets, cfg=scheduler.config,
             preparation=None, total_budget=1.0)
         assert partial_public.status == "completed" and partial_public.representative_objectives == list(targets)
-        assert partial_public.results == partial["results"] and partial_public.summary == partial["summary"]
+        assert partial_public.results == partial_candidate["results"] and partial_public.summary == partial_candidate["summary"]
         assert partial_public.score == partial_entry.evaluations[targets[0]].score
         for target, evaluation in partial_public.evaluations.items():
             assert evaluation["field_order"] == ["failed_ops"] + list(objective_metric_keys(target))
             assert evaluation["score"] == list(partial_entry.evaluations[target].score)
             assert evaluation["scoring_scope"]["components_known"] and not evaluation["scoring_scope"]["is_complete"]
-            assert set(evaluation["scoring_scope"]["scheduled_operation_ids"]) == {row.op_id for row in partial["results"]}
+            assert set(evaluation["scoring_scope"]["scheduled_operation_ids"]) == {row.op_id for row in partial_candidate["results"]}
         assert metrics.call_count == 2 and scheduler._decode_invocations == 2
 
         injected_kwargs = []
@@ -1019,14 +1232,14 @@ def test_shared_decode_ledger_reuses_effective_requests_and_restores_only_explic
             operations=operations, batches=batches, seed_results=seed_results, downtime_map=downtime,
             resource_pool=pool, graph_ready_context=context, clock=monotonic, started_at=started_at,
             deadline=started_at + 10, start_dt=START_DT, schedule_fn=injected_schedule)
-        injected = decode_and_metrics(decode_session=injected_session, objective_name=targets[0], **native_kwargs)
+        injected = native_decode(decode_session=injected_session, objective_name=targets[0])
         assert len(injected_kwargs) == 1 and "prepared_inputs" not in injected_kwargs[0]
         assert injected.results == complete["results"]
-        assert normalized.call_count == 3 and shared.decode_session.actual_decoder_calls == 2
+        assert normalized.call_count == 3 and decoder.actual_decoder_calls == 2
         assert injected_session.actual_decoder_calls == 1 and metrics.call_count == 3
         assert preparation.call_count == expected.call_count == 2
         assert priorities.call_count == due.call_count == 2 * len(batches)
-        assert all(call.kwargs["prepared"] is shared.decode_session.evaluation_context for call in metrics.call_args_list[:2])
+        assert all(call.kwargs["prepared"] is decoder.evaluation_context for call in metrics.call_args_list[:2])
         assert metrics.call_args_list[-1].kwargs["prepared"] is injected_session.evaluation_context
 
     # Preparation after initial admission can consume the deadline. The shared
@@ -1047,13 +1260,14 @@ def test_shared_decode_ledger_reuses_effective_requests_and_restores_only_explic
     with patch.object(rejected_budget, "require_decode", wraps=rejected_budget.require_decode) as admission, \
             patch.object(rejected_budget, "reject", wraps=rejected_budget.reject) as rejection, \
             pytest.raises(SharedSearchSkip) as late:
-        decode_and_metrics(
+        native_decode(
             decode_session=rejected_session, objective_name=targets[0],
-            before_decode=lambda: setattr(timer, "value", 2.0), **native_kwargs,
+            before_decode=lambda: setattr(timer, "value", 2.0),
         )
     assert late.value.reason == "time_budget" and late.value.request_id == 1
     assert admission.call_count == rejection.call_count == 1
     assert rejection.call_args.args == ("time_budget",)
+    assert late.value.receipt is not None
     assert late.value.receipt["actual_decoder_calls"] == 0 and not late.value.receipt["verified"]
     assert late.value.receipt["execution_kind"] == "decode_skipped" and late.value.receipt["reason"] == "time_budget"
     assert rejected_budget.summary()["admission_skips"] == {"time_budget": 1}
@@ -1079,7 +1293,7 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
             for op in actual_operations[2:]:
                 op.machine_id, op.operator_id = "MC-BENCH", "OP-BENCH"
         for op in actual_operations:
-            if op.id in (overrides or {}):
+            if overrides is not None and op.id in overrides:
                 op.machine_id, op.operator_id = overrides[op.id]
         mode = "sgs" if graph_context is not None else "batch_order"
         results, summary, strategy, params = scheduler.schedule(
@@ -1100,32 +1314,70 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
     worse, better = decoded(forced=True), decoded()
     assert better["score"] < worse["score"]
 
-    def target_view(candidate, *, retention_limit=64, all_targets=False):
+    def target_view(candidate, *, parent_candidate, retention_limit=64, all_targets=False):
         started_at = monotonic()
         archive = SharedScheduleArchive("min_overdue", target_objectives_for("min_overdue"),
                                         {99} | {op.id for op in operations}, set(batches), retention_limit=retention_limit)
         session = _SharedSearch(archive=archive, clock=monotonic, started_at=started_at)
-        report = OptimizationSearchReportState(algorithm_profile="baseline", seed=0, time_budget_seconds=1,
-                                               objective_name="min_overdue", started_at=started_at)
+        report = OptimizationSearchReportState(objective_name="min_overdue", started_at=started_at)
         view = _GoalView("min_overdue", OptimizerSearchState(), report)
         session.views[view.objective] = view
         if all_targets:
             for objective in archive.target_objectives[1:]:
-                target_report = OptimizationSearchReportState(algorithm_profile="baseline", seed=0, time_budget_seconds=1,
-                                                              objective_name=objective, started_at=started_at)
+                target_report = OptimizationSearchReportState(objective_name=objective, started_at=started_at)
                 session.views[objective] = _GoalView(objective, OptimizerSearchState(), target_report)
         _observe_decoded(session, view.objective, candidate=candidate, origin="native_initial", verified=True, elapsed_ms=1)
         session.sync(view)
-        parent, reference = object(), object()
-        search = SimpleNamespace(best=candidate, parent=parent, reference=reference)
+        deadline = started_at + 1
+        budget = SharedSearchBudget(clock=monotonic, started_at=started_at, deadline=deadline,
+                                    target_objectives=archive.target_objectives, configured_seconds=1)
+        decoder = SharedDecodeSession(
+            archive=archive, budget=budget, scheduler=scheduler, operations=operations, batches=batches,
+            seed_results=[seed], downtime_map=downtime, resource_pool=pool, graph_ready_context=_context,
+            clock=monotonic, started_at=started_at, deadline=deadline, event_sink=session.record_event,
+            start_dt=START_DT,
+        )
+        session.decode_session = decoder
+        parent = _parent_from_candidate(parent_candidate, operations=operations, graph_context=_context, resource_pool=pool)
+        assert parent is not None
+        reference = PoolEntry(order=parent.order, score=tuple(candidate["score"]), candidate=candidate,
+                              batch_order=parent.batch_order, resource_overrides=parent.inherited)
+        metrics = _context["node_metrics_by_op_id"]
+        profile = ig_decode_profile(resolve_v2_profiles_and_summary(max_candidate_profiles=60)[0][0])
+        limits = IteratedGreedyLimits(due_date_seed=False)
+        repair_pool = EliteRepairPool(
+            limits=EliteRepairLimits(enabled=False), objective_name=view.objective, operations=operations,
+            metrics_by_op_id=metrics, start_dt=START_DT, seed=0, best=candidate, report_state=report,
+            graph_context=_context, resource_pool=pool, decode_session=decoder,
+        )
+        evaluate = partial(
+            evaluate_graph_ready_candidate, graph_ready_context=_context, metrics_by_op_id=metrics, strict_mode=True,
+            algo_ops_to_schedule=operations, strategy=SortStrategy.FIFO, params={}, start_dt=START_DT, end_date=None,
+            dispatch_rule="slack", resource_pool=pool, objective_name=view.objective, optimizer_algo_stats=None,
+            readiness_gate_enabled=False, version=0, clock=monotonic, decode_session=decoder,
+        )
         graph_state = GraphSearchState(view.candidate)
-        run = SimpleNamespace(search=search, state=graph_state, pending_adoption=None,
-                              iteration=SimpleNamespace(step=lambda: True))
+        run = IteratedGreedyRun(
+            limits=limits, state=graph_state, parent_profile=lambda candidate: profile,
+            pool=repair_pool, evaluate=evaluate, operations=operations, graph_context=_context,
+            metrics_by_op_id=metrics, objective_name=view.objective, start_dt=START_DT, seed=0,
+            deadline=deadline, clock=monotonic, t_begin=started_at, attempts=[], improvement_trace=[],
+            report_state=report, strict_mode=True, decode_session=decoder,
+        )
+        search = _IteratedGreedySearch(
+            limits=limits, parent=parent, profile=profile, pool=repair_pool, evaluate=evaluate,
+            metrics_by_op_id=metrics, start_dt=START_DT, seed=0, deadline=deadline, clock=monotonic,
+            t_begin=started_at, attempts=[], improvement_trace=[], report_state=report, strict_mode=True,
+            report=run.report, operations=operations, graph_context=_context, decode_session=decoder,
+        )
+        search.best, search.reference = candidate, reference
+        run.search, run.iteration = search, PausedIteration(search)
         stage = IteratedGreedyStage(run, startup_ready=lambda: True)
         view.graph_bundle = GraphStageBundle(graph_state, [stage])
         return session, view, run, parent, reference
 
-    session, view, run, parent, reference = target_view(worse)
+    session, view, run, parent, reference = target_view(worse, parent_candidate=worse)
+    assert run.search is not None and view.graph_bundle is not None
     owned = view.candidate
     assert run.search.best is not owned
     session.sync(view)
@@ -1148,13 +1400,30 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
     session.sync(view)
     assert run.search.best is view.candidate
 
+    tied = decoded(batch_order=["B_LONG", "B_SHORT_B", "B_SHORT_A"])
+    assert tied["score"] == better["score"]
+    assert schedule_content_key(tied["results"]) != schedule_content_key(better["results"])
+    _observe_decoded(session, view.objective, candidate=tied, origin="grasp_ig", verified=True, elapsed_ms=3)
+    assert tied["_shared_entry_id"] != new_entry and session.selected_entry(view.objective) == new_entry
+    view.state.best = tied
+    view.report.mark_candidate_accepted(tied, origin="grasp_ig")
+    assert view.report._best_candidate is tied and view.report.best_origin == "grasp_ig"
+    session.sync(view)
+    assert view.candidate is not None
+    assert view.state.best is view.candidate and view.report._best_candidate is view.candidate
+    assert view.report.best_origin == "native_other_target"
+    restored_identity = view.report.fingerprint_identity(view.candidate)
+    assert restored_identity is not None and view.report.best_fingerprint == restored_identity.output_key
+
     # An upgraded evidence revision of the same arrangement follows the same pending-adoption boundary.
     not_yet_complete = deepcopy(better)
     not_yet_complete["summary"].success = False
-    upgrade_session, upgrade_view, upgrade_run, upgrade_parent, upgrade_reference = target_view(not_yet_complete)
+    upgrade_session, upgrade_view, upgrade_run, upgrade_parent, upgrade_reference = target_view(not_yet_complete, parent_candidate=better)
+    assert upgrade_run.search is not None
     upgrade_session.sync(upgrade_view)
     old_evidence = upgrade_view.candidate
     same_entry = upgrade_view.entry_id
+    assert same_entry is not None
     accepted_evidence = deepcopy(better)
     _observe_decoded(upgrade_session, upgrade_view.objective, candidate=accepted_evidence, origin="completed_evidence",
                             verified=True, elapsed_ms=3)
@@ -1162,6 +1431,7 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
     assert accepted_evidence["_shared_evidence_revision"] == 1
     upgrade_session.sync(upgrade_view)
     assert upgrade_view.entry_id == same_entry and upgrade_view.evidence_revision == 1
+    assert upgrade_view.candidate is not None
     assert upgrade_view.candidate is not old_evidence and upgrade_run.search.best is old_evidence
     assert upgrade_view.candidate["summary"].success and upgrade_session.archive.entry(same_entry).score_scope.is_complete
     assert upgrade_run.search.parent is upgrade_parent and upgrade_run.search.reference is upgrade_reference
@@ -1172,32 +1442,30 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
 
     # Active generator references outlive the payload cap, including across another target's ordinary action.
     life, life_view, life_run, _life_parent, _life_reference = target_view(
-        deepcopy(better), retention_limit=1, all_targets=True,
+        deepcopy(better), parent_candidate=better, retention_limit=1, all_targets=True,
     )
+    assert life_run.search is not None
     for target in life.views.values():
         life.sync(target)
     best_id = life_view.entry_id
     ordinary_view = life.views["min_tardiness"]
-    ordinary_view.local_stage = SimpleNamespace(
-        best=ordinary_view.candidate,
-        local_state=LocalSearchState.from_best(ordinary_view.candidate, resource_pool=pool),
-    )
     life_run.search.reference = None
     life_run.search.solution_pool = SolutionPool(3)
-    life_run.search.decoded_entries = {}
-    life_budget = SharedSearchBudget(clock=monotonic, started_at=life.started_at, deadline=life.started_at + 1,
-                                     target_objectives=life.archive.target_objectives, configured_seconds=1)
-    life.decode_session = SharedDecodeSession(
-        archive=life.archive, budget=life_budget, scheduler=scheduler, operations=operations, batches=batches,
-        seed_results=[seed], downtime_map=downtime, resource_pool=pool, graph_ready_context=_context,
-        clock=monotonic, started_at=life.started_at, deadline=life.started_at + 1, event_sink=life.record_event,
-        start_dt=START_DT,
+    life_run.search.decoded_entries.clear()
+    life_decoder = life_run.decode_session
+    ordinary_candidate = ordinary_view.candidate
+    assert ordinary_candidate is not None
+    ordinary_stage = LocalSearchStage(
+        best=ordinary_candidate, version=0, deadline=life.started_at + 1,
+        batches=batches, start_dt=START_DT, end_date=None, dispatch_mode_cfg="batch_order", dispatch_rule_cfg="slack",
+        resource_pool=pool, objective_name=ordinary_view.objective, attempts=[], improvement_trace=[],
+        optimizer_algo_stats=None, t_begin=life.started_at, readiness_gate_enabled=False, strict_mode=True,
+        clock=monotonic, rng_factory=Random, search_report_state=ordinary_view.report, decode_session=life_decoder,
     )
-    life_run.search.decode_session = life.decode_session
-    life_run.search.report = {"objective_name": life_view.objective}
-    life_run.search._record_local_reuse = partial(_IteratedGreedySearch._record_local_reuse, life_run.search)
-    life_run.pool = SimpleNamespace(elites=[], active_parents=[])
-    ordinary_noop = SimpleNamespace(name="local_search", run_task=lambda: 0)
+    ordinary_view.local_stage = ordinary_stage
+    ordinary_state = ordinary_stage.local_state
+    assert ordinary_state is not None
+    ordinary_noop = CallbackStage(lambda: 0)
     old_reference = deepcopy(worse)
     old_pool_candidate = decoded(overrides={3: ("MC-BENCH", "OP-BENCH")})
     old_decoded_candidate = decoded(overrides={4: ("MC-BENCH", "OP-BENCH")})
@@ -1235,17 +1503,17 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
     before_capture = scheduler._decode_invocations
     assert capture_reference(life_run.search, reference_entry) is reference_entry
     assert scheduler._decode_invocations == before_capture
-    assert life.decode_session.actual_decoder_calls == 0
+    assert life_decoder.actual_decoder_calls == 0
 
     newly_current = decoded(batch_order=["B_LONG", "B_SHORT_B", "B_SHORT_A"], objective=ordinary_view.objective)
 
     def observe_then_accept():
         _observe_decoded(life, ordinary_view.objective, candidate=newly_current, origin="local_search", verified=True, elapsed_ms=7)
         assert newly_current["_shared_entry_id"] in life.archive.retained_entry_ids
-        ordinary_view.local_stage.local_state.accept_current(newly_current)
+        ordinary_state.accept_current(newly_current)
         return 0
 
-    life.run_action(ordinary_view, SimpleNamespace(name="local_search", run_task=observe_then_accept))
+    life.run_action(ordinary_view, CallbackStage(observe_then_accept))
     current_id = newly_current["_shared_entry_id"]
     assert current_id not in {best_id} | held_ids
     assert set(life.archive.retained_entry_ids) == {best_id, current_id} | held_ids
@@ -1253,7 +1521,7 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
     assert life.archive.materialize(current_id)["results"] == newly_current["results"]
     assert capture_reference(life_run.search, reference_entry) is reference_entry
     assert scheduler._decode_invocations == before_capture + 1
-    assert life.decode_session.actual_decoder_calls == 0
+    assert life_decoder.actual_decoder_calls == 0
 
     # A pending adoption alone keeps its old payload; releasing it and the other references restores eviction.
     life_run.search.decoded_entries.clear()
@@ -1264,7 +1532,7 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
     elite_candidate["_shared_entry_id"] = current_id
     elite_candidate["_shared_evidence_revision"] = life.revisions.get(current_id, 0)
     life_run.pool.elites.append({"candidate": elite_candidate})
-    ordinary_view.local_stage.local_state.reset_current_to_best()
+    ordinary_state.reset_current_to_best()
     life.run_action(ordinary_view, ordinary_noop)
     assert life.archive.current_by_objective[ordinary_view.objective] == best_id
     assert current_id in life.archive.retained_entry_ids

@@ -6,6 +6,7 @@ import json
 import math
 from typing import Any, Dict, Optional
 
+from core.infrastructure.connection_guards import schema_contract_memo
 from core.models.content import content_text, unpacked
 from core.models.scheduler_history_parser import parse_result_summary_payload
 from core.models.workbench_command import WorkbenchCommandOutcome, canonical_json
@@ -53,23 +54,23 @@ class WorkbenchCommandRepository(BaseRepository):
 
     def input_content(self, row) -> Optional[str]:
         """Use saved intent, or exact original source fields for known old commands."""
-        text = row.get("input_json")
+        text = row["input_json"]
         if text is not None:
             return content_text(unpacked(json.loads(text)))
         action, key = row["action"], row["request_key"]
         if action not in {"scheduling.run", "trial.create", "trial.save", "trial.discard",
                           "scheduling.candidate.adopt", "trial.scenario.adopt"}:
             return None
-        from core.infrastructure.connection_guards import schema_contract_memo
-
-        names = {name for name, value in schema_contract_memo(self.conn).structure.objects.items() if value[0] == "table"}
-        if action == "scheduling.run" and "WorkbenchRunJobs" in names:
+        if action in ("scheduling.candidate.adopt", "trial.scenario.adopt"):
+            return self.adoption_input_contents([row])[key]
+        structure = schema_contract_memo(self.conn).structure
+        if action == "scheduling.run" and structure.has_table("WorkbenchRunJobs"):
             original = self.fetchone("SELECT input_ref, run_ref FROM WorkbenchRunJobs WHERE request_key=?", (key,))
             if original and original["input_ref"] == row["context_ref"]:
                 result = self.public_result(row, replayed=True)
                 if result["result"] == "committed" and result["data"] == {"run_ref": original["run_ref"]}:
                     return content_text({"input_ref": original["input_ref"]})
-        if action in ("trial.create", "trial.save", "trial.discard") and "WorkbenchTrialDrafts" in names:
+        if action in ("trial.create", "trial.save", "trial.discard") and structure.has_table("WorkbenchTrialDrafts"):
             if action == "trial.create":
                 original = self.fetchone("SELECT admission_json FROM WorkbenchTrialDrafts WHERE request_key=?", (key,))
                 if original:
@@ -79,7 +80,7 @@ class WorkbenchCommandRepository(BaseRepository):
                     intent = document.get("input")
                     if type(intent) is dict:
                         return content_text(intent)
-            elif action == "trial.save" and "WorkbenchTrialScenarios" in names:
+            elif action == "trial.save" and structure.has_table("WorkbenchTrialScenarios"):
                 original = self.fetchone("SELECT draft_ref, name FROM WorkbenchTrialScenarios WHERE request_key=?", (key,))
                 if original and original["draft_ref"] == row["context_ref"]:
                     return content_text({"name": original["name"]})
@@ -87,20 +88,30 @@ class WorkbenchCommandRepository(BaseRepository):
                 result = self.public_result(row, replayed=True)
                 if result["result"] == "committed" and result["data"].get("draft_ref") == row["context_ref"]:
                     return content_text({"confirm": True})
-        if action in ("scheduling.candidate.adopt", "trial.scenario.adopt") and "ScheduleHistory" in names:
-            matches = []
-            for original in self.fetchall("SELECT result_summary FROM ScheduleHistory"):
-                if original["result_summary"] is None:
-                    continue
-                audit = parse_result_summary_payload(original["result_summary"]).payload
-                context = "candidate_ref" if action == "scheduling.candidate.adopt" else "scenario_ref"
-                if (type(audit) is dict and audit.get("request_key") == key
-                        and audit.get(context) == row["context_ref"]
-                        and type(audit.get("reason")) is str and type(audit.get("declared_operator")) is str):
-                    matches.append({"confirm": True, "reason": audit["reason"], "declared_operator": audit["declared_operator"]})
-            if len(matches) == 1:
-                return content_text(matches[0])
         return None
+
+    def adoption_input_contents(self, rows):
+        """Recover a request's legacy adoption intents in one history scan."""
+        legacy = {row["request_key"]: row for row in rows}
+        contents: Dict[str, Optional[str]] = dict.fromkeys(legacy)
+        if not legacy or not schema_contract_memo(self.conn).structure.has_table("ScheduleHistory"):
+            return contents
+        seen = set()
+        for original in self.iter_rows("SELECT result_summary FROM ScheduleHistory"):
+            audit = parse_result_summary_payload(original["result_summary"]).payload
+            if audit is None:
+                continue
+            key = audit.get("request_key")
+            if type(key) is not str or key not in legacy:
+                continue
+            row = legacy[key]
+            context = "candidate_ref" if row["action"] == "scheduling.candidate.adopt" else "scenario_ref"
+            if (audit.get(context) == row["context_ref"]
+                    and type(audit.get("reason")) is str and type(audit.get("declared_operator")) is str):
+                contents[key] = (None if key in seen else content_text({"confirm": True,
+                    "reason": audit["reason"], "declared_operator": audit["declared_operator"]}))
+                seen.add(key)
+        return contents
 
     def public_result(self, row: Dict[str, Any], *, replayed: bool) -> Dict[str, Any]:
         data = json.loads(row["outcome_json"], parse_float=_finite_json_number, parse_constant=_finite_json_number)

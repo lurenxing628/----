@@ -61,11 +61,11 @@ def run_window(admission):
     older plans have none, and their trials keep the saved span as before.
     """
     settings = _run_settings(admission)
-    window = {key: stored_date(settings.get(key)) for key in ("start_date", "end_date")}
-    if None in window.values():
+    start, end = stored_date(settings.get("start_date")), stored_date(settings.get("end_date"))
+    if start is None or end is None:
         return {}
     # 来源记下的不重排时段随起止日一起带给正式计划；没记的旧来源不补，按交付设置推算。
-    return dict(window, **({"hold_window": settings["hold_window"]} if "hold_window" in settings else {}))
+    return {"start_date": start, "end_date": end, **({"hold_window": settings["hold_window"]} if "hold_window" in settings else {})}
 
 
 def deferral_policy(admission, rows, checks, execution):
@@ -114,8 +114,14 @@ def adoption_settings(admission, rows, checks, execution):
 def hold_settings(admission, settings):
     """判断哪些原安排保留时用的排产输入：冻结从来源排产的起日起算，默认时段也从那天推算，
     与来源排产同一口径，不随试调各行最早的日子挪动；来源没记起止日的旧方案仍按试调起日。"""
-    start = run_window(admission).get("start_date")
-    return settings if start is None else dict(settings, start_date=start)
+    window = run_window(admission)
+    start = window.get("start_date")
+    if start is None:
+        return settings
+    out = dict(settings, start_date=start)
+    if "hold_window" in window:
+        out["hold_window"] = _within(window["hold_window"], start, max(window["end_date"], settings["end_date"]))
+    return out
 
 
 def _within(window, start_date, end_date):

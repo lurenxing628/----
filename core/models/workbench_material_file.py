@@ -1,8 +1,8 @@
 """Private material batch contracts; no HTTP tokens or database connections.
 
 MaterialPreview.document is canonical JSON retained with the original file source.
-as_dict() returns a detached copy. The API binds its opaque preview reference to
-that source and the short-lived write context.
+as_dict() returns the parsed document dictionary. The API binds its opaque preview
+reference to that source and the short-lived write context.
 Use intent() as CommandService.normalized_input and replay that original intent
 before resolving an expired preview. Never rebuild a preview to replay a receipt.
 
@@ -19,7 +19,7 @@ from typing import Any, Dict
 
 from core.errors import ValidationError
 from core.models.workbench_action_values import AtomicActionPreview, FileDownload
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_material_query import MaterialPageRequest
 from core.models.workbench_table_descriptor import DEFAULT_IMPORT_BYTE_LIMIT, UPSERT_ONLY
 
@@ -133,14 +133,6 @@ def file_request(content: Any, file_format: str, mode: str, scope: Any):
 @dataclass(frozen=True)
 class MaterialPreview(AtomicActionPreview):
     storage_failure_message = "这批物料数据算不出完整预检结果，没有写入任何数据。请刷新后重新预检。"
-
-
-def check_request(preview, operation, request):
-    if not isinstance(preview, MaterialPreview):
-        raise WorkbenchCommandRejected("stale_write", "找不到刚才的预检结果，没有写入数据。请点「重新预检」。")
-    body = preview.as_dict()
-    if body["operation"] != operation or canonical_json(body["request"]) != canonical_json(request):
-        raise WorkbenchCommandRejected("stale_write", "文件内容、模式或选择范围已变化，请重新预检。")
 
 
 def check_preview(original: MaterialPreview, current: MaterialPreview):

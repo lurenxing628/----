@@ -82,7 +82,7 @@ def test_adoption_reuses_one_capture_through_input_and_constraints(candidate_cas
 
     monkeypatch.setattr(ProductionFactsCapture, "__init__", capture_once)
     monkeypatch.setattr(WorkbenchPreflightFactsRepository, "capture_table", table_once)
-    monkeypatch.setattr(OperationExecutionEventRepo, "aggregate_states_by_scopes", redundant_query)
+    monkeypatch.setattr(OperationExecutionEventRepo, "list_events_by_scopes", redundant_query)
     sql = []
     case.conn.set_trace_callback(sql.append)
     evidence = validate_adoption(case.conn, ref)
@@ -201,3 +201,55 @@ def test_candidate_adoption_resolution_route_is_read_only_and_not_cached(candida
     replaced = client.get(BASE + "f" * 48 + "/adoption-commands/" + KEY)
     assert replaced.status_code == 200 and replaced.get_json()["resolution"] == "context_replaced"
     assert snapshot(case.conn) == before
+
+
+@pytest.mark.parametrize("failure", [KeyError("missing internal field"), TypeError("invalid internal call")])
+def test_internal_adoption_proof_errors_remain_system_failures(candidate_case, monkeypatch, failure):
+    from core.services.workbench.run import candidate_adoption_validation
+
+    case = candidate_case
+    ref = candidate(case)
+
+    def broken_proof(*args, **kwargs):
+        raise failure
+
+    monkeypatch.setattr(candidate_adoption_validation, "validate_adoption_constraints", broken_proof)
+    with pytest.raises(type(failure)) as raw:
+        candidate_adoption_validation.validate_adoption(case.conn, ref)
+    assert raw.value is failure
+    with pytest.raises(WorkbenchCommandRejected) as system:
+        service(case.conn).preview(ref)
+    assert system.value.code == "storage_failure" and system.value.status == 500
+    assert system.value.__cause__ is failure
+    assert case.conn.execute("SELECT COUNT(*) FROM Schedule").fetchone()[0] == 0
+
+
+def test_adoption_rejects_corrupted_task_payload_types_and_bounds(candidate_case):
+    import json
+
+    from core.models.workbench_run_adoption import CandidateAdoptionBlocked
+    from core.services.workbench.run import candidate_adoption_validation
+    from tests.workbench.run_candidate_support import corrupt_update
+
+    case = candidate_case
+    ref = candidate(case)
+    row_ref, original_text = case.conn.execute(
+        "SELECT row_ref, payload_json FROM WorkbenchRunCandidateTasks WHERE candidate_ref=?", (ref,)
+    ).fetchone()
+    original = json.loads(original_text)
+    missing_field = {key: value for key, value in original.items() if key != "source"}
+    for invalid in (
+        {**original, "locked": 0},
+        {**original, "machine_id": ["M1"]},
+        missing_field,
+        {**original, "start_time": "2026-09-10T10:00:00", "end_time": "2026-09-10T08:00:00"},
+    ):
+        corrupt_update(
+            case.conn,
+            "WorkbenchRunCandidateTasks",
+            "UPDATE WorkbenchRunCandidateTasks SET payload_json=? WHERE row_ref=?",
+            (json.dumps(invalid), row_ref),
+        )
+        with pytest.raises(CandidateAdoptionBlocked) as exc:
+            candidate_adoption_validation.validate_adoption(case.conn, ref)
+        assert exc.value.code == "candidate_artifact_invalid"

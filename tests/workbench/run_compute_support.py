@@ -8,7 +8,7 @@ from core.infrastructure.workbench_execution_ledger_schema import install_execut
 from core.infrastructure.workbench_execution_void_schema import install_execution_voids
 from core.infrastructure.workbench_metadata_schema import install_metadata
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
-from core.services.scheduler.config.config_field_spec import default_snapshot_values
+from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from tests.workbench.execution_ledger_support import LedgerCase, all_rows
 from tests.workbench.identity_metadata_support import insert_row

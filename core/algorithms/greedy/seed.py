@@ -29,7 +29,7 @@ def with_seed_external_group_metadata(result: ScheduleResult, metadata: Any) -> 
         {"op_id", "batch_id", "ext_group_id"}, {"op_id", "batch_id", "ext_group_id", "piece_id"},
     ):
         raise ValidationError("冻结外协种子的组身份资料不完整，系统已停止排产。", field="seed_results")
-    op_id = _identity_int(metadata["op_id"])
+    op_id = identity_int(metadata["op_id"])
     batch_id, group_id = metadata["batch_id"], metadata["ext_group_id"]
     if op_id <= 0 or not all(isinstance(value, str) and value.strip() for value in (batch_id, group_id)):
         raise ValidationError("冻结外协种子的组身份资料无效，系统已停止排产。", field="seed_results")
@@ -47,7 +47,7 @@ def seed_external_group_key(result: ScheduleResult) -> Optional[Tuple[str, ...]]
         return None
     op_id, batch_id, group_id, piece = result._external_group_identity
     if (
-        _identity_int(result.op_id) != op_id
+        identity_int(result.op_id) != op_id
         or str(result.batch_id or "").strip() != batch_id
         or str(result.source or "").strip().lower() != EXTERNAL
     ):
@@ -70,7 +70,7 @@ def seed_external_group_keys(seed_results: List[ScheduleResult]) -> Dict[int, Tu
     for result in seed_results:
         key = seed_external_group_key(result)
         if key is not None:
-            keys[_identity_int(result.op_id)] = key
+            keys[identity_int(result.op_id)] = key
     return keys
 
 
@@ -92,7 +92,7 @@ def normalize_seed_results(
         return [], seed_op_ids, warnings
 
     lookup = (_build_operation_lookup(operations)
-              if any(_identity_int(getattr(result, "op_id", 0)) <= 0 for result in seed_results) else {})
+              if any(identity_int(getattr(result, "op_id", 0)) <= 0 for result in seed_results) else {})
     counters = {
         "backfilled": 0,
         "dropped_invalid": 0,
@@ -105,7 +105,7 @@ def normalize_seed_results(
     normalized: List[ScheduleResult] = []
 
     for seed_result in seed_results:
-        original_oid = _identity_int(getattr(seed_result, "op_id", 0))
+        original_oid = identity_int(getattr(seed_result, "op_id", 0))
         result, oid, reason = _normalize_one_seed_result(seed_result, original_oid=original_oid, lookup=lookup)
         if reason:
             counters[reason] += 1
@@ -132,7 +132,7 @@ def _build_operation_lookup(operations: List[Any]) -> Dict[str, Any]:
     by_batch_seq: Dict[Tuple[str, int], int] = {}
     duplicates: set = set()
     for op in operations:
-        oid = _identity_int(getattr(op, "id", 0))
+        oid = identity_int(getattr(op, "id", 0))
         if oid <= 0:
             continue
         code = str(getattr(op, "op_code", "") or "").strip()
@@ -202,11 +202,11 @@ def _backfill_seed_op_id(seed_result: ScheduleResult, op_id: int) -> ScheduleRes
 
 def _batch_seq_key(obj: Any) -> Optional[Tuple[str, int]]:
     bid = str(getattr(obj, "batch_id", "") or "").strip()
-    seq = _identity_int(getattr(obj, "seq", 0))
+    seq = identity_int(getattr(obj, "seq", 0))
     return (bid, seq) if bid and seq > 0 else None
 
 
-def _identity_int(value: Any) -> int:
+def identity_int(value: Any) -> int:
     if value is None or isinstance(value, bool):
         return 0
     if isinstance(value, int):

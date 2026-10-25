@@ -11,9 +11,9 @@ import pytest
 from core.models.workbench_command import WorkbenchCommandUncertain, canonical_json
 from core.services.workbench.facts.admission_scope import project_admitted_scope
 from core.services.workbench.facts.decision_read_models import public_job_status
+from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.run import result_preparation
 from core.services.workbench.run import worker as worker_module
-from core.services.workbench.run.jobs_facts import capture_run_facts
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from data.repositories import workbench_run_repo as run_repo_module
 from data.repositories import workbench_run_result_repo as result_repo_module
@@ -77,7 +77,7 @@ def test_owned_file_compute_matches_thread_snapshot_types_and_payload(tmp_path, 
         with open_readonly_immutable(path, detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
                                      row_factory=sqlite3.Row) as owned:
             owned.execute("PRAGMA foreign_keys=ON")
-            process_payload = worker.compute_owned_snapshot(owned, row, {}, on_progress=lambda *_args: None)
+            process_payload = worker.compute_owned_snapshot(owned, row, {})
             assert process_payload == thread_payload
             with pytest.raises(sqlite3.OperationalError):
                 owned.execute("INSERT INTO Facts VALUES (NULL,NULL,'write')")
@@ -89,8 +89,11 @@ def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):
     from collections import Counter
 
     from core.models.workbench_command import WorkbenchCommandRejected
+    from core.services.material.stage_availability import MaterialAvailability
+    from core.services.scheduler.calendar.service import CalendarService
+    from core.services.scheduler.config import config_snapshot
     from core.services.scheduler.execution import execution_ledger_adapter
-    from core.services.workbench.run import input_config, jobs
+    from core.services.workbench.run import jobs
     from data.repositories.workbench_preflight_facts_repo import WorkbenchPreflightFactsRepository
 
     case = job_case
@@ -120,12 +123,25 @@ def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):
 
     monkeypatch.setattr(WorkbenchRunRepository, "input_admitted", checked_input)
     table_reads, preparations, statements = Counter(), Counter(), []
+    calendars, material_indexes = [], []
+    initialize_calendar, initialize_materials = CalendarService.__init__, MaterialAvailability.__init__
+
+    def calendar_once(calendar, conn, logger=None, *, capture=None):
+        calendars.append(capture)
+        initialize_calendar(calendar, conn, logger, capture=capture)
+
+    def materials_once(availability, tables):
+        material_indexes.append(availability)
+        initialize_materials(availability, tables)
+
+    monkeypatch.setattr(CalendarService, "__init__", calendar_once)
+    monkeypatch.setattr(MaterialAvailability, "__init__", materials_once)
     capture_table = WorkbenchPreflightFactsRepository.capture_table
     def capture_once(repo, name):
         table_reads[name] += 1
         return capture_table(repo, name)
     monkeypatch.setattr(WorkbenchPreflightFactsRepository, "capture_table", capture_once)
-    for module, name in ((jobs, "GenerationFacts"), (input_config, "configuration_snapshot"),
+    for module, name in ((jobs, "GenerationFacts"), (config_snapshot, "build_schedule_config_snapshot"),
                          (execution_ledger_adapter, "current_execution_plan")):
         original = getattr(module, name)
         def prepared_once(*args, _name=name, _original=original, **kwargs):
@@ -137,7 +153,8 @@ def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):
     case.conn.set_trace_callback(None)
     assert accepted["replayed"] is False and input_checks == [ref]
     assert table_reads and set(table_reads.values()) == {1}
-    assert preparations == {"GenerationFacts": 1, "configuration_snapshot": 1, "current_execution_plan": 1}
+    assert preparations == {"GenerationFacts": 1, "build_schedule_config_snapshot": 1, "current_execution_plan": 1}
+    assert len(calendars) == len(material_indexes) == 1 and calendars[0] is not None
     assert not any(sql.upper().startswith("SELECT") and "FROM WORKBENCHRUNJOBS" in sql.upper()
                    and any(field in sql.upper() for field in ("FACTS_JSON", "EXECUTION_JSON", "BASELINE_JSON"))
                    for sql in statements)
@@ -188,7 +205,7 @@ def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkey
     legacy_scope = project_admitted_scope(json.loads(legacy_row["normalized_input_json"]), legacy_facts)
     assert legacy_scope["objective"] is None and legacy_scope["objective_label"] is None
     assert {"field": "objective", "code": "not_recorded", "message": "排产时没有记下这一项。"} in legacy_scope["data_gaps"]
-    before = capture_run_facts(case.conn)
+    before = ProductionFactsCapture(case.conn).content()
     save = WorkbenchRunResultRepository.save
     finish = WorkbenchRunRepository.finish
     executed = []
@@ -218,7 +235,7 @@ def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkey
     assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunReceipts").fetchone()[0] == 0
     running = service(case.conn).get(accepted["run_ref"])
     assert running["state"] == "running" and running["scope_summary"] == captured_scope
-    assert capture_run_facts(case.conn) == before
+    assert ProductionFactsCapture(case.conn).content() == before
     if failure_stage == "second_candidate":
         assert executed == [1]
     monkeypatch.undo()

@@ -8,8 +8,8 @@ confirm_delete(preview, refs, *, scope) -> WorkbenchCommandOutcome. Call inside
 WorkbenchCommandService.execute.mutate after the outer guard validates the
 temporary preview/write context. Set normalized_input=preview.intent(). The
 original frozen preview must come from that context, not from a browser DTO.
-Confirmation rechecks the entire request and every row before any delete. Its
-savepoint also rolls back the whole batch if a later domain operation fails.
+Confirmation rechecks the entire request and every row before any delete. The
+outer command transaction rolls back the whole batch if a domain operation fails.
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_material_file import (
     MaterialPreview,
     check_preview,
-    check_request,
     normalize_refs,
     normalize_scope,
     preview_row,
@@ -81,17 +80,16 @@ class WorkbenchMaterialBulkService:
     def confirm_delete(self, preview, refs, *, scope):
         if not self.conn.in_transaction:
             raise RuntimeError("批量删除必须在外层工作台写事务中执行。")
+        if not isinstance(preview, MaterialPreview):
+            raise WorkbenchCommandRejected("stale_write", "找不到刚才的预检结果，没有写入数据。请点「重新预检」。")
         try:
             request = {"refs": normalize_refs(refs), "scope": normalize_scope(scope)}
         except (ValidationError, WorkbenchCommandRejected) as exc:
             raise WorkbenchCommandRejected("stale_write", "物料选择或范围已变化，请重新预检。") from exc
-        check_request(preview, "material.bulk_delete", request)
-        with self.tx.transaction():
-            current, rows = self._prepare_delete(request)
-            check_preview(preview, current)
-            prepared = [self.adapter.prepare_checked("delete", row["input"], row["expected"]) for row in rows]
-            results = []
-            for row, change in zip(rows, prepared):
-                outcome = self.adapter.apply_prepared(change)
-                results.append({"row": row["row"], "result": outcome.result, **outcome.data})
-            return WorkbenchCommandOutcome("committed", {"rows": results, "deleted_count": len(results)})
+        current, rows = self._prepare_delete(request)
+        check_preview(preview, current)
+        prepared = [self.adapter.prepare_checked("delete", row["input"], row["expected"]) for row in rows]
+        outcomes = self.adapter.apply_prepared_many(prepared)
+        results = [{"row": row["row"], "result": outcome.result, **outcome.data}
+                   for row, outcome in zip(rows, outcomes)]
+        return WorkbenchCommandOutcome("committed", {"rows": results, "deleted_count": len(results)})

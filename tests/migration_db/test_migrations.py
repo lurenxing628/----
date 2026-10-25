@@ -6,6 +6,8 @@ import sqlite3
 from pathlib import Path
 from typing import Set
 
+import pytest
+
 from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, get_connection
 from core.infrastructure.material_stages_schema import objects as material_objects
 from core.infrastructure.migration_state import detect_schema_is_current, set_schema_version
@@ -73,6 +75,47 @@ def test_fresh_schema_and_repeated_ensure_schema_are_current(tmp_path: Path, mon
         assert int(conn.execute("SELECT version FROM SchemaVersion WHERE id = 1").fetchone()["version"]) == CURRENT_SCHEMA_VERSION
         assert "OperationExecutionEvents" in _table_names(conn)
         assert detect_schema_is_current(conn)
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("initial_version", [0, CURRENT_SCHEMA_VERSION], ids=["detected-current", "versioned-current"])
+@pytest.mark.parametrize("entry,full_data", [("ensure", False), ("ensure", True), ("preflight", False), ("apply", False)])
+def test_unchanged_schema_is_captured_once(tmp_path, monkeypatch, initial_version, entry, full_data):
+    from core.infrastructure import database, migration_runner
+
+    path = str(tmp_path / "single-capture.db")
+    schema_sql = SCHEMA_PATH.read_text(encoding="utf-8")
+    conn = get_connection(path)
+    try:
+        conn.executescript(schema_sql)
+        set_schema_version(conn, initial_version)
+        conn.commit()
+    finally:
+        conn.close()
+    statements = []
+
+    def observed(db_path):
+        conn = get_connection(db_path)
+        conn.set_trace_callback(statements.append)
+        return conn
+
+    if entry == "ensure":
+        monkeypatch.setattr(database, "get_connection", observed)
+        database.ensure_schema(path, full_data=full_data)
+    elif entry == "preflight":
+        migration_runner.preflight_migration_contract(path, to_version=CURRENT_SCHEMA_VERSION,
+            schema_sql=schema_sql, connection_factory=observed)
+    else:
+        migration_runner._apply_migrations(path, to_version=CURRENT_SCHEMA_VERSION,
+            schema_sql=schema_sql, connection_factory=observed)
+    assert sum(sql == "SELECT type, name, tbl_name, sql FROM sqlite_master" for sql in statements) == 1
+    assert sum(sql == "SAVEPOINT aps_operation_execution_schema_probe" for sql in statements) == int(full_data)
+    conn = get_connection(path)
+    try:
+        version = conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0]
+        assert version == (initial_version if entry == "preflight" else CURRENT_SCHEMA_VERSION)
+        assert conn.execute("SELECT COUNT(*) FROM Parts").fetchone()[0] == 0
     finally:
         conn.close()
 

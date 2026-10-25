@@ -1,7 +1,6 @@
 """Zero unit hours require acknowledgement only for unconfirmed content."""
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.process.workflow_state import operation_confirmations
 
 
 def zero_confirmation_required(before, after, confirmation):
@@ -11,17 +10,14 @@ def zero_confirmation_required(before, after, confirmation):
         before[key] != after[key] for key in ("setup_hours", "unit_hours"))
 
 
-def require_zero_confirmation(conn, proposals, acknowledged, *, states=None):
+def require_zero_confirmation(proposals, acknowledged, *, states):
     if acknowledged:
         return
-    states, pending = {} if states is None else states, []
+    pending = []
     for before, after in proposals:
         if before["source"] != "internal" or after["unit_hours"] != 0:
             continue
-        part_no = before["part_no"]
-        if part_no not in states:
-            states[part_no] = operation_confirmations(conn, part_no)
-        if zero_confirmation_required(before, after, states[part_no].get(before["ref"], {})):
+        if zero_confirmation_required(before, after, states.get(before["part_no"], {}).get(before["ref"], {})):
             pending.append(before)
     if pending:
         operations = "、".join(str(row["seq"]) for row in pending)

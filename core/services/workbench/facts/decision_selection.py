@@ -59,7 +59,7 @@ def _business_selection_basis(saved, candidates):
     return result
 
 
-def _raw_comparison(selected, reference, evidence=None):
+def _raw_comparison(selected, reference, evidence):
     previous = reference["artifact"] if reference else {}
     if evidence:
         current, raw = evidence.get("selected") or {}, (evidence.get("anchors") or {}).get("raw_score_best") or {}

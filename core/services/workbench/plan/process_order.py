@@ -5,12 +5,11 @@ from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
 from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable, indexed, require
 from core.services.workbench.facts.gantt_graph import build_gantt_graph, frozen_process_relations, unavailable_graph
-from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 from .adoption_baseline_identity import _live_sources
-from .projection import public_time, read_adopted_source, wire_positive_int64
+from .projection import public_time, wire_positive_int64
 from .read_context import PlanReadContext
 
 
@@ -22,7 +21,7 @@ def _unavailable(facts, code, gap):
             "issues": [{"code": code, "message": message}]}, facts, unavailable_graph("full_plan", message)
 
 
-def _frozen_operations(conn, tables, arranged, *, context=None):
+def _frozen_operations(conn, tables, arranged, *, context):
     operations = indexed(tables["BatchOperations"], "id")
     batches = indexed(tables["Batches"], "batch_id")
     wanted = {row["op_id"] for row in arranged}
@@ -41,8 +40,8 @@ def _frozen_operations(conn, tables, arranged, *, context=None):
     return related, {key: batches[key] for key in batch_ids}, refs
 
 
-def _trial_relations(conn, audit, refs):
-    _, _, rows = load_saved_scenario(conn, audit["scenario_ref"])
+def _trial_relations(trial_source, refs):
+    _, _, rows = trial_source.source
     known = set(refs.values())
     relations = {}
     for row in rows:
@@ -76,7 +75,7 @@ def _acyclic(relations):
     require(len(ready) == len(relations), "process_order.frozen_cycle")
 
 
-def _task_bindings(conn, plan_ref, rows, relations, refs, *, context=None):
+def _task_bindings(conn, plan_ref, rows, relations, refs, *, context):
     repository = context.references if context is not None else WorkbenchPlanIdentityRepository(conn)
     tasks = repository.get_task_refs(plan_ref, [dict(row, schedule_id=row["id"]) for row in rows])
     all_refs = context.all_task_refs(plan_ref) if context is not None else set(WorkbenchPlanBaselineRepository(conn).list_task_refs_by_plan(plan_ref))
@@ -100,16 +99,18 @@ def project_process_order(conn, *, plan_ref, context=None):
 def _process_order(conn, *, plan_ref, context):
     facts = {"plan_ref": plan_ref}
     try:
-        evidence = read_adopted_source(conn, plan_ref, context=context)
+        evidence = context.adopted_source(plan_ref)
         if evidence is None:
             return _unavailable(facts, "process_order_not_recorded", "no_audited_frozen_source")
-        basis, audit, tables, arranged, selected = evidence
+        basis, audit, tables, arranged, selected = (
+            evidence[key] for key in ("basis", "audit", "tables", "arranged", "selected")
+        )
         facts.update(adoption=audit, selected_rows=selected)
         operations, batches, refs = _frozen_operations(conn, tables, arranged, context=context)
         if basis == "candidate_adoption":
             relations = frozen_process_relations(operations, batches, refs)
         else:
-            relations = _trial_relations(conn, audit, refs)
+            relations = _trial_relations(evidence["trial_source"], refs)
         _acyclic(relations)
         task_refs = _task_bindings(conn, plan_ref, selected, relations, refs, context=context)
         data = {"state": "available", "basis": "run_admission" if basis == "candidate_adoption" else "trial_creation",
@@ -125,8 +126,6 @@ def _process_order(conn, *, plan_ref, context):
         if exc.status == 413:
             raise
         return _unavailable(facts, "process_order_unavailable", exc.code)
-    except (KeyError, TypeError, ValueError, OverflowError) as exc:
-        return _unavailable(facts, "process_order_unavailable", "frozen_shape:" + type(exc).__name__)
 
 
 def _graph_tasks(rows, task_refs, operations, refs):

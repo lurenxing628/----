@@ -84,8 +84,9 @@ def test_old_candidate_comparison_fixed_cohort_and_archived_capacity(candidate_c
 const w = h.runtime, d = sourceData;
 const payload = {ok:true, schema_version:1, data:d, meta:{request_ref:'a'.repeat(32), source:'production',
   time_basis:'factory_local', snapshot_ref:'b'.repeat(32), as_of:'2026-09-10T12:00:00'}, warnings:[]};
-w.DashboardCandidateComparisonAPI.validate(payload, {candidate:d.candidate, batch_ref:d.batch_ref},
-  {baseline:d.baseline, generation:d.generation, time_scope:d.time_scope});
+const scope = {run_ref:d.candidate.run_ref, candidate_ref:d.candidate.candidate_ref,
+  range_start:d.time_scope.range_start, range_end:d.time_scope.range_end, ...(d.batch_ref ? {batch_ref:d.batch_ref} : {})};
+w.DashboardCandidateComparisonAPI.validate(payload, scope);
 const text = h.text(h.render(w.DashboardCandidatePanels.Metrics, {data:d}));
 assert(text.includes(w.WorkbenchTerms.resource_kinds.machine) && text.includes(w.WorkbenchTerms.resource_kinds.operator));
 assert(text.includes('比较对象缺少保存安排，工种切换次数未知。'));
@@ -100,17 +101,33 @@ for (const item of d.tradeoffs.all_differences) {
 assert(!text.includes('推荐方案'), 'The old dashboard compares the explicitly selected candidate');
 const missing = structuredClone(payload);
 delete missing.data.tradeoffs.all_differences[0].value;
-assert.throws(() => w.DashboardCandidateComparisonAPI.validate(missing,
-  {candidate:d.candidate, batch_ref:d.batch_ref}, {baseline:d.baseline, generation:d.generation, time_scope:d.time_scope}));
+assert.throws(() => w.DashboardCandidateComparisonAPI.validate(missing, scope));
 const resources = d.tradeoffs.all_differences.filter(item => item.source === 'archived_resource_calendar');
 assert(resources.length && resources.every(item => item.metric_version === d.resource_common.metric_version));
 const wrongVersion = structuredClone(payload), key = resources[0].metric_key;
 for (const group of ['all_differences','benefits','costs']) {
   for (const item of wrongVersion.data.tradeoffs[group]) if (item.metric_key === key) item.metric_version = 'decision-preparation-v4';
 }
-assert.throws(() => w.DashboardCandidateComparisonAPI.validate(wrongVersion,
-  {candidate:d.candidate, batch_ref:d.batch_ref}, {baseline:d.baseline, generation:d.generation, time_scope:d.time_scope}));
-return {shipped_contract:true, fixed_cohort:true};
+assert.throws(() => w.DashboardCandidateComparisonAPI.validate(wrongVersion, scope));
+assert.throws(() => w.DashboardCandidateComparisonAPI.validate(payload, {...scope, candidate_ref:'0'.repeat(48)}));
+assert.throws(() => w.DashboardCandidateComparisonAPI.validate(payload, {...scope, run_ref:'0'.repeat(48)}));
+return (async () => {
+  const requests = [];
+  const api = w.DashboardCandidateComparisonAPI.create(async (url, options) => {
+    requests.push({url, options});
+    return {status:200, ok:true, headers:{get:() => 'application/json'}, json:async () => payload};
+  });
+  const response = await api.read(scope, new AbortController().signal);
+  assert.strictEqual(response, payload);
+  assert.equal(requests.length, 1);
+  const request = new URL(requests[0].url, 'http://localhost');
+  assert.equal(request.pathname, '/api/workbench/v1/dashboard/candidates/' + scope.candidate_ref + '/comparison');
+  assert.equal(request.searchParams.get('range_start'), scope.range_start);
+  assert.equal(request.searchParams.get('range_end'), scope.range_end);
+  assert.equal(request.searchParams.has('batch_ref'), !!scope.batch_ref);
+  assert.equal(request.searchParams.has('run_ref'), false);
+  return {shipped_contract:true, fixed_cohort:true, single_comparison_request:true};
+})();
 """)
         rows.append(data)
     assert rows[0]["resource_common"]["cohort"] == rows[1]["resource_common"]["cohort"]

@@ -10,15 +10,13 @@ from collections import defaultdict
 from datetime import datetime
 from types import SimpleNamespace
 
-from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.errors import AppError
 from core.models.operation_execution_event import parse_operation_event_time
 from core.models.workbench_preflight import issue, local_date
 from core.models.workbench_run_compute import CandidateRunInputError
-from core.services.scheduler.calendar.service import CalendarService
 from core.services.workbench.facts.preflight_checks import number
 from core.services.workbench.facts.table_cells import number_text
-from core.services.workbench.facts.zero_duration import PointEventError, estimate_point_event, internal_duration_hours
+from core.services.workbench.facts.zero_duration import PointEventError, estimate_point_event
 
 from .candidate_adoption_constraints import arrangement_problem, calendar_duration_conflict, external_holds_resources
 from .input_config import candidate_config, window_label
@@ -115,18 +113,13 @@ def _timing_problem(context, held, op, batch):
 
 def _duration_conflict(context, seed, op, batch):
     downtimes = context.downtimes.get(seed["machine_id"], ())
-    if op["batch_id"] not in context.piece_batches:
-        return calendar_duration_conflict(context.calendar, SimpleNamespace(**seed), SimpleNamespace(**op),
-                                          SimpleNamespace(**batch), downtimes)
     try:
-        total = internal_duration_hours(op["setup_hours"], op["unit_hours"], context.quantity(op, batch))
+        return calendar_duration_conflict(context.calendar, SimpleNamespace(**seed), SimpleNamespace(**op),
+                                          SimpleNamespace(**batch), downtimes, quantity=context.quantity(op, batch))
     except PointEventError:
+        if op["batch_id"] not in context.piece_batches:
+            raise
         return False  # 工时或数量读不出来由资料检查和分件范围检查拦下，这里不重复报成时间对不上
-    slot = estimate_internal_slot(calendar=context.calendar, op=SimpleNamespace(**op), batch=SimpleNamespace(**batch),
-        machine_id=seed["machine_id"], operator_id=seed["operator_id"], base_time=seed["start_time"],
-        prev_end=seed["start_time"], machine_timeline=(), operator_timeline=(), end_dt_exclusive=None,
-        machine_downtimes=downtimes, last_op_type_by_machine=None, abort_after=None, total_hours_base=total)
-    return bool(slot.efficiency_fallback_used or (slot.start_time, slot.end_time) != (seed["start_time"], seed["end_time"]))
 
 
 def _point_problem(context, held, op, batch):
@@ -237,13 +230,13 @@ _FREEZE_OFF = SimpleNamespace(freeze_window_enabled="no", freeze_window_days=0, 
 
 def _held(facts, svc, settings, version, operations, held_ids, *, hold_window_bounds):
     models = [SimpleNamespace(**op) for op in operations]
-    cfg = _FREEZE_OFF if facts.config_error is not None else candidate_config(facts.conn, settings, snapshot=facts.config_snapshot)
-    seeds, meta = held_arrangements(
+    cfg = _FREEZE_OFF if facts.config_error is not None else candidate_config(settings, snapshot=facts.config_snapshot)
+    held = held_arrangements(
         svc, cfg=cfg, prev_version=version, facts=facts,
         start_dt=datetime.combine(local_date(settings["start_date"]), datetime.min.time()),
         operations=models, reschedulable_operations=[op for op in models if op.id in held_ids],
         hold_window=hold_window_bounds)
-    return seeds, meta
+    return held.seed_results, held.meta, held
 
 
 def _marks(seeds):
@@ -254,28 +247,28 @@ def _marks(seeds):
 
 def held_arrangement_reasons(facts, svc, checks, settings, version, batches, operations, held_ids, cycles, projections,
                              *, hold_window_bounds):
-    """返回 (阻断原因, 提醒, {工序: 保留标记})。
+    """返回 (阻断原因, 提醒, {工序: 保留标记}, 保留安排结果)。
 
     held_ids 是这次要重排的工序（资料有效、自动分配待补）加上合并外协组派生保留的成员，与排产计算查不重排时段的范围一致；
     cycles 是这些成员的实际周期；其余外协按现在的外协周期、零工时按现在的班次、分件按每件数量复核，与采用同口径；
     projections 是这些工序的执行投影，已完工前道的实际完工按它核对。
     """
     if not held_ids:
-        return [], [], {}
+        return [], [], {}, None
     by_id = {op["id"]: op for op in operations}
     try:
-        seeds, meta = _held(facts, svc, settings, version, operations, held_ids, hold_window_bounds=hold_window_bounds)
+        seeds, meta, held_obj = _held(facts, svc, settings, version, operations, held_ids, hold_window_bounds=hold_window_bounds)
     except CandidateRunInputError as exc:
-        return [facts.public_issue(item, by_id[item["op_id"]]) if item.get("op_id") in by_id else item for item in exc.issues], [], {}
+        return [facts.public_issue(item, by_id[item["op_id"]]) if item.get("op_id") in by_id else item for item in exc.issues], [], {}, None
     except AppError:
-        return [_unreadable()], [], {}
-    context = _Context(checks, CalendarService(facts.conn), held_machine_downtimes(svc, seeds, facts=facts), settings, batches, operations,
+        return [_unreadable()], [], {}, None
+    context = _Context(checks, facts.calendar(), held_machine_downtimes(seeds, facts=facts), settings, batches, operations,
                        _completed(facts, operations, projections))
     blockers = _seed_blockers(facts, context, seeds, by_id, meta.get("hold_window"), cycles)
     # 合并外协组成员只在不在保留安排里时才由排产按实际周期派生、排产照常出结果；全都在保留安排里排产会直接停下。
     if held_ids <= {seed["op_id"] for seed in seeds}:
         blockers.append(_all_held())
-    return blockers, _skipped_freeze(meta, batches), _marks(seeds)
+    return blockers, _skipped_freeze(meta, batches), _marks(seeds), held_obj
 
 
 def _seed_blockers(facts, context, seeds, by_id, window, cycles):

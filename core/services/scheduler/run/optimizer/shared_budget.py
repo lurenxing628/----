@@ -58,6 +58,8 @@ class SharedSearchBudget:
         self._goals = {objective: _GoalOpportunity(0.6 if index == 0 else 0.2)
                        for index, objective in enumerate(self.target_objectives)}
         self._samples: Dict[str, Deque[float]] = {kind: deque(maxlen=3) for kind in self._KINDS}
+        self._unpruned_sgs_samples: Deque[float] = deque(maxlen=3)
+        self._max_full_seconds: float = 0.0
         self._decode_counts: Dict[str, int] = dict.fromkeys(self._KINDS, 0)
         self._decode_seconds = 0.0
         self._first_construction_admitted = False
@@ -86,19 +88,33 @@ class SharedSearchBudget:
         full_samples = tuple(self._samples["batch_order_full"]) + tuple(self._samples["sgs_full"])
         return max(full_samples) * 1.25 if full_samples else 0.0
 
+    def _required_estimate(self, kind: str, *, reserve_full: bool = False, unpruned_sgs: bool = False) -> float:
+        estimate = self.estimate(kind)
+        if unpruned_sgs and kind == "sgs_full":
+            unpruned_base = max(self._unpruned_sgs_samples) if self._unpruned_sgs_samples else self._max_full_seconds
+            estimate = max(estimate, unpruned_base * 1.25)
+        if reserve_full:
+            estimate += self.estimate("sgs_full")
+        return estimate
+
+    def can_afford_decode(self, kind: str, *, reserve_full: bool = False, unpruned_sgs: bool = False) -> bool:
+        """Check whether the remaining budget can cover one decode without mutating admission state."""
+        remaining = self.remaining()
+        if remaining <= 0.0 or not any(self._decode_counts.values()):
+            return False
+        return self._required_estimate(kind, reserve_full=reserve_full, unpruned_sgs=unpruned_sgs) <= remaining
+
     def reject(self, reason: str) -> NoReturn:
         """Count one admission rejection without inventing a decode request."""
         self._admission_skips[reason] = self._admission_skips.get(reason, 0) + 1
         raise SharedSearchSkip(reason)
 
     def require_decode(self, kind: str, *, reserve_full: bool = False,
-                       first_construction: bool = False) -> None:
+                       first_construction: bool = False, unpruned_sgs: bool = False) -> None:
         """Recheck the actual clock immediately before each real decoder call."""
         remaining = self.remaining()
         reason = None
-        estimate = self.estimate(kind)
-        if reserve_full:
-            estimate += self.estimate("sgs_full")
+        estimate = self._required_estimate(kind, reserve_full=reserve_full, unpruned_sgs=unpruned_sgs)
         if remaining <= 0.0:
             reason = "time_budget"
         elif not any(self._decode_counts.values()):
@@ -111,10 +127,14 @@ class SharedSearchBudget:
         if reason is not None:
             self.reject(reason)
 
-    def record_decode(self, kind: str, elapsed_seconds: float) -> None:
+    def record_decode(self, kind: str, elapsed_seconds: float, *, unpruned_sgs: bool = False) -> None:
         """Record exactly one real schedule/metrics call, including failed calls."""
         elapsed = max(float(elapsed_seconds), 0.0)
         self._samples[kind].append(elapsed)
+        if kind in ("batch_order_full", "sgs_full"):
+            self._max_full_seconds = max(self._max_full_seconds, elapsed)
+        if unpruned_sgs and kind == "sgs_full":
+            self._unpruned_sgs_samples.append(elapsed)
         self._decode_counts[kind] += 1
         self._decode_seconds += elapsed
 

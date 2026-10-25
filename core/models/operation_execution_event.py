@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, Optional, Sequence, Tuple
+from typing import Any, Iterable, Optional, Tuple
 
 from ._helpers import RowLike, get, parse_int
 from .operation_execution_scope import (
@@ -16,7 +16,6 @@ EXECUTION_EVENT_PAUSE = "pause"
 EXECUTION_EVENT_RESUME = "resume"
 EXECUTION_EVENT_FINISH = "finish"
 EXECUTION_EVENT_EXCEPTION = "exception"
-EXECUTION_ACTION_REPORT_EXCEPTION = "report_exception"
 
 EXECUTION_STATUS_NOT_STARTED = "not_started"
 EXECUTION_STATUS_PROCESSING = "processing"
@@ -120,15 +119,12 @@ def _event_identity(event: OperationExecutionEvent) -> str:
     return f"type={event.event_type!r}"
 
 
-def _event_id_for_revision(event: Any, *, index: int, total: int) -> int:
-    # 只有序列最后一个新事件允许 id=0 哨兵；前面任何事件缺 id 都必须响亮失败。
+def _event_id_for_revision(event: Any) -> int:
     raw = event.id
     value = parse_int(raw, default=None)
-    if value is not None and value > 0:
-        return value
-    if index < total:
-        raise ValueError(f"id is required before following event at {_event_identity(event)}")
-    return 0
+    if value is None or value <= 0:
+        raise ValueError(f"id must be a positive integer at {_event_identity(event)}")
+    return value
 
 
 def _optional_non_negative_int_field(value: Any, field_name: str) -> Optional[int]:
@@ -151,16 +147,6 @@ def _suggest_reschedule_field(value: Any) -> int:
     return int(parsed)
 
 
-def validate_operation_execution_event_transition(*, current_status: Any, event_type: Any) -> str:
-    status_text = _required_contract_text(current_status, "current_status")
-    if status_text not in ALLOWED_EXECUTION_EVENTS_BY_STATUS:
-        raise ValueError(f"current_status must be one of {tuple(ALLOWED_EXECUTION_EVENTS_BY_STATUS)}: {current_status!r}")
-    event_type_text = _required_contract_text(event_type, "event_type")
-    if event_type_text not in VALID_EXECUTION_EVENT_TYPES:
-        raise ValueError(f"event_type must be one of {VALID_EXECUTION_EVENT_TYPES}: {event_type!r}")
-    return _next_execution_status(status_text, event_type_text)
-
-
 def _next_execution_status(current_status: str, event_type: str) -> str:
     if event_type not in ALLOWED_EXECUTION_EVENTS_BY_STATUS[current_status]:
         raise ValueError(
@@ -170,13 +156,12 @@ def _next_execution_status(current_status: str, event_type: str) -> str:
     return REPORTED_STATUS_BY_EXECUTION_EVENT_TYPE[event_type]
 
 
-def validate_operation_execution_event_sequence(events: Sequence[OperationExecutionEvent]) -> None:
+def validate_operation_execution_event_sequence(events: Iterable[OperationExecutionEvent]) -> None:
     current_status = EXECUTION_STATUS_NOT_STARTED
     previous_event_time: Optional[str] = None
     previous_event_id = 0
     sequence_scope: Optional[OperationExecutionScope] = None
-    events_list = list(events or [])
-    for index, event in enumerate(events_list, start=1):
+    for index, event in enumerate(events or (), start=1):
         scope = operation_execution_scope_from_event(event)
         if sequence_scope is None:
             sequence_scope = scope
@@ -205,7 +190,7 @@ def validate_operation_execution_event_sequence(events: Sequence[OperationExecut
             )
         previous_event_time = event.event_time
         current_status = event.reported_status
-        previous_event_id = _event_id_for_revision(event, index=index, total=len(events_list))
+        previous_event_id = _event_id_for_revision(event)
 
 
 @dataclass(frozen=True)
@@ -293,12 +278,7 @@ class OperationExecutionEvent:
             created_at=_text_or_none(get(row, "created_at")),
         )
 
-    def to_dict(self) -> Dict[str, Any]:
-        return dict(self.__dict__)
-
-
 __all__ = [
-    "EXECUTION_ACTION_REPORT_EXCEPTION",
     "EXECUTION_EVENT_EXCEPTION",
     "EXECUTION_EVENT_FINISH",
     "EXECUTION_EVENT_PAUSE",
@@ -318,5 +298,4 @@ __all__ = [
     "normalize_operation_event_time",
     "parse_operation_event_time",
     "validate_operation_execution_event_sequence",
-    "validate_operation_execution_event_transition",
 ]

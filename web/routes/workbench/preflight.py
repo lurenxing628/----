@@ -7,21 +7,19 @@ from typing import TYPE_CHECKING
 from flask import current_app, g, request
 from werkzeug.exceptions import HTTPException
 
-from core.errors import ValidationError
+from core.errors import AppError, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json, validate_request_key
 from core.models.workbench_preflight import (
     SCHEDULING_PREFERENCES_ACTION,
     SCHEDULING_PREFERENCES_SUBJECT,
-    normalize_preflight_input,
 )
 from core.models.workbench_run_job import new_run_ref
 from core.services.workbench.run.preferences import SchedulingPreferencesService
-from core.services.workbench.run.preflight_facts import full_facts_content
 from web.api_responses import failure, json_response, query_success
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
-from .api_responses import api_endpoint
+from .api_responses import api_endpoint, domain_failure
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
 
@@ -36,9 +34,9 @@ def _preflight_binding(conn, input_ref):
         raise RuntimeError("Preflight input revalidation requires the caller's transaction")
     try:
         bound = resolve_public_token(INPUT_SCOPE, input_ref, message="排产检查结果已过期，这次排产没有开始。请重新点「开始排产检查」。", field="input_ref")
-    except (ValidationError, ValueError, TypeError) as exc:
+    except ValidationError as exc:
         raise WorkbenchCommandRejected("snapshot_stale", "排产检查结果已过期或读不出来，这次排产没有开始。请重新点「开始排产检查」。") from exc
-    normalized = normalize_preflight_input(bound["input"])
+    normalized = bound["input"]
     if bound["scope"] != {"source": "production", "batch_refs": normalized["batch_refs"]}:
         raise WorkbenchCommandRejected("snapshot_stale", "排产检查之后批次范围或现场记录有变化，这次排产没有开始。请重新点「开始排产检查」。")
     return normalized, bound["fingerprint"]
@@ -49,19 +47,6 @@ def _require_current(original, current):
         raise WorkbenchCommandRejected("snapshot_stale", "排产检查之后批次范围或现场记录有变化，这次排产没有开始。请重新点「开始排产检查」。")
 
 
-def resolve_preflight_input(conn, input_ref):
-    """Independent resolver retains its full freshness check in the caller's transaction."""
-    normalized, original = _preflight_binding(conn, input_ref)
-    _require_current(original, full_facts_content(conn))
-    return normalized
-
-
-def evaluate_preflight_input(conn, input_ref):
-    """Admission consumes one current preflight for both business checks and freshness."""
-    prepared = evaluate_preflight_input_prepared(conn, input_ref)
-    return prepared.data, prepared.fingerprint
-
-
 def evaluate_preflight_input_prepared(conn, input_ref, *, facts=None) -> "PreparedPreflight":
     """Private same-transaction continuation; it never enters the public token."""
     from core.services.workbench.run.preflight import PreflightService
@@ -70,9 +55,6 @@ def evaluate_preflight_input_prepared(conn, input_ref, *, facts=None) -> "Prepar
     prepared = PreflightService(conn, facts=facts).evaluate_prepared(normalized)
     _require_current(original, prepared.fingerprint)
     return prepared
-
-
-evaluate_preflight_input.prepared = evaluate_preflight_input_prepared
 
 
 def scheduling_preflight():
@@ -93,6 +75,8 @@ def scheduling_preflight():
         response = query_success(data, {"snapshot_ref": token, "as_of": datetime.now().isoformat(timespec="seconds")})
     except WorkbenchCommandRejected as exc:
         response = failure(exc.code, str(exc), exc.status)
+    except AppError as exc:
+        response = domain_failure(exc)
     except HTTPException as exc:
         response = failure("invalid_input", "提交的内容读不出来，排产检查没有执行。请刷新页面后重新点「开始排产检查」。", exc.code or 400)
     except Exception:

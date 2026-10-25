@@ -40,9 +40,10 @@ def _replace_report_tables(conn):
 
 
 def _migrate_report_links(conn):
-    if not execution_ledger_contract_issues(conn) and not execution_void_contract_issues(conn):
+    void_issues = execution_void_contract_issues(conn)
+    if not execution_ledger_contract_issues(conn) and not void_issues:
         return
-    issues = execution_ledger_contract_issues(conn, legacy_link_unique=True) + execution_void_contract_issues(conn)
+    issues = execution_ledger_contract_issues(conn, legacy_link_unique=True) + void_issues
     if issues:
         raise RuntimeError("Cannot migrate incomplete execution report history: " + "; ".join(issues))
     _replace_report_tables(conn)

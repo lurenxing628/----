@@ -8,6 +8,8 @@ from enum import Enum
 
 from core.infrastructure.logging import safe_log
 
+from .schema_probe import table_columns, table_exists
+
 
 class MigrationOutcome(str, Enum):
     APPLIED = "applied"
@@ -25,40 +27,13 @@ def merge_outcomes(*outcomes: MigrationOutcome) -> MigrationOutcome:
     return MigrationOutcome.PARTIAL
 
 
-def table_exists(conn: sqlite3.Connection, table: str) -> bool:
-    """
-    判断指定表是否存在。
-
-    说明：
-    - 查询 sqlite_master，避免把“表不存在”和“列不存在”混为一谈
-    - 仅接受安全标识符，避免 SQL 注入/语法注入
-    """
-    t = _normalize_sqlite_identifier(table, kind="表名")
-    row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
-        (t,),
-    ).fetchone()
-    return row is not None
-
-
 def column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
     """
     判断指定表是否存在指定列。
-
-    说明：
-    - SQLite: PRAGMA table_info(table)
-    - 防御：异常时返回 False
     """
-    # 防御：PRAGMA 不支持参数化 table 名，必须做白名单校验，避免 SQL 注入/语法注入
-    # 允许：字母/数字/下划线，且不能以数字开头（符合常见 SQLite 标识符约束）
     t = _normalize_sqlite_identifier(table, kind="表名")
     col = _normalize_sqlite_identifier(column, kind="列名")
-    rows = conn.execute(f"PRAGMA table_info({t})").fetchall()
-    for r in rows:
-        name = r["name"] if isinstance(r, sqlite3.Row) else r[1]
-        if name == col:
-            return True
-    return False
+    return col in table_columns(conn, t)
 
 
 def _normalize_sqlite_identifier(value: object, *, kind: str) -> str:
@@ -101,5 +76,4 @@ __all__ = [
     "column_exists",
     "fallback_log",
     "merge_outcomes",
-    "table_exists",
 ]

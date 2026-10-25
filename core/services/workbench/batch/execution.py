@@ -6,28 +6,23 @@ from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.execution.ledger import ExecutionLedgerService
-from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 
 from .snapshot_content import record_content, shared_content
 
 
-def load_execution(conn, operation_refs):
+def load_execution(conn, operation_refs, *, schema_version, has_execution_commands):
     """Read all ledger inputs under the batch caller's single snapshot."""
     if not conn.in_transaction:
         raise RuntimeError("Batch execution inputs require a caller read transaction.")
     names = set(schema_contract_memo(conn).structure.objects)
     if not names.intersection(execution_ledger_objects()):
-        repo = WorkbenchExecutionRepository(conn)
-        version = repo.schema_version_row()
-        receipts = repo.has_execution_receipts()
-        if version is None or type(version["version"]) is not int or not 0 <= version["version"] < 25 or receipts:
+        if type(schema_version) is not int or not 0 <= schema_version < 25 or has_execution_commands:
             raise WorkbenchCommandRejected("execution_ledger_unavailable", "报工记录表缺失，无法读取现场进度，请联系维护人员恢复数据。")
-        return {"available": False, "projections": {}, "snapshot_facts": {"schema_version": version["version"]},
+        return {"available": False, "projections": {}, "snapshot_facts": {"schema_version": schema_version},
                 "issues": [{"code": "execution_ledger_not_installed", "message": "这个数据库还没装报工记录表；现在只保留旧的状态标记和删除保护，逐次进度暂无数据。"}]}
     ledger = ExecutionLedgerService(conn)
-    refs = list(operation_refs)
     with ledger.read_snapshot():
-        return {"available": True, "refs": refs, "facts": ledger.load_many(refs), "now": ledger.clock()}
+        return {"available": True, "facts": ledger.load_many(operation_refs), "now": ledger.clock()}
 
 
 def project_execution_snapshot(raw):
@@ -35,9 +30,8 @@ def project_execution_snapshot(raw):
     if not raw["available"]:
         return raw
     ledger = ExecutionLedgerService(None, clock=lambda: raw["now"])
+    # load_many 已拒绝缺失的工序，project_loaded 逐个投影载入的工序，这里不再重复核对集合。
     projections = {row.operation_ref: row for row in ledger.project_loaded(raw["facts"], contexts=False)}
-    if set(projections) != set(raw["refs"]):
-        raise WorkbenchCommandRejected("execution_ledger_unavailable", "有工序的报工记录读取失败，请联系维护人员核对。")
     # BatchFacts already includes every projection; global plan/ledger clocks add no
     # batch fact and would invalidate it when an unrelated historical plan changes.
     return {"available": True, "projections": projections, "issues": []}
@@ -65,7 +59,7 @@ def protects_execution(projection):
                 or projection.data_quality == "invalid")
 
 
-def operation_execution_fields(row, ref, facts, *, include_details=True):
+def operation_execution_fields(row, ref, facts, *, include_details):
     execution = facts["projections"].get(ref)
     gaps = list(execution.data_gaps if execution else facts["issues"])
     state = execution.execution_state if execution else None

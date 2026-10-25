@@ -7,38 +7,37 @@ from core.errors import ValidationError
 from core.models.workbench_trial import issue
 from core.services.scheduler.repository_bundle import build_schedule_repository_bundle
 from core.services.workbench.run.input_config import candidate_config, hold_window, window_label
-from core.services.workbench.run.input_runtime import held_arrangements
+from core.services.workbench.run.input_runtime import HeldArrangements, held_arrangements
 
 from .materials import hold_settings
 
 
-def frozen_arrangements(conn, admission, rows, live, *, settings):
-    """{工序: 原安排}：正式采用时按来源排产的不重排时段原样保留的工序。
+def prepare_frozen_arrangements(conn, admission, rows, live, *, settings):
+    """正式采用时按来源排产的不重排时段原样保留的完整冻结输入。
 
     与试调采用复核同一口径：同一份排产输入（冻结从来源排产的起日起算）、同一份正式计划、
     同一批要重排的工序，由排产计算同一套保留规则找出。冻结资料读不出来时抛 AppError，由调用方提示。
     """
     version = live["baseline"]["version"]
     if version is None:
-        return {}
+        return HeldArrangements(set(), [], [], {})
     anchor = hold_settings(admission, settings)
     facts = live["preflight_facts"]
     try:
         config = facts.configuration()
-        cfg = candidate_config(conn, settings, snapshot=config)
+        cfg = candidate_config(settings, snapshot=config)
     except ValidationError:
         # 排产参数本身读不出来时，正式采用会直接拦下并说明是哪项参数；这里不替它判冻结。
-        return {}
+        return HeldArrangements(set(), [], [], {})
     tables = live["facts"]["tables"]
     batch_ids = {row["original"]["batch"]["batch_id"] for row in rows}
     operations = [SimpleNamespace(**op) for op in tables["BatchOperations"] if op["batch_id"] in batch_ids]
     moving = _rescheduled_ids(rows, live)
-    seeds, meta = held_arrangements(
+    return held_arrangements(
         build_schedule_repository_bundle(conn), facts=facts, cfg=cfg, prev_version=version,
         start_dt=datetime.combine(date.fromisoformat(anchor["start_date"]), time.min),
         operations=operations, reschedulable_operations=[op for op in operations if op.id in moving],
-        hold_window=hold_window(conn, anchor, snapshot=config)[0])
-    return {seed["op_id"]: dict(seed, hold_window=meta.get("hold_window")) for seed in seeds}
+        hold_window=hold_window(anchor, snapshot=config)[0])
 
 
 def _rescheduled_ids(rows, live):
@@ -96,13 +95,14 @@ def keeps_frozen(row, seed):
 
 
 class TrialProtection:
-    def __init__(self, live, frozen=None):
-        self.frozen = frozen or {}
+    def __init__(self, live, frozen):
+        self.frozen = frozen
         tables = live["facts"]["tables"]
         self.identities = {row["ref"]: row for row in tables["WorkbenchPlanSourceRefs"] if row["kind"] == "operation"}
         self.execution = live["execution"]
-        self.operations = {row["id"]: row for row in tables["BatchOperations"]}
-        self.batches = {row["batch_id"]: row for row in tables["Batches"]}
+        capture = live["preflight_facts"].capture
+        self.operations = capture.index("BatchOperations", "id")
+        self.batches = capture.index("Batches", "batch_id")
 
     def check(self, row):
         return self._identity(row) or self._execution(row) or self._frozen(row) or self._closed(row)

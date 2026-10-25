@@ -49,8 +49,9 @@
     function refresh() {
       if (blocked) return;
       setNotice('');
-      setScope(current => ({ ...current, plan_ref: current.plan_ref || readPlan.current, task_ref: opened || undefined,
-        operation_ref: selectedTask ? selectedTask.operation_ref : undefined, snapshot_ref: undefined }));
+      setScope(current => ({ ...current, plan_ref: current.plan_ref || readPlan.current, page: opened ? undefined : current.page,
+        task_ref: opened || undefined, operation_ref: opened ? (selectedTask ? selectedTask.operation_ref : current.operation_ref) : undefined,
+        snapshot_ref: undefined }));
       setRevision(value => value + 1);
     }
     async function closeEditor() {
@@ -68,10 +69,23 @@
     }
     function continueReady(task) {
       if (!nextDraft || command.locked) return;
+      if (!task) {
+        setNextDraft(null);
+        setNotice('已保存最新报工，但核对详情失败。请刷新现场记录或详情。');
+        return;
+      }
       const reason = window.FieldDraftModel.continuation(nextDraft.previousContext, task, nextDraft);
       setNextDraft(null); setNotice(reason || '已核对最新报工，已打开新的报工草稿。');
       if (!reason) setEditor({ taskRef: task.task_ref, action: 'create' });
     }
+    React.useEffect(() => {
+      if (!nextDraft || read.loading) return;
+      if (read.error) { setNextDraft(null); return; }
+      if (data && !selectedTask) {
+        setNextDraft(null);
+        setNotice('已保存最新报工；当前筛选范围已不含该工序，已结束连续报工。');
+      }
+    }, [nextDraft, read.loading, read.error, data, selectedTask]);
     const effectiveScope = data ? data.scope : scope;
     const filtered = !!(scope.query || scope.state && scope.state !== 'all' || scope.plan_finish_date_from || scope.plan_finish_date_to || scope.range_start || scope.batch_ids || scope.resource_ref);
     const returnTarget = initialContext.return_to;
@@ -92,7 +106,7 @@
         onPage={page => { setNotice(''); setScope({ ...effectiveScope, size: scope.size, page, snapshot_ref: snapshot }); setOpened(null); }}
         onSize={size => { setNotice(''); setScope({ ...effectiveScope, size, page: 1, snapshot_ref: snapshot }); setOpened(null); }} />}
       {selectedTask && <window.FieldDetail key={selectedTask.task_ref} adapter={api} taskRef={selectedTask.task_ref} scope={effectiveScope} snapshot={snapshot} revision={revision} command={command} editor={editor}
-        retained={drafts.current.get(selectedTask.task_ref)?.retained} onDraft={retainDraft} nextDraft={nextDraft} onContinueReady={continueReady}
+        retained={drafts.current.get(selectedTask.task_ref)?.retained} onDraft={retainDraft} nextDraft={nextDraft} onContinueReady={continueReady} onRefresh={refresh}
         onEdit={value => { if (command.reset()) setEditor(value); }} onCloseEditor={closeEditor} onDone={done} onNavigate={onNavigate} />}
       {files && <window.FieldFiles adapter={api} scope={effectiveScope} snapshot={snapshot} command={command} onClose={() => { if (command.phase === 'done') done(); else if (command.reset()) setFiles(false); }} onDone={done} />}
     </section>;

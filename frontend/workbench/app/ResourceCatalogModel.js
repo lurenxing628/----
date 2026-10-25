@@ -2,7 +2,8 @@
   'use strict';
   const C = window.APSResourceContract;
   const names = { machine_group: '设备组', shift_profile: '班次档' };
-  const clone = value => JSON.parse(JSON.stringify(value));
+  const cloneRow = row => ({ ...row, ...(Array.isArray(row.periods) ? { periods: row.periods.map(p => ({ ...p })) } : {}) });
+  const clone = value => value.map(cloneRow);
   function draft(entity) {
     const fields = entity ? entity.fields : {};
     return { business_code: entity ? entity.business_code : '', label: entity ? entity.label : '',
@@ -16,7 +17,7 @@
     return Number(value);
   }
   function resized(pattern, length) {
-    return Array.from({ length }, (_, day_offset) => pattern[day_offset] ? { ...pattern[day_offset] } :
+    return Array.from({ length }, (_, day_offset) => pattern[day_offset] ? cloneRow(pattern[day_offset]) :
       { day_offset, is_rest: null, shift_start: '', shift_end: '' });
   }
   function dateValid(value) {

@@ -92,12 +92,15 @@
     function invalidate() { if (request.current) request.current.abort(); request.current = null; setChecking(false); setPreview(null); setDiscarded([]); }
     React.useEffect(() => { invalidate(); }, [model.draft, model.base, model.review, disabled, command.error]);
     React.useEffect(() => () => { if (request.current) request.current.abort(); }, []);
+    // The parent overlay follows the open dialogs, including a remount or unmount while one is open.
+    React.useEffect(() => { onOverlay(!!picker || !!create); return () => onOverlay(false); }, [!!picker, !!create, onOverlay]);
     function change(ref, patch) { invalidate(); model.edit(current => ({ ...current, [ref]: { ...current[ref], ...patch } })); }
     function openPicker(row, kind) {
+      invalidate();
       const members = supplierMembers(entity, draft, row).map(item => ({ ...item, ...draft[item.ref] }));
-      setPicker({ ...row, ...draft[row.ref], kind, members, group: entity.external_groups.find(item => item.ref === row.external_group_ref) }); onOverlay(true);
+      setPicker({ ...row, ...draft[row.ref], kind, members, group: entity.external_groups.find(item => item.ref === row.external_group_ref) });
     }
-    function closePicker() { setPicker(null); onOverlay(false); }
+    function closePicker() { setPicker(null); }
     function choose(row) {
       invalidate();
       model.edit(current => {
@@ -147,7 +150,7 @@
       {active.some(row => draft[row.ref] && row.op_type_ref !== draft[row.ref].op_type_ref) && <p role="status">更换实际工种后，将清除原换型工时、单件工时和本序外协周期，请重新填写并确认。</p>}
       <div className="toolbar"><E.Search paging={paging} disabled={blocked} /><span>共 {active.length} 道有效工序</span><span className="tb-spacer" />
       <Button icon="plus" disabled={editBlocked} reason={!adapter.resourceAdapter || !window.ProcessOpTypeCreate ? window.WorkbenchTerms.outcomes.unavailable : ''}
-        onClick={() => { invalidate(); setCreate({}); onOverlay(true); }}>新增工种</Button></div>
+        onClick={() => { invalidate(); setCreate({}); }}>新增工种</Button></div>
       <div className="wb-table-frame"><table className="tbl wb-table wb-table--editable" aria-label="归属明细" style={{ minWidth: 950, tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{"归属明细"}</caption>
         <thead><tr><th scope="col" style={{ width: 150 }}>工序</th><th scope="col" style={{ width: 160 }}>工种</th><th scope="col" style={{ width: 160 }}>归属</th><th scope="col" style={{ width: 190 }}>供应商</th><th scope="col">保存记录</th></tr></thead><tbody>{paging.rows.map(row => {
           const current = draft[row.ref] || row, inactive = row.status !== 'active', cycle = current.source === row.source && P.groupCycle(row, groups);
@@ -165,7 +168,7 @@
       <div className="pd-foot"><span className="muted">保存全部 {active.length} 道有效工序，包含其他页和筛选隐藏的工序。</span>
         <Button icon="check" className="btn primary" busy={checking} disabled={blocked} reason={saveReason} onClick={save}>保存归属并继续</Button></div>
       {picker && ReactDOM.createPortal(<div className="plana process-detail"><Picker adapter={adapter} target={picker} onSelect={choose} onClose={closePicker} disabled={blocked} /></div>, document.body)}
-      {create && ReactDOM.createPortal(<div className="plana process-detail"><window.ProcessOpTypeCreate adapter={adapter.resourceAdapter} onClose={() => { setCreate(null); onOverlay(false); }} onCommitted={receipt => { invalidate(); model.reload(); if (onResourceCommitted) onResourceCommitted(receipt); }} /></div>, document.body)}
+      {create && ReactDOM.createPortal(<div className="plana process-detail"><window.ProcessOpTypeCreate adapter={adapter.resourceAdapter} onClose={() => setCreate(null)} onCommitted={receipt => { invalidate(); model.reload(); if (onResourceCommitted) onResourceCommitted(receipt); }} /></div>, document.body)}
     </section>;
   }
   window.ProcessSourceEditor = ProcessSourceEditor;

@@ -166,7 +166,7 @@
       }
       g.knownHours = knownCount ? knownHours : null; groups.push(g);
     }
-    return { ...prepared, items: selected.map(fact => fact.item), groups };
+    return { ...prepared, items: selected.map(fact => fact.item), shownRefs: shown, groups };
   }
   function layoutPrepared(prepared, collapsed) {
     const rows = [], locations = new Map(), reportLocations = new Map(); let top = 0;
@@ -182,7 +182,9 @@
         row.reports.forEach(report => reportLocations.set(report.report_ref, row));
       }
     }
-    return { labels: prepared.labels, taskIndex: prepared.taskIndex, dataRange: prepared.dataRange, items: prepared.items, groups: prepared.groups, rows, height: top, locations, reportLocations,
+    return { labels: prepared.labels, taskIndex: prepared.taskIndex, dataRange: prepared.dataRange, items: prepared.items,
+      shownRefs: prepared.shownRefs || new Set((prepared.items || []).map(item => item.task.task_ref)),
+      groups: prepared.groups, rows, height: top, locations, reportLocations,
       executionAvailable: prepared.executionAvailable, start: prepared.start, end: prepared.end, asOf: prepared.asOf };
   }
   function visibleRows(rows, top, bottom) {

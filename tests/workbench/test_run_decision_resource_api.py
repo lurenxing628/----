@@ -185,9 +185,18 @@ def test_partial_night_window_splits_days_and_preserves_overlap_identity(candida
     second, boundary = case.operation(seq=2), case.operation(seq=3)
     case.conn.commit()
     calendar = CalendarService(case.conn)
-    calendar.upsert(DAY, shift_start="22:00", shift_end="06:00", efficiency=1, allow_normal="yes", allow_urgent="yes")
-    calendar.upsert_operator_calendar("O1", DAY, shift_start="22:00", shift_end="06:00", efficiency=0.5,
-                                      allow_normal="yes", allow_urgent="yes")
+    calendar._admin.repo.upsert_many([
+        calendar._admin._build_work_calendar(
+            date_value=DAY, shift_start="22:00", shift_end="06:00", efficiency=1, allow_normal="yes", allow_urgent="yes"
+        )
+    ])
+    calendar._admin.operator_calendar_repo.upsert_many([
+        calendar._admin._build_operator_calendar(
+            operator_id="O1", date_value=DAY, shift_start="22:00", shift_end="06:00", efficiency=0.5,
+            allow_normal="yes", allow_urgent="yes"
+        )
+    ])
+    case.conn.commit()
     times = {case.op_id: ("2026-09-09T23:00:00", "2026-09-10T01:00:00"),
              second: ("2026-09-10T00:00:00", "2026-09-10T02:00:00"),
              boundary: ("2026-09-10T01:30:00", "2026-09-10T02:30:00")}
@@ -304,12 +313,20 @@ def test_unknown_operator_capacity_and_known_zero_capacity_remain_distinct(candi
     add_pair(case, "M3", "O3")
     case.conn.commit()
     calendar = CalendarService(case.conn)
-    calendar.upsert_operator_calendar("O1", DAY, shift_start="08:00", shift_end="16:00", efficiency=1,
-                                      allow_normal="yes", allow_urgent="yes")
-    calendar.upsert_operator_calendar("O2", DAY, shift_start="08:00", shift_end="16:00", efficiency=1,
-                                      allow_normal="no", allow_urgent="no")
-    calendar.upsert_operator_calendar("O3", DAY, shift_start="08:00", shift_end="16:00", efficiency=1,
-                                      allow_normal="yes", allow_urgent="yes")
+    calendar._admin.operator_calendar_repo.upsert_many([
+        calendar._admin._build_operator_calendar(
+            operator_id="O1", date_value=DAY, shift_start="08:00", shift_end="16:00", efficiency=1,
+            allow_normal="yes", allow_urgent="yes"
+        ),
+        calendar._admin._build_operator_calendar(
+            operator_id="O2", date_value=DAY, shift_start="08:00", shift_end="16:00", efficiency=1,
+            allow_normal="no", allow_urgent="no"
+        ),
+        calendar._admin._build_operator_calendar(
+            operator_id="O3", date_value=DAY, shift_start="08:00", shift_end="16:00", efficiency=1,
+            allow_normal="yes", allow_urgent="yes"
+        ),
+    ])
     case.conn.execute("UPDATE OperatorCalendar SET efficiency=NULL WHERE operator_id IN ('O1','O3') AND date=?", (DAY,))
     case.conn.commit()
     run_ref, refs = legacy_resource_archive(case, monkeypatch,

@@ -45,7 +45,6 @@ from .iterated_greedy_contract import (
     IteratedGreedyLimits,
     _BudgetExhausted,
     ig_decode_profile,
-    iterated_greedy_public_message,
 )
 from .iterated_greedy_features import entry_features
 from .iterated_greedy_incumbent import IGIncumbentTracker
@@ -111,7 +110,7 @@ class _IteratedGreedySearch:
         self.decoded_entries: OrderedDictType[Tuple[int, ...], PoolEntry] = OrderedDict()
         self.decode_seconds_total = 0.0
         self.decode_count = 0
-        self.incumbent = IGIncumbentTracker(pool=pool, report_state=report_state, report=report, seed=seed,
+        self.incumbent = IGIncumbentTracker(pool=pool, report_state=report_state, report=report,
                                              clock=clock, t_begin=t_begin, improvement_trace=improvement_trace)
         self.reference: Optional[PoolEntry] = None
         # The known solution a running full decode only re-captures under this context (None for search decodes).
@@ -209,10 +208,19 @@ class _IteratedGreedySearch:
             self._record_local_reuse("local_trial_reused")
             return None if known is _FAILED else known
         resume = self.checkpoints.best_for(reference.checkpoints, base_order=reference.order, trial_order=order)
+        if resume is not None:
+            budget = self.decode_session.budget
+            if (self.report["decodes"] + 1 >= self.limits.max_decodes
+                    or (budget is not None
+                        and not budget.can_afford_decode("sgs_resume", reserve_full=True)
+                        and budget.can_afford_decode("sgs_full"))):
+                resume = None
         try:
             candidate = self._decode(order, resume=resume)
         except SharedSearchSkip as exc:
             self.last_decode_skip = exc
+            if exc.reason == "estimated_decode_cost":
+                raise _BudgetExhausted(exc.reason) from exc
             return None
         if candidate is None:
             # A rejected decision is not retried; the rejection reason is already recorded.
@@ -314,7 +322,7 @@ class _IteratedGreedySearch:
 
     def _decode(self, order: Tuple[int, ...], *, resume: Optional[DecodeCheckpoint] = None,
                 checkpoints: Optional[Any] = None, redecode_reason: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        decision = RepairDecision(self.parent.batch_order, order, self.parent.inherited)
+        decision = RepairDecision._unvalidated(self.parent.batch_order, tuple(order), self.parent.inherited)
         batch_order = list(decision.batch_order)
         decode_kwargs: Dict[str, Any] = {"decode_session": self.decode_session, "redecode_reason": redecode_reason}
         if resume is not None:
@@ -329,7 +337,6 @@ class _IteratedGreedySearch:
             if checkpoints is not None and is_capture_failure(exc, resumed=resume is not None):
                 # Capture refused or lost before the decode finished: degrade to plain full decodes, report why.
                 self.report["checkpoint_capture_rejections"] += 1
-                self.report["decodes"] -= 1  # The retry below counts the same logical decode once.
                 self.checkpoints.disable(capture_failure_reason(exc))
                 return self._decode(order, redecode_reason=redecode_reason)
             if self.strict_mode or is_graph_ready_v2_contract_error(exc) or exc.field in (
@@ -367,8 +374,7 @@ class _IteratedGreedySearch:
         return candidate
 
     def _before_decode(self) -> None:
-        # The common decoder has already admitted this real call. Enumeration limits
-        # are checked by the iteration before a request is formed.
+        self._require_budget()
         self.report["decodes"] += 1
 
     def _consider_for_incumbent(self, candidate: Dict[str, Any]) -> None:
@@ -392,14 +398,5 @@ class _IteratedGreedySearch:
         report["pool"]["entries"] = len(self.solution_pool.entries)
 
 
-def _publish(report: Dict[str, Any], *, report_state: Any, attempts: List[Dict[str, Any]]) -> None:
+def _publish(report: Dict[str, Any], *, attempts: List[Dict[str, Any]]) -> None:
     attempts.append({"tag": IG_PHASE, "candidate_status": "phase_summary", "iterated_greedy": report})
-    if report_state is None:
-        return
-    graph = dict((report_state.candidate_profile or {}).get("graph_ready_optimization") or {})
-    graph["iterated_greedy"] = report
-    message = str((report_state.candidate_profile or {}).get("message") or "")
-    report_state.update_candidate_profile(graph_ready_optimization=graph,
-                                          message=(message + " " + iterated_greedy_public_message(report)).strip())
-    if report["status"].startswith("skipped") or report["status"] == "not_run":
-        report_state.mark_phase_skipped(IG_PHASE, report["status"])

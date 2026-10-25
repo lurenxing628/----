@@ -73,7 +73,7 @@ def _last_operations(item, tasks):
             if task["end"] == finish]
 
 
-def _items(keys, facts, rows, tasks, intervals, incomplete, uncertain, deferred):
+def _items(keys, facts, rows, tasks, intervals, incomplete, uncertain, deferred, *, precomputed):
     operations, schedules = facts.operations_by_batch, defaultdict(list)
     for row in rows:
         schedules[row["batch_id"]].append(row)
@@ -84,29 +84,38 @@ def _items(keys, facts, rows, tasks, intervals, incomplete, uncertain, deferred)
         if batch is None or ref is None:
             missing.append(key)
             continue
-        item = project_delivery_batch(batch, ref, schedules[key], operations.get(key, ()), intervals,
-                                      key in incomplete, uncertain_list, deferred_operation_ids=deferred)
+        if precomputed is not None and not uncertain_list and ref in precomputed:
+            item = dict(precomputed[ref])
+        else:
+            item = project_delivery_batch(batch, ref, schedules[key], operations.get(key, ()), intervals,
+                                          key in incomplete, uncertain_list, deferred_operation_ids=deferred)
         item["last_operations"] = _last_operations(item, tasks.get(key, []))
         result.append(item)
     return result, missing
 
 
 def _project_items(candidate, facts, tasks, disposition, settings, *, scope=None, visible=(), unplanned=None,
-                   intervals=None, deferred_ids=None):
+                   intervals=None, deferred_ids=None, precomputed=None):
     rows, by_batch, uncertain = prepare_candidate_delivery_groups(tasks, facts)
     keys = _selected_keys(settings, facts, by_batch, visible, unplanned, scope, uncertain)
     incomplete, negative = _negative_completion(candidate, disposition)
     uncertain.update(negative)
     deferred = material_deferred_ids((disposition or {}).values(), settings) if deferred_ids is None else deferred_ids
     items, missing = _items(keys, facts, rows, by_batch, task_intervals(rows) if intervals is None else intervals,
-                            incomplete, uncertain, deferred)
+                            incomplete, uncertain, deferred, precomputed=precomputed)
     return items, missing, uncertain, len(keys)
 
 
-def project_legacy_delivery_detail(candidate, facts, tasks, disposition, settings, *, intervals=None, deferred_ids=None):
+def project_legacy_delivery_detail(candidate, facts, tasks, disposition, settings, *, intervals=None,
+                                   deferred_ids=None, precomputed_delivery=None):
     """Keep all whole-candidate batch rows and every tied last operation for saved detail."""
+    precomputed = (
+        {row["batch_ref"]: row for row in precomputed_delivery}
+        if precomputed_delivery is not None
+        else None
+    )
     return _project_items(candidate, facts, tasks, disposition, settings,
-                          intervals=intervals, deferred_ids=deferred_ids)[0]
+                          intervals=intervals, deferred_ids=deferred_ids, precomputed=precomputed)[0]
 
 
 def candidate_delivery_risks(candidate, facts, tasks, disposition, scope, settings, visible, unplanned):

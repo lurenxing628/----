@@ -39,6 +39,7 @@ from core.services.common.excel_instruction_sheet import (
 )
 from core.services.workbench.facts.file_codec import NUMBER
 from core.services.workbench.facts.file_source import FileReadMessages, source_rows
+from core.services.workbench.facts.process_file_xml import preserve_carriage_returns
 from core.services.workbench.facts.table_cells import number_text
 
 _ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
@@ -247,6 +248,7 @@ def _write_xlsx(rows, filename, template, descriptor):
             ws.append(_xlsx_row(ws, row, count + 1))
         ws.auto_filter.ref = "A1:H" + str(count + 1)
         add_enum_dropdowns(ws, descriptor, count, write_only=True)
+        preserve_carriage_returns(ws)
         sheets.append(append_instruction_sheet(wb, descriptor))
         with SpooledTemporaryFile(max_size=_SPOOL_BYTES, mode="w+b") as buffer:
             wb.save(buffer)

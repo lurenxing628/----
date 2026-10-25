@@ -20,6 +20,7 @@
     const [search, setSearch] = React.useState(''), [query, setQuery] = React.useState(''), [selected, setSelected] = React.useState('');
     const [preview, setPreview] = React.useState(null), [busy, setBusy] = React.useState(false), [error, setError] = React.useState(null);
     const done = command.phase === 'done', disabled = busy || command.locked || done;
+    React.useEffect(() => { if (command.phase === 'rejected') setPreview(null); }, [command.phase]);
     const read = S.useQuery(signal => adapter.choices('machine', { query, page: 1, size: 20, sort: 'business_code', direction: 'asc' }, signal), [adapter, query]);
     const choices = read.result && read.result.data.entities || [];
     const reason = !Array.isArray(original) ? '设备关联尚未完整读取，请关闭后重新打开人员详情。'
@@ -31,7 +32,8 @@
       if (!(detail && detail.guardConfirmed === true && detail.guardOwner === owner) && !await window.WorkbenchGuards.confirmLeave({ owner })) return;
       onClose();
     }
-    function change(next) { setRows(next); setPreview(null); setError(null); }
+    function resetCommand() { if (command.phase !== 'idle' && !command.locked) command.reset(); }
+    function change(next) { resetCommand(); setRows(next); setPreview(null); setError(null); }
     function edit(ref, key, value) {
       change(rows.map(row => row.machine_ref === ref ? { ...row, [key]: value }
         : key === 'is_primary' && value === 'yes' && isPrimary(row.is_primary) ? { ...row, is_primary: 'no' } : row));
@@ -44,7 +46,7 @@
     }
     async function reload() {
       if (disabled || !await window.WorkbenchGuards.confirmLeave({ owner })) return;
-      setBusy(true); setError(null);
+      resetCommand(); setBusy(true); setError(null);
       try {
         const result = C.query(await adapter.detail('operator', entity.ref, new AbortController().signal), 'entity');
         if (result.data.ref !== entity.ref || result.meta.source !== source || !Array.isArray(result.data.relationships.machine_permissions))
@@ -56,7 +58,7 @@
     }
     async function inspect() {
       if (disabled || reason) return;
-      setBusy(true); setError(null); setPreview(null);
+      resetCommand(); setBusy(true); setError(null); setPreview(null);
       try {
         const result = await adapter.preview('entities/operator/' + entity.ref + '/machine-permissions/preview',
           { machine_permissions: fields(rows), write_token: current.write_context.write_token }, new AbortController().signal);

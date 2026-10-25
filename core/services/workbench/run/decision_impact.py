@@ -19,9 +19,11 @@ OPERATION_SORTS = ("sequence", "start_delta_hours", "end_delta_hours", "batch_id
 DELIVERY_FILTERS = ("all", "attention", "overdue", "deferred", "unplanned", "on_time")
 
 
-def batch_impact_summary(source):
-    before = source.completion.delivery("reference")
-    after = source.completion.delivery(source.selected_ref)
+def batch_impact_summary(source, *, before=None, after=None):
+    if before is None:
+        before = source.completion.delivery("reference")
+    if after is None:
+        after = source.completion.delivery(source.selected_ref)
     changes = operation_change_metrics(source.operation_comparisons.values(), source.scope["operation_refs"],
         source.baseline["state"] == "available", selected_available=source.result_available(source.selected_ref))
     return {"before": delivery_summary(before), "after": delivery_summary(after), **common_completed_delivery(before, after),
@@ -30,10 +32,11 @@ def batch_impact_summary(source):
 
 def batch_impacts(source):
     before = source.completion.delivery("reference")
-    tasks = source.tasks(source.selected_ref)
+    tasks = source.analysis_tasks(source.selected_ref)
     after = source.completion.delivery(source.selected_ref)
     old, new = ({row["batch_ref"]: row for row in rows} for rows in (before, after))
-    selected_by_batch, reference_by_batch = (_by_batch(rows) for rows in (tasks, source.before_tasks))
+    reference_tasks = [row for row in source.analysis_tasks("reference") if row["operation_ref"] in source.operation_refs]
+    selected_by_batch, reference_by_batch = (_by_batch(rows) for rows in (tasks, reference_tasks))
     operation_rows = defaultdict(list)
     expected_by_batch = defaultdict(set)
     for op_ref, row in source.operation_comparisons.items():
@@ -61,9 +64,9 @@ def batch_impacts(source):
                        "operation_changes_state": "unavailable" if not changes or unknown == len(changes) else "partial" if unknown else "complete",
                        "unplanned_operation_refs": sorted(expected - scheduled - source.deferred_refs) if available else None,
                        "deferred_operation_refs": sorted(expected & source.deferred_refs) if available else None,
-                       "drill": {"selected": _drill(source, tasks=selected_by_batch[ref], batch_ref=ref) if available else None,
-                                 "reference": _drill(source, tasks=reference_by_batch[ref], batch_ref=ref, before=True)}})
-    return result, batch_impact_summary(source)
+                       "drill": {"selected": drill_target(source, tasks=selected_by_batch[ref], batch_ref=ref) if available else None,
+                                 "reference": drill_target(source, tasks=reference_by_batch[ref], batch_ref=ref, before=True)}})
+    return result, batch_impact_summary(source, before=before, after=after)
 
 
 def _attention_kinds(delivery):
@@ -79,14 +82,14 @@ def _by_batch(tasks):
     return result
 
 
-def _by_operation(tasks):
+def by_operation(tasks):
     result = defaultdict(list)
     for task in tasks:
         result[task["operation_ref"]].append(task)
     return result
 
 
-def _arrangement(rows, *, display=True):
+def arrangement_view(rows, *, display=True):
     if not rows:
         return None
     if not display and len(rows) == 1:
@@ -114,7 +117,7 @@ def _resource_delta(before, after, kind):
     return (before.get(kind) or {}).get("ref") != (after.get(kind) or {}).get("ref")
 
 
-def _operation_delta(before, after, *, before_status=None, after_status=None,
+def operation_delta(before, after, *, before_status=None, after_status=None,
                      task_intervals=None, reference_task_intervals=None):
     status_changed = before_status != after_status if before_status not in (None, "unavailable") and after_status not in (None, "unavailable") else None
     delta = {"start_delta_hours": None, "end_delta_hours": None, "machine_changed": None, "operator_changed": None,
@@ -163,32 +166,34 @@ def _operation_state(arrangement, *, available, deferred):
 
 
 def operation_changes(tasks, reference_tasks, operation_refs, reference_available, *, selected_available=True,
-                      deferred_refs=(), reference_deferred_refs=(), reference_groups=None,
+                      deferred_refs=(), reference_deferred_refs=(), reference_groups=None, selected_groups=None,
                       task_intervals=None, reference_task_intervals=None):
     comparisons = (row for _ref, row in iter_operation_comparisons(tasks, reference_tasks, operation_refs, reference_available,
         selected_available=selected_available, deferred_refs=deferred_refs, reference_deferred_refs=reference_deferred_refs,
-        reference_groups=reference_groups, task_intervals=task_intervals, reference_task_intervals=reference_task_intervals))
+        reference_groups=reference_groups, selected_groups=selected_groups, task_intervals=task_intervals,
+        reference_task_intervals=reference_task_intervals))
     return operation_change_metrics(comparisons, operation_refs, reference_available, selected_available=selected_available)
 
 
-def operation_comparisons(tasks, reference_tasks, operation_refs, reference_available, *, selected_available=True,
-                          deferred_refs=(), reference_deferred_refs=(), reference_groups=None,
-                          task_intervals=None, reference_task_intervals=None):
+def operation_comparisons(tasks, reference_tasks, operation_refs, reference_available, *, selected_available,
+                          deferred_refs, reference_deferred_refs, reference_groups, selected_groups,
+                          task_intervals, reference_task_intervals):
     return dict(iter_operation_comparisons(tasks, reference_tasks, operation_refs, reference_available,
         selected_available=selected_available, deferred_refs=deferred_refs, reference_deferred_refs=reference_deferred_refs,
-        reference_groups=reference_groups, task_intervals=task_intervals, reference_task_intervals=reference_task_intervals, display=True))
+        reference_groups=reference_groups, selected_groups=selected_groups, task_intervals=task_intervals,
+        reference_task_intervals=reference_task_intervals, display=True))
 
 
 def iter_operation_comparisons(tasks, reference_tasks, operation_refs, reference_available, *, selected_available=True,
-                              deferred_refs=(), reference_deferred_refs=(), reference_groups=None,
+                              deferred_refs=(), reference_deferred_refs=(), reference_groups=None, selected_groups=None,
                               task_intervals=None, reference_task_intervals=None, display=False):
-    old = reference_groups if reference_groups is not None else _by_operation(reference_tasks)
-    new = _by_operation(tasks)
+    old = reference_groups if reference_groups is not None else by_operation(reference_tasks)
+    new = selected_groups if selected_groups is not None else by_operation(tasks)
     for ref in operation_refs:
-        before, after = _arrangement(old.get(ref, ()), display=display), _arrangement(new.get(ref, ()), display=display)
+        before, after = arrangement_view(old.get(ref, ()), display=display), arrangement_view(new.get(ref, ()), display=display)
         previous = _operation_state(before, available=reference_available, deferred=ref in reference_deferred_refs)
         current = _operation_state(after, available=selected_available, deferred=ref in deferred_refs)
-        delta = _operation_delta(before, after, before_status=previous["status"], after_status=current["status"],
+        delta = operation_delta(before, after, before_status=previous["status"], after_status=current["status"],
                                  task_intervals=task_intervals, reference_task_intervals=reference_task_intervals)
         if not reference_available or not selected_available:
             delta = {**{key: None for key in ("start_delta_hours", "end_delta_hours", "machine_changed", "operator_changed",
@@ -198,10 +203,10 @@ def iter_operation_comparisons(tasks, reference_tasks, operation_refs, reference
 
 
 def operation_impacts(source):
-    old, new = (_by_operation(rows) for rows in (source.before_tasks, source.tasks(source.selected_ref)))
+    old, new = source.analysis_groups("reference"), source.analysis_groups(source.selected_ref)
     comparisons = source.operation_comparisons
-    reasons = {row["operation_ref"]: row["reason"] for row in unplanned_projection(source.disposition, source.tasks(source.selected_ref), source.facts) or ()}
-    reference_reasons = ({row["operation_ref"]: row["reason"] for row in unplanned_projection(source.disposition, source.before_tasks, source.facts) or ()}
+    reasons = {row["operation_ref"]: row["reason"] for row in unplanned_projection(source.disposition, source.analysis_tasks(source.selected_ref), source.facts) or ()}
+    reference_reasons = ({row["operation_ref"]: row["reason"] for row in unplanned_projection(source.disposition, source.analysis_tasks("reference"), source.facts) or ()}
                         if source.comparison_mode == "candidates" else {})
     result = []
     for ref in source.scope["operation_refs"]:
@@ -212,7 +217,7 @@ def operation_impacts(source):
                 delta[side + "_state"]["reason"] = saved[ref]
         before, after = delta["before"], delta["after"]
         execution = source.facts.execution.get(ref) or {}
-        disposition = (source.disposition or {}).get(ref) or {}
+        disposition = source.disposition.get(ref) or {}
         constraints = {"protected_at_admission": disposition.get("status") == "protected",
                        "selected_locked": after["locked"] if after else None, "reference_locked": before["locked"] if before else None,
                        "lock_basis": "saved_arrangement_marker", "protection_basis": "admission_execution_and_dispositions",
@@ -223,12 +228,12 @@ def operation_impacts(source):
                        "effort": archived_standard_effort(operation, execution),
                        "runtime_effort": {"before": source.preparation.compact("reference", ref), "after": source.preparation.compact(source.selected_ref, ref)},
                        "constraints": constraints, "data_gaps": labels["data_gaps"],
-                       "drill": {"selected": _drill(source, tasks=new[ref], batch_ref=labels["batch_ref"], operation_ref=ref) if source.result_available(source.selected_ref) else None,
-                                 "reference": _drill(source, tasks=old[ref], batch_ref=labels["batch_ref"], operation_ref=ref, before=True)}})
+                       "drill": {"selected": drill_target(source, tasks=new[ref], batch_ref=labels["batch_ref"], operation_ref=ref) if source.result_available(source.selected_ref) else None,
+                                 "reference": drill_target(source, tasks=old[ref], batch_ref=labels["batch_ref"], operation_ref=ref, before=True)}})
     return result
 
 
-def _drill(source, *, tasks, batch_ref, operation_ref=None, before=False, window=None):
+def drill_target(source, *, tasks, batch_ref, operation_ref=None, before=False, window=None):
     if before and source.baseline["state"] != "available":
         return None
     candidate_ref = source.reference_ref if before and source.comparison_mode == "candidates" else source.selected_ref
@@ -251,12 +256,17 @@ def _drill(source, *, tasks, batch_ref, operation_ref=None, before=False, window
 
 
 def filter_options(source, section):
-    batch_keys = {ref: key for (kind, key), ref in source.facts.entity_refs.items() if kind == "batch"}
-    batches = [{"ref": ref, "label": source.facts.tables["Batches"][batch_keys[ref]]["batch_id"]} for ref in source.scope["batch_refs"]]
+    delivery_rows = {row["batch_ref"]: row["batch_id"] for row in source.completion.delivery(source.selected_ref)}
+    batches = [{"ref": ref, "label": delivery_rows[ref]} for ref in source.scope["batch_refs"]]
     resources = {}
     if section == "operations":
         batch_refs, operation_refs = set(source.scope["batch_refs"]), set(source.scope["operation_refs"])
-        tasks = chain(source.before_tasks, chain.from_iterable(source.tasks(row["candidate_ref"]) for row in source.rows))
+        before = (
+            [row for row in source.analysis_tasks("reference") if row["operation_ref"] in operation_refs]
+            if source.comparison_mode == "admission_official"
+            else ()
+        )
+        tasks = chain(before, chain.from_iterable(source.analysis_tasks(row["candidate_ref"]) for row in source.rows))
         for task in tasks:
             if task["batch_ref"] not in batch_refs or task["operation_ref"] not in operation_refs:
                 continue

@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import AbstractSet, Any, Dict, FrozenSet, List, Mapping, Optional, Tuple, cast
+from typing import AbstractSet, Any, Dict, FrozenSet, List, Mapping, Optional, Set, Tuple, cast
 
 from core.algorithm_runtime.graph_cycle import kahn_unreachable_op_ids
 from core.errors import ValidationError
@@ -12,7 +12,7 @@ from core.shared.strict_parse import parse_required_int
 from .sgs_priority_keys import ValidatedGraphPriorityKeys
 from .sgs_scoring import _collect_sgs_candidates
 
-_TOPOLOGY_FIELD = "_prepared_graph_ready_topology"
+TOPOLOGY_FIELD = "_prepared_graph_ready_topology"
 
 
 @dataclass(frozen=True)
@@ -29,7 +29,7 @@ class PreparedGraphReadyTopology:
 
 def prepare_graph_ready_topology(context, operations) -> PreparedGraphReadyTopology:
     raw = dict(context)
-    raw.pop(_TOPOLOGY_FIELD, None)
+    raw.pop(TOPOLOGY_FIELD, None)
     raw["score_enabled"] = False
     grouped: Dict[str, List[Any]] = {}
     for op in operations:
@@ -45,7 +45,7 @@ def prepare_graph_ready_topology(context, operations) -> PreparedGraphReadyTopol
     )
 
 
-def _op_id(op: Any) -> int:
+def graph_op_id(op: Any) -> int:
     return parse_required_int(getattr(op, "id", 0), field="id")
 
 
@@ -70,6 +70,7 @@ def _prepare_graph_ready_state(
     graph_ready_context: Optional[Any],
     *,
     ops_by_batch: Dict[str, List[Any]],
+    skip_initial_frontier: bool = False,
 ) -> Optional[Dict[str, Any]]:
     if graph_ready_context is None:
         return None
@@ -79,12 +80,12 @@ def _prepare_graph_ready_state(
     op_by_id: Dict[int, Tuple[str, Any]] = {}
     for batch_id, operations in ops_by_batch.items():
         for op in operations:
-            op_id = _op_id(op)
+            op_id = graph_op_id(op)
             if op_id in op_by_id:
                 raise ValidationError(f"图 ready 队列上下文发现重复 op_id：{op_id}", field="graph_ready_context")
             op_by_id[op_id] = (batch_id, op)
 
-    topology: Any = graph_ready_context.get(_TOPOLOGY_FIELD)
+    topology: Any = graph_ready_context.get(TOPOLOGY_FIELD)
     prepared: Optional[PreparedGraphReadyTopology] = (
         cast(PreparedGraphReadyTopology, topology)
         if type(topology) is PreparedGraphReadyTopology else None
@@ -118,21 +119,25 @@ def _prepare_graph_ready_state(
             successor_map=graph_ready_context.get("successor_op_ids_by_op_id"),
         )
         _detect_graph_ready_cycle(schedulable_ids=set(op_by_id), predecessor_map=predecessor_map, successor_map=successor_map)
-    score_enabled = _graph_score_enabled(graph_ready_context.get("score_enabled", False))
+    score_enabled = graph_score_enabled(graph_ready_context.get("score_enabled", False))
     graph_priority_key_by_op_id: Dict[int, Tuple[float, ...]] = {}
     if score_enabled:
         graph_priority_key_by_op_id = (graph_ready_context["graph_priority_key_by_op_id"] if prepared is not None
-            else _graph_priority_key_map(graph_ready_context.get("graph_priority_key_by_op_id"),
+            else graph_priority_key_map(graph_ready_context.get("graph_priority_key_by_op_id"),
                                          schedulable_ids=set(op_by_id)))
     sort_key_by_op_id = prepared.sort_keys if prepared is not None else _graph_sort_key_map(
         graph_ready_context.get("sort_key_by_op_id"),
         schedulable_ids=set(op_by_id),
     )
-    remaining_predecessor_count_by_op_id, ready_op_ids = _initialize_graph_ready_frontier(
-        schedulable_ids=set(op_by_id),
-        completed_or_fixed_op_ids=fixed_op_ids,
-        predecessor_op_ids_by_op_id=predecessor_map,
-    )
+    if skip_initial_frontier:
+        remaining_predecessor_count_by_op_id: Dict[int, int] = {}
+        ready_op_ids: Set[int] = set()
+    else:
+        remaining_predecessor_count_by_op_id, ready_op_ids = _initialize_graph_ready_frontier(
+            schedulable_ids=set(op_by_id),
+            completed_or_fixed_op_ids=fixed_op_ids,
+            predecessor_op_ids_by_op_id=predecessor_map,
+        )
     return {
         "op_by_id": op_by_id,
         "completed_or_fixed_op_ids": fixed_op_ids,
@@ -152,10 +157,10 @@ def _prepare_graph_ready_state(
     }
 
 
-def _graph_score_enabled(value: Any) -> bool:
+def graph_score_enabled(value: Any) -> bool:
     if not isinstance(value, bool):
         raise ValidationError("图评分开关 score_enabled 必须是 bool。", field="graph_ready_context")
-    return bool(value)
+    return value
 
 
 def _graph_priority_key_number(value: Any) -> float:
@@ -167,14 +172,12 @@ def _graph_priority_key_number(value: Any) -> float:
     return number
 
 
-def _graph_priority_key_map(value: Any, *, schedulable_ids: set) -> Dict[int, Tuple[float, ...]]:
+def graph_priority_key_map(value: Any, *, schedulable_ids: set) -> Dict[int, Tuple[float, ...]]:
     if not isinstance(value, dict):
         raise ValidationError("图评分上下文缺少 graph_priority_key_by_op_id 映射。", field="graph_ready_context")
     _validate_exact_key_set(value, schedulable_ids=schedulable_ids, label="图评分 key")
     normalized: Dict[int, Tuple[float, ...]] = ValidatedGraphPriorityKeys()
     for op_id in sorted(schedulable_ids):
-        if op_id not in value:
-            raise ValidationError(f"图评分上下文缺少待排工序 {op_id} 的评分 key。", field="graph_ready_context")
         raw_key = value[op_id]
         if raw_key is None or isinstance(raw_key, (str, bytes)) or _is_graph_like(raw_key):
             raise ValidationError("图评分 key 必须是数字 tuple。", field="graph_ready_context")
@@ -273,14 +276,14 @@ def _validate_graph_ready_links(*, op_ids: set, predecessor_map: Any, successor_
         successors.setdefault(op_id, set())
     for op_id, predecessor_ids in predecessors.items():
         for predecessor_id in predecessor_ids:
-            if op_id not in successors.get(predecessor_id, set()):
+            if op_id not in successors[predecessor_id]:
                 raise ValidationError(
                     f"图 ready 队列上下文不一致：工序 {op_id} 记录了前置 {predecessor_id}，但后继映射没有对应关系。",
                     field="graph_ready_context",
                 )
     for op_id, successor_ids in successors.items():
         for successor_id in successor_ids:
-            if op_id not in predecessors.get(successor_id, set()):
+            if op_id not in predecessors[successor_id]:
                 raise ValidationError(
                     f"图 ready 队列上下文不一致：工序 {op_id} 记录了后继 {successor_id}，但前置映射没有对应关系。",
                     field="graph_ready_context",
@@ -324,7 +327,7 @@ def _initialize_graph_ready_frontier(
     ready_op_ids = set()
 
     for op_id in sorted(schedulable_ids):
-        remaining_count = sum(1 for predecessor_id in predecessor_op_ids_by_op_id.get(op_id, set()) if predecessor_id not in completed_or_fixed_op_ids)
+        remaining_count = sum(1 for predecessor_id in predecessor_op_ids_by_op_id[op_id] if predecessor_id not in completed_or_fixed_op_ids)
         remaining_predecessor_count_by_op_id[op_id] = remaining_count
         if remaining_count == 0 and op_id not in completed_or_fixed_op_ids:
             ready_op_ids.add(op_id)
@@ -368,7 +371,7 @@ def _ensure_graph_ready_complete(*, graph_state: Dict[str, Any], ops_by_batch: D
     finished = graph_state["completed_or_fixed_op_ids"]
     blocked = set(graph_state["blocked_op_ids"])
     for batch_id in blocked_batches:
-        blocked.update(_op_id(op) for op in ops_by_batch.get(batch_id, []))
+        blocked.update(graph_op_id(op) for op in ops_by_batch.get(batch_id, []))
     if expected.issubset(finished.union(blocked)):
         return
     remaining = sorted(expected.difference(finished).difference(blocked))
@@ -412,7 +415,7 @@ def _block_graph_operation(graph_state: Dict[str, Any], op_id: int) -> Tuple[Lis
     return newly_blocked, sorted(set(fixed_conflicts))
 
 
-def _mark_graph_operation_completed(graph_state: Dict[str, Any], op_id: int) -> None:
+def mark_graph_operation_completed(graph_state: Dict[str, Any], op_id: int) -> None:
     completed_or_fixed = graph_state["completed_or_fixed_op_ids"]
     if op_id in completed_or_fixed:
         return
@@ -424,7 +427,7 @@ def _mark_graph_operation_completed(graph_state: Dict[str, Any], op_id: int) -> 
             continue
         if successor_id in completed_or_fixed or successor_id in graph_state["blocked_op_ids"]:
             continue
-        remaining = int(graph_state["remaining_predecessor_count_by_op_id"][successor_id]) - 1
+        remaining = graph_state["remaining_predecessor_count_by_op_id"][successor_id] - 1
         graph_state["remaining_predecessor_count_by_op_id"][successor_id] = remaining
         if remaining == 0:
             graph_state["ready_op_ids"].add(successor_id)
@@ -443,15 +446,15 @@ def _graph_batch_unreachable_ops(graph_state: Dict[str, Any], batch_id: str, ops
     completed_or_fixed = graph_state["completed_or_fixed_op_ids"]
     blocked_op_ids = graph_state["blocked_op_ids"]
     remaining: List[Any] = []
-    for op in ops_by_batch.get(batch_id) or []:
-        op_id = _op_id(op)
+    for op in ops_by_batch[batch_id]:
+        op_id = graph_op_id(op)
         if op_id in completed_or_fixed or op_id in blocked_op_ids:
             continue
         remaining.append(op)
     return remaining
 
 
-def _apply_graph_failure_bookkeeping(
+def apply_graph_failure_bookkeeping(
     state: Any,
     *,
     graph_state: Dict[str, Any],
@@ -470,12 +473,19 @@ def _apply_graph_failure_bookkeeping(
     """
     newly_blocked_op_ids, fixed_conflict_op_ids = _block_graph_operation(graph_state, failed_op_id)
     skipped_ops = _graph_batch_unreachable_ops(graph_state, batch_id, ops_by_batch)
+    # Skipped operations never complete either, so their successors outside the batch are blocked too.
+    fixed_conflicts = set(fixed_conflict_op_ids)
+    for skipped_op in skipped_ops:
+        skipped_blocked, skipped_conflicts = _block_graph_operation(graph_state, graph_op_id(skipped_op))
+        newly_blocked_op_ids.extend(skipped_blocked)
+        fixed_conflicts.update(skipped_conflicts)
+    fixed_conflict_op_ids = sorted(fixed_conflicts)
     extra_failed_count = _record_graph_blocked_operations(
         state,
         graph_state=graph_state,
         failed_op_id=failed_op_id,
         newly_blocked_op_ids=newly_blocked_op_ids,
-        already_counted_op_ids={failed_op_id}.union(_op_id(op) for op in skipped_ops),
+        already_counted_op_ids={failed_op_id}.union(graph_op_id(op) for op in skipped_ops),
     )
     if fixed_conflict_op_ids:
         _record_graph_fixed_order_conflict(

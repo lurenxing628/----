@@ -33,7 +33,7 @@ def add_enum_dropdowns(ws, descriptor: Dict[str, Any], row_count: int, *, write_
     from openpyxl.utils import get_column_letter
     from openpyxl.worksheet.datavalidation import DataValidation
 
-    last = max(row_count, 0) + 1 + DROPDOWN_ROWS
+    last = min(max(row_count, 0) + 1 + DROPDOWN_ROWS, 1048576)
     for index, choices in enum_columns(descriptor):
         letter = get_column_letter(index)
         rule = DataValidation(type="list", formula1='"' + ",".join(choices) + '"', allow_blank=True)

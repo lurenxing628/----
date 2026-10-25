@@ -72,20 +72,27 @@ class BatchImportPreview:
         return row
 
     def _source(self, values):
-        code = values.get("批次号")
-        if type(code) is not str or not code.strip():
+        raw_code = values.get("批次号")
+        if type(raw_code) is not str or not raw_code.strip():
             raise ValidationError("请将批次号和图号设为文本格式，保留前导零。")
+        code = raw_code.strip()
+        if raw_code != code and raw_code in self.existing:
+            raise ValidationError("批次号或图号存在首尾空格，请先核对原记录。")
         source = {key: values.get(key) for key in HEADERS}
-        stored = self.existing.get(code.strip())
+        stored = self.existing.get(code)
         if stored is not None and self.mode != "replace":
             for label, field in (("图号", "part_no"), ("数量", "quantity")):
                 if source[label] in (None, ""):
                     source[label] = stored[field]
-        if type(source["图号"]) is not str or not source["图号"].strip():
+        raw_part = source["图号"]
+        if type(raw_part) is not str or not raw_part.strip():
             raise ValidationError("新增批次必须填写图号，请按文本填写并保留前导零。")
+        part_no = raw_part.strip()
+        if raw_part != part_no and raw_part in self.projection.parts:
+            raise ValidationError("批次号或图号存在首尾空格，请先核对原记录。")
         if type(source["数量"]) is bool:
             raise ValidationError("数量要填数字，不能填「是/否」。")
-        source["批次号"], source["图号"] = source["批次号"].strip(), source["图号"].strip()
+        source["批次号"], source["图号"] = code, part_no
         return source
 
     def _validated(self, source, kept):

@@ -5,50 +5,14 @@ from __future__ import annotations
 import sqlite3
 from contextlib import contextmanager
 
-import pytest
-
-from core.infrastructure.database import get_connection
-from core.infrastructure.migrations import v21
-from core.services.workbench.process.route_preview import ProcessRoutePreviewService
-from tests.workbench.identity_metadata_support import seed_resources
+from core.services.workbench.process.route_facts import ProcessRouteFacts
+from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 
 
-@pytest.fixture(name="route_conn")
-def route_database(schema_conn):
-    v21.run(schema_conn)
-    seed_resources(schema_conn, relations=True)
-    schema_conn.executemany("INSERT INTO OpTypes(op_type_id,name,category) VALUES (?,?,?)", [
-        ("MILL", "数铣", "internal"), ("HEAT", "热处理", "external"), ("COAT", "表处理", "external"),
-        ("UNBOUND", "无供应商工种", "external"),
-    ])
-    schema_conn.executemany("INSERT INTO Suppliers(supplier_id,name,op_type_id,default_days,status) VALUES (?,?,?,?,?)", [
-        ("SUP-A", "早期供应商", "HEAT", 2.5, "active"),
-        ("SUP-Z", "多能力供应商", "HEAT", 3.75, "active"),
-        ("SUP-ZZ", "停用供应商", "HEAT", 9, "inactive"),
-    ])
-    schema_conn.executemany("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES (?,?)", [
-        ("SUP-Z", "HEAT"), ("SUP-Z", "COAT"), ("SUP-ZZ", "COAT"),
-    ])
-    schema_conn.commit()
-    return schema_conn
-
-
-@pytest.fixture(name="typed_route_conn")
-def typed_route_database(route_conn):
-    conn = get_connection(":memory:")
-    route_conn.backup(conn)
-    yield conn
-    conn.close()
-
-
-def preview(conn, text):
-    return ProcessRoutePreviewService(conn).preview({"mode": "text", "route_raw": text})
-
-
-def raw_ref(conn, kind, key):
-    row = conn.execute("SELECT ref FROM WorkbenchEntityRefs WHERE kind=? AND entity_key=? AND active=1", (kind, key)).fetchone()
-    assert row is not None
-    return row[0]
+def load_route_reference_facts(conn):
+    repo = WorkbenchProcessQueryRepository(conn)
+    return ProcessRouteFacts({"parts": repo.parts(), "operations": repo.operations(), "groups": repo.groups(),
+                              "references": repo.references(), "identities": repo.identities()})
 
 
 def all_table_snapshot(conn):
@@ -76,19 +40,3 @@ def read_only_probe(conn):
         conn.set_authorizer(lambda *args: sqlite3.SQLITE_OK)
         conn.set_trace_callback(None)
     assert denied == []
-
-
-def alphabetic_name(index):
-    # No embedded numeric tokens: distinct names obey the formal route grammar.
-    return "规模工种" + "".join(chr(65 + (index // (26 ** offset)) % 26) for offset in (2, 1, 0))
-
-
-def seed_scale(conn, count):
-    conn.executemany("INSERT INTO OpTypes(op_type_id,name,category) VALUES (?,?, 'external')",
-                     [("SCALE-O" + str(i), alphabetic_name(i)) for i in range(count)])
-    conn.executemany("INSERT INTO Suppliers(supplier_id,name,default_days) VALUES (?,?,2.25)",
-                     [("SCALE-S" + str(i), "规模供应商" + str(i)) for i in range(count)])
-    conn.executemany("INSERT INTO WorkbenchSupplierOpTypes VALUES (?,?)",
-                     [("SCALE-S" + str(i), "SCALE-O" + str(i)) for i in range(count)])
-    conn.commit()
-    return [{"seq": i + 1, "op_type_name": alphabetic_name(i)} for i in range(count)]

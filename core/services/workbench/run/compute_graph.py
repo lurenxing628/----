@@ -20,11 +20,10 @@ from core.services.scheduler.run.schedule_graph_score_projection import (
     graph_score_requested,
     graph_score_weights,
 )
-from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 
 
 def _piece_graph_data(prepared):
-    scope = build_piece_adoption_scope(prepared.operations, prepared.batches)
+    scope = prepared.piece_scope
     nodes = []
     resources = GraphResourcePreparation(prepared.resource_pool)
     for op in prepared.algo_ops:

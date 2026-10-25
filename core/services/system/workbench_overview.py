@@ -244,16 +244,15 @@ def _job_result(raw: Any, kind: str) -> Dict[str, Any]:
     return result
 
 
-def _maintenance_job(service, kind: str):
+def _maintenance_job(records, kind: str, *, error=None):
     job = {"kind": kind, "status": "not_read", "last_run_time": None,
            "last_run_time_status": "not_read", "result": None, "error": None}
-    if service is None:
+    if error is not None:
+        job.update(status="error", error=error)
         return job, False
-    try:
-        record = service.get(kind)
-    except _READ_ERRORS as exc:
-        job.update(status="error", error=_error(exc))
+    if records is None:
         return job, False
+    record = records.get(kind)
     if record is None:
         job["status"] = "empty"
         return job, False
@@ -277,12 +276,15 @@ def _maintenance_state(states, count: int) -> str:
 def _maintenance(conn) -> Dict[str, Any]:
     result = {"status": "not_read", "record_count": None, "known_record_count": None,
               "jobs": [], "error": None}
-    service = None
+    records, error = None, None
     if conn is not None:
-        service = SystemJobStateRepository(conn)
-    outcomes = [_maintenance_job(service, kind) for kind in _JOBS]
+        try:
+            records = {item.job_key: item for item in SystemJobStateRepository(conn).list_all()}
+        except _READ_ERRORS as exc:
+            error = _error(exc)
+    outcomes = [_maintenance_job(records, kind, error=error) for kind in _JOBS]
     result["jobs"] = [job for job, _ in outcomes]
-    if service is not None:
+    if conn is not None:
         count = sum(exists for _, exists in outcomes)
         states = [job["status"] for job in result["jobs"]]
         result.update(

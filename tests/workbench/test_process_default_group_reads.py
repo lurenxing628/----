@@ -9,19 +9,15 @@ from tests.workbench.process_commands_support import stage_database
 _stage_fixture = stage_database
 
 
-def test_internal_route_does_not_load_supplier_defaults(stage_conn, monkeypatch):
-    from core.services.workbench.process import group_defaults
-
+def test_internal_route_does_not_load_supplier_defaults(stage_conn):
     def unexpected(*_args, **_kwargs):
         raise AssertionError("Internal operations do not consume supplier defaults.")
 
-    monkeypatch.setattr(group_defaults, "_default_suppliers", unexpected)
-    assert not apply_default_groups(stage_conn, "PROC-001", [10, 30])
+    assert not apply_default_groups(stage_conn, "PROC-001", [10, 30], catalog_reader=unexpected)
 
 
 def test_route_file_shares_one_current_supplier_catalog(stage_conn, monkeypatch, record_property):
     from core.services.workbench.process import file_route
-    from data.repositories.supplier_repo import SupplierRepository
 
     conn = stage_conn
     conn.execute("INSERT INTO WorkbenchOpTypePolicies(op_type_id,default_merge_mode) VALUES ('PROC-EX','merged')")
@@ -32,21 +28,28 @@ def test_route_file_shares_one_current_supplier_catalog(stage_conn, monkeypatch,
     service = WorkbenchProcessFileService(conn)
     preview, _ = service.preview_import("route", content, file_format="csv")
     assert all(not row["errors"] for row in preview.as_dict()["rows"]), preview.as_dict()["rows"]
-    reads, original = [], file_route._default_suppliers
+    reads, original = [], file_route.default_suppliers
 
-    def catalog(connection, references=None):
-        assert references is not None
+    def catalog(references):
         reads.append(True)
-        return original(connection, references)
+        return original(references)
 
-    def unexpected(*_args, **_kwargs):
-        raise AssertionError("The file confirmation already captured supplier bindings.")
-
-    monkeypatch.setattr(file_route, "_default_suppliers", catalog)
-    monkeypatch.setattr(SupplierRepository, "list_capabilities", unexpected)
+    monkeypatch.setattr(file_route, "default_suppliers", catalog)
     with TransactionManager(conn).transaction(begin_immediate=True):
         outcome = service.confirm_import(preview, content, discard_group_refs=[], confirm_zero_unit_hours=False)
     assert outcome.result == "committed" and len(reads) == 1
     groups = conn.execute("SELECT part_no,start_seq,end_seq,total_days FROM ExternalGroups WHERE part_no LIKE 'DEFAULT-%' ORDER BY part_no").fetchall()
     assert [tuple(row) for row in groups] == [("DEFAULT-01", 10, 20, 4.5), ("DEFAULT-02", 10, 20, 4.5)]
     record_property("default_supplier_catalog_builds", len(reads))
+
+
+def test_route_file_rejects_unreadable_template_sequence_before_comparing_routes(stage_conn):
+    from tests.workbench.run_candidate_support import corrupt_update
+
+    corrupt_update(stage_conn, "PartOperations", "UPDATE PartOperations SET seq='x' WHERE part_no='PROC-001' AND seq=30")
+    content = encode_process_file("route", [{"business_code": "PROC-001", "route_raw": "10热处理20热处理"}], "csv").content
+    preview, _ = WorkbenchProcessFileService(stage_conn).preview_import("route", content, file_format="csv")
+    row = preview.as_dict()["rows"][0]
+    # 与表单入口一致：原模板序号说不清时整行拒绝，不拿坏序号去排序比对。
+    assert row["result"] == "rejected"
+    assert [error["code"] for error in row["errors"]] == ["template_invalid"]

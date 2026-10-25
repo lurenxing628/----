@@ -2,7 +2,6 @@
 
 import json
 import uuid
-from copy import deepcopy
 from dataclasses import dataclass
 
 from core.errors import ValidationError
@@ -29,10 +28,18 @@ class PreparedImportSource:
 
     @classmethod
     def confirmation(cls, preview, content):
+        if not isinstance(preview, AtomicActionPreview):
+            raise WorkbenchCommandRejected("stale_write", "原文件内容已变化，请重新预检。")
         if isinstance(content, cls):
+            if preview.source is not None:
+                if not isinstance(preview.source, cls) or (
+                    content is not preview.source and content.source_ref != preview.source.source_ref
+                ):
+                    raise WorkbenchCommandRejected("stale_write", "原文件内容已变化，请重新预检。")
+            elif preview.as_dict()["request"].get("actual_source_ref") != content.source_ref:
+                raise WorkbenchCommandRejected("stale_write", "原文件内容已变化，请重新预检。")
             return content
-        if (not isinstance(preview, AtomicActionPreview) or not isinstance(preview.source, cls)
-                or type(content) is not bytes or preview.source.content != content):
+        if not isinstance(preview.source, cls) or type(content) is not bytes or preview.source.content != content:
             raise WorkbenchCommandRejected("stale_write", "原文件内容已变化，请重新预检。")
         return preview.source
 
@@ -45,4 +52,4 @@ class PreparedImportSource:
 
     def parsed(self):
         # Each proposal owns its mutable row diagnostics; the retained file facts never change.
-        return deepcopy(self._rows), deepcopy(self._notices)
+        return self._rows, self._notices

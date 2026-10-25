@@ -8,7 +8,7 @@ from contextlib import contextmanager
 
 from core.models.workbench_calibration import MAX_OPERATIONS, MAX_TEMPLATES, CalibrationTemplate
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_execution_input import MAX_FACT_ROWS, public_ref
+from core.models.workbench_execution_input import public_ref
 from core.services.scheduler.template_lineage_query import TemplateLineageQuery
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
@@ -51,7 +51,7 @@ def read_templates(repo, query):
             if needle not in text.casefold():
                 continue
         result.append(CalibrationTemplate(row["operation_ref"], row["revision"], row["part_ref"],
-            row["part_no"], row["part_name"], row["seq"], row["op_type_name"], row["source"], row["unit_hours"]))
+            row["part_no"], row["part_name"], row["seq"], row["op_type_name"], source, row["unit_hours"]))
     return result
 
 
@@ -65,13 +65,6 @@ def read_candidate_instances(repo, part_numbers):
     return result
 
 
-def read_report_heads(repo, operation_refs):
-    result = repo.report_head_refs(operation_refs, MAX_FACT_ROWS)
-    if len(result) > MAX_FACT_ROWS:
-        raise WorkbenchCommandRejected("query_too_large", "报工来源超过50000条，未截断历史。", 413)
-    return result
-
-
 class CalibrationFacts:
     def __init__(self, conn, *, as_of):
         self.repo = WorkbenchCalibrationQueryRepository(conn)
@@ -81,25 +74,31 @@ class CalibrationFacts:
 
     @contextmanager
     def read_snapshot(self, *, clock=None):
+        if self.ledger._snapshot_clock is not None:
+            if clock is not None:
+                self.as_of = clock()
+            yield self.as_of
+            return
         with self.ledger.read_snapshot():
             require_calibration_schema(self.repo)
             if clock is not None:
                 self.as_of = clock()
             yield self.as_of
 
-    def read(self, query, *, bind_snapshot=None):
-        templates = read_templates(self.repo, query)
-        instances = read_candidate_instances(self.repo, [row.part_no for row in templates])
-        refs = [row["operation_ref"] for row in instances]
-        facts = self.ledger.load(refs)
-        lineage = self.lineage.read(refs)
+    def read(self, query, *, clock=None, bind_snapshot=None):
+        with self.read_snapshot(clock=clock):
+            templates = read_templates(self.repo, query)
+            instances = read_candidate_instances(self.repo, [row.part_no for row in templates])
+            refs = [row["operation_ref"] for row in instances]
+            facts = self.ledger.load(refs)
+            lineage = self.lineage.read(refs)
         snapshot = None
         if bind_snapshot is not None:
             content = plain_plan_facts({"templates": [row.to_dict() for row in templates],
                 "instances": instances, "lineage": {key: value for key, value in lineage.items() if key != "lineages"},
                 "execution": {**facts, "unresolved": sorted(facts["unresolved"])}})
             snapshot = bind_snapshot(content)
-        validate_report_histories(facts, read_report_heads(self.repo, refs), self.as_of)
+        validate_report_histories(facts, self.as_of)
         projections = {row.operation_ref: row for row in self.ledger.project_loaded(facts, contexts=False)}
         result = project_lineage_calibration(templates, instances, projections, lineage, as_of=self.as_of)
         return {**result, "snapshot": snapshot}

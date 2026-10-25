@@ -5,6 +5,10 @@
   const { BaseFields } = window.BatchControls;
   // Maintenance and confirmation values keep the accepted numeric precision.
   const ENTERED_HOURS = { exact: true }, ENTERED_DAYS = { exact: true };
+  function isStale(command) {
+    const error = command && command.error, code = error && (error.code || error.error && error.error.code);
+    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
+  }
   function BaseEditor({ adapter, entity: original, createContext, source, command, onClose, onCommitted, disabled = false }) {
     const [entity, setEntity] = React.useState(original), [value, setValue] = React.useState(() => B.draft(original));
     const [context, setContext] = React.useState(original ? original.write_context : createContext);
@@ -54,7 +58,7 @@
       {command.phase !== 'done' && <Button type="submit" form={form} icon="check" className="btn primary" disabled={locked || !!review || !entity && !choices.result}
         reasonDisplay="inline" reason={B.reason(context, action, source)}>{entity ? '保存基础信息' : '确认新增'}</Button>}</>}>
       <form id={form} ref={formElement} className="modal-b form" onSubmit={submit} noValidate>
-        <BaseFields value={value} setValue={next => { setValue(next); setError(null); }} entity={entity} disabled={locked} choices={choices.result && choices.result.data} error={currentError} errors={fieldErrors} />
+        <BaseFields value={value} setValue={next => { setValue(next); setError(null); if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset(); }} entity={entity} disabled={locked} choices={choices.result && choices.result.data} error={currentError} errors={fieldErrors} />
         <ErrorBox error={error} excludePaths={paths} /><ErrorBox error={choices.error} /><window.ResourceForms.Feedback command={command} excludePaths={error ? [] : paths} />
         {command.phase !== 'done' && <Button icon="refresh-cw" disabled={locked} onClick={reload}>{window.WorkbenchTerms.refresh_latest}</Button>}
         {review && <div className="batch-band"><Issues issues={[{ message: '已读到最新资料，已填写的内容没有被覆盖。' }]} />

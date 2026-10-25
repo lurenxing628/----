@@ -4,8 +4,10 @@ from core.errors import ValidationError
 from core.models.calendar_periods import shift_pattern_fields
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_resource_input import normalize_resource_input
+from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
+from data.repositories.workbench_resource_state_repo import WorkbenchResourceStateRepository
 
-from .states import ResourceChange, WorkbenchResourceStateService
+from .states import ResourceChange
 
 _KIND_NAMES = {"machine_group": "设备组", "shift_profile": "班次档"}
 
@@ -15,29 +17,11 @@ class WorkbenchResourceCatalogService:
         if kind not in ("machine_group", "shift_profile"):
             raise ValueError("Unsupported resource catalog")
         self.conn, self.kind = conn, kind
-        self.state = WorkbenchResourceStateService(conn, logger)
-        self.repo = self.state.repo
+        self.repo = WorkbenchResourceStateRepository(conn, logger=logger)
+        self.identities = WorkbenchIdentityRepository(conn, logger=logger)
 
     def normalize_input(self, action, payload):
         return normalize_resource_input(self.kind, action, payload)
-
-    def snapshot(self, identity):
-        return self.state.snapshot(identity, kind=self.kind)
-
-    def snapshot_current(self, identity):
-        return self.state.snapshot_current(identity)
-
-    def apply(self, action, payload, identity=None):
-        from .queries import WorkbenchResourceQueryService
-
-        payload = self.normalize_input(action, payload)
-        preparation = WorkbenchResourceQueryService(self.conn, self.kind).preparation_for(
-            action, payload, ref=getattr(identity, "ref", None))
-        if action == "create" and identity is not None:
-            raise WorkbenchCommandRejected("invalid_input", "新增资源时请使用新增入口。", 400)
-        checked = None if action == "create" else preparation.state(self.kind,
-            preparation.current(self.kind, identity).entity_key)
-        return self.apply_prepared(self.prepare(action, payload, checked, preparation))
 
     def prepare(self, action, payload, checked, preparation):
         identity = None if action == "create" else preparation.identity(self.kind, checked["identity"]["ref"])
@@ -75,7 +59,7 @@ class WorkbenchResourceCatalogService:
             self.repo.delete_catalog(self.kind, code)
         elif change.action == "create":
             self.repo.insert_catalog(self.kind, code, change.fields)
-            identity = self.state.identities.find_active(self.kind, code)
+            identity = self.identities.find_active(self.kind, code)
             if identity is None:
                 raise RuntimeError("新目录记录缺少永久引用。")
         elif change.fields:

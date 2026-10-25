@@ -28,7 +28,10 @@
       try { B.receipt(command.result, 'import_confirm'); seen.current = command.result.receipt_ref; onCommitted(command.result); }
       catch (error) { setError(error); }
     }, [done, command.result]);
-    function invalidate() { setPreview(null); setError(null); setAcknowledged(false); serial.current++; }
+    function invalidate() {
+      setPreview(null); setError(null); setAcknowledged(false); serial.current++;
+      if (command.phase === 'rejected' && typeof command.reset === 'function') command.reset();
+    }
     function changeMode(value) { setMode(value); invalidate(); }
     function chooseFile(list) { setFile(list && list[0] || null); invalidate(); }
     async function close() { if (!command.locked && !busy && await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) onClose(); }

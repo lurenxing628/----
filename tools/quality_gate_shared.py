@@ -229,16 +229,7 @@ CORE_DIRS = [
     "core/infrastructure",
     "web/viewmodels",
 ]
-# 双轨退役（2026-06）后启动链范围只剩 manual_src_security：ui_mode/render_bridge 四文件已删
-UI_MODE_STARTUP_SCOPE_PATHS = [
-    "web/manual_src_security.py",
-]
-UI_MODE_STARTUP_GUARD_PATHS: set = set()
-UI_MODE_RENDER_BRIDGE_PATHS = {
-    "web/manual_src_security.py",
-}
-STARTUP_SCOPE_PATTERNS = ["web/bootstrap/**/*.py", *UI_MODE_STARTUP_SCOPE_PATHS]
-UI_MODE_STARTUP_GUARD_SYMBOLS: set = set()
+STARTUP_SCOPE_PATTERNS = ["web/bootstrap/**/*.py"]
 
 # web 顶层辅助模块（web/*.py）必须保持薄：不得直接装配 Service/Repository、不得自建 Excel 后端。
 # 路由层按 2026-09-18 旧路由退役后的设计直接装配服务，不在此规则范围内。
@@ -270,7 +261,6 @@ REQUIRED_REGRESSION_ALLOWED_SKIPPED_PLATFORMS: Dict[str, Tuple[str, ...]] = {
     "tests/app_runtime/test_runtime_server_binding.py::test_failed_listen_releases_the_bound_socket": ("posix",),
 }
 REQUIRED_REGRESSION_ALLOWED_SKIPPED_NODEIDS = tuple(REQUIRED_REGRESSION_ALLOWED_SKIPPED_PLATFORMS)
-UI_MODE_SCOPE_TAG_VALUES = {"render_bridge"}
 
 ENTRY_MANUAL_FIELDS = ["status", "owner", "batch", "notes", "exit_condition"]
 ENTRY_COMMON_FIELDS = ["id", "path", "symbol", "status", "owner", "batch", "exit_condition", "last_verified_at"]
@@ -322,7 +312,6 @@ class SilentFallbackSample:
     line_start: int
     line_end: int
     fallback_kind: str
-    scope_tag: Optional[str] = None
 
 
 STARTUP_SAMPLE_EXPECTATIONS = [
@@ -336,8 +325,8 @@ STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
         path="web/bootstrap/plugins.py",
         symbol="bootstrap_plugins",
-        line_start=223,
-        line_end=234,
+        line_start=113,
+        line_end=122,
         fallback_kind="observable_degrade",
     ),
     SilentFallbackSample(
@@ -350,17 +339,9 @@ STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
         path="web/bootstrap/launcher_stop.py",
         symbol="_request_runtime_shutdown",
-        line_start=131,
-        line_end=133,
+        line_start=113,
+        line_end=115,
         fallback_kind="observable_degrade",
-    ),
-    SilentFallbackSample(
-        path="web/manual_src_security.py",
-        symbol="safe_url_for",
-        line_start=199,
-        line_end=220,
-        fallback_kind="observable_degrade",
-        scope_tag="render_bridge",
     ),
 ]
 
@@ -1481,7 +1462,7 @@ def collect_quality_rule_files() -> List[str]:
 
 def is_startup_scope_path(path: str) -> bool:
     rel_path = str(path).replace("\\", "/")
-    return rel_path in set(UI_MODE_STARTUP_SCOPE_PATHS) or rel_path.startswith("web/bootstrap/")
+    return rel_path.startswith("web/bootstrap/")
 
 
 def ensure_single_marker(text: str, marker: str, label: str) -> None:

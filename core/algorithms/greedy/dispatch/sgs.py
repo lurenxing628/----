@@ -10,7 +10,6 @@ from core.algorithm_contracts.dispatch_rules import (
     build_dispatch_key,
 )
 from core.algorithm_contracts.value_domains import EXTERNAL, INTERNAL
-from core.algorithm_runtime.dispatch_context import ensure_dispatch_context
 from core.algorithm_runtime.internal_slot import estimate_internal_slot, validate_internal_hours_for_mode
 from core.algorithm_runtime.piece_input import operation_batch, operation_dispatch_state
 from core.algorithm_runtime.run_state import ScheduleRunState
@@ -28,8 +27,8 @@ from .sgs_dispatch_step import _dispatch_selected
 from .sgs_graph import (
     _collect_candidates,
     _ensure_graph_ready_complete,
-    _op_id,
     _prepare_graph_ready_state,
+    graph_op_id,
 )
 from .sgs_priority_frontier import score_next_ready
 from .sgs_priority_pruning import GraphPriorityPruning
@@ -78,7 +77,7 @@ def dispatch_sgs(
     decode_resume: Optional[DecodeCheckpoint] = None,
     decode_checkpoints: Optional[DecodeCheckpointRequest] = None,
 ) -> Tuple[int, int]:
-    ctx = ensure_dispatch_context(context)
+    ctx = context
     rule_spec = as_dispatch_rule_spec(dispatch_rule)
     ops_by_batch = _group_sgs_ops(sorted_ops=sorted_ops, batches=batches, state=state)
     batch_ids = sorted(ops_by_batch, key=lambda item: (batch_order.get(item, 999999), item))
@@ -87,7 +86,7 @@ def dispatch_sgs(
         ctx,
         ops_by_batch=ops_by_batch,
         batches=batches,
-        strict_mode=bool(strict_mode),
+        strict_mode=strict_mode,
     )
     with sgs_overlap_reuse(state.machine_timeline, expected_operations=len(sorted_ops) + len(state.results)):
         _run_sgs_loop(
@@ -103,7 +102,7 @@ def dispatch_sgs(
             machine_downtimes,
             auto_assign_enabled,
             resource_pool,
-            bool(strict_mode),
+            strict_mode,
             avg_proc_hours,
             total_hours_by_op_id,
             graph_ready_context,
@@ -133,7 +132,7 @@ def _average_proc_hours(
     strict_mode: bool,
 ) -> Tuple[float, Dict[int, float]]:
     samples: List[float] = []
-    preparation = getattr(ctx, "native_preparation", None)
+    preparation = ctx.native_preparation
     total_hours_by_op_id: Dict[int, float] = preparation.total_hours_by_op_id if preparation is not None else {}
     for batch_id, operations in ops_by_batch.items():
         batch = batches.get(batch_id)
@@ -146,22 +145,22 @@ def _average_proc_hours(
                 else:
                     sample = _append_proc_sample(ctx, samples, op=op, batch=batch, strict_mode=strict_mode)
                     if sample is not None and op_id is not None:
-                        total_hours_by_op_id[op_id] = float(sample)
+                        total_hours_by_op_id[op_id] = sample
     if samples:
-        return sum(samples) / float(len(samples)), total_hours_by_op_id
+        return sum(samples) / len(samples), total_hours_by_op_id
     ctx.increment("dispatch_key_avg_proc_hours_fallback_count")
     return 1.0, total_hours_by_op_id
 
 
 def _append_proc_sample(ctx: Any, samples: List[float], *, op: Any, batch: Any, strict_mode: bool) -> Optional[float]:
     try:
-        sample = validate_internal_hours_for_mode(op, _operation_batch(ctx, op, batch), strict_mode=strict_mode)
+        sample = validate_internal_hours_for_mode(op, resolve_operation_batch(ctx, op, batch), strict_mode=strict_mode)
     except ValueError:
         # 非 strict 预扫跳过坏工时样本会让均值悄悄偏移，必须计数留痕（不许零留痕静默跳过）。
         ctx.increment("dispatch_key_avg_proc_hours_sample_skipped_count")
         return None
     samples.append(sample)
-    return float(sample)
+    return sample
 
 
 def _run_sgs_loop(
@@ -185,21 +184,26 @@ def _run_sgs_loop(
     decode_resume: Optional[DecodeCheckpoint] = None,
     decode_checkpoints: Optional[DecodeCheckpointRequest] = None,
 ) -> None:
-    graph_state = _prepare_graph_ready_state(graph_ready_context, ops_by_batch=ops_by_batch)
+    graph_state = _prepare_graph_ready_state(
+        graph_ready_context,
+        ops_by_batch=ops_by_batch,
+        skip_initial_frontier=decode_resume is not None,
+    )
     if graph_state is not None and isinstance(graph_ready_context, dict) and graph_ready_context.get("piece_scope"):
         graph_state["end_time_by_op_id"] = {row.op_id: row.end_time for row in state.results}
     # Picks completed so far; a resumed decode continues from the checkpoint's count and progress.
     position = 0
     if decode_resume is not None:
         position = resume_graph_progress(decode_resume, graph_state=graph_state, next_idx=next_idx)
-    score_cache = getattr(ctx, "sgs_score_cache", None)
+    score_cache = ctx.sgs_score_cache
     if score_cache is not None and score_cache.state is not state:
         raise RuntimeError("SGS 评分缓存绑定的运行状态与本次派工不一致")
-    if getattr(ctx, "native_scoring", None) is None:
-        ctx.native_scoring = _native_score_functions_unchanged()
+    if ctx.native_scoring is None:
+        ctx.native_scoring = native_score_functions_unchanged()
     pruning = (GraphPriorityPruning.for_cache(score_cache, graph_state, batches, total_hours_by_op_id, strict_mode=strict_mode)
                if ctx.native_scoring else None)
-    acceleration = DecodeAcceleration(decode_checkpoints, graph_state, pruning, total_hours_by_op_id, ctx)
+    acceleration = DecodeAcceleration(decode_checkpoints, graph_state, pruning, total_hours_by_op_id, ctx,
+                                      resume=decode_resume)
 
     def collect():
         return _collect_candidates(graph_state=graph_state, batch_ids=batch_ids, ops_by_batch=ops_by_batch,
@@ -242,7 +246,7 @@ def _run_sgs_loop(
                 graph_state=graph_state,
             )
             position += 1
-            if acceleration.record(_op_id(op), position, state=state, next_idx=next_idx, graph=graph_state,
+            if acceleration.record(graph_op_id(op), position, state=state, next_idx=next_idx, graph=graph_state,
                                    native_dispatch=_dispatch_selected is _NATIVE_DISPATCH_SELECTED):
                 _complete_reused_tail(graph_state, ops_by_batch=ops_by_batch, blocked_batches=state.blocked_batches)
                 return
@@ -260,7 +264,7 @@ def _complete_reused_tail(graph_state: Optional[Dict[str, Any]], *, ops_by_batch
 
 def _prepare_scoring_round(ctx, priority_pruning):
     natives_intact = ctx.native_scoring
-    cache = getattr(ctx, "sgs_score_cache", None)
+    cache = ctx.sgs_score_cache
     if cache is not None and not natives_intact:
         # The handoff scope still holds this cache; an instrumented scorer must see every estimate itself.
         cache.suspend_round()
@@ -330,8 +334,8 @@ def _score_candidates(
     return scored
 
 
-def _operation_batch(ctx: Any, op: Any, batch: Any) -> Any:
-    preparation = getattr(ctx, "native_preparation", None)
+def resolve_operation_batch(ctx: Any, op: Any, batch: Any) -> Any:
+    preparation = ctx.native_preparation
     return preparation.operation_batch(op, batch) if preparation is not None else operation_batch(op, batch)
 
 
@@ -354,7 +358,7 @@ def _score_candidate(
     attempt_sink: Optional[Any] = None,
 ) -> Tuple[float, ...]:
     state = operation_dispatch_state(state, graph_state, op, batch)
-    batch = _operation_batch(ctx, op, batch)
+    batch = resolve_operation_batch(ctx, op, batch)
     def score() -> Tuple[float, ...]:
         if (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() == EXTERNAL:
             return _score_external_candidate(
@@ -389,10 +393,10 @@ def _score_candidate(
         )
 
     base_key = score()
-    if graph_state is None or not bool(graph_state.get("score_enabled")):
+    if graph_state is None or not graph_state["score_enabled"]:
         return base_key
-    op_id = _op_id(op)
-    graph_key = (graph_state.get("graph_priority_key_by_op_id") or {}).get(op_id)
+    op_id = graph_op_id(op)
+    graph_key = graph_state["graph_priority_key_by_op_id"].get(op_id)
     if graph_key is None:
         raise ValidationError(f"图评分上下文缺少待排工序 {op_id} 的评分 key。", field="graph_ready_context")
     return with_graph_priority_key(base_key, graph_key)
@@ -404,5 +408,5 @@ _NATIVE_SCORE_FUNCTIONS = {name: globals()[name] for name in (
 )}
 
 
-def _native_score_functions_unchanged():
+def native_score_functions_unchanged():
     return native_scoring_unchanged() and all(globals()[name] is original for name, original in _NATIVE_SCORE_FUNCTIONS.items())

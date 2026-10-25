@@ -43,7 +43,7 @@ class Prefetched:
         return recompute()
 
 
-def run_prefetched(conn, prefetch, command, *, attempts=2):
+def run_prefetched(conn, prefetch, command):
     """prefetch() -> (value, stamp) runs outside any write lock; command(Prefetched) runs the write command.
 
     Only the last attempt recomputes under the lock, so other writers committing during
@@ -53,8 +53,8 @@ def run_prefetched(conn, prefetch, command, *, attempts=2):
     while True:
         value, stamp = prefetch()
         try:
-            return command(Prefetched(conn, value, stamp, attempt >= attempts))
+            return command(Prefetched(conn, value, stamp, attempt >= 2))
         except FactsChanged:
-            if attempt >= attempts:
+            if attempt >= 2:
                 raise
             attempt += 1

@@ -1,71 +1,20 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict
 
 from core.models import Operator
 
 from .base_repo import BaseRepository
-from .reference_checks import exists_any_nonblank_reference, exists_value_reference
 
 
 class OperatorRepository(BaseRepository):
     """人员仓库（Operators）。"""
 
-    def get(self, operator_id: str) -> Optional[Operator]:
-        row = self.fetchone(
-            "SELECT operator_id, name, status, remark, team_id, created_at, updated_at FROM Operators WHERE operator_id = ?",
-            (operator_id,),
-        )
-        return Operator.from_row(row) if row else None
-
-    @staticmethod
-    def _list_filters(status: Optional[str], team_id: Optional[str]) -> tuple:
-        """list 与 count 共用的过滤条件，避免两处各写一套导致分页 total 与实际行数漂移。"""
-        where: List[str] = []
-        params: List[Any] = []
-        if status:
-            where.append("status = ?")
-            params.append(status)
-        if team_id:
-            where.append("team_id = ?")
-            params.append(team_id)
-        where_sql = (" WHERE " + " AND ".join(where)) if where else ""
-        return where_sql, params
-
-    def list(
-        self,
-        status: Optional[str] = None,
-        team_id: Optional[str] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-    ) -> List[Operator]:
-        where_sql, params = self._list_filters(status, team_id)
-        sql = (
-            "SELECT operator_id, name, status, remark, team_id, created_at, updated_at FROM Operators"
-            + where_sql
-            + " ORDER BY operator_id"
-        )
-        if limit is not None:
-            sql += " LIMIT ? OFFSET ?"
-            params.extend([int(limit), int(offset or 0)])
-        rows = self.fetchall(sql, tuple(params))
-        return [Operator.from_row(r) for r in rows]
-
-    def count(self, status: Optional[str] = None, team_id: Optional[str] = None) -> int:
-        where_sql, params = self._list_filters(status, team_id)
-        sql = "SELECT COUNT(1) FROM Operators" + where_sql
-        return int(self.fetchvalue(sql, tuple(params), default=0) or 0)
-
-    def exists(self, operator_id: str) -> bool:
-        return bool(self.fetchvalue("SELECT 1 FROM Operators WHERE operator_id = ? LIMIT 1", (operator_id,)))
-
-    def create(self, operator: Union[Operator, Dict[str, Any]]) -> Operator:
-        op = operator if isinstance(operator, Operator) else Operator.from_row(operator)
+    def create(self, operator: Operator) -> None:
         self.execute(
             "INSERT INTO Operators (operator_id, name, status, remark, team_id) VALUES (?, ?, ?, ?, ?)",
-            (op.operator_id, op.name, op.status, op.remark, op.team_id),
+            (operator.operator_id, operator.name, operator.status, operator.remark, operator.team_id),
         )
-        return op
 
     def update(self, operator_id: str, updates: Dict[str, Any]) -> None:
         """
@@ -75,61 +24,11 @@ class OperatorRepository(BaseRepository):
         - 只更新 updates 中出现的字段
         - 允许把 remark 显式清空为 NULL（updates['remark']=None）
         """
-        if not updates:
-            return
-
-        set_parts: List[str] = []
-        params: List[Any] = []
-
-        for key in ("name", "status", "remark", "team_id"):
-            if key in updates:
-                set_parts.append(f"{key} = ?")
-                params.append(updates[key])
-
-        if not set_parts:
-            return
-
-        set_parts.append("updated_at = CURRENT_TIMESTAMP")
-        params.append(operator_id)
-
+        set_parts = [f"{k} = ?" for k in updates] + ["updated_at = CURRENT_TIMESTAMP"]
+        params = [*updates.values(), operator_id]
         sql = f"UPDATE Operators SET {', '.join(set_parts)} WHERE operator_id = ?"
         self.execute(sql, tuple(params))
 
     def delete(self, operator_id: str) -> None:
         self.execute("DELETE FROM Operators WHERE operator_id = ?", (operator_id,))
 
-    def delete_all(self) -> None:
-        self.execute("DELETE FROM Operators")
-
-    # -------------------------
-    # 引用检查（给 Service 层做删除/清空保护）
-    # -------------------------
-    def is_referenced_by_batch_operations(self, operator_id: str) -> bool:
-        return exists_value_reference(
-            self,
-            table="BatchOperations",
-            column="operator_id",
-            value=operator_id,
-        )
-
-    def is_referenced_by_schedule(self, operator_id: str) -> bool:
-        return exists_value_reference(
-            self,
-            table="Schedule",
-            column="operator_id",
-            value=operator_id,
-        )
-
-    def has_any_batch_operations_operator_reference(self) -> bool:
-        return exists_any_nonblank_reference(
-            self,
-            table="BatchOperations",
-            column="operator_id",
-        )
-
-    def has_any_schedule_operator_reference(self) -> bool:
-        return exists_any_nonblank_reference(
-            self,
-            table="Schedule",
-            column="operator_id",
-        )

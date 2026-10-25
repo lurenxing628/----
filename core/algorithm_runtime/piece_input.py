@@ -2,7 +2,7 @@
 
 from copy import copy
 from datetime import datetime
-from typing import Any, Tuple
+from typing import Any, Dict, Tuple
 
 from core.errors import ValidationError
 from core.shared.strict_parse import parse_optional_date
@@ -33,11 +33,14 @@ class _OperationDispatchState:
 
     __slots__ = ("_state", "batch_progress")
 
-    def __init__(self, state, batch_id, earliest):
+    def __init__(self, state: Any, batch_id: str, earliest: datetime) -> None:
         self._state = state
-        self.batch_progress = {batch_id: earliest}
+        self.batch_progress: Dict[str, datetime] = {batch_id: earliest}
 
-    def __getattr__(self, name):
+    def prev_end(self, batch_id: str) -> datetime:
+        return self.batch_progress[batch_id]
+
+    def __getattr__(self, name: str) -> Any:
         return getattr(self._state, name)
 
 

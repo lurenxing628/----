@@ -11,7 +11,7 @@ confirm_import(preview, content, *, file_format, scope, mode='upsert') requires 
 outer CommandService write transaction. Bind the original in-memory preview to
 the API's temporary write context, pass preview.intent() as normalized_input,
 and call confirmation from mutate. All facts/inputs are rechecked before writes;
-a savepoint prevents partial batches even if the caller catches a domain failure.
+the outer command transaction rolls back the whole batch on any domain failure.
 Referenced updates are flagged requires_confirmation in the approved preview.
 
 export_rows(file_format, *, scope=None, selected_refs=None) requires the caller's
@@ -40,7 +40,6 @@ from core.models.workbench_material_file import (
     MATERIAL_COLUMNS,
     MaterialPreview,
     check_preview,
-    check_request,
     file_request,
     normalize_refs,
     normalize_scope,
@@ -155,27 +154,25 @@ class WorkbenchMaterialFileService:
         return row
 
     @staticmethod
-    def _changed_input(normalized, values, raw):
-        if raw is None:
-            return normalized
-        if "label" in normalized and values["label"] == raw["name"]:
-            del normalized["label"]
-        normalized["fields"] = {key: value for key, value in normalized["fields"].items() if values[key] != raw[key]}
-        return normalized
-
-    @staticmethod
     def _normalize_values(action, code, values, raw):
-        payload = {"fields": {key: value for key, value in values.items() if key not in ("business_code", "label", "created_at")}}
-        if action == "create":
-            payload["business_code"] = code
-        if "label" in values:
+        if raw is None:
+            payload = {
+                "business_code": code,
+                "fields": {key: value for key, value in values.items() if key not in ("business_code", "label", "created_at")},
+            }
+            if "label" in values:
+                payload["label"] = values["label"]
+            return normalize_material_input(action, payload)
+        fields = {
+            key: value
+            for key, value in values.items()
+            if key not in ("business_code", "label", "created_at")
+            and (type(value) is bool or value != raw[key])
+        }
+        payload = {"fields": fields}
+        if "label" in values and values["label"] != raw["name"]:
             payload["label"] = values["label"]
-        # Unedited legacy statuses are retained; a different unknown status still fails normalization.
-        status = payload["fields"].get("status")
-        if raw is not None and type(status) is str and status == raw["status"] and status not in ("active", "inactive"):
-            del payload["fields"]["status"]
-        normalized = normalize_material_input(action, payload)
-        return WorkbenchMaterialFileService._changed_input(normalized, values, raw)
+        return normalize_material_input(action, payload)
 
     @staticmethod
     def _classify(row, raw):
@@ -199,23 +196,21 @@ class WorkbenchMaterialFileService:
             request = prepared.request_for("material.import", file_format, mode, normalize_scope(scope))
         except (ValidationError, WorkbenchCommandRejected) as exc:
             raise WorkbenchCommandRejected("stale_write", "文件内容、模式或范围已变化，请重新预检。") from exc
-        check_request(preview, "material.import", request)
-        with self.tx.transaction():
-            current, rows = self._prepare_import(prepared, request)
-            check_preview(preview, current)
-            changes = [self.adapter.prepare_checked(row["action"], row["input"], row["expected"]) for row in rows]
-            results = []
-            for row, change in zip(rows, changes):
-                outcome = self.adapter.apply_prepared(change)
-                results.append({"row": row["row"], "result": outcome.result, **outcome.data})
-            result = "committed" if any(row["result"] == "committed" for row in results) else "unchanged"
-            summary = {key: sum(row["result"] == key for row in rows)
-                       for key in ("new", "update", "unchanged", "delete", "rejected")}
-            return WorkbenchCommandOutcome(result, {"rows": results, "summary": summary})
+        current, rows = self._prepare_import(prepared, request)
+        check_preview(preview, current)
+        changes = [self.adapter.prepare_checked(row["action"], row["input"], row["expected"]) for row in rows]
+        outcomes = self.adapter.apply_prepared_many(changes)
+        results = [{"row": row["row"], "result": outcome.result, **outcome.data}
+                   for row, outcome in zip(rows, outcomes)]
+        result = "committed" if any(row["result"] == "committed" for row in results) else "unchanged"
+        summary = {key: sum(row["result"] == key for row in rows)
+                   for key in ("new", "update", "unchanged", "delete", "rejected")}
+        return WorkbenchCommandOutcome(result, {"rows": results, "summary": summary})
 
     def export_rows(self, file_format, *, scope=None, selected_refs=None):
         """在调用方已验证的读快照里读完整份导出行；编码文件交给 write_export，在读事务结束后做。"""
-        if not self.conn.in_transaction:
+        snapshot = self.reader._snapshot
+        if not self.conn.in_transaction or snapshot is None:
             raise RuntimeError("物料导出必须在调用方已验证的查询快照事务中执行。")
         if (scope is None) == (selected_refs is None):
             raise ValidationError("导出要么按筛选范围，要么按勾选的记录，只能选一种。", field="scope")
@@ -226,11 +221,7 @@ class WorkbenchMaterialFileService:
             rows, total = (index.rows[code].state["material"] for code in matching), len(matching)
         else:
             refs = normalize_refs(selected_refs, allow_empty=True)
-            snapshot = self.reader._snapshot
-            if snapshot is not None and snapshot["fingerprint"] is not None:
-                captured = snapshot["by_ref"]
-            else:
-                captured = {row["ref"]: row for row in self.reader.repo.export_by_refs(refs)}
+            captured = snapshot["by_ref"]
             rows, total = (captured.get(ref) for ref in refs), len(refs)
         check_export_capacity(total, file_format)
         return list(self._export_rows(rows))

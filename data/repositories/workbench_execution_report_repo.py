@@ -13,15 +13,34 @@ class WorkbenchExecutionReportRepository:
     def __init__(self, conn):
         self.conn = conn
 
-    def allocate_number(self):
+    def allocate_numbers(self, count):
+        if count <= 0:
+            return []
         number = self.conn.execute("SELECT next_report_no FROM WorkbenchExecutionLedgerClock WHERE singleton=1").fetchone()[0]
-        while True:
-            value = f"BG-{number:08d}"
-            number += 1
-            if not self.conn.execute("SELECT 1 FROM WorkbenchProductionReports WHERE report_no=?", (value,)).fetchone():
-                break
+        allocated = []
+        while len(allocated) < count:
+            remaining = count - len(allocated)
+            step = max(remaining, 64)
+            candidates = [(number + offset, f"BG-{number + offset:08d}") for offset in range(step)]
+            taken = set()
+            for start in range(0, len(candidates), 400):
+                chunk = [code for _, code in candidates[start : start + 400]]
+                placeholders = ",".join("?" for _ in chunk)
+                rows = self.conn.execute(
+                    f"SELECT report_no FROM WorkbenchProductionReports WHERE report_no IN ({placeholders})",
+                    chunk,
+                ).fetchall()
+                taken.update(row[0] for row in rows)
+            for cand_num, cand_code in candidates:
+                if cand_code not in taken:
+                    allocated.append(cand_code)
+                    if len(allocated) == count:
+                        number = cand_num + 1
+                        break
+            else:
+                number += step
         self.conn.execute("UPDATE WorkbenchExecutionLedgerClock SET next_report_no=? WHERE singleton=1", (number,))
-        return value
+        return allocated
 
     def append_void(self, fact, *, request_key):
         if not self.conn.in_transaction:

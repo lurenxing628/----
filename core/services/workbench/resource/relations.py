@@ -60,7 +60,7 @@ class WorkbenchResourceRelationService:
         self.identities = WorkbenchIdentityRepository(conn, logger=logger)
 
     def _parent(self, kind, ref, relation):
-        if kind != "op_type" or not _valid_ref(ref):
+        if kind != "op_type":
             raise WorkbenchCommandRejected("entity_not_found", "这个工种记录已失效，列表没有打开。请从工种列表重新选择。", 404)
         identity = self.identities.get(ref)
         if identity is None or identity.kind != kind or not identity.active:
@@ -143,12 +143,16 @@ class WorkbenchResourceRelationService:
         start = (query.number - 1) * query.size
         page_rows = matching[start:start + query.size]
         if query.relation == "operators" and page_rows:
+            page_codes = {row["business_code"] for row in page_rows}
             machine_types = defaultdict(set)
             for row in facts["machine_capabilities"]:
                 machine_types[row["machine_id"]].add(row["op_type_id"])
+            sorted_machine_types = {machine_id: sorted(types) for machine_id, types in machine_types.items()}
             authorizations = defaultdict(list)
             for row in facts["authorizations"]:
-                authorizations[row["operator_id"]].append(dict(row, op_type_ids=sorted(machine_types[row["machine_id"]])))
+                if row["operator_id"] in page_codes:
+                    authorizations[row["operator_id"]].append(
+                        dict(row, op_type_ids=sorted_machine_types.get(row["machine_id"], [])))
         entities = []
         for row in page_rows:
             code = row["business_code"]

@@ -23,10 +23,6 @@ from .quality_gate_shared import (
     STAGE_RECORD_PATH,
     STARTUP_SCOPE_PATTERNS,
     TEST_DEBT_MODE_VALUES,
-    UI_MODE_RENDER_BRIDGE_PATHS,
-    UI_MODE_SCOPE_TAG_VALUES,
-    UI_MODE_STARTUP_GUARD_PATHS,
-    UI_MODE_STARTUP_SCOPE_PATHS,
     QualityGateError,
     extract_json_code_block,
     now_shanghai_iso,
@@ -146,7 +142,7 @@ def render_ledger_markdown(ledger: Dict[str, Any]) -> str:
 
         ## 当前静默回退门禁边界
 
-        - 启动链范围（`web/bootstrap/**/*.py`、`web/manual_src_security.py`）按四类分类全量冻结（2026-06 双轨退役：ui_mode/render_bridge 四文件已删除）。
+        - 启动链范围（`web/bootstrap/**/*.py`）按四类分类全量冻结。
         - 非启动链范围当前只续管历史 `silent_swallow` 遗留项，不据此把 `silent_default_fallback` / `observable_degrade` 扩展为全仓新增门禁。
 
         ## 当前快照
@@ -357,18 +353,6 @@ def _validate_complexity_entries(complexity_entries: List[Any], all_main_ids: Se
         _register_main_entry_id(all_main_ids, str(entry.get("id")))
 
 
-def _validate_ui_mode_scope(entry: Dict[str, Any]) -> None:
-    path = str(entry.get("path"))
-    scope_tag = entry.get("scope_tag")
-    if path in set(UI_MODE_STARTUP_SCOPE_PATHS):
-        if scope_tag not in UI_MODE_SCOPE_TAG_VALUES:
-            raise QualityGateError("UI 启动链条目必须带合法 scope_tag：{}".format(entry.get("id")))
-        if path in UI_MODE_RENDER_BRIDGE_PATHS and scope_tag != "render_bridge":
-            raise QualityGateError("render_bridge 文件不得登记为其他 scope_tag：{}".format(entry.get("id")))
-    elif scope_tag is not None and not isinstance(scope_tag, str):
-        raise QualityGateError("scope_tag 必须是字符串或 null：{}".format(entry.get("id")))
-
-
 def _validate_silent_fallback_entries(silent_entries: List[Any], all_main_ids: Set[str]) -> None:
     fallback_unique_keys = set()
 
@@ -399,7 +383,6 @@ def _validate_silent_fallback_entries(silent_entries: List[Any], all_main_ids: S
         _require_string(entry.get("source"), f"silent_fallback.entries[{index}].source")
         if str(entry.get("fallback_kind")) not in FALLBACK_KIND_VALUES:
             raise QualityGateError("silent_fallback.entries[{}].fallback_kind 非法：{}".format(index, entry.get("fallback_kind")))
-        _validate_ui_mode_scope(entry)
         _register_main_entry_id(all_main_ids, str(entry.get("id")))
         except_ordinal = _require_int(entry.get("except_ordinal"), f"silent_fallback.entries[{index}].except_ordinal")
         unique_key = (
@@ -603,8 +586,6 @@ def _ordered_silent_entries(ledger: Dict[str, Any]) -> List[Dict[str, Any]]:
         data["line_start"] = int(entry.get("line_start") or 0)
         data["line_end"] = int(entry.get("line_end") or 0)
         data["fallback_kind"] = entry.get("fallback_kind")
-        if entry.get("scope_tag") is not None:
-            data["scope_tag"] = entry.get("scope_tag")
         for field_name in ("realigned_from", "realigned_at", "realignment_reason"):
             if entry.get(field_name) is not None:
                 data[field_name] = entry.get(field_name)

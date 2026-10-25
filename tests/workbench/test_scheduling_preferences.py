@@ -7,11 +7,12 @@ from pathlib import Path
 import pytest
 from flask import Blueprint, g
 
+from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.models.workbench_preflight import SCHEDULING_PREFERENCES_KEY, normalize_preflight_input
-from core.services.workbench.run.jobs_facts import capture_run_facts, run_facts_unchanged
+from core.services.workbench.facts.production_capture import ProductionFactsCapture
+from core.services.workbench.run.jobs_facts import production_facts_match
 from core.services.workbench.run.preferences import SchedulingPreferencesService
-from core.services.workbench.run.preflight_facts import full_facts_content
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from data.repositories.system_config_repo import SystemConfigRepository
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
@@ -74,6 +75,7 @@ def test_default_save_reload_replay_and_unchanged_use_ordinary_command(pf):
     assert result["result"] == "committed" and result["data"] == {"input": expected, "audit_persisted": True}
     assert read(pf)["input"] == expected
     stored = SystemConfigRepository(pf.conn).get_value(SCHEDULING_PREFERENCES_KEY)
+    assert stored is not None
     assert json.loads(stored) == {"version": 1, "input": expected}
     rejected = pf.post("/api/workbench/v1/scheduling/preflight", json=expected)
     assert rejected.status_code == 404 and rejected.get_json()["error"]["code"] == "entity_not_found"
@@ -107,28 +109,33 @@ def test_corrupt_or_unknown_saved_document_is_an_explicit_failure(pf, stored):
     assert SystemConfigRepository(pf.conn).get_value(SCHEDULING_PREFERENCES_KEY) == stored
 
 
+def _facts_content(conn):
+    with TransactionManager(conn).transaction():
+        return ProductionFactsCapture(conn).content()
+
+
 def test_preferences_save_does_not_expire_existing_preflight_or_worker_facts(pf):
     checked = pf.post("/api/workbench/v1/scheduling/preflight", json=payload(pf))
     assert checked.status_code == 200, checked.get_json()
-    before = full_facts_content(pf.conn)
-    captured_hash, captured_text = capture_run_facts(pf.conn)
+    before = _facts_content(pf.conn)
+    captured_text = ProductionFactsCapture(pf.conn).content()
     assert save(pf, payload(pf), read(pf)["write_context"]["write_token"]).status_code == 200
-    assert full_facts_content(pf.conn) == before
-    assert run_facts_unchanged(pf.conn, captured_text, captured_hash)
-    from web.routes.workbench.preflight import resolve_preflight_input
+    assert _facts_content(pf.conn) == before
+    assert production_facts_match(pf.conn, captured_text)
+    from web.routes.workbench.preflight import evaluate_preflight_input_prepared
 
     with pf.application.app_context():
         pf.conn.execute("BEGIN")
         try:
-            assert resolve_preflight_input(pf.conn, checked.get_json()["data"]["input_ref"]) == payload(pf)
+            assert evaluate_preflight_input_prepared(pf.conn, checked.get_json()["data"]["input_ref"]).data["normalized_input"] == payload(pf)
         finally:
             pf.conn.rollback()
 
     # The exclusion is only this one interface preference; normal system configuration stays in the facts.
     SystemConfigRepository(pf.conn).set("auto_backup_enabled", "yes")
     pf.conn.commit()
-    assert full_facts_content(pf.conn) != before
-    assert not run_facts_unchanged(pf.conn, captured_text, captured_hash)
+    assert _facts_content(pf.conn) != before
+    assert not production_facts_match(pf.conn, captured_text)
 
 
 def test_receipt_failure_rolls_back_preference_and_audit_in_same_transaction(pf, monkeypatch):

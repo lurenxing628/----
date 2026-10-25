@@ -3,9 +3,7 @@
 from flask import current_app, g
 
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
-from core.models.workbench_process_actions import process_part_scope
-from core.models.workbench_process_query import ProcessPageRequest
-from core.models.workbench_process_table_query import ProcessTablePageRequest
+from core.models.workbench_process_actions import normalize_process_part_create, process_part_scope
 from core.services.workbench import messages
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process.part_actions import WorkbenchProcessPartActionService
@@ -26,8 +24,9 @@ DELETE_COLUMNS = (("business_code", "图号"), ("label", "零件名称"), ("rout
 
 def collection_scope(scope, size=20):
     normalized = process_part_scope(scope)
-    query_type = ProcessTablePageRequest if "column_filters" in normalized or type(normalized.get("sort")) is list else ProcessPageRequest
-    return normalized, query_type(**normalized, size=size).scope()
+    if type(size) is not int or not 1 <= size <= 200:
+        raise WorkbenchCommandRejected("invalid_input", "每页条数必须是1至200之间的整数。", 400)
+    return normalized, {"kind": "part", "size": size, **normalized}
 
 
 @api_endpoint
@@ -38,7 +37,7 @@ def process_create():
     validate_request_key(body["request_key"])
     g.workbench_request_key = body["request_key"]
     domain = WorkbenchProcessPartActionService(g.db, current_app.logger)
-    payload = domain.normalize_create(body["input"])
+    payload = normalize_process_part_create(body["input"])
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
 
     def guard():

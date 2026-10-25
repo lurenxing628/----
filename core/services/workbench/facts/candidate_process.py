@@ -77,7 +77,7 @@ def _completion(raw):
     return result
 
 
-def _objective(artifact, evidence, report):
+def candidate_objective(artifact, evidence, report):
     saved = _dict(evidence.get("objective"))
     name = _text(saved.get("name")) or _text(artifact.get("objective_name")) or _text(report.get("objective_name")) or _text(artifact.get("objective"))
     labels = objective_choice_labels()
@@ -218,7 +218,7 @@ def candidate_process(row, rows):
     if evidence and evidence.get("state") not in ("complete", "unavailable"):
         corrupt()
     source_ref = solver["candidate_ref"] if solver else None
-    objective = _objective(artifact, evidence, report)
+    objective = candidate_objective(artifact, evidence, report)
     points, attempts = _points(artifact, evidence, objective, source_ref), _attempts(artifact, objective, source_ref)
     available = solver is not None and (evidence.get("state") == "complete" if evidence else bool(report or points or attempts))
     state = "complete" if available and evidence else "partial" if available else "unavailable"

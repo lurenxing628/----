@@ -9,7 +9,7 @@ from core.services.workbench.facts.table_index import ResourceTableIndex
 def cells(row):
     return {"part_no": text_cell(row["part_no"] + " · " + row["part_name"]),
             "operation_label": text_cell(str(row["sequence"]) + " · " + row["operation_label"] + " · " +
-                {"internal": "自制", "external": "外协", "unknown": "未确认", None: "未确认"}[row["source"]]),
+                {"internal": "自制", "external": "外协", "unknown": "未确认"}[row["source"]]),
             "old_unit_hours": number_cell(row["old_unit_hours"], missing="未填写"),
             "suggested_unit_hours": number_cell(row["suggested_unit_hours"], missing="暂无建议"),
             "sample_count": number_cell(row["sample_count"]),
@@ -17,7 +17,7 @@ def cells(row):
             "status": text_cell("数据不足" if row["status"] == "insufficient_data" else "已有建议")}
 
 
-def filter_rows(rows, rules, *, cell_cache=None):
+def filter_rows(rows, rules, *, cell_cache):
     if not rules:
         return rows
     filters = [(key, rule["mode"], set(rule["values"])) for key, rule in rules.items()]
@@ -38,10 +38,8 @@ def validate_facet(column, search, number, size):
         raise WorkbenchCommandRejected("invalid_input", "页码或每页数量填写不对，列表没有变化。", 400)
 
 
-def facet_data(rows, column, search, number, size, *, selection=False, cell_cache):
+def facet_data(rows, column, search, number, size, *, selection, cell_cache):
     indexed = {row["suggestion_ref"]: row for row in rows}
-    if len(indexed) != len(rows):
-        raise WorkbenchCommandRejected("projection_invalid", "同一个模板在筛选结果里出现了多次。数据可能已更新，请刷新后重试。")
     indexed_cells = {ref: cell_cache[ref] for ref in indexed} if cell_cache else {ref: cells(row) for ref, row in indexed.items()}
     options = ResourceTableIndex(indexed, indexed_cells)._options(column, search)
     if selection:

@@ -126,7 +126,7 @@ def _processing_values(projection):
             "unit_hours": float(ratio) if ratio is not None else None}, reasons
 
 
-def _sample_origin(candidate, *, lineage_origin=None, lineage_events=()):
+def _sample_origin(candidate, *, lineage_origin, lineage_events):
     projection, lineage = candidate.execution, candidate.lineage
     revision_refs = [row.revision_ref for row in projection.reports]
     reports = [report.to_dict() for report in projection.reports]
@@ -152,7 +152,7 @@ def _sample_origin(candidate, *, lineage_origin=None, lineage_events=()):
             "reports": reports, "legacy_facts": projection.legacy_facts, "data_gaps": projection.data_gaps}
 
 
-def review_sample(candidate, *, template, as_of, lineage_origin=None, lineage_events=()):
+def review_sample(candidate, *, template, as_of, lineage_origin, lineage_events):
     values, reasons = _processing_values(candidate.execution)
     reasons += _lineage_reasons(candidate.lineage, template) + _execution_reasons(candidate, as_of)
     return {**_sample_origin(candidate, lineage_origin=lineage_origin, lineage_events=lineage_events),

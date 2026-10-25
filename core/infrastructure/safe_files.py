@@ -72,17 +72,6 @@ def is_regular_file(path: Any) -> bool:
         return False
 
 
-def _ensure_parent(path_s: str) -> None:
-    _guard_fixed_file_parent(path_s, ensure_parent=True)
-
-
-def _raise_if_fd_not_regular(fd: int, path_s: str) -> None:
-    st = os.fstat(fd)
-    if not _is_regular_mode(st.st_mode):
-        raise UnsafeFixedFileError(f"拒绝处理非普通固定文件：{path_s}")
-    _raise_if_hardlinked(st, path_s)
-
-
 def _same_regular_file_stat(left: Any, right: Any) -> bool:
     return stat.S_ISREG(left.st_mode) and stat.S_ISREG(right.st_mode) and os.path.samestat(left, right)
 
@@ -178,6 +167,24 @@ def _open_existing_fixed_file_for_write(path_s: str, expected_stat: Any, *, appe
         raise
 
 
+def _acquire_write_fd(
+    path_s: str,
+    *,
+    append: bool,
+    ensure_parent: bool,
+    replace_symlink: bool,
+) -> int:
+    expected_stat = _raise_if_existing_path_unsafe(
+        path_s, ensure_parent=ensure_parent, replace_symlink=replace_symlink
+    )
+    try:
+        if expected_stat is None:
+            return _open_new_fixed_file_for_write(path_s)
+        return _open_existing_fixed_file_for_write(path_s, expected_stat, append=append)
+    except FileExistsError as exc:
+        raise UnsafeFixedFileError(f"固定文件在创建过程中被替换或占用：{path_s}") from exc
+
+
 def open_fixed_file_for_write(
     path: Any,
     *,
@@ -185,17 +192,9 @@ def open_fixed_file_for_write(
     ensure_parent: bool = True,
     replace_symlink: bool = False,
 ):
-    path_s = _path_text(path)
-    expected_stat = _raise_if_existing_path_unsafe(
-        path_s, ensure_parent=ensure_parent, replace_symlink=replace_symlink
+    fd = _acquire_write_fd(
+        _path_text(path), append=append, ensure_parent=ensure_parent, replace_symlink=replace_symlink
     )
-    try:
-        if expected_stat is None:
-            fd = _open_new_fixed_file_for_write(path_s)
-        else:
-            fd = _open_existing_fixed_file_for_write(path_s, expected_stat, append=append)
-    except FileExistsError as exc:
-        raise UnsafeFixedFileError(f"固定文件在创建过程中被替换或占用：{path_s}") from exc
     try:
         mode = "a" if append else "w"
         f = os.fdopen(fd, mode, encoding="utf-8")
@@ -213,17 +212,9 @@ def open_fixed_file_for_write_binary(
     ensure_parent: bool = True,
     replace_symlink: bool = False,
 ):
-    path_s = _path_text(path)
-    expected_stat = _raise_if_existing_path_unsafe(
-        path_s, ensure_parent=ensure_parent, replace_symlink=replace_symlink
+    fd = _acquire_write_fd(
+        _path_text(path), append=append, ensure_parent=ensure_parent, replace_symlink=replace_symlink
     )
-    try:
-        if expected_stat is None:
-            fd = _open_new_fixed_file_for_write(path_s)
-        else:
-            fd = _open_existing_fixed_file_for_write(path_s, expected_stat, append=append)
-    except FileExistsError as exc:
-        raise UnsafeFixedFileError(f"固定文件在创建过程中被替换或占用：{path_s}") from exc
     try:
         mode = "ab" if append else "wb"
         f = os.fdopen(fd, mode)
@@ -287,27 +278,18 @@ def write_fixed_json(
     write_fixed_text(path, text, ensure_parent=ensure_parent, replace_symlink=replace_symlink)
 
 
-def guard_fixed_file_replace_target(path: Any, *, ensure_parent: bool = True) -> None:
-    """替换固定名文件前检查目标槽位，拒绝软链接/硬链接/非普通文件占位。"""
-    path_s = _path_text(path)
-    _raise_if_existing_path_unsafe(path_s, ensure_parent=ensure_parent)
-
-
 def guard_fixed_file_open_target(path: Any, *, ensure_parent: bool = True) -> Optional[os.stat_result]:
-    """准备固定名文件槽位，返回已有普通文件的状态；缺失时返回 None。"""
+    """打开或替换固定名文件前检查槽位，返回已有普通文件的状态；缺失时返回 None。"""
     path_s = _path_text(path)
     return _raise_if_existing_path_unsafe(path_s, ensure_parent=ensure_parent)
 
 
 def create_fixed_file_exclusive(path: Any, *, ensure_parent: bool = True) -> int:
     path_s = _path_text(path)
-    if ensure_parent:
-        _ensure_parent(path_s)
-    else:
-        _guard_fixed_file_parent(path_s)
+    _guard_fixed_file_parent(path_s, ensure_parent=ensure_parent)
     fd = os.open(path_s, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_NOFOLLOW, 0o600)
     try:
-        _raise_if_fd_not_regular(fd, path_s)
+        _fd_regular_stat(fd, path_s)
         return fd
     except Exception:
         os.close(fd)

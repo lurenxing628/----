@@ -1,10 +1,10 @@
 """Bounded, lossless evidence reads; no connection converter or metadata repair."""
 
 import json
+import math
 from typing import NoReturn
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_trial_codec import same as same
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 
 REASONS = {
@@ -47,7 +47,18 @@ def stored(text):
             result[key] = value
         return result
 
-    value = json.loads(text, object_pairs_hook=pairs)
+    def finite_float(raw):
+        value = float(raw)
+        require(math.isfinite(value), "nonfinite_json_number")
+        return value
+
+    def constant(_raw):
+        fail(gap="nonfinite_json_number")
+
+    try:
+        value = json.loads(text, object_pairs_hook=pairs, parse_float=finite_float, parse_constant=constant)
+    except (ValueError, RecursionError) as exc:
+        raise AdoptionBaselineUnavailable("adoption_snapshot_invalid", "invalid_stored_json") from exc
     require(type(value) is dict, "json_object")
     return value
 

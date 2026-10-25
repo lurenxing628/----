@@ -46,9 +46,10 @@
   }
   function ResourceTables({ kind, category, entities, source, selected = [], onSelect, onOpen, onDelete, disabled = false, headerDisabled = disabled,
     loading = false, error, onRetry, onClear, adapter, scope, matchingCount, sort = 'business_code', direction = 'asc', sortActive = true, onSort, onColumnFilter }) {
-    const selectAll = React.useRef(null), all = entities.length > 0 && entities.every(item => selected.includes(item.ref));
+    const selectedSet = React.useMemo(() => new Set(selected), [selected]);
+    const selectAll = React.useRef(null), all = entities.length > 0 && entities.every(item => selectedSet.has(item.ref));
     const table = React.useRef(null), [widths, setWidths] = React.useState(null);
-    React.useEffect(() => { if (selectAll.current) selectAll.current.indeterminate = !all && entities.some(item => selected.includes(item.ref)); }, [all, entities, selected]);
+    React.useEffect(() => { if (selectAll.current) selectAll.current.indeterminate = !all && entities.some(item => selectedSet.has(item.ref)); }, [all, entities, selectedSet]);
     const opCategory = category || (entities.length && entities.every(item => item.fields.category === entities[0].fields.category) ? entities[0].fields.category : null);
     const cols = [
       { key: 'business_code', title: C.codeLabel(kind), width: 130, sortable: true, render: entity => <button type="button" className="lnk" disabled={disabled} onClick={() => onOpen(entity.ref)}>{entity.business_code}</button> },
@@ -86,7 +87,7 @@
         <th scope="col" className="actcol wb-col-actions" data-column="__actions" style={{ width: widths ? widths.__actions : 216 }}>操作</th></tr></thead>
       <tbody>{entities.map(entity => {
         const issueCount = entity.issues.reduce((n, issue) => n + (issue.scope !== 'collection' ? 1 : 0), 0);
-        return <tr key={entity.ref}><td className="cbx"><input type="checkbox" aria-label={'选择 ' + entity.business_code + ' ' + entity.label} checked={selected.includes(entity.ref)} disabled={disabled}
+        return <tr key={entity.ref}><td className="cbx"><input type="checkbox" aria-label={'选择 ' + entity.business_code + ' ' + entity.label} checked={selectedSet.has(entity.ref)} disabled={disabled}
         onChange={event => onSelect(event.target.checked ? selected.concat(entity.ref) : selected.filter(ref => ref !== entity.ref))} /></td>
         {cols.map(col => <td key={col.key} className={col.key === 'business_code' ? 'wb-col-key' : col.numeric ? 'r' : ''} style={{ overflowWrap: 'anywhere', whiteSpace: 'normal' }}>{col.render(entity)}
           {col.key === 'label' && issueCount > 0 && <span className="muted" style={{ display: 'block', fontSize: 12 }}>待核对 {issueCount} 项</span>}</td>)}

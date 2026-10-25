@@ -6,8 +6,6 @@ from uuid import uuid4
 from core.models.resource_capabilities import supplier_capability_rows, supports_source
 from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.part_operation_repo import PartOperationRepository
-from data.repositories.supplier_repo import SupplierRepository
-from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWorkflowRepository
 
 
@@ -19,20 +17,16 @@ def create_group(conn, part_no, members, supplier_id, total_days, *, attach=True
     if attach:
         repo = PartOperationRepository(conn)
         for row in members:
-            repo.update(part_no, row["seq"], {"ext_group_id": group_id})
+            repo.update_fields_by_id(row["id"], {"ext_group_id": group_id})
     return group_id
 
 
-def _default_suppliers(conn, references=None):
-    if references is None:
-        capability_rows = SupplierRepository(conn).list_capabilities(status="active")
-        statuses = WorkbenchProcessQueryRepository(conn).supplier_status_rows()
-    else:
-        capability_rows = supplier_capability_rows(
-            references["Suppliers"], references["WorkbenchSupplierOpTypes"], "active")
-        profiles = {row["supplier_id"]: row for row in references["WorkbenchSupplierProfiles"]}
-        statuses = [dict(row, inactive_reason=profiles.get(row["supplier_id"], {}).get("inactive_reason"))
-                    for row in references["Suppliers"]]
+def default_suppliers(references):
+    capability_rows = supplier_capability_rows(
+        references["Suppliers"], references["WorkbenchSupplierOpTypes"], "active")
+    profiles = {row["supplier_id"]: row for row in references["WorkbenchSupplierProfiles"]}
+    statuses = [dict(row, inactive_reason=profiles.get(row["supplier_id"], {}).get("inactive_reason"))
+                for row in references["Suppliers"]]
     suppliers = {row["supplier_id"]: row for row in capability_rows
                  if not row["missing_supplier"]}
     capabilities = {(row["supplier_id"], row["op_type_id"]) for row in capability_rows if not row["missing_supplier"]}
@@ -55,16 +49,16 @@ def _uses_merged_default(row, candidates, suppliers, capabilities, available):
             and isinstance(days, (int, float)) and not isinstance(days, bool) and math.isfinite(days) and days > 0)
 
 
-def apply_default_groups(conn, part_no, operation_sequences, *, catalog_reader=None):
+def apply_default_groups(conn, part_no, operation_sequences, *, catalog_reader):
     """Group only consecutive new eligible rows; one supplier cycle per stage."""
     eligible = set(operation_sequences)
     if not eligible:
         return False
-    rows = WorkbenchProcessWorkflowRepository(conn).active_operations(part_no)
+    rows = WorkbenchProcessWorkflowRepository(conn).active_operations(part_no, include_related_groups=False)
     candidates = {row["seq"] for row in rows if _default_candidate(row, eligible)}
     if not candidates:
         return False
-    suppliers, capabilities, available = _default_suppliers(conn) if catalog_reader is None else catalog_reader()
+    suppliers, capabilities, available = catalog_reader()
     segments, segment = [], []
     for row in rows:
         usable = _uses_merged_default(row, candidates, suppliers, capabilities, available)

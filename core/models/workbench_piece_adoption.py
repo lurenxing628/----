@@ -25,11 +25,3 @@ class PieceOperationWork:
 @dataclass(frozen=True)
 class PieceAdoptionScope:
     operations: Tuple[PieceOperationWork, ...]
-
-
-@dataclass(frozen=True)
-class PieceAdoptionEvidence:
-    scope: PieceAdoptionScope
-    operation_refs: Tuple[Tuple[int, str], ...]
-    protected_op_ids: Tuple[int, ...]
-    execution_snapshot_revision: str

@@ -76,9 +76,13 @@ async function contract(h, assert) {
   const day = { date: '2026-10-10', explicit: false, fields: { type: 'work', hours: 8, eff: 100, allowNormal: 'yes', allowUrgent: 'yes', note: '', periods: null },
     effective: { is_working: true, window_start: '2026-10-10T08:00:00', window_end: '2026-10-10T16:00:00', periods: null } };
   once(h.render(w.CalendarDayDialog, { adapter: {}, day, source: 'production', command: idle }), missingContext, 1);
-  once(h.render(w.ProcessGroupEditor, { adapter: { command() {}, stagePreview() {} }, command: idle,
-    result: { data: { operations: [], external_groups: [], workflow: { route: { state: 'confirmed' } }, capabilities: { stage_confirm: true } }, meta: { source: 'production' } }
-  }), '请先新增、修改或解除外协段。', 2);
+  const groupProps = { adapter: { command() {}, stagePreview() {} }, command: idle,
+    result: { data: { operations: [], external_groups: [], workflow: { route: { state: 'confirmed' } }, capabilities: { stage_confirm: true } }, meta: { source: 'production' } } };
+  once(h.render(w.ProcessGroupEditor, groupProps), '请先新增、修改或解除外协段。', 2);
+  // A retained leave prompt follows the draft. useState slots: useDraft 0-4 (draft 1), usePage 5-7, editing 8, picker 9, discard 10.
+  const groupUnsaved = '本次外协段修改尚未保存。';
+  assert(!visible(h.render(w.ProcessGroupEditor, groupProps, { ProcessGroupEditor: { 10: true } })).includes(groupUnsaved), 'A clean draft has nothing unsaved to warn about');
+  once(h.render(w.ProcessGroupEditor, groupProps, { ProcessGroupEditor: { 1: { groups: [], discard_group_refs: [h.reference(43)] }, 10: true } }), groupUnsaved);
 
   // A group-wide restriction is shown once; a restore-specific restriction still remains visible.
   const readMaintenance = w.SystemMaintenanceControls.useRead;

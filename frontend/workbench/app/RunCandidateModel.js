@@ -113,7 +113,7 @@
       return { task, start, end, search: searchText(task), point: P.isPoint(task), plottable: Number.isFinite(start) && Number.isFinite(end) && end >= start }; });
     const bounds = G.bounds(data.task_span ? instant(data.task_span.start) : null, data.task_span ? instant(data.task_span.end) : null, items.some(item => item.point));
     return { items, unplanned: (data.unplanned_operations || []).map(task => ({ task, search: searchText(task) })),
-      taskIndex: new Map(items.map(item => [item.task.row_ref, item])), start: bounds.start, end: bounds.end };
+      taskIndex: new Map(items.map(item => [item.task.row_ref, item])), loadedRefs: new Set(items.map(item => item.task.row_ref)), start: bounds.start, end: bounds.end };
   }
   function groupPrepared(prepared, mode) {
     const groups = new Map(), G = window.PointGanttModel;
@@ -131,15 +131,18 @@
     return { ...prepared, groups };
   }
   function selectPrepared(prepared, query = '', operationRefs = null, focus = null) {
-    const needle = query.trim().toLocaleLowerCase(), groups = new Map(), tasks = [], unplottableTasks = [];
-    for (const fact of prepared.items) if (matches(fact, needle, operationRefs, focus)) (fact.plottable ? tasks : unplottableTasks).push(fact.task);
+    const needle = query.trim().toLocaleLowerCase(), groups = new Map(), tasks = [], unplottableTasks = [], shownRefs = new Set(), taskOrder = new Map();
+    for (const fact of prepared.items) if (matches(fact, needle, operationRefs, focus)) {
+      if (fact.plottable) { taskOrder.set(fact.task.row_ref, tasks.length); tasks.push(fact.task); shownRefs.add(fact.task.row_ref); }
+      else unplottableTasks.push(fact.task);
+    }
     for (const [id, group] of prepared.groups) {
       const items = group.items.filter(item => matches(item, needle, operationRefs, focus));
       if (!items.length) continue;
       const shown = new Set(items);
       groups.set(id, { ...group, items, shown, normal: group.normal.map(lane => lane.filter(item => shown.has(item))) });
     }
-    return { ...prepared, groups, tasks, unplottableTasks, groupCount: groups.size };
+    return { ...prepared, groups, tasks, shownRefs, taskOrder, unplottableTasks, groupCount: groups.size };
   }
   function groupRows(group, start, end, width, pointRows = false) {
     const points = group.points.length ? window.PointGanttModel.layoutTracks(group.points, start, end, width).map(lane => lane.filter(item => group.shown.has(item))) : [];
@@ -159,7 +162,10 @@
       row.items.forEach(item => locations.set(item.task.row_ref, { row: rows.length, top, item }));
       rows.push(row); top += row.height;
     }
-    return { rows, height: top, locations, tasks: prepared.tasks, unplottableTasks: prepared.unplottableTasks,
+    return { rows, height: top, locations, tasks: prepared.tasks,
+      shownRefs: prepared.shownRefs || new Set((prepared.tasks || []).map(task => task.row_ref)),
+      taskOrder: prepared.taskOrder || new Map((prepared.tasks || []).map((task, index) => [task.row_ref, index])),
+      unplottableTasks: prepared.unplottableTasks,
       groupCount: prepared.groupCount, start: prepared.start, end: prepared.end };
   }
   window.RunCandidateModel = { instant, timeLabel, number, percent, signedChange, visibleItems, visibleRows, matching, prepare, groupPrepared, selectPrepared, groupRows, layoutPrepared, title, laneLabel, pieceLabel, quantityLabel, resourceLabel, resourceMatches, kindLabels, executionLabels, executionValue, executionField };

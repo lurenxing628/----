@@ -81,6 +81,7 @@ def _build_operation_node(
     node_data: Dict[str, Any] = {
         "node_id": _operation_node_id(row, batch_id=batch_id, op_code=op_code, scope=scope),
         "batch_id": batch_id,
+        "piece_id": _optional_text(_read_field(row, "piece_id")),
         "op_code": op_code,
         "seq": seq,
         "name": _optional_text(_read_field(row, "op_type_name")) or "",

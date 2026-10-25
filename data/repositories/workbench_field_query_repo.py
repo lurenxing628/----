@@ -1,8 +1,8 @@
-"""现场（报工文件 / 现场工作台）只读事实：可用设备人员索引、最新排产版本、批次零件名。"""
+"""现场（报工文件 / 现场工作台）只读事实：可用设备人员索引、批次零件名。"""
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List
 
 from .base_repo import BaseRepository
 
@@ -17,11 +17,16 @@ class WorkbenchFieldQueryRepository(BaseRepository):
             LEFT JOIN Operators o ON e.kind='operator' AND o.operator_id=e.entity_key
             WHERE e.active=1 AND e.kind IN ('machine','operator')""")
 
-    def latest_schedule_version(self) -> Optional[int]:
-        """ScheduleHistory 里最大的版本号；没有历史时为 None。"""
-        return self.fetchvalue("SELECT MAX(version) FROM ScheduleHistory")
-
-    def batch_part_names(self) -> Dict[str, Any]:
+    def batch_part_names(self, batch_ids: Iterable[str]) -> Dict[str, Any]:
         """{batch_id: part_name}；零件缺失时值为 None。"""
-        rows = self.fetchall("SELECT b.batch_id,p.part_name FROM Batches b LEFT JOIN Parts p ON p.part_no=b.part_no")
-        return {row["batch_id"]: row["part_name"] for row in rows}
+        keys = sorted(set(batch_ids))
+        result: Dict[str, Any] = {}
+        for start in range(0, len(keys), 400):
+            chunk = keys[start:start + 400]
+            marks = ",".join("?" for _ in chunk)
+            rows = self.fetchall(
+                f"SELECT b.batch_id,p.part_name FROM Batches b LEFT JOIN Parts p ON p.part_no=b.part_no WHERE b.batch_id IN ({marks})",
+                chunk,
+            )
+            result.update((row["batch_id"], row["part_name"]) for row in rows)
+        return result

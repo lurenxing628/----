@@ -9,11 +9,13 @@ from core.models.workbench_identity import WorkbenchEntityIdentity
 from .base_repo import BaseRepository
 
 
-def _identity(row) -> Optional[WorkbenchEntityIdentity]:
-    if row is None:
-        return None
+def _row_identity(row) -> WorkbenchEntityIdentity:
     return WorkbenchEntityIdentity(ref=row["ref"], kind=row["kind"], entity_key=row["entity_key"],
                                    revision=int(row["revision"]), active=bool(row["active"]))
+
+
+def _identity(row) -> Optional[WorkbenchEntityIdentity]:
+    return None if row is None else _row_identity(row)
 
 
 class WorkbenchIdentityRepository(BaseRepository):
@@ -31,7 +33,6 @@ class WorkbenchIdentityRepository(BaseRepository):
             marks = ",".join("?" for _ in chunk)
             rows = self.fetchall("SELECT ref, kind, entity_key, revision, active FROM WorkbenchEntityRefs WHERE kind = ? AND active = 1 AND entity_key IN (" + marks + ")", [kind] + chunk)
             for row in rows:
-                identity = _identity(row)
-                if identity is not None:
-                    output[identity.entity_key] = identity
+                identity = _row_identity(row)
+                output[identity.entity_key] = identity
         return output

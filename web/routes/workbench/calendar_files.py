@@ -75,9 +75,8 @@ def calendar_import_preview(kind):
     calendar_kind(kind)
     content, fmt, mode = upload_body()
     service = _service(kind)
-    source = service.prepare_import(content, file_format=fmt, mode=mode)
-    preview = service.preview_import(source, file_format=fmt, mode=mode)
-    data = issue_file_preview(preview, source, columns=public_columns(kind),
+    preview = service.preview_import(content, file_format=fmt, mode=mode)
+    data = issue_file_preview(preview, preview.source, columns=public_columns(kind),
                               instructions=INSTRUCTIONS[kind], template_version=TEMPLATE_VERSION)
     # 预检文档本身就是这次读到的全部日历事实，直接绑定原文。
     snapshot = bind_read_snapshot({"kind": kind, "operation": kind + ".import",
@@ -116,13 +115,11 @@ def calendar_export_preview(kind):
         query_scope = {"kind": kind, "start_date": start_date, "end_date": end_date, **extra}
         read_binding = resolve_read_snapshot(provided) if provided is not None else None
         snapshot = bind_read_snapshot(query_scope, fingerprint, provided, binding=read_binding)
-        if read_binding is None:
-            read_binding = resolve_read_snapshot(snapshot["snapshot_ref"])
         arguments, count = service.preview_export(start_date=start_date, end_date=end_date, rows=rows, **extra)
         document = {"kind": kind, "query_scope": query_scope,
                     "snapshot_ref": snapshot["snapshot_ref"], "arguments": arguments}
         ref, expires_at = retain_context(EXPORT_SCOPE, document, read_binding,
-                                         key=(kind, read_binding.scope, document["snapshot_ref"], content_text(arguments)))
+                                         key=(kind, document["snapshot_ref"], content_text(arguments)))
     return query_success({"export_ref": ref, "expires_at": expires_at, "range": arguments,
                           "row_count": count, "formats": ["csv", "xlsx"]}, snapshot)
 

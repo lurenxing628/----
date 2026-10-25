@@ -13,7 +13,6 @@ from zipfile import ZipFile
 
 import openpyxl
 
-from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_material_file import COLUMNS, HEADERS, MATERIAL_COLUMNS
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.material.bulk import WorkbenchMaterialBulkService
@@ -64,8 +63,9 @@ def confirm_delete(conn, preview, refs, *, key=KEY, scope=None, guard=None, comm
 
 def export_file(conn, file_format, **selection):
     # 和下载路由一样：读快照里只读行，事务结束后再生成文件。
-    with TransactionManager(conn).transaction():
-        rows = WorkbenchMaterialFileService(conn).export_rows(file_format, **selection)
+    service = WorkbenchMaterialFileService(conn)
+    with service.reader.read_snapshot():
+        rows = service.export_rows(file_format, **selection)
     return WorkbenchMaterialFileService.write_export(rows, file_format)
 
 

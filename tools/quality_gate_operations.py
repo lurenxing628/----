@@ -30,7 +30,6 @@ from .quality_gate_shared import (
     FILE_SIZE_LIMIT,
     REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS,
     STARTUP_SCOPE_PATTERNS,
-    UI_MODE_STARTUP_SCOPE_PATHS,
     WEB_HELPER_SCAN_SCOPE_PATTERNS,
     QualityGateError,
     collect_globbed_files,
@@ -220,11 +219,6 @@ def _silent_scan_index(entries: Sequence[Dict[str, Any]]) -> Dict[Tuple[str, str
 def _is_allowed_silent_realign(old_entry: Dict[str, Any], new_entry: Dict[str, Any]) -> Tuple[bool, str]:
     old_kind = str(old_entry.get("fallback_kind") or "")
     new_kind = str(new_entry.get("fallback_kind") or "")
-    old_scope = str(old_entry.get("scope_tag") or "")
-    new_scope = str(new_entry.get("scope_tag") or "")
-    if old_scope != new_scope:
-        return False, f"scope_tag changed {old_scope}->{new_scope}"
-
     if _silent_refresh_group_key(old_entry) != _silent_refresh_group_key(new_entry):
         return False, "path/symbol alias group changed"
 
@@ -238,7 +232,7 @@ def _is_allowed_silent_realign(old_entry: Dict[str, Any], new_entry: Dict[str, A
         return False, "handler_signature / handler_context changed"
 
     if old_kind == new_kind:
-        return True, f"same path/symbol alias and except ordinal; kind {old_kind}->{new_kind}; scope_tag unchanged; handler content matched"
+        return True, f"same path/symbol alias and except ordinal; kind {old_kind}->{new_kind}; handler content matched"
     # 旧 architecture_fitness 计数器曾把非启动链清理动作记成 silent_swallow。
     # 这里仅允许这批历史非启动链条目回到 cleanup_best_effort，不用于启动链或 accepted risk 换绑放宽。
     if (
@@ -247,10 +241,10 @@ def _is_allowed_silent_realign(old_entry: Dict[str, Any], new_entry: Dict[str, A
         and old_kind == "silent_swallow"
         and new_kind == "cleanup_best_effort"
     ):
-        return True, "legacy architecture silent entry reclassified as cleanup_best_effort; scope_tag unchanged; handler content matched"
+        return True, "legacy architecture silent entry reclassified as cleanup_best_effort; handler content matched"
     if (old_kind, new_kind) not in ALLOWED_SILENT_REALIGN_KIND_TRANSITIONS:
         return False, f"fallback kind transition {old_kind}->{new_kind} is not allowed"
-    return True, f"same path/symbol alias and except ordinal; kind {old_kind}->{new_kind}; scope_tag unchanged; handler content matched"
+    return True, f"same path/symbol alias and except ordinal; kind {old_kind}->{new_kind}; handler content matched"
 
 
 def _resolve_silent_refresh_entry(
@@ -424,7 +418,7 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
             build_complexity_entry(str(item["path"]), str(item["symbol"]), int(item["current_value"]), existing=entry)
         )
 
-    silent_paths = sorted({str(entry.get("path")) for entry in silent_entries} | set(UI_MODE_STARTUP_SCOPE_PATHS))
+    silent_paths = sorted({str(entry.get("path")) for entry in silent_entries})
     silent_scan_entries = _cached_silent_scan_entries(silent_paths)
     silent_scan = _silent_scan_index(silent_scan_entries)
     silent_group_alignment = _silent_group_alignment(silent_entries, silent_scan_entries)
@@ -681,7 +675,6 @@ def architecture_silent_scan_entries() -> List[Dict[str, Any]]:
         if bool(entry.get("legacy_swallow_hit")):
             normalized = dict(entry)
             normalized["fallback_kind"] = "silent_swallow"
-            normalized.pop("scope_tag", None)
             entries.append(normalized)
     return sorted(entries, key=entry_sort_key)
 

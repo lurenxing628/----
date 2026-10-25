@@ -9,7 +9,7 @@ from core.services.workbench.facts.system_reads import backup_signature
 
 
 class SystemRestoreManager(BackupManager):
-    def __init__(self, *, journal, record, source_content=None, **kwargs):
+    def __init__(self, *, journal, record, source_content, **kwargs):
         super().__init__(**kwargs)
         self.journal = journal
         self.record = record

@@ -15,7 +15,7 @@ from core.services.workbench.batch.queries import WorkbenchBatchQueryService
 from core.services.workbench.commands import WorkbenchCommandService
 from web.api_responses import json_response, query_success
 
-from .api_responses import api_endpoint
+from .api_responses import api_endpoint, read_endpoint
 from .batch_context import command_body, json_body, load_preview, retry_message, save_preview
 from .read_budget import batch_read_snapshot
 from .read_context import bind_read_snapshot
@@ -37,7 +37,7 @@ def batch_template():
     return download(write_batch_file([]), "批次导入模板.xlsx", 0)
 
 
-@api_endpoint
+@read_endpoint
 def batch_import_preview():
     if request.args or set(request.files) != {"file"} or len(request.files.getlist("file")) != 1:
         raise WorkbenchCommandRejected("invalid_input", "请先选择一个批次 XLSX 文件，再点「开始预检」。", 400)
@@ -90,7 +90,7 @@ def batch_import_confirm():
             mutate=lambda document: WorkbenchBatchFileService(g.db, current_app.logger, reader=reader).apply(document)))
 
 
-@api_endpoint
+@read_endpoint
 def batch_export_preview():
     body = object_fields(json_body(), ("selection", "scope", "refs"), ("selection", "scope"))
     scope = batch_scope(body["scope"])

@@ -76,7 +76,6 @@ def capture_claim_retry_state(conn, run_ref):
         require_run_schema(repo)
         row = repo.get(run_ref)
         _require_unclaimed_row(repo, row)
-        require_admission(repo, row)
         return {"job": row, "admission": _admission(conn, row)}
 
 
@@ -103,6 +102,5 @@ def _require_unchanged_unclaimed(repo, row, original):
     _require_unclaimed_row(repo, row)
     if row != original["job"]:
         raise RuntimeError("Run claim retry evidence changed; reconciliation required")
-    require_admission(repo, row)
-    if _admission(repo.conn, row) != original["admission"]:
+    if WorkbenchCommandRepository(repo.conn).get(row["request_key"]) != original["admission"]:
         raise RuntimeError("Run claim admission changed; reconciliation required")

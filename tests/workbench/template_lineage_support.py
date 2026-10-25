@@ -13,11 +13,12 @@ from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.infrastructure.workbench_metadata_schema import install_metadata
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
-from core.infrastructure.workbench_template_lineage_schema import install, objects
+from core.infrastructure.workbench_template_lineage_schema import install_template_lineage, template_lineage_objects
+from core.models.workbench_batch import normalize_operation_input
 from core.models.workbench_calibration import CalibrationQuery
-from core.services.batch.service import BatchService
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from core.services.scheduler.template_lineage_query import TemplateLineageQuery
+from core.services.workbench.batch.facts import BatchFacts
 from core.services.workbench.batch.operations import WorkbenchBatchOperationService
 from core.services.workbench.calibration.service import WorkbenchCalibrationService
 from core.services.workbench.commands import WorkbenchCommandService
@@ -36,7 +37,7 @@ def ledger_fixture(tmp_path):
     conn.executescript((Path(__file__).resolve().parent / "fixtures" / "schema-v26.sql").read_text(encoding="utf-8"))
     install_current_content_storage(conn)
     # Main owns this frozen v26 fixture; unrelated current DDL cannot change the oracle.
-    for name in reversed({**execution_ledger_objects(), **objects()}):
+    for name in reversed({**execution_ledger_objects(), **template_lineage_objects()}):
         row = conn.execute("SELECT type FROM sqlite_master WHERE name=?", (name,)).fetchone()
         if row is not None:
             if row[0] == "table":
@@ -70,46 +71,59 @@ def lineage_case(ledger_case):
     case.conn.execute("INSERT INTO PartOperations(part_no,seq,op_type_id,op_type_name,source,setup_hours,unit_hours) VALUES ('P1',1,'T1','Turning','internal',0,1)")
     case.conn.commit()
     with TransactionManager(case.conn).transaction():
-        install(case.conn)
-    case.batch_service = BatchService(case.conn)
-    case.lineage_writer = TemplateLineageWriter(case.conn)
+        install_template_lineage(case.conn)
     case.lineage_repo = WorkbenchTemplateLineageRepository(case.conn)
     case.template_id = case.conn.execute("SELECT id FROM PartOperations WHERE part_no='P1'").fetchone()[0]
     return case
 
 
-def create(case, code="COPY-001", *, quantity=10, rebuild=False):
-    case.batch_service.create_batch_from_template(code, "P1", quantity, rebuild_ops=rebuild)
+def instance_for(case, op_id):
+    row = case.conn.execute(
+        "SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
+        (str(op_id),),
+    ).fetchone()
+    assert row is not None
+    return case.lineage_repo.current_instances([row[0]])[row[0]]
+
+
+def create(case, code="COPY-001", *, quantity=10):
+    with TransactionManager(case.conn).transaction():
+        case.conn.execute("INSERT INTO Batches(batch_id,part_no,quantity) VALUES (?,'P1',?)", (code, quantity))
+        writer = TemplateLineageWriter(case.conn)
+        facts = BatchFacts(case.conn).load()
+        rows = [row for row in facts["PartOperations"] if row["part_no"] == "P1" and row["status"] == "active"]
+        for template in writer.prepare_templates(rows, facts=facts):
+            writer.copy_prepared_template(code, template)
     return case.conn.execute("SELECT id FROM BatchOperations WHERE batch_id=? ORDER BY seq", (code,)).fetchone()[0]
 
 
 def origin(case, op_id):
-    ref = case.lineage_repo.instance(op_id)["operation_ref"]
+    ref = instance_for(case, op_id)["operation_ref"]
     row = next(case.lineage_repo.origin_rows([ref]))
     row.pop("_lineage_bytes", None)
     return row
 
 
 def lineage(case, op_id):
-    ref = case.lineage_repo.instance(op_id)["operation_ref"]
+    ref = instance_for(case, op_id)["operation_ref"]
     return TemplateLineageQuery(case.conn).read([ref])
 
 
 def sync(case, code="COPY-001", *, key="template-sync-request-0001"):
     ref = case.ref("batch", code)
     service = WorkbenchBatchOperationService(case.conn)
-    payload = {}
+    payload = service.normalize_sync({})
     return WorkbenchCommandService(case.conn).execute(request_key=key, action="batch.sync_confirm", context_ref=ref,
-        normalized_input=payload, guard=lambda: service.sync_preview(ref, payload), mutate=lambda _: service.sync(ref, payload))
+        normalized_input=payload, guard=lambda: service.sync_preview_normalized(ref), mutate=lambda _: service.sync_normalized(ref))
 
 
 def edit(case, op_id, fields, *, key="template-edit-request-0001"):
-    instance = case.lineage_repo.instance(op_id)
+    instance = instance_for(case, op_id)
     service = WorkbenchBatchOperationService(case.conn)
     ref = case.ref("batch", instance["batch_id"])
-    payload = {"operation_ref": instance["operation_ref"], "fields": fields}
+    payload = normalize_operation_input({"operation_ref": instance["operation_ref"], "fields": fields})
     return WorkbenchCommandService(case.conn).execute(request_key=key, action="batch.operation_update", context_ref=ref,
-        normalized_input=payload, guard=lambda: None, mutate=lambda _: service.update(ref, payload))
+        normalized_input=payload, guard=lambda: service.prepare_update(ref, payload), mutate=service.apply_update)
 
 
 def completed(case, hours, *, prefix="COPY", version=2):

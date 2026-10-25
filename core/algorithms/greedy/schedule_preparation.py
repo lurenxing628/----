@@ -37,6 +37,7 @@ class NativeSchedulePreparation:
     piece_batches: Dict[int, Any] = field(default_factory=dict)
     pruning_records: Dict[int, bool] = field(default_factory=dict)
     total_hours_by_op_id: Dict[int, float] = field(default_factory=dict)
+    _variant_operations: List[Any] = field(default_factory=list)
     _calendar_signature: Any = field(init=False, repr=False, default=None)
     _checkpoint_parts: Any = field(init=False, repr=False, default=None)
 
@@ -52,8 +53,8 @@ class NativeSchedulePreparation:
         return self.piece_batches[token]
 
     def resource_candidates_for(self, op: Any) -> Any:
-        from .auto_assign import _fixed_resource_inputs, prepare_resource_candidates
-        key = _fixed_resource_inputs(op)
+        from .auto_assign import fixed_resource_inputs, prepare_resource_candidates
+        key = fixed_resource_inputs(op)
         if key not in self.resource_candidates:
             self.resource_candidates[key] = prepare_resource_candidates(op, self.resource_pool)
         return self.resource_candidates[key]
@@ -61,7 +62,7 @@ class NativeSchedulePreparation:
     def qualified_resource_pairs(self, op: Any) -> Any:
         return self.resource_candidates_for(op).pairs
 
-    def eligible_auto_assign_resources(self, op: Any, resource_pool: Any) -> Any:
+    def eligible_auto_assign_resources(self, op: Any) -> Any:
         return self.resource_candidates_for(op).eligible_resources
 
     def resource_claim_for(self, op: Any) -> Any:
@@ -86,6 +87,19 @@ class NativeSchedulePreparation:
             self.resource_claims[token] = claim
         return claim
 
+    def register_operation_variant(self, base_op: Any, variant_op: Any) -> None:
+        base_token = id(base_op)
+        variant_token = id(variant_op)
+        self.records_by_token[variant_token] = variant_op
+        if base_token in self.pruning_records:
+            from .dispatch.sgs_priority_pruning import prepare_pruning_record
+            self.pruning_records[variant_token] = prepare_pruning_record(variant_op, self.plain_classes)
+        if self._checkpoint_parts is not None:
+            self._checkpoint_parts["operations"][variant_token] = input_record(variant_op, field="operations")
+        else:
+            self._variant_operations.append(variant_op)
+        self.resource_claim_for(variant_op)
+
     def checkpoint_calendar_component(self) -> Tuple[Any, ...]:
         if self._calendar_signature is None:
             self._calendar_signature = input_value(checkpoint_calendar_signature(self.calendar), field="calendar_signature")
@@ -94,13 +108,16 @@ class NativeSchedulePreparation:
     def checkpoint_fixed_parts(self) -> Dict[str, Any]:
         """Encode fixed checkpoint records lazily; ordinary full decodes never need them."""
         if self._checkpoint_parts is None:
-            from .dispatch.sgs_checkpoint import _seed_signature
+            from .dispatch.sgs_checkpoint import seed_signature
             self._checkpoint_parts = {
-                "operations": {id(op): input_record(op, field="operations") for op in self.unseeded_operations},
+                "operations": {
+                    id(op): input_record(op, field="operations")
+                    for op in list(self.unseeded_operations) + self._variant_operations
+                },
                 "batches": tuple((key, input_record(batch, field="batches")) for key, batch in self.batches.items()),
                 "downtimes": input_value(self.normalized_machine_downtimes, field="machine_downtimes"),
                 "resources": input_value(self.resource_pool, field="resource_pool"),
-                "seeds": tuple(_seed_signature(result) for result in self.seed_results or ()),
+                "seeds": tuple(seed_signature(result) for result in self.seed_results or ()),
                 "contexts": {},
             }
         return self._checkpoint_parts

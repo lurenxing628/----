@@ -101,8 +101,10 @@
         publish(store, { intent, phase: error && error.committed === false ? 'rejected' : 'pending', error });
       } finally { store.running = false; }
       if (store.state.phase === 'rejected' && typeof adapter.clearPending === 'function') {
+        // 服务端已明确拒绝，没有回执可查；记录清不掉时保留拒绝态和意图，由 reset() 再清。
         try { adapter.clearPending(); }
-        catch (error) { publish(store, { ...store.state, phase: 'pending', error }); }
+        catch (error) { publish(store, { ...store.state, error }); return; }
+        publish(store, { ...store.state, intent: null });
       }
       if (store.state.phase === 'pending') await check();
     }

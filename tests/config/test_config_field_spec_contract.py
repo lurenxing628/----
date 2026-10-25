@@ -20,11 +20,6 @@ from web.bootstrap.schedule_config import bootstrap_schedule_config
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
 
 
-class _EmptyRepo:
-    def get_value(self, key, default=None):
-        return default
-
-
 @pytest.fixture()
 def config_store(tmp_path):
     test_db = tmp_path / "aps_config_field_spec.db"
@@ -39,7 +34,7 @@ def config_store(tmp_path):
 
 def test_config_snapshot_includes_hidden_fields_and_ignores_retired_fields(config_store) -> None:
     _conn, repo, _database = config_store
-    snap = build_schedule_config_snapshot(repo, strict_mode=True)
+    snap = build_schedule_config_snapshot(repo)
     assert snap.auto_assign_persist == "yes"
     assert snap.to_dict()["auto_assign_persist"] == "yes"
     assert snap.graph_analysis_mode == "on"
@@ -60,18 +55,21 @@ def test_config_snapshot_includes_hidden_fields_and_ignores_retired_fields(confi
 
 def test_legacy_preset_keeps_budget_and_saved_rows_during_reads_and_restart(config_store) -> None:
     conn, repo, database = config_store
-    payload = dict(build_schedule_config_snapshot(repo, strict_mode=True).to_dict(), time_budget_seconds=47)
+    payload = dict(build_schedule_config_snapshot(repo).to_dict(), time_budget_seconds=47)
     payload.update({key: "Retired malformed value" for key in RETIRED_CONFIG_FIELDS})
     original_json = json.dumps(payload)
     legacy_key = "preset.legacy-explicit-budget"
-    repo.set(legacy_key, original_json)
-    repo.set("time_budget_seconds", "75")
-    for key in RETIRED_CONFIG_FIELDS:
-        repo.set(key, "Retired original value")
+    repo.set_batch(
+        [
+            (legacy_key, original_json, None),
+            ("time_budget_seconds", "75", None),
+            *((key, "Retired original value", None) for key in RETIRED_CONFIG_FIELDS),
+        ]
+    )
     conn.commit()
     rows_before = [tuple(row) for row in conn.execute("SELECT * FROM ScheduleConfig ORDER BY config_key")]
     bootstrap_schedule_config(str(database))
-    assert build_schedule_config_snapshot(repo, strict_mode=True).time_budget_seconds == 75
+    assert build_schedule_config_snapshot(repo).time_budget_seconds == 75
     adapted = ensure_schedule_config_snapshot(json.loads(repo.get_value(legacy_key)), strict_mode=True)
     assert adapted.time_budget_seconds == 47 and not set(RETIRED_CONFIG_FIELDS) & set(adapted.to_dict())
     assert repo.get_value(legacy_key) == original_json
@@ -80,20 +78,27 @@ def test_legacy_preset_keeps_budget_and_saved_rows_during_reads_and_restart(conf
 
 def test_build_schedule_config_snapshot_strict_mode_rejects_missing_repo_fields() -> None:
     with pytest.raises(ValidationError) as exc_info:
-        build_schedule_config_snapshot(_EmptyRepo(), strict_mode=True)
+        build_schedule_config_snapshot(rows=[])
 
     assert exc_info.value.field == "sort_strategy"
 
 
 def test_calendar_reads_only_its_holiday_efficiency(config_store) -> None:
     conn, repo, _database = config_store
-    repo.set("sort_strategy", "damaged-unrelated-setting")
-    repo.set("holiday_default_efficiency", "0.65")
+    repo.set_batch(
+        [
+            ("sort_strategy", "damaged-unrelated-setting", None),
+            ("holiday_default_efficiency", "0.65", None),
+        ]
+    )
     conn.commit()
     statements = []
     conn.set_trace_callback(statements.append)
     try:
-        calendar = CalendarService(conn).upsert("2026-10-01", day_type="holiday", shift_hours=8)
+        service = CalendarService(conn)
+        calendar = service._admin._build_work_calendar(date_value="2026-10-01", day_type="holiday", shift_hours=8)
+        service._admin.repo.upsert_many([calendar])
+        conn.commit()
     finally:
         conn.set_trace_callback(None)
     assert calendar.efficiency == 0.65
@@ -106,12 +111,12 @@ def test_calendar_reads_only_its_holiday_efficiency(config_store) -> None:
 def test_calendar_rejects_missing_or_invalid_holiday_efficiency(config_store, raw_value) -> None:
     conn, repo, _database = config_store
     if raw_value is None:
-        repo.delete("holiday_default_efficiency")
+        conn.execute("DELETE FROM ScheduleConfig WHERE config_key = 'holiday_default_efficiency'")
     else:
-        repo.set("holiday_default_efficiency", raw_value)
+        repo.set_batch([("holiday_default_efficiency", raw_value, None)])
     conn.commit()
     with pytest.raises(ValidationError) as rejected:
-        CalendarService(conn).upsert("2026-10-01", day_type="holiday", shift_hours=8)
+        CalendarService(conn)._admin._build_work_calendar(date_value="2026-10-01", day_type="holiday", shift_hours=8)
     assert rejected.value.field == "holiday_default_efficiency"
     assert conn.execute("SELECT COUNT(*) FROM WorkCalendar").fetchone()[0] == 0
 
@@ -132,7 +137,7 @@ def test_demo_configuration_uses_registered_fields_and_one_batch_write(config_st
     monkeypatch.setattr(ConfigRepository, "set_batch", record_batch_write)
     _configure(database, values)
     assert len(writes) == 1 and {key for key, _value, _description in writes[0]} == set(values)
-    snapshot = build_schedule_config_snapshot(repo, strict_mode=True)
+    snapshot = build_schedule_config_snapshot(repo)
     assert snapshot.time_budget_seconds == values["time_budget_seconds"]
     assert snapshot.algo_mode == values["algo_mode"]
 

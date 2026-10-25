@@ -99,18 +99,6 @@ P0_TEST_DEBT_SEED_METADATA: Dict[str, Dict[str, Any]] = {
         "owner": "personnel.operator_machine",
         "exit_condition": "按当前“返回旧值和错误消息、调用方跳过写入”的合同更新测试，或先改实现再同步测试；该 nodeid 定向 pytest 普通通过后，从正式 full pytest 债务基线移除。",
     },
-    "tests/models_domain/test_query_services.py::test_operator_machine_query_service_lists_with_names_and_linkage_rows": {
-        "debt_id": "test-debt:operator-machine-query-service-dirty-fields-contract",
-        "reason": "测试仍按普通字段精确相等，未覆盖查询服务当前返回 dirty_fields/dirty_reasons 的读侧归一化合同。",
-        "domain": "personnel.operator_machine",
-        "style": "readside_normalization_contract_drift",
-        "root": {
-            "module": "core.services.personnel.operator_machine_query_service",
-            "function": "OperatorMachineQueryService._normalize_row",
-        },
-        "owner": "personnel.operator_machine",
-        "exit_condition": "更新测试，明确断言归一化后的 skill_level/is_primary 以及 dirty_fields/dirty_reasons；该 nodeid 定向 pytest 普通通过后，从正式 full pytest 债务基线移除。",
-    },
 }
 
 

@@ -4,9 +4,9 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from core.algorithm_contracts.date_parsers import due_exclusive
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.models.batch import Batch
+from core.models.schedule_config_runtime import ScheduleConfigSnapshot
 from core.services.scheduler.contracts.schedule_summary_types import (
     FallbackState,
     FreezeState,
@@ -27,27 +27,24 @@ from .schedule_summary_assembly import (
 from .schedule_summary_freeze import _extract_freeze_warnings, _freeze_meta_dict
 
 
-def _metric_int(metrics: Any, key: str) -> int:
+def _metric_int(metrics: Any, key: str) -> Optional[int]:
     if metrics is None:
-        return 0
-    try:
-        return max(0, int(getattr(metrics, key, 0) or 0))
-    except Exception:
-        return 0
+        return None
+    raw = getattr(metrics, key, None)
+    if raw is None:
+        return None
+    return max(0, int(raw))
 
 
-def _metric_sample(metrics: Any, key: str, *, limit: int) -> List[str]:
+def _metric_sample(metrics: Any, key: str, *, limit: int) -> Optional[List[str]]:
     if metrics is None:
-        return []
+        return None
     raw = getattr(metrics, key, None)
     if not isinstance(raw, (list, tuple)):
-        return []
+        return None
     out: List[str] = []
     for item in raw:
-        try:
-            text = str(item).strip()
-        except Exception:
-            continue
+        text = str(item).strip()
         if not text or text in out:
             continue
         out.append(text)
@@ -56,29 +53,10 @@ def _metric_sample(metrics: Any, key: str, *, limit: int) -> List[str]:
     return out
 
 
-def _warning_list(value: Any) -> List[str]:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        raw_items = [value]
-    elif isinstance(value, dict):
-        raw_items = [value]
-    elif isinstance(value, list):
-        raw_items = value
-    elif isinstance(value, tuple):
-        raw_items = list(value)
-    else:
-        try:
-            raw_items = list(value)
-        except Exception:
-            raw_items = [value]
-
+def _warning_list(value: Optional[List[str]]) -> List[str]:
     out: List[str] = []
-    for item in raw_items:
-        try:
-            text = str(item)
-        except Exception:
-            continue
+    for item in value or []:
+        text = str(item)
         if text:
             out.append(text)
     return out
@@ -107,25 +85,11 @@ def _dedupe_text_list(values: Any) -> List[str]:
     return out
 
 
-def _append_summary_warning(summary: Any, message: str) -> bool:
-    if isinstance(summary, dict):
-        warnings = _warning_list(summary.get("warnings"))
-        warnings.append(message)
-        summary["warnings"] = warnings
-        return True
-
-    warnings = getattr(summary, "warnings", None)
-    if isinstance(warnings, list):
-        warnings.append(message)
-        return True
-
-    normalized_warnings = _warning_list(warnings)
-    normalized_warnings.append(message)
-    try:
-        summary.warnings = normalized_warnings
-        return True
-    except Exception:
+def _append_summary_warning(summary: Optional[ScheduleSummary], message: str) -> bool:
+    if summary is None:
         return False
+    summary.warnings.append(message)
+    return True
 
 
 def _parse_counter_value(raw: Any, *, bucket_name: str, key_text: str) -> Tuple[Optional[int], Optional[str]]:
@@ -165,25 +129,6 @@ def _counter_dict(value: Any, *, bucket_name: str) -> Tuple[Dict[str, int], List
     return out, errors
 
 
-def build_overdue_items(
-    *,
-    batches: Dict[str, Any],
-    finish_by_batch: Dict[str, datetime],
-    summary: Any,
-    incomplete_batch_ids: Optional[Set[str]] = None,
-    logger: Any = None,
-) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    return _build_overdue_items_impl(
-        logger=logger,
-        batches=batches,
-        finish_by_batch=finish_by_batch,
-        summary=summary,
-        due_exclusive_fn=due_exclusive,
-        append_summary_warning_fn=_append_summary_warning,
-        incomplete_batch_ids=incomplete_batch_ids,
-    )
-
-
 def _build_runtime_state(
     *,
     logger: Any,
@@ -196,29 +141,43 @@ def _build_runtime_state(
     # 半途失败批次的 finish 是被截断的部分完工时间，排除出超期/临期分类，
     # 改走 result_summary 的 incomplete_batches 风险清单（audit 2026-07-20 A18）。
     incomplete_batch_ids = incomplete_batch_ids_from_failure_details(
-        getattr(summary, "failure_details", None),
+        summary.failure_details if summary is not None else None,
         finish_by_batch,
     )
-    overdue_items, overdue_meta = build_overdue_items(
+    overdue_items, overdue_meta = _build_overdue_items_impl(
         logger=logger,
         batches=batches,
         finish_by_batch=finish_by_batch,
         summary=summary,
+        append_summary_warning_fn=_append_summary_warning,
         incomplete_batch_ids=incomplete_batch_ids,
     )
-    invalid_due_count = _metric_int(best_metrics, "invalid_due_count") or overdue_meta["invalid_due_count"]
+    metric_invalid_count = _metric_int(best_metrics, "invalid_due_count")
+    invalid_due_count = (
+        metric_invalid_count if metric_invalid_count is not None else overdue_meta["invalid_due_count"]
+    )
+    metric_invalid_sample = _metric_sample(best_metrics, "invalid_due_batch_ids_sample", limit=10)
     invalid_due_batch_ids_sample = (
-        _metric_sample(best_metrics, "invalid_due_batch_ids_sample", limit=10)
-        or overdue_meta["invalid_due_batch_ids_sample"]
+        metric_invalid_sample
+        if metric_invalid_sample is not None
+        else overdue_meta["invalid_due_batch_ids_sample"]
     )
-    normalized_batch_ids = [str(batch_id).strip() for batch_id in batches]
-    unscheduled_batch_ids_all = [
-        batch_id for batch_id in sorted(normalized_batch_ids) if batch_id and batch_id not in finish_by_batch
-    ]
-    unscheduled_batch_count = _metric_int(best_metrics, "unscheduled_batch_count") or len(unscheduled_batch_ids_all)
-    unscheduled_batch_ids_sample = (
-        _metric_sample(best_metrics, "unscheduled_batch_ids_sample", limit=20) or unscheduled_batch_ids_all[:20]
-    )
+    metric_unscheduled_count = _metric_int(best_metrics, "unscheduled_batch_count")
+    metric_unscheduled_sample = _metric_sample(best_metrics, "unscheduled_batch_ids_sample", limit=20)
+    if metric_unscheduled_count is not None and metric_unscheduled_sample is not None:
+        unscheduled_batch_count = metric_unscheduled_count
+        unscheduled_batch_ids_sample = metric_unscheduled_sample
+    else:
+        normalized_batch_ids = [str(batch_id).strip() for batch_id in batches]
+        unscheduled_batch_ids_all = [
+            batch_id for batch_id in sorted(normalized_batch_ids) if batch_id and batch_id not in finish_by_batch
+        ]
+        unscheduled_batch_count = (
+            metric_unscheduled_count if metric_unscheduled_count is not None else len(unscheduled_batch_ids_all)
+        )
+        unscheduled_batch_ids_sample = (
+            metric_unscheduled_sample if metric_unscheduled_sample is not None else unscheduled_batch_ids_all[:20]
+        )
     return RuntimeState(
         finish_by_batch=finish_by_batch,
         overdue_items=overdue_items,
@@ -238,15 +197,15 @@ def _build_warning_state(
     input_state: Dict[str, Any],
     runtime_state: RuntimeState,
 ) -> WarningState:
-    summary_warnings = _warning_list(getattr(summary, "warnings", None))
+    summary_warnings = _warning_list(summary.warnings if summary is not None else None)
     algo_warning_list = _warning_list(algo_warnings)
     all_warnings = _merge_warning_lists(summary_warnings, algo_warning_list)
     merge_context_degraded = bool(input_state.get("merge_context_degraded"))
     merge_context_events = list(input_state.get("merge_context_events") or [])
-    if int(runtime_state.unscheduled_batch_count) > 0:
+    if runtime_state.unscheduled_batch_count > 0:
         all_warnings = _merge_warning_lists(
             all_warnings,
-            [f"存在 {int(runtime_state.unscheduled_batch_count)} 个批次未形成完工结果，请到系统管理里的排产历史查看这次排产的详细提醒。"],
+            [f"存在 {runtime_state.unscheduled_batch_count} 个批次未形成完工结果，请到系统管理里的排产历史查看这次排产的详细提醒。"],
         )
     return WarningState(
         summary_warnings=summary_warnings,
@@ -259,7 +218,7 @@ def _build_warning_state(
 
 def _build_freeze_state(
     *,
-    cfg: Any,
+    cfg: ScheduleConfigSnapshot,
     frozen_op_ids: Set[int],
     freeze_meta: Optional[Dict[str, Any]],
     all_warnings: List[str],
@@ -305,8 +264,8 @@ def _build_fallback_state(algo_stats: Optional[Dict[str, Any]]) -> FallbackState
 
 
 def _merge_fallback_warnings(all_warnings: List[str], fallback_state: FallbackState) -> List[str]:
-    legacy_count = int(fallback_state.legacy_external_days_defaulted_count)
-    warmstart_count = int(fallback_state.ortools_warmstart_failed_count)
+    legacy_count = fallback_state.legacy_external_days_defaulted_count
+    warmstart_count = fallback_state.ortools_warmstart_failed_count
     if legacy_count > 0:
         all_warnings = _merge_warning_lists(all_warnings, [f"有 {legacy_count} 道外协工序缺少可用周期，本次先按 1 天计算。"])
     if warmstart_count > 0:
@@ -346,9 +305,9 @@ def _degraded_cause_codes(
 def _degraded_success_state(
     *,
     summary_degradation: Dict[str, Any],
-    result_status: str,
+    completion_status: str,
 ) -> Tuple[bool, List[str]]:
     deduped = _degraded_cause_codes(
         summary_degradation=summary_degradation,
     )
-    return result_status == "success" and bool(deduped), deduped
+    return completion_status == "success" and bool(deduped), deduped

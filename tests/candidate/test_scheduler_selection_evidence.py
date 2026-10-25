@@ -89,7 +89,7 @@ def test_nested_evidence_maps_permanent_references_and_keeps_fixed_anchors_and_l
              "artifact": {"objective_name": candidate.objective_name, "score": list(candidate.score)}}
             for candidate in (baseline, graph, third)]
     baseline.metrics.overdue_count = 99
-    saved = _selection_references(selection, rows)
+    saved = _selection_references(selection, rows, identities={}, batch_refs={})
     evidence = saved["decision_evidence"]
     assert saved["selected_candidate_ref"] == refs[graph.candidate_key]
     assert saved["raw_score_best_candidate_ref"] == saved["health_reference_candidate_ref"] == refs[baseline.candidate_key]
@@ -120,7 +120,7 @@ def test_nested_evidence_maps_permanent_references_and_keeps_fixed_anchors_and_l
     assert not any(key.endswith(("candidate_key", "candidate_keys")) for key in fields(evidence))
     legacy = stored_legacy_selection({**selection.to_dict(), "decision_evidence": None}, graph)
     assert legacy.decision_evidence is None
-    legacy_saved = _selection_references(legacy, rows)
+    legacy_saved = _selection_references(legacy, rows, identities={}, batch_refs={})
     assert legacy_saved["selected_candidate_ref"] == refs[graph.candidate_key]
     assert legacy_saved.get("decision_evidence") is None
 

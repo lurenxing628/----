@@ -10,8 +10,12 @@ import pytest
 def test_due_exclusive_consistency() -> None:
 
     from core.algorithm_contracts.date_parsers import due_exclusive
-    from core.algorithm_contracts.types import ScheduleResult
+    from core.algorithm_contracts.sort_strategies import SortStrategy
+    from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
     from core.algorithms.evaluation import compute_metrics, prepare_evaluation_context
+    from core.models.batch import Batch
+    from core.models.schedule_config_runtime_fields import default_snapshot_values
+    from core.models.schedule_config_runtime_snapshot import snapshot_from_values
     from core.services.common.overdue_calculations import compute_overdue_bucket_groups
     from core.services.scheduler.contracts.schedule_summary_types import SummaryBuildContext
     from core.services.scheduler.summary.schedule_summary import build_result_summary
@@ -22,7 +26,7 @@ def test_due_exclusive_consistency() -> None:
 
     assert due_exclusive(due_d) == expected_due_exclusive, "共享 due_exclusive 不一致"
 
-    batch = SimpleNamespace(batch_id="B001", due_date="2026-02-01", priority="normal", quantity=1)
+    batch = Batch(batch_id="B001", part_no="P001", due_date="2026-02-01", priority="normal", quantity=1)
     result = ScheduleResult(
         op_id=1,
         op_code="OP001",
@@ -41,14 +45,23 @@ def test_due_exclusive_consistency() -> None:
     assert metrics.overdue_count == 1, f"evaluation overdue_count 应为 1，实际={metrics.overdue_count}"
     assert abs(metrics.total_tardiness_hours - 0.0) < 1e-9, f"边界拖期应为 0，实际={metrics.total_tardiness_hours}"
 
-    cfg = SimpleNamespace(freeze_window_enabled="no", auto_assign_enabled="no", freeze_window_days=0, objective="min_overdue")
-    summary = SimpleNamespace(
+    cfg = snapshot_from_values(
+        dict(
+            default_snapshot_values(),
+            freeze_window_enabled="no",
+            auto_assign_enabled="no",
+            freeze_window_days=0,
+            objective="min_overdue",
+        )
+    )
+    summary = ScheduleSummary(
         success=True,
         total_ops=1,
         scheduled_ops=1,
         failed_ops=0,
         warnings=[],
         errors=[],
+        duration_seconds=0.0,
     )
     summary_ctx = SummaryBuildContext(
         cfg=cfg,
@@ -60,14 +73,13 @@ def test_due_exclusive_consistency() -> None:
         operations=[],
         results=[result],
         summary=summary,
-        used_strategy=SimpleNamespace(value="priority_first"),
+        used_strategy=SortStrategy.PRIORITY_FIRST,
         used_params={},
         algo_mode="greedy",
         objective_name="min_overdue",
         time_budget_seconds=5,
         best_score=None,
         best_metrics=None,
-        best_order=[],
         attempts=[],
         improvement_trace=[],
         frozen_op_ids=set(),
@@ -75,13 +87,13 @@ def test_due_exclusive_consistency() -> None:
         simulate=False,
         t0=time.time(),
     )
-    _overdue, _status, result_summary_obj, _ms = build_result_summary(
+    result_summary_obj = build_result_summary(
         ctx=summary_ctx,
     )
     overdue_batches = result_summary_obj.get("overdue_batches") or {}
     assert int(overdue_batches.get("count") or 0) == 1, f"schedule_summary overdue_count 应为 1，实际={overdue_batches}"
 
-    scheduled, unscheduled, _invalid_time, _as_of = compute_overdue_bucket_groups(
+    scheduled, unscheduled, _invalid_time = compute_overdue_bucket_groups(
         [{"batch_id": "B001", "due_date": "2026-02-01", "finish_time": "2026-02-02 00:00:00"}],
         now_dt=finish_dt,
     )
@@ -117,7 +129,7 @@ def test_due_exclusive_max_due_sentinel_end_to_end_not_overdue() -> None:
     assert metrics.overdue_count == 0, f"9999-12-31 哨兵交期不应判逾期，实际 overdue_count={metrics.overdue_count}"
     assert abs(metrics.total_tardiness_hours - 0.0) < 1e-9, f"9999-12-31 哨兵交期拖期应为 0，实际={metrics.total_tardiness_hours}"
 
-    scheduled, unscheduled, invalid_time, _as_of = compute_overdue_bucket_groups(
+    scheduled, unscheduled, invalid_time = compute_overdue_bucket_groups(
         [
             {"batch_id": "B900", "due_date": "9999-12-31", "finish_time": "2026-02-02 00:00:00"},
             {"batch_id": "B901", "due_date": "9999-12-31", "finish_time": None},
@@ -149,6 +161,7 @@ def test_prepared_due_sources_keep_order_and_standalone_uses_current_inputs() ->
     assert metrics.unscheduled_batch_ids_sample == ["B3(bad-due)", "B2"]
     assert metrics.invalid_due_batch_ids_sample == ["B3"]
     absent = collect_batch_completion([], batches, failure_details=[{"op_id": 1}], prepared=prepared)
+    assert absent is not None
     assert absent.incomplete_work_weight == 4.0  # normalized B1 uses its last source's normal weight.
     empty = compute_metrics([], batches, prepared=prepared)
     assert empty.unscheduled_batch_ids_sample == ["B1(2026-01-01)", "B1(2026-01-02)", "B3(bad-due)", "B2"]
@@ -160,7 +173,9 @@ def test_prepared_due_sources_keep_order_and_standalone_uses_current_inputs() ->
     assert (standalone.overdue_count, standalone.total_tardiness_hours, standalone.weighted_tardiness_hours) == (1, 25.0, 75.0)
     operation.id = 2
     current = compute_metrics([result], batches, expected_operations=[operation])
+    assert current.completion is not None
     assert current.completion.missing_operation_count == current.completion.unexpected_result_count == 1
-    for evidence in ({"seed_results": []}, {"failure_details": []}):
-        with pytest.raises(ValueError, match="Completion evidence requires expected_operations"):
-            compute_metrics([result], batches, **evidence)
+    with pytest.raises(ValueError, match="Completion evidence requires expected_operations"):
+        compute_metrics([result], batches, seed_results=[])
+    with pytest.raises(ValueError, match="Completion evidence requires expected_operations"):
+        compute_metrics([result], batches, failure_details=[])

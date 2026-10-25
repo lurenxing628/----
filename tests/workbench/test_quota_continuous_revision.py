@@ -9,20 +9,27 @@ from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_calibration_adoption_legacy_schema import objects as legacy_objects
 from core.infrastructure.workbench_calibration_adoption_schema import contract_issues, objects
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
-from core.services.process.part_service import PartService
 from core.services.process.template_hours import ProcessTemplateHours
 from core.services.process.workflow_state import record_confirmation
 from core.services.workbench.process.file_codec import encode_process_file
 from core.services.workbench.process.files import WorkbenchProcessFileService
+from core.services.workbench.process.group_defaults import default_suppliers
 from core.services.workbench.process.route_apply import apply_route, prepare_route
-from core.services.workbench.process.stage_apply import apply_hours, apply_source, prepare_source, source_catalog
-from data.repositories.process_query_repo import ProcessQueryRepository
+from core.services.workbench.process.stage_apply import (
+    apply_prepared_hours,
+    apply_source,
+    prepare_hours,
+    prepare_source,
+    source_catalog,
+)
 from data.repositories.workbench_calibration_adoption_repo import WorkbenchCalibrationAdoptionRepository
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
+from data.repositories.workbench_process_query_repo import WorkbenchProcessQueryRepository
 from data.repositories.workbench_template_lineage_repo import WorkbenchTemplateLineageRepository
 from tests.workbench.calibration_adoption_support import INTENT, KEY, PREVIEW_INTENT, service, snapshot, token
 from tests.workbench.calibration_adoption_support import adoption_case as _adoption_case  # noqa: F401
 from tests.workbench.calibration_adoption_support import ready_adoption_case as _ready_case  # noqa: F401
+from tests.workbench.process_route_support import load_route_reference_facts
 from tests.workbench.template_lineage_support import completed, create
 from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
 from tests.workbench.template_lineage_support import lineage_case as _lineage_case  # noqa: F401
@@ -33,7 +40,7 @@ def adopt(case, key=KEY):
 
 
 def current(case):
-    return ProcessTemplateHours(case.conn).current([case.template_ref])[case.template_ref]
+    return WorkbenchProcessQueryRepository(case.conn, part_ref=case.ref('part', 'P1')).operations()[0]
 
 
 def confirm_hours(case):
@@ -84,16 +91,21 @@ def test_old_lock_migration_then_all_writers_preserve_existing_batches_and_plans
     assert 'WorkbenchCalibrationQuotaLocks' not in after
     assert {table: rows for table, rows in before.items() if table != 'WorkbenchCalibrationQuotaLocks'} == after
     ref, revision = case.template_ref, current(case)['revision']
-    PartService(case.conn).update_internal_hours('P1', 1, 0, 4.5)
     with TransactionManager(case.conn).transaction(begin_immediate=True):
         old = current(case)
-        assert apply_hours(case.conn, {'operations': [{'ref': ref, 'setup_hours': 0, 'unit_hours': 5.5}],
-                                      'groups': [], 'confirm_zero_unit_hours': False}, [old], [])
+        ProcessTemplateHours(case.conn).revise_current(old, {'setup_hours': 0, 'unit_hours': 4.5},
+                                                       expected_revision=old['revision'])
+    with TransactionManager(case.conn).transaction(begin_immediate=True):
+        old = current(case)
+        prepared = prepare_hours({'operations': [{'ref': ref, 'setup_hours': 0, 'unit_hours': 5.5}],
+                                  'groups': [], 'confirm_zero_unit_hours': False}, [old], [], confirmations={})
+        assert apply_prepared_hours(case.conn, prepared)
     confirm_hours(case)
     import_hours(case, 6.5, 'csv')
     import_hours(case, 7.5, 'xlsx')
     assert current(case)['ref'] == ref and current(case)['revision'] == revision + 4
-    assert service(case.conn).repo.latest_adoption(ref)['new_unit_hours'] == 3
+    latest = service(case.conn).repo.latest_adoption(ref)
+    assert latest is not None and latest['new_unit_hours'] == 3
     for table in ('WorkbenchCalibrationAdoptions', 'WorkbenchCommandReceipts', 'BatchOperations', 'Schedule', 'ScheduleHistory'):
         assert snapshot(case.conn)[table] == before[table]
     confirm_hours(case)
@@ -113,12 +125,17 @@ def test_repeated_adoption_uses_fresh_samples_of_the_current_version(ready_adopt
     assert second['old_unit_hours'] == 3 and second['new_unit_hours'] == 6
     assert second['template_revision_before'] == first['template_revision_after']
     assert second['template_revision_after'] == first['template_revision_after'] + 1
-    assert service(case.conn).repo.latest_adoption(case.template_ref)['adoption_ref'] == second['adoption_ref']
+    latest = service(case.conn).repo.latest_adoption(case.template_ref)
+    assert latest is not None and latest['adoption_ref'] == second['adoption_ref']
     history = case.conn.execute('SELECT old_unit_hours,new_unit_hours FROM WorkbenchCalibrationAdoptions ORDER BY rowid').fetchall()
     assert [tuple(row) for row in history] == [(1, 3), (3, 6)]
-    PartService(case.conn).update_internal_hours('P1', 1, 0, 8)
+    with TransactionManager(case.conn).transaction(begin_immediate=True):
+        old = current(case)
+        ProcessTemplateHours(case.conn).revise_current(old, {'setup_hours': 0, 'unit_hours': 8},
+                                                       expected_revision=old['revision'])
     assert current(case)['unit_hours'] == 8
-    assert service(case.conn).receipt(case.template_ref, KEY)['data'] == first
+    receipt = service(case.conn).receipt(case.template_ref, KEY)
+    assert receipt is not None and receipt['data'] == first
 
 
 def test_same_value_adoption_history_invalidates_old_preview(adoption_case):
@@ -145,19 +162,23 @@ def test_actual_work_type_change_clears_old_hours_without_lock(ready_adoption_ca
     ref = case.ref('op_type', 'T2')
     with TransactionManager(case.conn).transaction(begin_immediate=True):
         old = current(case)
+        facts = load_route_reference_facts(case.conn)
         if entry == 'source':
-            changes, _ = prepare_source({'operations': [
+            changes = prepare_source({'operations': [
                 {'ref': old['ref'], 'op_type_ref': ref, 'source': 'internal', 'supplier_ref': None}]}, [old], identities,
-                                       catalog=source_catalog(case.conn))
+                                     catalog=source_catalog(facts.references))
             apply_source(case.conn, changes, [old])
         else:
-            preview, _ = prepare_route(case.conn, None, {'route': {'mode': 'rows', 'rows': [{'seq': 1, 'op_type_name': 'Milling'}]}}, [old])
+            preview, _ = prepare_route(case.conn, None, {'route': {'mode': 'rows', 'rows': [{'seq': 1, 'op_type_name': 'Milling'}]}}, [old],
+                                       facts=facts)
             assert preview['can_confirm_route'], preview
-            assert apply_route(case.conn, {'part_no': 'P1', 'route_raw': None, 'route_parsed': 'no'}, [old], preview, identities)
+            assert apply_route(case.conn, {'part_no': 'P1', 'route_raw': None, 'route_parsed': 'no'}, [old], preview, identities,
+                               default_catalog_reader=lambda: default_suppliers(facts.references))
     new = current(case)
     assert new['id'] == old['id'] and new['ref'] == old['ref'] and new['revision'] > old['revision']
     assert new['op_type_id'] == 'T2' and new['setup_hours'] is None and new['unit_hours'] is None
-    assert service(case.conn).repo.latest_adoption(case.template_ref)['new_unit_hours'] == 3
+    latest = service(case.conn).repo.latest_adoption(case.template_ref)
+    assert latest is not None and latest['new_unit_hours'] == 3
 
 
 def test_history_is_append_only_but_templates_are_revisable(ready_adoption_case):
@@ -166,9 +187,13 @@ def test_history_is_append_only_but_templates_are_revisable(ready_adoption_case)
     with pytest.raises(sqlite3.IntegrityError, match='immutable'):
         case.conn.execute('UPDATE WorkbenchCalibrationAdoptions SET new_unit_hours=9')
     case.conn.rollback()
-    PartService(case.conn).update_internal_hours('P1', 1, 0, 9)
+    with TransactionManager(case.conn).transaction(begin_immediate=True):
+        old = current(case)
+        ProcessTemplateHours(case.conn).revise_current(old, {'setup_hours': 0, 'unit_hours': 9},
+                                                       expected_revision=old['revision'])
     assert current(case)['unit_hours'] == 9
-    assert service(case.conn).repo.latest_adoption(case.template_ref)['new_unit_hours'] == 3
+    latest = service(case.conn).repo.latest_adoption(case.template_ref)
+    assert latest is not None and latest['new_unit_hours'] == 3
 
 
 def test_import_rechecks_changes_and_rolls_back_without_a_file_hash(ready_adoption_case):
@@ -197,19 +222,6 @@ def test_migration_failure_rolls_back_old_history_and_lock(ready_adoption_case, 
     assert snapshot(case.conn) == before
 
 
-@pytest.mark.parametrize('type_name,expected', [('Turning', 3), ('Milling', None)])
-def test_legacy_route_save_retains_hours_only_for_the_same_type(ready_adoption_case, type_name, expected):
-    case = ready_adoption_case
-    audit = adopt(case)['data']
-    case.conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T2','Milling')")
-    case.conn.commit()
-    PartService(case.conn).reparse_and_save('P1', '1:' + type_name)
-    row = case.conn.execute("SELECT setup_hours,unit_hours FROM PartOperations WHERE part_no='P1' AND status='active'").fetchone()
-    assert row['unit_hours'] == expected
-    assert row['setup_hours'] == (0 if type_name == 'Turning' else None)
-    assert service(case.conn).receipt(case.template_ref, KEY)['data'] == audit
-
-
 def test_template_ref_integer_lookup_keeps_exact_text_keys_and_missing_lineage_rows(schema_conn):
     conn = schema_conn
     conn.execute("INSERT INTO Parts(part_no,part_name) VALUES ('R10-P','test part')")
@@ -232,8 +244,6 @@ def test_template_ref_integer_lookup_keeps_exact_text_keys_and_missing_lineage_r
         bad_templates.append(template_bad)
         bad_operations.append(operation_bad)
     conn.commit()
-    rows = ProcessQueryRepository(conn).template_operations_by_refs([template_ref] + bad_templates)
-    assert [(row['ref'], row['id']) for row in rows] == [(template_ref, template_id)]
     lineage = WorkbenchTemplateLineageRepository(conn)
     templates = lineage.current_templates([template_ref] + bad_templates)
     assert templates[template_ref]['id'] == template_id
@@ -241,5 +251,6 @@ def test_template_ref_integer_lookup_keeps_exact_text_keys_and_missing_lineage_r
     instances = lineage.current_instances([operation_ref] + bad_operations)
     assert list(instances) == [operation_ref] and instances[operation_ref]['id'] == operation_id
     adoption = WorkbenchCalibrationAdoptionRepository(conn)
-    assert adoption.template(template_ref)['id'] == template_id
+    template = adoption.template(template_ref)
+    assert template is not None and template['id'] == template_id
     assert all(adoption.template(ref) is None for ref in bad_templates)

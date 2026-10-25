@@ -6,7 +6,7 @@ from core.algorithm_contracts.operation_effort import RUNTIME_REQUIREMENT_BASIS
 from core.models.objective import best_score_schema
 from core.models.workbench_run_compute import CandidateRunComputation, PreparedRunResult
 from core.models.workbench_run_job import durable_value, new_run_ref
-from core.services.scheduler.run.optimizer.shared_process import _numeric_score
+from core.services.scheduler.run.optimizer.shared_process import numeric_score
 from core.services.workbench.facts.decision_read_model import build_decision_read_models
 
 
@@ -17,51 +17,49 @@ def _candidate_tasks(payload, identities, computation):
             raise ValueError("Candidate operation identity is missing")
         tasks.append({"row_ref": new_run_ref(), "operation_ref": identities[row.op_id],
                       "payload": {**durable_value(row), "locked": row.op_id in computation.schedule_input.frozen_op_ids}})
-    if len(tasks) != len(payload.scheduled_op_ids) or {row.op_id for row in payload.schedule_rows} != payload.scheduled_op_ids:
-        raise ValueError("Candidate rows and scheduled operation scope disagree")
     return tasks
 
 
 def _prepare_candidate(candidate, computation, identities):
     unified = candidate.generation_policy_version == "unified_search_v1"
+    completed = candidate.status == "completed"
     artifact = {}
     for item in fields(candidate):
+        if completed and item.name == "results":
+            continue
         value = getattr(candidate, item.name)
         if unified and item.name == "score":
             scope = candidate.evaluations[candidate.objective_name]["scoring_scope"]
-            value = _numeric_score(value, components_known=scope["components_known"])
+            value = numeric_score(value, components_known=scope["components_known"])
         if not unified and item.name in ("generation_policy_version", "representative_objectives", "evaluations", "origin",
                                        "first_found_elapsed_ms", "search_evidence_ref"):
             continue
         artifact[item.name] = durable_value(value)
     if unified:
         artifact["target_objectives"] = list(computation.orchestration.candidate_comparison.target_objectives)
-    if getattr(computation.schedule_input, "operation_efforts", None) is not None:
-        artifact["analysis_contract_version"] = "decision-preparation-v4"
+    artifact["analysis_contract_version"] = "decision-preparation-v4"
     tasks = []
-    if candidate.status == "completed":
+    if completed:
         payload = computation.candidate_payloads[candidate.candidate_key]
         if payload.out_of_scope_op_ids or payload.validation_errors:
             raise ValueError("Candidate payload contains validation errors")
         tasks = _candidate_tasks(payload, identities, computation)
-        validated = durable_value(payload)
         arrangement_fields = ("op_id", "machine_id", "operator_id", "start_time", "end_time", "source")
-        engine_rows = artifact.pop("results")
-        if [{key: row.get(key) for key in arrangement_fields} for row in engine_rows] != validated["schedule_rows"]:
-            raise ValueError("Candidate engine results and validated rows disagree")
         # Permanent task rows own the arrangement. Keep only engine-specific trace
         # fields and validation conclusions; historical artifacts retain their old shape.
         artifact["task_payload_source"] = "candidate_tasks_v1"
-        artifact["results"] = [{key: value for key, value in row.items()
-                                if key == "op_id" or key not in arrangement_fields} for row in engine_rows]
-        artifact["validated_payload"] = {key: value for key, value in validated.items()
-                                         if key not in ("schedule_rows", "assigned_by_op_id")}
+        artifact["results"] = [{item.name: durable_value(getattr(row, item.name)) for item in fields(row)
+                                if item.name == "op_id" or item.name not in arrangement_fields}
+                               for row in candidate.results]
+        artifact["validated_payload"] = {item.name: durable_value(getattr(payload, item.name))
+                                         for item in fields(payload)
+                                         if item.name not in ("schedule_rows", "assigned_by_op_id")}
     return {"candidate_ref": new_run_ref(), "key": candidate.candidate_key,
             "sequence": candidate.sequence, "status": candidate.status, "label": candidate.label,
             "artifact": artifact, "tasks": tasks}
 
 
-def _prepare_result_artifacts(computation, identities, *, run_ref=None, batch_refs=None):
+def _prepare_result_artifacts(computation, identities, *, run_ref, batch_refs):
     if not isinstance(computation, CandidateRunComputation) or computation.result_persisted:
         raise TypeError("Expected an unpersisted CandidateRunComputation")
     if computation.state not in ("complete", "partial"):
@@ -73,7 +71,7 @@ def _prepare_result_artifacts(computation, identities, *, run_ref=None, batch_re
     if len({row["key"] for row in candidates}) != len(candidates):
         raise ValueError("Duplicate candidate identity")
     candidate_refs = {row["key"]: row["candidate_ref"] for row in candidates}
-    unified = getattr(comparison, "generation_policy_version", None) == "unified_search_v1"
+    unified = comparison.generation_policy_version == "unified_search_v1"
     for row in candidates:
         artifact = row["artifact"]
         if unified:
@@ -105,19 +103,17 @@ def _prepare_result_artifacts(computation, identities, *, run_ref=None, batch_re
                     _scope_references(evaluation["scoring_scope"], identities, batch_refs)}
                     for target, evaluation in summary["evaluations"].items()}
                 summary["search_evidence_ref"] = {**summary["search_evidence_ref"], "run_ref": run_ref}
-    efforts = getattr(computation.schedule_input, "operation_efforts", None)
-    if efforts is not None:
-        items, seen = [], set()
-        for effort in efforts:
-            if effort.op_id not in identities or effort.op_id in seen:
-                raise ValueError("Runtime effort operation identity is missing or duplicated")
-            seen.add(effort.op_id)
-            items.append({**durable_value(effort.to_dict()), "operation_ref": identities[effort.op_id]})
-        result["operation_effort"] = {"effort_basis": RUNTIME_REQUIREMENT_BASIS, "items": items}
+    items, seen = [], set()
+    for effort in computation.schedule_input.operation_efforts:
+        if effort.op_id not in identities or effort.op_id in seen:
+            raise ValueError("Runtime effort operation identity is missing or duplicated")
+        seen.add(effort.op_id)
+        items.append({**durable_value(effort.to_dict()), "operation_ref": identities[effort.op_id]})
+    result["operation_effort"] = {"effort_basis": RUNTIME_REQUIREMENT_BASIS, "items": items}
     return candidates, result
 
 
-def _selection_references(selection, candidates, *, identities=None, batch_refs=None):
+def _selection_references(selection, candidates, *, identities, batch_refs):
     """Map engine keys once, beside the candidate identities allocated in this transaction."""
     refs = {row["key"]: row["candidate_ref"] for row in candidates}
     value = durable_value(selection.to_dict())

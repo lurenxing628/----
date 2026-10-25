@@ -52,7 +52,7 @@ class PlanDeliveryRepository(WorkbenchPlanDeliveryRepository):
             raise WorkbenchCommandRejected("plan_unavailable", "所选候选方案没有完整保存的明细，看不了。请回「选择排产方案」重新选一个。")
         return scenario
 
-    def task_rows(self, identity, *, context, entry=None):
+    def task_rows(self, identity, *, context, entry):
         query = _task_query(identity)
         if entry is None:
             # Standalone delivery keeps bad time rows visible for its own projection.
@@ -87,7 +87,7 @@ class PlanDeliveryRepository(WorkbenchPlanDeliveryRepository):
         issues = [] if {row["op_id"] for row in rows} == operation_ids else ["deferred_operation_source_missing"]
         return {row["batch_id"] for row in rows}, issues
 
-    def completion_record(self, identity, scenario, *, context=None):
+    def completion_record(self, identity, scenario, *, context):
         if identity.source_table == SOURCE_ADJUSTMENT_SCENARIO_ROWS:
             return {"source": identity.source_table, "scenario": scenario}
         if identity.source_table == SOURCE_CANDIDATE_ROWS:

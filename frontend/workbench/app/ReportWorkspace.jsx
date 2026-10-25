@@ -35,11 +35,16 @@
     React.useEffect(() => {
       let frame = 0;
       const remember = event => {
-        const node = root.current, table = node && node.querySelector('.rw-primary-table'), main = node && node.closest('.main-content');
+        const node = root.current, table = node && (node.querySelector('.rw-primary-table') || node.querySelector('.rw-table-scroll')), main = node && node.closest('.main-content');
         if (!node || ![table, main, document, window].includes(event.target)) return;
         cancelAnimationFrame(frame);
-        frame = requestAnimationFrame(() => setScroll({ tableLeft: table ? table.scrollLeft : 0, tableTop: table ? table.scrollTop : 0,
-          mainTop: main ? main.scrollTop : 0, windowTop: window.pageYOffset }));
+        frame = requestAnimationFrame(() => {
+          const current = root.current; if (!current) return;
+          const activeTable = current.querySelector('.rw-primary-table') || current.querySelector('.rw-table-scroll'), activeMain = current.closest('.main-content');
+          const next = { tableLeft: activeTable ? activeTable.scrollLeft : 0, tableTop: activeTable ? activeTable.scrollTop : 0,
+            mainTop: activeMain ? activeMain.scrollTop : 0, windowTop: window.pageYOffset };
+          setScroll(old => old && old.tableLeft === next.tableLeft && old.tableTop === next.tableTop && old.mainTop === next.mainTop && old.windowTop === next.windowTop ? old : next);
+        });
       };
       document.addEventListener('scroll', remember, true);
       return () => { cancelAnimationFrame(frame); document.removeEventListener('scroll', remember, true); };
@@ -50,7 +55,8 @@
       restored.current = true;
       if (!initialContext.scroll) return;
       const frame = requestAnimationFrame(() => {
-        const table = root.current.querySelector('.rw-table-scroll'), main = root.current.closest('.main-content');
+        const node = root.current; if (!node) return;
+        const table = node.querySelector('.rw-primary-table') || node.querySelector('.rw-table-scroll'), main = node.closest('.main-content');
         if (table) { table.scrollLeft = initialContext.scroll.tableLeft || 0; table.scrollTop = initialContext.scroll.tableTop || 0; }
         if (main) main.scrollTop = initialContext.scroll.mainTop || 0;
         window.scrollTo(0, initialContext.scroll.windowTop || 0);
@@ -60,7 +66,7 @@
     const changeScope = next => { setScope(next); setState(old => ({ ...old, page: 1, snapshot_ref: undefined })); setSelected(null); setCatalog(false); setNotice(''); setError(null); };
     const changePage = patch => { setState(old => ({ ...old, ...patch, snapshot_ref: response ? response.meta.snapshot_ref : old.snapshot_ref })); setSelected(null); };
     const changeTopic = topic => changePage({ topic, sort: window.ReportAPI.sorts[topic][0], page: 1 });
-    function reload() { if (data) setScope(window.ReportAPI.scope(data.scope)); setState(old => ({ ...old, snapshot_ref: undefined })); setNotice(''); setError(null); refresh(); }
+    function reload() { if (data) setScope(window.ReportAPI.scope(data.scope)); setState(old => ({ ...old, snapshot_ref: undefined })); setDetailView(old => ({ ...old, page: 1 })); setNotice(''); setError(null); refresh(); }
     async function download() {
       setDownloading(true); setError(null); setNotice('');
       try {
@@ -78,7 +84,7 @@
       if (tab && !tab.disabled) { tab.focus(); pendingViewFocus = null; }
     }, [mode, !!data]);
     function currentContext() {
-      const table = root.current.querySelector('.rw-primary-table'), main = root.current.closest('.main-content');
+      const node = root.current, table = node && (node.querySelector('.rw-primary-table') || node.querySelector('.rw-table-scroll')), main = node && node.closest('.main-content');
       return { scope: window.ReportAPI.scope(data.scope), topic: data.topic, table: window.ReportAPI.table(state, data.topic),
         selected, chartsOpen, resourceView, detailView, catalogOpen: catalog, returnTo: initialContext.returnTo,
         scroll: { tableLeft: table ? table.scrollLeft : 0, tableTop: table ? table.scrollTop : 0, mainTop: main ? main.scrollTop : 0, windowTop: window.pageYOffset } };

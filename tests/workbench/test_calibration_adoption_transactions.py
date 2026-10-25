@@ -117,3 +117,30 @@ def test_adoption_keeps_raw_reports_once_and_binds_source_versions(ready_adoptio
     sample = evidence["samples"][0]
     impacts = adopted_quota_impacts(case.conn, sample["report_refs"][0], sample["sample_ref"])
     assert [row["adoption_ref"] for row in impacts] == [result["data"]["adoption_ref"]]
+
+
+def test_stale_calibration_snapshot_after_later_report_returns_409_not_500(ready_adoption_case):
+    from datetime import datetime
+
+    from flask import Blueprint, g
+
+    from web.routes.workbench.calibration import register_calibration_routes
+
+    case = ready_adoption_case
+    bp = Blueprint("calibration_stale_snapshot_test", __name__)
+    register_calibration_routes(bp)
+    case.app.register_blueprint(bp)
+
+    @case.app.before_request
+    def _bind_db():
+        g.db = case.conn
+
+    client = case.app.test_client()
+    initial = client.get("/api/workbench/v1/calibration")
+    assert initial.status_code == 200, initial.get_json()
+    snapshot_ref = initial.get_json()["meta"]["snapshot_ref"]
+    case.now = datetime(2099, 1, 1, 12, 0, 0)
+    completed(case, [4], prefix="LATER-REPORT", version=3)
+    stale = client.get("/api/workbench/v1/calibration", query_string={"snapshot_ref": snapshot_ref})
+    assert stale.status_code == 409, stale.get_json()
+    assert stale.get_json()["error"]["code"] == "snapshot_stale"

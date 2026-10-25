@@ -3,7 +3,9 @@
 import json
 import math
 import re
+from typing import Optional
 
+from core.errors import AppError
 from core.models.workbench_preflight import stored_hold_window_valid
 from core.models.workbench_run_history import STATES, TERMINAL_STATES, inconsistent, local_date, local_datetime
 
@@ -28,13 +30,13 @@ _HOLD_FAILURES = {
 _CHINESE = re.compile(r"[\u4e00-\u9fff]")
 
 
-def hold_failure_message(exc):
+def hold_failure_message(exc: AppError) -> Optional[str]:
     """旧排产服务按“冻结窗口”说的失败（读原安排、现场报工与原安排对不上）：返回工作台的说法；不是这类返回 None。"""
-    details = getattr(exc, "details", None)
-    details = details if isinstance(details, dict) else {}
-    for key in (details.get("reason"), details.get("field")):
-        if key in _HOLD_FAILURES:
-            return _HOLD_FAILURES[key]
+    details = exc.details
+    if details is not None:
+        for key in (details.get("reason"), details.get("field")):
+            if key in _HOLD_FAILURES:
+                return _HOLD_FAILURES[key]
     return None
 
 
@@ -85,7 +87,7 @@ def _ref(value):
     return value
 
 
-def _job_clocks(row):
+def job_clocks(row):
     try:
         accepted = local_datetime(row["accepted_at"])
         started = local_datetime(row["started_at"]) if row["started_at"] is not None else None
@@ -97,7 +99,7 @@ def _job_clocks(row):
     return started, finished
 
 
-def _job_lifecycle(row, started, finished):
+def job_lifecycle(row, started, finished):
     state = row["state"]
     if ((state == "queued" and (started is not None or row["executor_ref"] is not None))
             or (state == "running" and (started is None or not row["executor_ref"]))
@@ -105,7 +107,7 @@ def _job_lifecycle(row, started, finished):
         inconsistent()
 
 
-def _job(row):
+def project_job(row):
     _ref(row["run_ref"])
     state, stage = row["state"], row["stage"]
     if state not in STATES:
@@ -113,8 +115,8 @@ def _job(row):
     expected = {"queued": ("queued", "awaiting_reconciliation"), "running": ("computing", "awaiting_reconciliation")}
     if stage not in expected.get(state, ("finished",)):
         inconsistent()
-    started, finished = _job_clocks(row)
-    _job_lifecycle(row, started, finished)
+    started, finished = job_clocks(row)
+    job_lifecycle(row, started, finished)
     admission = stored_json(row["admission_json"])
     if (row["admission_action"] != "scheduling.run" or row["admission_context"] != row["input_ref"]
             or admission.get("data") != {"run_ref": row["run_ref"]}):
@@ -128,7 +130,7 @@ def _stored_error(row, result):
     return None
 
 
-def _failure(row, result):
+def failure_reason(row, result):
     """失败或中断的排产给出原因；读不出原因时不编造，留空。"""
     error = _stored_error(row, result)
     if error is None:

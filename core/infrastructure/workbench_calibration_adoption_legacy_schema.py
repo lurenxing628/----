@@ -3,7 +3,7 @@
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_migration_contract_issues
 from core.infrastructure.workbench_metadata_schema import canonical_sql, workbench_metadata_contract_issues
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
-from core.infrastructure.workbench_template_lineage_schema import contract_issues as lineage_contract_issues
+from core.infrastructure.workbench_template_lineage_schema import template_lineage_contract_issues
 
 from .schema_structure import SchemaStructure, schema_objects
 
@@ -80,7 +80,7 @@ def install(conn):
     actual = structure.objects.keys()
     has_any = bool(actual & declared.keys())
     issues = (workbench_metadata_contract_issues(conn, structure=structure) + workbench_process_contract_issues(conn, structure=structure) +
-              execution_ledger_migration_contract_issues(conn, structure=structure) + lineage_contract_issues(conn, structure=structure))
+              execution_ledger_migration_contract_issues(conn, structure=structure) + template_lineage_contract_issues(conn, structure=structure))
     if has_any:
         issues += contract_issues(conn, structure=structure)
     if issues:

@@ -45,7 +45,7 @@
       } catch (problem) { if (id === serial.current) setError(problem); }
       finally { if (id === serial.current) setSelecting(false); }
     }
-    const visible = data ? data.entities : [], hidden = selected.filter(ref => !visible.some(row => row.ref === ref)).length;
+    const visible = data ? data.entities : [], visibleSet = new Set(visible.map(row => row.ref)), hidden = selected.filter(ref => !visibleSet.has(ref)).length;
     return <section className="pf-picker" aria-label="选择排产批次">
       <form className="pf-tools" onSubmit={event => { event.preventDefault(); if (!busy) filter({ query }); }}>
         <window.ResourceControls.Search aria-label="搜索排产批次" placeholder="批次号、图号、零件名" value={query} disabled={busy} onChange={event => setQuery(event.target.value)} />

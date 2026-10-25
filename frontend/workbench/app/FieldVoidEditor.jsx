@@ -1,6 +1,10 @@
 (function () {
   'use strict';
   const C = window.FieldContract, { Button, ErrorBox, Feedback, Issues } = window.FieldControls;
+  function isStale(command) {
+    const error = command && command.error, code = error && (error.code || error.error && error.error.code);
+    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
+  }
   function FieldVoidEditor({ task, record, adapter, command, retained, onDraft, onClose, onDone }) {
     const [draft, setDraft] = React.useState(() => retained ? retained.draft : { reason: '', declared_operator: '' });
     const [baseline] = React.useState(() => retained ? retained.baseline : { report_ref: record.report_ref, revision_ref: record.revision_ref });
@@ -16,7 +20,10 @@
       return () => clearTimeout(timer);
     }, [command.phase, command.result, task.task_ref, task.operation_ref, onDone]);
     const input = () => ({ original_revision_ref: baseline.revision_ref, reason: draft.reason.trim(), declared_operator: draft.declared_operator.trim() });
-    function change(key, value) { setDraft(current => ({ ...current, [key]: value })); setPreview(null); setError(null); }
+    function change(key, value) {
+      setDraft(current => ({ ...current, [key]: value })); setPreview(null); setError(null);
+      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+    }
     async function inspect() {
       if (locked || !form.current.reportValidity()) return;
       const controller = new AbortController(); request.current = controller; setReading(true); setError(null);
@@ -26,7 +33,8 @@
           || !value.before || !value.after || !Array.isArray(value.downstream_impacts) || typeof value.can_confirm !== 'boolean' || !value.write_context
           || !Array.isArray(value.warnings) || !value.warnings.every(item => item && typeof item.message === 'string' && item.message))
           throw window.APSResourceContract.failure('撤销预检与原报工不一致，请刷新后重试。');
-        setPreview(value);
+        // A fresh preview supersedes the last rejected confirmation.
+        setPreview(value); if (command.phase === 'rejected') command.reset();
       } catch (failure) { if (!controller.signal.aborted) setError(failure); }
       finally { if (!controller.signal.aborted) setReading(false); }
     }
@@ -34,12 +42,13 @@
       if (locked || !preview || !preview.can_confirm || !form.current.reportValidity()) return;
       await command.submit('execution', 'report_void', record.report_ref, preview.write_context, input());
     }
+    const shownError = error || command.error, mapped = ['reason', 'declared_operator'];
     return <form ref={form} className="field-editor" aria-label="撤销这次报工" onSubmit={event => { event.preventDefault(); inspect(); }}>
       <div className="field-editor-heading"><h3>撤销这次报工 · {record.report_no}</h3></div>
       <p>本次数量 {C.display(record.completed_quantity)} 件 · 有效工时 {C.hours(record.effective_processing_hours)} 小时。撤销后不再计入进度和工时，原记录及更正历史保留。</p>
-      <div className="field-extra"><window.ResourceControls.Field label="撤销原因" path="reason" error={error} required>
+      <div className="field-extra"><window.ResourceControls.Field label="撤销原因" path="reason" error={shownError} required>
         <textarea ref={inputRef} aria-label="撤销原因" required maxLength="2000" value={draft.reason} disabled={locked} onChange={event => change('reason', event.target.value)} />
-      </window.ResourceControls.Field><window.ResourceControls.Field label="经办人" path="declared_operator" error={error}>
+      </window.ResourceControls.Field><window.ResourceControls.Field label="经办人" path="declared_operator" error={shownError}>
         <input aria-label="经办人" maxLength="2000" value={draft.declared_operator} disabled={locked} onChange={event => change('declared_operator', event.target.value)} />
       </window.ResourceControls.Field></div>
       {preview && <section aria-label="撤销影响" className="field-note"><h4>撤销后</h4>
@@ -49,7 +58,7 @@
         {preview.state === 'voided' && <p>这条报工已经撤销，不会重复扣减。</p>}
       </section>}
       {changed && <p role="alert">原报工已变化，请取消后重新选择。</p>}
-      <ErrorBox error={error} /><Feedback command={command} onDone={onDone} />
+      <ErrorBox error={error} excludePaths={mapped} /><Feedback command={command} onDone={onDone} excludePaths={error ? [] : mapped} />
       <div className="field-footer"><Button onClick={onClose} disabled={command.locked || reading}>取消</Button>
         <Button type="submit" icon="search" busy={reading} disabled={locked}>查看撤销影响</Button>
         {preview && <Button icon="rotate-ccw" className="btn danger" disabled={locked || !preview.can_confirm} onClick={save}>确认撤销这次报工</Button>}

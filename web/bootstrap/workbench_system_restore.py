@@ -29,10 +29,13 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
 from core.services.system.backup_restore import audit_backup_operation
 from core.services.workbench.facts.system_journal import SystemMaintenanceJournal
-from core.services.workbench.system.maintenance_records import capture_maintenance_journal
-from web.runtime_host import RESTORE_HOST_EXTENSION, RESTORE_HOST_GUARD, SystemRestoreHost
+from web.runtime_host import (
+    RESTORE_HOST_EXTENSION,
+    RESTORE_HOST_GUARD,
+    SystemRestoreHost,
+    normalize_runtime_db_path,
+)
 
-from .launcher_paths import _normalize_db_path_for_runtime
 from .workbench_request_lifecycle import (
     WorkbenchRequestLifecycle,
     close_workbench_request_connection,
@@ -48,7 +51,7 @@ from .workbench_system_restore_status import install_restore_status_transport
 class WorkbenchSystemRestoreHost(SystemRestoreHost):
     def __init__(self, app, runtime):
         self.app, self.runtime = app, runtime
-        self.db_path = _normalize_db_path_for_runtime(app.config["DATABASE_PATH"])
+        self.db_path = normalize_runtime_db_path(app.config["DATABASE_PATH"])
         self.journal = SystemMaintenanceJournal(app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"), self.db_path)
         self.gate = app.extensions.get("workbench_request_lifecycle")
         self._lock = threading.RLock()
@@ -100,11 +103,15 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
     def capture_maintenance_records(self):
         """Historical UI reads are explicit; unreadable/pending evidence closes its owner."""
         self.verify()
+        with self._lock:
+            if self._state in ("draining", "restoring"):
+                raise WorkbenchCommandRejected("maintenance_active", "本软件正在执行恢复，请稍后查询结果。", 503)
         # A busy live command is a temporary read rejection. Hold the same
         # window through capture so an accepted phase cannot appear mid-read.
         with maintenance_window(self.db_path, logger=self.app.logger, action="maintenance_history_read"):
             try:
-                records = capture_maintenance_journal(self.journal)
+                self.journal = SystemMaintenanceJournal(self.journal.directory, self.db_path)
+                records = self.journal.collection()
                 self.journal.assert_ready(records)
             except WorkbenchCommandRejected as exc:
                 if exc.code != "maintenance_record_capacity":
@@ -126,11 +133,12 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
     def automatic_maintenance(self):
         """Only a due task enters this owner; disabled/not-due reads have no journal scan."""
         self.verify()
-        if self._state != "ready" or not self.runtime.ready or self.gate.status["state"] != "accepting":
-            raise WorkbenchCommandRejected("maintenance_active", "本软件已停止维护，请先查询原操作结果并重启。", 503)
+        with self._lock:
+            if self._state != "ready" or not self.runtime.ready or self.gate.status["state"] != "accepting":
+                raise WorkbenchCommandRejected("maintenance_active", "本软件已停止维护，请先查询原操作结果并重启。", 503)
         with maintenance_window(self.db_path, logger=self.app.logger, action="automatic_maintenance"):
             try:
-                self.journal.assert_ready()
+                self.journal.assert_ready(self.journal.refresh())
             except WorkbenchCommandRejected:
                 self._stop_unconfirmed(None)
                 raise
@@ -142,8 +150,9 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
     def execute_file(self, service, *, request_key, action, intent, guard, audit):
         """Own create/delete uncertainty as well as restore; history is checked at acceptance."""
         self._require_workspace(service)
-        if self._state != "ready" or not self.runtime.ready or self.gate.status["state"] != "accepting":
-            raise WorkbenchCommandRejected("maintenance_active", "本软件已停止普通维护，请先查询结果并重启。", 503)
+        with self._lock:
+            if self._state != "ready" or not self.runtime.ready or self.gate.status["state"] != "accepting":
+                raise WorkbenchCommandRejected("maintenance_active", "本软件已停止普通维护，请先查询结果并重启。", 503)
         try:
             result = service.execute(request_key=request_key, action=action, intent=intent, guard=guard, audit=audit)
         except MaintenanceWindowError:
@@ -168,7 +177,7 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
 
     def verify(self):
         app, runtime, gate = self.app, self.runtime, self.gate
-        if (_normalize_db_path_for_runtime(app.config.get("DATABASE_PATH")) != self.db_path
+        if (normalize_runtime_db_path(app.config.get("DATABASE_PATH")) != self.db_path
                 or app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR") != self.journal.directory
                 or not isinstance(gate, WorkbenchRequestLifecycle)
                 or gate is not lookup_workbench_request_lifecycle(self.db_path)
@@ -185,9 +194,9 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
         conn = g.get("db")
         if conn is None or conn.in_transaction:
             raise WorkbenchCommandRejected("maintenance_active", "还有没结束的数据库操作，恢复没有执行。请稍后重新点「恢复」。", 503)
-        if not self():
-            raise WorkbenchCommandRejected("maintenance_active", "本软件或排产还没有停下来，恢复没有执行。请稍后重新点「恢复」。", 503)
         with self._lock:
+            if not self():
+                raise WorkbenchCommandRejected("maintenance_active", "本软件或排产还没有停下来，恢复没有执行。请稍后重新点「恢复」。", 503)
             row, replayed, path = self._prepare(service, request_key, intent, guard)
             if not replayed:
                 self._set_state("draining", request_key)
@@ -205,12 +214,29 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
             # coordinator never borrows Flask context or holds a maintenance lock.
             with ThreadPoolExecutor(max_workers=1, thread_name_prefix="restore-drain") as pool:
                 pool.submit(self._drain, lease).result()
+        except Exception:
+            self.app.logger.exception("Restore host drain failed before touching database: %s", request_key)
+            with self._lock:
+                self._stop_unconfirmed(request_key)
+                self._state = "restart_required"
+                self.journal = service.journal
+                row = service.journal.record(
+                    row,
+                    state="failed",
+                    code="busy",
+                    database_origin="unchanged",
+                    restart_required=True,
+                    message="还有没结束的请求或排产任务，恢复没有执行，原数据库没有改动。请重启本软件后再试。",
+                )
+                return self.journal.public(row)
+        try:
             return self._restore(lease, service, row, path, audit, restore_runner)
         except Exception:
             self._set_state("recovery_required", request_key)
             self.app.logger.exception("Restore host stopped; original request requires verification: %s", request_key)
             self._stop_unconfirmed(request_key)
             # A failed terminal write leaves the prior pending record intact.
+            self.journal = service.journal
             self.journal.record(row, "recovery_required", code="host_restore_unconfirmed",
                                 database_origin="unconfirmed", restart_required=True,
                                 message="这次恢复没有得到能确认的最终结果，系统已停下。请不要再操作，留好恢复前的保护副本并联系维护人员。")
@@ -242,6 +268,7 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
             # An accepted intent can reach disk before the following fsync ACK
             # fails. Do not leave HTTP/worker admission open on that path.
             try:
+                self.journal.refresh()
                 recorded = self.journal.lookup(request_key)
             except Exception:
                 self._stop_unconfirmed(request_key)
@@ -251,7 +278,10 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
             raise
 
     def _stop_unconfirmed(self, request_key):
-        self._set_state("recovery_required", request_key)
+        with self._lock:
+            if request_key is None and self._state in ("draining", "restoring"):
+                return
+            self._state, self._request_key = "recovery_required", request_key
         self.runtime.shutdown(wait=False)
         if has_request_context() or current_frame() is not None:
             with ThreadPoolExecutor(max_workers=1, thread_name_prefix="restore-stop") as pool:
@@ -275,10 +305,7 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
             result = service.finish_restore(row, path, restore_runner=restore_runner, audit=audit,
                                             confirm_host=lambda: self._confirm_host(lease))
             self._confirm_host(lease)
-            # Read back durable evidence; a Python return value is not a disk ACK.
-            stored = self.journal.lookup(row["request_key"])
-            if stored != row:
-                raise RuntimeError("Restore terminal record could not be confirmed")
+            self.journal.refresh()
             state = "restart_required" if result["terminal"] else "recovery_required"
             self._set_state(state, row["request_key"])
             return result
@@ -318,9 +345,8 @@ def make_workbench_system_restore_recovery_app(database_path, journal_dir):
     the startup journal check raises. It retains its original launcher lock.
     Never remove a record or resume ordinary operation from this application.
     """
-    from .workbench_system_restore_status import RecoveryJournal, RestoreStatusTransport
-    journal = RecoveryJournal(journal_dir, database_path)
+    from .workbench_system_restore_status import RestoreStatusTransport
     status = {"state": "recovery_required", "restart_required": True, "automatic_resume": False,
               "operations_available": False, "result_source": "external_maintenance_journal",
               "references": "unconfirmed_do_not_use", "request_key": None}
-    return RestoreStatusTransport(None, journal, lambda: dict(status))
+    return RestoreStatusTransport(None, lambda: SystemMaintenanceJournal(journal_dir, database_path), lambda: status)

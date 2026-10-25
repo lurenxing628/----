@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Tuple
 
-from .schema_structure import SchemaStructure, schema_objects
+from .schema_structure import SchemaStructure
 from .workbench_metadata_schema import (
     canonical_sql,
     entity_key_sql,
@@ -47,10 +47,10 @@ def optimize_process_identity_triggers(conn) -> None:
         conn.execute(sql)
 
 
-def _source_contract_issues(conn, *, structure=None) -> List[str]:
+def _source_contract_issues(*, structure: SchemaStructure) -> List[str]:
     issues = []
     for kind, (table, columns) in PROCESS_ENTITY_TABLES.items():
-        info = structure.table_info(table) if structure is not None else conn.execute(f'PRAGMA table_info("{table}")').fetchall()
+        info = structure.table_info(table)
         names = {row[1] for row in info}
         required = columns + _ALTERNATE_COLUMNS.get(kind, ())
         issues.extend("missing_workbench_process_source: " + table + "." + column
@@ -63,8 +63,9 @@ def _source_contract_issues(conn, *, structure=None) -> List[str]:
 
 def workbench_process_contract_issues(conn, *, structure=None) -> List[str]:
     """Read-only structural check; missing identities are never allocated here."""
-    actual = schema_objects(conn, structure=structure)
-    issues = _source_contract_issues(conn, structure=structure)
+    structure = structure if structure is not None else SchemaStructure(conn)
+    actual = structure.sql
+    issues = _source_contract_issues(structure=structure)
     for name, sql in process_objects().items():
         if name not in actual:
             issues.append("missing_workbench_process: " + name)

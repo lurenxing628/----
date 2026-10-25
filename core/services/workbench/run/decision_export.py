@@ -214,8 +214,10 @@ def read_decision_export(conn, run_ref, section, *, filter_section=None, **query
     with store.snapshot(), read_evidence_scope(conn):
         source = DecisionSource(store, run_ref, **query)
         active_filters = _export_filters(detail_section, filters) if detail_section is not None else None
+        selected_process = None
         if detail_section == "process":
-            active_filters = process_details(source, active_filters, all_rows=True)["filters"]
+            selected_process = process_details(source, active_filters, all_rows=True)
+            active_filters = selected_process["filters"]
         snapshot_scope = {"kind": "run-decision", **source.scope}
         if active_filters is not None:
             snapshot_scope["filters"] = active_filters
@@ -224,8 +226,12 @@ def read_decision_export(conn, run_ref, section, *, filter_section=None, **query
         if section in ("recommendation", "all"):
             data["export_recommendation"] = recommendation_export_records(source, data)
         if section in ("process", "all"):
-            data["export_process"] = process_export_records(source, active_filters if detail_section == "process" else None,
-                                                            include_all_objectives=section == "all")
+            data["export_process"] = process_export_records(
+                source,
+                active_filters if detail_section == "process" else None,
+                include_all_objectives=section == "all",
+                selected=selected_process,
+            )
         for name in ("batches", "operations"):
             if section not in (name, "all"):
                 continue
@@ -285,7 +291,7 @@ def _export_context(source):
 def write_run_decision_export(data, snapshot, fmt, section="overview"):
     if fmt == "csv" and section in ("recommendation", "process"):
         csv_table = recommendation_csv(data, snapshot) if section == "recommendation" else process_csv(data, snapshot)
-        return FileDownload("排产方案比较.csv", "text/csv; charset=utf-8", _csv(*csv_table), len(csv_table[1]))
+        return FileDownload("排产方案比较.csv", "text/csv; charset=utf-8", csv_bytes(*csv_table), len(csv_table[1]))
     tables = {}
     if section in ("overview", "all"):
         tables["方案总览"] = (HEADERS, list(overview_rows(data)))
@@ -311,24 +317,24 @@ def write_run_decision_export(data, snapshot, fmt, section="overview"):
         tables.update(recommendation_export_tables(data, snapshot))
     if section in ("process", "all"):
         tables.update(process_export_tables(data, snapshot))
-    content = _csv(*next(iter(tables.values()))) if fmt == "csv" else _xlsx(data, snapshot, tables)
+    content = csv_bytes(*next(iter(tables.values()))) if fmt == "csv" else _xlsx(data, snapshot, tables)
     mime = "text/csv; charset=utf-8" if fmt == "csv" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     return FileDownload("排产方案比较." + fmt, mime, content, sum(len(rows) for _, rows in tables.values()))
 
 
-def _csv(headers, rows):
+def csv_bytes(headers, rows):
     with SpooledTemporaryFile(max_size=4 * 1024 * 1024, mode="w+b") as buffer:
         text = codecs.getwriter("utf-8-sig")(buffer)
         writer = csv.writer(text, lineterminator="\r\n")
         writer.writerow(headers)
         for row in rows:
-            writer.writerow([_csv_cell(value, identity=headers[index].endswith("编号")) for index, value in enumerate(row)])
+            writer.writerow([csv_cell(value, identity=headers[index].endswith("编号")) for index, value in enumerate(row)])
         text.flush()
         buffer.seek(0)
         return buffer.read()
 
 
-def _csv_cell(value, *, identity):
+def csv_cell(value, *, identity):
     if value is None:
         return ""
     if type(value) in (int, float):
@@ -339,7 +345,7 @@ def _csv_cell(value, *, identity):
     return value
 
 
-def _append(sheet, row):
+def append_sheet_row(sheet, row):
     from openpyxl.cell import WriteOnlyCell
 
     cells = []
@@ -362,13 +368,13 @@ def _xlsx(data, snapshot, tables):
             sheet.freeze_panes = "D2"
             for index in range(1, len(headers) + 1):
                 sheet.column_dimensions[get_column_letter(index)].width = 24
-            _append(sheet, headers)
+            append_sheet_row(sheet, headers)
             for row in rows:
-                _append(sheet, row)
+                append_sheet_row(sheet, row)
         sheet = wb.create_sheet("指标计算方式")
-        _append(sheet, ("指标", "分组", "单位", "精度", "改善方向", "范围", "来源", "常用指标", "指标版本"))
+        append_sheet_row(sheet, ("指标", "分组", "单位", "精度", "改善方向", "范围", "来源", "常用指标", "指标版本"))
         for item in data["metric_definitions"]:
-            _append(sheet, [item["label"], _GROUP[item["group"]], item["unit"], item["precision"],
+            append_sheet_row(sheet, [item["label"], _GROUP[item["group"]], item["unit"], item["precision"],
                            _IMPROVEMENT[item["improvement"]], _SCOPE[item["scope"]], _SOURCE[item["source"]]]
                     + ["是" if item["common"] else "否", item["metric_version"]])
         sheet = wb.create_sheet("比较范围")
@@ -408,7 +414,7 @@ def _xlsx(data, snapshot, tables):
                         ("沿用方案的计算次数", "候选自身未搜索时计数为 0，来源方案的计算次数和编号另列"),
                         ("过程次数计算方式", "评估次数、留作继续搜索次数、严格改善次数和放弃次数分别统计；放弃记录含重复结果，各项互有重合")]
         for row in entries:
-            _append(sheet, row)
+            append_sheet_row(sheet, row)
         with SpooledTemporaryFile(max_size=4 * 1024 * 1024, mode="w+b") as buffer:
             wb.save(buffer)
             buffer.seek(0)

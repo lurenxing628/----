@@ -9,10 +9,10 @@ from typing import Any
 
 from core.infrastructure.safe_files import (
     create_fixed_file_exclusive,
-    guard_fixed_file_replace_target,
+    guard_fixed_file_open_target,
     open_fixed_file_for_read_binary,
 )
-from core.models.content import content_text, same
+from core.models.content import same
 from core.models.workbench_command import (
     WorkbenchCommandRejected,
     canonical_json,
@@ -27,6 +27,7 @@ _RESTORE_TERMINALS = {
                "backup_unreadable", "db_target_unreadable"),
 }
 _NOT_CAPTURED = object()
+_JOURNAL_LIMIT = 2000
 
 
 def file_content(path):
@@ -47,6 +48,10 @@ class SystemMaintenanceJournal:
         # still prove that it belongs to the currently configured database path.
         self._follows_database = os.path.normcase(os.path.realpath(directory)) == database + ".system-journal"
         self._database_scope = None
+        self._records = None
+        self._entry_names = None
+        self._requests = {}
+        self._jobs = {}
 
     @property
     def database_scope(self):
@@ -104,31 +109,68 @@ class SystemMaintenanceJournal:
 
     def lookup(self, request_key):
         key = validate_request_key(request_key)
-        return next((row for row in self.records() if row["request_key"] == key), None)
+        if self._records is None:
+            self.records()
+        return self._requests.get(key)
+
+    def lookup_job(self, job_ref):
+        path = self._path(job_ref)
+        if job_ref in self._jobs:
+            return self._jobs[job_ref]
+        if self._records is not None:
+            return None
+        try:
+            row = self._read(path)
+        except FileNotFoundError:
+            self.collection()
+            return self._jobs.get(job_ref)
+        self._jobs[job_ref] = row
+        return row
 
     def pending(self, records=None):
         captured = self.records() if records is None else records
         return [row for row in captured if row["state"] not in TERMINAL_STATES]
 
-    def records(self, *, names=None):
-        if names is None:
+    def _directory_entries(self):
+        if self._entry_names is None:
             try:
-                names = os.listdir(self.directory)
+                self._entry_names = os.listdir(self.directory)
             except FileNotFoundError:
-                return []
-        rows, requests, jobs = [], set(), set()
-        for name in sorted(names):
+                self._entry_names = []
+        return self._entry_names
+
+    def collection(self):
+        count = (len(self._records) if self._records is not None else
+                 sum(name.endswith(".json") for name in self._directory_entries()))
+        if count > _JOURNAL_LIMIT:
+            raise WorkbenchCommandRejected("maintenance_record_capacity", "维护记录条数超过一次能读的上限，这次没有列出。请让维护人员清理维护目录后再看。", 413)
+        return self.records()
+
+    def records(self):
+        if self._records is not None:
+            return self._records
+        rows, requests, jobs = [], {}, {}
+        for name in sorted(self._directory_entries()):
             if not name.endswith(".json"):
                 continue
             if os.path.basename(name) != name:
                 raise RuntimeError("维护记录文件名不完整，须人工核查。")
-            row = self._read(os.path.join(self.directory, name))
+            cached = self._jobs.get(name[:-5])
+            row = cached if cached is not None else self._read(os.path.join(self.directory, name))
             if row["request_key"] in requests or row["job_ref"] in jobs:
                 raise RuntimeError("维护请求或操作编号重复，须人工核查。")
-            requests.add(row["request_key"])
-            jobs.add(row["job_ref"])
+            requests[row["request_key"]] = row
+            jobs[row["job_ref"]] = row
             rows.append(row)
+        self._records, self._requests, self._jobs = rows, requests, jobs
         return rows
+
+    def refresh(self):
+        """Begin a new observation after a lock/transaction or request boundary."""
+        self._records, self._requests, self._jobs = None, {}, {}
+        self._entry_names = None
+        self._database_scope = None
+        return self.records()
 
     def assert_ready(self, records=None):
         captured = self.records() if records is None else records
@@ -155,7 +197,7 @@ class SystemMaintenanceJournal:
     def begin(self, request_key, action, intent, *, previous: Any = _NOT_CAPTURED):
         if previous is _NOT_CAPTURED:
             previous = self.admission(request_key)
-        original = json.loads(content_text({"action": action, "input": intent}))
+        original = {"action": action, "input": dict(intent)}
         if previous:
             if previous["action"] != action:
                 raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号对应的是另一次维护，这次没有执行。请重新提交。")
@@ -187,7 +229,7 @@ class SystemMaintenanceJournal:
             stream.write(canonical_json(updated))
             stream.flush()
             os.fsync(stream.fileno())
-        guard_fixed_file_replace_target(path)
+        guard_fixed_file_open_target(path)
         os.replace(temporary, path)
         if os.name != "nt":
             directory_fd = os.open(self.directory, os.O_RDONLY)
@@ -197,6 +239,15 @@ class SystemMaintenanceJournal:
                 os.close(directory_fd)
         row.clear()
         row.update(updated)
+        cached = self._jobs.get(row["job_ref"])
+        if cached is not None and cached is not row:
+            cached.clear()
+            cached.update(updated)
+        else:
+            if self._records is not None and cached is None:
+                self._records.append(row)
+            self._jobs[row["job_ref"]] = row
+            self._requests[row["request_key"]] = row
         return row
 
     @staticmethod

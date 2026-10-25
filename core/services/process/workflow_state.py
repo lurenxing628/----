@@ -16,9 +16,9 @@ from core.infrastructure.workbench_process_workflow_schema import workbench_proc
 from core.infrastructure.workbench_resource_schema import workbench_resource_contract_issues
 from core.models.content import content_text, same, unpacked
 from core.models.resource_capabilities import supports_source
-from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWorkflowRepository
+from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWorkflowRepository, operation_order
 
-from .template_source import source_issues, valid_external_group, valid_supplier
+from .template_source import TemplateSourceFacts
 
 _STAGES = ("route", "source", "hours")
 
@@ -56,13 +56,11 @@ def _number(value, *, positive=False):
     return type(value) in (int, float) and math.isfinite(value) and (value > 0 if positive else value >= 0)
 
 
-def _supplier(suppliers, supplier_id, op_type_id):
-    row = suppliers.get(supplier_id)
+def _supplier(source_facts, supplier_id, op_type_id):
+    row = source_facts.suppliers.get(supplier_id)
     if row is None:
-        return None, False
-    fact = {"ref": _ref(row["ref"]), "status": row["status"], "inactive_reason": row["inactive_reason"],
-            "capable": op_type_id is not None and op_type_id in row["capabilities"]}
-    return fact, valid_supplier(fact)
+        return None
+    return dict(source_facts.supplier_fact(supplier_id, op_type_id), ref=_ref(row["ref"]))
 
 
 def _groups(groups, operations):
@@ -78,30 +76,25 @@ def _groups(groups, operations):
         group["members"] = [[op["ref"], op["seq"], op["source"]] for op in current]
         group["op_source_facts"] = {key: group[key] for key in ("ref", "start_seq", "end_seq", "merge_mode", "supplier_id")}
         group["source_facts"] = dict(group["op_source_facts"], members=group["members"])
-        group["valid"] = valid_external_group(group, group["part_no"],
-            [(op["seq"], op["source"], op["supplier_id"]) for op in current])
         result[group["group_id"]] = group
     return result
 
 
-def _group_source(group, part_no, op_type_id, suppliers):
+def _group_source(group, op_type_id, source_facts):
     if group is None:
-        return None, None, True
-    valid = group["valid"] and group["part_no"] == part_no
+        return None, None
     supplier = None
     if group["merge_mode"] == "merged" and group["supplier_id"] is not None:
-        supplier, supplier_valid = _supplier(suppliers, group["supplier_id"], op_type_id)
-        valid = valid and supplier_valid
-    return group["op_source_facts"], supplier, valid
+        supplier = _supplier(source_facts, group["supplier_id"], op_type_id)
+    return group["op_source_facts"], supplier
 
 
-def _source_facts(part, op, group, suppliers):
-    group_fact, group_supplier, valid_group = _group_source(group, part["part_no"], op["op_type_id"], suppliers)
+def _source_facts(op, group, source_facts):
+    group_fact, group_supplier = _group_source(group, op["op_type_id"], source_facts)
     if op["type_name"] is not None:
         _ref(op["type_ref"])
-    supplier, valid_supplier = _supplier(suppliers, op["supplier_id"], op["op_type_id"])
-    source_valid = not source_issues(op, type_name=op["type_name"], category=op["category"],
-                                    supplier_valid=valid_supplier, group=group, group_valid=valid_group)
+    supplier = _supplier(source_facts, op["supplier_id"], op["op_type_id"])
+    source_valid = not source_facts.issues(op, type_name=op["type_name"], category=op["category"])
     # This slot used to contain the resource's default policy. Defaults only seed
     # new groups; the actual group facts above govern existing confirmations.
     values = [op["source"], op["op_type_id"], op["type_ref"], op["type_name"], op["source"] if supports_source(op["category"], op["source"]) else op["category"],
@@ -130,70 +123,136 @@ def _hours_content(source, op, group):
                          group["total_days"] if group else None]) if source and _valid_hours(op, group) else None
 
 
-def _operation_facts(part, op, group, suppliers):
+def _operation_facts(part, op, group, source_facts, *, need_source, need_hours):
     route = [part["ref"], _ref(op["ref"]), op["seq"], op["op_type_name"]]
-    values, source_valid = _source_facts(part, op, group, suppliers)
-    source = _source_content(route, values, source_valid)
-    hours = _hours_content(source, op, group)
+    if not need_source:
+        if op["type_name"] is not None:
+            _ref(op["type_ref"])
+        source = None
+        hours = None
+    else:
+        values, source_valid = _source_facts(op, group, source_facts)
+        source = _source_content(route, values, source_valid)
+        hours = _hours_content(source, op, group) if need_hours else None
     return route, {"source": source, "hours": hours,
                    "group": group["source_facts"] if group else None}
 
 
-def _load_facts(conn, part_no=None):
+def _sync_cross_part_groups(cross_part_by_group, part_no, part_ops, old_operations):
+    """该零件在跨件分组索引里的成员换成当前工序：旧工序和新工序涉及的分组都先清掉它的旧成员。"""
+    if cross_part_by_group is None:
+        return
+    touched = {op["ext_group_id"] for op in (*old_operations, *part_ops) if op["ext_group_id"] is not None}
+    for gid in touched:
+        cross_part_by_group[gid] = [item for item in cross_part_by_group.get(gid, ()) if item["part_no"] != part_no]
+    for op in part_ops:
+        if op["ext_group_id"] is not None:
+            cross_part_by_group.setdefault(op["ext_group_id"], []).append(op)
+
+
+def _stage_confirmed(stored, field):
+    return stored is not None and bool(stored[field])
+
+
+def _needed_stages(stored, stage, record_stages):
+    need_hours = stage == "hours" or _stage_confirmed(stored, "hours_confirmed_at") or ("hours" in record_stages)
+    need_source = (need_hours or stage == "source"
+                   or _stage_confirmed(stored, "source_confirmed_at") or ("source" in record_stages))
+    need_route = need_source or stage == "route" or _stage_confirmed(stored, "route_confirmed_at")
+    return need_route, need_source, need_hours
+
+
+def _load_facts(conn, part_no=None, *, stored=None, stage=None, cross_part_by_group=None, old_operations=()):
     """One bulk read per fact collection, regardless of the number of parts."""
-    return _project_facts(_read_facts(conn, part_no))
+    return _project_facts(_read_facts(conn, part_no, stored=stored, stage=stage,
+                                      cross_part_by_group=cross_part_by_group, old_operations=old_operations))
 
 
-def _read_facts(conn, part_no=None):
+def _read_part_source_facts(repo, part_no, cross_part_by_group, old_operations):
+    if cross_part_by_group is None:
+        operations = repo.active_operations(part_no, include_related_groups=True)
+        groups = (repo.active_external_groups(part_no)
+                  if any(op["ext_group_id"] is not None for op in operations) else [])
+        return operations, groups
+    part_ops = repo.active_operations(part_no, include_related_groups=False)
+    _sync_cross_part_groups(cross_part_by_group, part_no, part_ops, old_operations)
+    if not part_ops:
+        return [], []
+    group_ids = {op["ext_group_id"] for op in part_ops if op["ext_group_id"] is not None}
+    groups = repo.active_external_groups(part_no) if group_ids else []
+    group_ids.update(group["group_id"] for group in groups)
+    cross_ops = [op for gid in group_ids for op in cross_part_by_group.get(gid, ()) if op["part_no"] != part_no]
+    operations = sorted(part_ops + cross_ops, key=operation_order) if cross_ops else part_ops
+    return operations, groups
+
+
+def _read_facts(conn, part_no=None, *, stored=None, stage=None, cross_part_by_group=None, old_operations=()):
     repo = WorkbenchProcessWorkflowRepository(conn)
-    operations, groups = repo.active_operations(part_no), repo.active_external_groups(part_no)
-    supplier_ids = None if part_no is None else list(dict.fromkeys(
+    if part_no is None:
+        return {"operations": repo.active_operations(), "groups": repo.active_external_groups(),
+                "suppliers": repo.supplier_facts(None), "capabilities": repo.supplier_op_types(None),
+                "records": repo.confirmations()}
+    records = repo.confirmations(part_no)
+    need_source = _needed_stages(stored, stage, {row["stage"] for row in records})[1]
+    if not need_source:
+        operations = repo.active_operations(part_no, include_related_groups=False)
+        _sync_cross_part_groups(cross_part_by_group, part_no, operations, old_operations)
+        return {"operations": operations, "groups": [], "suppliers": [], "capabilities": [], "records": records}
+    operations, groups = _read_part_source_facts(repo, part_no, cross_part_by_group, old_operations)
+    if not operations:
+        return {"operations": [], "groups": [], "suppliers": [], "capabilities": [], "records": []}
+    supplier_ids = list(dict.fromkeys(
         row["supplier_id"] for rows in (operations, groups) for row in rows if row["supplier_id"] is not None))
     return {"operations": operations, "groups": groups,
             "suppliers": repo.supplier_facts(supplier_ids), "capabilities": repo.supplier_op_types(supplier_ids),
-            "records": repo.confirmations(part_no)}
+            "records": records}
 
 
 def _project_facts(raw):
     operations = raw["operations"]
-    groups = _groups([dict(row) for row in raw["groups"]], operations)
-    suppliers = {row["supplier_id"]: dict(row, capabilities={row["op_type_id"]}) for row in raw["suppliers"]}
-    for row in raw["capabilities"]:
-        if row["supplier_id"] in suppliers:
-            suppliers[row["supplier_id"]]["capabilities"].add(row["op_type_id"])
+    groups = _groups(raw["groups"], operations)
+    source_facts = TemplateSourceFacts(operations, groups.values(), raw["suppliers"],
+                                      raw["capabilities"], raw["suppliers"])
     records = raw["records"]
     by_part, by_ref = {}, {}
     for op in operations:
         by_part.setdefault(op["part_no"], []).append(op)
     for row in records:
         by_ref.setdefault(row["part_ref"], {})[(row["operation_ref"], row["stage"])] = row
-    return by_part, groups, suppliers, by_ref
+    return by_part, groups, source_facts, by_ref
 
 
-def _facts(part, loaded):
+def _valid_route_operation(op):
+    return (type(op["seq"]) is int and op["seq"] > 0
+            and isinstance(op["op_type_name"], str) and bool(op["op_type_name"].strip()))
+
+
+def _stage_document(name, previous, per_op, group_facts):
+    values = [[ref, item[name]] for ref, item in per_op.items()]
+    document = [name + "-v2", previous, values]
+    if name == "source":
+        document.append(group_facts)
+    return content_text(document) if previous and all(value is not None for _, value in values) else None
+
+
+def _facts(part, loaded, stored=None, *, stage=None):
     by_part, groups, suppliers, by_ref = loaded
     operations = by_part.get(part["part_no"], [])
     records = by_ref.get(part["ref"], {})
+    need_route, need_source, need_hours = _needed_stages(stored, stage, {rec_stage for _, rec_stage in records})
     routes, per_op, group_facts = [], {}, {}
     for op in operations:
-        route, contents = _operation_facts(part, op, groups.get(op["ext_group_id"]), suppliers)
+        route, contents = _operation_facts(part, op, groups.get(op["ext_group_id"]), suppliers,
+                                           need_source=need_source, need_hours=need_hours)
         routes.append(route)
         per_op[op["ref"]] = contents
         if contents["group"] is not None:
             group_facts[contents["group"]["ref"]] = contents["group"]
-    valid_route = bool(operations) and all(type(op["seq"]) is int and op["seq"] > 0
-        and isinstance(op["op_type_name"], str) and op["op_type_name"].strip() for op in operations)
-    route = content_text(["route-v2", part["ref"], part["route_raw"], routes]) if valid_route else None
-    contents = {"route": route}
-    previous = route
-    for stage in ("source", "hours"):
-        values = [[ref, item[stage]] for ref, item in per_op.items()]
-        document = [stage + "-v2", previous, values]
-        if stage == "source":
-            document.append(group_facts)
-        previous = content_text(document) if previous and all(value is not None for _, value in values) else None
-        contents[stage] = previous
-    return operations, contents, per_op, records
+    valid_route = bool(operations) and all(_valid_route_operation(op) for op in operations)
+    route = content_text(["route-v2", part["ref"], part["route_raw"], routes]) if need_route and valid_route else None
+    source = _stage_document("source", route, per_op, group_facts) if need_source else None
+    hours = _stage_document("hours", source, per_op, group_facts) if need_hours else None
+    return operations, {"route": route, "source": source, "hours": hours}, per_op, records
 
 
 def _confirmation(row, content, prefix="", *, missing_original=False):
@@ -268,33 +327,35 @@ def _view(stored, facts, *, operation_states=None):
     return result
 
 
-def read_workflow(conn, part_no, *, contracts=None) -> dict:
-    with TransactionManager(conn).transaction():
-        part, stored = _part(conn, part_no, contracts)
-        return _view(stored, _facts(part, _load_facts(conn, part_no)))
-
-
-def operation_confirmations(conn, part_no) -> dict:
-    with TransactionManager(conn).transaction():
-        part, stored = _part(conn, part_no)
-        _, _, per_op, records = _facts(part, _load_facts(conn, part_no))
-        return _operation_states(per_op, records, stored)
-
-
-def workflow_snapshot(conn, *, tables=None) -> dict:
+def workflow_snapshot(conn, *, tables=None, identities=None) -> dict:
     """Load JSON-safe workflow and per-operation states for the whole part catalog."""
-    with TransactionManager(conn).transaction():
-        if tables is None:
-            raw = load_workflow_snapshot(conn)
-        else:
-            _schema(conn)
-            raw = _workflow_inputs_from_tables(tables)
+    if tables is not None and conn.in_transaction:
+        _schema(conn)
+        raw = _workflow_inputs_from_tables(tables, identities, conn=conn)
+    else:
+        with TransactionManager(conn).transaction():
+            if tables is None:
+                raw = load_workflow_snapshot(conn)
+            else:
+                _schema(conn)
+                raw = _workflow_inputs_from_tables(tables, identities, conn=conn)
     return project_workflow_snapshot(raw)
 
 
-def _workflow_inputs_from_tables(tables):
+def _active_refs(tables, identities):
+    if identities is not None:
+        return {key: row["ref"] for key, row in identities.items()}
+    return {(row["kind"], row["entity_key"]): row["ref"] for row in tables["WorkbenchEntityRefs"] if row["active"] == 1}
+
+
+def _workflow_inputs_from_tables(tables, identities, *, conn):
     """Join the caller's captured raw collections; do not read a second catalog."""
-    refs = {(row["kind"], row["entity_key"]): row["ref"] for row in tables["WorkbenchEntityRefs"] if row["active"] == 1}
+    repo = WorkbenchProcessWorkflowRepository(conn)
+    stored = (tables["WorkbenchProcessWorkflow"]
+              if "WorkbenchProcessWorkflow" in tables else repo.stored_workflows())
+    records = (tables["WorkbenchProcessOperationConfirmations"]
+               if "WorkbenchProcessOperationConfirmations" in tables else repo.confirmations())
+    refs = _active_refs(tables, identities)
     types = {row["op_type_id"]: row for row in tables["OpTypes"]}
     profiles = {row["supplier_id"]: row for row in tables["WorkbenchSupplierProfiles"]}
     operations = []
@@ -305,16 +366,10 @@ def _workflow_inputs_from_tables(tables):
         operations.append(dict(row, ref=refs.get(("template_operation", str(row["id"]))),
             type_name=kind.get("name"), category=kind.get("category"),
             type_ref=refs.get(("op_type", row["op_type_id"]))))
-    def sql_order(value):
-        if value is None:
-            return (0, "")
-        if isinstance(value, (int, float)):
-            return (1, value)
-        return (2 if isinstance(value, str) else 3, value)
-    operations.sort(key=lambda row: tuple(sql_order(row[key]) for key in ("part_no", "seq", "id")))
+    operations.sort(key=operation_order)
     used = {row["ext_group_id"] for row in operations if row["ext_group_id"] is not None}
     return {"parts": [dict(row, ref=refs.get(("part", row["part_no"]))) for row in tables["Parts"]],
-            "stored": tables["WorkbenchProcessWorkflow"], "facts": {
+            "stored": stored, "facts": {
                 "operations": operations,
                 "groups": [dict(row, ref=refs.get(("template_external_group", row["group_id"])))
                            for row in tables["ExternalGroups"] if row["group_id"] in used],
@@ -322,13 +377,15 @@ def _workflow_inputs_from_tables(tables):
                                    inactive_reason=profiles.get(row["supplier_id"], {}).get("inactive_reason"))
                               for row in tables["Suppliers"]],
                 "capabilities": tables["WorkbenchSupplierOpTypes"],
-                "records": tables["WorkbenchProcessOperationConfirmations"]}}
+                "records": records}}
 
 
-def load_workflow_snapshot(conn) -> dict:
+def load_workflow_snapshot(conn, *, tables=None, identities=None) -> dict:
     """Capture stored inputs; callers own the encompassing read transaction."""
     _require_transaction(conn)
     _schema(conn)
+    if tables is not None:
+        return _workflow_inputs_from_tables(tables, identities, conn=conn)
     repo = WorkbenchProcessWorkflowRepository(conn)
     return {"parts": repo.parts_with_refs(), "stored": repo.stored_workflows(), "facts": _read_facts(conn)}
 
@@ -341,8 +398,8 @@ def project_workflow_snapshot(raw) -> dict:
     for part in raw["parts"]:
         if not isinstance(part["part_no"], str):
             raise RuntimeError("Invalid process part number; expected text.")
-        facts = _facts(part, loaded)
         original = stored.get(_ref(part["ref"]))
+        facts = _facts(part, loaded, original)
         op_states = _operation_states(facts[2], facts[3], original)
         result[part["part_no"]] = {"workflow": _view(original, facts, operation_states=op_states),
                                    "operations": op_states}
@@ -357,12 +414,11 @@ def _require_transaction(conn):
 def start_workflow(conn, part_no, *, contracts=None) -> dict:
     """Enroll a newly controlled template, even before any route exists."""
     _require_transaction(conn)
-    with TransactionManager(conn).transaction():
-        part, stored = _part(conn, part_no, contracts)
-        if stored is None:
-            WorkbenchProcessWorkflowRepository(conn).insert_workflow(part["ref"])
-            stored = {stage + "_" + key: None for stage in _STAGES for key in ("signature", "content_json", "confirmed_at", "confirmed_by")}
-        return _view(stored, _facts(part, _load_facts(conn, part_no)))
+    part, stored = _part(conn, part_no, contracts)
+    if stored is None:
+        WorkbenchProcessWorkflowRepository(conn).insert_workflow(part["ref"])
+        stored = {stage + "_" + key: None for stage in _STAGES for key in ("signature", "content_json", "confirmed_at", "confirmed_by")}
+    return _view(stored, _facts(part, _load_facts(conn, part_no, stored=stored), stored))
 
 
 def _save_operations(conn, part_ref, stage, per_op, records, states, stamp, person):
@@ -381,48 +437,48 @@ def _save_operations(conn, part_ref, stage, per_op, records, states, stamp, pers
                                 "confirmed_at": stamp, "confirmed_by": person}
 
 
-def record_confirmation(conn, part_no, stage, confirmed_by=None, *, contracts=None) -> dict:
-    """Confirm facts already written by the domain owner, atomically in its transaction."""
+def record_confirmation(conn, part_no, stage, confirmed_by=None, *, contracts=None, cross_part_by_group=None,
+                        old_operations=()) -> dict:
+    """Confirm facts already written by the domain owner, atomically in its transaction.
+
+    cross_part_by_group 是多零件命令共用的跨件分组索引；换掉路线时 old_operations 传该零件换路线前的工序，
+    索引里旧工序所在分组的旧成员在这里一起清掉。
+    """
     _require_transaction(conn)
     if stage not in _STAGES:
         raise ValidationError("工艺确认阶段无效。", field="stage")
     if confirmed_by is not None and (not isinstance(confirmed_by, str) or not confirmed_by.strip()):
         raise ValidationError("确认人必须是真实非空名称，未知时请传 null。", field="confirmed_by")
-    with TransactionManager(conn).transaction():
-        part, stored = _part(conn, part_no, contracts)
-        facts = _facts(part, _load_facts(conn, part_no))
-        _, contents, per_op, records = facts
-        op_states = _operation_states(per_op, records, stored) if stored is not None else None
-        view = _view(stored, facts, operation_states=op_states)
-        previous = {"source": "route", "hours": "source"}.get(stage)
-        if previous and view[previous]["state"] != "confirmed":
-            raise ValidationError("请先确认上一工艺阶段的当前资料。", field="stage", details={"reason": "process_stage_locked"})
-        content = contents[stage]
-        if content is None:
-            raise ValidationError("当前工艺资料不完整或不合法，不能确认。", field=stage, details={"reason": "process_facts_invalid"})
-        repo = WorkbenchProcessWorkflowRepository(conn)
-        if stored is None:
-            repo.insert_workflow(part["ref"])
-            stored = {name + "_" + key: None for name in _STAGES for key in ("signature", "content_json", "confirmed_at", "confirmed_by")}
-        stamp = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
-        if stage == "route":
-            repo.delete_confirmations_outside_active_route(part["ref"], part_no)
-        else:
-            _save_operations(conn, part["ref"], stage, per_op, records, op_states, stamp, confirmed_by)
-        if _confirmation(stored, content, stage + "_")["state"] != "confirmed":
-            repo.set_stage_confirmation(part_ref=part["ref"], stage=stage, content_json=content,
-                                        confirmed_at=stamp, confirmed_by=confirmed_by)
-            stored = dict(stored, **{stage + "_content_json": content, stage + "_confirmed_at": stamp,
-                                     stage + "_confirmed_by": confirmed_by})
-        return _view(stored, facts)
-
-
-def require_template_ready(conn, part_no) -> None:
-    with TransactionManager(conn).transaction():
-        part, stored = _part(conn, part_no)
-        if stored is None:
-            return
-        view = _view(stored, _facts(part, _load_facts(conn, part_no)))
-        if not view["ready"]:
-            raise BusinessError(ErrorCode.ROUTE_PARSE_ERROR, "该零件工艺尚未完成路线、归属和工时确认，不能用于生成批次工序。",
-                                details={"reason": "process_workflow_pending", "stage": view["stage"]})
+    part, stored = _part(conn, part_no, contracts)
+    facts = _facts(
+        part,
+        _load_facts(conn, part_no, stored=stored, stage=stage, cross_part_by_group=cross_part_by_group,
+                    old_operations=old_operations),
+        stored,
+        stage=stage,
+    )
+    _, contents, per_op, records = facts
+    op_states = _operation_states(per_op, records, stored) if stored is not None else None
+    view = _view(stored, facts, operation_states=op_states)
+    previous = {"source": "route", "hours": "source"}.get(stage)
+    if previous and view[previous]["state"] != "confirmed":
+        raise ValidationError("请先确认上一工艺阶段的当前资料。", field="stage", details={"reason": "process_stage_locked"})
+    content = contents[stage]
+    if content is None:
+        raise ValidationError("当前工艺资料不完整或不合法，不能确认。", field=stage, details={"reason": "process_facts_invalid"})
+    repo = WorkbenchProcessWorkflowRepository(conn)
+    if stored is None:
+        repo.insert_workflow(part["ref"])
+        stored = {name + "_" + key: None for name in _STAGES for key in ("signature", "content_json", "confirmed_at", "confirmed_by")}
+    stamp = datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+    if stage == "route":
+        repo.delete_confirmations_outside_active_route(part["ref"], part_no)
+    else:
+        _save_operations(conn, part["ref"], stage, per_op, records, op_states, stamp, confirmed_by)
+    if _confirmation(stored, content, stage + "_")["state"] != "confirmed":
+        repo.set_stage_confirmation(part_ref=part["ref"], stage=stage, content_json=content,
+                                    confirmed_at=stamp, confirmed_by=confirmed_by)
+        stored = dict(stored, **{stage + "_content_json": content, stage + "_confirmed_at": stamp,
+                                 stage + "_confirmed_by": confirmed_by})
+    # 路线确认不改工序确认记录和来源资料，沿用上面算好的工序状态；来源、工时确认刚写了记录，要重算。
+    return _view(stored, facts, operation_states=op_states if stage == "route" else None)

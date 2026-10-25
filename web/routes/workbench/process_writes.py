@@ -12,7 +12,7 @@ from core.services.workbench.process.projection import project_group
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from web.api_responses import failure, json_response, query_success
 
-from .api_responses import api_endpoint
+from .api_responses import api_endpoint, read_endpoint
 from .process_json import read_process_json
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
@@ -31,7 +31,7 @@ def _operation_failure(exc):
         {"path": "operations." + ref + "." + field, "message": str(exc)} for ref in exc.operation_refs])
 
 
-@api_endpoint
+@read_endpoint
 def process_stage_preview(ref):
     from core.services.workbench.process.mutations import WorkbenchProcessMutationService
 
@@ -41,16 +41,17 @@ def process_stage_preview(ref):
             raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，归属没有保存。请刷新页面后重新点「保存归属并继续」。", 400)
         domain = WorkbenchProcessMutationService(g.db, current_app.logger)
         normalized = domain.normalize(body["action"], body["input"])
-        reader = WorkbenchProcessQueryService(g.db, current_app.logger)
+        reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=ref)
         with reader.read_snapshot() as state:
             identity = reader.resolve(ref)
             bind_read_snapshot({"kind": "part", "entity_ref": ref}, state, body["snapshot_ref"])
-            checked = domain.checked_facts(identity, reader.facts())
+            facts = reader.facts()
+            checked = domain.checked_facts(identity, facts)
             _, _, operations, _, workflow = checked
             if workflow["route"]["state"] != "confirmed":
                 raise WorkbenchCommandRejected("stage_locked", "工艺路线还没有确认，归属没有保存。请先点「确认保存路线」，再点「保存归属并继续」。")
             action = body["action"]
-            prepared = domain.prepare_review(action, normalized, checked, facts=reader.facts())
+            prepared = domain.prepare_review(action, normalized, checked, facts=facts)
             if action == "source_confirm" and prepared.affected:
                 group_ids = {row["group_id"] for row in prepared.affected}
                 members = defaultdict(list)
@@ -96,15 +97,16 @@ def process_stage_command(ref, action):
         raise WorkbenchCommandRejected("invalid_input", "本页数据已过期，工艺资料还没有保存。请点「刷新资料」后重新核对再保存。", 400)
     domain = WorkbenchProcessMutationService(g.db, current_app.logger)
     normalized = domain.normalize(action, body["input"])
-    reader = WorkbenchProcessQueryService(g.db, current_app.logger)
+    reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=ref)
 
     def guard():
         with reader.read_snapshot() as state:
             identity = reader.resolve(ref)
             binding = state if action == "hours_confirm" else {"state": state, "input": reviewed_input(action, normalized)}
             validate_write_context(body["write_token"], ref, "process." + action, binding)
-            checked = domain.checked_facts(identity, reader.facts())
-            return domain.prepare_checked(action, normalized, checked, facts=reader.facts())
+            facts = reader.facts()
+            checked = domain.checked_facts(identity, facts)
+            return domain.prepare_checked(action, normalized, checked, facts=facts)
 
     try:
         outcome = WorkbenchCommandService(g.db, current_app.logger).execute(

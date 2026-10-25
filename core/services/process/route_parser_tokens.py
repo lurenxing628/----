@@ -3,8 +3,11 @@ from __future__ import annotations
 import re
 from typing import List, Tuple
 
-from core.models.process_route_text import serialize_route_rows as serialize_route_rows
-from core.services.process.route_parser_errors import MISSING_START_SEQ_ERROR, missing_tail_op_error
+MISSING_START_SEQ_ERROR = "工艺路线格式无效：必须以工序号开头"
+
+
+def missing_tail_op_error(seq: str) -> str:
+    return f"工艺路线尾部工序号 {seq} 缺少工种名"
 
 # 需要移除的分隔符（空格、逗号、顿号、破折号、箭头等）
 # 说明：
@@ -16,13 +19,17 @@ EXPLICIT_ROUTE_PREFIX = re.compile(r"([0-9０-９]+)[ \t]*[:：]")
 _FULL_TO_HALF_DIGITS = str.maketrans("０１２３４５６７８９", "0123456789")
 
 
-def compact_name_ambiguities(rows, names):
+def build_numeric_names(names):
     numeric_names = {}
     for name in names:
         match = re.match(r"([0-9０-９]+)(.+)$", name)
         if match:
             prefix = match.group(1).translate(_FULL_TO_HALF_DIGITS)
             numeric_names.setdefault(match.group(2), []).append((prefix, name))
+    return numeric_names
+
+
+def compact_name_ambiguities(rows, numeric_names):
     issues = []
     for seq, name in rows:
         digits = str(seq).translate(_FULL_TO_HALF_DIGITS)
@@ -82,7 +89,7 @@ def parse_explicit_route(text):
     Semicolons/newlines separate operations. Quoted names use doubled quotes.
     Mixed or incomplete explicit rows are rejected, never reparsed as compact text.
     """
-    if re.search(r"(?:^|[;；\r\n])\s*[0-9０-９]+[ \t]*[:：]", text) is None:
+    if re.search(r"[0-9０-９][ \t]*[:：]", text) is None:
         return None
     rows, cursor, size = [], 0, len(text)
     while cursor < size:

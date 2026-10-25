@@ -9,7 +9,7 @@ from bisect import bisect_right
 from itertools import tee
 from typing import Optional
 
-from .plan_calendar_intervals import IntervalIndex, _union_sorted, intersection, segments
+from .plan_calendar_intervals import IntervalIndex, intersection, segments, union_sorted
 
 METRIC_VERSION = "available_occupancy_v1"
 
@@ -94,11 +94,11 @@ class ResourceUtilizationMetrics:
             raise ValueError("Invalid resource task interval")
         self.source = source
         swept = segments(intervals)
-        occupied = _union_sorted((start, end) for start, end, _ in swept)
+        occupied = union_sorted((start, end) for start, end, _ in swept)
         self.segments = swept
         self.span = IntervalIndex.from_normalized(occupied)
         self.span_load = _WeightedIndex(swept)
-        self.span_overlap = IntervalIndex.from_normalized(_union_sorted(
+        self.span_overlap = IntervalIndex.from_normalized(union_sorted(
             (start, end) for start, end, count in swept if count > 1))
         # None means the resource's calendar is unknown, never that it has zero capacity.
         self.calendar = _CalendarIndexes(available, occupied, swept,

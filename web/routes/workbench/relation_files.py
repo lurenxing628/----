@@ -45,9 +45,8 @@ def relation_import_preview(kind):
     relation_kind(kind)
     content, fmt, mode = upload_body()
     service = _service(kind)
-    source = service.prepare_import(content, file_format=fmt, mode=mode)
-    preview = service.preview_import(source, file_format=fmt, mode=mode)
-    data = issue_file_preview(preview, source, columns=public_columns(kind),
+    preview = service.preview_import(content, file_format=fmt, mode=mode)
+    data = issue_file_preview(preview, preview.source, columns=public_columns(kind),
                               instructions=INSTRUCTIONS, template_version=TEMPLATE_VERSION)
     snapshot = bind_read_snapshot({"kind": kind, "operation": kind + ".import",
                                    "preview_ref": data["preview_ref"]}, data["preview_ref"])
@@ -83,7 +82,8 @@ def relation_export_preview(kind):
     with reader.read_snapshot() as fingerprint:
         read_binding = resolve_read_snapshot(snapshot_ref)
         snapshot = bind_read_snapshot(query_scope, fingerprint, snapshot_ref, binding=read_binding)
-        arguments, count = _service(kind).preview_export(body["selection"], scope=scope, selected_refs=body.get("refs"))
+        service = WorkbenchRelationFileService(g.db, kind, current_app.logger, reader=reader)
+        arguments, count = service.preview_export(body["selection"], scope=scope, selected_refs=body.get("refs"))
         document = {"kind": kind, "query_scope": query_scope,
                     "snapshot_ref": snapshot_ref, "arguments": arguments}
         ref, expires_at = retain_context(EXPORT_SCOPE, document, read_binding,
@@ -100,7 +100,8 @@ def relation_export(kind):
     binding, read_binding = resolve_context(EXPORT_SCOPE, ref, "snapshot_stale")
     if binding["kind"] != kind:
         raise WorkbenchCommandRejected("snapshot_stale", "这次导出的编号属于另一类记录，没有开始下载。请刷新页面后重新点「导出」。")
-    reader, service = _reader(), _service(kind)
+    reader = _reader()
+    service = WorkbenchRelationFileService(g.db, kind, current_app.logger, reader=reader)
     with reader.read_snapshot() as fingerprint:
         snapshot = bind_read_snapshot(binding["query_scope"], fingerprint, binding["snapshot_ref"], binding=read_binding)
         rows = service.export_rows(fmt, **binding["arguments"])

@@ -108,14 +108,14 @@ def _backfill(conn):
         build_failure_read_models,
         prepare_admission_read_models,
     )
-    from core.services.workbench.facts.run_history_projection import _job
+    from core.services.workbench.facts.run_history_projection import project_job
     from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
     store, repo = CandidateStore(conn), WorkbenchRunRepository(conn)
     source_cache = OrderedDict()
     for row in chain((first,), rows):
         run = dict(row)
-        _job(run)
+        project_job(run)
         terminal = run["state"] in TERMINAL_STATES
         if (terminal != (run["receipt_ref"] is not None) or
                 terminal and (run["receipt_state"] != run["state"] or run["receipt_recorded_at"] != run["finished_at"])):
@@ -134,7 +134,7 @@ def _backfill(conn):
             _prepare_candidate(store, packet, candidate)
         resolver = decision_baseline_source_resolver(conn,
             candidate_provider=_candidate_provider(store, repo, packet, source_cache=source_cache))
-        official = read_decision_baseline(packet["capture"], packet["facts"], packet["disposition"], run["accepted_at"],
+        official = read_decision_baseline(packet["capture"], packet["facts"], packet["disposition"],
                                           source_resolver=resolver)
         candidate_refs = list(dict.fromkeys(item["source_candidate_ref"] for item in official["source_states"]
                                            if item.get("source_candidate_ref") is not None))

@@ -70,7 +70,7 @@ class ResourceCandidates:
 
 
 def prepare_resource_candidates(op: Any, resource_pool: Any) -> ResourceCandidates:
-    fixed_machine, fixed_operator, op_type_id = _fixed_resource_inputs(op)
+    fixed_machine, fixed_operator, op_type_id = fixed_resource_inputs(op)
     pool, counters = _coerce_resource_pool(resource_pool), []
     if not fixed_machine and not op_type_id:
         return ResourceCandidates((), fixed_operator, op_type_id, pool, AUTO_ASSIGN_REASON_MISSING_OP_TYPE_ID,
@@ -87,54 +87,7 @@ class _PairProbe(NamedTuple):
     window_blocked: bool
 
 
-def auto_assign_internal_resources(
-    scheduler: Any = None,
-    *,
-    calendar: Any = None,
-    algo_stats: Any = None,
-    op: Any,
-    batch: Any,
-    batch_progress: Dict[str, datetime],
-    machine_timeline: Dict[str, List[Tuple[datetime, datetime]]],
-    operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],
-    base_time: datetime,
-    end_dt_exclusive: Optional[datetime],
-    machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-    resource_pool: Dict[str, Any],
-    last_op_type_by_machine: Dict[str, str],
-    machine_busy_hours: Dict[str, float],
-    operator_busy_hours: Dict[str, float],
-    probe_only: bool = False,
-    resource_preparation: Any = None,
-    total_hours_by_op_id: Any = None,
-) -> Optional[Tuple[str, str]]:
-    attempt = auto_assign_internal_resources_attempt(
-        scheduler=scheduler,
-        calendar=calendar,
-        algo_stats=algo_stats,
-        op=op,
-        batch=batch,
-        batch_progress=batch_progress,
-        machine_timeline=machine_timeline,
-        operator_timeline=operator_timeline,
-        base_time=base_time,
-        end_dt_exclusive=end_dt_exclusive,
-        machine_downtimes=machine_downtimes,
-        resource_pool=resource_pool,
-        last_op_type_by_machine=last_op_type_by_machine,
-        machine_busy_hours=machine_busy_hours,
-        operator_busy_hours=operator_busy_hours,
-        probe_only=probe_only,
-        resource_preparation=resource_preparation,
-        total_hours_by_op_id=total_hours_by_op_id,
-    )
-    if attempt.machine_id and attempt.operator_id:
-        return attempt.machine_id, attempt.operator_id
-    return None
-
-
 def auto_assign_internal_resources_attempt(
-    scheduler: Any = None,
     *,
     calendar: Any = None,
     algo_stats: Any = None,
@@ -151,22 +104,16 @@ def auto_assign_internal_resources_attempt(
     machine_busy_hours: Dict[str, float],
     operator_busy_hours: Dict[str, float],
     probe_only: bool = False,
-    resource_preparation: Any = None,
+    resource_preparation: Any,
     total_hours_by_op_id: Any = None,
 ) -> AutoAssignAttempt:
-    calendar = calendar if calendar is not None else getattr(scheduler, "calendar", None)
-    stats_target = algo_stats if algo_stats is not None else scheduler
-    count = (lambda key: None) if probe_only else (lambda key: increment_counter(stats_target, key))
-    candidates = (resource_preparation.resource_candidates_for(op) if resource_preparation is not None
-                  else prepare_resource_candidates(op, resource_pool))
+    count = (lambda key: None) if probe_only else (lambda key: increment_counter(algo_stats, key))
+    candidates = resource_preparation.resource_candidates_for(op)
     for counter in candidates.counters:
         count(counter)
     if not candidates.machines:
         return AutoAssignAttempt(reason=candidates.reason)
-    if resource_preparation is None:
-        pool = candidates.pool
-        pool["pair_rank"] = dict(pool["pair_rank"])
-    elif resource_pool is resource_preparation.resource_pool:
+    if resource_pool is resource_preparation.resource_pool:
         pool = candidates.pool
     else:
         pool = _coerce_resource_pool(resource_pool)
@@ -194,7 +141,6 @@ def auto_assign_internal_resources_attempt(
         end_dt_exclusive=end_dt_exclusive,
         machine_downtimes=machine_downtimes,
         pool=pool,
-        fixed_operator=candidates.fixed_operator,
         machine_candidates=machine_candidates,
         total_hours_base=total_hours_base,
         last_op_type_by_machine=last_op_type_by_machine,
@@ -210,7 +156,7 @@ def qualified_resource_pairs(op: Any, resource_pool: Any) -> Tuple[Tuple[str, st
     return prepare_resource_candidates(op, resource_pool).pairs
 
 
-def _fixed_resource_inputs(op: Any) -> Tuple[str, str, str]:
+def fixed_resource_inputs(op: Any) -> Tuple[str, str, str]:
     return (
         str(getattr(op, "machine_id", None) or "").strip(),
         str(getattr(op, "operator_id", None) or "").strip(),
@@ -310,7 +256,7 @@ def _sort_machine_candidates(
         candidates,
         key=lambda mid: (
             0 if (current_type and (str(last_op_type_by_machine.get(mid) or "").strip() == current_type)) else 1,
-            float(machine_busy_hours.get(mid, 0.0) or 0.0),
+            machine_busy_hours.get(mid, 0.0),
             mid,
         ),
     )
@@ -328,14 +274,13 @@ def _choose_best_pair(
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     pool: Dict[str, Any],
-    fixed_operator: str,
     machine_candidates: List[str],
     total_hours_base: float,
     last_op_type_by_machine: Dict[str, str],
     machine_busy_hours: Dict[str, float],
     operator_busy_hours: Dict[str, float],
     count: Any,
-    static_candidates: Optional[ResourceCandidates] = None,
+    static_candidates: ResourceCandidates,
 ) -> AutoAssignAttempt:
     best: Optional[Tuple[Any, ...]] = None
     best_pair: Optional[Tuple[str, str]] = None
@@ -347,15 +292,13 @@ def _choose_best_pair(
     handoff = current_sgs_handoff()
     overlap_reuse = overlap_reuse_for(machine_timeline)
     for machine_id in machine_candidates:
-        operator_candidates = (static_candidates.operators_for_machine(machine_id) if static_candidates is not None
-                               else _operator_candidates_for_machine(machine_id, fixed_operator=fixed_operator, pool=pool,
-                                                                     op_type_id=str(getattr(op, "op_type_id", "") or "")))
+        operator_candidates = static_candidates.operators_for_machine(machine_id)
         if not operator_candidates:
             continue
         seen_operator = True
-        m_timeline = machine_timeline.get(machine_id) or []
+        m_timeline = machine_timeline.get(machine_id, [])
         m_downtimes = (machine_downtimes.get(machine_id) or []) if machine_downtimes and machine_id else []
-        m_busy = float(machine_busy_hours.get(machine_id, 0.0) or 0.0)
+        m_busy = machine_busy_hours.get(machine_id, 0.0)
         for operator_id in _sort_operator_candidates(operator_candidates, machine_id=machine_id, pool=pool, operator_busy_hours=operator_busy_hours):
             probe = _pair_score(
                 calendar=calendar,
@@ -368,9 +311,7 @@ def _choose_best_pair(
                 machine_timeline=machine_timeline,
                 operator_timeline=operator_timeline,
                 end_dt_exclusive=end_dt_exclusive,
-                machine_downtimes=machine_downtimes,
                 last_op_type_by_machine=last_op_type_by_machine,
-                machine_busy_hours=machine_busy_hours,
                 operator_busy_hours=operator_busy_hours,
                 total_hours_base=total_hours_base,
                 pool=pool,
@@ -438,7 +379,7 @@ def _sort_operator_candidates(
     pool: Dict[str, Any],
     operator_busy_hours: Dict[str, float],
 ) -> List[str]:
-    return sorted(candidates, key=lambda oid: (_pair_rank(pool, oid, machine_id), float(operator_busy_hours.get(oid, 0.0) or 0.0), oid))
+    return sorted(candidates, key=lambda oid: (_pair_rank(pool, oid, machine_id), operator_busy_hours.get(oid, 0.0), oid))
 
 
 def _pair_score(
@@ -453,28 +394,17 @@ def _pair_score(
     machine_timeline: Dict[str, List[Tuple[datetime, datetime]]],
     operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],
     end_dt_exclusive: Optional[datetime],
-    machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     last_op_type_by_machine: Dict[str, str],
-    machine_busy_hours: Dict[str, float],
     operator_busy_hours: Dict[str, float],
     total_hours_base: float,
     pool: Dict[str, Any],
     abort_after: Optional[datetime],
-    handoff: Any = None,
-    m_timeline: Optional[List[Tuple[datetime, datetime]]] = None,
-    m_downtimes: Optional[List[Tuple[datetime, datetime]]] = None,
-    m_busy: Optional[float] = None,
-    overlap_reuse: Optional[SlotOverlapReuse] = None,
+    handoff: Any,
+    m_timeline: List[Tuple[datetime, datetime]],
+    m_downtimes: List[Tuple[datetime, datetime]],
+    m_busy: float,
+    overlap_reuse: Optional[SlotOverlapReuse],
 ) -> _PairProbe:
-    if m_timeline is None:
-        m_timeline = machine_timeline.get(machine_id) or []
-        if overlap_reuse is None:
-            overlap_reuse = overlap_reuse_for(machine_timeline)
-    if m_downtimes is None:
-        m_downtimes = (machine_downtimes.get(machine_id) or []) if machine_downtimes and machine_id else []
-    if m_busy is None:
-        m_busy = float(machine_busy_hours.get(machine_id, 0.0) or 0.0)
-
     def estimate_pair(abort_at: Optional[datetime]):
         return estimate_internal_slot(
             calendar=calendar,
@@ -485,7 +415,7 @@ def _pair_score(
             base_time=base_time,
             prev_end=prev_end,
             machine_timeline=m_timeline,
-            operator_timeline=operator_timeline.get(operator_id) or [],
+            operator_timeline=operator_timeline.get(operator_id, []),
             end_dt_exclusive=end_dt_exclusive,
             machine_downtimes=m_downtimes,
             last_op_type_by_machine=last_op_type_by_machine,
@@ -509,9 +439,9 @@ def _pair_score(
         return _PairProbe(score=None, window_blocked=False)
     if estimate.blocked_by_window:
         return _PairProbe(score=None, window_blocked=True)
-    load_penalty = m_busy + float(operator_busy_hours.get(operator_id, 0.0) or 0.0)
+    load_penalty = m_busy + operator_busy_hours.get(operator_id, 0.0)
     return _PairProbe(
-        score=(estimate.end_time, int(estimate.changeover_penalty), float(load_penalty), _pair_rank(pool, operator_id, machine_id), machine_id, operator_id),
+        score=(estimate.end_time, estimate.changeover_penalty, load_penalty, _pair_rank(pool, operator_id, machine_id), machine_id, operator_id),
         window_blocked=False,
     )
 

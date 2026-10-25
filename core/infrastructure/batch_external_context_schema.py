@@ -2,7 +2,13 @@
 
 from core.infrastructure.workbench_metadata_schema import canonical_sql
 
-from .schema_structure import schema_objects
+from .schema_structure import SchemaStructure, schema_objects
+
+_COLUMNS = (
+    "operation_id", "part_no", "sequence", "template_operation_id", "template_status",
+    "group_id", "group_part_no", "start_sequence", "end_sequence", "merge_mode",
+    "total_days", "supplier_id", "group_ref", "template_operation_ref", "origin", "captured_at",
+)
 
 
 def capture_select(operation_sql, origin):
@@ -44,23 +50,28 @@ def objects():
 
 
 def contract_issues(conn, *, structure=None):
+    structure = structure or SchemaStructure(conn)
     actual = schema_objects(conn, structure=structure)
-    return [("missing_batch_external_context:" if name not in actual else "invalid_batch_external_context:") + name
-            for name, sql in objects().items()
-            if name not in actual or canonical_sql(sql) != canonical_sql(actual[name] or "")]
+    issues = [("missing_batch_external_context:" if name not in actual else "invalid_batch_external_context:") + name
+              for name, sql in objects().items()
+              if name not in actual or canonical_sql(sql) != canonical_sql(actual[name] or "")]
+    if "BatchExternalContexts" in actual and "invalid_batch_external_context:BatchExternalContexts" not in issues:
+        if tuple(col["name"] for col in structure.table_info("BatchExternalContexts")) != _COLUMNS:
+            issues.append("invalid_batch_external_context:BatchExternalContexts")
+    return issues
 
 
 def install(conn):
     if not conn.in_transaction:
         raise RuntimeError("Batch external context installation requires a migration transaction.")
+    structure = SchemaStructure(conn)
     definitions = objects()
-    names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
-    if names & set(definitions):
-        issues = contract_issues(conn)
+    if structure.objects.keys() & definitions.keys():
+        issues = contract_issues(conn, structure=structure)
         if issues:
             raise RuntimeError("Cannot repair partial batch external contexts: " + ";".join(issues))
         return
     for sql in definitions.values():
         conn.execute(sql)
     # This is the context visible at upgrade time, never claimed to be the context at birth.
-    conn.execute("INSERT INTO BatchExternalContexts " + capture_select("BatchOperations", "migration_v33"))
+    conn.execute("INSERT INTO BatchExternalContexts(" + ",".join(_COLUMNS) + ") " + capture_select("BatchOperations", "migration_v33"))

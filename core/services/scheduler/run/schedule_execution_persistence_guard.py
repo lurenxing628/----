@@ -11,7 +11,7 @@ from core.services.scheduler.execution.execution_ledger_guard import (
     fact_resource_segments,
 )
 
-from .schedule_input_contracts import _op_seq
+from .schedule_input_runtime_support import validate_completed_downstream_intervals
 from .schedule_input_seed_metadata import merged_external_group_identity, protected_interval_problem
 from .schedule_payload_contract import ValidatedSchedulePayload, ValidatedScheduleRow
 
@@ -33,22 +33,6 @@ def _resource_equal(left: Any, right: Any) -> bool:
 
 def _rows_by_op_id(payload: ValidatedSchedulePayload) -> Dict[int, ValidatedScheduleRow]:
     return {row.op_id: row for row in payload.schedule_rows}
-
-
-def _ops_by_id(operations: Optional[List[Any]]) -> Dict[int, Any]:
-    out: Dict[int, Any] = {}
-    for op in list(operations or []):
-        try:
-            op_id = int(getattr(op, "id", 0) or 0)
-        except (TypeError, ValueError):
-            continue
-        if op_id > 0:
-            out[int(op_id)] = op
-    return out
-
-
-def _op_batch_id(op: Any) -> str:
-    return str(getattr(op, "batch_id", "") or "").strip()
 
 
 def _validate_processing_seed_row(
@@ -112,43 +96,37 @@ def _raise_completed_downstream_conflict(*, op_id: int, completed_op_id: int) ->
         },
     )
 
+def _validate_completed_downstream_pair(completed_interval, row, *, completed_op_id, op_id, groups):
+    problem = protected_interval_problem(
+        completed_interval,
+        {"start_time": row.start_time, "end_time": row.end_time},
+        previous_group=groups.get(completed_op_id), current_group=groups.get(op_id))
+    if problem == "merged_group_split":
+        raise _execution_guard_conflict("同一个合并外协组的工序必须保持相同起止，本次没有写入新排程。",
+            reason="execution_merged_group_split", op_id=op_id)
+    if problem == "precedence_violation":
+        _raise_completed_downstream_conflict(op_id=op_id, completed_op_id=completed_op_id)
+
+
 def _validate_completed_downstream_constraints(*, rows, prepared):
-    operations = _ops_by_id(prepared.operations)
+    if not prepared.execution_completed_op_ids:
+        return
     groups = {op.id: merged_external_group_identity(op) for op in prepared.algo_ops}
-    by_batch, by_group = {}, {}
-    for op_id, op in operations.items():
-        if op_id not in rows:
-            continue
-        by_batch.setdefault(_op_batch_id(op), []).append((op_id, _op_seq(op)))
-        group = groups.get(op_id)
-        if group is not None:
-            by_group.setdefault(group, set()).add(op_id)
-    for completed_op_id in sorted(prepared.execution_completed_op_ids):
-        completed_op = operations.get(completed_op_id)
-        fact = prepared.execution_facts.get(completed_op_id)
-        if completed_op is None or fact is None or fact.actual_end_time is None:
-            continue
-        batch, sequence = _op_batch_id(completed_op), _op_seq(completed_op)
-        if not batch or sequence <= 0:
-            continue
-        downstream = {op_id for op_id, seq in by_batch.get(batch, ()) if seq > sequence}
-        group = groups.get(completed_op_id)
-        if group is not None:
-            downstream.update(by_group.get(group, ()))
-        downstream.discard(completed_op_id)
-        completed_row = rows[completed_op_id]
-        completed_interval = {"start_time": completed_row.start_time, "end_time": fact.actual_end_time}
-        for op_id in sorted(downstream):
-            row = rows[op_id]
-            problem = protected_interval_problem(
-                completed_interval,
-                {"start_time": row.start_time, "end_time": row.end_time},
-                previous_group=group, current_group=groups.get(op_id))
-            if problem == "merged_group_split":
-                raise _execution_guard_conflict("同一个合并外协组的工序必须保持相同起止，本次没有写入新排程。",
-                    reason="execution_merged_group_split", op_id=op_id)
-            if problem == "precedence_violation":
-                _raise_completed_downstream_conflict(op_id=op_id, completed_op_id=completed_op_id)
+    completed_intervals = {
+        completed_op_id: {
+            "start_time": rows[completed_op_id].start_time,
+            "end_time": prepared.execution_facts[completed_op_id].actual_end_time,
+        }
+        for completed_op_id in prepared.execution_completed_op_ids
+    }
+    validate_completed_downstream_intervals(
+        operations_in_scope=((op.batch_id, op.seq, op.id) for op in prepared.operations if op.id in rows),
+        groups=groups,
+        completed_intervals=completed_intervals,
+        validate_pair_fn=lambda completed_interval, op_id, *, completed_op_id: _validate_completed_downstream_pair(
+            completed_interval, rows[op_id], completed_op_id=completed_op_id, op_id=op_id, groups=groups
+        ),
+    )
 
 
 def validate_execution_guard_before_persist(prepared, *, validated_schedule_payload):
@@ -175,7 +153,7 @@ def validate_execution_guard_before_persist(prepared, *, validated_schedule_payl
     _validate_completed_downstream_constraints(rows=rows, prepared=prepared)
 
 
-def _validate_unselected_resource_overlap(*, payload, reservations, execution_facts=None):
+def _validate_unselected_resource_overlap(*, payload, reservations, execution_facts):
     if not reservations:
         return
     intervals = _schedule_resource_intervals(payload.schedule_rows, execution_facts)
@@ -187,14 +165,16 @@ def _validate_unselected_resource_overlap(*, payload, reservations, execution_fa
                 reason="unselected_execution_resource_overlap", op_id=reservation.op_id)
 
 
-def _schedule_resource_intervals(rows: List[ValidatedScheduleRow], execution_facts=None) -> Dict[Tuple[str, str], Tuple[List[datetime], List[datetime]]]:
+def _schedule_resource_intervals(rows: List[ValidatedScheduleRow], execution_facts) -> Dict[Tuple[str, str], Tuple[List[datetime], List[datetime]]]:
     grouped: Dict[Tuple[str, str], List[Tuple[datetime, datetime]]] = {}
     for row in rows:
-        fact = execution_facts.get(row.op_id) if execution_facts is not None else None
+        fact = execution_facts.get(row.op_id)
         segments = fact_resource_segments(fact) if fact is not None and row.source == "internal" else ()
         if not segments:
             segments = ((row.start_time, row.end_time, row.machine_id, row.operator_id),)
         for start, end, machine, operator in segments:
+            if start >= end:
+                continue
             for kind, resource in (("machine", machine), ("operator", operator)):
                 # Reservations name factory resource IDs; absent/external resources cannot match them.
                 if isinstance(resource, str):

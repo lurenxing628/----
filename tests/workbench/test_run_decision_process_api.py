@@ -12,7 +12,7 @@ from openpyxl import load_workbook
 
 from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
 from core.services.scheduler.summary.optimizer_public_attempts import COMPARISON_METRIC_KEYS, project_attempts
-from core.services.scheduler.summary.optimizer_public_summary import project_public_result_summary
+from core.services.scheduler.summary.optimizer_public_summary import project_public_algo_summary
 from core.services.workbench.facts.candidate_process import COUNT_KEYS, candidate_process
 from core.services.workbench.run.decision_process import (
     normalize_process_filters,
@@ -46,7 +46,7 @@ def expect_error(client, path, query, status, code):
 
 def process_source(rows, selected=None):
     run_ref = "a" * 48
-    source = SimpleNamespace(run={"run_ref": run_ref}, rows=rows, selected_ref=selected,
+    source = SimpleNamespace(run={"run_ref": run_ref}, rows=rows, selected_ref=selected, _process_projection=None,
         saved_process={"version": "decision-process-v1", "candidates": [candidate_process(row, rows) for row in rows]},
         scope={"run_ref": run_ref, "selected_candidate_ref": selected,
                "comparison_mode": "candidates", "reference": {"kind": "candidate", "candidate_ref": None}},
@@ -351,9 +351,9 @@ def test_legacy_attempts_keep_saved_indices_nulls_and_safe_public_fields():
     assert [point["score"] for point in points] == [[2, None, None], [1, None, None], [1, 0, 0], [0, 5.5, 1.25]]
     assert [point["evaluation_scope"] for point in points] == [None, None, None, {"incomplete_batch_ids": []}]
     assert projected["candidate"]["final_metrics"]["total_tardiness_hours"] == 0
-    ordinary = project_public_result_summary({"algo": {"attempts": attempts, "improvement_trace": scoped["artifact"]["improvement_trace"]}})
-    assert [item["score"] for item in ordinary["algo"]["attempts"]] == [point["score"] for point in points]
-    assert [item["score"] for item in ordinary["algo"]["improvement_trace"]] == [point["score"] for point in points]
+    ordinary, _diagnostics = project_public_algo_summary({"attempts": attempts, "improvement_trace": scoped["artifact"]["improvement_trace"]})
+    assert [item["score"] for item in ordinary["attempts"]] == [point["score"] for point in points]
+    assert [item["score"] for item in ordinary["improvement_trace"]] == [point["score"] for point in points]
 
     graph = deepcopy(row)
     origins = ("graph_ready_v2_generated", "graph_ready_v2_repaired", "graph_ready_v2_iterated_greedy")
@@ -369,8 +369,8 @@ def test_legacy_attempts_keep_saved_indices_nulls_and_safe_public_fields():
     assert all(item[key] is None for item in graph_projection["attempts"] for key in ("elapsed_ms", "event_index", "accepted", "verified", "strict_improved", "comparison"))
     public_attempts, _diagnostics = project_attempts(graph_attempts)
     assert project_attempts(public_attempts)[0] == public_attempts
-    summary = project_public_result_summary({"algo": {"attempts": public_attempts}})
-    assert summary["algo"]["attempts"] == public_attempts
+    summary, _diagnostics = project_public_algo_summary({"attempts": public_attempts})
+    assert summary["attempts"] == public_attempts
 
     # Freeze the recorded object and decisions; comparison is independent of representative rank.
     metrics = {"failed_ops": 0, "overdue_count": 1, "weighted_tardiness_hours": 1.5, "total_tardiness_hours": 1.5,
@@ -402,10 +402,10 @@ def test_legacy_attempts_keep_saved_indices_nulls_and_safe_public_fields():
     assert facts[2]["comparison"]["metric_deltas"]["total_tardiness_hours"] == -1.0
     assert "PRIVATE" not in json.dumps(facts)
     public(facts)
-    ordinary = project_public_result_summary({"algo": {"attempts": graph_attempts}})
-    repeated = project_public_result_summary(ordinary)
+    ordinary, _diagnostics = project_public_algo_summary({"attempts": graph_attempts})
+    repeated, _diagnostics = project_public_algo_summary(ordinary)
     assert ordinary == repeated
-    assert ordinary["algo"]["attempts"][1]["comparison"] == comparator
+    assert ordinary["attempts"][1]["comparison"] == comparator
 
 
     # Old archives keep 27 actual saved events; their immutable projection is the reader input.

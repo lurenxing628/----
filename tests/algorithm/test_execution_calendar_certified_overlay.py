@@ -8,7 +8,7 @@ import pytest
 
 from core.algorithm_runtime.calendar_timing_memo import native_timing_calendar
 from core.algorithms.greedy import scheduler as scheduler_module
-from core.algorithms.greedy.dispatch.sgs_graph import _graph_priority_key_map
+from core.algorithms.greedy.dispatch.sgs_graph import graph_priority_key_map
 from core.algorithms.greedy.dispatch.sgs_priority_frontier import make_priority_queue
 from core.algorithms.greedy.dispatch.sgs_priority_pruning import GraphPriorityPruning
 from core.errors import ValidationError
@@ -187,7 +187,7 @@ def test_priority_pruning_reuses_admission_and_preserves_raw_key_checks(admitted
     case = _saturated_case(batch_count=4, ops_per_batch=1)
     keys = {op.id: (float((op.id - 1) // 2), 0.0) for op in case["operations"]}
     if admitted:
-        keys = _graph_priority_key_map(keys, schedulable_ids=set(keys))
+        keys = graph_priority_key_map(keys, schedulable_ids=set(keys))
     case["graph_ready_context"]["graph_priority_key_by_op_id"] = keys
     checks, original = [], GraphPriorityPruning._key_valid
 
@@ -212,7 +212,7 @@ def test_priority_pruning_reuses_admission_and_preserves_raw_key_checks(admitted
 
 def test_priority_pruning_requires_uniform_admitted_key_width():
     case = _saturated_case(batch_count=2, ops_per_batch=1)
-    case["graph_ready_context"]["graph_priority_key_by_op_id"] = _graph_priority_key_map(
+    case["graph_ready_context"]["graph_priority_key_by_op_id"] = graph_priority_key_map(
         {1: (0.0,), 2: (1.0, 0.0)}, schedulable_ids={1, 2},
     )
     with native_calendar() as calendar:

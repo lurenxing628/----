@@ -5,12 +5,12 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_runtime.dispatch_context import DispatchContextContractError
-from core.algorithm_runtime.piece_input import operation_batch, operation_dispatch_state
+from core.algorithm_runtime.piece_input import operation_dispatch_state
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.errors import ValidationError
 
-from .batch_order import _schedule_op
-from .sgs_graph import _apply_graph_failure_bookkeeping, _mark_graph_operation_completed, _op_id
+from .batch_order import schedule_op
+from .sgs_graph import apply_graph_failure_bookkeeping, graph_op_id, mark_graph_operation_completed
 
 
 def _dispatch_selected(
@@ -28,11 +28,12 @@ def _dispatch_selected(
     strict_mode: bool,
     graph_state: Optional[Dict[str, Any]] = None,
 ) -> None:
+    from .sgs import resolve_operation_batch
+
     try:
-        preparation = getattr(ctx, "native_preparation", None)
-        batch = (preparation.operation_batch(op, batches[batch_id]) if preparation is not None
-                 else operation_batch(op, batches[batch_id]))
-        result, _blocked = _schedule_op(
+        batch = resolve_operation_batch(ctx, op, batches[batch_id])
+        errors_before = len(state.errors)
+        result, _blocked = schedule_op(
             ctx,
             op=op,
             batch=batch,
@@ -46,12 +47,12 @@ def _dispatch_selected(
         )
         if result and result.start_time and result.end_time:
             state.record_dispatch_success(result)
-            next_idx[batch_id] = next_idx.get(batch_id, 0) + 1
+            next_idx[batch_id] += 1
             if graph_state is not None:
-                op_id = _op_id(op)
+                op_id = graph_op_id(op)
                 if "end_time_by_op_id" in graph_state:
                     graph_state["end_time_by_op_id"][op_id] = result.end_time
-                _mark_graph_operation_completed(graph_state, op_id)
+                mark_graph_operation_completed(graph_state, op_id)
         else:
             extra_failed_count = 0
             if graph_state is None:
@@ -59,11 +60,11 @@ def _dispatch_selected(
                 skipped_ops = _remaining_ops_after(batch_id, next_idx, ops_by_batch)
             else:
                 # 图模式：派工顺序跟随图链而非列表位置，被牵连集合按图状态推导（审计 A04）。
-                skipped_ops, extra_failed_count = _apply_graph_failure_bookkeeping(
+                skipped_ops, extra_failed_count = apply_graph_failure_bookkeeping(
                     state,
                     graph_state=graph_state,
                     batch_id=batch_id,
-                    failed_op_id=_op_id(op),
+                    failed_op_id=graph_op_id(op),
                     ops_by_batch=ops_by_batch,
                 )
             state.record_dispatch_failure(
@@ -72,6 +73,7 @@ def _dispatch_selected(
                 remaining_failed=len(skipped_ops) + extra_failed_count,
                 failed_op=op,
                 skipped_ops=skipped_ops,
+                error_message=(state.errors[-1] if len(state.errors) > errors_before else ""),
             )
     except (ValidationError, DispatchContextContractError):
         raise
@@ -81,23 +83,19 @@ def _dispatch_selected(
         if graph_state is None:
             skipped_ops = _remaining_ops_after(batch_id, next_idx, ops_by_batch)
         else:
-            skipped_ops, extra_failed_count = _apply_graph_failure_bookkeeping(
+            skipped_ops, extra_failed_count = apply_graph_failure_bookkeeping(
                 state,
                 graph_state=graph_state,
                 batch_id=batch_id,
-                failed_op_id=_op_id(op),
+                failed_op_id=graph_op_id(op),
                 ops_by_batch=ops_by_batch,
             )
         for skipped_op in skipped_ops:
             state.record_skipped_after_batch_failure(skipped_op, batch_id)
         state.failed_count += extra_failed_count
-        op_code = state._safe_text_attr(op, "op_code", "-") or "-"
-        ctx.log_exception(f"工序 {op_code} 排产异常")
+        ctx.log_exception(f"工序 {op.op_code} 排产异常")
         state.blocked_batches.add(batch_id)
 
 
 def _remaining_ops_after(batch_id: str, next_idx: Dict[str, int], ops_by_batch: Dict[str, List[Any]]) -> List[Any]:
-    operations = ops_by_batch.get(batch_id)
-    if not operations:
-        return []
-    return operations[next_idx.get(batch_id, 0) + 1 :]
+    return ops_by_batch[batch_id][next_idx[batch_id] + 1 :]

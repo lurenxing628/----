@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional, cast
 
 from core.errors import AppError, ErrorCode
 from core.models import ScheduleHistory
@@ -12,26 +11,17 @@ from .base_repo import BaseRepository, strict_non_negative_int
 class ScheduleHistoryRepository(BaseRepository):
     """排产历史仓库（ScheduleHistory）。"""
 
-    def list_recent(self, limit: int = 20) -> List[ScheduleHistory]:
-        rows = self.fetchall(
-            "SELECT id, schedule_time, version, strategy, batch_count, op_count, result_status, result_summary, created_by FROM ScheduleHistory ORDER BY id DESC LIMIT ?",
-            (int(limit),),
-        )
-        return [ScheduleHistory.from_row(r) for r in rows]
-
     def get_by_version(self, version: int) -> Optional[ScheduleHistory]:
         row = self.fetchone(
             "SELECT id, schedule_time, version, strategy, batch_count, op_count, result_status, result_summary, created_by FROM ScheduleHistory WHERE version = ? ORDER BY id DESC LIMIT 1",
-            (int(version),),
+            (version,),
         )
         return ScheduleHistory.from_row(row) if row else None
 
     def get_latest_version(self) -> int:
         try:
-            val = self.fetchvalue("SELECT COALESCE(MAX(version), 0) FROM ScheduleHistory", default=0)
+            val = self.fetchvalue("SELECT COALESCE(MAX(version), 0) FROM ScheduleHistory")
             latest = strict_non_negative_int(val, field="latest schedule version")
-        except AppError:
-            raise
         except (TypeError, ValueError) as exc:
             raise AppError(ErrorCode.DB_QUERY_ERROR, "读取最新排产版本失败，请查看日志。", cause=exc) from exc
         return latest
@@ -45,67 +35,19 @@ class ScheduleHistoryRepository(BaseRepository):
         - 对齐：确保序列表不会落后于 `ScheduleHistory.max(version)`（兼容老库/从旧版本升级）
         - 允许版本号出现“跳号”（例如落库失败/回滚）；但保证不会复用
         """
-        conn = self.conn
-        try:
-            # 兜底：即使 schema.sql 未执行到，也能按需创建（幂等）
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS ScheduleVersionSeq (
-                    version INTEGER PRIMARY KEY AUTOINCREMENT
-                )
-                """
+        max_history = int(self.fetchvalue("SELECT COALESCE(MAX(version), 0) FROM ScheduleHistory"))
+        max_seq = int(self.fetchvalue("SELECT COALESCE(MAX(version), 0) FROM ScheduleVersionSeq"))
+
+        baseline = max(max_history, max_seq)
+        if baseline > 0 and baseline > max_seq:
+            # 插入 baseline 作为“对齐锚点”，让下一次 DEFAULT VALUES 返回 baseline+1
+            self.execute(
+                "INSERT OR IGNORE INTO ScheduleVersionSeq(version) VALUES (?)",
+                (baseline,),
             )
 
-            # 计算对齐基线：取历史最大版本号 与 序列表最大值 的较大者
-            row_h = conn.execute("SELECT COALESCE(MAX(version), 0) FROM ScheduleHistory").fetchone()
-            max_history = int((row_h[0] if row_h else 0) or 0)
-            row_s = conn.execute("SELECT COALESCE(MAX(version), 0) FROM ScheduleVersionSeq").fetchone()
-            max_seq = int((row_s[0] if row_s else 0) or 0)
-
-            baseline = int(max(max_history, max_seq))
-            if baseline > 0 and baseline > max_seq:
-                # 插入 baseline 作为“对齐锚点”，让下一次 DEFAULT VALUES 返回 baseline+1
-                conn.execute(
-                    "INSERT OR IGNORE INTO ScheduleVersionSeq(version) VALUES (?)",
-                    (int(baseline),),
-                )
-
-            cur = conn.execute("INSERT INTO ScheduleVersionSeq DEFAULT VALUES")
-            v = int(cur.lastrowid or 0)
-
-            if int(v) <= 0:
-                raise RuntimeError(f"allocate_next_version 返回非法版本号：{v!r}")
-            return int(v)
-        except Exception as e:
-            if self.logger:
-                try:
-                    self.logger.error(f"分配排产版本号失败：{e}", exc_info=True)
-                except Exception as log_exc:
-                    print(f"排产版本号错误日志写入失败：{log_exc}", file=sys.stderr)
-            raise AppError(ErrorCode.DB_QUERY_ERROR, "分配排产版本号失败，请查看日志。", cause=e) from e
-
-    def list_versions(self, limit: int = 30) -> List[Dict[str, Any]]:
-        """
-        返回最近版本列表（去重），用于页面下拉选择。
-        """
-        # 注意：strategy/result_status 不能用 MAX(text)（会变成字典序），需要取“最新一条记录”的值。
-        rows = self.fetchall(
-            """
-            SELECT h.version, h.schedule_time, h.strategy, h.result_status, h.result_summary
-            FROM ScheduleHistory h
-            WHERE h.id = (
-                SELECT h2.id
-                FROM ScheduleHistory h2
-                WHERE h2.version = h.version
-                ORDER BY h2.schedule_time DESC, h2.id DESC
-                LIMIT 1
-            )
-            ORDER BY h.version DESC
-            LIMIT ?
-            """,
-            (int(limit),),
-        )
-        return rows
+        cur = self.execute("INSERT INTO ScheduleVersionSeq DEFAULT VALUES")
+        return cast(int, cur.lastrowid)
 
     def create(self, payload: Dict[str, Any]) -> None:
         self.execute(
@@ -115,12 +57,12 @@ class ScheduleHistoryRepository(BaseRepository):
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                int(payload.get("version") or 1),
-                payload.get("strategy"),
-                payload.get("batch_count"),
-                payload.get("op_count"),
-                payload.get("result_status"),
-                payload.get("result_summary"),
-                payload.get("created_by"),
+                payload["version"],
+                payload["strategy"],
+                payload["batch_count"],
+                payload["op_count"],
+                payload["result_status"],
+                payload["result_summary"],
+                payload["created_by"],
             ),
         )

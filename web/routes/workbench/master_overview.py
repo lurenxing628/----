@@ -85,14 +85,13 @@ def master_overview_locate(domain, ref):
 @api_endpoint
 def master_overview_export():
     scope, token = _request(require_snapshot=True)
-    assert token is not None
     reader = MasterOverviewService(g.db)
     with reader.read_snapshot() as state:
         snapshot = _current_snapshot(scope.scope(), token, state)
         content, count = reader.csv(scope)
     filename = "基础资料待维护项.csv" if scope.view == "issues" else "基础资料清单.csv"
     response = Response(content, content_type="text/csv; charset=utf-8")
-    response.headers.update({"Cache-Control": "no-store", "X-Workbench-Snapshot-Ref": token,
+    response.headers.update({"Cache-Control": "no-store", "X-Workbench-Snapshot-Ref": snapshot["snapshot_ref"],
                              "X-Workbench-Row-Count": str(count), "X-Workbench-As-Of": snapshot["as_of"], "Content-Disposition": "attachment; filename*=UTF-8''" + quote(filename)})
     return response
 

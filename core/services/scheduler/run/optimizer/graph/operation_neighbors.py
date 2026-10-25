@@ -10,6 +10,8 @@ from datetime import datetime
 from itertools import chain, zip_longest
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
+from core.algorithm_contracts.changeover_events import type_transition
+
 from .repair_decisions import RepairDecision, RepairParentPreparation
 
 
@@ -24,7 +26,7 @@ def operation_repair_decisions(
         latest_end_time=prepared_parent.latest_end_time)
     for kind, decision_order in _bounded_operation_orders(
             prepared_parent.operation_order, prepared_parent.operation_ranks, prepared_parent.predecessors, moves, limit):
-        yield kind, RepairDecision(batch_order, decision_order, prepared_parent.inherited_resources)
+        yield kind, RepairDecision._unvalidated(batch_order, decision_order, prepared_parent.inherited_resources)
 
 
 def _bounded_operation_orders(
@@ -38,8 +40,7 @@ def _bounded_operation_orders(
     inspected = 0
     moves = iter(moves)
     while emitted < limit and inspected < limit * 4:
-        # Rejected DAG moves cost O(nodes + edges), too. Bound attempts as well
-        # as outputs; a long precedence chain must not trigger quadratic probes.
+        # Bound attempts as well as outputs; a long precedence chain must not trigger quadratic probes.
         try:
             kind, source, target = next(moves)
         except StopIteration:
@@ -51,11 +52,18 @@ def _bounded_operation_orders(
         if source not in ranks or target not in ranks or source == target:
             continue
         src_idx, tgt_idx = ranks[source], ranks[target]
-        changed = list(order)
-        changed.pop(src_idx)
-        changed.insert(tgt_idx - int(src_idx < tgt_idx), source)
-        decision_order = tuple(changed)
-        if decision_order in seen or not _is_topological(decision_order, predecessors):
+        insert_idx = tgt_idx - int(src_idx < tgt_idx)
+        if insert_idx == src_idx:
+            continue
+        if insert_idx < src_idx:
+            if any(ranks.get(parent, -1) >= insert_idx for parent in predecessors.get(source, ())):
+                continue
+            decision_order = order[:insert_idx] + (source,) + order[insert_idx:src_idx] + order[src_idx + 1:]
+        else:
+            if any(source in predecessors.get(order[idx], ()) for idx in range(src_idx + 1, insert_idx + 1)):
+                continue
+            decision_order = order[:src_idx] + order[src_idx + 1:insert_idx + 1] + (source,) + order[insert_idx + 1:]
+        if decision_order in seen:
             continue
         seen.add(decision_order)
         emitted += 1
@@ -91,8 +99,16 @@ def _is_critical_block_pair(left: Any, right: Any, ids: Tuple[int, int], metrics
                             latest: datetime, objective_name: str) -> bool:
     touches = left.end_time == right.start_time
     critical_signal = any(bool(metrics[op_id].get("is_on_critical_path")) for op_id in ids)
-    changeover_signal = objective_name == "min_changeover" and (
-        str(getattr(left, "op_type_name", "") or "").strip() != str(getattr(right, "op_type_name", "") or "").strip())
+    same_machine = bool(getattr(left, "machine_id", None)) and (
+        getattr(left, "machine_id", None) == getattr(right, "machine_id", None)
+    )
+    nonzero_duration = left.start_time < left.end_time and right.start_time < right.end_time
+    changeover_signal = (
+        objective_name == "min_changeover"
+        and same_machine
+        and nonzero_duration
+        and type_transition(left.op_type_id, right.op_type_id, ids[0], ids[1]) == 1
+    )
     return touches and (critical_signal or right.end_time == latest or changeover_signal)
 
 
@@ -116,8 +132,3 @@ def _target_priority(row: Any, metric: Dict[str, Any], start_dt: datetime, objec
     if objective_name == "min_weighted_tardiness":
         return (-float(metric.get("weighted_due_pressure", metric.get("due_pressure", 0.0))), -tardy, int(row.op_id))
     return (-tardy, -float(metric.get("due_pressure", 0.0)), -finish, int(row.op_id))
-
-
-def _is_topological(order: Tuple[int, ...], predecessors: Dict[int, set]) -> bool:
-    positions = {op_id: index for index, op_id in enumerate(order)}
-    return all(positions[parent] < positions[op_id] for op_id, parents in predecessors.items() for parent in parents)

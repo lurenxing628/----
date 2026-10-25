@@ -130,5 +130,5 @@
     if (column === 'status') return statuses[item.status];
     return value(item[column]);
   }
-  window.APSMasterOverviewContract = { domains, statuses, defaults, columns, scope, target, list, detail, value, cell, ref, issueKey, fail, canonical };
+  window.APSMasterOverviewContract = { domains, statuses, columns, scope, target, list, detail, value, cell, ref, issueKey, fail, canonical };
 })();

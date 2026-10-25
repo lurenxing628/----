@@ -3,7 +3,7 @@
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_commands import process_number
-from core.models.workbench_process_file import COLUMNS, INT64_MAX
+from core.models.workbench_process_file import INT64_MAX
 
 from .part_actions_facts import plain_part_action_facts as _plain
 from .projection import public_sequence
@@ -12,8 +12,6 @@ HOURS_FIELDS = ("setup_hours", "unit_hours", "external_days", "group_total_days"
 
 
 def supplied_values(values):
-    if type(values) is not dict or set(values) - set(COLUMNS["hours"]):
-        raise ValidationError("工时文件里有认不出的列。请下载模板对照后重新导入。", field="input")
     # The codec omits empty cells. Also retain this contract for direct callers.
     return {key: value for key, value in values.items() if value != ""}
 
@@ -67,12 +65,20 @@ def hours_values(values, operation, group):
         if field not in applicable:
             if value is not None:
                 raise ValidationError("这一列不适用于当前归属或现有外协组，请核对列值。", field=field)
-        elif field == "external_days" and value is None and merged:
-            result[field] = None
-        else:
-            # Keep exactly the same finite/nonnegative/positive rules as stage input.
-            try:
-                result[field] = process_number(value, positive=field in ("external_days", "group_total_days"))
-            except WorkbenchCommandRejected as exc:
-                raise ValidationError(str(exc), field=field) from exc
+            continue
+        # 与工序确认同一规则：合并组成员按外协段总周期排产，逐序旧周期不生效、原样保留，
+        # 留空或填原值都不写入；保留的旧值可能本就不合法，不能再当有效输入。
+        member_cycle = field == "external_days" and merged
+        if member_cycle and value is None:
+            continue
+        # Keep exactly the same finite/nonnegative/positive rules as stage input.
+        try:
+            number = process_number(value, positive=field in ("external_days", "group_total_days"))
+        except WorkbenchCommandRejected as exc:
+            raise ValidationError(str(exc), field=field) from exc
+        if member_cycle:
+            if number != operation["ext_days"]:
+                raise ValidationError("这道工序使用外协段总周期，请修改合并周期；不能单独改逐序外协周期。", field=field)
+            continue
+        result[field] = number
     return result

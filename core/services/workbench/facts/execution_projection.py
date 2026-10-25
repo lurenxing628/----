@@ -3,8 +3,6 @@
 from dataclasses import replace
 from typing import Any, Callable, Dict, Iterable, Optional, Protocol
 
-from core.models.content import content_text
-
 # 报工状态、完成依据与资料完整性的用户显示值只有这一份，导出和下载都从这里取。
 # 词表决策：.codestable/compound/2026-09-13-decision-ui-copy-glossary.md。
 EXECUTION_STATE_TEXT = {"unreported": "待报工", "started": "已开工", "partial": "部分完成",
@@ -24,7 +22,6 @@ def attach_context(projection, factory: Optional[ExecutionContextFactory], snaps
                     projection.plan_identity["capabilities"]["report_actual"] and projection.data_quality != "invalid")
     if factory is None or not writable:
         return projection
-    snapshot = snapshot if isinstance(snapshot, str) else content_text(snapshot)
     issue_context = factory.for_snapshot(snapshot)
     reports = [replace(report, write_context=issue_context(report.report_ref, ["supplement", "correct", "report_void"]))
                for report in projection.reports]

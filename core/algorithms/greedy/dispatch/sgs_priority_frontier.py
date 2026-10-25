@@ -15,6 +15,7 @@ class PriorityReadyQueue:
         self.queued = set(graph["ready_op_ids"])
         self.heap = [(self.keys[op_id], op_id) for op_id in self.queued]
         heapq.heapify(self.heap)
+        self.penalized = False
 
     def head(self, blocked_batches):
         if not self.pruning.intact():
@@ -25,7 +26,12 @@ class PriorityReadyQueue:
             if op_id in self.graph["ready_op_ids"] and batch_id not in blocked_batches:
                 return [(batch_id, op)]
             heapq.heappop(self.heap)
-        return []
+        return None if self.penalized else []
+
+    def pop_penalized(self):
+        self.penalized = True
+        if self.heap:
+            heapq.heappop(self.heap)
 
     def after_pick(self, op_id):
         for successor in self.graph["successor_op_ids_by_op_id"].get(op_id, ()):
@@ -53,6 +59,7 @@ def score_next_ready(queue, *, collect, score, native, blocked_batches, cache):
     scored = score(candidates)
     if narrowed:
         if not any(row[0][0] == 0.0 for row in scored):
+            queue.pop_penalized()
             return score(collect())
         cache.graph_candidates_pruned += max(len(queue.graph["ready_op_ids"]) - len(candidates), 0)
     return scored

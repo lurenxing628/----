@@ -3,8 +3,8 @@
 全批次循环按 finish 与 due_exclusive 的关系两侧切分（严格互斥、零重叠）：
 finish >= due_exclusive 为超期；落在 [due_exclusive - 临期窗口, due_exclusive) 为临期（卡交期、未超期）；
 更早完工（缓冲 > 临期窗口）则健康、跳过。产出 (overdue_items, meta)，meta 含 near_due_items + 坏交期记账——
-二元返回形状不变（临期走 meta，保 build_overdue_items 公开解包契约）。
-由 summary_runtime_state.build_overdue_items 注入 due_exclusive / append_summary_warning 后调用。
+二元返回形状不变（临期走 meta，保 _build_overdue_items 解包契约）。
+由 summary_runtime_state._build_runtime_state 注入 append_summary_warning 后调用，交期统一由算法求值入口解析。
 
 排产未完成口径（audit 2026-07-20 A18）：有失败/跳过工序明细且已有部分完工结果的批次，
 finish_by_batch 里的值是被失败截断的部分完工时间，按它做超期/临期分类会把半途失败批次
@@ -17,6 +17,9 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+from core.algorithm_contracts.types import ScheduleResult
+from core.algorithms.evaluation_completion import parse_due_exclusive_datetime
+from core.models.batch import Batch
 from core.services.common.normalize import normalize_text
 from core.shared.local_datetime import format_local_datetime as fmt_dt
 
@@ -36,7 +39,7 @@ def incomplete_batch_ids_from_failure_details(
     unscheduled"未形成完工结果"口径；此集合专圈"部分成功后失败截断"的批次。
     """
     incomplete: Set[str] = set()
-    for detail in list(failure_details or []):
+    for detail in failure_details or ():
         if not isinstance(detail, dict):
             continue
         batch_id = str(detail.get("batch_id") or "").strip()
@@ -45,10 +48,12 @@ def incomplete_batch_ids_from_failure_details(
     return incomplete
 
 
-def _scheduled_op_count_by_batch(results: List[Any], incomplete_batch_ids: Set[str]) -> Dict[str, int]:
+def _scheduled_op_count_by_batch(
+    results: List[ScheduleResult], incomplete_batch_ids: Set[str]
+) -> Dict[str, int]:
     counts: Dict[str, int] = {}
-    for result in list(results or []):
-        batch_id = str(getattr(result, "batch_id", "") or "").strip()
+    for result in results:
+        batch_id = result.batch_id.strip()
         if batch_id in incomplete_batch_ids:
             counts[batch_id] = counts.get(batch_id, 0) + 1
     return counts
@@ -61,7 +66,7 @@ def _failure_stats_by_batch(
     """按批次聚合失败明细：失败/跳过工序数 + 首条失败原因 code（按明细顺序即派工顺序）。"""
     failed_count_by_batch: Dict[str, int] = {}
     first_reason_by_batch: Dict[str, str] = {}
-    for detail in list(failure_details or []):
+    for detail in failure_details or ():
         if not isinstance(detail, dict):
             continue
         batch_id = str(detail.get("batch_id") or "").strip()
@@ -77,9 +82,9 @@ def _failure_stats_by_batch(
 def build_incomplete_batch_items(
     *,
     incomplete_batch_ids: Set[str],
-    batches: Dict[str, Any],
+    batches: Dict[str, Batch],
     finish_by_batch: Dict[str, datetime],
-    results: List[Any],
+    results: List[ScheduleResult],
     failure_details: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
     """构造"排产未完成"风险清单 items（按 batch_id 排序，带原因与已排/未排工序数）。
@@ -95,7 +100,7 @@ def build_incomplete_batch_items(
     items: List[Dict[str, Any]] = []
     for batch_id in sorted(incomplete_batch_ids):
         batch = batches.get(batch_id)
-        due_text = normalize_text(getattr(batch, "due_date", None)) if batch is not None else None
+        due_text = normalize_text(batch.due_date) if batch is not None else None
         finish_time = finish_by_batch.get(batch_id)
         items.append(
             {
@@ -114,24 +119,21 @@ def incomplete_batches_payload(
     *,
     failure_details: Any,
     finish_by_batch: Dict[str, datetime],
-    batches: Dict[str, Any],
-    results: List[Any],
-    incomplete_batch_ids: Optional[Set[str]] = None,
+    batches: Dict[str, Batch],
+    results: List[ScheduleResult],
+    incomplete_batch_ids: Set[str],
 ) -> Dict[str, Any]:
     """result_summary["incomplete_batches"] 桶：排产未完成批次风险清单。
 
     与 summary_runtime_state 的超期/临期排除口径同源（同一 incomplete 集合推导）。
     items 上限 50 条防摘要膨胀，count 为全量。
     """
-    details = [item for item in list(failure_details or []) if isinstance(item, dict)]
-    if incomplete_batch_ids is None:
-        incomplete_batch_ids = incomplete_batch_ids_from_failure_details(details, finish_by_batch)
     items = build_incomplete_batch_items(
         incomplete_batch_ids=incomplete_batch_ids,
         batches=batches,
         finish_by_batch=finish_by_batch,
         results=results,
-        failure_details=details,
+        failure_details=failure_details,
     )
     return {"count": len(items), "items": items[:50]}
 
@@ -154,7 +156,6 @@ def _build_overdue_items(
     batches: Dict[str, Any],
     finish_by_batch: Dict[str, datetime],
     summary: Any,
-    due_exclusive_fn: Callable[[Any], datetime],
     append_summary_warning_fn: Callable[[Any, str], bool],
     incomplete_batch_ids: Optional[Set[str]] = None,
     logger: Any = None,
@@ -167,12 +168,8 @@ def _build_overdue_items(
     excluded_incomplete = incomplete_batch_ids or set()
 
     for batch_id, batch in batches.items():
-        due_text = normalize_text(getattr(batch, "due_date", None))
-        if not due_text:
-            continue
-        try:
-            due_date = datetime.strptime(due_text.replace("/", "-"), "%Y-%m-%d").date()
-        except Exception:
+        due_exclusive, due_text, due_invalid = parse_due_exclusive_datetime(batch.due_date)
+        if due_invalid:
             invalid_due_count += 1
             _record_invalid_due(
                 batch_id=str(batch_id),
@@ -180,6 +177,8 @@ def _build_overdue_items(
                 invalid_due_ids_sample=invalid_due_ids_sample,
                 invalid_due_raw_sample=invalid_due_raw_sample,
             )
+            continue
+        if due_exclusive is None:
             continue
 
         finish_time = finish_by_batch.get(str(batch_id))
@@ -191,7 +190,6 @@ def _build_overdue_items(
             continue
         # 同一交期口径的两侧（严格互斥、零重叠）：finish >= due_exclusive 为超期；
         # 落在 [due_exclusive - 临期窗口, due_exclusive) 为临期；更早完工则健康、跳过。
-        due_exclusive = due_exclusive_fn(due_date)
         if finish_time >= due_exclusive:
             target = overdue_items
         elif finish_time >= due_exclusive - _NEAR_DUE_DELTA:

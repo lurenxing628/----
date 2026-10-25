@@ -77,7 +77,7 @@ class WorkbenchOutsourcingService:
 
     def _entry(self, ref, now):
         header, latest = self.header(ref), self.latest(ref)
-        return self.entry_from_facts(header, latest, now)
+        return self.entry_from_facts(header, latest, now, sources=self.sources.capture([header["target"]]))
 
     def capture_receipts(self, batch_ref=None) -> Dict[str, CapturedReceiptFacts]:
         captured = self.repo.receipt_facts(self.refs(batch_ref))
@@ -85,11 +85,11 @@ class WorkbenchOutsourcingService:
             rows["header"] = self.header_from_row(rows["header"])
         return cast(Dict[str, CapturedReceiptFacts], captured)
 
-    def entry_from_facts(self, header, latest, now, *, sources=None):
+    def entry_from_facts(self, header, latest, now, *, sources):
         """Resolve a receipt from header/latest already admitted in the caller's snapshot."""
         source, issues, state = None, [], "current"
         try:
-            source = (self.sources if sources is None else sources).load(header["target"])
+            source = sources.load(header["target"])
             if source["identity"] != header["identity"]:
                 state = "identity_drift"
                 issues = [{"code": "identity_drift", "message": "原登记的工序或所属批次已变化，请重新核对。"}]

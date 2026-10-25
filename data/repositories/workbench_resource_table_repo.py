@@ -3,19 +3,19 @@
 from collections import defaultdict
 
 from .base_repo import BaseRepository
-from .workbench_resource_dependencies import DEPENDENCIES
+from .workbench_resource_dependencies import DEPENDENCIES, report_revision_rows
 from .workbench_resource_state_repo import RESOURCE_KEYS
 
 _RESOURCE_TABLES = dict(RESOURCE_KEYS, supplier=("Suppliers", "supplier_id"))
 _RELATION_TABLES = {
-    "groups": ("WorkbenchMachineGroupMembers", ("machine_id", "group_id"), ("machine_id",)),
-    "operator_profiles": ("WorkbenchOperatorProfiles", ("operator_id", "shift_profile_id"), ("operator_id",)),
-    "supplier_profiles": ("WorkbenchSupplierProfiles", ("supplier_id",), ("supplier_id",)),
-    "policies": ("WorkbenchOpTypePolicies", ("op_type_id",), ("op_type_id",)),
-    "skills": ("OperatorSkill", ("operator_id",), ("operator_id", "op_type_id")),
-    "authorizations": ("OperatorMachine", ("operator_id", "machine_id"), ("operator_id", "machine_id")),
-    "machine_capabilities": ("MachineOpTypes", ("machine_id",), ("machine_id", "op_type_id")),
-    "capabilities": ("WorkbenchSupplierOpTypes", ("supplier_id",), ("supplier_id", "op_type_id")),
+    "groups": ("WorkbenchMachineGroupMembers", ("machine_id",)),
+    "operator_profiles": ("WorkbenchOperatorProfiles", ("operator_id",)),
+    "supplier_profiles": ("WorkbenchSupplierProfiles", ("supplier_id",)),
+    "policies": ("WorkbenchOpTypePolicies", ("op_type_id",)),
+    "skills": ("OperatorSkill", ("operator_id", "op_type_id")),
+    "authorizations": ("OperatorMachine", ("operator_id", "machine_id")),
+    "machine_capabilities": ("MachineOpTypes", ("machine_id", "op_type_id")),
+    "capabilities": ("WorkbenchSupplierOpTypes", ("supplier_id", "op_type_id")),
 }
 
 
@@ -54,11 +54,9 @@ class WorkbenchResourceTableRepository(BaseRepository):
 
     def relation_rows(self, name, scopes):
         """Capture only the requested owners, merging overlapping relationship scopes."""
-        table, allowed, order = _RELATION_TABLES[name]
+        table, order = _RELATION_TABLES[name]
         rows = {}
         for column, values in scopes:
-            if column not in allowed:
-                raise ValueError("Unsupported resource relationship key")
             for chunk in _chunks(values):
                 marks = ",".join("?" for _ in chunk)
                 for row in self.fetchall(f"SELECT * FROM {table} WHERE {column} IN ({marks}) ORDER BY {','.join(order)}", chunk):
@@ -66,8 +64,6 @@ class WorkbenchResourceTableRepository(BaseRepository):
         return [rows[key] for key in sorted(rows)]
 
     def name_owners(self, kind, names):
-        if kind not in ("op_type", "machine_group", "shift_profile"):
-            raise ValueError("Unsupported named resource catalog")
         table, key = _RESOURCE_TABLES[kind]
         result = dict.fromkeys(names)
         for chunk in _chunks(names):
@@ -80,12 +76,17 @@ class WorkbenchResourceTableRepository(BaseRepository):
         names = {"BatchOperations": "batch_operations", "Schedule": "schedule"}
         dependencies = [(names.get(table, table + "." + key), table, key) for table, key in DEPENDENCIES[kind]]
         result = {code: {name: 0 for name, _table, _key in dependencies} for code in codes}
-        if not codes:
-            return result
-        marks = ",".join("?" for _ in codes)
         for name, table, key in dependencies:
-            for row in self.fetchall(f"SELECT {key} AS code,COUNT(*) AS amount FROM {table} WHERE {key} IN ({marks}) GROUP BY {key}", codes):
-                result[row["code"]][name] = row["amount"]
+            if table == "WorkbenchProductionReportRevisions":
+                for code, rows in report_revision_rows(self.conn, kind, key, codes).items():
+                    result[code][name] = len(rows)
+        for chunk in _chunks(codes):
+            marks = ",".join("?" for _ in chunk)
+            for name, table, key in dependencies:
+                if table == "WorkbenchProductionReportRevisions":
+                    continue
+                for row in self.fetchall(f"SELECT {key} AS code,COUNT(*) AS amount FROM {table} WHERE {key} IN ({marks}) GROUP BY {key}", chunk):
+                    result[row["code"]][name] = row["amount"]
         return result
 
     def page_relations(self, kind, codes):
@@ -94,15 +95,16 @@ class WorkbenchResourceTableRepository(BaseRepository):
             ("part_operations", "PartOperations", "supplier_id", "id"),
             ("batch_operations", "BatchOperations", "supplier_id", "id"),
             ("external_groups", "ExternalGroups", "supplier_id", "group_id"))
-        marks = ",".join("?" for _ in codes) or "NULL"
         for name, table, key, order in tables:
             grouped = defaultdict(list)
-            sql = f"SELECT * FROM {table} WHERE {key} IN ({marks}) ORDER BY {key},{order}"
-            if table == "WorkbenchShiftPatternDays":
-                sql = f"""SELECT d.*,p.periods_json FROM WorkbenchShiftPatternDays d LEFT JOIN WorkbenchShiftDayPeriods p
-                    ON p.profile_id=d.profile_id AND p.day_offset=d.day_offset
-                    WHERE d.profile_id IN ({marks}) ORDER BY d.profile_id,d.day_offset"""
-            for row in self.fetchall(sql, codes):
-                grouped[row[key]].append(row)
+            for chunk in _chunks(codes):
+                marks = ",".join("?" for _ in chunk)
+                sql = f"SELECT * FROM {table} WHERE {key} IN ({marks}) ORDER BY {key},{order}"
+                if table == "WorkbenchShiftPatternDays":
+                    sql = f"""SELECT d.*,p.periods_json FROM WorkbenchShiftPatternDays d LEFT JOIN WorkbenchShiftDayPeriods p
+                        ON p.profile_id=d.profile_id AND p.day_offset=d.day_offset
+                        WHERE d.profile_id IN ({marks}) ORDER BY d.profile_id,d.day_offset"""
+                for row in self.fetchall(sql, chunk):
+                    grouped[row[key]].append(row)
             result[name] = grouped
         return result

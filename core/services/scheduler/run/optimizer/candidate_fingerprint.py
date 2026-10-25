@@ -2,27 +2,16 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime
 from typing import Any, Dict, Iterable, Optional, Tuple
 
 from core.algorithm_contracts.types import ScheduleResult
 from core.errors import ValidationError
 from core.models.objective import objective_metric_keys
 
-CANDIDATE_FINGERPRINT_SCHEMA_VERSION = 2
-OUTPUT_FINGERPRINT_SCOPE = "decoded_output"
-DISTINCT_FINGERPRINT_SCOPE = OUTPUT_FINGERPRINT_SCOPE
-DISTINCT_FINGERPRINT_DESCRIPTION = "distinct_candidates 按正式解码结果去重"
-
 
 @dataclass(frozen=True)
 class CandidateFingerprint:
-    schema_version: int
-    fingerprint_scope: str
-    objective_name: str
-    candidate_id: int
     output_key: Tuple[Any, ...] = field(repr=False)
-    parent_candidate_id: Optional[int]
     same_as_parent: bool
     same_as_seen: bool
     fingerprint_changed: bool
@@ -30,43 +19,9 @@ class CandidateFingerprint:
     def with_context(self, *, parent_fingerprint: Optional[CandidateFingerprint],
                      seen_output_fingerprints: Iterable[Tuple[Any, ...]]) -> CandidateFingerprint:
         same_as_parent = bool(parent_fingerprint is not None and self.output_key == parent_fingerprint.output_key)
-        return replace(self, parent_candidate_id=parent_fingerprint.candidate_id if parent_fingerprint is not None else None,
-                       same_as_parent=same_as_parent,
+        return replace(self, same_as_parent=same_as_parent,
                        same_as_seen=self.output_key in (seen_output_fingerprints or ()),
                        fingerprint_changed=not same_as_parent)
-
-    def to_report_dict(self) -> Dict[str, Any]:
-        return {
-            "schema_version": int(self.schema_version),
-            "output_scope": str(self.fingerprint_scope),
-            "objective_name": str(self.objective_name),
-            "candidate_id": int(self.candidate_id),
-            "parent_candidate_id": self.parent_candidate_id,
-            "same_as_parent": bool(self.same_as_parent),
-            "same_as_seen": bool(self.same_as_seen),
-            "output_changed": bool(self.fingerprint_changed),
-        }
-
-
-def jsonable_fingerprint_payload(value: Any) -> Any:
-    # 只负责 skipped-phase 等诊断的 JSON 表示；候选判等使用明确字段的不可变 output_key。
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    if isinstance(value, (date, datetime)):
-        return value.isoformat()
-    if isinstance(value, dict):
-        return {
-            str(key): jsonable_fingerprint_payload(child)
-            for key, child in sorted(value.items(), key=lambda item: str(item[0]))
-        }
-    if isinstance(value, (list, tuple)):
-        return [jsonable_fingerprint_payload(item) for item in value]
-    if isinstance(value, set):
-        return [jsonable_fingerprint_payload(item) for item in sorted(value, key=lambda item: str(item))]
-    enum_value = getattr(value, "value", None)
-    if enum_value is not None:
-        return jsonable_fingerprint_payload(enum_value)
-    return {"type": value.__class__.__name__}
 
 
 def schedule_content_key(results: Iterable[ScheduleResult]) -> Tuple[Tuple[Any, ...], ...]:
@@ -96,7 +51,6 @@ def build_candidate_fingerprint(
     parent_fingerprint: Optional[CandidateFingerprint],
     seen_output_fingerprints: Iterable[Tuple[Any, ...]],
     identity: Optional[CandidateFingerprint] = None,
-    candidate_id: int = 0,
 ) -> CandidateFingerprint:
     _validate_candidate(candidate)
     if identity is not None:
@@ -105,12 +59,7 @@ def build_candidate_fingerprint(
     output_key = _evaluation_key(candidate, objective_name=objective_name)
     same_as_parent = bool(parent_fingerprint is not None and output_key == parent_fingerprint.output_key)
     return CandidateFingerprint(
-        schema_version=CANDIDATE_FINGERPRINT_SCHEMA_VERSION,
-        fingerprint_scope=DISTINCT_FINGERPRINT_SCOPE,
-        objective_name=str(objective_name),
-        candidate_id=int(candidate_id),
         output_key=output_key,
-        parent_candidate_id=parent_fingerprint.candidate_id if parent_fingerprint is not None else None,
         same_as_parent=same_as_parent,
         same_as_seen=output_key in (seen_output_fingerprints or ()),
         fingerprint_changed=not same_as_parent,
@@ -192,13 +141,8 @@ def _score_tuple(score: Any) -> Tuple[float, ...]:
 
 
 __all__ = [
-    "CANDIDATE_FINGERPRINT_SCHEMA_VERSION",
-    "DISTINCT_FINGERPRINT_DESCRIPTION",
-    "DISTINCT_FINGERPRINT_SCOPE",
-    "OUTPUT_FINGERPRINT_SCOPE",
     "CandidateFingerprint",
     "build_candidate_fingerprint",
-    "jsonable_fingerprint_payload",
     "schedule_content_key",
     "score_strictly_better",
 ]

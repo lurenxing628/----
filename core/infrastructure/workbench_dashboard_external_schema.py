@@ -4,9 +4,9 @@ install(conn) requires the caller's migration transaction. Existing dashboard
 tables and v29/v30 contracts are untouched. Reads never install this extension.
 """
 
-from core.infrastructure.workbench_dashboard_schema import contract_issues as dashboard_issues
+from core.infrastructure.workbench_dashboard_schema import workbench_dashboard_contract_issues as dashboard_issues
 from core.infrastructure.workbench_metadata_schema import schema_contract_matches
-from core.infrastructure.workbench_outsourcing_schema import contract_issues as outsourcing_issues
+from core.infrastructure.workbench_outsourcing_schema import workbench_outsourcing_contract_issues as outsourcing_issues
 
 from .schema_structure import SchemaStructure, schema_objects
 

@@ -143,11 +143,12 @@
       if (value && selected && !changed.has(selected.operation_ref)) onSelect(null);
       if (value && chosen && !changed.has(chosen.comparison.operation_ref)) setSelection(null);
     }
-    React.useEffect(() => { if (!canCompare) setChangedOnly(false); }, [canCompare]);
+    React.useEffect(() => { if (comparison && !canCompare) setChangedOnly(false); }, [comparison, canCompare]);
     React.useEffect(() => {
       // Route and delivery links can select a task outside the current change filter.
+      if (!comparison) return;
       if (selected && !changed.has(selected.operation_ref)) setChangedOnly(false);
-    }, [selected]);
+    }, [comparison, selected, changed]);
     React.useEffect(() => { setHover(null); if (expansion.expanded) owner.current.focus(); }, [expansion.expanded]);
     React.useLayoutEffect(() => {
       const measure = () => {
@@ -165,11 +166,12 @@
       restore(); restoreScroll.current = null;
       const frame = requestAnimationFrame(restore); return () => cancelAnimationFrame(frame);
     }, [printing]);
+    const syncScroll = node => setScroll(current => current.left === node.scrollLeft && current.top === node.scrollTop ? current : { left: node.scrollLeft, top: node.scrollTop });
     React.useLayoutEffect(() => { if (owner.current) { owner.current.scrollTop = 0; owner.current.scrollLeft = 0; } setScroll({ left: 0, top: 0 }); setHover(null); }, [mode, query, data, result, displayChangedOnly]);
     React.useLayoutEffect(() => {
       if (!resourceFocus || selected || chosen || printing) return;
       const row = model.rows.find(item => item.id === resourceFocus.ref), node = owner.current;
-      if (row && node) node.scrollTop = Math.max(0, row.top - node.clientHeight / 3);
+      if (row && node) { node.scrollTop = Math.max(0, row.top - node.clientHeight / 3); syncScroll(node); }
     }, [resourceFocus && resourceFocus.ref, model, selected, chosen, printing]);
     React.useLayoutEffect(() => {
       const loc = chosen && chosen.segment ? model.baselineLocations.get(chosen.segment.row_ref) : selected && model.locations.get(selected.row_ref), node = owner.current;
@@ -177,8 +179,9 @@
       if (loc.top < node.scrollTop || loc.top + model.rows[loc.row].height > node.scrollTop + viewportHeight) node.scrollTop = loc.top;
       const x = (loc.item.start - model.start) / (model.end - model.start) * width;
       if (x < node.scrollLeft || x > node.scrollLeft + viewport) node.scrollLeft = Math.max(0, x - viewport / 3);
+      syncScroll(node);
     }, [selected, chosen, model, width, viewport, viewportHeight, printing]);
-    function pan(left) { if (owner.current) owner.current.scrollLeft = Math.max(0, Math.min(width - viewport, left)); }
+    function pan(left) { const node = owner.current; if (node) { node.scrollLeft = Math.max(0, Math.min(width - viewport, left)); syncScroll(node); } }
     function fit() { setZoom(1); pan(0); }
     function locate(task) {
       const loc = task ? model.locations.get(task.row_ref) : chosen && chosen.segment ? model.baselineLocations.get(chosen.segment.row_ref)
@@ -187,8 +190,10 @@
       node.scrollTop = Math.max(0, loc.top - node.clientHeight / 3);
       pan((loc.item.start + loc.item.end - 2 * model.start) / 2 / (model.end - model.start) * width - viewport / 2);
     }
+    const currentIndex = selected && candidate.taskOrder ? (candidate.taskOrder.has(selected.row_ref) ? candidate.taskOrder.get(selected.row_ref) : -1)
+      : model.tasks.findIndex(task => selected && task.row_ref === selected.row_ref);
     function move(direction) {
-      const index = model.tasks.findIndex(task => selected && task.row_ref === selected.row_ref);
+      const index = currentIndex;
       const task = model.tasks[Math.max(0, Math.min(model.tasks.length - 1, index < 0 ? 0 : index + direction))];
       if (task) { selectCandidate(task); locate(task); }
     }
@@ -210,8 +215,8 @@
       const scale = width / (model.end - model.start), start = model.start + renderLeft / scale, end = model.start + (renderLeft + renderViewport) / scale;
       return rows.map(row => ({ row, items: row.point || row.baselinePoint ? window.PointGanttModel.visible(row.items, start, end, scale) : M.visibleItems(row.items, start, end) }));
     }, [model, printing, scroll.top, viewportHeight, width, renderLeft, renderViewport]);
-    const currentIndex = model.tasks.findIndex(task => selected && task.row_ref === selected.row_ref);
-    const axis = window.GanttPresentation.axis({ start: model.start, end: model.end, width, left: renderLeft, viewport: renderViewport });
+    const axis = React.useMemo(() => window.GanttPresentation.axis({ start: model.start, end: model.end, width, left: renderLeft, viewport: renderViewport }),
+      [model.start, model.end, width, renderLeft, renderViewport]);
     return <section ref={host} className={'rc-gantt' + (expansion.expanded ? ' rc-expanded' : '')} aria-label="候选甘特图" onKeyDown={zoomKeys}>
       <div className="rc-gantt-toolbar"><window.PlanSegmentUI value={mode} options={Object.entries(M.kindLabels)} onChange={setMode} label="候选甘特维度" />
         {canCompare && <><BC.Toggle state={baseline} />

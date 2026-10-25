@@ -1,9 +1,9 @@
 """Original-byte import planning and full-cohort exports; AJ validates all facts."""
 
 import uuid
-from typing import List, Optional, Union
+from typing import Any, Dict, List, NamedTuple, Optional, Union
 
-from core.models.content import same
+from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import REPORT_FIELDS, REQUIRED_FIELDS
 from core.services.workbench.facts.execution_projection import (
@@ -17,13 +17,31 @@ from .field_report_files_codec import encode_reports
 from .field_report_files_identity import identity_values, matched_task, task_indexes
 
 
-class FieldReportFileService:
-    def __init__(self, conn):
-        from .production_report import WorkbenchProductionReportService
+def _report_values(report):
+    return {key: report.get(key, '' if key == 'remark' else None) for key in REPORT_FIELDS}
 
+
+class ReportIndex(NamedTuple):
+    by_no: Dict[str, Dict[str, Any]]
+    # Old blank-number Excel imports, report numbers by saved content.
+    by_excel_content: Dict[str, List[str]]
+
+
+def report_index(reports):
+    """Index one operation's saved reports once for all of its imported rows."""
+    by_no, by_excel_content = {}, {}
+    for report in reports:
+        by_no[report['report_no']] = report
+        if report.get('source') == 'excel' and report['report_no'].startswith('BG-X-'):
+            by_excel_content.setdefault(content_text(_report_values(report)), []).append(report['report_no'])
+    return ReportIndex(by_no, by_excel_content)
+
+
+class FieldReportFileService:
+    def __init__(self, conn, *, production):
         self.conn = conn
         self.queries = WorkbenchFieldQueryRepository(conn)
-        self.production = WorkbenchProductionReportService(conn)
+        self.production = production
 
     def _resource_index(self):
         result = {'codes': {}, 'labels': {}}
@@ -44,7 +62,7 @@ class FieldReportFileService:
 
     def _items(self, tasks, rows, *, source_ref):
         by_scope, by_ref = task_indexes(tasks)
-        resources, items, positions = self._resource_index(), [], []
+        resources, items, positions, indexes = self._resource_index(), [], [], {}
         for row in rows:
             value = row['values']
             if row['errors']:
@@ -55,7 +73,10 @@ class FieldReportFileService:
                 continue
             try:
                 task = matched_task(row, by_scope, by_ref)
-                items.append(self._row_item(row, task, resources, source_ref))
+                task_ref = task['task_ref']
+                if task_ref not in indexes:
+                    indexes[task_ref] = report_index(task['execution']['reports'])
+                items.append(self._row_item(row, task_ref, indexes[task_ref], resources, source_ref))
                 positions.append(row['row'])
                 row['result'] = 'pending'
             except WorkbenchCommandRejected as exc:
@@ -63,7 +84,7 @@ class FieldReportFileService:
                 row['errors'].append({'row': row['row'], 'message': str(exc), 'code': exc.code})
         return rows, items, positions
 
-    def _row_item(self, row, task, resources, source_ref):
+    def _row_item(self, row, task_ref, reports, resources, source_ref):
         value = row['values']
         payload = {key: value[key] for key in ('actual_start', 'actual_end', 'completed_quantity', 'effective_processing_hours', 'remark') if value[key] not in (None, '')}
         for kind in ('machine', 'operator'):
@@ -71,26 +92,23 @@ class FieldReportFileService:
             if selected is not None:
                 payload['actual_' + kind + '_ref'] = selected
         payload.update(source='excel')
-        payload['report_no'] = value['report_no'] or self._source_report_number(row, task, payload, source_ref)
-        existing = next((report for report in task['execution']['reports'] if report['report_no'] == payload['report_no']), None)
+        payload['report_no'] = value['report_no'] or self._source_report_number(row, reports, payload, source_ref)
+        existing = reports.by_no.get(payload['report_no'])
         if existing and existing.get('legacy_fact_ref'):
             payload.update(legacy_fact_ref=existing['legacy_fact_ref'], reason='Excel 核对已关联的历史完工记录')
-        return {'action': 'create', 'ref': task['task_ref'], 'payload': payload}
+        return {'action': 'create', 'ref': task_ref, 'payload': payload}
 
     @staticmethod
-    def _source_report_number(row, task, payload, source_ref):
+    def _source_report_number(row, reports, payload, source_ref):
         number = 'BG-X-' + source_ref + '-' + str(row['row'])
-        reports = task['execution']['reports']
-        if any(report['report_no'] == number for report in reports):
+        if number in reports.by_no:
             return number
         # Older blank-number imports saved their generated number, not the original file.
         # Recover an existing number only from one complete matching report in this operation.
-        values = {key: payload.get(key, '' if key == 'remark' else None) for key in REPORT_FIELDS}
-        matches = [report for report in reports if report.get('source') == 'excel' and report['report_no'].startswith('BG-X-')
-                   and same(values, {key: report.get(key, '' if key == 'remark' else None) for key in REPORT_FIELDS})]
+        matches = reports.by_excel_content.get(content_text(_report_values(payload)), [])
         if len(matches) > 1:
             raise WorkbenchCommandRejected('invalid_input', '已有多条内容相同的导入报工，请填写要核对的原报工编号。', 422)
-        return matches[0]['report_no'] if matches else number
+        return matches[0] if matches else number
 
     def prepare_source(self, source, cohort):
         """Rebuild current business checks from the retained original file facts."""
@@ -125,7 +143,7 @@ class FieldReportFileService:
 
     @staticmethod
     def _preview_error(exc, rows, positions):
-        number = getattr(exc, 'row_number', None)
+        number = exc.row_number
         original = positions[number - 1] if type(number) is int and 1 <= number <= len(positions) else positions[0] if positions else 1
         target = next((row for row in rows if row['row'] == original), None)
         if target is None:
@@ -133,7 +151,8 @@ class FieldReportFileService:
         target['result'] = 'rejected'
         target['errors'].append({'row': original, 'message': str(exc), 'code': exc.code, 'conflicts': exc.conflicts})
 
-    def rows(self, cohort, template=False, *, resource_codes):
+    @staticmethod
+    def rows(cohort, template, *, resource_codes):
         result = []
         for task in cohort['tasks']:
             p = task['execution']
@@ -143,7 +162,7 @@ class FieldReportFileService:
             if template:
                 reports = [row for row in reports if any(row[key] is None for key in REQUIRED_FIELDS)] or [None]
             for report in reports:
-                result.append(self._export_row(report, task, template, resource_codes))
+                result.append(FieldReportFileService._export_row(report, task, template, resource_codes))
         return result
 
     @staticmethod
@@ -157,10 +176,11 @@ class FieldReportFileService:
                                'operator_label': codes.get(row.get('actual_operator_ref') or (task['planned_operator_ref'] if template else None)),
                 'remark': row.get('remark', ''), **identity_values(task)}
 
-    def download(self, cohort, template=False, *, resource_codes):
-        rows = self.rows(cohort, template, resource_codes=resource_codes)
+    @staticmethod
+    def download(cohort, template, *, resource_codes):
+        rows = FieldReportFileService.rows(cohort, template, resource_codes=resource_codes)
         if template:
-            return encode_reports(rows, summaries=(), metadata=(), format_version=2), len(rows)
+            return encode_reports(rows, summaries=(), metadata=()), len(rows)
         summaries: List[List[Optional[Union[str, int, float]]]] = [['批次号', '工序', '应做数量', '累计完成', '剩余数量', '工序状态', '完成依据', '资料完整性']]
         metadata: List[List[Optional[Union[str, int, float]]]] = [['报工编号', '录入时间', '报工来源', '补齐及更正次数']]
         for task in cohort['tasks']:
@@ -173,4 +193,4 @@ class FieldReportFileService:
                 corrections = sum(item['action'] in ('supplement', 'correct') for item in report['correction_history'])
                 metadata.append([report['report_no'], report['recorded_at'], 'Excel' if report['source'] == 'excel' else '手工', corrections])
         # 模板和导出都带说明表，两者的差别只剩要不要另外附汇总与录入信息。
-        return encode_reports(rows, summaries=summaries, metadata=metadata, format_version=2), len(rows)
+        return encode_reports(rows, summaries=summaries, metadata=metadata), len(rows)

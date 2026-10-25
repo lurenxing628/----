@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 from core.algorithm_contracts.operation_effort import OperationEffort
 from core.models import Batch, BatchOperation
@@ -22,8 +22,6 @@ class ScheduleRunInput:
     readiness_gate_enabled: bool
     batches: Dict[str, Batch]
     operations: List[BatchOperation]
-    reschedulable_operations: List[BatchOperation]
-    reschedulable_op_ids: Set[int]
     missing_internal_resource_op_ids: Set[int]
     algo_input_outcome: BuildOutcome[List[Any]]
     algo_ops: List[Any]
@@ -49,40 +47,5 @@ class ScheduleRunInput:
     optimizer_seed_version: int
     run_time_budget_seconds: Optional[float] = None
     operation_efforts: List[OperationEffort] = field(default_factory=list)
+    operation_sources: Any = None
 
-
-def _op_seq(op: Any) -> int:
-    # R69/O24 收口：persistence_guard 与 runtime_support 两份逐字节相同的副本合一到本契约文件。
-    # `or 0` 兜的是 None/0/空串等「无 seq」合法形态（下游靠 completed_seq<=0 短路过滤），绝不卷入报错；
-    # 只有坏类型（如 seq="abc"）才 loud raise——护栏链路里坏 seq 必须暴露，禁改回 except 静默归 0
-    # （静默归 0 会让 completed_seq<=0 短路放空过滤、漏判后继工序需重算，算法侧静默漏排）。
-    try:
-        return int(getattr(op, "seq", 0) or 0)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"工序 seq 值无效（无法转为整数）：{getattr(op, 'seq', None)!r}") from exc
-
-
-def _build_freeze_window_seed_with_meta(
-    build_freeze_window_seed_fn: Any,
-    svc: Any,
-    *,
-    cfg: Any,
-    prev_version: int,
-    start_dt: datetime,
-    operations: List[Any],
-    reschedulable_operations: Optional[List[Any]],
-    strict_mode: bool,
-) -> Tuple[Set[int], List[Dict[str, Any]], List[str], Dict[str, Any]]:
-    freeze_meta: Dict[str, Any] = {}
-    result = build_freeze_window_seed_fn(
-        svc,
-        cfg=cfg,
-        prev_version=prev_version,
-        start_dt=start_dt,
-        operations=operations,
-        reschedulable_operations=reschedulable_operations,
-        strict_mode=bool(strict_mode),
-        meta=freeze_meta,
-    )
-    frozen_op_ids, seed_results, algo_warnings = result
-    return frozen_op_ids, seed_results, algo_warnings, freeze_meta

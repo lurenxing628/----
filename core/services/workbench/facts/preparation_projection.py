@@ -18,7 +18,7 @@ PREPARATION_METRICS = (
 _FIELDS = ("source", "quantity_basis", "target_quantity", "execution_quantity_basis", "execution_target_quantity", "remaining_quantity",
            "setup_standard_hours", "processing_standard_hours", "required_standard_hours", "setup_state", "requirement_role",
            "external_cycle_days", "external_group_id", "external_merge_mode", "effort_basis")
-_ALLOCATIONS = ("new_schedule", "unplanned", "deferred", "retained", "execution", "completed", "external", "unknown")
+ALLOCATIONS = ("new_schedule", "unplanned", "deferred", "retained", "execution", "completed", "external", "unknown")
 _GROUPS = {"pending": ("new_schedule", "unplanned", "deferred", "unknown"), "scheduled": ("new_schedule", "unknown"),
            "unplanned": ("unplanned",), "deferred": ("deferred",)}
 _ROLES = (OperationRequirementRole.RETAINED.value, OperationRequirementRole.EXECUTION.value, OperationRequirementRole.COMPLETED.value)
@@ -56,7 +56,7 @@ def project_operation_effort(runtime, standard, *, allocation_state, source_avai
     return result
 
 
-def _metric(rows, field, *, available=True):
+def metric_summary(rows, field, *, available=True):
     known = [row for row in rows if row.get(field) is not None]
     subtotal = sum(row[field] for row in known)
     total, unknown = len(rows), len(rows) - len(known)
@@ -75,7 +75,7 @@ def preparation_summary(rows, *, available=True, requirements_available=None):
     """Each internal permanent operation belongs to one actual allocation group."""
     internal = [row for row in rows if row.get("source") != SourceType.EXTERNAL.value]
     requirements_available = available if requirements_available is None else requirements_available
-    by_allocation = {name: [row for row in internal if row["allocation_state"] == name] for name in _ALLOCATIONS}
+    by_allocation = {name: [row for row in internal if row["allocation_state"] == name] for name in ALLOCATIONS}
     selected_by_group = {}
     for group, allocations in _GROUPS.items():
         if not available and group in ("scheduled", "unplanned"):
@@ -89,15 +89,15 @@ def preparation_summary(rows, *, available=True, requirements_available=None):
             selected_by_group[group] = selected
     values = {}
     for key, _label, field, group, _common in PREPARATION_METRICS:
-        values[key] = _metric(selected_by_group[group], field, available=requirements_available if group == "pending" else available)
+        values[key] = metric_summary(selected_by_group[group], field, available=requirements_available if group == "pending" else available)
         values[key]["coverage_groups"] = list(_GROUPS[group])
     roles = {}
     for role in _ROLES:
         selected = [row for row in rows if row.get("requirement_role") == role]
         standard_rows = [row for row in selected if row.get("source") != SourceType.EXTERNAL.value]
-        roles[role] = {"count": len(selected), **{field: _metric(standard_rows, field, available=requirements_available)
+        roles[role] = {"count": len(selected), **{field: metric_summary(standard_rows, field, available=requirements_available)
                       for field in ("setup_standard_hours", "processing_standard_hours", "required_standard_hours")}}
-    coverage = {name: [row["operation_ref"] for row in by_allocation[name]] for name in _ALLOCATIONS}
+    coverage = {name: [row["operation_ref"] for row in by_allocation[name]] for name in ALLOCATIONS}
     return {"metrics": values, "role_totals": roles, "coverage": coverage}
 
 

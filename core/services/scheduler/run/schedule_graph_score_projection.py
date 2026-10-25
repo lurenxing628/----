@@ -165,6 +165,7 @@ def build_available_graph_score_projection(
         nodes=nodes,
         topological_order=topological_order,
         schedulable_op_ids=schedulable_op_ids,
+        limit=_GRAPH_SCORE_SAMPLE_LIMIT,
     )
     try:
         graph_priority_key_by_op_id, score_bonus_by_op_id = build_graph_scores_by_op_id(
@@ -182,11 +183,12 @@ def build_available_graph_score_projection(
             "score_disabled_reason": None,
             "score_weights": dict(score_weights),
             "graph_priority_key_by_op_id": graph_priority_key_by_op_id,
-            "node_metrics_by_op_id": {op_id: dict(metrics_by_op_id[op_id]) for op_id in sorted(schedulable_op_ids)},
+            "node_metrics_by_op_id": {op_id: metrics_by_op_id[op_id] for op_id in sorted(schedulable_op_ids)},
         },
         score_available_public_fields(score_weights),
         graph_score_sample(
             ordered_op_ids=ordered_op_ids,
+            total_count=len(schedulable_op_ids),
             score_bonus_by_op_id=score_bonus_by_op_id,
             graph_priority_key_by_op_id=graph_priority_key_by_op_id,
             node_metrics_by_op_id=metrics_by_op_id,
@@ -218,7 +220,7 @@ def node_metrics_by_op_id(
         node_id = str(node.node_id)
         if node_id not in node_metrics:
             raise GraphInputContractError(f"图评分缺少工序 {op_id} 的 node_metrics。")
-        result[op_id] = dict(node_metrics[node_id])
+        result[op_id] = node_metrics[node_id]
     missing = sorted(required_op_ids.difference(result))
     if missing:
         raise GraphInputContractError(f"图评分缺少待排工序指标：{missing}")
@@ -230,14 +232,22 @@ def ordered_schedulable_op_ids(
     nodes: List[Any],
     topological_order: List[str],
     schedulable_op_ids: Set[int],
+    limit: Optional[int] = None,
 ) -> List[int]:
+    if not schedulable_op_ids or (limit is not None and limit <= 0):
+        return []
     op_id_by_node_id = {str(node.node_id): node_op_id(node) for node in nodes}
-    ordered_op_ids = [
-        op_id_by_node_id[node_id]
-        for node_id in topological_order
-        if op_id_by_node_id.get(node_id) in schedulable_op_ids
-    ]
-    return ordered_op_ids or sorted(schedulable_op_ids)
+    ordered_op_ids: List[int] = []
+    for node_id in topological_order:
+        op_id = op_id_by_node_id.get(node_id)
+        if op_id is not None and op_id in schedulable_op_ids:
+            ordered_op_ids.append(op_id)
+            if limit is not None and len(ordered_op_ids) >= limit:
+                return ordered_op_ids
+    if ordered_op_ids:
+        return ordered_op_ids
+    ordered_op_ids = sorted(schedulable_op_ids)
+    return ordered_op_ids[:limit] if limit is not None else ordered_op_ids
 
 
 def build_graph_scores_by_op_id(
@@ -259,11 +269,13 @@ def build_graph_scores_by_op_id(
 def graph_score_sample(
     *,
     ordered_op_ids: List[int],
+    total_count: Optional[int] = None,
     score_bonus_by_op_id: Dict[int, int],
     graph_priority_key_by_op_id: Dict[int, Tuple[float, ...]],
     node_metrics_by_op_id: Dict[int, Dict[str, Any]],
 ) -> Dict[str, Any]:
     sample_op_ids = ordered_op_ids[:_GRAPH_SCORE_SAMPLE_LIMIT]
+    count = int(len(ordered_op_ids) if total_count is None else total_count)
     return {
         "graph_score_sample": [
             _graph_score_sample_row(
@@ -274,8 +286,8 @@ def graph_score_sample(
             )
             for op_id in sample_op_ids
         ],
-        "graph_score_sample_count": int(len(ordered_op_ids)),
-        "graph_score_sample_truncated": len(ordered_op_ids) > _GRAPH_SCORE_SAMPLE_LIMIT,
+        "graph_score_sample_count": count,
+        "graph_score_sample_truncated": count > _GRAPH_SCORE_SAMPLE_LIMIT,
     }
 
 

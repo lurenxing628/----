@@ -32,8 +32,9 @@ def connect(path):
 
 
 class DashboardCase:
-    def __init__(self, path, conn):
+    def __init__(self, path, conn, operation_id: int):
         self.path, self.conn = path, conn
+        self.op = operation_id
         self.app = Flask(__name__)
         self.counter = 0
 
@@ -92,9 +93,10 @@ def dashboard_case(tmp_path):
     conn.execute("INSERT INTO OperatorMachine(operator_id,machine_id) VALUES ('DO1','DM1')")
     conn.execute("INSERT INTO Parts(part_no,part_name) VALUES ('DP1','Part')")
     conn.execute("INSERT INTO Batches(batch_id,part_no,part_name,quantity,due_date,ready_status) VALUES ('DB1','DP1','Part',2,'2026-09-08','no')")
-    case = DashboardCase(path, conn)
-    case.op = conn.execute("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_id,op_type_name,source,unit_hours,setup_hours) "
-                           "VALUES ('DOP1','DB1',1,'DT1','Turning','internal',0.5,0)").lastrowid
+    operation_id = conn.execute("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_id,op_type_name,source,unit_hours,setup_hours) "
+                                "VALUES ('DOP1','DB1',1,'DT1','Turning','internal',0.5,0)").lastrowid
+    assert operation_id is not None
+    case = DashboardCase(path, conn, operation_id)
     case.plan(1)
     conn.execute("INSERT INTO Materials(material_id,name,unit,stock_qty) VALUES ('DMAT','Steel','kg',900)")
     conn.execute("INSERT INTO BatchMaterials(batch_id,material_id,required_qty,available_qty,ready_status) VALUES ('DB1','DMAT',10,2,'no')")
@@ -126,14 +128,14 @@ def source_rows(conn):
 
 
 def api(case, monkeypatch, *, connect_factory=connect):
-    import web.routes.workbench.dashboard as module
+    from web.routes.workbench import read_context
 
     class Clock(datetime):
         @classmethod
         def now(cls, tz=None):
             return NOW
 
-    monkeypatch.setattr(module, "datetime", Clock)
+    monkeypatch.setattr(read_context, "datetime", Clock)
     app = Flask(__name__)
     bp = Blueprint("workbench", __name__)
     register_dashboard_routes(bp)

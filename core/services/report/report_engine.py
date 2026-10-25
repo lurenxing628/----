@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Any, BinaryIO, Callable, ClassVar, Dict
 
-from core.errors import ValidationError
 from core.models.report_export import ReportExport, ReportExportDecision
 from core.services.capacity.resource_utilization_metrics import METRIC_VERSION
 from core.services.common.plan_query import SchedulePlanQueryService, SchedulePlanResolution
@@ -15,8 +14,8 @@ from data.repositories import MachineDowntimeRepository
 from .date_range_limits import ensure_report_date_range_within_limit
 from .downtime_impact import compute_downtime_impact
 from .report_degradation import report_degradation_payload
-from .utilization import compute_utilization
-from .utilization_calendars import resource_calendars
+from .utilization import group_utilization_rows, utilization_from_groups
+from .utilization_calendars import resource_calendars_for_ids, resource_ids_from_groups
 
 
 class ReportEngine:
@@ -28,7 +27,6 @@ class ReportEngine:
 
     def __init__(self, conn, logger=None):
         self.conn = conn
-        self.logger = logger
         self.machine_downtime_repo = MachineDowntimeRepository(conn, logger=logger)
         self.plan_query_service = SchedulePlanQueryService(conn, logger=logger)
 
@@ -36,13 +34,14 @@ class ReportEngine:
         return self.plan_query_service.list_plan_overdue_base_rows_for_resolution(
             version=resolution.version, source_table=resolution.source_table,
             candidate_id=resolution.candidate_id, scenario_id=resolution.scenario_id,
+            allow_points=True,
         )
 
     def _list_plan_rows_between(self, resolution, start_time, end_time):
         return self.plan_query_service.list_plan_detail_rows_between_for_resolution(
             version=resolution.version, source_table=resolution.source_table,
             candidate_id=resolution.candidate_id, scenario_id=resolution.scenario_id,
-            effective_plan_role=resolution.selected_role, start_time=start_time, end_time=end_time,
+            start_time=start_time, end_time=end_time,
         )
 
 
@@ -70,20 +69,9 @@ class ReportEngine:
             estimated_rows=decision.estimated_rows,
         )
 
-    def _parse_limited_report_date_range(
-        self,
-        start_date: Any,
-        end_date: Any,
-        *,
-        start_field: str = "start_date",
-        end_field: str = "end_date",
-        limit_field: str = "date_range",
-    ):
-        sd = _parse_date(start_date, field=start_field)
-        ed = _parse_date(end_date, field=end_field)
-        if ed < sd:
-            raise ValidationError("结束日期不能早于开始日期", field=end_field)
-        ensure_report_date_range_within_limit(sd, ed, field=limit_field)
+    def _parse_limited_report_date_range(self, start_date: str, end_date: str):
+        sd, ed = date.fromisoformat(start_date), date.fromisoformat(end_date)
+        ensure_report_date_range_within_limit(sd, ed, field="date_range")
         return sd, ed
 
     def utilization(
@@ -101,25 +89,24 @@ class ReportEngine:
 
         schedule_rows = self._list_plan_rows_between(resolution, start_s, end_s)
 
-        calendars = resource_calendars(self.conn, schedule_rows, start_dt, end_dt_excl)
         degradation_collector = DegradationCollector()
-        machine_rows, operator_rows = compute_utilization(
-            schedule_rows=schedule_rows,
+        groups = group_utilization_rows(schedule_rows, start_dt, end_dt_excl, degradation_collector)
+        calendars = resource_calendars_for_ids(self.conn, resource_ids_from_groups(groups), start_dt, end_dt_excl)
+        machine_rows, operator_rows = utilization_from_groups(
+            groups,
             start_dt=start_dt,
             end_dt_excl=end_dt_excl,
             calendars=calendars,
             degradation_collector=degradation_collector,
         )
         degradation = report_degradation_payload(degradation_collector)
-        capacities = {row["capacity_hours"] for row in machine_rows + operator_rows}
 
         return {
             "version": resolution.version,
             "start_date": sd.isoformat(),
             "end_date": ed.isoformat(),
-            "capacity_hours_per_resource": next(iter(capacities)) if len(capacities) == 1 else None,
-            "metric_version": METRIC_VERSION, "metric_source": "planned",
-            "window_start": start_dt.isoformat(), "window_end": end_dt_excl.isoformat(),
+            "metric_version": METRIC_VERSION,
+            "metric_source": "planned",
             "machines": machine_rows,
             "operators": operator_rows,
             **degradation,
@@ -157,15 +144,3 @@ class ReportEngine:
             "machines": machines,
             **degradation,
         }
-
-
-def _parse_date(value: Any, field: str) -> date:
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    text = str(value or "").strip().replace("/", "-")
-    try:
-        return datetime.strptime(text, "%Y-%m-%d").date()
-    except ValueError as exc:
-        raise ValidationError("日期格式不合法（期望：YYYY-MM-DD）", field=field) from exc

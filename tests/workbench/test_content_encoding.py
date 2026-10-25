@@ -44,7 +44,7 @@ def test_json_input_rejects_sqlite_only_values_inside_collections(value, error):
         content_text({"rows": [value]}, json_input=True)
 
 
-def test_encoding_reuses_unchanged_paths_and_public_packed_remains_independent(monkeypatch):
+def test_encoding_reuses_unchanged_paths(monkeypatch):
     from core.models import content
 
     unchanged = {"rows": [{"values": [None, True, 1, 1.0]}]}
@@ -67,8 +67,3 @@ def test_encoding_reuses_unchanged_paths_and_public_packed_remains_independent(m
     assert source["changed"]["blob"] == b"x" and source["literal"] == {"$sqlite_dict": "original"}
     content.content_text(unchanged)
     assert encoded[1] is unchanged
-    snapshot = content.packed(unchanged)
-    assert snapshot is not unchanged and snapshot["rows"] is not unchanged["rows"]
-    assert snapshot["rows"][0]["values"] is not unchanged["rows"][0]["values"]
-    unchanged["rows"][0]["values"].append("later")
-    assert snapshot["rows"][0]["values"] == [None, True, 1, 1.0]

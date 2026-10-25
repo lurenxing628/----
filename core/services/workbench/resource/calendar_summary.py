@@ -17,13 +17,13 @@ def factory_now():
 
 def _holiday_efficiency(conn, logger):
     key = "holiday_default_efficiency"
-    row = ConfigRepository(conn, logger=logger).get(key)
+    raw_value = ConfigRepository(conn, logger=logger).get_value(key)
     result = {"status": "not_configured", "value": None, "source": "ScheduleConfig." + key,
               "basis": "假期未填写效率时使用此值。", "issues": []}
-    if row is None:
+    if raw_value is None:
         return result
     try:
-        value = coerce_config_field(key, row.config_value, strict_mode=True, missing_policy=MISSING_POLICY_ERROR,
+        value = coerce_config_field(key, raw_value, strict_mode=True, missing_policy=MISSING_POLICY_ERROR,
                                     source="workbench.resource_calendar_summary")
     except ValidationError as exc:
         result.update(status="unavailable", issues=[{"code": "calendar_config_unavailable", "message": str(exc)}])
@@ -58,7 +58,7 @@ def _effective(policy, owned):
     if policy.allow_normal not in ("yes", "no") or policy.allow_urgent not in ("yes", "no"):
         raise ValueError("日历普通件或急件许可无法核实。")
     normal, urgent = policy.is_priority_allowed("normal"), policy.is_priority_allowed("urgent")
-    working = policy.shift_hours > 0 and (normal or urgent)
+    working = policy.is_working()
     hours = owned * policy.efficiency
     if not math.isfinite(hours):
         raise ValueError("日历有效工时超出可核实范围。")

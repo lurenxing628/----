@@ -14,9 +14,12 @@ def _parse_date(value: Optional[str]) -> Optional[date]:
     if not s:
         return None
     try:
-        return datetime.strptime(s, "%Y-%m-%d").date()
-    except Exception:
-        return None
+        return date.fromisoformat(s)
+    except ValueError:
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").date()
+        except Exception:
+            return None
 
 
 def _monday_of(d: date) -> date:

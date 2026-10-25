@@ -2,6 +2,8 @@
 
 from datetime import datetime
 
+import pytest
+
 from core.services.workbench.run.compute import compute_candidate_run
 from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
 from tests.workbench.run_compute_support import unchanged
@@ -45,3 +47,50 @@ def test_piece_batches_hold_only_the_covered_piece_and_common_work():
     assert prefix_op_ids_for_anchors(ops, "B1", {None: 40}) == [1, 2, 3, 4, 5, 6]
     plain = [Op(id=index, batch_id="B2", seq=index * 10, piece_id=None) for index in (1, 2, 3)]
     assert prefix_op_ids_for_anchors(plain, "B2", {None: 20}) == [1, 2]
+
+
+@pytest.mark.parametrize("mismatch", ["other_machine", "bare_true"])
+def test_point_prefix_carries_its_witness_and_a_mismatched_witness_rejects_the_whole_prefix(mismatch):
+    """零工时点事件的见证在冻结前缀校验时按最终 seed 口径取一次、随 seed 带出，排产种子合同直接接受；
+    见证对不上（或只给真假值）时，这道工序所在的整段前缀都不冻结。"""
+    from dataclasses import replace
+    from types import SimpleNamespace as Op
+
+    from core.algorithm_contracts.schedule_point_evidence import PointSeedResult, SchedulePointEvidence
+    from core.services.scheduler.run.freeze_window import build_freeze_window_seed
+    from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_result_item
+
+    ops = [Op(id=oid, op_code="B1-" + str(oid), batch_id="B1", seq=oid, piece_id=None, source="internal",
+              op_type_name="Turning", op_type_id="T1") for oid in (1, 2)]
+    rows = [{"op_id": 1, "machine_id": "M1", "operator_id": "O1",
+             "start_time": "2026-09-09 08:00:00", "end_time": "2026-09-09 10:00:00"},
+            {"op_id": 2, "machine_id": "M1", "operator_id": "O1",
+             "start_time": "2026-09-09 10:00:00", "end_time": "2026-09-09 10:00:00"}]
+    witness = SchedulePointEvidence(op_id=2, machine_id="M1", operator_id="O1", at=datetime(2026, 9, 9, 10),
+                                    setup_hours=0, unit_hours=0, quantity=3)
+
+    def freeze(evidence):
+        seen, meta = [], {}
+
+        def validator(row):
+            seen.append(row)
+            return evidence
+
+        frozen, seeds, warnings = build_freeze_window_seed(
+            Op(logger=None), cfg=None, prev_version=1, start_dt=datetime(2026, 9, 9), operations=ops, meta=meta,
+            point_validator=validator, schedule_rows_reader=lambda **_: rows,
+            hold_window=(datetime(2026, 9, 9, 9), datetime(2026, 9, 9, 11)))
+        return frozen, seeds, warnings, meta, seen
+
+    frozen, seeds, _, meta, seen = freeze(witness)
+    assert frozen == {1, 2} and meta["freeze_state"] == "active"
+    assert [row.op_id for row in seen] == [2] and seen[0].source == "internal"
+    interval, point = seeds
+    assert "_point_evidence" not in interval
+    assert point["_point_evidence"] is witness
+    assert type(coerce_seed_result_item(point, idx=1)) is PointSeedResult
+
+    bad = {"other_machine": replace(witness, machine_id="M2"), "bare_true": True}[mismatch]
+    frozen, seeds, warnings, meta, _ = freeze(bad)
+    assert frozen == set() and seeds == [] and warnings
+    assert meta["freeze_state"] == "degraded" and meta["freeze_applied"] is False

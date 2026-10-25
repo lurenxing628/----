@@ -6,13 +6,10 @@ from typing import Any, Callable, Dict, List, Optional
 from core.algorithms import SortStrategy
 from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.candidate_comparison import candidate_is_preferred
-from core.services.scheduler.run.optimizer.candidate_fingerprint import score_strictly_better
 from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
 from core.services.scheduler.run.optimizer.search_stage import SearchStage
 
-from .acceptance import build_graph_ready_improve_only_acceptance_event
 from .context import reason_from_validation
-from .iterated_greedy_incumbent import incumbent_events
 from .iterated_greedy_run import IteratedGreedyRun
 from .predecode import GraphReadyProfileSearch
 from .repair import EliteRepairPool, EliteRepairRun
@@ -32,7 +29,7 @@ class ProfileStage(SearchStage):
 
     def __init__(self, *, profiles: List[GraphReadyWeightProfile], search: GraphReadyProfileSearch, pool: EliteRepairPool,
                  state: GraphSearchState, order: List[str], strict_mode: bool, base_strategy: SortStrategy,
-                 dispatch_rule_cfg: str, version: int, attempts: List[Dict[str, Any]], improvement_trace: List[Dict[str, Any]],
+                 dispatch_rule_cfg: str, attempts: List[Dict[str, Any]], improvement_trace: List[Dict[str, Any]],
                  search_report_state: Any, clock: Callable[[], float], t_begin: float) -> None:
         self.profiles = list(profiles)
         self.search = search
@@ -42,7 +39,6 @@ class ProfileStage(SearchStage):
         self.strict_mode = bool(strict_mode)
         self.base_strategy = base_strategy
         self.dispatch_rule_cfg = dispatch_rule_cfg
-        self.version = int(version)
         self.attempts = attempts
         self.improvement_trace = improvement_trace
         self.search_report_state = search_report_state
@@ -55,35 +51,37 @@ class ProfileStage(SearchStage):
         return self.index < len(self.profiles) and self.search.can_start()
 
     def unavailable_reason(self) -> Optional[str]:
+        if not self.search.can_start():
+            return self.search.budget.stop_reason
         if self.index >= len(self.profiles):
             return "profiles_exhausted"
-        return None if self.search.can_start() else self.search.budget.stop_reason
+        return None
 
-    def run_task(self) -> int:
+    def run_task(self) -> None:
         profile = self.profiles[self.index]
         self.index += 1
         candidate = _evaluate_profile(evaluate=self.search.evaluate, profile=profile, order=self.order, strict_mode=self.strict_mode,
                                       base_strategy=self.base_strategy, dispatch_rule_cfg=self.dispatch_rule_cfg,
-                                      attempts=self.attempts, search_report_state=self.search_report_state)
+                                      attempts=self.attempts)
         if candidate is None:
-            return 0
+            return
         fingerprint = self.pool.observe(candidate, profile)
         if not _candidate_should_replace_best(candidate, profile=profile, best=self.state.best, attempts=self.attempts,
                                               search_report_state=self.search_report_state, fingerprint=fingerprint,
                                               clock=self.clock, t_begin=self.t_begin):
-            return 0
-        improved = _accept_candidate(candidate, profile=profile, incumbent=self.state.best, version=self.version,
-                                     search_report_state=self.search_report_state, fingerprint=fingerprint)
+            return
+        if self.search_report_state is not None:
+            self.search_report_state.mark_candidate_accepted(candidate, origin=profile.candidate_origin,
+                                                             fingerprint=fingerprint)
         append_graph_trace(improvement_trace=self.improvement_trace, candidate=candidate, profile=profile, clock=self.clock,
                            t_begin=self.t_begin)
         self.state.best = candidate
-        return int(improved)
 
     def finish(self) -> None:
         if self.finished:
             return
         self.finished = True
-        self.search.publish(attempts=self.attempts, report_state=self.search_report_state)
+        self.search.publish(attempts=self.attempts)
 
 
 class RepairStage(SearchStage):
@@ -100,14 +98,16 @@ class RepairStage(SearchStage):
             return "disabled"
         if self.run.clock() >= self.run.repair_deadline:
             return "time_budget"
+        if self.run.report["repair_stop_reason"] in ("time_budget", "estimated_decode_cost"):
+            return self.run.report["repair_stop_reason"]
         if self.run.exhausted:
             return self.run.report["repair_stop_reason"] or "search_exhausted"
+        if not self.run.pool.elites and self.run.budget.stop_reason in ("time_budget", "estimated_decode_cost"):
+            return self.run.budget.stop_reason
         return None if self.run.pool.elites else "no_elite"
 
-    def run_task(self) -> int:
-        before = (self.run.state.best or {}).get("score")
+    def run_task(self) -> None:
         self.run.step()
-        return int(score_strictly_better((self.run.state.best or {}).get("score"), before))
 
     def finish(self) -> None:
         self.run.finish()
@@ -137,10 +137,8 @@ class IteratedGreedyStage(SearchStage):
             return "waiting_for_repair_parent"
         return None
 
-    def run_task(self) -> int:
-        before = incumbent_events(self.run.report)
+    def run_task(self) -> None:
         self.run.step()
-        return incumbent_events(self.run.report) - before
 
     def finish(self) -> None:
         self.run.finish()
@@ -166,7 +164,6 @@ def _evaluate_profile(
     order: List[str],
     dispatch_rule_cfg: str,
     attempts: List[Dict[str, Any]],
-    search_report_state: Any,
 ) -> Optional[Dict[str, Any]]:
     try:
         return evaluate(profile=profile, order=order)
@@ -174,7 +171,7 @@ def _evaluate_profile(
         if strict_mode or is_graph_ready_v2_contract_error(exc):
             raise
         _record_profile_rejection(exc, profile=profile, attempts=attempts, base_strategy=base_strategy,
-                                  dispatch_rule_cfg=dispatch_rule_cfg, search_report_state=search_report_state)
+                                  dispatch_rule_cfg=dispatch_rule_cfg)
         return None
 
 
@@ -185,13 +182,10 @@ def _record_profile_rejection(
     attempts: List[Dict[str, Any]],
     base_strategy: SortStrategy,
     dispatch_rule_cfg: str,
-    search_report_state: Any,
 ) -> None:
     reason = reason_from_validation(exc)
     record_rejected_attempt(attempts=attempts, strategy=base_strategy, dispatch_rule=dispatch_rule_cfg, reason=reason,
                             message=str(exc), profile_slug=profile.slug)
-    if search_report_state is not None:
-        search_report_state.mark_candidate_rejected(reason=reason)
 
 
 def _candidate_should_replace_best(
@@ -228,25 +222,6 @@ def _incumbent_origin(best: Optional[Dict[str, Any]], search_report_state: Any) 
     if search_report_state is not None:
         return str(search_report_state.best_origin or "baseline")
     return str((best or {}).get("candidate_origin") or "baseline")
-
-
-def _accept_candidate(
-    candidate: Dict[str, Any],
-    *,
-    profile: GraphReadyWeightProfile,
-    incumbent: Optional[Dict[str, Any]],
-    version: int,
-    search_report_state: Any,
-    fingerprint: Any = None,
-) -> bool:
-    event = None
-    if incumbent is not None:
-        event = build_graph_ready_improve_only_acceptance_event(
-            candidate_score=candidate.get("score"), incumbent_score=incumbent.get("score"), seed=int(version))
-    if search_report_state is not None:
-        search_report_state.mark_candidate_accepted(candidate, origin=profile.candidate_origin,
-                                                     acceptance_event=event, fingerprint=fingerprint)
-    return event is not None
 
 
 __all__ = ["GraphSearchState", "IteratedGreedyStage", "ProfileStage", "RepairStage", "iterated_greedy_parent_profile"]

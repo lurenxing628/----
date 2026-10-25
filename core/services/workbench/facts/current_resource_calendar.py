@@ -23,7 +23,3 @@ def calendar_from_sources(sources, *, schema_version, identities, plan_ref, scop
     return ArchivedCalendar({"tables": tables}, source_ref=plan_ref,
                             coverage={"start": scope["range_start"], "end": scope["range_end"]},
                             metadata_basis="current_transaction_snapshot")
-
-
-def current_resource_calendar(facts, scope):
-    return facts._calendar_factory

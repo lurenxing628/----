@@ -10,7 +10,7 @@ from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_values import corrupt
 from core.services.workbench.facts.unified_process import PROCESS_CANDIDATE_FIELDS, project_unified_process
 
-from .decision_queries import _page
+from .decision_queries import parse_page
 from .decision_source import DecisionSource
 
 
@@ -30,7 +30,7 @@ def normalize_process_filters(*, process_candidate_ref=None, objective=None, rec
 
 
 def _projection(source):
-    if not hasattr(source, "_process_projection"):
+    if source._process_projection is None:
         saved = source.saved_process
         if saved is None or saved.get("version") != PROCESS_VERSION:
             corrupt()
@@ -50,7 +50,7 @@ def _ordered(rows, filters):
     return known + unknown
 
 
-def _shared_projection(source, anchor, objective=None):
+def _shared_projection(source, anchor, objective):
     candidates = [source.saved_candidate_catalog(row["candidate_ref"], fields=PROCESS_CANDIDATE_FIELDS) for row in source.rows]
     candidate = next(row for row in candidates if row["candidate_ref"] == anchor)
     return project_unified_process(source.saved_process, objective=objective, candidate=candidate, candidates=candidates)
@@ -76,7 +76,7 @@ def process_details(source, filters, *, page: Union[int, str] = 1, size: Union[i
         reject("entity_not_found", "这次排产还没有保存候选计算记录。", 404)
     source._candidate_reference(anchor, require_result=False)
     filters = {**filters, "process_candidate_ref": anchor}
-    page, size = _page(page), _page(size, size=True)
+    page, size = parse_page(page), parse_page(size, size=True)
     offset = (page - 1) * size
     process = source.saved_process
     if process is not None and process.get("version") == UNIFIED_PROCESS_VERSION:
@@ -99,11 +99,12 @@ def process_details(source, filters, *, page: Union[int, str] = 1, size: Union[i
         "filters": filters, "process_version": PROCESS_VERSION}
 
 
-def process_export_records(source, filters=None, *, include_all_objectives=False):
+def process_export_records(source, filters=None, *, include_all_objectives=False, selected=None):
     """The same selector supplies all retained rows, independent of screen page."""
     process = source.saved_process
     if process is not None and process.get("version") == UNIFIED_PROCESS_VERSION:
-        selected = process_details(source, filters or normalize_process_filters(), all_rows=True)
+        if selected is None:
+            selected = process_details(source, filters or normalize_process_filters(), all_rows=True)
         current = selected["filters"]
         selected = {**selected,
             "actions": selected["items"] if current["record_kind"] == "attempts" else _shared_ordered(
@@ -119,14 +120,15 @@ def process_export_records(source, filters=None, *, include_all_objectives=False
         refs = [row["candidate_ref"] for row in source.rows]
         current = normalize_process_filters()
     else:
-        selected = process_details(source, filters, all_rows=True)
+        if selected is None:
+            selected = process_details(source, filters, all_rows=True)
         refs = [selected["candidate"]["candidate_ref"]]
         current = selected["filters"]
     return [{**projected[ref],
-             "attempts": selected["items"] if filters is not None and current["record_kind"] == "attempts" else _ordered(
+             "attempts": selected["items"] if selected is not None and current["record_kind"] == "attempts" else _ordered(
                  projected[ref]["attempts"], {**current, "record_kind": "attempts", "sort": "rank"}),
              "progress": {**projected[ref]["progress"],
-                 "points": selected["items"] if filters is not None and current["record_kind"] == "progress" else _ordered(
+                 "points": selected["items"] if selected is not None and current["record_kind"] == "progress" else _ordered(
                      projected[ref]["progress"]["points"], {**current, "record_kind": "progress", "sort": "elapsed_ms"})}}
             for ref in refs]
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Set
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 from .nx_runtime import import_networkx
 from .types import OperationGraphEdge, OperationGraphNode
@@ -13,14 +13,15 @@ class GraphBuildContractError(ValueError):
 
 
 def build_linear_edges_by_batch(nodes: Iterable[OperationGraphNode]) -> List[OperationGraphEdge]:
-    grouped: Dict[str, List[OperationGraphNode]] = {}
+    # 线性链按 (批次, 分件) 各自成链：同批不同分件是并行的工作，不能按 seq 串到一条链上。
+    grouped: Dict[Tuple[str, Optional[str]], List[OperationGraphNode]] = {}
 
     for node in nodes:
         _validate_node_object(node)
-        grouped.setdefault(node.batch_id, []).append(node)
+        grouped.setdefault((node.batch_id, node.piece_id), []).append(node)
 
     edges: List[OperationGraphEdge] = []
-    for batch_id, batch_nodes in grouped.items():
+    for (batch_id, _piece_id), batch_nodes in grouped.items():
         ordered = sorted(batch_nodes, key=lambda item: (item.seq, item.op_code, item.node_id))
         for prev_node, next_node in zip(ordered, ordered[1:]):
             kind = "external_lag" if prev_node.source == "external" else "precedence"
@@ -109,6 +110,7 @@ def _validate_edge(edge: OperationGraphEdge, node_ids: Set[str]) -> None:
 def _node_attrs(node: OperationGraphNode) -> Dict[str, Any]:
     return {
         "batch_id": node.batch_id,
+        "piece_id": node.piece_id,
         "op_code": node.op_code,
         "seq": node.seq,
         "duration_minutes": node.duration_minutes,

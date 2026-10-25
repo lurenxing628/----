@@ -16,8 +16,8 @@ from core.services.workbench.facts.candidate_values import stored_json
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.facts.run_history_projection import scope_summary
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
-from core.services.workbench.run.jobs_facts import capture_run_facts, run_facts_unchanged
-from core.services.workbench.trial.facts import capture_facts, facts_unchanged
+from core.services.workbench.run.jobs_facts import production_facts_match
+from core.services.workbench.trial.facts import facts_unchanged
 from tests._support.paths import REPO_ROOT
 from tests.workbench.frozen_business_seed_support import seed_frozen_business
 from tests.workbench.plan_catalog_support import candidate as native_candidate
@@ -57,8 +57,8 @@ def test_v40_archive_backfill_preserves_originals_budget_and_immutable_projectio
         assert conn.execute("SELECT config_value FROM ScheduleConfig WHERE config_key='time_budget_seconds'").fetchone()[0] == "60"
         with candidate_read_snapshot(conn):
             capture = ProductionFactsCapture(conn)
-            captured_hash, captured_text = capture_run_facts(conn, capture)
-            named_facts = capture_facts(conn, capture)
+            captured_text = capture.content()
+            named_facts = capture.archive(named=True)
         with conn:
             run_migration(conn, 41)
             set_schema_version(conn, 41)
@@ -128,9 +128,9 @@ def test_v40_archive_backfill_preserves_originals_budget_and_immutable_projectio
         assert all(row["projection_version"] == "decision-read-v1" and
                    len(json.loads(row["arrangements_json"])["rows"]) == 1 and
                    type(json.loads(row["delivery_detail_json"])) is list for row in models)
-        assert run_facts_unchanged(conn, captured_text, captured_hash)
+        assert production_facts_match(conn, captured_text)
         with candidate_read_snapshot(conn):
-            current_facts = capture_facts(conn)
+            current_facts = ProductionFactsCapture(conn).archive(named=True)
         assert facts_unchanged({"facts": named_facts}, {"facts": current_facts})
         conn.execute("BEGIN")
         try:
@@ -171,9 +171,9 @@ def test_v40_archive_backfill_preserves_originals_budget_and_immutable_projectio
             conn.execute("BEGIN")
             try:
                 conn.execute(change)
-                assert not run_facts_unchanged(conn, captured_text, captured_hash)
+                assert not production_facts_match(conn, captured_text)
                 with candidate_read_snapshot(conn):
-                    current_facts = capture_facts(conn)
+                    current_facts = ProductionFactsCapture(conn).archive(named=True)
                 assert not facts_unchanged({"facts": named_facts}, {"facts": current_facts})
                 if change.startswith("ALTER TABLE"):
                     assert business_role_contract_issues(conn) == ["invalid_schedule_business_roles:ScheduleCandidate"]

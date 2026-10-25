@@ -12,6 +12,12 @@ from .repair_decisions import RepairDecision, RepairParentPreparation, iter_reso
 from .repair_neighbors import RepairNeighborhood, build_repair_neighborhood
 
 
+def _decision_key(
+    decision: RepairDecision,
+) -> Tuple[Tuple[str, ...], Tuple[int, ...], Tuple[Tuple[int, str, str], ...]]:
+    return (decision.batch_order, decision.operation_order, decision.resource_overrides)
+
+
 @dataclass(frozen=True)
 class RepairPortfolio:
     batches: RepairNeighborhood
@@ -24,14 +30,30 @@ class RepairPortfolio:
         for index, (kind, _source, _target) in enumerate(self.batches.moves):
             first_by_kind.setdefault(kind, index)
         representatives = tuple(first_by_kind.values())
-        layout = [("batch", index) for index in representatives]
+        raw_layout = [("batch", index) for index in representatives]
         selected = set(representatives)
         remaining = (index for index in range(len(self.batches.moves)) if index not in selected)
         for batch_index, extra_index in zip_longest(remaining, range(len(self.extras))):
             if batch_index is not None:
-                layout.append(("batch", batch_index))
+                raw_layout.append(("batch", batch_index))
             if extra_index is not None:
-                layout.append(("extra", extra_index))
+                raw_layout.append(("extra", extra_index))
+        seen: set = set()
+        layout: List[Tuple[str, int]] = []
+        for kind, index in raw_layout:
+            if kind == "batch":
+                _move_kind, source, target = self.batches.moves[index]
+                key: Tuple[Any, ...] = (
+                    ("batch_swap", min(source, target), max(source, target))
+                    if abs(source - target) == 1
+                    else ("batch_insert", source, target)
+                )
+            else:
+                _, decision = self.extras[index]
+                key = ("extra", _decision_key(decision))
+            if key not in seen:
+                seen.add(key)
+                layout.append((kind, index))
         object.__setattr__(self, "move_layout", tuple(layout))
 
     @property
@@ -54,7 +76,7 @@ class RepairPortfolio:
             order[source], order[target] = order[target], order[source]
         else:
             order.insert(target, order.pop(source))
-        return kind, RepairDecision(tuple(order), resource_overrides=self.inherited_resources)
+        return kind, RepairDecision._unvalidated(tuple(order), resource_overrides=self.inherited_resources)
 
 
 @dataclass(frozen=True)
@@ -90,7 +112,6 @@ class ParentRepairPortfolio:
                 if item is not None:
                     kind, decision = item
                     yield kind, decision, profile
-
 
 def build_repair_portfolio(candidate: Dict[str, Any], *, operations: List[Any], metrics_by_op_id: Dict[int, Dict[str, Any]],
                            start_dt: Any, seed: int, objective_name: str, graph_context: Optional[Dict[str, Any]],

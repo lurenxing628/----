@@ -11,7 +11,7 @@ _NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 _COORDINATE = re.compile(r"([A-Z]{1,3})([1-9][0-9]*)\Z")
 
 
-def check_sheet_order(stream):
+def check_sheet_order(stream, *, error=file_error):
     """Reject duplicate/out-of-order physical records before read-only iteration."""
     from openpyxl.utils import column_index_from_string
 
@@ -23,7 +23,7 @@ def check_sheet_order(stream):
             continue
         number = int(node.attrib.get("r", "0"))
         if not previous < number <= 1048576:
-            raise file_error("这个 XLSX 的行号有重复、倒序或不合法。请用 Excel 另存一份后重新上传。", max(1, number))
+            raise error("这个 XLSX 的行号有重复、倒序或不合法。请用 Excel 另存一份后重新上传。", max(1, number))
         previous = number
         column = 0
         for cell in node:
@@ -31,10 +31,10 @@ def check_sheet_order(stream):
                 continue
             match = _COORDINATE.fullmatch(cell.attrib.get("r", ""))
             if match is None:
-                raise file_error("这个 XLSX 有单元格缺少坐标，系统不猜它原来在哪。请用 Excel 另存一份后重新上传。", number)
+                raise error("这个 XLSX 有单元格缺少坐标，系统不猜它原来在哪。请用 Excel 另存一份后重新上传。", number)
             current = column_index_from_string(match[1])
             if int(match[2]) != number or not column < current <= 16384:
-                raise file_error("这个 XLSX 有重复、倒序或错位的单元格。请用 Excel 另存一份后重新上传。", number)
+                raise error("这个 XLSX 有重复、倒序或错位的单元格。请用 Excel 另存一份后重新上传。", number)
             column = current
         node.clear()
         if data is not None:

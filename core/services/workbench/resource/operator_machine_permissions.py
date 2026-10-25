@@ -5,6 +5,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models import OperatorMachine
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_resource_action import ResourceActionPreview, check_resource_preview, resource_refs
+from core.services.personnel.operator_machine_normalizers import normalize_yes_no_stored
 from core.services.personnel.operator_machine_service import OperatorMachineService
 
 from .queries import WorkbenchResourceQueryService
@@ -45,13 +46,15 @@ class WorkbenchOperatorMachinePermissions:
         self.tx = TransactionManager(conn)
 
     def preview(self, operator_ref, permissions, *, preparation=None):
+        if self.conn.in_transaction:
+            return self._prepare(operator_ref, permissions, preparation=preparation)[0]
         with self.tx.transaction():
             return self._prepare(operator_ref, permissions, preparation=preparation)[0]
 
     def capture(self, operator_ref, permissions):
         machine_refs = [row["machine_ref"] for row in permissions
                         if type(row) is dict and type(row.get("machine_ref")) is str] if type(permissions) is list else []
-        return self.reader.preparation(refs=[operator_ref] + machine_refs)
+        return self.reader.preparation(refs=[operator_ref] + machine_refs, machine_authorizations=True)
 
     def _prepare(self, operator_ref, permissions, *, preparation=None):
         if preparation is None:
@@ -70,7 +73,7 @@ class WorkbenchOperatorMachinePermissions:
         request = {"operator_ref": operator_ref, "machine_permissions": requested,
                    "expected_operator": before, "expected_machines": machines}
         code = identity.entity_key
-        targets = [OperatorMachine(None, code, row["business_code"], row["after"]["skill_level"],
+        targets = [OperatorMachine(code, row["business_code"], row["after"]["skill_level"],
                                    row["after"]["is_primary"])
                    for row in rows if row["result"] in ("new", "update")]
         removed = [(code, row["business_code"]) for row in rows if row["result"] == "delete"]
@@ -99,8 +102,8 @@ class WorkbenchOperatorMachinePermissions:
             for key, values in (("skill_level", ("beginner", "normal", "expert")), ("is_primary", ("yes", "no"))):
                 if row[key] not in values and (key not in previous or row[key] != previous[key]):
                     raise ValidationError("请选择有效的技能等级和主操标记。", field="machine_permissions")
-            result.append(dict(row))
-        if sum(self.domain._normalize_yes_no_stored(row["is_primary"]) == "yes" for row in result) > 1:
+            result.append(row)
+        if sum(normalize_yes_no_stored(row["is_primary"]) == "yes" for row in result) > 1:
             raise ValidationError("同一人员只能设置一台主操设备。", field="machine_permissions")
         return sorted(result, key=lambda row: row["machine_ref"])
 
@@ -112,8 +115,7 @@ class WorkbenchOperatorMachinePermissions:
             current, changes = self._prepare(request["operator_ref"], request["machine_permissions"])
         except (ValidationError, WorkbenchCommandRejected) as exc:
             raise WorkbenchCommandRejected("stale_write", "人员、设备或关联已变化，请重新预检。") from exc
-        check_resource_preview(preview, current)
-        body = current.as_dict()
+        body = check_resource_preview(preview, current)
         code = body["request"]["expected_operator"]["record"]["operator_id"]
         rows = body["rows"]
         self.domain.apply_changes(changes)

@@ -12,12 +12,6 @@ from core.shared.value_policies import VALUE_FLOAT, VALUE_INT
 _MIN_VIOLATION_USE_DEFAULT = object()
 
 
-def _require_collector(collector: Optional[DegradationCollector]) -> DegradationCollector:
-    if collector is None:
-        raise TypeError("collector 不能为空")
-    return collector
-
-
 def _minimum_violation_message(*, field_label: str, fallback: Any, min_value: Any, min_inclusive: bool) -> str:
     compare_text = "大于等于" if bool(min_inclusive) else "大于"
     return (
@@ -65,7 +59,6 @@ def parse_field_float(
     min_violation_fallback: Any = _MIN_VIOLATION_USE_DEFAULT,
     field_label: Optional[str] = None,
 ) -> float:
-    active_collector = _require_collector(collector)
     label = display_field_label(field, fallback="字段") if field_label is None else str(field_label or "字段")
     if strict_mode:
         try:
@@ -81,7 +74,7 @@ def parse_field_float(
             field=field,
             expected_kind=VALUE_FLOAT,
             scope=scope,
-            collector=active_collector,
+            collector=collector,
             fallback=fallback,
             field_label=label,
         )
@@ -92,7 +85,7 @@ def parse_field_float(
         if not is_valid:
             compat_fallback = fallback if min_violation_fallback is _MIN_VIOLATION_USE_DEFAULT else float(min_violation_fallback)
             _emit_min_violation(
-                active_collector,
+                collector,
                 field=field,
                 scope=scope,
                 raw_value=value,
@@ -118,7 +111,6 @@ def parse_field_int(
     min_violation_fallback: Any = _MIN_VIOLATION_USE_DEFAULT,
     field_label: Optional[str] = None,
 ) -> int:
-    active_collector = _require_collector(collector)
     label = display_field_label(field, fallback="字段") if field_label is None else str(field_label or "字段")
     if strict_mode:
         try:
@@ -134,7 +126,7 @@ def parse_field_int(
             field=field,
             expected_kind=VALUE_INT,
             scope=scope,
-            collector=active_collector,
+            collector=collector,
             fallback=fallback,
             field_label=label,
         )
@@ -143,7 +135,7 @@ def parse_field_int(
     if min_value is not None and parsed < int(min_value):
         compat_fallback = fallback if min_violation_fallback is _MIN_VIOLATION_USE_DEFAULT else int(min_violation_fallback)
         _emit_min_violation(
-            active_collector,
+            collector,
             field=field,
             scope=scope,
             raw_value=value,

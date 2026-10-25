@@ -13,12 +13,13 @@ from core.services.workbench.report.catalog import catalog_facts, catalog_worksp
 from core.services.workbench.report.exports import ensure_export_size, export_table, metadata
 from core.services.workbench.report.facts import WorkbenchReportFacts
 from core.services.workbench.report.queries import report_workspace
+from core.services.workbench.report.review_projection import project_export_rows
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
 from .read_budget import PLAN_READ_SLOTS
-from .read_context import bind_read_snapshot, resolve_read_snapshot
-from .reports import arguments, download_response, report_read_time
+from .read_context import bind_read_snapshot, page_integer, read_snapshot_time
+from .reports import arguments, download_response
 
 
 def _official(export):
@@ -26,21 +27,20 @@ def _official(export):
     if topic != "delivery":
         raise WorkbenchCommandRejected("invalid_input", "正式执行复盘只能按工序完成专题看，报表没有变化。请选择工序完成专题后重试。", 400)
     reader = WorkbenchReportFacts(g.db, current_app.logger)
-    binding = resolve_read_snapshot(token) if token is not None else None
-    as_of = report_read_time(token, binding)
+    as_of, binding = read_snapshot_time(token)
     # 与现场分析是同一份“整份正式计划 + 台账”重建，和看板、现场页一起排读额度。
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
             facts = reader.read(scope, as_of=as_of)
             snapshot = bind_read_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of=as_of, binding=binding)
-            data, ordered, labels = report_workspace(reader, facts, snapshot, topic, page)
+            data, ordered, labels = report_workspace(facts, snapshot, topic, page)
     if not export:
         response = query_success(data, snapshot)
         response.headers["Cache-Control"] = "no-store"
         return response
     if request.args.get("format", "xlsx") != "xlsx":
         raise WorkbenchCommandRejected("invalid_input", "正式执行复盘只提供 XLSX，没有开始下载。需要 CSV 请用五个专题的范围导出。", 400)
-    selected = [labels[row["operation_ref"]] for row in ordered]
+    selected = project_export_rows(facts, ordered, labels)
     if not selected:
         raise WorkbenchCommandRejected("empty_export", "当前范围里没有可导出的正式工序，没有开始下载。请放宽筛选范围后重新点「导出 XLSX」。", 422)
     decision = ensure_export_size(reader.engine, len(selected))
@@ -52,11 +52,8 @@ def _official(export):
 
 
 def _catalog_page(kind):
-    try:
-        return ReportPage(int(request.args.get("page", "1")), int(request.args.get("size", "20")),
-            request.args.get("sort", "batch_label" if kind == "overdue" else "resource_label"), request.args.get("direction", "asc"))
-    except ValueError as exc:
-        raise WorkbenchCommandRejected("invalid_input", "页码或每页数量填写不对，列表没有变化。请回到第 1 页重新查询。", 400) from exc
+    return ReportPage(page_integer(request.args.get("page", "1")), page_integer(request.args.get("size", "20")),
+        request.args.get("sort", "batch_label" if kind == "overdue" else "resource_label"), request.args.get("direction", "asc"))
 
 
 def _catalog(kind, export=False):
@@ -72,12 +69,13 @@ def _catalog(kind, export=False):
     token = request.args.get("snapshot_ref")
     if export and not token:
         raise WorkbenchCommandRejected("snapshot_required", messages.STALE, 400)
+    as_of, binding = read_snapshot_time(token)
     reader = WorkbenchReportFacts(g.db, current_app.logger)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
             facts = catalog_facts(reader, scope)
-            snapshot = bind_read_snapshot(facts["scope"].scope(), facts["fingerprint"], token)
-            data, ordered, selected = catalog_workspace(facts, snapshot, page)
+            snapshot = bind_read_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of=as_of, binding=binding)
+            data, ordered, selected = catalog_workspace(facts, page, as_of=as_of)
             if not export:
                 data["exports"] = {"url": "/api/workbench/v1/reports/" + kind + "/export", "formats": ["csv", "xlsx"], "scope": "all_filtered_rows"}
     if export:

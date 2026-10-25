@@ -9,8 +9,8 @@ from core.algorithm_contracts.value_domains import INTERNAL
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithms import ScheduleResult
 from core.algorithms.greedy.seed import (
-    _identity_int,
     _invalid_identity_supplied,
+    identity_int,
     with_seed_external_group_metadata,
     with_seed_resource_segments,
 )
@@ -62,7 +62,7 @@ def _coerce_seed_time_range(item: Dict[str, Any], *, idx: int) -> Tuple[Any, Any
 
 
 def _coerce_optional_seed_identity(value: Any, *, idx: int, field: str) -> int:
-    identity = _identity_int(value)
+    identity = identity_int(value)
     if identity > 0:
         return identity
     if _invalid_identity_supplied(value):

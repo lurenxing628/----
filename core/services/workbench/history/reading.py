@@ -9,7 +9,7 @@ from core.services.workbench.facts.candidate_projection import candidate_summary
 from core.services.workbench.facts.candidate_read_source import read_candidate_source
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_values import corrupt
-from core.services.workbench.facts.decision_baseline_source import _candidate_evidence, _trial_evidence
+from core.services.workbench.facts.decision_baseline_source import candidate_evidence, trial_evidence
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.trial_policy import load_scenario_record
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
@@ -37,10 +37,10 @@ def _cached(cache, key, load):
         except WorkbenchCommandRejected as exc:
             if exc.status != 404:
                 raise
-            cache[key] = exc
+            cache[key] = exc.with_traceback(None)
     value = cache[key]
     if isinstance(value, WorkbenchCommandRejected):
-        raise value
+        raise value.with_traceback(None)
     return value
 
 
@@ -212,7 +212,7 @@ class HistoryReader:
         source = self._candidate(refs["run_ref"], candidate_ref)
         if descriptor["source_kind"] == "candidate_adoption":
             audit = descriptor["record"]["audit"]
-            _candidate_evidence(source, audit)
+            candidate_evidence(source, audit)
             if len(source.raw_tasks) != audit["row_count"]:
                 raise WorkbenchCommandRejected("history_source_invalid", "采用记录与原候选安排条数不一致。", 500)
         packet.update(candidate=source.candidate, raw_tasks=source.raw_tasks)
@@ -229,7 +229,7 @@ class HistoryReader:
             packet.update(saved=saved, head=None, rows=[], source_issue={"code": "source_missing",
                 "message": "原试调草稿已不存在；保留原保存场景和原口径指标。"})
             return
-        _trial_evidence(source, audit)
+        trial_evidence(source, audit)
         if len(rows) != audit["row_count"]:
             raise WorkbenchCommandRejected("history_source_invalid", "采用记录与原试调安排条数不一致。", 500)
         packet.update(saved=saved, head=head, rows=rows)
@@ -252,7 +252,7 @@ class HistoryReader:
                 "source": descriptor["source"], "state": descriptor["state"],
                 "source_issue": packet.get("source_issue")}
 
-    def run_source(self, run_ref, candidate_ref=None, *, range_start=None, range_end=None):
+    def run_source(self, run_ref, candidate_ref, *, range_start, range_end):
         """Reuse the existing decision source for the actual candidate and window."""
         self._require_run_schema()
         key = (run_ref, candidate_ref, range_start, range_end)
@@ -260,7 +260,7 @@ class HistoryReader:
             selected_candidate_ref=candidate_ref, range_start=range_start, range_end=range_end,
             resource_view="full_candidate", prepared=self._runs.get(run_ref, self._run_prepared.get(run_ref))))
 
-    def decision(self, run_ref, range_start=None, range_end=None, *, candidate_ref=None):
+    def decision(self, run_ref, range_start, range_end, *, candidate_ref):
         """Read this event's metrics under the workspace's common resource cohort."""
         key = (run_ref, candidate_ref, range_start, range_end)
         return _cached(self._decisions, key, lambda: decision_history_candidate(self.run_source(run_ref, candidate_ref,

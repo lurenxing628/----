@@ -58,9 +58,9 @@ def system_job_result(job_ref):
     if not re.fullmatch(r"[a-f0-9]{32}", job_ref):
         raise WorkbenchCommandRejected("invalid_input", "这条维护记录的编号已失效，详情没有打开。请刷新页面后重新选择。", 400)
     records = journal()
-    for row in records.records():
-        if row["job_ref"] == job_ref:
-            return query_payload({"kind": "file_operation", "operation": records.public(row, True)})
+    row = records.lookup_job(job_ref)
+    if row is not None:
+        return query_payload({"kind": "file_operation", "operation": records.public(row, True)})
     raise WorkbenchCommandRejected("entity_not_found", "找不到这条维护记录，详情没有打开。请刷新页面后重新选择。", 404)
 
 
@@ -90,27 +90,28 @@ def system_file_action(action):
     body = command_body()
     object_fields(body["input"], () if action == "create" else ("backup_ref",))
     commands = WorkbenchCommandService(g.db, current_app.logger)
+    service = _file_service()
     if action == "restore":
         # No maintenance window may be held while the host waits for other
         # admitted requests: their existing maintenance/write work must finish.
-        if commands.repo.get(body["request_key"]) is not None and journal().lookup(body["request_key"]) is None:
-            raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号已经用在数据库维护上了，这次没有重复执行。请点「查询结果」核对上次的结果。")
-        return _execute_file_action(action, body)
+        return _execute_file_action(action, body, service, commands)
     with maintenance_window(current_app.config["DATABASE_PATH"], logger=current_app.logger, action="workbench_file"):
         if commands.repo.get(body["request_key"]) is not None:
             raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号已经用在数据库维护上了，这次没有重复执行。请点「查询结果」核对上次的结果。")
-        return _execute_file_action(action, body)
+        return _execute_file_action(action, body, service, commands)
 
 
-def _execute_file_action(action, body):
-    service = _file_service()
+def _execute_file_action(action, body, service, commands):
     def guard():
+        if action == "restore" and commands.repo.get(body["request_key"]) is not None:
+            raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号已经用在数据库维护上了，这次没有重复执行。请点「查询结果」核对上次的结果。")
+        database = service.journal.database_scope
         if action == "create":
-            resolve_context("create", body["write_token"])
+            resolve_context("create", body["write_token"], database=database)
             return None
-        if resolve_context("file", body["write_token"]) != body["input"]["backup_ref"]:
+        if resolve_context("file", body["write_token"], database=database) != body["input"]["backup_ref"]:
             raise WorkbenchCommandRejected("stale_write", "本页数据已过期，所选备份和确认内容对不上，备份没有改动。请刷新页面后重新选择备份。")
-        return resolve_context("backup", body["input"]["backup_ref"])
+        return resolve_context("backup", body["input"]["backup_ref"], database=database)
     host = restore_host(current_app)
     if action == "restore":
         if host is None:

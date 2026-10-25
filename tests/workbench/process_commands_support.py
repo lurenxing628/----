@@ -45,7 +45,9 @@ def stage_database(schema_conn):
 
 
 def identity_for(conn, part_no=PART):
-    return WorkbenchIdentityRepository(conn).find_active("part", part_no)
+    identity = WorkbenchIdentityRepository(conn).find_active("part", part_no)
+    assert identity is not None
+    return identity
 
 
 def op_rows(conn, part_no=PART):
@@ -105,13 +107,22 @@ def _fixture_refs(conn, kind, keys):
     return {key: value.ref for key, value in refs.items()}
 
 
-def run_stage(conn, action, payload, *, key=KEY, identity=None, command=None, guard=None):
+def run_stage(conn, action, payload, *, key=KEY):
     service = WorkbenchProcessMutationService(conn)
-    identity = identity_for(conn) if identity is None else identity
-    return (command or WorkbenchCommandService(conn)).execute(
+    identity = identity_for(conn)
+    normalized = service.normalize(action, payload)
+    reader = WorkbenchProcessQueryService(conn, part_ref=identity.ref)
+
+    def guard():
+        with reader.read_snapshot():
+            facts = reader.facts()
+            checked = service.checked_facts(reader.resolve(identity.ref), facts)
+            return service.prepare_checked(action, normalized, checked, facts=facts)
+
+    return WorkbenchCommandService(conn).execute(
         request_key=key, action="process." + action, context_ref=identity.ref,
-        normalized_input=service.normalize(action, payload), guard=guard or (lambda: identity),
-        mutate=lambda checked: service.apply(action, payload, checked))
+        normalized_input=normalized, guard=guard,
+        mutate=service.apply_prepared)
 
 
 def prepare_stages(conn, *, source=True):
@@ -240,13 +251,22 @@ def profile_input_helpers(count, output):
     return {"count": count, "complete_payloads_equal": True, "phases": records}
 
 
-def _profile_command(conn, action, normalized, suffix=""):
+def _profile_command(conn, action, payload, suffix=""):
     service = WorkbenchProcessMutationService(conn)
+    normalized = service.normalize(action, payload)
     identity = identity_for(conn, "SCALE")
+    reader = WorkbenchProcessQueryService(conn, part_ref=identity.ref)
+
+    def guard():
+        with reader.read_snapshot():
+            facts = reader.facts()
+            checked = service.checked_facts(reader.resolve(identity.ref), facts)
+            return service.prepare_checked(action, normalized, checked, facts=facts)
+
     return WorkbenchCommandService(conn).execute(
         request_key=KEY + "-" + action + suffix, action="process." + action, context_ref=identity.ref,
-        normalized_input=normalized, guard=lambda: identity,
-        mutate=lambda checked: service.apply(action, normalized, checked))
+        normalized_input=normalized, guard=guard,
+        mutate=service.apply_prepared)
 
 
 def _profile_route(conn, output, count, measure):
@@ -268,7 +288,7 @@ def profile_stage_scale(count, output):
     from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, ensure_schema_version, get_schema_version
     from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
     from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
-    from core.services.process.workflow_state import read_workflow
+    from core.services.process.workflow_state import workflow_snapshot
 
     conn = sqlite3.connect(":memory:", factory=ProcessProfileConnection)
     conn.row_factory = sqlite3.Row
@@ -317,7 +337,7 @@ def profile_stage_scale(count, output):
         measure("hours_transaction", lambda: _profile_command(conn, "hours_confirm", normalized_hours))
         measure("hours_unchanged_transaction", lambda: _profile_command(conn, "hours_confirm", normalized_hours, "-unchanged"))
         assert conn.execute("SELECT COUNT(*) FROM PartOperations WHERE part_no='SCALE' AND unit_hours=2").fetchone()[0] == count
-        assert read_workflow(conn, "SCALE")["ready"]
+        assert workflow_snapshot(conn)["SCALE"]["workflow"]["ready"]
         return {"count": count, "schema_version": version, "plan_identity_contract_valid": True,
                 "process_trigger_contract_valid": True,
                 "trigger_manifest": str(manifest.resolve()), "phases": records}
@@ -360,11 +380,18 @@ def profile_noop_confirmations(count, output):
         return content_text(tables)
 
     before, phases = state(), []
+    reader = WorkbenchProcessQueryService(conn, part_ref=identity.ref)
     for action, payload in (("source_confirm", source), ("hours_confirm", hours)):
         normalized = service.normalize(action, payload)
         for index, legacy in enumerate((True, False, False, True)):
-            def mutate(checked):
-                outcome = service.apply(action, normalized, checked)
+            def guard():
+                with reader.read_snapshot():
+                    facts = reader.facts()
+                    checked = service.checked_facts(reader.resolve(identity.ref), facts)
+                    return service.prepare_checked(action, normalized, checked, facts=facts)
+
+            def mutate(prepared):
+                outcome = service.apply_prepared(prepared)
                 assert outcome.result == "unchanged"
                 if legacy:
                     # Reproduce only the removed tail, using the real confirmation service.
@@ -376,7 +403,7 @@ def profile_noop_confirmations(count, output):
             def execute():
                 return WorkbenchCommandService(conn).execute(
                     request_key=KEY + "-" + name, action="process." + action, context_ref=identity.ref,
-                    normalized_input=normalized, guard=lambda: identity, mutate=mutate)
+                    normalized_input=normalized, guard=guard, mutate=mutate)
 
             result, record = profile_phase(conn, output, name, execute)
             record["result"] = result["result"]

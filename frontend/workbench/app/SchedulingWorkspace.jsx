@@ -40,19 +40,29 @@
       }
       async function read() {
         if (disposed || querying || document.hidden || done) return;
-        querying = true; controller = new AbortController(); setChecking(true); setVerified(false); const started = Date.now();
+        querying = true; const localController = new AbortController(); controller = localController; setChecking(true); setVerified(false); const started = Date.now();
         try {
-          const value = A.run(A.envelope(await api.get(runRef, controller.signal)), runRef);
-          if (disposed || controller.signal.aborted) return;
+          const value = A.run(A.envelope(await api.get(runRef, localController.signal)), runRef);
+          if (disposed || localController.signal.aborted) return;
+          if (!value.recovery_required) attempt = 0;
           setRecord(value); setVerified(true); setError(''); unsettledSince = null; done = A.terminal(value);
         } catch (problem) {
-          if (!disposed && !controller.signal.aborted) { setError(A.message(problem)); setVerified(false); unresolved(started); }
-        } finally { querying = false; if (!disposed) { setChecking(false); schedule(); } }
+          if (!disposed && !localController.signal.aborted) { setError(A.message(problem)); setVerified(false); unresolved(started); }
+        } finally {
+          if (controller === localController) {
+            querying = false;
+            if (!disposed) {
+              setChecking(false);
+              if (!localController.signal.aborted) schedule();
+              else if (!document.hidden && !done) read();
+            }
+          }
+        }
       }
       function visibility() {
         setPaused(document.hidden); clearTimeout(timer);
         if (document.hidden) { if (controller) controller.abort(); }
-        else { attempt = 0; read(); }
+        else { attempt = 0; if (!querying) read(); }
       }
       document.addEventListener('visibilitychange', visibility); visibility();
       return () => { disposed = true; clearTimeout(timer); if (controller) controller.abort(); document.removeEventListener('visibilitychange', visibility); };

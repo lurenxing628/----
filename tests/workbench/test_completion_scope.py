@@ -7,7 +7,11 @@ import pytest
 
 from core.algorithm_runtime.operation_effort import internal_operation_effort
 from core.services.workbench.facts.common_completed_delivery import common_completed_delivery
-from core.services.workbench.facts.completion_scope import completion_groups, project_completion_scope
+from core.services.workbench.facts.completion_scope import (
+    attach_remaining_operations,
+    completion_groups,
+    project_completion_summary,
+)
 from core.services.workbench.facts.delivery_projection import delivery_summary, project_delivery_batch, task_intervals
 from core.services.workbench.facts.preparation_projection import project_operation_effort
 
@@ -38,8 +42,8 @@ def test_different_partial_results_compare_delivery_only_on_the_nonempty_common_
     before = [batch_item("A", finish="2026-10-14T10:00:00"), batch_item("B", arranged=()),
               batch_item("C", finish="2026-10-14T03:00:00")]
     after = [batch_item("A", arranged=()), batch_item("B", finish="2026-10-14T00:30:00"), batch_item("C")]
-    first = project_completion_scope(before, [work_item("b", "B")])
-    second = project_completion_scope(after, [work_item("a", "A")])
+    first = project_completion_summary(before, [work_item("b", "B")])
+    second = project_completion_summary(after, [work_item("a", "A")])
     assert first["complete_batch_refs"] == ["A", "C"] and first["incomplete_batch_refs"] == ["B"]
     assert second["complete_batch_refs"] == ["B", "C"] and second["incomplete_batch_refs"] == ["A"]
     original = deepcopy((before, after))
@@ -58,10 +62,10 @@ def test_different_partial_results_compare_delivery_only_on_the_nonempty_common_
 
 
 def test_same_completed_group_preserves_distinct_unfinished_operation_prefixes():
-    first = project_completion_scope([batch_item("B", expected=(1, 2, 3))], [
+    first = project_completion_summary([batch_item("B", expected=(1, 2, 3))], [
         work_item("op-1", "B", arranged=True, allocation="new_schedule"),
         work_item("op-2", "B", sequence=2), work_item("op-3", "B", sequence=3)])
-    second = project_completion_scope([batch_item("B", arranged=(1, 2), expected=(1, 2, 3))], [
+    second = project_completion_summary([batch_item("B", arranged=(1, 2), expected=(1, 2, 3))], [
         work_item("op-1", "B", arranged=True, allocation="new_schedule"),
         work_item("op-2", "B", arranged=True, allocation="new_schedule", sequence=2), work_item("op-3", "B", sequence=3)])
     groups = completion_groups([
@@ -80,13 +84,14 @@ def test_remaining_work_keeps_ordinary_deferred_unknown_and_original_measurement
              batch_item("C", arranged=()), batch_item("D", finish=None)]
     work = [work_item("ordinary", "C"), work_item("waiting", "B", allocation="deferred", runtime=False, sequence=2)]
     original = deepcopy((items, work))
-    scope = project_completion_scope(items, work, schedulable_coverage={"state": "partial", "missing_count": 1, "deferred_count": 1})
+    scope = project_completion_summary(items, work, schedulable_coverage={"state": "partial", "missing_count": 1, "deferred_count": 1})
     assert scope["state"] == "partial" and scope["complete_batch_refs"] == ["A"]
     assert scope["incomplete_batch_refs"] == ["B", "C", "D"]
     assert scope["ordinary_incomplete_batch_refs"] == ["C"] and scope["deferred_batch_refs"] == ["B"]
     assert scope["unknown_batch_refs"] == ["D"]
     assert scope["unplanned_operation_refs"] == ["ordinary"] and scope["deferred_operation_refs"] == ["waiting"]
-    batches = {row["batch_ref"]: row for row in scope["remaining_batches"]}
+    details = attach_remaining_operations(scope, work)
+    batches = {row["batch_ref"]: row for row in details["remaining_batches"]}
     waiting, ordinary = batches["B"]["operations"][0], batches["C"]["operations"][0]
     assert waiting["required_standard_hours"] is None and waiting["standard"]["standard_total_hours"] == 7
     assert waiting["remaining_quantity"] == ordinary["remaining_quantity"] == 10
@@ -101,11 +106,11 @@ def test_remaining_work_keeps_ordinary_deferred_unknown_and_original_measurement
 
 def test_failed_and_budget_skipped_sources_stay_separate_from_produced_empty_completed_sets():
     items = [batch_item("B", arranged=())]
-    produced = project_completion_scope(items, [work_item("pending", "B")])
-    absent = project_completion_scope(items, [work_item("pending", "B")], available=False)
+    produced = project_completion_summary(items, [work_item("pending", "B")])
+    absent = project_completion_summary(items, [work_item("pending", "B")], available=False)
     assert absent["state"] == "unavailable" and absent["unknown_batch_refs"] == ["B"]
     assert absent["ordinary_incomplete_batch_refs"] == absent["unplanned_operation_refs"] == []
-    assert absent["remaining_batches"][0]["operations"] == []
+    assert absent["remaining_batches"][0]["operation_count"] is None
     assert absent["remaining_work"]["metrics"]["unplanned_setup_hours"]["state"] == "unavailable"
     groups = completion_groups([
         {"candidate_ref": "partial", "persisted_status": "completed", "completion_scope": produced},

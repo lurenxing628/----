@@ -1,62 +1,20 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict
 
 from core.models import Supplier
 
 from .base_repo import BaseRepository
-from .reference_checks import exists_any_nonblank_reference, exists_value_reference
 
 
 class SupplierRepository(BaseRepository):
     """供应商仓库（Suppliers）。"""
 
-    def get(self, supplier_id: str) -> Optional[Supplier]:
-        row = self.fetchone(
-            "SELECT supplier_id, name, op_type_id, default_days, status, remark, created_at FROM Suppliers WHERE supplier_id = ?",
-            (supplier_id,),
-        )
-        return Supplier.from_row(row) if row else None
-
-    def list(self, status: Optional[str] = None, op_type_id: Optional[str] = None) -> List[Supplier]:
-        sql = "SELECT supplier_id, name, op_type_id, default_days, status, remark, created_at FROM Suppliers"
-        params: List[Any] = []
-        where = []
-        if status:
-            where.append("status = ?")
-            params.append(status)
-        if op_type_id:
-            where.append("op_type_id = ?")
-            params.append(op_type_id)
-        if where:
-            sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY supplier_id"
-        rows = self.fetchall(sql, tuple(params))
-        return [Supplier.from_row(r) for r in rows]
-
-    def list_capabilities(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Raw effective bindings; do not default invalid cycles through Supplier.from_row."""
-        sql = """WITH bindings AS (
-            SELECT supplier_id, op_type_id, 0 AS explicit FROM Suppliers
-                WHERE op_type_id IS NOT NULL AND op_type_id <> ''
-            UNION ALL SELECT supplier_id, op_type_id, 1 FROM WorkbenchSupplierOpTypes
-        ) SELECT b.supplier_id, b.op_type_id, s.default_days, s.status,
-            MAX(b.explicit) AS explicit, s.supplier_id IS NULL AS missing_supplier
-            FROM bindings AS b LEFT JOIN Suppliers AS s ON s.supplier_id = b.supplier_id"""
-        params: List[Any] = []
-        if status is not None:
-            sql += " WHERE s.status = ? OR s.supplier_id IS NULL"
-            params.append(status)
-        sql += " GROUP BY b.supplier_id, b.op_type_id ORDER BY b.supplier_id, b.op_type_id"
-        return self.fetchall(sql, params)
-
-    def create(self, supplier: Union[Supplier, Dict[str, Any]]) -> Supplier:
-        s = supplier if isinstance(supplier, Supplier) else Supplier.from_row(supplier)
+    def create(self, supplier: Supplier) -> None:
         self.execute(
             "INSERT INTO Suppliers (supplier_id, name, op_type_id, default_days, status, remark) VALUES (?, ?, ?, ?, ?, ?)",
-            (s.supplier_id, s.name, s.op_type_id, s.default_days, s.status, s.remark),
+            (supplier.supplier_id, supplier.name, supplier.op_type_id, supplier.default_days, supplier.status, supplier.remark),
         )
-        return s
 
     def update(self, supplier_id: str, updates: Dict[str, Any]) -> None:
         """
@@ -66,57 +24,11 @@ class SupplierRepository(BaseRepository):
         - 只更新 updates 中出现的字段
         - 允许显式清空 op_type_id/remark 为 NULL（便于后续调整绑定关系）
         """
-        if not updates:
-            return
-
-        set_parts: List[str] = []
-        params: List[Any] = []
-
-        for key in ("name", "op_type_id", "default_days", "status", "remark"):
-            if key in updates:
-                set_parts.append(f"{key} = ?")
-                params.append(updates[key])
-
-        if not set_parts:
-            return
-
-        params.append(supplier_id)
+        set_parts = [f"{k} = ?" for k in updates]
+        params = [*updates.values(), supplier_id]
         sql = f"UPDATE Suppliers SET {', '.join(set_parts)} WHERE supplier_id = ?"
         self.execute(sql, tuple(params))
 
     def delete(self, supplier_id: str) -> None:
         self.execute("DELETE FROM Suppliers WHERE supplier_id = ?", (supplier_id,))
 
-    def delete_all(self) -> None:
-        self.execute("DELETE FROM Suppliers")
-
-    def list_for_export(self) -> List[Dict[str, Any]]:
-        return self.fetchall(
-            """
-            SELECT s.supplier_id, s.name, s.default_days, s.status, s.remark, ot.name AS op_type_name
-            FROM Suppliers s
-            LEFT JOIN OpTypes ot ON ot.op_type_id = s.op_type_id
-            ORDER BY s.supplier_id
-            """
-        )
-
-    # -------------------------
-    # 引用检查（给 Service 层做删除/清空保护）
-    # -------------------------
-    def has_part_operation_reference(self, supplier_id: str) -> bool:
-        return exists_value_reference(self, table="PartOperations", column="supplier_id", value=supplier_id)
-
-    def has_batch_operation_reference(self, supplier_id: str) -> bool:
-        return exists_value_reference(self, table="BatchOperations", column="supplier_id", value=supplier_id)
-
-    def has_external_group_reference(self, supplier_id: str) -> bool:
-        return exists_value_reference(self, table="ExternalGroups", column="supplier_id", value=supplier_id)
-
-    def has_any_part_operation_reference(self) -> bool:
-        return exists_any_nonblank_reference(self, table="PartOperations", column="supplier_id")
-
-    def has_any_batch_operation_reference(self) -> bool:
-        return exists_any_nonblank_reference(self, table="BatchOperations", column="supplier_id")
-
-    def has_any_external_group_reference(self) -> bool:
-        return exists_any_nonblank_reference(self, table="ExternalGroups", column="supplier_id")

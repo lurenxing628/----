@@ -6,7 +6,6 @@ from typing import Any, Dict
 
 from core.errors import ValidationError
 from core.models.resource_capabilities import supports_source
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_resource_file import (
     ENUM_CODES,
     MULTI_CODES,
@@ -28,7 +27,7 @@ def _column(kind, field):
 def same_value(left, right, field):
     if field in NUMERIC_FIELDS and type(left) in (int, float) and type(right) in (int, float):
         return math.isfinite(left) and math.isfinite(right) and left == right
-    return canonical_json(left) == canonical_json(right)
+    return type(left) is type(right) and left == right
 
 
 def _same_column(field, value, previous):
@@ -54,17 +53,13 @@ class ResourceFileInput:
             if key == "label":
                 payload["label"] = value
             elif key in RELATIONS[self.kind]:
-                target, target_kind, category = RELATIONS[self.kind][key]
-                selected, evidence = self._relation(value, key, target_kind, category)
+                target, target_kind, _ = RELATIONS[self.kind][key]
+                selected, evidence = self._relation(value, key, target_kind)
                 payload.setdefault("relationships", {})[target] = selected
                 related[key] = evidence
             else:
                 payload["fields"][key] = value
-        normalized = self.reader.domain.normalize_input(action, payload)
-        self._unique_name(code, normalized)
-        category = normalized["fields"].get("category", (before or {}).get("category", scope["category"]))
-        self._policy(normalized, category)
-        return normalized, related
+        return self.reader.domain.normalize_input(action, payload), related
 
     def _changes(self, values, before, scope):
         if self.kind == "op_type" and "category" in values and not supports_source(values["category"], scope["category"]):
@@ -84,7 +79,9 @@ class ResourceFileInput:
     def _machine_columns(values, before, changes):
         legacy = values.get("op_type_code")
         changed = before is not None and "op_type_code" in changes
-        if changed or (before is None and legacy is not None and legacy not in values["op_type_codes"]):
+        # 新列填 \N 时留给 _clear_fields 报标准的行级错误，这里不拿 None 做成员判断。
+        if changed or (before is None and legacy is not None and values["op_type_codes"] is not None
+                       and legacy not in values["op_type_codes"]):
             raise ValidationError("请只修改可做工种编号，不要同时修改旧单工种列。", field="op_type_codes")
         changes.pop("op_type_code", None)
 
@@ -114,40 +111,24 @@ class ResourceFileInput:
             if type(value) is str and not value.strip():
                 raise ValidationError(_column(self.kind, key) + "只填了空格，这不算清除，这一行没有导入。要清除请填 \\N（大写），要留着原值请把格子空着。", field=key)
 
-    def _relation(self, value, field, kind, category):
+    def _relation(self, value, field, kind):
         multiple = field in MULTI_CODES
-        if multiple and (type(value) is not list or any(type(code) is not str for code in value)):
-            raise ValidationError(_column(self.kind, field) + "要填一组用引号括起来的编号，这一行没有导入。请按 [\"A\",\"B\"] 这样填。", field=field)
-        if multiple and len(value) != len(set(value)):
-            raise ValidationError(_column(self.kind, field) + "里的编号有重复，这一行没有导入。请去掉重复的编号。", field=field)
         if not multiple and value is None:
             return None, None
         refs, evidence = [], []
         for code in value if multiple else [value]:
-            identity, raw = self._selected_code(code, kind, category, field)
+            identity, raw = self._selected_code(code, kind, field)
             refs.append(identity.ref)
             evidence.append({"identity": asdict(identity), "record": raw})
         return (refs, evidence) if multiple else (refs[0], evidence[0])
 
-    def _selected_code(self, code, kind, category, field):
+    def _selected_code(self, code, kind, field):
         if type(code) is not str or not code or code != code.strip():
             raise ValidationError(_column(self.kind, field) + "要填准确的编号，不能填空格或名称，这一行没有导入。请改填编号。", field=field)
         identity = self.preparation.find_identity(kind, code)
         if identity is None:
             raise ValidationError(_column(self.kind, field) + "里的编号 " + code + " 在资料里找不到，这一行没有导入。请先在资料总览新增它，或者改填已有编号。", field=field)
-        return self.preparation.selected_record(kind, identity, category=category)
-
-    def _unique_name(self, code, payload):
-        if self.kind == "op_type" and "label" in payload:
-            owner = self.preparation.name_owner(self.kind, payload["label"])
-            if owner is not None and owner != code:
-                raise ValidationError("这个工种名称已经被另一个编号用了，这一行没有导入。请换一个名称。", field="label")
-
-    @staticmethod
-    def _policy(payload, category):
-        mode = payload["fields"].get("default_merge_mode")
-        if mode is not None and not supports_source(category, "external"):
-            raise WorkbenchCommandRejected("constraint_conflict", "自制工种不能设置外协周期规则，没有导入。请把归属改成外协，或者清掉" + _column("op_type", "default_merge_mode") + "。")
+        return identity, self.preparation.facts.raw_record(kind, identity.entity_key)
 
 
 def proposed_fields(kind, code, before, payload, related):
@@ -160,6 +141,8 @@ def proposed_fields(kind, code, before, payload, related):
             after[field] = sorted(item["identity"]["entity_key"] for item in facts)
         else:
             after[field] = facts["identity"]["entity_key"] if facts else None
+    if kind == "op_type" and not supports_source(after.get("category"), "external") and "default_merge_mode" not in payload["fields"]:
+        after["default_merge_mode"] = None
     if kind == "machine" and "op_type_codes" in related:
         after.pop("op_type_code", None)
     if before is not None:

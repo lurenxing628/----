@@ -6,8 +6,7 @@ import math
 from collections import Counter
 from statistics import median
 
-from core.services.execution.processing_hours import covered_legacy_scopes
-from core.services.workbench.facts.execution_values import hour_totals
+from core.services.execution.processing_hours import hour_totals
 
 
 def _completion_summary(operations):
@@ -26,7 +25,7 @@ def _deviation_summary(operations):
             "finish_sample": len(deviations), "tolerance_minutes": 10}
 
 
-def summary(operations, records):
+def summary(operations, records, *, covered):
     return {"operations": len(operations), "events": sum(row["record_kind"] == "legacy_event" for row in records),
             "production_reports": sum(row["record_kind"] == "production_report" for row in records), "records": len(records),
             **_completion_summary(operations), **_deviation_summary(operations),
@@ -34,12 +33,11 @@ def summary(operations, records):
             "late_open": sum(row["late_open"] for row in operations), "finish_late": sum(row["finish_late"] for row in operations),
             "unreported": sum(row["execution_state"] == "unreported" for row in operations),
             "reported_operations": sum(row["record_count"] > 0 for row in operations),
-            **hour_totals(records)}
+            **hour_totals(records, covered_scopes=covered)}
 
 
-def resource_rows(records, kind):
+def resource_rows(records, kind, *, covered):
     groups = {}
-    covered = covered_legacy_scopes(records)
     # 外协不占本厂设备和人员：资源工时只统计自制工序的记录，外协不混进「未填写」行。
     for event in (row for row in records if row["operation_source"] != "external"):
         key = event[kind + "_ref"]
@@ -70,7 +68,8 @@ def charts(operations, as_of):
     finish = [{"label": label, "count": sum(test(row["finish_deviation_minutes"]) for row in completed)} for label, test in (
         ("提前超过 10 分钟", lambda value: value < -10), ("按时（偏差不超过 10 分钟）", lambda value: -10 <= value <= 10),
         ("晚完成超过 10 分钟", lambda value: value > 10))]
-    aging = [{"label": label, "count": sum(test(row["elapsed_since_planned_minutes"]) for row in operations if row["unclosed"])} for label, test in (
+    unclosed_elapsed = [row["elapsed_since_planned_minutes"] for row in operations if row["unclosed"]]
+    aging = [{"label": label, "count": sum(test(elapsed) for elapsed in unclosed_elapsed)} for label, test in (
         ("到期 10 分钟内", lambda value: value <= 10), ("超过 10 分钟到 1 小时", lambda value: 10 < value <= 60),
         ("超过 1 小时到 1 天", lambda value: 60 < value <= 1440), ("超过 1 天", lambda value: value > 1440))]
     return {"finish": finish, "aging": aging, "trend": _trend(operations, as_of)}

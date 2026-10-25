@@ -160,19 +160,17 @@ def _finalize_freeze_application_status(meta: Dict[str, Any]) -> None:
 
 
 def _load_schedule_map(
-    svc,
     *,
     prev_version: int,
     op_ids: List[int],
     start_str: str,
     freeze_end_str: str,
-    schedule_rows_reader: Any = None,
+    schedule_rows_reader: Any,
 ) -> _LoadedScheduleMapOutcome:
     schedule_map: Dict[int, Dict[str, Any]] = {}
     invalid_row_count = 0
     duplicate_op_ids: Set[int] = set()
-    reader = schedule_rows_reader if schedule_rows_reader is not None else svc.schedule_repo.list_version_rows_by_op_ids_start_range
-    rows = reader(
+    rows = schedule_rows_reader(
         version=int(prev_version),
         op_ids=op_ids,
         start_time=start_str,
@@ -180,7 +178,7 @@ def _load_schedule_map(
     )
     for row in rows:
         try:
-            row_dict = dict(row)
+            row_dict = row if isinstance(row, dict) else dict(row)
             oid = int(row_dict.get("op_id") or 0)
             if oid <= 0:
                 raise ValueError("op_id must be positive")
@@ -276,11 +274,10 @@ def _load_previous_schedule_for_freeze(
     strict_mode: bool,
     freeze_meta: Dict[str, Any],
     warnings: List[str],
-    schedule_rows_reader: Any = None,
+    schedule_rows_reader: Any,
 ) -> Optional[_LoadedScheduleMapOutcome]:
     try:
         load_outcome = _load_schedule_map(
-            svc,
             prev_version=int(prev_version),
             op_ids=scope.op_ids_all,
             start_str=scope.start_str,
@@ -288,7 +285,7 @@ def _load_previous_schedule_for_freeze(
             schedule_rows_reader=schedule_rows_reader,
         )
     except Exception:
-        logger = getattr(svc, "logger", None)
+        logger = svc.logger
         if logger is not None:
             logger.exception("冻结窗口加载上一版本排程失败")
         _record_freeze_degradation(
@@ -322,7 +319,7 @@ def _apply_freeze_prefixes(
     freeze_meta: Dict[str, Any],
     warnings: List[str],
     strict_mode: bool,
-    point_validator: Any = None,
+    point_validator: Any,
     skip_incomplete_prefix: bool = False,
 ) -> Set[int]:
     frozen_op_ids: Set[int] = set()
@@ -345,8 +342,8 @@ def _apply_freeze_prefixes(
             )
             continue
 
-        invalid_oid = _cache_seed_for_prefix(prefix=prefix, schedule_map=schedule_map, seed_tmp=seed_tmp,
-                                             point_validator=point_validator)
+        invalid_oid = _cache_seed_for_prefix(prefix=prefix, schedule_map=schedule_map, op_by_id=scope.op_by_id,
+                                             seed_tmp=seed_tmp, point_validator=point_validator)
         if invalid_oid:
             _record_freeze_degradation(
                 freeze_meta,
@@ -371,7 +368,6 @@ def _finish_freeze_seed_result(
     warnings: List[str],
 ) -> Tuple[Set[int], List[Dict[str, Any]], List[str]]:
     seed_results = _build_seed_results(frozen_op_ids, op_by_id=scope.op_by_id, seed_tmp=seed_tmp)
-    seed_results.sort(key=lambda x: (x["start_time"], x["op_id"]))
 
     freeze_meta["freeze_applied"] = bool(frozen_op_ids)
     if str(freeze_meta.get("freeze_state") or "").strip().lower() != "degraded":
@@ -396,8 +392,8 @@ def build_freeze_window_seed(
     reschedulable_operations: Optional[List[Any]] = None,
     strict_mode: bool = False,
     meta: Optional[Dict[str, Any]] = None,
-    point_validator: Any = None,
-    schedule_rows_reader: Any = None,
+    point_validator: Any,
+    schedule_rows_reader: Any,
     skip_incomplete_prefix: bool = False,
     hold_window: Optional[Tuple[datetime, datetime]] = None,
 ) -> Tuple[Set[int], List[Dict[str, Any]], List[str]]:

@@ -13,10 +13,7 @@ from core.services.workbench.calibration.service import WorkbenchCalibrationServ
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
-from .calibration_read_context import as_of as _as_of
-from .calibration_read_context import bind as _bind
-from .calibration_read_context import page_integer as _page_integer
-from .read_context import resolve_read_snapshot
+from .read_context import bind_read_snapshot, current_snapshot_time, page_integer, resolve_read_snapshot
 
 
 def _arguments(*, export, detail):
@@ -26,11 +23,11 @@ def _arguments(*, export, detail):
     if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
         raise WorkbenchCommandRejected("invalid_input", "工时校准的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", 400)
     fields: Dict[str, Any] = {key: value for key, value in request.args.items() if key not in ("snapshot_ref", "format", "page", "size")}
-    fields.update(number=_page_integer("page", "1"), size=_page_integer("size", "20"))
+    fields.update(number=page_integer(request.args.get("page", "1"), max_digits=7), size=page_integer(request.args.get("size", "20"), max_digits=7))
     if "column_filters" in fields:
         try:
             fields["column_filters"] = json.loads(fields["column_filters"], object_pairs_hook=unique_calibration_object)
-        except (ValueError, TypeError) as exc:
+        except json.JSONDecodeError as exc:
             raise WorkbenchCommandRejected("invalid_input", "列筛选内容读不出来，当前筛选没有变化。请点「清除筛选」后重新选择。", 400) from exc
     query = CalibrationQuery(**fields)
     token = request.args.get("snapshot_ref")
@@ -42,15 +39,17 @@ def _arguments(*, export, detail):
 def _read(*, export=False, suggestion_ref=None):
     query, token = _arguments(export=export, detail=suggestion_ref is not None)
     binding = resolve_read_snapshot(token) if token is not None else None
-    as_of = _as_of(token, binding) if token is not None else None
+    as_of = binding.as_of_time if binding is not None else None
     service = WorkbenchCalibrationService(g.db, as_of=as_of)
-    with service.read_snapshot(clock=(lambda: _as_of(None)) if token is None else None) as as_of:
-        facts = service.read(query, bind_snapshot=lambda content: _bind(query, content, token, as_of, binding=binding))
-        snapshot = facts["snapshot"]
-        data, rows = service.workspace(facts, query, snapshot, suggestion_ref=suggestion_ref)
-        if export:
-            file = export_calibration(data, rows, snapshot, request.args.get("format", "csv"))
+    facts = service.read(
+        query,
+        clock=current_snapshot_time if binding is None else None,
+        bind_snapshot=lambda content: bind_read_snapshot(query.scope(), content, token, as_of=service.as_of, binding=binding),
+    )
+    snapshot = facts["snapshot"]
+    data, rows = service.workspace(facts, query, snapshot, suggestion_ref=suggestion_ref, export=export)
     if export:
+        file = export_calibration(data, rows, snapshot, request.args.get("format", "csv"))
         response = send_file(file.data, mimetype=file.content_type, as_attachment=True, download_name=file.filename, max_age=0)
         response.headers["X-Workbench-Snapshot"] = snapshot["snapshot_ref"]
         response.headers["X-Workbench-As-Of"] = snapshot["as_of"]

@@ -3,8 +3,9 @@
 from datetime import datetime
 from typing import Callable, Optional
 
-from core.models.workbench_execution_input import public_ref, reject
+from core.models.workbench_execution_input import reject
 from core.services.execution.ledger_reader import ExecutionLedgerReader
+from core.services.execution.projection import projection_resource_refs
 from core.services.scheduler.execution.execution_plan_identity import current_execution_plan
 from core.services.workbench.facts.execution_projection import ExecutionContextFactory, attach_context
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
@@ -16,16 +17,6 @@ def _check_workspace_tasks(tasks, facts, plan_ref):
         actual = facts["comparison_tasks"].get(task["operation_ref"])
         if actual is None or actual["task_ref"] != task["task_ref"] or task["plan_ref"] != plan_ref:
             reject("提交的计划任务和系统里记的不是同一条。请刷新后重试。", "constraint_conflict", 409)
-
-
-def _actual_resources(repo, projections):
-    refs = set()
-    for row in projections:
-        for report in row.reports:
-            refs.update(getattr(report, field) for field in ("actual_machine_ref", "actual_operator_ref") if getattr(report, field))
-        for fact in row.legacy_facts:
-            refs.update(fact[field] for field in ("actual_machine_ref", "actual_operator_ref") if fact[field])
-    return repo.resources(refs)
 
 
 def _stable_projection_rows(rows):
@@ -83,35 +74,11 @@ class ExecutionLedgerService(ExecutionLedgerReader):
             row = self.report_header(report_ref=report_ref)
             if row is None:
                 reject("报工不存在，旧单号不会改指其他记录。", "entity_not_found", 404)
-            return self._report_from_header(row)
-
-    def _report_from_header(self, header):
-        projection = self.project_operations([header["operation_ref"]])[0]
-        report_ref = header["report_ref"]
-        active = next((report for report in projection.reports if report.report_ref == report_ref), None)
-        if active is not None:
-            return active
-        from core.models.workbench_execution import ProductionReport
-        archived = next(row["report"] for row in projection.voided_reports if row["report"]["report_ref"] == report_ref)
-        return ProductionReport(**archived)
-
-    def find_report(self, report_no):
-        with self.read_snapshot():
-            row = self.report_header(report_no=report_no)
-            return self._report_from_header(row) if row else None
-
-    def snapshot(self, operation_ref):
-        with self.read_snapshot():
-            return self.fact_snapshot(self.load([public_ref(operation_ref)]), operation_ref)
-
-    def list_tasks(self, plan_ref, *, size=100, after_task_ref=None):
-        with self.read_snapshot():
-            rows = self.page_tasks(plan_ref, size, after_task_ref)
-            selected = rows[:size]
-            projections = self.project_operations([row["operation_ref"] for row in selected], comparison_plan_ref=plan_ref)
-            by_ref = {row.operation_ref: row.to_dict() for row in projections}
-            return {"items": [by_ref[row["operation_ref"]] for row in selected], "has_more": len(rows) > size,
-                    "next_task_ref": selected[-1]["task_ref"] if len(rows) > size else None}
+            projection = self.project_operations([row["operation_ref"]])[0]
+            report = next((report for report in projection.reports if report.report_ref == row["report_ref"]), None)
+            if report is None:
+                reject("报工不存在，旧单号不会改指其他记录。", "entity_not_found", 404)
+            return report
 
     def workspace_projection(self, plan_ref, tasks):
         with self.read_snapshot():
@@ -119,7 +86,7 @@ class ExecutionLedgerService(ExecutionLedgerReader):
             facts = self.load_many(refs, comparison_plan_ref=plan_ref)
             _check_workspace_tasks(tasks, facts, plan_ref)
             projections = self.project_loaded(facts)
-            resources = _actual_resources(self, projections)
+            resources = self.resources({ref for row in projections for ref in projection_resource_refs(row)})
             plain = [row.to_dict() for row in projections]
             return {"available": True, "time_basis": "factory_local", "projections": plain,
                     "resources": {"machines": [row for row in resources if row["kind"] == "machine"],

@@ -3,9 +3,8 @@
 import os
 
 from core.services.workbench.facts.system_journal import assert_system_maintenance_ready
-from web.runtime_host import RESTORE_HOST_EXTENSION
+from web.runtime_host import RESTORE_HOST_EXTENSION, normalize_runtime_db_path
 
-from .launcher_paths import _normalize_db_path_for_runtime
 from .workbench_request_lifecycle import lookup_workbench_request_lifecycle
 from .workbench_run_runtime_lock import RunRuntimeLockProof, RunRuntimeOwnershipError
 
@@ -59,9 +58,8 @@ class RecoveryLockProof(RunRuntimeLockProof):
 class WorkbenchSystemRestoreRecoveryHost:
     def __init__(self, app, runtime_lock):
         self.app = app
-        self.db_path = _normalize_db_path_for_runtime(app.config["DATABASE_PATH"])
+        self.db_path = normalize_runtime_db_path(app.config["DATABASE_PATH"])
         self.proof = RecoveryLockProof(self.db_path, runtime_lock)
-        self.proof.verify()
         self.ready = False
 
     def shutdown(self, wait=True):

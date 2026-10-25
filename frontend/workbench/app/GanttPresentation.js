@@ -3,7 +3,8 @@
   const DAY = 86400000, weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
   function axis({ start, end, width, left = 0, viewport = width }) {
     if (start === null) return { bands: [], ticks: [] };
-    const scale = width / (end - start), low = start + left / scale, high = Math.min(end, start + (left + viewport) / scale);
+    const span = end > start ? end - start : 1;
+    const scale = width / span, low = start + left / scale, high = Math.min(end, start + (left + viewport) / scale);
     const unit = DAY * scale >= 54 ? 'day' : DAY * 30 * scale >= 70 ? 'month' : 'year';
     const date = new Date(low), year = date.getUTCFullYear(), month = date.getUTCMonth();
     let at = Date.UTC(year, unit === 'year' ? 0 : month, unit === 'day' ? date.getUTCDate() : 1);

@@ -15,15 +15,16 @@ needs version/status/summary, and counting rows would touch unnecessary details.
 from __future__ import annotations
 
 import sqlite3
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
+from core.infrastructure.connection_guards import schema_contract_memo
 from core.models.schedule_plan_role import (
     SOURCE_ADJUSTMENT_SCENARIO_ROWS,
     SOURCE_CANDIDATE_ROWS,
     SOURCE_SCHEDULE,
 )
 
-from .schedule_plan_query_repo import _SCENARIO_PLAN_ROWS_SQL, SchedulePlanQueryRepository
+from .schedule_plan_query_repo import SCENARIO_PLAN_ROWS_SQL, SchedulePlanQueryRepository
 from .schedule_rows import ScheduleTimeSpanRow
 
 DEFAULT_PLAN_PAGE_SIZE = 20
@@ -82,9 +83,11 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
             f"SELECT DISTINCT version FROM ScheduleHistory {where} ORDER BY version DESC LIMIT ?",
             params + [page_size + 1],
         )
+        page_versions = [int(key["version"]) for key in keys[:page_size]]
+        self.prefetch_history_rows(page_versions)
         rows = []
-        for key in keys[:page_size]:
-            row = self.get_history_identity_row(int(key["version"]))
+        for version in page_versions:
+            row = self.get_history_identity_row(version)
             if row is None:
                 raise RuntimeError("目录读取期间排产历史消失；调用方必须提供一致读快照。")
             rows.append(row)
@@ -117,13 +120,31 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
 
     def history_rows(self, version: int) -> List[Dict[str, Any]]:
         if version not in self._history_rows:
-            if "ScheduleHistory" not in self._storage_columns:
-                self._storage_columns["ScheduleHistory"] = [row["name"] for row in self.fetchall('PRAGMA table_info("ScheduleHistory")')]
-            selected = ",".join('CASE WHEN 1 THEN "' + name.replace('"', '""') + '" END AS "' + name.replace('"', '""') + '"'
-                                for name in self._storage_columns["ScheduleHistory"])
-            self._history_rows[version] = self.fetchall(
-                "SELECT " + selected + " FROM ScheduleHistory WHERE version=? ORDER BY schedule_time DESC,id DESC LIMIT 2", (version,))
+            self.prefetch_history_rows([version])
         return self._history_rows[version]
+
+    def prefetch_history_rows(self, versions):
+        pending = [version for version in dict.fromkeys(versions) if version not in self._history_rows]
+        if not pending:
+            return
+        if "ScheduleHistory" not in self._storage_columns:
+            self._storage_columns["ScheduleHistory"] = [str(row[1]) for row in schema_contract_memo(self.conn).structure.table_info("ScheduleHistory")]
+        selected = ",".join('CASE WHEN 1 THEN "' + name.replace('"', '""') + '" END AS "' + name.replace('"', '""') + '"'
+                            for name in self._storage_columns["ScheduleHistory"])
+        for start in range(0, len(pending), 400):
+            chunk = pending[start:start + 400]
+            if len(chunk) == 1:
+                self._history_rows[chunk[0]] = self.fetchall("SELECT " + selected +
+                    " FROM ScheduleHistory WHERE version=? ORDER BY schedule_time DESC,id DESC LIMIT 2", chunk)
+                continue
+            self._history_rows.update((version, []) for version in chunk)
+            marks = ",".join("?" for _ in chunk)
+            rows = self.fetchall("SELECT " + selected + " FROM ScheduleHistory WHERE id IN (SELECT id FROM (SELECT id,"
+                "ROW_NUMBER() OVER (PARTITION BY version ORDER BY schedule_time DESC,id DESC) AS history_position "
+                "FROM ScheduleHistory WHERE version IN (" + marks + ")) WHERE history_position <= 2) "
+                "ORDER BY version,schedule_time DESC,id DESC", chunk)
+            for row in rows:
+                self._history_rows[row["version"]].append(row)
 
     def list_plan_role_options(self, version: int) -> List[Dict[str, Any]]:
         if version not in self._roles:
@@ -141,7 +162,7 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
             scenario_key = str(scenario_id or "")
             if not scenario_key:
                 raise ValueError("scenario_id is required for adjustment_scenario_rows plan")
-            return _SCENARIO_PLAN_ROWS_SQL, [scenario_key]
+            return SCENARIO_PLAN_ROWS_SQL, [scenario_key]
         return super()._plan_rows_sql(
             source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id,
         )
@@ -156,8 +177,21 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
             )
         return self._spans[key]
 
-    def list_history_identity_rows(self) -> List[Dict[str, Any]]:
-        raise RuntimeError("分页目录禁止调用全量历史查询。")
+    def first_raw_plan_identity_row(
+        self, *, version: int, source_table: str, candidate_id: Optional[int], scenario_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        sql, extra = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id)
+        return self.fetchone("SELECT id AS source_row_id, lock_status FROM (" + sql + ") raw ORDER BY id ASC LIMIT 1",
+                             [version] + extra)
+
+    def iter_raw_plan_rows(
+        self, *, version: int, source_table: str, candidate_id: Optional[int], scenario_id: Optional[str] = None,
+    ) -> Iterator[Dict[str, Any]]:
+        """Stream plan rows in id order without declared DATE/TIMESTAMP conversion."""
+        sql, extra = self._plan_rows_sql(source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id)
+        fields = ("id", "op_id", "machine_id", "operator_id", "start_time", "end_time", "lock_status", "version")
+        selected = ", ".join("CASE WHEN 1 THEN raw." + field + " END AS " + field for field in fields)
+        return self.iter_rows("SELECT " + selected + " FROM (" + sql + ") raw ORDER BY raw.id ASC", [version] + extra)
 
     def list_plan_storage_rows(
         self, *, version: Any, source_table: str, candidate_id: Optional[int], scenario_id: Optional[str] = None,
@@ -175,7 +209,7 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
             joins = " JOIN ScheduleAdjustmentScenario s ON s.scenario_id = r.scenario_id"
             where = "s.base_version = ? AND r.scenario_id = ? AND s.status = 'active'"
         if table not in self._storage_columns:
-            self._storage_columns[table] = [row["name"] for row in self.fetchall(f'PRAGMA table_info("{table}")')]
+            self._storage_columns[table] = [str(row[1]) for row in schema_contract_memo(self.conn).structure.table_info(table)]
         expressions = []
         for name in self._storage_columns[table]:
             quoted = '"' + name.replace('"', '""') + '"'

@@ -12,9 +12,7 @@ accepts only export_ref and format. No filter, ref list or path can override it.
 
 from __future__ import annotations
 
-from io import BytesIO
-
-from flask import current_app, g, request, send_file
+from flask import current_app, g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_material_file import normalize_refs, normalize_scope
@@ -33,6 +31,7 @@ from .material_actions_context import (
     scope_input,
 )
 from .read_context import bind_read_snapshot, resolve_read_snapshot
+from .resource_action_context import download_args, file_response
 
 
 def _selection(body, reader, scope):
@@ -42,7 +41,7 @@ def _selection(body, reader, scope):
     if selected == "selected":
         refs = normalize_refs(body["refs"], allow_empty=True)
         for ref in refs:
-            reader.detail(ref)
+            reader.resolve(ref)
         return {"selected_refs": refs}, len(refs)
     effective = normalize_scope({}) if selected == "all" else scope
     _, page = reader.page(MaterialPageRequest(**effective, size=1))
@@ -66,26 +65,9 @@ def material_export_preview():
     return query_success(data, snapshot)
 
 
-def _download_args(required):
-    if set(request.args) != set(required) or any(len(request.args.getlist(key)) != 1 for key in request.args):
-        raise WorkbenchCommandRejected("invalid_input", "下载条件不完整或有多余项，没有开始下载。请刷新页面后重新点「导出」。", 400)
-    file_format = request.args["format"]
-    if file_format not in ("csv", "xlsx"):
-        raise WorkbenchCommandRejected("invalid_input", "下载只支持 CSV 或 XLSX 格式，没有开始下载。请重新选择格式后点「导出」。", 400)
-    return file_format
-
-
-def _download_response(download):
-    response = send_file(BytesIO(download.content), mimetype=download.mime_type,
-                         as_attachment=True, download_name=download.filename, max_age=0)
-    response.headers["Cache-Control"] = "no-store"
-    response.headers["X-Workbench-Row-Count"] = str(download.row_count)
-    return response
-
-
 @read_endpoint
 def material_export():
-    file_format = _download_args({"export_ref", "format"})
+    file_format = download_args({"export_ref", "format"})
     ref = opaque_ref(request.args["export_ref"], "export_ref")
     binding = resolve_binding(EXPORT_SCOPE, ref, field="export_ref", code="snapshot_stale")
     reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
@@ -93,7 +75,7 @@ def material_export():
         snapshot = bind_read_snapshot(binding["query_scope"], fingerprint, binding["snapshot_ref"], binding=binding["read_binding"])
         rows = WorkbenchMaterialFileService(g.db, current_app.logger, reader=reader).export_rows(file_format, **binding["arguments"])
     # 读事务已结束：生成 CSV/XLSX 只用已读出的行，不再挡别人提交写入。
-    response = _download_response(WorkbenchMaterialFileService.write_export(rows, file_format))
+    response = file_response(WorkbenchMaterialFileService.write_export(rows, file_format))
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
     response.headers["X-Workbench-As-Of"] = snapshot["as_of"]
     return response
@@ -101,5 +83,5 @@ def material_export():
 
 @read_endpoint
 def material_template():
-    file_format = _download_args({"format"})
-    return _download_response(WorkbenchMaterialFileService.template(file_format))
+    file_format = download_args({"format"})
+    return file_response(WorkbenchMaterialFileService.template(file_format))

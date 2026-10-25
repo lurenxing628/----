@@ -55,6 +55,14 @@ def _looks_like_integer_float(value: Any) -> bool:
 def _parse_finite_int(value: Any, *, field: str, reject_integer_float: bool = False) -> int:
     if isinstance(value, bool):
         raise ValidationError(f"“{field}”必须是整数", field=field)
+    # Native integers and plain integer text parse exactly; only float-shaped input takes the float route.
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, str) and not _looks_like_integer_float(value):
+        try:
+            return int(value.strip())
+        except ValueError as exc:
+            raise ValidationError(f"“{field}”必须是整数", field=field) from exc
     try:
         parsed = float(value)
     except (TypeError, ValueError, OverflowError) as exc:
@@ -90,14 +98,6 @@ def parse_required_int(
     min_value: Optional[int] = None,
     reject_integer_float: bool = False,
 ) -> int:
-    # Outside this exact range, the legacy float round-trip can change integers.
-    if (
-        type(value) is int
-        and -(1 << 53) <= value <= (1 << 53)
-        and min_value is None
-        and reject_integer_float is False
-    ):
-        return value
     if is_blank_input(value):
         _raise_blank_required(field)
     return _ensure_min_int(

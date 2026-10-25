@@ -6,29 +6,22 @@ from typing import Any, Optional
 from core.errors import ValidationError
 
 
-def normalize_date(value: Any) -> str:
-    """
-    日期标准化为 YYYY-MM-DD。
-
-    约定：
-    - 支持 date/datetime
-    - 支持字符串：YYYY-MM-DD / YYYY/MM/DD
-    - 为空则抛 ValidationError（字段名：日期）
-    """
+def normalize_date(value: Any) -> Optional[str]:
+    """Web 日期输入可带时间；保存为 YYYY-MM-DD，Excel 仍使用严格单元格校验。"""
+    if value is None:
+        return None
     if isinstance(value, datetime):
         return value.date().isoformat()
     if isinstance(value, date):
         return value.isoformat()
-    if value is None:
-        raise ValidationError("“日期”不能为空", field="日期")
-    v = str(value).strip()
-    if not v:
-        raise ValidationError("“日期”不能为空", field="日期")
-    v = v.replace("/", "-")
+    text = str(value).strip()
+    if not text:
+        return None
+    text = text.replace("/", "-").split("T", 1)[0].split(" ", 1)[0]
     try:
-        return datetime.strptime(v, "%Y-%m-%d").date().isoformat()
-    except ValueError as e:
-        raise ValidationError("“日期”格式不合法（期望：YYYY-MM-DD）", field="日期") from e
+        return datetime.strptime(text, "%Y-%m-%d").date().isoformat()
+    except ValueError as exc:
+        raise ValidationError("日期写法不对，请填写类似 2026-05-20 的日期。", field="日期") from exc
 
 
 def normalize_hhmm(value: Any, *, field: str) -> Optional[str]:

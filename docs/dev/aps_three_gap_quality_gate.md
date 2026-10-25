@@ -23,9 +23,9 @@
 | 5 | candidate-summary-delta-cards | 2026-05-27-candidate-summary-delta-cards | `tests/candidate/test_scheduler_candidate_summary_contract.py`、`tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py` |
 | 6 | candidate-drilldown-empty-states | 2026-05-27-candidate-drilldown-empty-states | `tests/candidate/test_scheduler_candidate_week_plan_contract.py`、`tests/candidate/test_scheduler_candidate_plan_query_contract.py` |
 | 7 | dispatch-plan-identity-guardrails | 2026-05-27-dispatch-plan-identity-guardrails | `tests/resource_dispatch/test_resource_dispatch_public_output_contract.py` |
-| 8 | operation-execution-event-foundation | 2026-05-27-operation-execution-event-foundation | `tests/operation_execution/test_operation_execution_event_foundation.py`、`tests/operation_execution/test_operation_execution_state_revision.py`、`tests/migration_db/test_migrations.py` |
+| 8 | operation-execution-event-foundation | 2026-05-27-operation-execution-event-foundation | `tests/operation_execution/test_operation_execution_event_foundation.py`、`tests/operation_execution/test_operation_execution_state_revision.py`（已随工作台收口退役，见附录二）、`tests/migration_db/test_migrations.py` |
 | 9 | resource-dispatch-start-finish-feedback | 2026-05-27-resource-dispatch-start-finish-feedback | `tests/gate_meta/test_architecture_fitness.py::test_viewmodels_do_not_import_flask_or_services_or_repositories_or_routes` |
-| 10 | reschedule-minimum-execution-guardrails | 2026-05-27-reschedule-minimum-execution-guardrails | `tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py`、`tests/operation_execution/test_operation_execution_state_revision.py` |
+| 10 | reschedule-minimum-execution-guardrails | 2026-05-27-reschedule-minimum-execution-guardrails | `tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py`、`tests/operation_execution/test_operation_execution_state_revision.py`（已随工作台收口退役，见附录二） |
 | 11 | shop-exception-feedback | 2026-05-27-shop-exception-feedback | `tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py` |
 | 12 | plan-vs-actual-review | 2026-05-27-plan-vs-actual-review | `tests/scheduler_analysis/test_plan_vs_actual_review.py`、`tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py` |
 | 13 | reschedule-respects-execution-facts | 2026-05-27-reschedule-respects-execution-facts | `tests/operation_execution/test_scheduler_reschedule_execution_facts.py`、`tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py` |
@@ -43,7 +43,7 @@
 | 5 | candidate-summary-delta-cards | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py tests/candidate/test_scheduler_candidate_summary_contract.py tests/scheduler_graph/test_scheduler_graph_auto_selection_contract.py` |
 | 6 | candidate-drilldown-empty-states | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/candidate/test_scheduler_candidate_week_plan_contract.py tests/candidate/test_scheduler_candidate_plan_query_contract.py tests/app_runtime/test_frontend_offline_static_assets.py tests/scheduler_analysis/test_report_export_size_mode_selection.py tests/gantt/test_scheduler_candidate_gantt_plan_role_contract.py tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py` |
 | 7 | dispatch-plan-identity-guardrails | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py` |
-| 8 | operation-execution-event-foundation | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_operation_execution_event_foundation.py tests/operation_execution/test_operation_execution_event_time_contract.py tests/operation_execution/test_operation_execution_state_revision.py tests/migration_db/test_migrations.py` |
+| 8 | operation-execution-event-foundation | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/operation_execution/test_operation_execution_event_foundation.py tests/operation_execution/test_operation_execution_event_time_contract.py tests/operation_execution/test_operation_execution_state_revision.py tests/migration_db/test_migrations.py`（历史快照；其中 state_revision 测试已退役，见附录二） |
 | 9 | resource-dispatch-start-finish-feedback | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/app_runtime/test_frontend_offline_static_assets.py tests/resource_dispatch/test_resource_dispatch_invalid_summary_surfaces_overdue_degraded.py` |
 | 10 | reschedule-minimum-execution-guardrails | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/schedule/service/test_scheduler_reschedule_execution_minimum_guard.py tests/app_runtime/test_frontend_offline_static_assets.py` |
 | 11 | shop-exception-feedback | `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q tests/schedule/service/test_scheduler_exception_blocks_auto_reschedule.py tests/app_runtime/test_frontend_offline_static_assets.py` |
@@ -68,7 +68,7 @@
 - `tests/migration_db/test_migrations.py`
 - `tests/operation_execution/test_operation_execution_event_foundation.py`
 - `tests/operation_execution/test_operation_execution_event_time_contract.py`
-- `tests/operation_execution/test_operation_execution_state_revision.py`
+- `tests/operation_execution/test_operation_execution_state_revision.py`（已随工作台收口退役，见附录二）
 - `tests/web_pages/test_page_manual_registry.py`
 - `tests/scheduler_analysis/test_plan_vs_actual_review.py`
 - `tests/scheduler_analysis/test_report_delay_diagnosis_plain_language.py`
@@ -121,7 +121,7 @@
 - `core/models/schedule_plan_resolution.py`
 - `core/models/schedule_delay_diagnosis.py`
 - `core/models/operation_execution_event.py`
-- `core/models/operation_execution_state.py`
+- `core/models/operation_execution_state.py`（已随工作台收口退役，见附录二）
 - `core/models/schedule_adjustment.py`
 - `core/infrastructure/operation_execution_event_data_contract.py`
 - `core/infrastructure/migration_operation_execution_contract.py`
@@ -132,9 +132,9 @@
 - `core/services/scheduler/schedule_delay_diagnosis_clues.py`
 - `core/services/scheduler/execution_fact_provider.py`
 - `core/services/scheduler/execution_snapshot.py`
-- `core/services/scheduler/operation_execution_feedback_actions.py`
-- `core/services/scheduler/operation_execution_feedback_service.py`
-- `core/services/scheduler/operation_execution_feedback_support.py`
+- `core/services/scheduler/operation_execution_feedback_actions.py`（已随工作台收口退役，见附录二）
+- `core/services/scheduler/operation_execution_feedback_service.py`（已随工作台收口退役，见附录二）
+- `core/services/scheduler/operation_execution_feedback_support.py`（已随工作台收口退役，见附录二）
 - `core/services/scheduler/resource_dispatch_execution_enrichment.py`
 - `core/services/scheduler/resource_dispatch/execution_service.py`
 - `core/services/scheduler/resource_dispatch/service.py`
@@ -213,3 +213,11 @@ git diff --check
 - `tests/schedule/route_view/test_scheduler_run_surfaces_resource_pool_warning.py`
 - `tests/schedule/route_view/test_scheduler_workbench_link_targets_contract.py`
 - `tests/web_pages/test_scenario_preview_secondary_outputs.py`
+
+## 附录二：随工作台收口退役的执行反馈文件
+
+下列文件已随工作台收口删除。上文表格、命令快照和 roadmap YAML 里的引用只作历史记录。
+
+- `core/services/scheduler/operation_execution_feedback_actions.py`、`operation_execution_feedback_service.py`、`operation_execution_feedback_support.py`：旧资源派工页的现场开工、完工、异常反馈写入链，旧页面退役后已无生产调用方。现场事实现由工作台报工 `core/services/workbench/execution/production_report*.py` 写入 `WorkbenchProductionReports`，排产经 `core/services/scheduler/execution/execution_ledger_adapter.py` 只读接入。
+- `core/models/operation_execution_state.py`：带显示标签的旧聚合读模型。旧 `OperationExecutionEvents` 的折叠现由 `data/repositories/operation_execution_state_builder.py` 的 `fold_operation_execution_events` 完成（返回 `OperationExecutionEventFold`，含 `state_revision`，不含资源标签和界面状态），只由 `core/services/scheduler/execution/execution_fact_provider.py` 调用。
+- `tests/operation_execution/test_operation_execution_state_revision.py`：随旧反馈写入链一起删除；折叠与执行事实读取由 `tests/operation_execution/test_operation_execution_state_flow.py`、`tests/workbench/test_execution_ledger_commands.py` 等覆盖。

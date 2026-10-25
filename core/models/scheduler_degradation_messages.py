@@ -1,20 +1,12 @@
 from __future__ import annotations
 
-import re
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List
 
 DOWNTIME_LOAD_FAILED_MESSAGE = "停机区间加载失败，本次排产先不使用停机约束。"
 DOWNTIME_EXTEND_FAILED_MESSAGE = "停机区间扩展加载失败，部分自动安排设备可能还没有避开停机时间。"
-# abort 专用中性文案：停机读取失败现已 fail-loud 中止排产（见 resource_pool_builder._raise_downtime_*），
-# 不能复用上面两个“先不使用/可能未避开”的降级文案，否则会与“本次没有生成新排程”自相矛盾。
-# 上面两个常量仅供 summary 降级路径（downtime_avoid_degraded 等“继续排”语义）使用。
-DOWNTIME_LOAD_ABORTED_MESSAGE = "停机区间加载失败。"
-DOWNTIME_EXTEND_ABORTED_MESSAGE = "停机区间扩展加载失败。"
 FREEZE_WINDOW_DEGRADED_MESSAGE = "冻结窗口资料不完整，本次排产未使用冻结窗口。"
 FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE = "冻结窗口资料不完整，本次只保留能确认的冻结工序。"
 RESOURCE_POOL_BUILD_FAILED_MESSAGE = "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。"
-AUTO_ASSIGN_RESOURCE_MISSING_MESSAGE = "自动分配已启用，但可用设备或人员资料缺失，自制工序无法自动分配设备或人员。"
-SCHEDULE_OPERATION_FAILED_MESSAGE = "工序排产异常，请联系维护人员检查系统运行记录。"
 
 _PUBLIC_EVENT_MESSAGES = {
     "config_fallback": "配置里有填写不完整或不正确的内容，本次先按默认值生成摘要。",
@@ -53,61 +45,6 @@ _PUBLIC_EVENT_MESSAGES = {
     "plugin_bootstrap_telemetry_failed": "扩展功能启动记录写入失败，请联系维护人员检查系统运行记录。",
 }
 
-_PUBLIC_RESOURCE_POOL_WARNING_MESSAGE = RESOURCE_POOL_BUILD_FAILED_MESSAGE
-
-_PUBLIC_WARNING_MESSAGES = {
-    "冻结窗口存在跳批风险",
-    "停机区间加载失败，本次先按常规能力继续",
-    "存在 1 个批次未命中首选技能",
-    "开始时间无法解析，本次已改用当前时间。",
-    "截止日期无法解析，本次已忽略这个截止日期。",
-    AUTO_ASSIGN_RESOURCE_MISSING_MESSAGE,
-    _PUBLIC_RESOURCE_POOL_WARNING_MESSAGE,
-    "优化指标记录异常，不能按这些指标判断结果。",
-    "排产降级统计记录异常，部分降级原因无法完整展示。",
-    "排产摘要里的数量记录异常，不能按这些数量判断结果。",
-}
-
-_PUBLIC_NORMALIZED_START_TIME_WARNING_RE = re.compile(
-    r"^开始时间已规范化为：\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$"
-)
-_PUBLIC_UNSCHEDULED_BATCH_WARNING_RE = re.compile(
-    r"^存在 \d+ 个批次未形成完工结果，请到系统管理里的排产历史查看这次排产的详细提醒。$"
-)
-
-_PUBLIC_FIELD_WARNING_LABELS = {
-    "运行期配置快照",
-    "开始时间",
-    "截止日期",
-    "排序策略",
-    "派工方式",
-    "派工规则",
-    "策略参数",
-    "优先级权重",
-    "交期权重",
-    "就绪权重",
-    "自动分配",
-}
-
-_PUBLIC_FIELD_WARNING_MESSAGES = {
-    _PUBLIC_EVENT_MESSAGES["invalid_choice"],
-    _PUBLIC_EVENT_MESSAGES["invalid_number"],
-    _PUBLIC_EVENT_MESSAGES["missing_required"],
-    _PUBLIC_EVENT_MESSAGES["blank_required"],
-    _PUBLIC_EVENT_MESSAGES["number_below_minimum"],
-}
-
-_PUBLIC_WARNING_MESSAGE_ALIASES = {
-    RESOURCE_POOL_BUILD_FAILED_MESSAGE: _PUBLIC_RESOURCE_POOL_WARNING_MESSAGE,
-    "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员（请查看日志）。": _PUBLIC_RESOURCE_POOL_WARNING_MESSAGE,
-}
-
-_SUMMARY_MERGE_ERROR_CODES = {
-    "summary_missing",
-    "summary_warnings_assignment_failed",
-    "summary_warnings_unavailable",
-}
-
 
 def public_degradation_event_message(code: object) -> str:
     normalized = str(code or "").strip()
@@ -121,82 +58,15 @@ def _public_degradation_event_code(code: object) -> str:
     return "scheduler_degradation"
 
 
-def is_public_freeze_degradation_message(message: object) -> bool:
-    return str(message or "").strip() in {
-        FREEZE_WINDOW_DEGRADED_MESSAGE,
-        FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE,
-    }
-
-
-def _is_public_summary_warning_message(text: str) -> bool:
-    return (
-        text in _PUBLIC_WARNING_MESSAGES
-        or _PUBLIC_NORMALIZED_START_TIME_WARNING_RE.fullmatch(text) is not None
-        or _PUBLIC_UNSCHEDULED_BATCH_WARNING_RE.fullmatch(text) is not None
-        or _is_public_field_warning_message(text)
-    )
-
-
-def _is_public_field_warning_message(text: str) -> bool:
-    field_label, sep, message = str(text or "").partition("：")
-    if sep != "：":
-        return False
-    return field_label in _PUBLIC_FIELD_WARNING_LABELS and message in _PUBLIC_FIELD_WARNING_MESSAGES
-
-
-def public_summary_warning_messages(value: Any) -> List[str]:
-    if value is None:
-        raw_items: List[Any] = []
-    elif isinstance(value, str):
-        raw_items = [value]
-    elif isinstance(value, (list, tuple)):
-        raw_items = list(value)
-    else:
-        raw_items = [value]
-
-    out: List[str] = []
-    seen = set()
-    for item in raw_items:
-        text = str(item or "").strip()
-        public_text = _PUBLIC_WARNING_MESSAGE_ALIASES.get(text, text)
-        if (
-            not public_text
-            or not _is_public_summary_warning_message(public_text)
-            or public_text in seen
-        ):
-            continue
-        seen.add(public_text)
-        out.append(public_text)
-    return out
-
-
-def public_summary_merge_error_code(value: Any) -> Optional[str]:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    if text in _SUMMARY_MERGE_ERROR_CODES:
-        return text
-    return "summary_warnings_assignment_failed"
-
-
-def _event_value(event: Any, key: str) -> Any:
-    if isinstance(event, dict):
-        return event.get(key)
-    return getattr(event, key, None)
-
-
 def public_degradation_events(events: Iterable[Any]) -> List[Dict[str, Any]]:
     by_code: Dict[str, Dict[str, Any]] = {}
     order: List[str] = []
-    for event in list(events or []):
-        code = str(_event_value(event, "code") or "").strip()
+    for event in events or ():
+        code = str(event.get("code") or "").strip()
         if not code:
             continue
         public_code = _public_degradation_event_code(code)
-        try:
-            count = max(1, int(_event_value(event, "count") or 1))
-        except Exception:
-            count = 1
+        count = max(1, int(event.get("count") or 1))
         if public_code not in by_code:
             order.append(public_code)
             by_code[public_code] = {
@@ -204,22 +74,16 @@ def public_degradation_events(events: Iterable[Any]) -> List[Dict[str, Any]]:
                 "message": public_degradation_event_message(code),
                 "count": 0,
             }
-        by_code[public_code]["count"] = int(by_code[public_code].get("count") or 0) + count
+        by_code[public_code]["count"] += count
     return [by_code[code] for code in order]
 
 
 __all__ = [
-    "DOWNTIME_EXTEND_ABORTED_MESSAGE",
     "DOWNTIME_EXTEND_FAILED_MESSAGE",
-    "DOWNTIME_LOAD_ABORTED_MESSAGE",
     "DOWNTIME_LOAD_FAILED_MESSAGE",
     "FREEZE_WINDOW_DEGRADED_MESSAGE",
     "FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE",
-    "SCHEDULE_OPERATION_FAILED_MESSAGE",
     "RESOURCE_POOL_BUILD_FAILED_MESSAGE",
-    "is_public_freeze_degradation_message",
     "public_degradation_events",
     "public_degradation_event_message",
-    "public_summary_merge_error_code",
-    "public_summary_warning_messages",
 ]

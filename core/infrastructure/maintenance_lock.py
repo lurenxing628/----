@@ -17,7 +17,7 @@ import threading
 import time
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Iterator, Optional
+from typing import Any, Dict, Iterator, Optional
 
 from core.infrastructure.migration_common import fallback_log
 from core.infrastructure.safe_files import (
@@ -26,8 +26,14 @@ from core.infrastructure.safe_files import (
     remove_fixed_file,
 )
 
+
+class _MaintLocal(threading.local):
+    def __init__(self) -> None:
+        self.state: Optional[Dict[str, Any]] = None
+
+
 _MAINT_MUTEX = threading.RLock()
-_MAINT_CONTEXT = threading.local()
+_MAINT_CONTEXT = _MaintLocal()
 _MAINT_LOCK_STALE_SECONDS = 300
 
 
@@ -43,10 +49,8 @@ def _maintenance_lock_path(db_path: str) -> str:
 
 
 def _current_maintenance_state() -> Optional[dict]:
-    state = getattr(_MAINT_CONTEXT, "state", None)
-    if isinstance(state, dict):
-        return state
-    return None
+    state = _MAINT_CONTEXT.state
+    return state if isinstance(state, dict) else None
 
 
 def current_thread_holds_maintenance_window(db_path: str) -> bool:
@@ -54,19 +58,15 @@ def current_thread_holds_maintenance_window(db_path: str) -> bool:
     return bool(state and state.get("db_path") == os.path.abspath(db_path) and int(state.get("depth") or 0) > 0)
 
 
-def _pid_exists(pid: Optional[int]) -> bool:
-    try:
-        pid_int = int(pid or 0)
-    except Exception:
-        return True
-    if pid_int <= 0:
+def _pid_exists(pid: int) -> bool:
+    if pid <= 0:
         return True
     if os.name == "nt":
         try:
             import ctypes
 
             PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-            handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid_int)
+            handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
             if handle:
                 ctypes.windll.kernel32.CloseHandle(handle)
                 return True
@@ -77,7 +77,7 @@ def _pid_exists(pid: Optional[int]) -> bool:
         except Exception:
             return True
     try:
-        os.kill(pid_int, 0)
+        os.kill(pid, 0)
     except ProcessLookupError:
         return False
     except PermissionError:
@@ -171,12 +171,7 @@ def read_maintenance_lock_state(db_path: str) -> Optional[dict]:
 
 def _lock_age_value(state: dict) -> Optional[float]:
     age_seconds = state.get("age_seconds")
-    if age_seconds is None:
-        return None
-    try:
-        return float(age_seconds)
-    except Exception:
-        return None
+    return float(age_seconds) if isinstance(age_seconds, (int, float)) else None
 
 
 def _should_auto_heal_lock(state: Optional[dict]) -> bool:
@@ -187,15 +182,12 @@ def _should_auto_heal_lock(state: Optional[dict]) -> bool:
         return False
     if age_value < float(_MAINT_LOCK_STALE_SECONDS):
         return False
-    try:
-        pid_int = int(state.get("pid"))  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        pid_int = 0
-    if pid_int <= 0:
+    pid = state.get("pid")
+    if not isinstance(pid, int) or pid <= 0:
         # B04(b)：超龄锁的 pid 缺失/不可解析按可疑处理，允许自愈。
         # 此前 _pid_exists(None) 恒按存活，导致半写锁永久卡死维护窗。
         return True
-    return not _pid_exists(pid_int)
+    return not _pid_exists(pid)
 
 
 def _log_stale_lock_kept_alive(state: dict, logger) -> None:
@@ -222,19 +214,29 @@ def is_maintenance_window_active(db_path: str, *, logger=None) -> bool:
         if state is None:
             return False
         if _should_auto_heal_lock(state):
-            lock_path = str(state.get("path") or _maintenance_lock_path(db_path))
+            if not _MAINT_MUTEX.acquire(blocking=False):
+                return True
             try:
-                remove_fixed_file(lock_path)
-                fallback_log(
-                    logger,
-                    "warning",
-                    f"检测到陈旧维护锁，已自动清理：{lock_path}（pid={state.get('pid')} "
-                    f"age_s={int(state.get('age_seconds') or 0)} age_source={state.get('age_source')} "
-                    f"raw={str(state.get('raw') or '')!r}）",
-                )
-                return False
-            except Exception as e:
-                fallback_log(logger, "warning", f"陈旧维护锁自动清理失败：{e}（path={lock_path}）")
+                current = read_maintenance_lock_state(db_path)
+                if current is None:
+                    return False
+                if not _should_auto_heal_lock(current) or current.get("raw") != state.get("raw"):
+                    return True
+                lock_path = str(current.get("path") or _maintenance_lock_path(db_path))
+                try:
+                    remove_fixed_file(lock_path)
+                    fallback_log(
+                        logger,
+                        "warning",
+                        f"检测到陈旧维护锁，已自动清理：{lock_path}（pid={current.get('pid')} "
+                        f"age_s={int(current.get('age_seconds') or 0)} age_source={current.get('age_source')} "
+                        f"raw={str(current.get('raw') or '')!r}）",
+                    )
+                    return False
+                except Exception as e:
+                    fallback_log(logger, "warning", f"陈旧维护锁自动清理失败：{e}（path={lock_path}）")
+            finally:
+                _MAINT_MUTEX.release()
         else:
             _log_stale_lock_kept_alive(state, logger)
         return True
@@ -320,14 +322,7 @@ def maintenance_window(db_path: str, *, logger=None, action: str = "maintenance"
         yield
     finally:
         if entered_root:
-            try:
-                delattr(_MAINT_CONTEXT, "state")
-            except Exception as e:
-                fallback_log(logger, "warning", f"维护线程上下文清理失败：{e}")
-                try:
-                    _MAINT_CONTEXT.state = None
-                except Exception as cleanup_exc:
-                    fallback_log(logger, "warning", f"维护线程上下文重置失败：{cleanup_exc}")
+            _MAINT_CONTEXT.state = None
             if lock_fd is not None:
                 try:
                     os.close(lock_fd)

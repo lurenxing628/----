@@ -3,7 +3,8 @@
 from datetime import datetime, timedelta
 
 from tests.sample.test_sample_exercise import sample_runtime as sample_runtime  # noqa: F401
-from web.bootstrap.sample_exercise import _exports, _query, _run
+from web.bootstrap.sample_exercise import _query, _run
+from web.bootstrap.sample_exports import verify_exports
 from web.bootstrap.sample_formal_read import _assembled
 from web.bootstrap.sample_http import BASE, SampleClient, SampleProgress
 from web.bootstrap.sample_injection import inject_sample
@@ -43,7 +44,7 @@ def test_two_real_official_versions_export_scoped_csv_and_xlsx_exactly(sample_ru
         assert document["meta"]["snapshot_ref"] is None
         assert document["assembly"]["unique_task_count"] == 16
         assert document["assembly"]["duplicate_overlap_count"] >= 2
-        result = _exports(client, document, BASE + "/plans/" + plan_ref, tmp_path / "downloads", "plan-v" + str(version))
+        result = verify_exports(client, document, BASE + "/plans/" + plan_ref, tmp_path / "downloads", "plan-v" + str(version))
         assert result["mode"] == "segmented_http"
         assert result["unique_task_count"] == 16
         assert result["physical_rows"] == 16 + result["duplicate_overlap_rows"]

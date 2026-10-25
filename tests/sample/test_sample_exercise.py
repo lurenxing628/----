@@ -56,10 +56,15 @@ def test_small_sample_exercises_real_worker_and_preserves_partial_actuals(sample
     assert results["exercise:existing-formal-real-rerun"]["task_count"] == 16
     assert results["exercise:existing-formal-real-rerun"]["original_formal_plan_unchanged"] is True
     assert report["actual_report_count"] == 1
-    assert results["exercise:partial-actual-replan-blocked"]["expected_rejection"] is True
-    assert results["exercise:outside-partial-replan-blocked"]["expected_rejection"] is True
-    assert results["exercise:outside-partial-replan-blocked"]["selected_operation_count"] == 8
-    assert results["exercise:outside-partial-replan-blocked"]["new_job_or_receipt"] is False
+    for step, count, blocker in (("exercise:partial-actual-replan-blocked", 16, "execution_review_required"),
+                                 ("exercise:outside-partial-replan-blocked", 8, "execution_ledger_requires_reconciliation")):
+        blocked = results[step]
+        assert blocked["expected_rejection"] is True
+        assert blocked["selected_operation_count"] == count
+        assert any(row["code"] == blocker for row in blocked["blockers"])
+        assert blocked["new_job_or_receipt"] is False
+        assert blocked["partial_actuals_unchanged"] is True
+        assert blocked["existing_directories_unchanged"] is True
     assert report["limitations"] and "不支持报工后再次排产" in report["limitations"][0]
     assert results["exercise:exact-csv-xlsx-exports"]["official"]["xlsx"]["rows"] == 16
     persisted = json.loads(output.read_text(encoding="utf-8"))
@@ -67,7 +72,7 @@ def test_small_sample_exercises_real_worker_and_preserves_partial_actuals(sample
 
 
 def test_constraint_check_rejects_incomplete_public_scope():
-    seed = {"blueprint": {}, "operation_refs": {"batch": {1: "expected"}}}
+    seed = {"blueprint": {}, "operation_refs": {"batch": {"1": "expected"}}}
     workspace = {"tasks_complete": True, "tasks": [], "unplanned_operation_count": 1}
     with pytest.raises(RuntimeError, match="范围不一致"):
         check_candidate(workspace, seed, {"tasks": []})

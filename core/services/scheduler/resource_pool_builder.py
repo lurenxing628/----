@@ -6,7 +6,8 @@ from typing import Any, List
 from core.models import Machine
 from core.models.enums import MachineStatus, OperatorStatus, SourceType, YesNo
 from core.models.resource_capabilities import machine_types
-from core.services.common.enum_normalizers import skill_rank as _skill_rank_common
+from core.services.common.normalization_matrix import skill_level_rank
+from core.services.personnel.operator_machine_normalizers import normalize_yes_no_stored
 from core.services.personnel.operator_qualification import (
     OperatorQualificationError,
     OperatorQualificationService,
@@ -62,19 +63,19 @@ class CapturedResourceFacts:
         return (operator_id, machine_id) in self._authorized_pairs
 
     def validate_fixed(self, conn, operations, logger=None):
-        selected = [op for op in operations if str(getattr(op, "source", "") or "").strip().lower() == "internal"
-                    and getattr(op, "operator_id", None)]
+        selected = [op for op in operations if str(op.source or "").strip().lower() == "internal"
+                    and op.operator_id]
         if not selected:
             return
         qualifications = self.qualifications_for(op.operator_id for op in selected)
         service = OperatorQualificationService(conn, logger=logger)
         checked_pairs, checked_work_types = set(), set()
         for op in selected:
-            pair = op.operator_id, getattr(op, "machine_id", None)
+            pair = op.operator_id, op.machine_id
             if pair not in checked_pairs:
                 require_machine_authorization(self, *pair)
                 checked_pairs.add(pair)
-            work_type = op.operator_id, getattr(op, "op_type_id", None)
+            work_type = op.operator_id, op.op_type_id
             if work_type not in checked_work_types:
                 service.require(operator_id=work_type[0], op_type_id=work_type[1],
                                 machine_id=None, qualifications=qualifications)
@@ -83,10 +84,10 @@ class CapturedResourceFacts:
 
 def _op_type_ids_for_ops(algo_ops: List[Any]) -> set:
     return {
-        str(getattr(o, "op_type_id", "") or "").strip()
+        str(o.op_type_id or "").strip()
         for o in algo_ops
-        if (getattr(o, "source", "") or "").strip().lower() == SourceType.INTERNAL.value
-        and str(getattr(o, "op_type_id", "") or "").strip()
+        if (o.source or "").strip().lower() == SourceType.INTERNAL.value
+        and str(o.op_type_id or "").strip()
     }
 
 
@@ -102,14 +103,12 @@ def _machines_by_op_type(machines, *, op_type_ids):
     return result
 
 
-def _build_operator_machine_maps(rows, *, active_machines, active_ops):
+def _build_operator_machine_maps(rows):
     operators_by_machine, machines_by_operator, pair_rank = {}, {}, {}
     for row in rows:
-        oid, mid = str(row["operator_id"] or "").strip(), str(row["machine_id"] or "").strip()
-        if not oid or not mid or mid not in active_machines or oid not in active_ops:
-            continue
-        primary = to_yes_no(row.get("is_primary"), default=YesNo.NO.value) == YesNo.YES.value
-        rank = (0 if primary else 1) * 10 + _skill_rank_common(row.get("skill_level"))
+        oid, mid = row["operator_id"], row["machine_id"]
+        primary = normalize_yes_no_stored(row.get("is_primary")) == YesNo.YES.value
+        rank = (0 if primary else 1) * 10 + skill_level_rank(row.get("skill_level"))
         operators_by_machine.setdefault(mid, []).append((rank, oid))
         machines_by_operator.setdefault(oid, []).append(mid)
         pair_rank[oid, mid] = rank
@@ -122,10 +121,10 @@ def _consumed_resource_links(resource_facts, algo_ops, machines_by_op_type, acti
     open_types, fixed_machines, fixed_pairs = set(), set(), set()
     operators_by_type = defaultdict(set)
     for op in algo_ops:
-        if str(getattr(op, "source", "") or "").strip().lower() != "internal":
+        if str(op.source or "").strip().lower() != "internal":
             continue
-        mid, oid = getattr(op, "machine_id", None), getattr(op, "operator_id", None)
-        op_type = getattr(op, "op_type_id", None)
+        mid, oid = op.machine_id, op.operator_id
+        op_type = op.op_type_id
         if mid and oid:
             fixed_pairs.add((oid, mid))
         elif mid:
@@ -149,9 +148,9 @@ def _consumed_resource_links(resource_facts, algo_ops, machines_by_op_type, acti
 
 
 def _machine_ids_for_downtime_load(algo_ops):
-    return sorted({str(op.machine_id).strip() for op in algo_ops
+    return sorted({str(op.machine_id) for op in algo_ops
                    if (op.source or "").strip().lower() == SourceType.INTERNAL.value
-                   and (op.machine_id or "").strip()})
+                   and str(op.machine_id or "").strip()})
 
 
 def load_machine_downtimes(*, algo_ops, start_dt, downtimes, meta=None):
@@ -162,7 +161,7 @@ def load_machine_downtimes(*, algo_ops, start_dt, downtimes, meta=None):
             for mid in _machine_ids_for_downtime_load(algo_ops)}
 
 
-def build_resource_pool(svc, *, cfg, algo_ops, resource_facts, meta=None):
+def build_resource_pool(*, cfg, algo_ops, resource_facts, meta=None):
     """Build automatic assignment inputs from this operation's captured resources."""
     if meta is not None:
         meta.update(resource_pool_attempted=False, resource_pool_build_ok=None)
@@ -174,18 +173,16 @@ def build_resource_pool(svc, *, cfg, algo_ops, resource_facts, meta=None):
         op_type_ids = _op_type_ids_for_ops(algo_ops)
         machines_by_op_type = _machines_by_op_type(resource_facts.machines, op_type_ids=op_type_ids)
         relevant_machines = {mid for mids in machines_by_op_type.values() for mid in mids}
-        relevant_machines.update(str(op.machine_id).strip() for op in algo_ops
-                                 if str(getattr(op, "source", "") or "").strip().lower() == "internal"
-                                 and getattr(op, "machine_id", None))
+        relevant_machines.update(str(op.machine_id) for op in algo_ops
+                                 if str(op.source or "").strip().lower() == "internal"
+                                 and str(op.machine_id or "").strip())
         machines = [machine for machine in resource_facts.machines if machine.machine_id in relevant_machines]
         active_machines = {machine.machine_id for machine in machines}
         rows = _consumed_resource_links(resource_facts, algo_ops, machines_by_op_type, active_machines)
         consumed_ops = {row["operator_id"] for row in rows}
         qualifications = resource_facts.qualifications_for(consumed_ops)
-        service = OperatorQualificationService(svc.conn, logger=svc.logger)
-        rows = service.eligible_links(rows, machines, algo_ops, qualifications=qualifications)
-        operators_by_machine, machines_by_operator, pair_rank = _build_operator_machine_maps(
-            rows, active_machines=active_machines, active_ops=consumed_ops)
+        rows = OperatorQualificationService.eligible_links(rows, machines, algo_ops, qualifications=qualifications)
+        operators_by_machine, machines_by_operator, pair_rank = _build_operator_machine_maps(rows)
         pool = {"machines_by_op_type": machines_by_op_type, "operators_by_machine": operators_by_machine,
                 "machines_by_operator": machines_by_operator, "pair_rank": pair_rank}
         if any(len(machine_types(machine)) > 1 for machine in machines):
@@ -202,8 +199,7 @@ def build_resource_pool(svc, *, cfg, algo_ops, resource_facts, meta=None):
 
 def extend_downtime_map_for_resource_pool(*, cfg, resource_pool, downtime_map, start_dt, downtimes, meta=None):
     """Include automatic assignment equipment using the same captured downtime groups."""
-    if (to_yes_no(cfg.auto_assign_enabled, default=YesNo.NO.value) != YesNo.YES.value or not resource_pool
-            or not isinstance(resource_pool.get("operators_by_machine"), dict)):
+    if to_yes_no(cfg.auto_assign_enabled, default=YesNo.NO.value) != YesNo.YES.value or not resource_pool:
         return downtime_map
     if meta is not None:
         meta.update(downtime_extend_attempted=True, downtime_extend_ok=True)

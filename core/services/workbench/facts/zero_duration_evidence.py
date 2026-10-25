@@ -28,12 +28,12 @@ def work_point_evidence(operation, batch, execution, payload, *, operation_ref):
 
 
 class CandidatePointReader:
-    def __init__(self, candidate, facts):
+    def __init__(self, candidate, facts, *, ids=None):
         self.facts = facts
         artifact = candidate["artifact"]
         self.from_task_rows = uses_task_rows(artifact)
         if self.from_task_rows:
-            self.ids = scheduled_ids(candidate)
+            self.ids = scheduled_ids(candidate) if ids is None else ids
             return
         fields = ("op_id", "machine_id", "operator_id", "start_time", "end_time", "source")
         validated = artifact.get("validated_payload", {}).get("schedule_rows", [])

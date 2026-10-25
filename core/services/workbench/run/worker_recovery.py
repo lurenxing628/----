@@ -13,7 +13,7 @@ from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository
 
 
-def recover_unfinished_runs(conn, *, executor_is_active=None, clock=None):
+def recover_unfinished_runs(conn, *, executor_is_active=None, clock=None, run_ref=None):
     """Host evidence returns True/False/None. Foreign-process absence is not assumed.
 
     The existing scheduler lock proves no local worker is active only while held.
@@ -30,7 +30,7 @@ def recover_unfinished_runs(conn, *, executor_is_active=None, clock=None):
         with TransactionManager(conn).transaction(begin_immediate=True):
             recovered, pending = [], []
             now = (clock or datetime.now)().isoformat(timespec="microseconds")
-            for row in repo.unfinished():
+            for row in repo.unfinished(run_ref):
                 require_admission(repo, row)
                 reconciled = _reconcile_result(conn, repo, row)
                 if reconciled is True:

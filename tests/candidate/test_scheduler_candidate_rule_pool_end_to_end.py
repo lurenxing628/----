@@ -41,7 +41,7 @@ def test_complete_rule_pool_and_actual_shared_rule_actions(shift_pool_outcome, r
     specs = list(_iter_multi_start_specs(
         keys=["fifo"], dispatch_modes=["sgs"], dispatch_rule_cfg="slack",
         valid_dispatch_rules=list(choices_for("dispatch_rule")), snapshot=snapshot_from_values(values),
-        deadline_reached=lambda: False, graph_rule_scope=None,
+        deadline_reached=lambda: False,
     ))
     generated_rules = [spec[2] for spec in specs]
     record_property("generated_dispatch_rules", generated_rules)

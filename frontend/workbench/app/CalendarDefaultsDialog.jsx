@@ -2,6 +2,10 @@
   'use strict';
   const C = window.APSResourceContract, P = window.APSWorkPeriods, S = window.APSResourceSession;
   const { Button, ErrorBox, Modal } = window.ResourceControls;
+  function isStale(command) {
+    const error = command && command.error, code = error && (error.code || error.error && error.error.code);
+    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
+  }
   function CalendarDefaultsDialog({ adapter, command, onClose, refreshState, onRefresh }) {
     const request = S.useQuery(async signal => {
       const result = await adapter.query('/api/workbench/v1/calendar/defaults', {}, signal), data = result.data;
@@ -30,12 +34,16 @@
       if (!command.reset()) return;
       setBase(null); setPeriods(null); setError(null); request.reload();
     }
+    function updatePeriods(next) {
+      setPeriods(next); setError(null);
+      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+    }
     return <Modal title="修改默认工作时间" icon="calendar-days" onClose={onClose} guardOwner={owner} locked={command.locked}
       footer={<><Button disabled={command.locked} onClick={close}>{done ? '关闭' : '取消'}</Button>
         {!done && <Button type="submit" form={formId} className="btn primary" disabled={disabled} reason={reason}>保存默认工作时间</Button>}</>}>
       <form id={formId} className="modal-b form scroll" onSubmit={save} noValidate>
         <p>保存后，所有未单独设置的工作日使用这些时段；已有单日班表和个人班表按各自设置执行，周末默认休息。</p>
-        {periods && <window.WorkPeriodFields value={periods} onChange={setPeriods} disabled={disabled} label="默认工作时段" />}
+        {periods && <window.WorkPeriodFields value={periods} onChange={updatePeriods} disabled={disabled} label="默认工作时段" />}
         {request.loading && <p role="status">正在读取默认工作时间…</p>}
         <ErrorBox error={request.error || error} /><window.ResourceForms.Feedback command={command} />
         {!done && (request.error || command.phase === 'rejected') && <Button disabled={command.locked} icon="refresh-cw" onClick={reload}>采用最新设置，重新填写</Button>}

@@ -19,8 +19,6 @@ def process_readiness(conn, total, logger=None):
     counts["total"] = total if type(total) is int and total >= 0 else None
     try:
         snapshot = workflow_snapshot(conn)
-        if not isinstance(snapshot, dict) or counts["total"] is None or len(snapshot) != total:
-            raise RuntimeError("Process workflow catalog does not match resource counts.")
         verified: Dict[str, int] = dict.fromkeys(_PROCESS_COUNTS, 0)
         for record in snapshot.values():
             workflow = record["workflow"]

@@ -9,7 +9,7 @@ from .stage_apply import require_supplier
 
 
 def _members(row, active, positions):
-    missing = set(row["operation_refs"]) - set(active)
+    missing = set(row["operation_refs"]) - active.keys()
     if missing:
         raise WorkbenchCommandRejected("group_member_invalid", "所选工序已停用、已删除或属于其他零件。请刷新外协段。", 422)
     members = sorted((active[ref] for ref in row["operation_refs"]), key=lambda op: op["seq"])
@@ -87,7 +87,7 @@ def apply_groups(conn, part_no, prepared, discarded, operations, *, changes):
         if op["id"] in final:
             fields = {key: value for key, value in final[op["id"]].items() if op[key] != value}
             if fields:
-                op_repo.update(part_no, op["seq"], fields)
+                op_repo.update_fields_by_id(op["id"], fields)
     for group in discarded:
         group_repo.delete_for_part(part_no, group["group_id"])
     return True
@@ -115,5 +115,7 @@ def _write_group(conn, part_no, item):
         return create_group(conn, part_no, members, item["supplier_id"], item["total_days"], attach=False)
     fields = {"start_seq": members[0]["seq"], "end_seq": members[-1]["seq"], "merge_mode": "merged",
               "total_days": item["total_days"], "supplier_id": item["supplier_id"]}
-    ExternalGroupRepository(conn).update(old["group_id"], {key: value for key, value in fields.items() if old[key] != value})
+    changes = {key: value for key, value in fields.items() if old[key] != value}
+    if changes:
+        ExternalGroupRepository(conn).update(old["group_id"], changes)
     return old["group_id"]

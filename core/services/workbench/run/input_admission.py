@@ -14,13 +14,25 @@ def candidate_admission_issues(conn, *, prepared):
     try:
         if prepared.config_error is not None:
             raise prepared.config_error
-        prepared.execution_projections = run_execution_projections(conn, settings, capture=prepared.capture,
-            existing=prepared.execution_projections, service=prepared.preflight_facts.execution_service)
-        prepared.baseline = run_baseline(conn, capture=prepared.capture)
-        result = prepare_candidate_run_input(conn, settings, prepared.execution_projections,
-            capture_fingerprint=False, facts=prepared.preflight_facts, config_snapshot=prepared.config_snapshot,
+        prepared.execution_projections = run_execution_projections(
+            conn,
+            settings,
+            capture=prepared.capture,
+            existing=list(prepared.preflight_facts.execution_projections.values()),
+            service=prepared.preflight_facts.execution_service,
+        )
+        prepared.baseline = run_baseline(capture=prepared.capture)
+        result = prepare_candidate_run_input(
+            conn,
+            settings,
+            prepared.execution_projections,
+            capture_fingerprint=False,
+            facts=prepared.preflight_facts,
+            config_snapshot=prepared.config_snapshot,
             baseline=prepared.baseline,
-            validated_projections={row.operation_ref: row for row in prepared.execution_projections})
+            validated_projections={row.operation_ref: row for row in prepared.execution_projections},
+            held=prepared.held_arrangements,
+        )
         prepared.prepared_input = result
     except (CandidateRunInputError, CandidateAdoptionBlocked) as exc:
         return [{"code": exc.code, "message": str(exc)}]

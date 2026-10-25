@@ -52,7 +52,7 @@ def _overlaps(start, end, scope):
     return scope.range_start is None or overlaps(start, end, scope.range_start, scope.range_end)
 
 
-def _verify_selected_rows(rows, selected_rows, scope):
+def verify_selected_rows(rows, selected_rows, scope):
     expected = {row["schedule_id"]: {key: value for key, value in row.items() if key != "_point_work"} for row in rows
                 if _overlaps(public_time(row["start_time"]), public_time(row["end_time"]), scope)}
     supplied = {row["schedule_id"]: {key: value for key, value in row.items() if key != "_point_work"} for row in selected_rows}
@@ -84,8 +84,8 @@ def _comparison_items(before_tasks, after_tasks, scope):
 
 
 class _BaselineReader:
-    def __init__(self, conn, entry, scope, selected_rows, context):
-        self.conn, self.entry, self.scope, self.selected_rows = conn, entry, scope, selected_rows
+    def __init__(self, conn, entry, scope, context):
+        self.conn, self.entry, self.scope = conn, entry, scope
         self.context, self.repo, self.references = context, context.repo, context.references
         self.facts = {"scope": scope.scope(), "selected_plan_ref": scope.plan_ref}
 
@@ -187,7 +187,7 @@ def build_plan_baseline(
         raise RuntimeError("Baseline reads require a caller-owned read transaction.")
     owned = context is None
     context = PlanReadContext(conn) if context is None else context
-    reader = _BaselineReader(conn, entry, scope, selected_rows, context)
+    reader = _BaselineReader(conn, entry, scope, context)
     try:
         with context.read_scope():
             if owned:

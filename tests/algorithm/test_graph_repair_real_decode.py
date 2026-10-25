@@ -32,7 +32,7 @@ from core.services.scheduler.run.optimizer.graph_ready_feature_basis import (
     BATCH_WORKLOAD_BASIS,
     SUCCESSOR_WORKLOAD_BASIS,
 )
-from core.services.scheduler.run.optimizer.graph_ready_profiles import graph_ready_v2_profiles
+from core.services.scheduler.run.optimizer.graph_ready_profiles import resolve_v2_profiles_and_summary
 from tests._support.optimizer_graph_ready_benchmark import (
     BASE_BATCH_ORDER,
     START_DT,
@@ -49,13 +49,14 @@ def test_fixed_decision_features_admit_effective_profiles_once_and_preserve_raw_
     from core.services.scheduler.run.optimizer.graph.ready import SharedGraphFeatures
 
     operations, batches = graph_ready_benchmark_operations(), graph_ready_benchmark_batches()
+    context = graph_ready_benchmark_context()
     metrics = enrich_graph_ready_v2_metrics(
-        graph_ready_benchmark_context()["node_metrics_by_op_id"], operations=operations, batches=batches,
-        start_dt=START_DT, include_baseline_ordering=True,
+        context["node_metrics_by_op_id"], operations=operations, batches=batches,
+        start_dt=START_DT, graph_ready_context=context,
     )
     ranks = candidates.build_v2_common_rank_cache(metrics)
     owner = SharedGraphFeatures(metrics, ranks)
-    profiles = graph_ready_v2_profiles(max_candidate_profiles=60)[0]
+    profiles = resolve_v2_profiles_and_summary(max_candidate_profiles=60)[0]
     profile = next(item for item in profiles if item.formula_version.startswith("graph_ready_v2")
                    and item.feature_basis == SUCCESSOR_WORKLOAD_BASIS)
     original = deepcopy((metrics, ranks))
@@ -117,9 +118,12 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
             "operators_by_machine": {"MC-BENCH": ["OP-BENCH"], "MC-ALT": ["OP-ALT"]}}
     downtime = {"MC-ALT": [(START_DT, START_DT + timedelta(hours=4))]}
     original = deepcopy((operations, context, pool, seed))
-    metrics = enrich_graph_ready_v2_metrics(context["node_metrics_by_op_id"], operations=operations, batches=batches,
-                                            start_dt=START_DT, seed_results=[seed], resource_pool=pool, downtime_map=downtime)
-    profile = graph_ready_v2_profiles(max_candidate_profiles=60)[0][1]
+    metrics = enrich_graph_ready_v2_metrics(
+        context["node_metrics_by_op_id"], operations=operations, batches=batches,
+        start_dt=START_DT, seed_results=[seed], resource_pool=pool, downtime_map=downtime,
+        graph_ready_context=context,
+    )
+    profile = resolve_v2_profiles_and_summary(max_candidate_profiles=60)[0][1]
     profile = replace(profile, candidate_origin="graph_ready_v2_repaired", candidate_policy="elite_repair")
 
     sessions, seed_results = [], [seed]
@@ -210,7 +214,7 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
             raise AssertionError("A decoded parent's inherited selections must not be qualified again")
 
         patch.setattr(repair_decisions, "_validated_overrides", repeated_qualification)
-        profiles = graph_ready_v2_profiles(max_candidate_profiles=60)[0]
+        profiles = resolve_v2_profiles_and_summary(max_candidate_profiles=60)[0]
         successor = next(item for item in profiles if item.feature_basis == SUCCESSOR_WORKLOAD_BASIS
                          and item.formula_version.startswith("graph_ready_v2"))
         baseline = next(item for item in profiles if item.feature_basis == BATCH_WORKLOAD_BASIS
@@ -283,7 +287,7 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
     order = tuple("B" + str(index) for index in range(10))
     batches = RepairNeighborhood(order, tuple(("adjacent_swap", index, index + 1) for index in range(9)))
     portfolio = RepairPortfolio(batches, (), ())
-    profile = graph_ready_v2_profiles(max_candidate_profiles=60)[0][1]
+    profile = resolve_v2_profiles_and_summary(max_candidate_profiles=60)[0][1]
     expanded = []
     expand = RepairPortfolio._batch_decision
 
@@ -376,8 +380,8 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
     assert list(operation_neighbors._bounded_operation_orders(operation_order, ranks, predecessors, invalid_moves(), 8)) == []
     assert inspected == list(range(32))
 
-    # Ordinary moves retain adjacent-row vs nonblank-type counting and the historical 0/1 tardy diagnostic.
-    results = [ScheduleResult(op_id=index + 1, op_code="R" + str(index + 1), batch_id=batch, seq=index, machine_id="M", op_type_name=kind,
+    # Ordinary moves retain adjacent-row vs known-type-identity counting and the historical 0/1 tardy diagnostic.
+    results = [ScheduleResult(op_id=index + 1, op_code="R" + str(index + 1), batch_id=batch, seq=index, machine_id="M", op_type_id=kind,
                               start_time=START_DT + timedelta(hours=index), end_time=START_DT + timedelta(hours=index + 1))
                for index, (batch, kind) in enumerate((("BA", "A"), ("blank", ""), ("BB", "B"), ("BC", "C")))]
     batch_map = {"BA": SimpleNamespace(due_date="2025-12-31"), "BB": SimpleNamespace(due_date="2026-01-01"),
@@ -394,11 +398,105 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
         if name == "most_tardy_batch":
             monkeypatch.setattr(neighborhood_moves, name, counted)
     changed = neighborhood_moves.changeover_block_move(["BA", "BB", "BC"], results)
-    assert changed.batch_order == ("BA", "BC", "BB") and changed.diagnostics["changeover_count"] == 2
+    assert changed.batch_order == ("BA", "BC", "BB")
     assert counts["sort_key"] == len(results)
     window = neighborhood_moves.time_window_move(["BC", "BB", "BA"], results, batch_map)
-    assert window.batch_order == ("BA", "BC", "BB") and window.diagnostics["due_window_batch_count"] == 2
+    assert window.batch_order == ("BA", "BC", "BB")
     assert counts["due"] == len(batch_map)
     tardy = neighborhood_moves.tardy_window_move(["BC", "BB", "BA"], results, batch_map)
-    assert tardy.batch_order == window.batch_order and tardy.diagnostics["tardy_batch_count"] == 1
+    assert tardy.batch_order == window.batch_order
     assert counts["tardy"] == 1
+
+    # Graph repair changeover signals ignore point events, do not bridge across unknown types,
+    # and require the same nonblank machine on critical-block pairs.
+    from core.services.scheduler.run.optimizer.graph.repair_decisions import _batch_changeovers
+
+    t0, t1, t2, t3 = START_DT, START_DT + timedelta(hours=1), START_DT + timedelta(hours=2), START_DT + timedelta(hours=3)
+    row_a = ScheduleResult(op_id=1, op_code="R1", batch_id="BA", seq=1, machine_id="M1", operator_id="O1",
+                           op_type_id="TA", start_time=t0, end_time=t1)
+    row_point = ScheduleResult(op_id=2, op_code="R2", batch_id="BP", seq=1, machine_id="M1", operator_id="O1",
+                               op_type_id=None, start_time=t1, end_time=t1)
+    row_unknown = ScheduleResult(op_id=3, op_code="R3", batch_id="BU", seq=1, machine_id="M1", operator_id="O1",
+                                 op_type_id=None, start_time=t1, end_time=t2)
+    row_b = ScheduleResult(op_id=4, op_code="R4", batch_id="BB", seq=1, machine_id="M1", operator_id="O1",
+                           op_type_id="TB", start_time=t2, end_time=t3)
+    row_b_touch = replace(row_b, start_time=t1, end_time=t2)
+    row_other_machine = replace(row_b_touch, machine_id="M2")
+    assert _batch_changeovers({("machine_id", "M1"): [row_a, row_unknown, row_b]}, frozenset({"BA", "BU", "BB"})) == {}
+    assert _batch_changeovers({("machine_id", "M1"): [row_a, row_point, row_b_touch]}, frozenset({"BA", "BP", "BB"})) == {
+        "BA": 1.0, "BB": 1.0,
+    }
+    plain_metrics = {1: {"is_on_critical_path": False}, 2: {"is_on_critical_path": False}, 4: {"is_on_critical_path": False}}
+    assert operation_neighbors._is_critical_block_pair(row_a, row_b_touch, (1, 4), plain_metrics, t3, "min_changeover")
+    assert not operation_neighbors._is_critical_block_pair(
+        row_a, row_other_machine, (1, 4), plain_metrics, t3, "min_changeover",
+    )
+    assert not operation_neighbors._is_critical_block_pair(
+        row_a, replace(row_point, op_type_id="TB"), (1, 2), plain_metrics, t3, "min_changeover",
+    )
+
+
+def test_optimizer_changeover_signals_follow_type_identity_and_skip_point_events():
+    from core.services.scheduler.run.optimizer import neighborhood_move_support, neighborhood_moves
+    from core.services.scheduler.run.optimizer.graph.iterated_greedy_joint import _WindowIndex
+    from core.services.scheduler.run.optimizer.graph.iterated_greedy_screen import InsertionScreen
+
+    hour = timedelta(hours=1)
+
+    def row(op_id, type_id, name, start, hours=1, machine="M1", batch=None):
+        begin = START_DT + start * hour
+        return ScheduleResult(op_id=op_id, op_code="R" + str(op_id), batch_id=batch or "B" + str(op_id), seq=op_id,
+                              machine_id=machine, operator_id="O1", op_type_id=type_id, op_type_name=name,
+                              start_time=begin, end_time=begin + hours * hour)
+
+    # A point event of another type neither switches nor separates two timed rows of the same type.
+    same_around_point = [row(1, "TA", "A", 0), row(2, "TB", "B", 1, hours=0), row(3, "TA", "A", 1)]
+    assert neighborhood_move_support.first_changeover_pair(same_around_point) is None
+    switched = same_around_point + [row(4, "TB", "B", 2)]
+    assert neighborhood_move_support.first_changeover_pair(switched) == (switched[2], switched[3])
+    # Identity, not the display label, decides a switch; an unknown identity blocks the bridge.
+    assert neighborhood_move_support.first_changeover_pair([row(1, "T1", "SAME", 0), row(2, "T2", "SAME", 1)]) is not None
+    assert neighborhood_move_support.first_changeover_pair([row(1, "T1", "N1", 0), row(2, "T1", "N2", 1)]) is None
+    assert neighborhood_move_support.first_changeover_pair(
+        [row(1, "TA", "A", 0), row(2, None, "A", 1), row(3, "TB", "A", 2)]) is None
+
+    # An empty-batch seed on the bottleneck machine is a safe no-op.
+    unbatched = [row(1, "TA", "A", 0, batch=" "), row(2, "TA", "A", 1, batch=" ")]
+    move = neighborhood_moves.bottleneck_machine_move(["BA", "BB"], unbatched)
+    assert move.noop and move.batch_order == ("BA", "BB")
+
+    # Joint-window switch pressure: point rows stay resource neighbours but never count as switches.
+    rows = [row(1, "TA", "N1", 0), row(2, "TB", "N1", 1, hours=0), row(3, "TA", "N2", 1), row(4, "TB", "N2", 2),
+            row(5, None, "N2", 3), row(6, "TA", "N2", 4)]
+    reference = SimpleNamespace(order=(1, 2, 3, 4, 5, 6), candidate={"results": rows})
+    index = _WindowIndex(SimpleNamespace(_require_budget=lambda: None), reference)
+    assert {op_id: index.switches[op_id] for op_id in reference.order} == {1: 0, 2: 0, 3: 1, 4: 1, 5: 0, 6: 0}
+    assert 2 in index.adjacent[1] and 3 in index.adjacent[2]
+
+    # The insertion screen keeps point rows for successor readiness without occupying or switching.
+    search = SimpleNamespace(
+        parent=SimpleNamespace(predecessors={1: set(), 2: {1}, 3: {2}, 4: set(), 5: set(), 6: set()}),
+        metrics={}, report={"objective_name": "min_changeover"},
+    )
+    screen = InsertionScreen(search, reference)
+    assert screen.supported and 2 in screen.rows
+    ends, machines, families = {}, {}, {}
+    switches = screen._advance_state(reference.order, ends, machines, {}, {}, families, 0)
+    assert ends[2] == 1.0 and ends[3] == 2.0
+    assert switches == 1 and families == {"M1": "TA"}
+
+
+def test_graph_ready_type_group_rank_follows_type_identity_not_label():
+    operations, batches = graph_ready_benchmark_operations(), graph_ready_benchmark_batches()
+    assert len(operations) >= 3
+    operations[0].op_type_id, operations[0].op_type_name = "OT-A", "SAME"
+    operations[1].op_type_id, operations[1].op_type_name = "OT-B", "SAME"
+    operations[2].op_type_name = "RELABELLED"
+    context = graph_ready_benchmark_context()
+    metrics = enrich_graph_ready_v2_metrics(
+        context["node_metrics_by_op_id"], operations=operations, batches=batches,
+        start_dt=START_DT, graph_ready_context=context,
+    )
+    rank = {op.id: metrics[op.id]["changeover_family_rank"] for op in operations if op.id in metrics}
+    assert rank[operations[0].id] != rank[operations[1].id]
+    assert {rank[op.id] for op in operations[2:] if op.id in rank} == {2}

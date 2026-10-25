@@ -3,10 +3,8 @@ from __future__ import annotations
 from typing import Any, List, Optional, Tuple
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from flask import current_app, g, has_request_context, request, url_for
-from werkzeug.routing.exceptions import BuildError
+from flask import has_request_context, request
 
-from core.infrastructure.logging import safe_log
 from core.models.schedule_plan_role import VALID_PLAN_ROLES
 
 _PLAN_CONTEXT_TOKEN_PATHS = {
@@ -22,27 +20,6 @@ _PLAN_CONTEXT_TOKEN_PATHS = {
     "/scheduler/week-plan",
     "/scheduler/resource-dispatch",
 }
-
-
-def _log_warning(message: str, *args: Any) -> None:
-    # 原住 web/ui_mode_request.py，双轨退役随其删除而内化到本模块（唯一存量消费方）
-    try:
-        logger = current_app.logger
-    except RuntimeError:
-        logger = None
-    safe_log(logger, "warning", message, *args)
-
-
-def _resolve_manual_endpoint(endpoint: Any = None) -> str:
-    if endpoint is not None:
-        return str(endpoint).strip()
-    if not has_request_context():
-        return ""
-    try:
-        return str(request.endpoint or "").strip()
-    except Exception as exc:
-        _log_warning("读取当前 endpoint 失败，已按无说明入口处理：%s", exc)
-        return ""
 
 
 def _has_forbidden_manual_chars(text: str) -> bool:
@@ -72,57 +49,24 @@ def _compose_same_origin_candidate(parsed: Any, text: str) -> str:
     return candidate
 
 
-def _normalize_relative_manual_src(text: str) -> Optional[str]:
-    if not text or not text.startswith("/") or text.startswith("//"):
-        return None
-    if _has_forbidden_manual_chars(text):
-        return None
-    try:
-        parts = urlsplit(text)
-    except ValueError:
-        return None
-    if parts.scheme or parts.netloc or not parts.path.startswith("/"):
-        return None
-    return text
-
-
-def _same_origin_absolute_manual_src(raw: Any = None) -> Optional[str]:
-    if not has_request_context():
-        return None
+def normalize_manual_src(raw: Any = None) -> Optional[str]:
     text = ("" if raw is None else str(raw)).strip()
-    if not text or _has_forbidden_manual_chars(text):
+    if not text or text.startswith("//") or _has_forbidden_manual_chars(text):
         return None
     try:
         parsed = urlsplit(text)
-        current = urlsplit(str(request.host_url or ""))
     except ValueError:
         return None
+    if parsed.path.startswith("//"):
+        return None
+    if not parsed.scheme and not parsed.netloc:
+        return text if parsed.path.startswith("/") else None
+    if not has_request_context():
+        return None
+    current = urlsplit(request.host_url)
     if not _is_same_origin(parsed, current):
         return None
-    return _normalize_relative_manual_src(_compose_same_origin_candidate(parsed, text))
-
-
-def normalize_manual_src(raw: Any = None) -> Optional[str]:
-    text = ("" if raw is None else str(raw)).strip()
-    return _normalize_relative_manual_src(text) or _same_origin_absolute_manual_src(text)
-
-
-def _resolve_manual_src(src: Any = None) -> str:
-    if src is not None:
-        return str(src)
-    if not has_request_context():
-        return "/"
-    try:
-        full_path = getattr(request, "full_path", "") or ""
-        if full_path:
-            return str(full_path)
-    except Exception as exc:
-        _log_warning("读取当前请求完整路径失败，已尝试 path 回退：%s", exc)
-    try:
-        return str(getattr(request, "path", "") or "/")
-    except Exception as exc:
-        _log_warning("读取当前请求 path 失败，已回退到根路径：%s", exc)
-        return "/"
+    return _compose_same_origin_candidate(parsed, text)
 
 
 def _rewrite_manual_src_query_item(
@@ -130,7 +74,7 @@ def _rewrite_manual_src_query_item(
     value: str,
     supports_plan_context_token: bool,
 ) -> Tuple[Optional[Tuple[str, str]], bool, str, bool]:
-    value_text = str(value or "").strip()
+    value_text = value.strip()
     if key == "plan_role" and value_text not in VALID_PLAN_ROLES:
         return None, True, "", False
     if supports_plan_context_token and key == "plan_context_token" and value_text:
@@ -180,46 +124,3 @@ def _sanitize_manual_src_context(src: Optional[str]) -> Optional[str]:
 
 def normalize_manual_src_context(raw: Any = None) -> Optional[str]:
     return _sanitize_manual_src_context(normalize_manual_src(raw))
-
-
-def safe_url_for(endpoint: str, **values: Any) -> Optional[str]:
-    """
-    url_for 的安全封装：
-    - endpoint 不存在（BuildError）时返回 None（而不是抛异常导致整页 500）
-    - 其他异常记录 warning 后返回 None（保持页面可用，便于排障/渐进发布）
-    """
-    if not has_request_context():
-        return None
-    try:
-        return url_for(endpoint, **values)
-    except BuildError:
-        try:
-            logged = getattr(g, "_safe_url_for_missing_eps", None)
-            if logged is None:
-                logged = set()
-                g._safe_url_for_missing_eps = logged
-            if endpoint not in logged:
-                logged.add(endpoint)
-                path = ""
-                try:
-                    path = getattr(request, "path", "") or ""
-                except Exception as exc:
-                    path = ""
-                    _log_warning("读取当前请求 path 失败，仍会记录缺失 endpoint：%s", exc)
-                _log_warning(
-                    "模板链接不可用：endpoint 未注册（%s），path=%s。可能原因：运行旧版本/未重启/未重新打包。",
-                    endpoint,
-                    path,
-                )
-        except Exception as exc:
-            _log_warning("记录缺失 endpoint 告警失败，已保持页面继续渲染：endpoint=%s，error=%s", endpoint, exc)
-        return None
-    except Exception as exc:
-        path = ""
-        try:
-            path = getattr(request, "path", "") or ""
-        except Exception as exc:
-            path = ""
-            _log_warning("读取当前请求 path 失败，仍会记录链接构建异常：%s", exc)
-        _log_warning("模板链接构建失败：endpoint=%s，path=%s，error=%s", endpoint, path, exc)
-        return None

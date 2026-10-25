@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, FrozenSet, Iterable, List, NoReturn, Optional, Sequence, Tuple
 
+from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.algorithm_runtime.checkpoint_inputs import input_record, input_value
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.errors import ValidationError
@@ -74,15 +75,15 @@ class DecodeCheckpointRequest:
 
     def arm(self, *, signature: Tuple[Any, ...], warnings: Sequence[str]) -> None:
         self.signature = signature
-        self.warnings = tuple(str(item) for item in warnings)
+        self.warnings = tuple(warnings)
         if self.tail_reuse is not None:
             self.tail_reuse.arm(self.signature)
 
 
 def graph_key_order(graph_state: Dict[str, Any]) -> List[int]:
     """Operations sorted by graph priority key; ties by op_id so the prefix check stays conservative."""
-    keys = graph_state.get("graph_priority_key_by_op_id") or {}
-    if not graph_state.get("score_enabled") or not keys:
+    keys = graph_state["graph_priority_key_by_op_id"]
+    if not graph_state["score_enabled"] or not keys:
         _invalid("解码断点只支持启用图评分键的图模式派工。", reason="decode_checkpoint_requires_graph_keys")
     return sorted(keys, key=lambda op_id: (keys[op_id], op_id))
 
@@ -90,14 +91,15 @@ def graph_key_order(graph_state: Dict[str, Any]) -> List[int]:
 class CheckpointPlan:
     """Per-decode bookkeeping for an armed request: pick sequence plus captures at the asked positions."""
 
-    def __init__(self, request: DecodeCheckpointRequest, *, graph_state: Dict[str, Any]) -> None:
+    def __init__(self, request: DecodeCheckpointRequest, *, graph_state: Dict[str, Any],
+                 resume: Optional[DecodeCheckpoint] = None) -> None:
         if request.signature is None:
             _invalid("解码断点请求尚未绑定本次解码的输入签名。", reason="decode_checkpoint_not_armed")
         self.request = request
         self.signature = request.signature
         if request.tail_reuse is not None:
-            keys = graph_state.get("graph_priority_key_by_op_id") or {}
-            if not graph_state.get("score_enabled") or not keys:
+            keys = graph_state["graph_priority_key_by_op_id"]
+            if not graph_state["score_enabled"] or not keys:
                 _invalid("解码断点只支持启用图评分键的图模式派工。", reason="decode_checkpoint_requires_graph_keys")
             self.order: List[int] = []
             self.total_ops = len(keys)
@@ -108,6 +110,10 @@ class CheckpointPlan:
             self.position_of = {op_id: index for index, op_id in enumerate(self.order)}
         self.picked: List[int] = []
         self.furthest = -1
+        if resume is not None and request.tail_reuse is None:
+            # A resumed decode continues the checkpoint's picks; its prefix was already checked against these keys.
+            self.picked = list(resume.picked_op_ids)
+            self.furthest = len(resume.prefix_op_ids) - 1
 
     def record(self, op_id: int, position: int, *, state: ScheduleRunState, next_idx: Dict[str, int],
                graph_state: Dict[str, Any]) -> None:
@@ -115,12 +121,12 @@ class CheckpointPlan:
             return
         if op_id not in self.position_of:
             _invalid("解码断点遇到不在图评分键里的工序。", reason="decode_checkpoint_unknown_operation")
-        self.picked.append(int(op_id))
+        self.picked.append(op_id)
         self.furthest = max(self.furthest, self.position_of[op_id])
         if position not in self.request.positions:
             return
         checkpoint = DecodeCheckpoint(
-            position=int(position),
+            position=position,
             prefix_op_ids=tuple(self.order[: self.furthest + 1]),
             picked_op_ids=tuple(self.picked),
             signature=self.signature,
@@ -133,22 +139,50 @@ class CheckpointPlan:
         self.request.sink(checkpoint)
 
 
-def plan_decode_checkpoints(request: Optional[DecodeCheckpointRequest], *, graph_state: Optional[Dict[str, Any]]) -> Optional[CheckpointPlan]:
+def plan_decode_checkpoints(request: Optional[DecodeCheckpointRequest], *, graph_state: Optional[Dict[str, Any]],
+                            resume: Optional[DecodeCheckpoint] = None) -> Optional[CheckpointPlan]:
     if request is None:
         return None
     if graph_state is None:
         _invalid("解码断点只支持图模式派工。", reason="decode_checkpoint_requires_graph_mode")
-    return CheckpointPlan(request, graph_state=graph_state)
+    return CheckpointPlan(request, graph_state=graph_state, resume=resume)
 
 
 def snapshot_graph_progress(graph_state: Dict[str, Any]) -> Dict[str, Any]:
     progress: Dict[str, Any] = {name: set(graph_state[name]) for name in _PROGRESS_SETS}
     progress["remaining_predecessor_count_by_op_id"] = dict(graph_state["remaining_predecessor_count_by_op_id"])
     progress["schedulable_op_ids"] = frozenset(graph_state["op_by_id"])
-    progress["checkpoint_priority_keys"] = dict(graph_state.get("graph_priority_key_by_op_id", {}))
+    progress["checkpoint_priority_keys"] = dict(graph_state["graph_priority_key_by_op_id"])
     if "end_time_by_op_id" in graph_state:
         progress["end_time_by_op_id"] = dict(graph_state["end_time_by_op_id"])
     return progress
+
+
+def _matches_prefix_order(graph_state: Dict[str, Any], prefix_op_ids: Tuple[int, ...]) -> bool:
+    keys = graph_state["graph_priority_key_by_op_id"]
+    if not graph_state["score_enabled"] or not keys:
+        _invalid("解码断点只支持启用图评分键的图模式派工。", reason="decode_checkpoint_requires_graph_keys")
+    if not prefix_op_ids:
+        return True
+    prev_key = None
+    prev_id = 0
+    for op_id in prefix_op_ids:
+        key = keys.get(op_id)
+        if key is None:
+            return False
+        if prev_key is not None and (key < prev_key or (key == prev_key and op_id <= prev_id)):
+            return False
+        prev_key = key
+        prev_id = op_id
+    assert prev_key is not None
+    target = len(prefix_op_ids)
+    le_count = 0
+    for op_id, key in keys.items():
+        if key < prev_key or (key == prev_key and op_id <= prev_id):
+            le_count += 1
+            if le_count > target:
+                return False
+    return le_count == target
 
 
 def resume_graph_progress(checkpoint: DecodeCheckpoint, *, graph_state: Optional[Dict[str, Any]],
@@ -159,8 +193,7 @@ def resume_graph_progress(checkpoint: DecodeCheckpoint, *, graph_state: Optional
     progress = checkpoint.graph_progress
     if progress["schedulable_op_ids"] != frozenset(graph_state["op_by_id"]):
         _invalid("断点续排的待排工序集合与断点不一致。", reason="decode_checkpoint_scope_mismatch")
-    order = graph_key_order(graph_state)
-    if tuple(order[: checkpoint.prefix_length]) != checkpoint.prefix_op_ids:
+    if not _matches_prefix_order(graph_state, checkpoint.prefix_op_ids):
         _invalid("断点续排要求候选顺序在断点已排到的名次之前完全一致。", reason="decode_checkpoint_prefix_mismatch")
     for name in _PROGRESS_SETS:
         graph_state[name] = set(progress[name])
@@ -169,7 +202,7 @@ def resume_graph_progress(checkpoint: DecodeCheckpoint, *, graph_state: Optional
         graph_state["end_time_by_op_id"] = dict(progress["end_time_by_op_id"])
     next_idx.clear()
     next_idx.update(checkpoint.next_idx)
-    return int(checkpoint.position)
+    return checkpoint.position
 
 
 def decode_input_signature(*, operations: Sequence[Any], batches: Dict[str, Any], batch_order: Dict[str, int],
@@ -200,23 +233,26 @@ def decode_input_signature(*, operations: Sequence[Any], batches: Dict[str, Any]
         fixed["downtimes"] if fixed is not None else input_value(machine_downtimes, field="machine_downtimes"),
         (fixed["resources"] if fixed is not None and resource_pool is prepared_inputs.resource_pool
          else input_value(resource_pool, field="resource_pool")),
-        fixed["seeds"] if fixed is not None else tuple(_seed_signature(result) for result in seed_results or ()),
+        fixed["seeds"] if fixed is not None else tuple(seed_signature(result) for result in seed_results or ()),
         context_part,
-        bool(readiness_gate_enabled), bool(strict_mode),
+        readiness_gate_enabled, strict_mode,
         (prepared_calendar_signature if prepared_calendar_signature is not None
          else input_value(calendar_signature, field="calendar_signature")), tuple(warnings),
     ]
     return tuple(parts)
 
 
-def _seed_signature(result: Any) -> Any:
+def seed_signature(result: Any) -> Any:
     from core.algorithm_contracts.schedule_point_evidence import point_seed_valid
 
-    from ..seed import seed_external_group_key
+    from ..seed import seed_external_group_key, seed_resource_segments
     fields = tuple(getattr(result, name, None) for name in (
         "op_id", "op_code", "batch_id", "seq", "machine_id", "operator_id", "start_time", "end_time",
         "source", "op_type_name", "op_type_id", "seed_source", "state_revision"))
-    return input_value((fields, seed_external_group_key(result), point_seed_valid(result)), field="seed_results")
+    return input_value(
+        (fields, seed_external_group_key(result), point_seed_valid(result), seed_resource_segments(result)),
+        field="seed_results",
+    )
 
 
 def _context_signature(context: Any) -> Any:
@@ -225,17 +261,16 @@ def _context_signature(context: Any) -> Any:
     return tuple((key, input_value(context.get(key), field="graph_ready_context." + key)) for key in _STATIC_CONTEXT_KEYS)
 
 
-def decode_output_contents(results: Sequence[Any], summary: Any) -> Tuple[Any, ...]:
+def decode_output_contents(results: Sequence[ScheduleResult], summary: ScheduleSummary) -> Tuple[Any, ...]:
     """Immutable native output values for resumed/full decode comparisons."""
     rows = tuple(
-        tuple(getattr(row, name, None) for name in (
-            "op_id", "op_code", "batch_id", "seq", "machine_id", "operator_id", "start_time", "end_time",
-            "source", "op_type_name", "op_type_id", "seed_source"))
+        (row.op_id, row.op_code, row.batch_id, row.seq, row.machine_id, row.operator_id, row.start_time, row.end_time,
+         row.source, row.op_type_name, row.op_type_id, row.seed_source)
         for row in results
     )
     summary_part = (
         summary.success, summary.total_ops, summary.scheduled_ops, summary.failed_ops,
-        summary.warnings, summary.errors, getattr(summary, "failure_details", None),
+        summary.warnings, summary.errors, summary.failure_details,
     )
     return input_value((rows, summary_part), field="decode_output")
 

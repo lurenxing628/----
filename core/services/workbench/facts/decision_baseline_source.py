@@ -43,7 +43,7 @@ def _proof(audit, digest_fields):
     return proof
 
 
-def _candidate_evidence(source, audit):
+def candidate_evidence(source, audit):
     _require_identity((source.candidate["candidate_ref"], source.run["run_ref"]),
                       (audit["candidate_ref"], audit["run_ref"]))
     _require_identity((source.capture["baseline"]["plan_ref"], source.capture["baseline"]["version"]),
@@ -58,7 +58,7 @@ def _candidate_evidence(source, audit):
             "arranged": [row["payload"] for row in source.raw_tasks], "generation_facts": source.facts}
 
 
-def _trial_evidence(source, audit):
+def trial_evidence(source, audit):
     saved, head, rows = source
     _require_identity((saved["scenario_ref"], head["draft_ref"]),
                       (audit["scenario_ref"], audit["draft_ref"]))
@@ -106,7 +106,7 @@ def _deferred_evidence(source, evidence):
     return sorted(ids), issues
 
 
-def _operation_type(operation, refs, names, trace=None):
+def _operation_type(operation, refs, names, trace):
     key = (trace or {}).get("op_type_id", operation.get("op_type_id"))
     label = names.get(key)
     return {"ref": refs.get(("op_type", key)),
@@ -186,7 +186,7 @@ def decision_baseline_source_resolver(conn, *, candidate_provider=None):
         lambda: _decision_baseline_source_resolver(conn, candidate_provider=candidate_provider))
 
 
-def _decision_baseline_source_resolver(conn, *, candidate_provider=None):
+def _decision_baseline_source_resolver(conn, *, candidate_provider):
     """Create one request's resolver over permanent candidate/scenario identities.
 
     The caller compares ``evidence.arranged`` with its captured Schedule rows.
@@ -215,14 +215,14 @@ def _decision_baseline_source_resolver(conn, *, candidate_provider=None):
                     prepared = candidate_provider(audit["candidate_ref"]) if candidate_provider is not None else None
                     sources[key] = prepared if prepared is not None else read_candidate_source(candidates, audit["candidate_ref"])
                 source = sources[key]
-                evidence, points = _candidate_evidence(source, audit), _candidate_points
+                evidence, points = candidate_evidence(source, audit), _candidate_points
             else:
                 key = ("trial", audit["scenario_ref"])
                 if key not in sources:
                     sources[key] = trial_adoption_facts(conn, audit["scenario_ref"])
                 prepared = sources[key]
                 source = prepared.source
-                evidence, points = _trial_evidence(source, audit), _trial_points
+                evidence, points = trial_evidence(source, audit), _trial_points
                 evidence["trial_source"] = prepared
             deferred, deferred_issues = _deferred_evidence(source, evidence)
             effort, types, standards = _operation_metadata(source, evidence)

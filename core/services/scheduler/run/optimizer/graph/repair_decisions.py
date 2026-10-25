@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Tuple, cast
 
+from core.algorithm_contracts.changeover_events import type_transition
 from core.algorithms.greedy.auto_assign import qualified_resource_pairs
 from core.errors import ValidationError
 
@@ -18,6 +19,19 @@ class RepairDecision:
     batch_order: Tuple[str, ...]
     operation_order: Tuple[int, ...] = ()
     resource_overrides: Tuple[Tuple[int, str, str], ...] = ()
+
+    @classmethod
+    def _unvalidated(
+        cls,
+        batch_order: Tuple[str, ...],
+        operation_order: Tuple[int, ...] = (),
+        resource_overrides: Tuple[Tuple[int, str, str], ...] = (),
+    ) -> RepairDecision:
+        obj = object.__new__(cls)
+        object.__setattr__(obj, "batch_order", batch_order)
+        object.__setattr__(obj, "operation_order", operation_order)
+        object.__setattr__(obj, "resource_overrides", resource_overrides)
+        return obj
 
     def __post_init__(self) -> None:
         if not isinstance(self.batch_order, tuple) or any(not isinstance(v, str) for v in self.batch_order):
@@ -135,17 +149,17 @@ def _batch_changeovers(timelines: Dict[Tuple[str, str], List[Any]], batches: Fro
         if kind != "machine_id":
             continue
         previous = None
-        previous_type = ""
         for row in rows:
-            current_type = str(getattr(row, "op_type_name", "") or "").strip()
-            if not current_type:
+            if row.start_time == row.end_time:
                 continue
-            if previous is not None and current_type != previous_type:
+            if previous is not None and type_transition(
+                previous.op_type_id, row.op_type_id, previous.op_id, row.op_id,
+            ) == 1:
                 for changed in (previous, row):
                     batch = str(changed.batch_id)
                     if batch in batches:
                         counts[batch] = counts.get(batch, 0.0) + 1.0
-            previous, previous_type = row, current_type
+            previous = row
     return counts
 
 
@@ -168,9 +182,17 @@ def repair_decision_inputs(
         overrides = {op_id: (machine, operator) for op_id, machine, operator in decision.resource_overrides}
         ranks = {batch: float(index) for index, batch in enumerate(decision.batch_order)}
         out = dict(context)
+        by_id = prepared_parent.operations_by_id
+        if decision.operation_order:
+            out["graph_priority_key_by_op_id"] = {
+                op_id: (float(rank), ranks[str(by_id[op_id].batch_id)])
+                for rank, op_id in enumerate(decision.operation_order)
+            }
+            return out, overrides
         out["graph_priority_key_by_op_id"] = {
-            op_id: (ranks[str(op.batch_id)],) for op_id, op in prepared_parent.operations_by_id.items()
+            op_id: (ranks[str(op.batch_id)],) for op_id, op in by_id.items()
         }
+        return out, overrides
     if decision.operation_order:
         batch_keys = out["graph_priority_key_by_op_id"]
         out["graph_priority_key_by_op_id"] = {
@@ -221,7 +243,11 @@ def iter_resource_decisions(
             overrides = dict(inherited)
             overrides[op.id] = pair
             rows = tuple((op_id, values[0], values[1]) for op_id, values in sorted(overrides.items()))
-            yield RepairDecision(batch_order_tuple, op_order_tuple, rows)
+            yield (
+                RepairDecision._unvalidated(batch_order_tuple, op_order_tuple, rows)
+                if prepared_parent is not None
+                else RepairDecision(batch_order_tuple, op_order_tuple, rows)
+            )
             generated += 1
             if generated >= max_decisions:
                 return

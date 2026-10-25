@@ -4,12 +4,11 @@ from collections import defaultdict
 
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_process_actions import normalize_process_part_create
 from core.models.workbench_process_file import COLUMNS
 from core.models.workbench_resource_action import action_row, reject_action_row
-from core.models.workbench_resource_input import resource_object, resource_text
+from core.models.workbench_resource_input import resource_text
 
-from .file_values import typed_value
-from .part_actions import WorkbenchProcessPartActionService
 from .part_actions_facts import check_process_template
 from .projection import project_group, public_sequence, require_ref
 from .route_apply import affected_group_rows
@@ -61,30 +60,23 @@ def _route_summary(preview, existing):
 
 class RouteFilePreview:
     def __init__(self, conn, logger, facts, target_ref, stack):
-        self.parts = {row["part_no"]: row for row in facts["parts"]}
-        self.identities = {row["ref"]: row for row in facts["identities"]}
-        self.operations, self.groups = defaultdict(list), defaultdict(list)
-        self.group_parts = defaultdict(set)
-        for row in facts["operations"]:
-            self.operations[row["part_no"]].append(row)
-            if row["ext_group_id"] is not None:
-                self.group_parts[row["ext_group_id"]].add(row["part_no"])
-        for row in facts["groups"]:
-            self.groups[row["part_no"]].append(row)
+        self.parts = facts.parts
+        self.identities = facts.identities
+        self.operations, self.groups = facts.operations, facts.groups
+        self.group_parts = facts.group_parts
         self.target_ref, self.stack = target_ref, stack
         self.facts = facts
         self.parser = ProcessRoutePreviewService(conn, logger, facts=facts)
         self.parser_ready = False
-        self.choices = None
+        self.choices = {}
 
     def row(self, source):
         row = action_row(source["row"])
         row.update(errors=list(source["errors"]), related={"route": None, "affected_groups": []},
                    route_summary=None)
         try:
-            values = resource_object(source["values"], set(COLUMNS["route"]), "input")
+            values = source["values"]
             code = resource_text(values.get("business_code"), "business_code")
-            typed_value(code, "business_code", row["row"], "csv")
             row["business_code"] = code
             if values["business_code"] != code and values["business_code"] in self.parts:
                 raise ValidationError("原图号前后有空格。请到基础资料改正图号。", field="business_code")
@@ -106,7 +98,7 @@ class RouteFilePreview:
         if part is not None:
             ref = require_ref(part["ref"], "零件")
             identity = self.identities.get(ref)
-            if identity is None or not identity["active"] or identity["kind"] != "part" or identity["entity_key"] != part["part_no"]:
+            if identity is None or not identity.active or identity.kind != "part" or identity.entity_key != part["part_no"]:
                 raise WorkbenchCommandRejected("storage_failure", "零件和它的编号对不上，请联系维护人员核对资料。", 500)
             row.update(entity_ref=ref, before=canonical_part(part), reference_count=part["batch_count"],
                        expected={"revision": part["revision"], "part": {
@@ -117,9 +109,9 @@ class RouteFilePreview:
         if self.target_ref is None:
             return
         target = self.identities.get(self.target_ref) if type(self.target_ref) is str else None
-        if target is None or not target["active"] or target["kind"] != "part":
+        if target is None or not target.active or target.kind != "part":
             raise ValidationError("这个零件已失效，不能导入到同号的新零件上。请刷新列表后重新选择。", field="target_ref")
-        if part is None or part["ref"] != self.target_ref or target["entity_key"] != part["part_no"]:
+        if part is None or part["ref"] != self.target_ref or target.entity_key != part["part_no"]:
             raise ValidationError("详情导入的每一行都必须属于当前零件，不能替换为其他图号。", field="business_code")
 
     def _propose(self, row, values, part):
@@ -142,15 +134,12 @@ class RouteFilePreview:
         supplied = {key: value for key, value in values.items() if key != "business_code" and value != ""}
         if part is None:
             payload = {"business_code": row["business_code"], **supplied}
-            for key, value in supplied.items():
-                typed_value(value, key, row["row"], "csv")
-            after = WorkbenchProcessPartActionService.normalize_create(payload)
+            after = normalize_process_part_create(payload)
         else:
             after = dict(before)
             for key, value in supplied.items():
                 if value == before[key]:
                     continue
-                typed_value(value, key, row["row"], "csv")
                 if key != "route_raw":
                     if type(value) is str and not value.strip():
                         raise ValidationError("留空格不算清除，要清除请在格子里填 \\N（大写）。", field=key)
@@ -168,17 +157,17 @@ class RouteFilePreview:
         if raw is None:
             raise ValidationError("已有工艺路线不能用 \\N 清除；文件导入不会据此删掉原模板。请到基础资料操作。", field="route_raw")
         code = row["business_code"]
-        existing = self.operations[code] if part is not None else []
-        preview, changed = self._parse_route(raw, existing)
-        row["route_summary"] = _route_summary(preview, existing)
+        # 与表单入口同一顺序：先确认原模板的序号、状态和外协组说得清，再拿它比对新路线。
+        operations, groups = self._check_template(code) if part is not None else ([], [])
+        preview, changed = self._parse_route(raw, operations)
+        row["route_summary"] = _route_summary(preview, operations)
         if not preview["can_confirm_route"]:
             raise WorkbenchCommandRejected("route_invalid", "工艺路线无效，这批不能导入。请按下面的逐条提示改好后重新预检。", 422)
-        if _same_template_route(part, existing, preview):
+        if _same_template_route(part, operations, preview):
             # The readable export may use a different spelling of the same route.
             # Keep existing confirmations and the original stored text on a semantic no-op.
             row["after"]["route_raw"] = row["before"]["route_raw"]
             return []
-        operations, groups = self._check_template(code) if part is not None else ([], [])
         if not groups:
             affected = []
         else:
@@ -202,13 +191,15 @@ class RouteFilePreview:
             return preview, None
         existing_by_seq = {op["seq"]: op for op in existing}
         changed = changed_route_sequences(existing_by_seq, preview["operations"])
-        if self.choices is None:
-            self.choices = route_choice_context(self.parser.conn, self.facts["operations"], self.facts)
-        preview = preview_existing_route(preview, existing, self.choices, changed=changed)
+        code = existing[0]["part_no"]
+        if code not in self.choices:
+            self.choices[code] = route_choice_context(existing, self.facts)
+        preview = preview_existing_route(preview, existing, self.choices[code], changed=changed)
         return preview, changed
 
     def affected_groups(self, rows):
         refs = {group["ref"] for row in rows if row["result"] != "rejected"
                 for group in row["related"]["affected_groups"]}
-        return [{**project_group(group), "part_ref": self.parts[code]["ref"], "business_code": code}
+        return [{**project_group(group, self.facts.group_members.get(group["group_id"], [])),
+                 "part_ref": self.parts[code]["ref"], "business_code": code}
                 for code, groups in self.groups.items() for group in groups if group["ref"] in refs]

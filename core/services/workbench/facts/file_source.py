@@ -9,9 +9,12 @@ workbook even when a caller rejects the header or stops at its row limit.
 import csv
 from dataclasses import dataclass
 from io import BytesIO, StringIO
+from typing import Any
+from xml.etree import ElementTree
 
 from core.errors import ValidationError
 from core.services.common.excel_cell_values import cell_value, is_formula_or_error
+from core.services.workbench.facts.process_file_xml import check_sheet_order
 
 
 @dataclass(frozen=True)
@@ -63,11 +66,16 @@ def _csv_rows(content, error, messages):
 def _xlsx_rows(content, state, error, messages):
     import openpyxl
 
-    wb = None
+    wb: Any = None
     try:
         wb = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
         if not wb.worksheets:
             raise error(messages.xlsx_empty)
+        types = ElementTree.fromstring(wb._archive.read("[Content_Types].xml"))
+        for item in types:
+            if item.attrib.get("ContentType", "").endswith("spreadsheetml.worksheet+xml"):
+                with wb._archive.open(item.attrib["PartName"].lstrip("/")) as stream:
+                    check_sheet_order(stream, error=error)
         # Templates include an instruction sheet; import only their data sheet.
         state["sheets"] = len(wb.worksheets)
         ws = wb.worksheets[0]

@@ -134,7 +134,7 @@ class WorkbenchRunCandidateBaselineQueryService:
         conn, baseline = self.store.conn, source.capture["baseline"]
         with read_evidence_scope(conn):
             origins, evidence, origin_issue = _baseline_origins(conn, baseline)
-            admission = AdmissionBaseline(source.capture, source.facts, source.disposition, source.run["accepted_at"],
+            admission = AdmissionBaseline(source.capture, source.facts, source.disposition,
                 point_work=lambda: official_point_work(conn, baseline["version"], evidence=evidence) if evidence is not None else {},
                 origins=origins, origin_issue=origin_issue)
             admission.source_state = {"plan_ref": baseline["plan_ref"], "version": baseline["version"],

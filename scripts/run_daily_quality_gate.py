@@ -68,6 +68,12 @@ _DOC_ONLY_EXCLUDED_PATHS = {
     "开发文档/技术债务治理台账.md",
     "开发文档/阶段留痕与验收记录.md",
 }
+# Whole-repo ratchet scanners; they share ruff's trigger because they also judge Python source.
+BOUNDARY_SCANNERS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("sql boundary check", ("tools.scan_sql_boundary", "--rule", "all")),
+    ("private imports check", ("tools.scan_private_imports",)),
+    ("dead path literals check", ("tools.scan_dead_path_literals",)),
+)
 _RUFF_CONFIG_PATTERNS: Tuple[str, ...] = (
     "pyproject.toml",
     "ruff.toml",
@@ -500,6 +506,9 @@ def _commands(
                 [sys.executable, "-m", "ruff", "check", "--force-exclude", "--", *ruff_plan.target_paths],
             )
         )
+    if ruff_plan.all_files or ruff_plan.target_paths:
+        for label, scanner in BOUNDARY_SCANNERS:
+            commands.append((label, [sys.executable, "-m", *scanner, "--fail-on-new", "--quiet-when-clean"]))
 
     normalized_targets = _dedupe_paths(required_targets)
     covered_files = {target for target in normalized_targets if "::" not in target}

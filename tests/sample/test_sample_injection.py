@@ -53,7 +53,10 @@ def test_small_sample_saves_real_receipts_and_scoped_constraints(sample_server, 
     output = tmp_path / "small-sample.json"
     report = inject_sample(base_url, output, batch_count=2, operation_count=12)
     _assert_saved_business(report, database, 2, 12)
-    assert json.loads(output.read_text(encoding="utf-8"))["counts"] == report["counts"]
+    persisted = json.loads(output.read_text(encoding="utf-8"))
+    assert persisted["counts"] == report["counts"]
+    assert all(set(refs) == {str(seq) for seq in range(1, 13)} for refs in report["operation_refs"].values())
+    assert persisted["operation_refs"] == report["operation_refs"]
     client = SampleClient(base_url)
     for ref in report["refs"]["part"].values():
         assert client.get(BASE + "/entities/part/" + ref)["workflow"]["ready"]

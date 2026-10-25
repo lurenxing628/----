@@ -45,11 +45,11 @@ def decision_history_export():
     with PLAN_READ_SLOTS.slot():
         from core.services.workbench.history.export import (
             HISTORY_EXPORT_VERSION,
-            read_history_export,
             write_history_export,
         )
+        from core.services.workbench.history.queries import read_history_all
 
-        data, scope, state = read_history_export(g.db, values)
+        data, scope, state = read_history_all(g.db, values)
         snapshot = bind_read_snapshot(scope, state, token)
     download = (write_decision_xlsx("history", data, snapshot, section) if fmt == "xlsx" else
                 write_history_export(data, snapshot, fmt, section))

@@ -107,13 +107,14 @@ def outsourcing_case(tmp_path):
 
 def api(case, monkeypatch):
     import web.routes.workbench.outsourcing as module
+    from web.routes.workbench import read_context
 
     class Clock(datetime):
         @classmethod
         def now(cls, tz=None):
             return NOW
 
-    monkeypatch.setattr(module, "datetime", Clock)
+    monkeypatch.setattr(read_context, "datetime", Clock)
     monkeypatch.setattr(module, "WorkbenchOutsourcingService", lambda conn: WorkbenchOutsourcingService(conn, clock=lambda: NOW))
     monkeypatch.setattr(module, "WorkbenchOutsourcingCommandService", lambda conn, **kwargs: WorkbenchOutsourcingCommandService(
         conn, clock=lambda: NOW, actor_provider=lambda: "http-local-operator", **kwargs))

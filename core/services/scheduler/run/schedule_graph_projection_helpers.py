@@ -7,11 +7,11 @@ _GRAPH_WARNING_DATA_DICT_FIELD_LIMIT = 20
 _GRAPH_WARNING_TEXT_SAMPLE_LIMIT = 500
 
 
-def _truncated(values: List[Any], limit: int) -> bool:
+def is_truncated(values: List[Any], limit: int) -> bool:
     return len(values) > int(limit)
 
 
-def _sample(values: List[Any], limit: int) -> List[Any]:
+def sample_values(values: List[Any], limit: int) -> List[Any]:
     return values[: int(limit)]
 
 
@@ -30,8 +30,8 @@ def _project_warning_data_value(value: Any) -> Tuple[Any, bool]:
         value = list(value)
     if isinstance(value, list):
         projected_items: List[Any] = []
-        truncated_any = _truncated(value, _GRAPH_WARNING_DATA_LIST_SAMPLE_LIMIT)
-        for item in _sample(value, _GRAPH_WARNING_DATA_LIST_SAMPLE_LIMIT):
+        truncated_any = is_truncated(value, _GRAPH_WARNING_DATA_LIST_SAMPLE_LIMIT)
+        for item in sample_values(value, _GRAPH_WARNING_DATA_LIST_SAMPLE_LIMIT):
             projected_item, item_truncated = _project_warning_data_value(item)
             projected_items.append(projected_item)
             truncated_any = truncated_any or item_truncated
@@ -39,7 +39,7 @@ def _project_warning_data_value(value: Any) -> Tuple[Any, bool]:
     if isinstance(value, dict):
         items = list(value.items())
         projected: Dict[str, Any] = {}
-        truncated_any = _truncated(items, _GRAPH_WARNING_DATA_DICT_FIELD_LIMIT)
+        truncated_any = is_truncated(items, _GRAPH_WARNING_DATA_DICT_FIELD_LIMIT)
         for raw_key, raw_value in items[:_GRAPH_WARNING_DATA_DICT_FIELD_LIMIT]:
             projected_value, value_truncated = _project_warning_data_value(raw_value)
             projected[str(raw_key)] = projected_value
@@ -63,14 +63,14 @@ def _project_warning_data(raw_data: Any) -> Tuple[Dict[str, Any], bool]:
         return {"unsupported_data_type": type(raw_data).__name__}, True
     projected: Dict[str, Any] = {}
     items = list(raw_data.items())
-    truncated_any = _truncated(items, _GRAPH_WARNING_DATA_DICT_FIELD_LIMIT)
+    truncated_any = is_truncated(items, _GRAPH_WARNING_DATA_DICT_FIELD_LIMIT)
     for key, value in items[:_GRAPH_WARNING_DATA_DICT_FIELD_LIMIT]:
         key_text = str(key)
         if isinstance(value, list):
             sample, sample_truncated = _project_warning_data_value(value)
             projected[f"{key_text}_sample"] = sample
             projected[f"{key_text}_count"] = int(len(value))
-            truncated = _truncated(value, _GRAPH_WARNING_DATA_LIST_SAMPLE_LIMIT)
+            truncated = is_truncated(value, _GRAPH_WARNING_DATA_LIST_SAMPLE_LIMIT)
             projected[f"{key_text}_truncated"] = bool(truncated or sample_truncated)
             truncated_any = truncated_any or truncated or sample_truncated
         else:
@@ -122,8 +122,8 @@ def graph_node_metrics_sample(
 
 
 __all__ = [
-    "_sample",
-    "_truncated",
+    "sample_values",
+    "is_truncated",
     "graph_node_metrics_sample",
     "project_graph_warning",
 ]

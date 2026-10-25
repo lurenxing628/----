@@ -3,14 +3,6 @@ from __future__ import annotations
 from typing import Optional, TypedDict
 
 
-class ScheduleSeedRow(TypedDict, total=False):
-    op_id: int
-    machine_id: Optional[str]
-    operator_id: Optional[str]
-    start_time: str
-    end_time: str
-
-
 class ScheduleTimeSpanRow(TypedDict, total=False):
     version: int
     start_time: str
@@ -42,10 +34,3 @@ class ScheduleDetailRow(TypedDict, total=False):
     machine_name: Optional[str]
     operator_name: Optional[str]
     supplier_name: Optional[str]
-
-
-class ScheduleDispatchRow(ScheduleDetailRow, total=False):
-    machine_team_id: Optional[str]
-    machine_team_name: Optional[str]
-    operator_team_id: Optional[str]
-    operator_team_name: Optional[str]

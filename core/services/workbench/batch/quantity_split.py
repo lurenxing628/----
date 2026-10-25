@@ -13,7 +13,7 @@ from data.repositories.batch_material_stage_repo import BatchMaterialStageReposi
 from data.repositories.batch_repo import BatchRepository
 
 from .bulk import WorkbenchBatchBulkService
-from .facts import BatchFacts, related, require_unreferenced
+from .facts import BatchFacts, index_relations, require_unreferenced
 from .materials import WorkbenchBatchMaterialService
 from .service import WorkbenchBatchService
 
@@ -57,15 +57,12 @@ class WorkbenchQuantitySplitService:
         self.conn = conn
         self.reader = reader if reader is not None else BatchFacts(conn, logger)
 
-    def plan(self, ref, payload):
-        return self.plan_normalized(ref, normalize_split(payload))
-
     def plan_normalized(self, ref, payload):
         return self._plan_normalized(ref, payload)[0]
 
     def _plan_normalized(self, ref, payload):
         batch, facts = self.reader.batch(ref), self.reader.load()
-        relations = related(facts, batch)
+        relations = index_relations(facts)[batch["batch_id"]]
         require_unreferenced(relations)
         _require_splittable_batch(batch, relations["operations"])
         original = batch["quantity"]
@@ -74,7 +71,7 @@ class WorkbenchQuantitySplitService:
         count = payload["quantity"] if payload["quantity"] is not None else maximum
         if not 0 < count < original or count > maximum:
             raise WorkbenchCommandRejected("constraint_conflict", f"当前可开工 {maximum} 件，原批 {original} 件；拆分数量须大于 0、小于原批且不超过可开工数量。")
-        code = WorkbenchBatchBulkService._copy_code(batch["batch_id"], {row["batch_id"] for row in facts["Batches"]})
+        code = WorkbenchBatchBulkService._copy_code(batch["batch_id"], {row["batch_id"] for row in facts["Batches"]}, {})
         materials = []
         names = {row["material_id"]: row["name"] for row in facts["Materials"]}
         for row in availability.requirements[batch["batch_id"]]:
@@ -88,9 +85,6 @@ class WorkbenchQuantitySplitService:
                 "original_quantity": original, "quantity": count, "remaining_quantity": original - count,
                 "maximum_quantity": maximum, "as_of_date": payload["as_of_date"], "materials": materials,
                 "commit_policy": "atomic", "warnings": []}, batch, facts, relations["operations"]
-
-    def apply(self, ref, payload):
-        return self.apply_normalized(ref, normalize_split(payload))
 
     def apply_normalized(self, ref, payload):
         if not self.conn.in_transaction:
@@ -118,14 +112,14 @@ class WorkbenchQuantitySplitService:
                    for op, ready in zip(source_operations, prepared)}
         repo, stages = BatchMaterialRepository(self.conn), BatchMaterialStageRepository(self.conn)
         for index, row in enumerate(plan["materials"]):
-            created_material = repo.add(code, row["material_id"], required_qty=row["child_required"], available_qty=row["child_available"],
-                                        ready_status=child_rows[index]["ready_status"])
+            created_id = repo.add(code, row["material_id"], required_qty=row["child_required"], available_qty=row["child_available"],
+                                  ready_status=child_rows[index]["ready_status"])
             operation_id = row["operation_id"]
             if operation_id is not None:
-                stages.replace_operation(created_material.id, mapping[operation_id])
+                stages.replace_operation(created_id, mapping[operation_id])
             if row["child_arrivals"]:
-                stages.replace_arrivals(created_material.id, row["child_arrivals"])
-            stages.review(created_material.id, plan["quantity"])
+                stages.replace_arrivals(created_id, row["child_arrivals"])
+            stages.review(created_id, plan["quantity"])
             repo.update_qty(row["requirement_id"], required_qty=row["source_required"], available_qty=row["source_available"],
                             ready_status=source_rows[index]["ready_status"])
             stages.replace_arrivals(row["requirement_id"], row["source_arrivals"])

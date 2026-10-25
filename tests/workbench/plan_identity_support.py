@@ -13,7 +13,6 @@ from core.infrastructure.workbench_plan_identity_schema import (
 )
 from core.infrastructure.workbench_process_schema import process_objects
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
-from data.repositories.schedule_plan_query_repo import SchedulePlanQueryRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 from tests.workbench.plan_catalog_support import END, START, candidate, history, scenario, seed_operation, selection
 
@@ -84,16 +83,23 @@ def installed_case(conn, *, legacy=False):
 
 def plan_rows(conn, locator) -> List[Dict[str, Any]]:
     if locator.scenario_id is not None:
-        source, candidate_id = "adjustment_scenario_rows", None
-    elif locator.plan_role == "adopted":
-        source, candidate_id = "schedule", None
+        sql = "SELECT id AS schedule_id, op_id, ? AS version FROM ScheduleAdjustmentScenarioRow WHERE scenario_id = ?"
+        params = (locator.version, locator.scenario_id)
     else:
-        source, candidate_id = conn.execute("SELECT source_table, candidate_id FROM ScheduleCandidateSelection "
-                                            "WHERE version = ? AND role = ?",
-                                            (locator.version, locator.plan_role)).fetchone()
-    rows = SchedulePlanQueryRepository(conn).list_detail_rows_all(
-        version=locator.version, source_table=source, candidate_id=candidate_id, scenario_id=locator.scenario_id)
-    return [dict(row) for row in rows]
+        if locator.plan_role == "adopted":
+            source, candidate_id = "schedule", None
+        else:
+            source, candidate_id = conn.execute("SELECT source_table, candidate_id FROM ScheduleCandidateSelection "
+                                                "WHERE version = ? AND role = ?",
+                                                (locator.version, locator.plan_role)).fetchone()
+        if source == "schedule":
+            sql = "SELECT id AS schedule_id, op_id, version FROM Schedule WHERE version = ?"
+            params = (locator.version,)
+        else:
+            sql = ("SELECT id AS schedule_id, op_id, version FROM ScheduleCandidateRows "
+                   "WHERE version = ? AND candidate_id = ?")
+            params = (locator.version, candidate_id)
+    return [dict(zip(("schedule_id", "op_id", "version"), row)) for row in conn.execute(sql, params)]
 
 
 def all_refs(conn):

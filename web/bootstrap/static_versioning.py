@@ -81,7 +81,4 @@ def install_versioned_url_for(app: Flask, static_dir: str) -> None:
     def _inject_url_for() -> Dict[str, Callable[..., str]]:
         return {"url_for": versioned_url_for}
 
-    try:
-        app.jinja_env.globals["url_for"] = versioned_url_for
-    except Exception as exc:
-        _warn_once(app, "jinja_url_for", f"模板静态资源版本函数注入失败，已保留兼容入口：{exc}")
+    app.jinja_env.globals["url_for"] = versioned_url_for

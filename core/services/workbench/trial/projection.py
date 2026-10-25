@@ -24,14 +24,13 @@ from .calendar import original_duration
 from .capacity import trial_capacity
 from .effort import operation_effort_ledger
 from .preparation import apply_changeovers, apply_preparation, preparation_projection, trial_changeovers
-from .protection import TrialProtection
 
 
-def tasks_projection(rows, draft_ref, checked, live, frozen=None):
+def tasks_projection(rows, draft_ref, checked, live, protection):
+    """protection: 与 checked 同一次核对得到的 TrialProtection。"""
     by_operation = {row["operation_ref"]: row["task_ref"] for row in rows}
-    protected_rows = TrialProtection(live, frozen)
     by_task = _task_issue_index(checked["issues"])
-    return [_task_projection(row, draft_ref, by_operation, protected_rows, by_task, live) for row in rows]
+    return [_task_projection(row, draft_ref, by_operation, protection, by_task, live) for row in rows]
 
 
 def _task_issue_index(issues):
@@ -89,7 +88,7 @@ def _hours(original):
 
 def resources_projection(live):
     tables = live["facts"]["tables"]
-    refs = {(row["kind"], row["entity_key"]): row["ref"] for row in tables["WorkbenchEntityRefs"] if row["active"] == 1}
+    refs = live["preflight_facts"].refs
     result = {"machines": [], "operators": [], "authorizations": []}
     for kind, table, bucket in (("machine", "Machines", "machines"), ("operator", "Operators", "operators")):
         for row in tables[table]:
@@ -217,7 +216,7 @@ def scenario_rows(saved, rows):
     return projected
 
 
-def scenario_capacity(saved, head, *, projected=None, archive=None):
+def scenario_capacity(saved, head, *, projected, archive):
     if head is None:
         return dict(saved["capacity"], state="unavailable", source="archived_resource_calendar",
                     metric_version=RESOURCE_METRIC_VERSION, resource_common=None,
@@ -243,16 +242,17 @@ def _display_fields(task):
         task[key] = value
 
 
-def source_projection(rows, admission):
+def source_projection(rows, admission, *, facts=None):
     """Prepare one source archive, delivery grouping and operation scope for these rows."""
-    facts = GenerationFacts(admission["source"]["capture"]) if "capture" in admission["source"] else None
+    if facts is None and "capture" in admission["source"]:
+        facts = GenerationFacts(admission["source"]["capture"])
     archive = facts.archive if facts is not None else admission["facts"]
     origin = delivery_origin(admission, rows, facts)
     contexts = operation_contexts(rows, admission, facts, origin=origin)
     return facts, archive, origin, contexts
 
 
-def draft_projection(head, rows, checked, live, context_factory, frozen=None, *, source_prepared=None, scenario_ref=None):
+def draft_projection(head, rows, checked, live, context_factory, protection, *, source_prepared, scenario_ref):
     ref, admission = head["draft_ref"], head["admission"]
     if scenario_ref is None:
         binding = write_snapshot(head, rows, live)
@@ -265,13 +265,17 @@ def draft_projection(head, rows, checked, live, context_factory, frozen=None, *,
         current_evidence = {"kind": "trial", "draft_ref": ref}
     else:
         current_evidence = {"kind": "scenario", "scenario_ref": scenario_ref}
-    tasks = tasks_projection(rows, ref, checked, live, frozen)
-    facts, archive, origin, contexts = source_projection(rows, admission) if source_prepared is None else source_prepared
+    tasks = tasks_projection(rows, ref, checked, live, protection)
+    facts, archive, origin, contexts = (
+        source_projection(rows, admission, facts=live.get("source_facts"))
+        if source_prepared is None
+        else source_prepared
+    )
     if scenario_ref is None and head["status"] != "editing":
         for task in tasks:
             task["edit_context"]["can_change"] = False
             task["edit_context"]["blocked_reasons"].extend(context["blocked_reasons"])
-    unplanned = _unplanned(contexts)
+    unplanned = unplanned_operations(contexts)
     before_efforts = saved_operation_efforts(admission["source"].get("operation_effort"))
     ledger = operation_effort_ledger(rows, admission, before_efforts=before_efforts)
     pairs, preparation = preparation_projection(rows, admission, ledger,
@@ -298,7 +302,7 @@ def draft_projection(head, rows, checked, live, context_factory, frozen=None, *,
     return result
 
 
-def _unplanned(contexts):
+def unplanned_operations(contexts):
     fields = ("operation_ref", "batch_ref", "piece_id", "sequence", "status", "predecessor_refs")
     result = []
     for ref, context in contexts.items():

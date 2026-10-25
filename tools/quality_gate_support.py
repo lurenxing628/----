@@ -54,7 +54,6 @@ from .quality_gate_scan import (
     scan_oversize_entries,
     scan_repository_bundle_drift_entries,
     scan_silent_fallback_entries,
-    ui_mode_scope_tag,
     validate_startup_samples,
 )
 from .quality_gate_shared import (
@@ -102,9 +101,6 @@ from .quality_gate_shared import (
     STARTUP_SCOPE_PATTERNS,
     TEST_ARCH_FITNESS_PATH,
     TEST_DEBT_MODE_VALUES,
-    UI_MODE_SCOPE_TAG_VALUES,
-    UI_MODE_STARTUP_GUARD_SYMBOLS,
-    UI_MODE_STARTUP_SCOPE_PATHS,
     WEB_HELPER_SCAN_SCOPE_PATTERNS,
     QualityGateError,
     SilentFallbackSample,

@@ -216,6 +216,39 @@ async function contract(h, assert) {
   assert.strictEqual(acceptedRecord.verified, true, 'The 202 receipt must be confirmed and attached to its saved intent');
   panel.unmount();
 
+  // A busy cross-tab lock keeps this confirmation for a retry in the same dialog.
+  store.clear(); requests.length = 0; w.navigator = { locks: { request: async (_key, _options, fn) => fn(null) } };
+  const contended = hooks();
+  contended.render(w.RunJobPanel, props); contended.flush(); await turns();
+  await nodes(contended.render(w.RunJobPanel, props)).find(node => node.type === w.RunJobControls.Confirmation).props.onConfirm();
+  const kept = nodes(contended.render(w.RunJobPanel, props)).find(node => node.type === w.RunJobControls.Confirmation);
+  assert(kept && kept.props.preview && !kept.props.busy, 'Lock contention keeps the confirmation and its preview');
+  assert(/另一个页面正在提交排产/.test(kept.props.error));
+  assert.deepStrictEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/runs/preview']); assert.strictEqual(store.size, 0);
+  w.navigator = { locks: { request: async (_key, _options, fn) => fn({}) } };
+  await kept.props.onConfirm();
+  assert.deepStrictEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/runs/preview', '/api/workbench/v1/scheduling/runs'],
+    'After the lock is released the same confirmation submits without another preview');
+  contended.unmount();
+
+  // A 202 admission is published even when the local run reference cannot be saved; the failure stays a storage error.
+  store.clear(); requests.length = 0;
+  w.localStorage = { getItem: key => store.has(key) ? store.get(key) : null, removeItem: key => store.delete(key),
+    setItem: (key, value) => { if (key === w.RunJobAPI.PENDING_KEY && store.has(key)) throw new Error('QuotaExceededError'); store.set(key, value); } };
+  const unattached = hooks();
+  unattached.render(w.RunJobPanel, props); unattached.flush(); await turns();
+  await nodes(unattached.render(w.RunJobPanel, props)).find(node => node.type === w.RunJobControls.Confirmation).props.onConfirm();
+  const unattachedTree = unattached.render(w.RunJobPanel, props), unattachedRecord = nodes(unattachedTree).find(node => node.type === w.RunJobControls.Record).props;
+  assert.deepStrictEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/runs/preview', '/api/workbench/v1/scheduling/runs']);
+  assert.strictEqual(unattachedRecord.run.run_ref, runRef); assert.strictEqual(unattachedRecord.verified, true, 'The accepted run is shown before the local attach');
+  assert.strictEqual(unattachedRecord.intent.run_ref, null); assert.strictEqual(JSON.parse(store.get(w.RunJobAPI.PENDING_KEY)).run_ref, null);
+  const unattachedAlerts = nodes(unattachedTree).filter(node => node.props && node.props.role === 'alert').map(text);
+  assert(unattachedAlerts.some(value => value.startsWith('排产已接收，但本机没能保存这次排产的编号。请不要重新提交，到排产记录页查看结果。')), 'The attach failure is reported as an accepted run with a storage problem');
+  assert(!unattachedAlerts.some(value => value.includes(w.WorkbenchTerms.outcomes.pending('排产'))), 'The attach failure is not shown as an unconfirmed submission');
+  assert(!nodes(unattachedTree).some(node => node.type === w.RunJobControls.Confirmation), 'An admitted run closes its confirmation');
+  unattached.unmount();
+  w.localStorage = { getItem: key => store.has(key) ? store.get(key) : null, setItem: (key, value) => store.set(key, value), removeItem: key => store.delete(key) };
+
   const options = seconds => ({ generation_policy_version: 'unified_search_v1', primary_objective: 'min_overdue',
     target_objectives: ['min_overdue', 'min_tardiness', 'min_changeover'], time_budget_seconds: seconds, algo_mode: 'improve', graph_analysis_mode: 'off' });
   let checkNumber = 0;
@@ -362,7 +395,7 @@ async function contract(h, assert) {
 
   // Drive the actual polling effect with a virtual clock: no 32-second wall-clock sleep.
   const NativeDate = w.Date;
-  async function polling({ found = true, failed = false, knownRef = true, recovery = false, finishedAt = Infinity } = {}) {
+  async function polling({ found = true, failed = false, knownRef = true, recovery = false, finishedAt = Infinity, replaced = false, failRecent = false } = {}) {
     let now = 0, nextTimer = 0; const timers = new Map(), listeners = new Map(), lookups = [], posts = [], storage = new Map();
     const epoch = NativeDate.parse('2026-10-11T08:00:00'), intent = { schema_version: 2, input_ref: inputRef,
       request_key: 'run-' + 'b'.repeat(48), run_ref: knownRef ? runRef : null, data_context_ref: dataContext };
@@ -373,8 +406,8 @@ async function contract(h, assert) {
     w.document.hidden = false;
     w.document.addEventListener = (name, fn) => listeners.set(name, fn);
     w.document.removeEventListener = (name, fn) => { if (listeners.get(name) === fn) listeners.delete(name); };
-    w.localStorage = { getItem: key => storage.has(key) ? storage.get(key) : null,
-      setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) };
+    w.localStorage = { getItem: key => storage.has(key) ? storage.get(key) : null, removeItem: key => storage.delete(key),
+      setItem: (key, value) => { if (failRecent && key === w.RunJobAPI.RECENT_KEY) throw new Error('QuotaExceededError'); storage.set(key, value); } };
     route = request => {
       if (request.method === 'POST') posts.push(request);
       assert.strictEqual(request.path, '/api/workbench/v1/scheduling/requests/' + intent.request_key);
@@ -385,13 +418,13 @@ async function contract(h, assert) {
       const complete = { ...running, state: 'complete', stage: 'finished', result_persisted: true,
         finished_at: '2026-10-11T08:00:32', receipt_ref: h.reference(4),
         candidates: [{ candidate_ref: h.reference(5), label: '方案一', status: 'completed', task_count: 1, selected: true }] };
-      return envelope({ found, run: found ? done ? complete : running : null, data_context_ref: dataContext, resolution: found ? 'found' : 'unresolved' });
+      return envelope({ found, run: found ? done ? complete : running : null, data_context_ref: dataContext, resolution: found ? 'found' : replaced ? 'context_replaced' : 'unresolved' });
     };
     const state = hooks(), props = { preflight: null };
     let view;
     const render = () => { view = state.render(w.RunJobPanel, props); state.flush(); };
     render(); await turns(); render();
-    return { lookups, posts,
+    return { lookups, posts, storage, view: () => view,
       record: () => nodes(view).find(node => node.type === w.RunJobControls.Record).props,
       async advance(target) {
         while (true) {
@@ -433,6 +466,16 @@ async function contract(h, assert) {
   assert.deepStrictEqual(recovery.lookups, [0, 2000, 6000, 14000, 30000, 60000, 90000, 120000], 'A found run awaiting reconciliation retains capped backoff');
   assert.strictEqual(recovery.record().retryPaused, false, 'A found recovery record must not be treated as an unresolved receipt');
   assert.strictEqual(recovery.record().run.recovery_required, true); assert.strictEqual(recovery.posts.length, 0); recovery.stop();
+  // A verified terminal answer survives a failed local finish; the failure is a storage error, not a lookup failure.
+  for (const replaced of [false, true]) {
+    const unfinished = await polling({ finishedAt: 0, found: !replaced, replaced, failRecent: true }); await unfinished.advance(120000);
+    const record = unfinished.record();
+    assert.deepStrictEqual(unfinished.lookups, [0], 'A local finish failure stops polling instead of retrying the lookup');
+    assert.strictEqual(record.resolution, replaced ? 'context_replaced' : 'found'); assert.strictEqual(record.verified, !replaced);
+    assert.strictEqual(replaced ? record.run : record.run.state, replaced ? null : 'complete');
+    assert(nodes(unfinished.view()).some(node => node.props && node.props.role === 'alert' && text(node).startsWith('QuotaExceededError')), 'The finish failure is shown as a storage error');
+    assert(unfinished.storage.has(w.RunJobAPI.PENDING_KEY)); assert.strictEqual(unfinished.posts.length, 0); unfinished.stop();
+  }
   return { preferences: 'read/write contracts', workspace: 'restore and save-before-check', run: 'preview-before-confirmed-accept',
     budget: 'effective initial value, preflight→preview, latest owner, close/unmount isolation, completed custom input and unchanged durable protocol',
     poll: { backend_finished_ms: 32000, ui_found_ms: detectedAt, unresolved: '2/4/8/16/30 seconds then paused', visibility: 'suspend/resume' }, runtime: h.mode || 'delivered-bundle' };

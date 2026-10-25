@@ -76,7 +76,8 @@ def project_entry(reader, descriptor, query):
     return {"entry_ref": descriptor["entry_ref"], "timeline": descriptor["timeline"],
             "source_kind": descriptor["source_kind"], "label": descriptor["label"],
             "occurred_at": descriptor["occurred_at"], "time_basis": descriptor["time_basis"],
-            "state": descriptor["state"], "identity": identity, "times": dict(descriptor["times"]),
+            "state": descriptor["state"], "identity": identity,
+            "times": {key: value if type(value) is str else None for key, value in descriptor["times"].items()},
             "baseline": baseline, **projected, "navigation": _navigation(reader, descriptor), "issues": issues}
 
 

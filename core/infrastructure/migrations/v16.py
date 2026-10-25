@@ -7,6 +7,7 @@ from core.infrastructure.operation_execution_event_data_contract import operatio
 from core.models.operation_execution_event import parse_operation_event_time
 
 from ..migration_common import MigrationOutcome
+from ..schema_probe import table_exists
 from .v15 import _EVENT_INDEX_SQL, _EVENT_TABLE_SQL
 
 _EVENT_COLUMNS: List[str] = [
@@ -46,7 +47,7 @@ def run(conn: sqlite3.Connection, logger=None) -> MigrationOutcome:
     """
     v16 迁移：修正已经跑过早期 v15 的执行事件表结构。
     """
-    if not _table_exists(conn, "OperationExecutionEvents"):
+    if not table_exists(conn, "OperationExecutionEvents"):
         return MigrationOutcome.SKIPPED
 
     _reject_incomplete_legacy_events(conn)
@@ -74,14 +75,6 @@ def _drop_event_indexes(conn: sqlite3.Connection) -> None:
         "idx_operation_execution_events_op",
     ):
         conn.execute(f"DROP INDEX IF EXISTS {name}")
-
-
-def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1",
-        (table_name,),
-    ).fetchone()
-    return row is not None
 
 
 def _copy_legacy_events(conn: sqlite3.Connection) -> None:

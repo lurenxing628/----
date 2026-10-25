@@ -1,80 +1,31 @@
 """Multi-start construction and evaluation through the shared decode session."""
 from __future__ import annotations
 
-import math
 import time
 from datetime import date, datetime
 from functools import partial
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, cast
 
 from core.algorithm_contracts.dispatch_rules import dispatch_rule_search_pool
 from core.algorithms import SortStrategy
 from core.algorithms.evaluation import objective_score
+from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 
 from .attempt_records import candidate_tag, evaluate_optional_start_candidate
-from .candidate_fingerprint import score_strictly_better
 from .config import ensure_optimizer_config_snapshot, weighted_strategy_params
 from .search_stage import SearchStage
 from .search_state import OptimizerSearchState
 from .shared_budget import SharedSearchSkip
 from .shared_decode import decode_and_metrics
-from .step_report_hooks import _multi_start_deadline_reached, _record_multi_start_candidate
+from .step_report_hooks import _record_multi_start_candidate
 
 if TYPE_CHECKING:
     from .search_report import OptimizationSearchReportState
     from .shared_decode import SharedDecodeSession
 
 
-GRAPH_RULE_SCOPE_CONFIGURED_ONLY = "configured_only"
-GRAPH_RULE_SCOPE_REGISTRY_AND_LADDER = "registry_and_ladder"
-
-
-def _finite_key(value: Any) -> Optional[Tuple[float, ...]]:
-    if isinstance(value, (str, bytes)) or not isinstance(value, (tuple, list)) or not value:
-        return None
-    out: List[float] = []
-    for item in value:
-        if isinstance(item, bool) or not isinstance(item, (int, float)) or not math.isfinite(float(item)):
-            return None
-        out.append(float(item))
-    return tuple(out)
-
-
-def graph_rule_search_scope(graph_ready_context: Optional[Any]) -> Optional[Dict[str, Any]]:
-    """How many rule starts a graph candidate needs, proven from the graph priority keys.
-
-    SGS compares ``(penalty, *graph_key, *dispatch_key)`` and every schedulable operation must
-    carry a graph key (the decoder rejects a missing one). When all keys are pairwise distinct
-    the dispatch rule never breaks a tie, so every rule decodes the same schedule and only the
-    configured rule is started. Ties hand the decision to the rule key, so the registry rules and
-    the ATC k ladder are all worth a start. Returns None without a graph context.
-    """
-    if graph_ready_context is None:
-        return None
-    if not isinstance(graph_ready_context, dict):
-        return {"policy": GRAPH_RULE_SCOPE_REGISTRY_AND_LADDER, "reason": "graph_context_not_mapping"}
-    if graph_ready_context.get("score_enabled") is not True:
-        return {"policy": GRAPH_RULE_SCOPE_REGISTRY_AND_LADDER, "reason": "graph_score_disabled"}
-    raw_keys = graph_ready_context.get("graph_priority_key_by_op_id")
-    if not isinstance(raw_keys, dict) or not raw_keys:
-        return {"policy": GRAPH_RULE_SCOPE_REGISTRY_AND_LADDER, "reason": "graph_keys_missing"}
-    keys = [_finite_key(value) for value in raw_keys.values()]
-    if any(key is None for key in keys) or len({len(key) for key in keys if key is not None}) != 1:
-        return {"policy": GRAPH_RULE_SCOPE_REGISTRY_AND_LADDER, "reason": "graph_keys_not_uniform_finite"}
-    distinct = len(set(keys))
-    scope: Dict[str, Any] = {"operation_count": len(keys), "distinct_key_count": distinct}
-    if distinct == len(keys):
-        scope.update(policy=GRAPH_RULE_SCOPE_CONFIGURED_ONLY, reason="graph_keys_pairwise_distinct")
-    else:
-        scope.update(policy=GRAPH_RULE_SCOPE_REGISTRY_AND_LADDER, reason="graph_key_ties")
-    return scope
-
-
-def _dispatch_rules_for_mode(dispatch_mode: str, dispatch_rule_cfg: str, valid_dispatch_rules: List[str],
-                             *, graph_rule_scope: Optional[Dict[str, Any]] = None) -> List[str]:
+def _dispatch_rules_for_mode(dispatch_mode: str, dispatch_rule_cfg: str, valid_dispatch_rules: List[str]) -> List[str]:
     if dispatch_mode != "sgs":
-        return [dispatch_rule_cfg]
-    if graph_rule_scope is not None and graph_rule_scope.get("policy") == GRAPH_RULE_SCOPE_CONFIGURED_ONLY:
         return [dispatch_rule_cfg]
     # Configured rule first, then the registry rules, then the ATC k ladder nearest-first; the
     # phase slice truncates from the far end when decodes are expensive.
@@ -168,8 +119,10 @@ def _evaluate_multi_start_candidate(
 def _iter_multi_start_specs(
     *, keys: List[str], dispatch_modes: List[str], dispatch_rule_cfg: str, valid_dispatch_rules: List[str],
     snapshot: Any, deadline_reached: Callable[[], bool],
-    graph_rule_scope: Optional[Dict[str, Any]] = None,
     rules_by_mode: Optional[Dict[str, List[str]]] = None,
+    order_cache: Optional[Dict[Tuple[str, Tuple[Tuple[str, Any], ...]], List[str]]] = None,
+    build_order: Optional[Callable[[SortStrategy, Dict[str, Any]], List[str]]] = None,
+    on_duplicate_order: Optional[Callable[[int], None]] = None,
 ) -> Iterator[Tuple[str, str, str, SortStrategy, Dict[str, Any]]]:
     strategy_cache: Dict[str, Tuple[SortStrategy, Dict[str, Any]]] = {}
     for dm in dispatch_modes:
@@ -177,8 +130,10 @@ def _iter_multi_start_specs(
             break
         dispatch_rules = (
             rules_by_mode[dm] if rules_by_mode is not None else
-            _dispatch_rules_for_mode(dm, dispatch_rule_cfg, valid_dispatch_rules, graph_rule_scope=graph_rule_scope)
+            _dispatch_rules_for_mode(dm, dispatch_rule_cfg, valid_dispatch_rules)
         )
+        seen_orders: Set[Tuple[str, ...]] = set()
+        first_strategy: Optional[Tuple[SortStrategy, Dict[str, Any]]] = None
         for key in keys:
             if deadline_reached():
                 break
@@ -188,6 +143,31 @@ def _iter_multi_start_specs(
                     strategy, _resolve_multi_start_strategy_params(strategy=strategy, cfg=snapshot),
                 )
             strategy, params = strategy_cache[key]
+            if build_order is not None and order_cache is not None:
+                if first_strategy is None:
+                    first_strategy = (strategy, params)
+                else:
+                    if not seen_orders:
+                        seen_orders.add(
+                            tuple(
+                                _get_cached_multi_start_order(
+                                    strategy=first_strategy[0],
+                                    params=first_strategy[1],
+                                    order_cache=order_cache,
+                                    build_order=build_order,
+                                )
+                            )
+                        )
+                    order_key = tuple(
+                        _get_cached_multi_start_order(
+                            strategy=strategy, params=params, order_cache=order_cache, build_order=build_order,
+                        )
+                    )
+                    if order_key in seen_orders:
+                        if on_duplicate_order is not None:
+                            on_duplicate_order(len(dispatch_rules))
+                        continue
+                    seen_orders.add(order_key)
             for rule in dispatch_rules:
                 if deadline_reached():
                     break
@@ -230,44 +210,54 @@ class MultiStartStage(SearchStage):
             readiness_gate_enabled=bool(readiness_gate_enabled), graph_ready_context=graph_ready_context,
             decode_session=decode_session, before_decode=self._note_decode,
         )
-        graph_rule_scope = graph_rule_search_scope(graph_ready_context)
         rules_by_mode = {
-            dm: _dispatch_rules_for_mode(dm, dispatch_rule_cfg, valid_dispatch_rules, graph_rule_scope=graph_rule_scope)
+            dm: _dispatch_rules_for_mode(dm, dispatch_rule_cfg, valid_dispatch_rules)
             for dm in dispatch_modes
         }
-        snapshot = ensure_optimizer_config_snapshot(cfg, strict_mode=self.strict_mode)
-        self.specs = _iter_multi_start_specs(
-            keys=keys, dispatch_modes=dispatch_modes, dispatch_rule_cfg=dispatch_rule_cfg,
-            valid_dispatch_rules=valid_dispatch_rules, snapshot=snapshot,
-            deadline_reached=self._deadline_reached, rules_by_mode=rules_by_mode,
+        snapshot = (
+            cfg
+            if isinstance(cfg, ScheduleConfigSnapshot)
+            else ensure_optimizer_config_snapshot(cfg, strict_mode=self.strict_mode)
         )
         self.efficiency: Dict[str, Any] = {
             "proof": "shared_decode_request",
             "configured_candidates": sum(len(keys) * len(rules_by_mode[dm]) for dm in dispatch_modes),
-            "eligible_candidates": 0, "decoded_candidates": 0, "predecode_pruned_candidates": 0,
+            "eligible_candidates": 0, "decoded_candidates": 0,
             "skipped_by_budget": 0, "reused_candidates": 0,
         }
-        if graph_rule_scope is not None:
-            self.efficiency["graph_rule_scope"] = dict(graph_rule_scope)
+        self.specs = _iter_multi_start_specs(
+            keys=keys, dispatch_modes=dispatch_modes, dispatch_rule_cfg=dispatch_rule_cfg,
+            valid_dispatch_rules=valid_dispatch_rules, snapshot=snapshot,
+            deadline_reached=self._deadline_reached, rules_by_mode=rules_by_mode,
+            order_cache=self.order_cache, build_order=self.build_order,
+            on_duplicate_order=self._note_duplicate_order,
+        )
         self.index = 0
         self._pending_spec: Optional[Tuple[str, str, str, SortStrategy, Dict[str, Any]]] = None
+        self._unaffordable_modes: Set[str] = set()
+        self._stop_reason: Optional[str] = None
         self.exhausted = False
         self.finished = False
 
     def _deadline_reached(self) -> bool:
-        return _multi_start_deadline_reached(
-            now=self.now, deadline=self.deadline, search_report_state=self.search_report_state,
-        )
+        return self.now() >= self.deadline
 
     def _note_decode(self) -> None:
         self.efficiency["decoded_candidates"] += 1
 
+    def _note_duplicate_order(self, skipped_rules: int) -> None:
+        self.efficiency["configured_candidates"] = max(
+            self.efficiency["configured_candidates"] - int(skipped_rules), 0,
+        )
+
     def available(self) -> bool:
         if self.finished or self.exhausted:
             return False
-        if self._pending_spec is None:
+        while self._pending_spec is None or self._pending_spec[0] in self._unaffordable_modes:
             self._pending_spec = next(self.specs, None)
-            self.exhausted = self._pending_spec is None
+            if self._pending_spec is None:
+                self.exhausted = True
+                break
         return not self.exhausted
 
     def unavailable_reason(self) -> Optional[str]:
@@ -275,12 +265,12 @@ class MultiStartStage(SearchStage):
         if current >= self.deadline:
             return "time_budget"
         if self.exhausted:
-            return "specs_exhausted"
+            return self._stop_reason or "specs_exhausted"
         return "finished" if self.finished else None
 
-    def run_task(self) -> int:
+    def run_task(self) -> None:
         if self.finished or self.exhausted or (self._pending_spec is None and not self.available()):
-            return 0
+            return
         dm, key, rule, strategy, params = cast(
             Tuple[str, str, str, SortStrategy, Dict[str, Any]], self._pending_spec,
         )
@@ -291,14 +281,14 @@ class MultiStartStage(SearchStage):
         )
         self.efficiency["eligible_candidates"] += 1
         if self._deadline_reached():
-            return 0
+            return
         decode_started = self.now()
         try:
             candidate = evaluate_optional_start_candidate(
                 evaluate=partial(self.evaluate, strategy=strategy, params=params, order=order,
                                  dispatch_mode=dm, dispatch_rule=rule),
                 attempts=self.state.attempts, strategy_key=key, dispatch_mode=dm, dispatch_rule=rule,
-                primary=self.primary, strict_mode=self.strict_mode, search_report_state=self.search_report_state,
+                primary=self.primary, strict_mode=self.strict_mode,
             )
         except SharedSearchSkip as exc:
             self.state.attempts.append({
@@ -306,22 +296,26 @@ class MultiStartStage(SearchStage):
                 "request_id": exc.request_id, "decode_receipt": exc.receipt,
                 "strategy": key, "dispatch_mode": dm, "dispatch_rule": rule,
             })
-            return 0
+            if exc.reason == "estimated_decode_cost":
+                self._unaffordable_modes.add(dm)
+                self._stop_reason = exc.reason
+            elif exc.reason == "time_budget":
+                self._stop_reason = exc.reason
+                self.exhausted = True
+            return
         if candidate is None:
-            return 0
+            return
         if (candidate.get("decode_receipt") or {}).get("execution_kind") == "decision_reused":
             self.efficiency["reused_candidates"] += 1
         else:
-            candidate["initial_decode_runtime_ms"] = max((self.now() - decode_started) * 1000.0, 0.0)
-        previous = self.state.best
+            decode_runtime_ms = max((self.now() - decode_started) * 1000.0, 0.0)
+            candidate["initial_decode_runtime_ms"] = decode_runtime_ms
+            candidate["runtime_ms"] = int(decode_runtime_ms)
         self.state.best = _record_multi_start_candidate(
-            best=previous, candidate=candidate, strategy_key=key, dispatch_mode=dm, dispatch_rule=rule,
+            best=self.state.best, candidate=candidate, strategy_key=key,
             attempts=self.state.attempts, improvement_trace=self.state.improvement_trace,
             search_report_state=self.search_report_state, now=self.now, t_begin=self.t_begin,
         )
-        return int(self.state.best is candidate and score_strictly_better(
-            candidate.get("score"), (previous or {}).get("score"),
-        ))
 
     def finish(self) -> None:
         if self.finished:
@@ -329,11 +323,8 @@ class MultiStartStage(SearchStage):
         self.finished = True
         self.efficiency["skipped_by_budget"] = (
             self.efficiency["configured_candidates"] - self.efficiency["decoded_candidates"]
-            - self.efficiency["predecode_pruned_candidates"]
             - self.efficiency["reused_candidates"]
         )
-        if self.search_report_state is not None:
-            self.search_report_state.update_candidate_profile(multi_start_efficiency=self.efficiency)
-        if self.efficiency["predecode_pruned_candidates"] or self.efficiency["skipped_by_budget"]:
+        if self.efficiency["skipped_by_budget"]:
             self.state.attempts.append({"tag": "multi_start_efficiency", "candidate_status": "phase_summary",
                                         "multi_start_efficiency": self.efficiency})

@@ -108,12 +108,16 @@
       } catch (_) { setEntry({ ...entry, error: new Error('本页试调页签记录清除失败，请重试。') }); }
     }
     function selectTab(next) {
-      if (!preferences.change({ result_tab: next })) setLocal({ ...values, result_tab: next });
+      if (preferences.change({ result_tab: next })) setLocal(null);
+      else setLocal({ ...values, result_tab: next });
+      if (!data.scenario_ref) return;
       try { H.remember(data.scenario_ref, { tab: next }); setEntry({ tab: next, error: null }); }
       catch (_) { setEntry({ tab: next, error: new Error('本页试调页签记录保存失败，返回后可能无法恢复。') }); }
     }
+    const viewNotice = { ...preferences, reset: () => { preferences.reset(); setLocal(null); if (data.scenario_ref || entry.tab || entry.error) clearEntry(); } };
+    const historyRows = React.useMemo(() => data.change_history.slice().reverse(), [data.change_history]);
     const arrangement = r => <>{name(r.machine_ref)}<br />{name(r.operator_ref)}<br />{U.timeLabel(r.start)}<br />{U.timeLabel(r.end)}</>;
-    return <section className="tt-results"><V.Notice state={preferences} label="试调结果查看偏好" />
+    return <section className="tt-results"><V.Notice state={viewNotice} label="试调结果查看偏好" />
       {entry.error && <div className="tt-notice" role="region" aria-label="试调页签记录恢复"><U.ErrorBox error={entry.error} /><div className="tt-tools">
         <U.Button icon="refresh-cw" onClick={() => setEntry(readEntry())}>刷新本页页签记录</U.Button>
         <U.Button icon="rotate-ccw" onClick={clearEntry}>清除本页页签记录</U.Button></div></div>}
@@ -132,7 +136,7 @@
           {data.capacity.reason && <p className="tt-notice">{data.capacity.reason}</p>}<U.Table label="资源占用" rows={data.capacity.resources} columns={[
             ['资源', r => T.resource_kinds[r.resource_type] + ' ' + name(r.resource_ref)], ['可排（小时）', r => U.number(r.window_metrics.available_hours)], ['班内已占（小时）', r => U.number(r.window_metrics.occupied_hours)],
             ['占用比例', r => U.percent(r.window_metrics.utilization_ratio)], ['班内重叠（小时）', r => U.number(r.window_metrics.overlap_hours)], ['详情', r => <Calendar resource={r} />]]} /></>}
-        {tab === 'history' && <><U.Table label="调整记录" rows={data.change_history.slice().reverse()} columns={[
+        {tab === 'history' && <><U.Table label="调整记录" rows={historyRows} columns={[
           ['记录时间', r => U.timeLabel(r.recorded_at)], ['记录人', r => r.local_operator], ['调整前', r => arrangement(r.before)], ['调整后', r => arrangement(r.after)],
           ['当时约束', r => U.statusLabel(r.validation.constraints_status)], ['记录依据', r => <details><summary>编号</summary><div className="tt-ref">{r.change_ref}</div><div className="tt-ref">{r.task_ref}</div></details>]]} /></>}
         {tab === 'issues' && <><p>约束检查：{U.statusLabel(data.validation.constraints_status)}</p><U.Issues rows={data.validation.issues} onSelect={onSelect} /></>}

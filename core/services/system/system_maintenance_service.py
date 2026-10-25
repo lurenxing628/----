@@ -7,6 +7,7 @@ from typing import Optional
 
 from core.infrastructure.backup import MIN_KEEP_BACKUPS
 from core.infrastructure.logging import safe_log
+from core.models import SystemJobState
 from core.models.enums import YesNo
 from data.repositories import SystemJobStateRepository
 
@@ -90,14 +91,17 @@ class SystemMaintenanceService:
         cfg_svc = SystemConfigService(conn, logger=logger)
         cfg = cfg_svc.get_snapshot_readonly(backup_keep_days_default=int(backup_keep_days_default))
         job_repo = SystemJobStateRepository(conn, logger=logger)
+        job_states = None
 
         now = datetime.now()
         with ExitStack() as ownership:
             admitted = False
 
-            def is_due(*args):
-                nonlocal admitted
-                captured = cls._is_due(*args)
+            def is_due(repo: SystemJobStateRepository, job_key: str, current: datetime, interval_minutes: int) -> bool:
+                nonlocal admitted, job_states
+                if job_states is None:
+                    job_states = {item.job_key: item for item in repo.list_all()}
+                captured = cls._is_due(job_states.get(job_key), current, interval_minutes)
                 if captured and admission_window is not None and not admitted:
                     ownership.enter_context(admission_window())
                     admitted = True
@@ -178,8 +182,7 @@ class SystemMaintenanceService:
     # 内部辅助方法
     # -------------------------
     @classmethod
-    def _is_due(cls, job_repo: SystemJobStateRepository, job_key: str, now: datetime, interval_minutes: int) -> bool:
-        st = job_repo.get(job_key)
+    def _is_due(cls, st: Optional[SystemJobState], now: datetime, interval_minutes: int) -> bool:
         parsed = _parse_db_dt(st.last_run_time if st else None)
         if parsed.state != "valid" or parsed.value is None:
             return True

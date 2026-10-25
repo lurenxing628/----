@@ -19,17 +19,17 @@ class OptimizerRuntime:
 
 
 def _default_runtime() -> OptimizerRuntime:
-    from ..schedule_optimizer_steps import _run_ortools_warmstart
+    from ..schedule_optimizer_steps import run_ortools_warmstart
 
     return OptimizerRuntime(
         scheduler_factory=GreedyScheduler,
         clock=time.monotonic,
         rng_factory=random.Random,
-        run_ortools_warmstart=_run_ortools_warmstart,
+        run_ortools_warmstart=run_ortools_warmstart,
     )
 
 
-def _resolve_runtime(runtime: Optional[OptimizerRuntime], search_budget: Optional[SearchBudget]) -> OptimizerRuntime:
+def resolve_runtime(runtime: Optional[OptimizerRuntime], search_budget: Optional[SearchBudget]) -> OptimizerRuntime:
     """Resolve one runtime and bind its clock to the owned search budget."""
     resolved = runtime or _default_runtime()
     if search_budget is not None:

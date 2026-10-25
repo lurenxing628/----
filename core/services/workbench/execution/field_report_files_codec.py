@@ -4,7 +4,7 @@ import math
 import re
 from datetime import date, datetime
 from io import BytesIO
-from typing import NoReturn
+from typing import NoReturn, cast
 from zipfile import BadZipFile
 
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -70,7 +70,7 @@ def _value(cell, field, epoch):
         reject('编号、批次、工序、设备人员和备注都要填文字。')
     if len(value) > 32767:
         reject('这一格的文字超过了 Excel 单元格能放的长度。')
-    return value.strip()
+    return value.strip() if field in ('remark', 'operation_scope', 'report_no') else value
 
 
 def _numeric(value, field):
@@ -152,16 +152,18 @@ def _style(page, is_report):
     from openpyxl.cell.cell import TYPE_STRING
     from openpyxl.styles import Alignment, Font, PatternFill
 
+    header_font, header_fill = Font(bold=True, color='FFFFFF'), PatternFill('solid', fgColor='38625A')
+    body_alignment = Alignment(vertical='top', wrap_text=True)
     page.freeze_panes = 'A2'
     page.auto_filter.ref = page.dimensions
     for cell in page[1]:
-        cell.font = Font(bold=True, color='FFFFFF')
-        cell.fill = PatternFill('solid', fgColor='38625A')
+        cell.font = header_font
+        cell.fill = header_fill
     for row in page:
         for cell in row:
             if type(cell.value) is str:
                 cell.data_type = TYPE_STRING
-            cell.alignment = Alignment(vertical='top', wrap_text=True)
+            cell.alignment = body_alignment
     for column in page.columns:
         letter = column[0].column_letter
         page.column_dimensions[letter].width = 26 if is_report else 32
@@ -169,24 +171,20 @@ def _style(page, is_report):
         page.column_dimensions['J'].width = 48
 
 
-def encode_reports(rows, *, summaries=(), metadata=(), format_version=1):
+def encode_reports(rows, *, summaries, metadata):
     from openpyxl import Workbook
+    from openpyxl.worksheet.worksheet import Worksheet
 
-    if type(format_version) is not int or format_version not in (1, 2):
-        reject('这个报工文件的格式版本不支持。')
-    headers, fields = (HEADERS, FIELDS) if format_version == 1 else (TASK_HEADERS, TASK_FIELDS)
     book = Workbook()
-    sheet = book.active
-    if sheet is None:
-        raise RuntimeError('New report workbook has no active worksheet.')
+    sheet = cast(Worksheet, book.active)
     sheet.title = '报工记录'
-    sheet.append(headers)
+    sheet.append(TASK_HEADERS)
     for number, row in enumerate(rows, 1):
         if number > ROW_LIMIT:
             reject('导出超过 5000 行，请缩小筛选范围。')
-        _append_report(sheet, row, fields)
+        _append_report(sheet, row, TASK_FIELDS)
     # 模板和导出都带说明表，位置固定在数据表后面；回导时它会被当成多余的表忽略。
-    append_instruction_sheet(book, table_descriptor(format_version))
+    append_instruction_sheet(book, table_descriptor(2))
     for title, values in [('工序汇总', summaries), ('录入信息', metadata)]:
         values = list(values)
         if values:
@@ -206,11 +204,10 @@ def encode_issues(rows):
     from openpyxl import Workbook
     from openpyxl.cell.cell import TYPE_STRING
     from openpyxl.styles import Alignment
+    from openpyxl.worksheet.worksheet import Worksheet
 
     book = Workbook()
-    sheet = book.active
-    if sheet is None:
-        raise RuntimeError('New issue workbook has no active worksheet.')
+    sheet = cast(Worksheet, book.active)
     sheet.title = '导入问题'
     sheet.append(['Excel 行号', '问题', '关联批次', '关联工序', '分件', '正式版本', '计划开始', '计划结束',
                   '工序编号', '安排编号', '正式计划编号', '约束编号'])
@@ -219,9 +216,9 @@ def encode_issues(rows):
             sheet.append([row['row'], issue['message']])
             sheet.cell(sheet.max_row, 2).data_type = TYPE_STRING
             for conflict in issue.get('conflicts', []):
-                plan = conflict.get('plan')
-                sheet.append([row['row'], conflict['message'], conflict.get('batch_id'), conflict.get('operation_label'),
-                    conflict.get('piece_id'), plan['version'] if plan else None, plan['start'] if plan else None,
+                plan = conflict['plan']
+                sheet.append([row['row'], conflict['message'], conflict['batch_id'], conflict['operation_label'],
+                    conflict['piece_id'], plan['version'] if plan else None, plan['start'] if plan else None,
                     plan['end'] if plan else None, conflict['operation_ref'], plan['task_ref'] if plan else None,
                     plan['plan_ref'] if plan else None, conflict['code']])
                 for column in (2, 3, 4, 5, 7, 8, 9, 10, 11, 12):
@@ -232,9 +229,10 @@ def encode_issues(rows):
                           ('I', 52), ('J', 52), ('K', 52), ('L', 34)):
         sheet.column_dimensions[column].width = width
     sheet.freeze_panes = 'A2'
+    body_alignment = Alignment(vertical='top', wrap_text=True)
     for cells in sheet:
         for cell in cells:
-            cell.alignment = Alignment(vertical='top', wrap_text=True)
+            cell.alignment = body_alignment
     output = BytesIO()
     book.save(output)
     book.close()

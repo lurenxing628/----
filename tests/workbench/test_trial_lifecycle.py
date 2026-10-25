@@ -5,12 +5,15 @@ from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
+from flask import g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial_codec import dump, load
 from core.services.workbench.facts.trial_policy import load_scenario_record
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 from tests.workbench.trial_support import (
+    CommitFailureConnection,
+    api,
     assert_legacy_retained,
     candidate,
     change,
@@ -99,19 +102,23 @@ def test_complete_create_change_save_and_reopen(trial_case, kind, monkeypatch):
     assert_legacy_retained(before, snapshot(case.conn))
     repo = WorkbenchTrialRepository(case.conn)
     stored_header = repo.scenario_header(saved["scenario_ref"])
+    assert stored_header is not None
     assert stored_header["snapshot_hash"] is None
-    assert repo.draft_header(draft["draft_ref"])["admission_hash"] is None
+    stored_draft = repo.draft_header(draft["draft_ref"])
+    assert stored_draft is not None
+    assert stored_draft["admission_hash"] is None
     assert all(row["original_hash"] is None for row in repo.draft_rows(draft["draft_ref"]))
     if kind == "official":
         # The original full-snapshot format and its old metadata remain readable.
         old_header = dict(stored_header, snapshot_json=dump(saved), snapshot_hash="legacy-saved-marker")
         stored_rows = deepcopy(list(repo.iter_scenario_rows(saved["scenario_ref"])))
-        old_repo = SimpleNamespace(schema_issues=lambda: [], scenario_header=lambda _ref: old_header,
+        old_repo = SimpleNamespace(conn=None, schema_issues=lambda: [], scenario_header=lambda _ref: old_header,
                                    iter_scenario_rows=lambda _ref: stored_rows)
         assert load_scenario_record(old_repo, saved["scenario_ref"])[1] == saved
         assert old_header["snapshot_hash"] == "legacy-saved-marker"
         # Python equality merges True and 1; permanent rows must keep the stored type.
         altered = load(stored_rows[0]["payload_json"])
+        assert isinstance(altered, dict)
         assert altered["sequence"] == 1
         altered["sequence"] = True
         stored_rows[0]["payload_json"] = dump(altered)
@@ -123,6 +130,8 @@ def test_complete_create_change_save_and_reopen(trial_case, kind, monkeypatch):
         assert task["source_task_ref"] is None
         admission = load(case.conn.execute(
             "SELECT admission_json FROM WorkbenchTrialDrafts WHERE draft_ref=?", (draft["draft_ref"],)).fetchone()[0])
+        assert isinstance(admission, dict)
+        assert isinstance(admission["source"], dict)
         assert "artifact" not in admission["source"]
         assert {"capture", "dispositions", "identity"} <= set(admission["source"])
 
@@ -140,14 +149,14 @@ def test_scenario_fragments_share_exact_logical_limit_without_counting_physical_
     expected_bytes = len(dump(snapshot).encode("utf-8"))
     assert encoded.logical_bytes == expected_bytes
     assert len(encoded.header.encode("utf-8")) + sum(len(text.encode("utf-8")) for text in encoded.tasks) > expected_bytes
-    repo = SimpleNamespace(schema_issues=lambda: [],
+    repo = SimpleNamespace(conn=None, schema_issues=lambda: [],
         scenario_header=lambda _ref: {"snapshot_json": encoded.header},
         iter_scenario_rows=lambda _ref: [{"row_ref": row["row_ref"], "payload_json": text}
                                        for row, text in zip(tasks, encoded.tasks)])
     # Historical pretty-printed wrappers still decode through their own layout.
     import json
 
-    old_repo = SimpleNamespace(schema_issues=lambda: [],
+    old_repo = SimpleNamespace(conn=None, schema_issues=lambda: [],
         scenario_header=lambda _ref: {"snapshot_json": json.dumps(json.loads(encoded.header), ensure_ascii=False, indent=2)},
         iter_scenario_rows=lambda _ref: [{"row_ref": row["row_ref"],
                                         "payload_json": json.dumps(json.loads(text), ensure_ascii=False, indent=2)}
@@ -160,8 +169,8 @@ def test_scenario_fragments_share_exact_logical_limit_without_counting_physical_
         raise AssertionError("Canonical stored fragments already own their text and task bodies")
 
     with monkeypatch.context() as read:
-        read.setattr(codec, "_encoded", redundant)
-        read.setattr(trial_policy, "_encoded", redundant)
+        read.setattr(codec, "encode_trial_text", redundant)
+        read.setattr(trial_policy, "encode_trial_text", redundant)
         read.setattr(trial_policy, "same", redundant)
         assert load_scenario_record(repo, "saved")[1] == snapshot
     assert codec.encode_scenario(snapshot).logical_bytes == expected_bytes
@@ -178,9 +187,28 @@ def test_scenario_row_binding_is_checked_when_assembling_the_saved_rows():
 
     row = {"row_ref": "1" * 48, "content": "保存工序"}
     encoded = encode_scenario({"name": "试调", "tasks": [row]})
-    repo = SimpleNamespace(schema_issues=lambda: [],
+    repo = SimpleNamespace(conn=None, schema_issues=lambda: [],
         scenario_header=lambda _ref: {"snapshot_json": encoded.header},
         iter_scenario_rows=lambda _ref: [{"row_ref": row["row_ref"], "payload_json": dump(dict(row, row_ref="2" * 48))}])
     with pytest.raises(WorkbenchCommandRejected) as error:
         load_scenario_record(repo, "saved")
     assert error.value.code == "trial_snapshot_invalid"
+
+
+def test_http_trial_command_with_lost_acknowledgement_points_to_its_receipt(trial_case):
+    case = trial_case
+    intent, key = official(case), "trial-create-lost-ack-01"
+    client = api(case, factory=CommitFailureConnection)
+
+    @case.app.before_request
+    def lose_ack():
+        if request.method == "POST" and request.path == "/api/workbench/v1/trial/drafts":
+            g.db.fail_commit = g.db.acknowledge_only = True
+
+    token = client.post("/api/workbench/v1/trial/drafts/preview", json=intent).get_json()["data"]["write_context"]["write_token"]
+    response = client.post("/api/workbench/v1/trial/drafts", json={"request_key": key, "write_token": token, "input": intent})
+    assert response.status_code == 500
+    value = response.get_json()
+    assert value["committed"] == "unknown" and value["error"]["request_key"] == key and value["error"]["retryable"] is False
+    assert value["error"]["result_target"] == "/api/workbench/v1/trial/commands/" + key
+    assert client.get(value["error"]["result_target"]).get_json()["data"]["state"] == "committed"

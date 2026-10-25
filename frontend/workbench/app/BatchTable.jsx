@@ -9,12 +9,13 @@
       if (!data || data.field !== field || !Array.isArray(data.values) || result.meta.snapshot_ref !== scope.snapshot_ref) throw C.failure('列筛选与列表范围不一致。');
       return result;
     }, [adapter, scope, field]);
-    const all = read.result && read.result.data.values, chosen = selected || scope.column_filters && scope.column_filters[field] || all || [];
+    const all = read.result && read.result.data.values, chosen = selected || scope.column_filters[field] || all || [];
+    const chosenSet = React.useMemo(() => new Set(chosen), [chosen]);
     return <Modal title={'筛选' + B.columns.find(row => row[0] === field)[1]} icon="filter" onClose={onClose} footer={<>
       <Button onClick={() => onApply(undefined)}>清除本列</Button><Button onClick={onClose}>取消</Button><Button icon="check" disabled={!all} onClick={() => onApply(chosen)}>完成</Button></>}>
       <div className="modal-b"><input type="search" aria-label="搜索列值" value={search} onChange={event => setSearch(event.target.value)} /><ErrorBox error={read.error} />
         {all && <><Button onClick={() => setSelected(all)}>全选列值</Button><Button onClick={() => setSelected([])}>全部不选</Button><div className="batch-value-list">
-          {all.filter(value => B.label(field, value).toLowerCase().includes(search.toLowerCase())).map((value, index) => <label key={index}><input type="checkbox" checked={chosen.includes(value)} onChange={event => setSelected(event.target.checked ? chosen.concat([value]) : chosen.filter(item => item !== value))} />{B.label(field, value)}</label>)}
+          {all.filter(value => B.label(field, value).toLowerCase().includes(search.toLowerCase())).map((value, index) => <label key={index}><input type="checkbox" checked={chosenSet.has(value)} onChange={event => setSelected(event.target.checked ? chosen.concat([value]) : chosen.filter(item => item !== value))} />{B.label(field, value)}</label>)}
         </div></>}
       </div>
     </Modal>;
@@ -32,16 +33,18 @@
     </details>;
   }
   function BatchTable({ adapter, rows, scope, selected, setSelected, onOpen, onDelete, onSort, onFilter, onClear, onRetry, error, loading, disabled }) {
-    const checkbox = React.useRef(null), all = rows.length > 0 && rows.every(row => selected.includes(row.ref));
+    const selectedSet = React.useMemo(() => new Set(selected), [selected]);
+    const visibleSet = React.useMemo(() => new Set(rows.map(row => row.ref)), [rows]);
+    const checkbox = React.useRef(null), all = rows.length > 0 && rows.every(row => selectedSet.has(row.ref));
     const [widths, setWidths] = React.useState(Object.fromEntries(B.columns.map(([key, , width]) => [key, width]))), drag = React.useRef(null);
     function resize(key, value) { setWidths(current => ({ ...current, [key]: Math.max(80, Math.min(600, value)) })); }
-    React.useEffect(() => { if (checkbox.current) checkbox.current.indeterminate = !all && rows.some(row => selected.includes(row.ref)); }, [rows, selected, all]);
-    const filtered = !!(scope.query || scope.status || scope.ready_status || scope.focus || scope.batch_ids || Object.keys(scope.column_filters || {}).length);
+    React.useEffect(() => { if (checkbox.current) checkbox.current.indeterminate = !all && rows.some(row => selectedSet.has(row.ref)); }, [rows, selectedSet, all]);
+    const filtered = !!(scope.query || scope.status || scope.ready_status || scope.focus || scope.batch_ids || Object.keys(scope.column_filters).length);
     return <div className="wb-table-frame batch-table-frame" data-sticky-head data-sticky-actions style={{ '--wb-table-min': '1180px', '--wb-table-max-height': 'calc(100vh - 320px)' }}><table className="tbl wb-table" style={{ width: Object.values(widths).reduce((sum, width) => sum + width, 234), minWidth: '100%' }} aria-label="批次列表" aria-busy={loading}>
       <caption className="wb-visually-hidden">批次列表；批次号与操作列固定，可在表内横向和纵向滚动。</caption>
-      <thead><tr><th scope="col" style={{ width: 44 }}><input ref={checkbox} type="checkbox" aria-label="全选当前页" checked={all} disabled={disabled || !rows.length} onChange={event => setSelected(event.target.checked ? Array.from(new Set(selected.concat(rows.map(row => row.ref)))) : selected.filter(ref => !rows.some(row => row.ref === ref)))} /></th>
+      <thead><tr><th scope="col" style={{ width: 44 }}><input ref={checkbox} type="checkbox" aria-label="全选当前页" checked={all} disabled={disabled || !rows.length} onChange={event => setSelected(event.target.checked ? Array.from(new Set(selected.concat(rows.map(row => row.ref)))) : selected.filter(ref => !visibleSet.has(ref)))} /></th>
         {B.columns.map(([key, name]) => {
-          const hasFilter = Object.prototype.hasOwnProperty.call(scope.column_filters || {}, key);
+          const hasFilter = Object.prototype.hasOwnProperty.call(scope.column_filters, key);
           return <th key={key} scope="col" className={key === 'business_code' ? 'wb-col-key' : undefined} style={{ width: widths[key] }} aria-sort={scope.sort === key ? scope.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
           {key === 'progress' ? name : <div className="batch-head"><Button className="linkbtn" disabled={disabled} onClick={() => onSort(key)} title={'排序' + name}>{name}</Button>
             <Button className={'linkbtn wb-column-filter' + (hasFilter ? ' is-active' : '')} icon="filter" aria-label={'筛选' + name} aria-pressed={hasFilter} onClick={() => onFilter(key)} disabled={disabled} /></div>}
@@ -51,7 +54,7 @@
             onPointerMove={event => { if (drag.current && drag.current.key === key) resize(key, drag.current.width + event.clientX - drag.current.x); }} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} />
         </th>;
         })}<th scope="col" className="wb-col-actions" style={{ width: 184 }}>操作</th></tr></thead>
-      <tbody>{rows.map(row => <tr key={row.ref}><td><input type="checkbox" aria-label={'选择 ' + row.business_code} checked={selected.includes(row.ref)} disabled={disabled} onChange={event => setSelected(event.target.checked ? selected.concat(row.ref) : selected.filter(ref => ref !== row.ref))} /></td>
+      <tbody>{rows.map(row => <tr key={row.ref}><td><input type="checkbox" aria-label={'选择 ' + row.business_code} checked={selectedSet.has(row.ref)} disabled={disabled} onChange={event => setSelected(event.target.checked ? selected.concat(row.ref) : selected.filter(ref => ref !== row.ref))} /></td>
         <td className="wb-col-key"><Button className="linkbtn" onClick={() => onOpen(row.ref)} disabled={disabled}>{row.business_code}</Button></td><td><strong>{row.relationships.part_no}</strong><div className="muted">{row.label}</div></td>
         <td>{window.WorkbenchFormat.number(row.fields.quantity, { digits: 0 })}</td><td>{window.WorkbenchFormat.date(row.fields.due_date)}</td><td><div className="batch-progress"><progress aria-label={row.business_code + '已完成工序'} value={row.relationships.completed_count} max={row.relationships.operation_count || 1} /><span>{row.relationships.completed_count} / {row.relationships.operation_count}</span></div>
           <OperationOverview adapter={adapter} row={row} /></td>

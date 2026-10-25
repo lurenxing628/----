@@ -26,6 +26,7 @@ from core.services.scheduler.run.schedule_input_seed_metadata import (
 )
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.run_input_rows import fail
+from data.repositories.sqlite_rows import sql_order
 
 
 def prime_template_cache(svc, tables, batches, operations):
@@ -40,7 +41,7 @@ def prime_template_cache(svc, tables, batches, operations):
             fail("external_context_invalid", problem, op_id=op.id)
         row = contexts[op.id]
         problem = merged_supplier_problem(row, op.supplier_id,
-            members.get((op.batch_id, context_group_key(row), getattr(op, "piece_id", None))))
+            members.get((op.batch_id, context_group_key(row), op.piece_id)))
         if problem:
             fail("external_context_invalid", problem, op_id=op.id)
     svc._aps_schedule_input_cache = {"batch": dict(batches), "external_contexts": contexts,
@@ -132,7 +133,7 @@ def prior_execution_projections(facts, version):
     refs = {facts.operation_refs[op_id] for op_id in facts.latest_plan_rows(version)}
     supplied = facts.execution_projections
     missing = sorted(refs - set(supplied))
-    ledger = getattr(facts, "execution_service", None) or ExecutionLedgerService(facts.conn)
+    ledger = facts.execution_service or ExecutionLedgerService(facts.conn)
     for offset in range(0, len(missing), 10000):
         supplied.update((item.operation_ref, item) for item in ledger.project_operations(missing[offset:offset + 10000]))
     return [supplied[ref] for ref in sorted(refs)]
@@ -163,7 +164,7 @@ def _resource_bearing_external(facts, version):
     external = _planned_external(facts, version)
     supplied = {ref: facts.execution_projections[ref].to_dict() for ref in external if ref in facts.execution_projections}
     missing = sorted(set(external) - set(supplied))
-    ledger = getattr(facts, "execution_service", None) or ExecutionLedgerService(facts.conn)
+    ledger = facts.execution_service or ExecutionLedgerService(facts.conn)
     for offset in range(0, len(missing), 10000):
         for row in ledger.project_operations(missing[offset:offset + 10000]):
             facts.execution_projections[row.operation_ref] = row
@@ -212,14 +213,15 @@ def external_resource_issues(facts, svc, operations, version):
         if version not in facts.resource_execution:
             facts.resource_execution[version] = collect_resource_execution_facts(
                 svc, prev_version=version, execution_projections=prior_execution_projections(facts, version),
-                capture=facts.capture, ledger=getattr(facts, "execution_service", None))
+                capture=facts.capture, ledger=facts.execution_service)
         guard_facts, _, _ = facts.resource_execution[version]
-    except (AppError, ValueError, TypeError, KeyError, OverflowError):
+    except AppError:
         # 执行记录本身核对不了时排产也会失败；仍逐条指出带资源的外协记录，按会拦下整次排产提示。
         guard_facts = None
     selected = {op["id"] for op in operations}
     issues = []
-    for op_id, (op, projection) in sorted(candidates.items(), key=lambda pair: (pair[1][0]["batch_id"], pair[1][0]["seq"])):
+    for op_id, (op, projection) in sorted(candidates.items(), key=lambda pair: (
+            sql_order(pair[1][0]["batch_id"]), sql_order(pair[1][0]["seq"]), sql_order(pair[0]))):
         verdict = "all_runs" if guard_facts is None else _guard_verdict(guard_facts, op_id, selected)
         if verdict is not None:
             issues.append(_external_resource_issue(facts, op, projection, this_run_only=verdict == "this_run"))

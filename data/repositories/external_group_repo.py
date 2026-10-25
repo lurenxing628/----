@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict
 
 from core.errors import BusinessError, ErrorCode
-from core.models import ExternalGroup
 
 from .base_repo import BaseRepository
 
@@ -11,22 +10,7 @@ from .base_repo import BaseRepository
 class ExternalGroupRepository(BaseRepository):
     """外部工序组仓库（ExternalGroups）。"""
 
-    def get(self, group_id: str) -> Optional[ExternalGroup]:
-        row = self.fetchone(
-            "SELECT group_id, part_no, start_seq, end_seq, merge_mode, total_days, supplier_id, remark, created_at FROM ExternalGroups WHERE group_id = ?",
-            (group_id,),
-        )
-        return ExternalGroup.from_row(row) if row else None
-
-    def list_by_part(self, part_no: str) -> List[ExternalGroup]:
-        rows = self.fetchall(
-            "SELECT group_id, part_no, start_seq, end_seq, merge_mode, total_days, supplier_id, remark, created_at FROM ExternalGroups WHERE part_no = ? ORDER BY start_seq",
-            (part_no,),
-        )
-        return [ExternalGroup.from_row(r) for r in rows]
-
-    def create(self, group: Union[ExternalGroup, Dict[str, Any]]) -> ExternalGroup:
-        g = group if isinstance(group, ExternalGroup) else ExternalGroup.from_row(group)
+    def create(self, group: Dict[str, Any]) -> None:
         self.execute(
             """
             INSERT INTO ExternalGroups
@@ -34,17 +18,16 @@ class ExternalGroupRepository(BaseRepository):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                g.group_id,
-                g.part_no,
-                int(g.start_seq),
-                int(g.end_seq),
-                g.merge_mode,
-                g.total_days,
-                g.supplier_id,
-                g.remark,
+                group["group_id"],
+                group["part_no"],
+                int(group["start_seq"]),
+                int(group["end_seq"]),
+                group["merge_mode"],
+                group["total_days"],
+                group["supplier_id"],
+                group.get("remark"),
             ),
         )
-        return g
 
     def update(self, group_id: str, updates: Dict[str, Any]) -> None:
         """
@@ -54,38 +37,16 @@ class ExternalGroupRepository(BaseRepository):
         - 只更新 updates 中出现的字段
         - 允许显式清空 total_days/supplier_id/remark 为 NULL（用于 separate/merged 切换）
         """
-        if not updates:
-            return
-
-        set_parts: List[str] = []
-        params: List[Any] = []
-
-        for key in ("start_seq", "end_seq", "merge_mode", "total_days", "supplier_id", "remark"):
-            if key in updates:
-                set_parts.append(f"{key} = ?")
-                params.append(updates[key])
-
-        if not set_parts:
-            return
-
-        params.append(group_id)
+        set_parts = [f"{key} = ?" for key in updates]
         sql = f"UPDATE ExternalGroups SET {', '.join(set_parts)} WHERE group_id = ?"
-        cur = self.execute(sql, tuple(params))
-        if int(cur.rowcount) == 0:
+        cur = self.execute(sql, (*updates.values(), group_id))
+        if cur.rowcount == 0:
             raise BusinessError(ErrorCode.EXTERNAL_GROUP_ERROR, f"外协工序组“{group_id}”不存在或已被删除")
 
-    def delete_for_part(self, part_no: str, group_id: str) -> int:
+    def delete_for_part(self, part_no: str, group_id: str) -> None:
         """删除某零件下的指定外协组（part_no 作为额外防护条件）。"""
-        cursor = self.execute("DELETE FROM ExternalGroups WHERE part_no=? AND group_id=?", (part_no, group_id))
-        return int(cursor.rowcount)
+        self.execute("DELETE FROM ExternalGroups WHERE part_no=? AND group_id=?", (part_no, group_id))
 
-    def set_total_days(self, group_id: str, total_days: Any) -> int:
+    def set_total_days(self, group_id: str, total_days: Any) -> None:
         """只改合并组总周期，不做存在性裁决（工时确认场景原语义）。"""
-        cursor = self.execute("UPDATE ExternalGroups SET total_days=? WHERE group_id=?", (total_days, group_id))
-        return int(cursor.rowcount)
-
-    def delete(self, group_id: str) -> None:
-        self.execute("DELETE FROM ExternalGroups WHERE group_id = ?", (group_id,))
-
-    def delete_by_part(self, part_no: str) -> None:
-        self.execute("DELETE FROM ExternalGroups WHERE part_no = ?", (part_no,))
+        self.execute("UPDATE ExternalGroups SET total_days=? WHERE group_id=?", (total_days, group_id))

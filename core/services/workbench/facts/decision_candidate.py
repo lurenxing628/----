@@ -27,10 +27,10 @@ def project_candidate_summary(row, tasks, facts, disposition, batch_refs, basis,
             "selection_role": selection_roles(row, basis),
             "equivalent_source_ref": next((item["candidate_ref"] for item in rows if item["artifact"].get("candidate_key") == reused), None),
             "source": {**{key: artifact.get(key) for key in ("algo_mode", "used_strategy", "dispatch_mode", "dispatch_rule", "failure_reason")},
-                       "reason": _candidate_reason(row)}, **business_candidate_fields(artifact)}
+                       "reason": candidate_reason(row)}, **business_candidate_fields(artifact)}
 
 
-def _candidate_reason(row):
+def candidate_reason(row):
     if row["status"] == "completed":
         return None
     reason = row["artifact"].get("failure_reason")

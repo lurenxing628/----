@@ -13,8 +13,8 @@ from tests.workbench.trial_support import connect, snapshot
 
 @pytest.mark.parametrize("table", ["WorkbenchCommandReceipts"])
 def test_real_insert_failure_rolls_back_entire_adoption(trial_case, table, monkeypatch):
+    from core.services.scheduler.config import config_snapshot
     from core.services.scheduler.execution import execution_ledger_adapter
-    from core.services.workbench.run import input_config
 
     case = trial_case
     value, _ = full_plan(case)
@@ -30,7 +30,7 @@ def test_real_insert_failure_rolls_back_entire_adoption(trial_case, table, monke
     token = preview(case, saved)
     before = snapshot(case.conn)
     reads = []
-    for module, name in ((execution_ledger_adapter, "current_execution_plan"), (input_config, "configuration_snapshot")):
+    for module, name in ((execution_ledger_adapter, "current_execution_plan"), (config_snapshot, "build_schedule_config_snapshot")):
         original = getattr(module, name)
         def read_once(*args, _original=original, _name=name, **kwargs):
             reads.append(_name)
@@ -38,7 +38,7 @@ def test_real_insert_failure_rolls_back_entire_adoption(trial_case, table, monke
         monkeypatch.setattr(module, name, read_once)
     with pytest.raises(WorkbenchCommandUncertain):
         service(case.conn).adopt(saved["scenario_ref"], token, KEY, INTENT)
-    assert sorted(reads) == ["configuration_snapshot", "current_execution_plan"]
+    assert sorted(reads) == ["build_schedule_config_snapshot", "current_execution_plan"]
     assert not case.conn.in_transaction and snapshot(case.conn) == before
     assert service(case.conn).lookup(saved["scenario_ref"], KEY) is None
 

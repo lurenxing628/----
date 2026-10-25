@@ -92,20 +92,7 @@ def scopes_by_op_id_for_plan_rows(
     return scopes_by_op_id
 
 
-def scope_from_feedback_context(context: Any) -> OperationExecutionScope:
-    return OperationExecutionScope.from_values(
-        schedule_version=getattr(context, "schedule_version", None),
-        schedule_id=getattr(context, "schedule_id", None),
-        op_id=getattr(context, "op_id", None),
-        batch_id=getattr(context, "batch_id", None),
-        source_table=getattr(context, "source_table", None),
-        effective_plan_role=getattr(context, "effective_plan_role", None),
-        scenario_id=getattr(context, "scenario_id", None),
-    )
-
-
 __all__ = [
-    "scope_from_feedback_context",
     "scope_from_plan_row",
     "scopes_by_op_id_for_plan_rows",
 ]

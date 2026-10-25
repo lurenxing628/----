@@ -10,7 +10,7 @@ from core.services.workbench.messages import STALE
 
 
 class SystemConfigWorkspace:
-    def __init__(self, conn, logger=None, keep_days=7):
+    def __init__(self, conn, logger, keep_days):
         self.conn = conn
         self.logger = logger
         self.keep_days = keep_days

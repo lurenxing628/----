@@ -1,20 +1,11 @@
 """Durable acceptance facts; self-owned run bookkeeping is not a production change."""
 
-import json
-
-from core.infrastructure.transaction import TransactionManager
 from core.models.content import same
 from core.models.workbench_run_job import durable_value
 from core.services.workbench.execution.ledger import ExecutionLedgerService
+from core.services.workbench.facts.candidate_values import stored_json
 from core.services.workbench.facts.production_capture import NON_INPUT_TABLES, ProductionFactsCapture, non_input_row
 from core.services.workbench.facts.schema_compat import archived_columns, project_facts
-
-
-def capture_run_facts(conn, capture=None):
-    if capture is not None:
-        return None, capture.content()
-    with TransactionManager(conn).transaction():
-        return None, ProductionFactsCapture(conn).content()
 
 
 def _production_facts(value, receipt_columns):
@@ -25,13 +16,6 @@ def _production_facts(value, receipt_columns):
     return {**value, "tables": tables}
 
 
-def run_facts_unchanged(conn, captured_text, captured_hash, *, capture=None):
-    """Compare the original production archive; old digest values remain metadata."""
-    if type(captured_text) is not str:
-        return False
-    return production_facts_match(conn, captured_text, capture=capture)
-
-
 def production_facts_match(conn, captured_text, *, capture=None):
     """Compare live inputs after the caller has verified the immutable archive once."""
     if capture is None:
@@ -40,7 +24,7 @@ def production_facts_match(conn, captured_text, *, capture=None):
     if current_text == captured_text:
         return True
     current = capture.archive()
-    captured = json.loads(captured_text)
+    captured = stored_json(captured_text)
     captured = _production_facts(captured, archived_columns(captured, "WorkbenchCommandReceipts"))
     return same(project_facts(current), project_facts(captured))
 
@@ -48,8 +32,9 @@ def production_facts_match(conn, captured_text, *, capture=None):
 def run_execution_projections(conn, settings, *, capture, existing=(), service=None):
     identities = {int(row["source_key"]): row["ref"] for row in capture.table("WorkbenchPlanSourceRefs")
                   if row["kind"] == "operation" and row["active"] == 1}
+    batch_refs = set(settings["batch_refs"])
     selected = {row["entity_key"] for row in capture.table("WorkbenchEntityRefs")
-                if row["kind"] == "batch" and row["active"] == 1 and row["ref"] in settings["batch_refs"]}
+                if row["kind"] == "batch" and row["active"] == 1 and row["ref"] in batch_refs}
     op_ids = {row["id"] for row in capture.table("BatchOperations") if row["batch_id"] in selected}
     versions = [row["version"] for row in capture.table("ScheduleHistory")]
     version = max(versions, default=0)
@@ -70,7 +55,7 @@ def run_execution_projections(conn, settings, *, capture, existing=(), service=N
     return [result[ref] for ref in sorted(refs)]
 
 
-def run_baseline(conn, *, capture):
+def run_baseline(*, capture):
     # Permanent official identities only. A new candidate is not registered here.
     version = max((row["version"] for row in capture.table("ScheduleHistory")), default=None)
     if version is None:

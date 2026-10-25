@@ -46,7 +46,7 @@ class ReportResourceValidator:
             reject("设备或人员已失效，请刷新重选。", "constraint_conflict", 409)
         return entity.entity_key
 
-    def validate(self, operation, values, *, previous_values=None):
+    def validate(self, operation, values, *, previous_values):
         if values != previous_values:
             # 原样未改的旧行（如 Excel 导出后原样导回）不在这里拒绝，交给排产检查指出要更正的报工。
             _reject_external_resources(operation, values)
@@ -227,9 +227,16 @@ def validate_merged_cycle(dependencies, operation, before, after, changed):
                + "。请按相同时间填写；如果那道的时间不对，请先更正那条报工。", "constraint_conflict", 409)
 
 
-def _retained_resource_refs(projection, field):
-    return {getattr(report, field) for report in projection.reports if getattr(report, field) is not None} | (
-        legacy_resource_refs(projection.legacy_facts, field, gaps=projection.data_gaps))
+def _retained_resource_refs(projection):
+    machines, operators = set(), set()
+    for report in projection.reports:
+        if report.actual_machine_ref is not None:
+            machines.add(report.actual_machine_ref)
+        if report.actual_operator_ref is not None:
+            operators.add(report.actual_operator_ref)
+    machines.update(legacy_resource_refs(projection.legacy_facts, "actual_machine_ref", gaps=projection.data_gaps))
+    operators.update(legacy_resource_refs(projection.legacy_facts, "actual_operator_ref", gaps=projection.data_gaps))
+    return machines, operators
 
 
 def _actual_period_basis(projection):
@@ -260,8 +267,7 @@ def _constraint_signature(projection):
     # Removing that detail must not look like withdrawing the actual execution.
     return (projection.execution_state, projection.first_actual_start, projection.confirmed_finish,
             projection.known_completed_quantity, projection.unknown_record_count, _actual_period_basis(projection),
-            _retained_resource_refs(projection, "actual_machine_ref"),
-            _retained_resource_refs(projection, "actual_operator_ref"))
+            *_retained_resource_refs(projection))
 
 
 def execution_facts_changed(before, after):
@@ -270,7 +276,7 @@ def execution_facts_changed(before, after):
                 and _report_resource_segments(before) != _report_resource_segments(after)))
 
 
-def _downstream_conflicts(before, after, downstream, plans, dependencies):
+def _downstream_conflicts(before, after, downstream, plans):
     conflicts = []
     reopened = before.execution_state == "complete" and after.execution_state != "complete"
     for projection in downstream:
@@ -281,24 +287,21 @@ def _downstream_conflicts(before, after, downstream, plans, dependencies):
         starts = [projection.first_actual_start]
         if planned:
             starts.append(planned["start_time"].replace(" ", "T"))
-        if (finish and not dependencies.same_merged_cycle(after.operation_ref, projection.operation_ref)
-                and any(start and finish > start for start in starts)):
+        if finish and any(start and finish > start for start in starts):
             conflicts.append({"code": "downstream_time_conflict", "operation_ref": projection.operation_ref})
     return conflicts
 
 
-def _upstream_conflicts(after, upstream, dependencies):
+def _upstream_conflicts(after, upstream):
     if after.first_actual_start is None:
         return []
     return [{"code": "upstream_time_conflict", "operation_ref": row.operation_ref} for row in upstream
-            if row.confirmed_finish and row.confirmed_finish > after.first_actual_start
-            and not dependencies.same_merged_cycle(after.operation_ref, row.operation_ref)]
+            if row.confirmed_finish and row.confirmed_finish > after.first_actual_start]
 
 
 def _actual_resources_changed(before, after, source):
-    fields = ("actual_machine_ref", "actual_operator_ref")
-    before_resources = tuple(_retained_resource_refs(before, field) for field in fields)
-    after_resources = tuple(_retained_resource_refs(after, field) for field in fields)
+    before_resources = _retained_resource_refs(before)
+    after_resources = _retained_resource_refs(after)
     if source == "external" and not any(after_resources):
         # 外协不占本厂设备人员，排产也从不按外协报工的设备人员安排（守卫见外协带资源即拒绝）；
         # 只把旧记录里的设备人员清空不算改了采用依据，否则这类旧数据既改不掉、也挡住所有排产。
@@ -326,16 +329,16 @@ def _adopted_conflicts(before, after, current, revisions, source):
 
 
 def execution_conflicts(ledger, facts, before, after, revisions, *, dependencies, protect_plan=True,
-                        include_downstream_active=False):
+                        include_downstream_active=False, task_map=None):
     """Check final actual neighbours; corrections also retain adopted-plan protection."""
     operation = facts["operations"][before.operation_ref]
     refs = dependencies.relatives(operation)
     upstream = dependencies.projections(dependencies.relatives(operation, predecessors=True))
     downstream = dependencies.projections(refs)
     current = facts["current_tasks"].get(before.operation_ref)
-    plans = ledger.task_map(refs, facts["plan"]["plan_ref"]) if protect_plan else {}
-    conflicts = (_upstream_conflicts(after, upstream, dependencies)
-                 + _downstream_conflicts(before, after, downstream, plans, dependencies)
+    plans = {} if not protect_plan else task_map if task_map is not None else ledger.task_map(refs, facts["plan"]["plan_ref"])
+    conflicts = (_upstream_conflicts(after, upstream)
+                 + _downstream_conflicts(before, after, downstream, plans)
                  + _adopted_conflicts(before, after, current, revisions, operation["source"]))
     if include_downstream_active:
         for row in downstream:
@@ -365,6 +368,6 @@ def execution_conflict_details(ledger, facts, conflicts):
             "version": task["version"], "start": task["start_time"].replace(" ", "T"),
             "end": task["end_time"].replace(" ", "T")}
         result.append(dict(item, batch_id=operation["batch_id"], operation_code=operation["op_code"],
-            piece_id=operation["piece_id"], operation_label=str(operation["seq"]) + " " + str(operation["op_type_name"] or ""),
+            piece_id=operation["piece_id"], operation_label=str(operation["seq"]) + " " + operation["op_type_name"],
             message=messages[item["code"]], plan=plan))
     return result

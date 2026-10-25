@@ -11,9 +11,7 @@ from .attempt_records import evaluate_optional_local_candidate
 from .local_search_candidate_eval import evaluate_local_search_candidate
 from .local_search_round import stamp_decode_runtime
 from .local_search_state import LocalSearchState, resolve_current_strategy_state
-from .neighborhood_moves import NEIGHBORHOOD_MOVE_SCHEMA_VERSION, NeighborhoodMove
 from .shared_budget import SharedSearchSkip
-from .vns import VnsState
 
 if TYPE_CHECKING:
     from .search_report import OptimizationSearchReportState
@@ -23,7 +21,7 @@ RESTART_SHAKE = "restart_shake"
 
 
 ShakenOrderEvaluator = Callable[
-    [List[str], NeighborhoodMove, Any, Dict[str, Any], str, str],
+    [List[str], Any, Dict[str, Any], str, str],
     Optional[Dict[str, Any]],
 ]
 
@@ -35,9 +33,8 @@ class RestartOutcome:
     dispatch_mode: str
     dispatch_rule: str
     decode_attempted: bool
-    skip_reason: Optional[str] = None
-    request_id: Optional[int] = None
-    decode_receipt: Optional[Dict[str, Any]] = None
+    stop_reason: Optional[str] = None
+    rejected_mode: Optional[str] = None
 
 
 def _shake_order(order: List[str], rnd: Any) -> List[str]:
@@ -57,34 +54,9 @@ def _shake_order(order: List[str], rnd: Any) -> List[str]:
     return cur_order
 
 
-def _restart_shake_move(
-    *,
-    base_order: List[str],
-    shaken_order: List[str],
-    dispatch_mode: str,
-    dispatch_rule: str,
-) -> NeighborhoodMove:
-    changed = sum(1 for left, right in zip(base_order, shaken_order) if left != right)
-    changed += abs(len(base_order) - len(shaken_order))
-    mode = str(dispatch_mode or "")
-    return NeighborhoodMove(
-        schema_version=NEIGHBORHOOD_MOVE_SCHEMA_VERSION,
-        neighborhood_name=RESTART_SHAKE,
-        move_kind="shake",
-        input_scope="batch_order",
-        batch_order=tuple(shaken_order),
-        changed_decision_count=changed,
-        expected_effect="diversify_after_stall",
-        dispatch_mode=mode,
-        dispatch_rule=str(dispatch_rule or ""),
-        reason="restart_after_stall",
-    )
-
-
 def _evaluate_restart_candidate(
     *,
     shaken_order: List[str],
-    move: NeighborhoodMove,
     local_state: LocalSearchState,
     strategy: Any,
     params: Dict[str, Any],
@@ -98,8 +70,7 @@ def _evaluate_restart_candidate(
     optimizer_algo_stats: Optional[Dict[str, Any]],
     readiness_gate_enabled: bool,
     attempts: List[Dict[str, Any]],
-    search_report_state: Optional[OptimizationSearchReportState],
-    clock: Callable[[], float],
+    search_report_state: OptimizationSearchReportState,
     decode_session: SharedDecodeSession,
 ) -> Optional[Dict[str, Any]]:
     """Decode the shaken order once so current's order/score/results come from one evaluation.
@@ -112,7 +83,6 @@ def _evaluate_restart_candidate(
     candidate_resource_pool = (
         best_resource_pool if isinstance(best_resource_pool, dict) else {}
     ) or resource_pool
-    decode_started = clock()
     evaluate = partial(
         evaluate_local_search_candidate,
         strict_mode=bool(strict_mode),
@@ -128,7 +98,6 @@ def _evaluate_restart_candidate(
         objective_name=objective_name,
         optimizer_algo_stats=optimizer_algo_stats,
         readiness_gate_enabled=bool(readiness_gate_enabled),
-        neighborhood_move=move,
         decode_session=decode_session,
     )
     candidate = evaluate_optional_local_candidate(
@@ -139,10 +108,9 @@ def _evaluate_restart_candidate(
         dispatch_mode=dispatch_mode,
         dispatch_rule=dispatch_rule,
         strict_mode=bool(strict_mode),
-        search_report_state=search_report_state,
     )
-    stamp_decode_runtime(candidate, started_at=decode_started, clock=clock)
-    if candidate is not None and search_report_state is not None:
+    stamp_decode_runtime(candidate)
+    if candidate is not None:
         search_report_state.mark_candidate_evaluated(candidate, origin="local_search_restart")
     return candidate
 
@@ -153,7 +121,6 @@ def restart_after_stall(
     rnd: Any,
     dispatch_mode_cfg: str,
     dispatch_rule_cfg: str,
-    vns_state: VnsState,
     evaluate_shaken_order: ShakenOrderEvaluator,
     decode_session: SharedDecodeSession,
 ) -> RestartOutcome:
@@ -163,34 +130,29 @@ def restart_after_stall(
     the neighborhoods target its real results (A01). The common session owns decision reuse
     and records any skipped request.
     """
-    vns_state.mark_shake()
     shaken_order = _shake_order(local_state.best.get("order") or local_state.current_order, rnd)
     best_strat, best_params, best_dispatch_mode, best_dispatch_rule = resolve_current_strategy_state(
         local_state.best, dispatch_mode_cfg=dispatch_mode_cfg, dispatch_rule_cfg=dispatch_rule_cfg
     )
-    move = _restart_shake_move(
-        base_order=local_state.best.get("order") or [],
-        shaken_order=shaken_order,
-        dispatch_mode=best_dispatch_mode,
-        dispatch_rule=best_dispatch_rule,
-    )
-    skip_reason: Optional[str] = None
-    request_id: Optional[int] = None
-    receipt: Optional[Dict[str, Any]] = None
+    skipped = False
+    stop_reason: Optional[str] = None
+    rejected_mode: Optional[str] = None
     calls_before = decode_session.actual_decoder_calls
     try:
         candidate = evaluate_shaken_order(
-            shaken_order, move, best_strat, best_params, best_dispatch_mode, best_dispatch_rule,
+            shaken_order, best_strat, best_params, best_dispatch_mode, best_dispatch_rule,
         )
     except SharedSearchSkip as exc:
         candidate = None
-        skip_reason, request_id, receipt = exc.reason, exc.request_id, exc.receipt
+        skipped = True
+        if exc.reason in ("estimated_decode_cost", "time_budget"):
+            stop_reason = exc.reason
+            if stop_reason == "estimated_decode_cost":
+                rejected_mode = best_dispatch_mode
     decode_attempted = decode_session.actual_decoder_calls > calls_before
     if candidate is not None:
-        receipt = candidate.get("decode_receipt")
-        request_id = receipt["request_id"] if receipt is not None else None
         local_state.accept_current(candidate)
-    elif skip_reason is None:
+    elif not skipped:
         # Evaluation failed (strict already raised; non-strict recorded the rejection):
         # drop the shake, current returns to best as one aligned triplet.
         local_state.reset_current_to_best()
@@ -203,9 +165,8 @@ def restart_after_stall(
         dispatch_mode=cur_dispatch_mode,
         dispatch_rule=cur_dispatch_rule,
         decode_attempted=decode_attempted,
-        skip_reason=skip_reason,
-        request_id=request_id,
-        decode_receipt=receipt,
+        stop_reason=stop_reason,
+        rejected_mode=rejected_mode,
     )
 
 

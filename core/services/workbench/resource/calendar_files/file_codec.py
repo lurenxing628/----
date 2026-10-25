@@ -10,6 +10,7 @@ from datetime import date, datetime, time
 from core.errors import ValidationError
 from core.models.workbench_calendar_file import (
     IMPORT_ROW_LIMIT,
+    READONLY,
     REQUIRED,
     calendar_kind,
     file_columns,
@@ -106,7 +107,7 @@ def _decode(value, fmt):
     return value
 
 
-def _parse(number, values, errors, fields, fmt):
+def _parse(number, values, errors, fields, fmt, readonly):
     parsed, issues = {}, []
     if len(values) > len(fields) and any(v is not None and v != "" for v in values[len(fields):]):
         issues.append({"row": number, "field": "columns", "code": "invalid_input",
@@ -114,10 +115,16 @@ def _parse(number, values, errors, fields, fmt):
     for index, field in enumerate(fields):
         value = values[index] if index < len(values) else None
         try:
+            if field in readonly:
+                if value is not None and value != "":
+                    parsed[field] = value
+                continue
             if index in errors:
                 raise ValidationError(errors[index], field=field)
             if value is not None and value != "":
-                parsed[field] = _decode(value, fmt)
+                decoded = _decode(value, fmt)
+                if decoded != "":
+                    parsed[field] = decoded
         except ValidationError as exc:
             issues.append({"row": number, "field": field, "code": "invalid_input", "message": exc.message})
     return {"row": number, "values": parsed, "errors": issues}
@@ -141,7 +148,7 @@ def read_calendar_file(kind, content, fmt):
             if len(rows) == IMPORT_ROW_LIMIT:
                 raise file_error("一次最多导入 " + str(IMPORT_ROW_LIMIT) + " 行，这个文件超了，一行都没有导入。"
                                  "请拆成几个小文件分次上传。", number)
-            rows.append(_parse(number, values, errors, fields, fmt))
+            rows.append(_parse(number, values, errors, fields, fmt, READONLY[kind]))
         return rows, extra_sheet_notice(state["sheets"])
     finally:
         source.close()

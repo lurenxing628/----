@@ -4,45 +4,36 @@ from contextlib import contextmanager
 
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_plan_reference import WorkbenchPlanLocator
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.execution.processing_hours import hour_totals
 from core.services.workbench.facts.execution_projection import attach_context
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
-from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
 from data.repositories.workbench_field_query_repo import WorkbenchFieldQueryRepository
 
 from .field_workspace_scope import STATES, matches, matches_plan
 
 
 class FieldWorkspaceService:
-    def __init__(self, conn, *, context_factory=None):
+    def __init__(self, conn, *, context_factory=None, ledger=None):
         from .ledger import ExecutionLedgerService
 
         self.conn = conn
-        self.ledger = ExecutionLedgerService(conn, context_factory=context_factory)
-        self.repo = WorkbenchExecutionRepository(conn)
+        self.ledger = ledger if ledger is not None else ExecutionLedgerService(conn, context_factory=context_factory)
         self.queries = WorkbenchFieldQueryRepository(conn)
         self.plans = WorkbenchPlanQueryService(conn)
         self._loaded = None
-        self.resource_codes = None
 
     @contextmanager
     def read_snapshot(self):
-        try:
-            with self.plans.read_snapshot():
-                with self.ledger.read_snapshot():
-                    yield
-        finally:
-            self.resource_codes = None
+        with self.plans.read_snapshot():
+            with self.ledger.read_snapshot():
+                yield
 
     def _plan_ref(self, scope):
         if scope.get('plan_ref'):
             return scope['plan_ref']
-        version = self.queries.latest_schedule_version()
-        if version is None:
-            return None
-        return self.plans.references.get_plan_ref(WorkbenchPlanLocator(version, 'adopted'))
+        current_plan = self.ledger._current_plan()
+        return current_plan['plan_ref'] if current_plan is not None else None
 
     def _labels(self, projections, plan_tasks):
         refs = {row[key] for p in projections.values() for row in p['reports'] + [item['report'] for item in p['voided_reports']]
@@ -50,21 +41,19 @@ class FieldWorkspaceService:
         refs.update(task[key] for task in plan_tasks for key in ('machine_ref', 'operator_ref') if task[key])
         refs.update(row[key] for p in projections.values() for row in p['legacy_facts']
                     for key in ('actual_machine_ref', 'actual_operator_ref') if row[key])
-        rows = self.repo.resources(refs)
-        self.resource_codes = {row['ref']: row['business_code'] for row in rows}
-        return {row['ref']: row['label'] for row in rows}
+        labels, codes = {}, {}
+        for row in self.ledger.resources(refs):
+            labels[row['ref']] = row['label']
+            codes[row['ref']] = row['business_code']
+        return labels, codes
 
     def cohort(self, scope):
         if not self.conn.in_transaction:
             raise RuntimeError('Field cohort requires caller read snapshot.')
-        with self.ledger.read_snapshot():
-            return self._cohort(scope)
-
-    def _cohort(self, scope):
-        self.resource_codes = {}
         plan_ref = self._plan_ref(scope)
         if plan_ref is None:
-            return {'plan': None, 'scope': dict(scope), 'tasks': [], 'summary': self._summary([])}, content_text(self.ledger.revision_clock())
+            return ({'plan': None, 'scope': dict(scope), 'tasks': [], 'summary': self._summary([])},
+                    content_text(self.ledger.revision_clock()), {})
         plan, plan_state = self.plans.execution_workspace(
             PlanReadScope(plan_ref, scope.get('range_start'), scope.get('range_end')),
         )
@@ -76,8 +65,8 @@ class FieldWorkspaceService:
         loaded = {item.operation_ref: item for item in self.ledger.project_loaded(facts, contexts=False)}
         self._loaded = (facts, loaded)
         projections = {ref: item.to_dict() for ref, item in loaded.items()}
-        labels = self._labels(projections, plan_tasks)
-        names = self.queries.batch_part_names()
+        labels, resource_codes = self._labels(projections, plan_tasks)
+        names = self.queries.batch_part_names({row['batch_id'] for row in plan_tasks})
         tasks, scope_tasks = [], []
         count_scope = {key: value for key, value in scope.items()
                        if key not in ('state', 'batch_ids', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to')}
@@ -98,7 +87,7 @@ class FieldWorkspaceService:
         # 只有固定的“未绑定”或旧计划“不能新增报工”两种，随数据而定；令牌只在 page/detail 给副本另签。
         state = content_text({'scope': effective, 'plan': plan_state, 'execution': state_facts,
                                    'data': tasks, 'summary': summary})
-        return {'plan': plan['plan'], 'scope': effective, 'tasks': tasks, 'summary': summary}, state
+        return {'plan': plan['plan'], 'scope': effective, 'tasks': tasks, 'summary': summary}, state, resource_codes
 
     @staticmethod
     def _task(row, projection, labels, names):
@@ -150,13 +139,11 @@ class FieldWorkspaceService:
         if factory is None or self._loaded is None:
             return tasks
         facts, loaded = self._loaded
-        result, snapshots, attached_operations = [], {}, {}
+        result, attached_operations = [], {}
         for task in tasks:
             ref = task['operation_ref']
-            if ref not in snapshots:
-                snapshots[ref] = content_text(self.ledger.fact_snapshot(facts, ref))
             if ref not in attached_operations:
-                attached_operations[ref] = attach_context(loaded[ref], factory, snapshots[ref])
+                attached_operations[ref] = attach_context(loaded[ref], factory, self.ledger.fact_snapshot(facts, ref))
             attached = attached_operations[ref]
             if attached is loaded[ref]:
                 result.append(task)

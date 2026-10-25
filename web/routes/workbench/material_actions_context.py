@@ -17,7 +17,6 @@ from core.errors import AppError, ValidationError
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_material_file import MaterialPreview, normalize_scope
-from core.models.workbench_material_query import MaterialPageRequest
 from core.models.workbench_resource_file_source import PreparedImportSource
 from core.services.workbench.material.files import local_created_at
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
@@ -46,7 +45,7 @@ def read_endpoint(function):
             raise
         except Exception as exc:
             raise WorkbenchCommandRejected("storage_failure", "物料预检或下载没有完成，数据没有改动。请刷新重试；仍不行请联系维护人员，并告知下方编号。", 500) from exc
-    return api_endpoint(wrapped)
+    return api_endpoint(wrapped, readonly=True)
 
 
 def json_body(required, optional=()):
@@ -77,9 +76,11 @@ def opaque_ref(value, field):
 
 def scope_input(body):
     scope = normalize_scope(body["scope"])
-    page = MaterialPageRequest(**scope, size=body.get("page_size", 20))
+    size = body.get("page_size", 20)
+    if type(size) is not int or not 1 <= size <= 200:
+        raise WorkbenchCommandRejected("invalid_input", "每页条数必须是1至200之间的整数。", 400)
     token = opaque_ref(body["snapshot_ref"], "snapshot_ref")
-    return scope, page.scope(), token
+    return scope, {"kind": "material", "size": size, **scope}, token
 
 
 def issue_binding(namespace, binding):

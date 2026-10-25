@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "rule": "dead_path_literal",
+  "scan_roots": [
+    "core",
+    "web",
+    "data",
+    "tools",
+    "scripts",
+    "tests",
+    "plugins"
+  ],
+  "note": "失效仓库路径字面量棘轮基线：删文件必须同步删掉引用它的字符串；条目只减不增，刷新走 --refresh。",
+  "entries": [
+    {
+      "path": "tests/app_runtime/test_ready_portable_delivery.py",
+      "kind": "tools/chrome109/LICENSE.chromium.html",
+      "count": 1
+    },
+    {
+      "path": "tests/portable_sample/test_sample_switch.py",
+      "kind": "assets/local.txt",
+      "count": 1
+    },
+    {
+      "path": "tests/web_pages/test_system_runtime_logs_page.py",
+      "kind": "templates/system/runtime_logs.html",
+      "count": 1
+    },
+    {
+      "path": "tools/host_tests/test_gate_runner_and_hooks_content.py",
+      "kind": "core/a.py",
+      "count": 4
+    },
+    {
+      "path": "tools/host_tests/test_gate_runner_and_hooks_content.py",
+      "kind": "tests/test_a.py",
+      "count": 3
+    },
+    {
+      "path": "tools/host_tests/test_gate_runner_and_hooks_content.py",
+      "kind": "tests/test_b.py",
+      "count": 1
+    },
+    {
+      "path": "tools/host_tests/test_long_gate_content.py",
+      "kind": "tests/example.py",
+      "count": 4
+    },
+    {
+      "path": "tools/host_tests/test_long_gate_content.py",
+      "kind": "tests/missing.py",
+      "count": 1
+    },
+    {
+      "path": "tools/host_tests/test_quality_ledger_content.py",
+      "kind": "web/bootstrap/content_sample.py",
+      "count": 1
+    },
+    {
+      "path": "tools/host_tests/test_scan_over_defense.py",
+      "kind": "core/broken.py",
+      "count": 1
+    },
+    {
+      "path": "tools/host_tests/test_scan_over_defense.py",
+      "kind": "core/dup_a.py",
+      "count": 1
+    },
+    {
+      "path": "tools/host_tests/test_scan_over_defense.py",
+      "kind": "core/dup_b.py",
+      "count": 1
+    },
+    {
+      "path": "tools/host_tests/test_scan_over_defense.py",
+      "kind": "core/extra.py",
+      "count": 1
+    },
+    {
+      "path": "tools/host_tests/test_scan_over_defense.py",
+      "kind": "core/sample.py",
+      "count": 2
+    },
+    {
+      "path": "tools/host_tests/test_scan_over_defense.py",
+      "kind": "frontend/workbench/app/Comp.jsx",
+      "count": 3
+    },
+    {
+      "path": "tools/host_tests/test_scan_over_defense.py",
+      "kind": "frontend/workbench/prototype/Proto.jsx",
+      "count": 1
+    },
+    {
+      "path": "tools/host_tests/test_scan_over_defense.py",
+      "kind": "tests/test_sample.py",
+      "count": 1
+    },
+    {
+      "path": "tools/host_tests/test_scan_over_defense.py",
+      "kind": "tools/gen_doc.py",
+      "count": 1
+    }
+  ]
+}

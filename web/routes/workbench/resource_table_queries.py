@@ -15,7 +15,7 @@ from core.services.workbench.material.queries import WorkbenchMaterialQueryServi
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from web.api_responses import query_success
 
-from .api_responses import api_endpoint
+from .api_responses import read_endpoint
 from .materials import _entity_with_context
 from .read_context import bind_read_snapshot
 from .resources import _with_context
@@ -44,9 +44,9 @@ def _body():
         raise WorkbenchCommandRejected("capacity_exceeded", "一次提交的查询条件超过 32 MB，当前列表没有变化。请缩小筛选范围后重试。", 413)
     try:
         body = json.loads(raw, object_pairs_hook=_unique_object)
+    except WorkbenchCommandRejected:
+        raise
     except (ValueError, UnicodeError) as exc:
-        if isinstance(exc, WorkbenchCommandRejected):
-            raise
         raise WorkbenchCommandRejected("invalid_input", "查询条件读不出来，当前列表没有变化。请点「清除筛选」后重新选择。", 400) from exc
     if type(body) is not dict:
         raise WorkbenchCommandRejected("invalid_input", "查询条件不完整，当前列表没有变化。请刷新页面后重新选择。", 400)
@@ -76,7 +76,7 @@ def _reader(kind):
 
 
 def _readonly_endpoint(function):
-    @api_endpoint
+    @read_endpoint
     @wraps(function)
     def wrapped(*args, **kwargs):
         try:

@@ -153,8 +153,12 @@ class ExecutionLedgerReader:
                             and operation["id"] == task["op_id"] and task["identity_kind"] == "schedule_row"
                             and task["identity_source_table"] == "schedule" and task["row_source_key"] == str(schedule_id)
                             and task["owner_key"] == str(task["version"])):
-                        stored[schedule_id].append((schedule_id, task["version"], task["op_id"], operation["batch_id"],
-                            operation_ref, task["task_ref"], plan_ref, operation["source"]))
+                        stored[schedule_id].append((
+                            schedule_id, task["version"], task["op_id"], operation["batch_id"],
+                            operation_ref, task["task_ref"], plan_ref, operation["source"],
+                            task["start_time"], task["end_time"], task["machine_id"], task["operator_id"], task["lock_status"],
+                            operation["setup_hours"], operation["unit_hours"],
+                        ))
         missing = sorted(wanted.difference(stored))
         if missing:
             found = {key: [] for key in missing}
@@ -183,18 +187,9 @@ class ExecutionLedgerReader:
             stored["reported_scope"] = ExecutionLedgerScopeRepository(self.conn).reported_operation_without_schedule_row()
         return stored["reported_scope"]
 
-    def page_tasks(self, plan_ref, size, after):
-        public_ref(plan_ref)
-        if type(size) is not int or not 1 <= size <= 500:
-            reject("执行任务分页大小须为1至500。", status=400)
-        if after is not None:
-            public_ref(after)
-        return self.repo.page_tasks(plan_ref, size, after)
-
-    def report_header(self, *, report_ref=None, report_no=None):
-        if report_ref is not None:
-            public_ref(report_ref)
-        return self.repo.report_header(report_ref=report_ref, report_no=report_no)
+    def report_header(self, *, report_ref):
+        public_ref(report_ref)
+        return self.repo.report_header(report_ref=report_ref)
 
     # ---- snapshots and projections ----
 
@@ -210,7 +205,7 @@ class ExecutionLedgerReader:
             self._snapshot_operations, self._snapshot_task_maps, self._snapshot_resources = {}, {}, {}
             self._snapshot_comparison_plans = {}
             self._snapshot_legacy_evidence = {}
-            self._snapshot_facts = {"loaded": set(), "reports": {}, "voids": {}, "legacy": {},
+            self._snapshot_facts = {"loaded": set(), "reports": {}, "report_heads": {}, "voids": {}, "legacy": {},
                                     "legacy_source": {"states": {}, "changes": {}}, "unresolved": set(), "scope_tasks": {}}
             try:
                 yield dict(self._snapshot_clock)
@@ -242,16 +237,19 @@ class ExecutionLedgerReader:
                     admitted[comparison_plan_ref] = locator
         stored = self._snapshot_facts
         if stored is None:
-            stored = {"loaded": set(), "reports": {}, "voids": {}, "legacy": {},
+            stored = {"loaded": set(), "reports": {}, "report_heads": {}, "voids": {}, "legacy": {},
                       "legacy_source": {"states": {}, "changes": {}}, "unresolved": set(), "scope_tasks": {}}
         missing = {ref: row for ref, row in operations.items() if ref not in stored["loaded"]}
         if missing:
             legacy = _capped(self.repo.legacy, missing, "历史现场记录超过读取上限，请缩小范围。")
             source = WorkbenchExecutionSourceRepository(self.conn).read(legacy)
-            reports = _capped(self.repo.reports, missing, "报工及更正历史超过读取上限，请缩小范围。")
+            reports, report_heads, report_count = self.repo.reports(missing, MAX_FACT_ROWS)
+            if report_count > MAX_FACT_ROWS:
+                reject("报工及更正历史超过读取上限，请缩小范围。", "query_too_large", 413)
             voids = _capped(self.repo.report_voids, missing, "报工撤销历史超过读取上限，请缩小范围。")
             stored["legacy"].update(legacy)
             stored["reports"].update(reports)
+            stored["report_heads"].update(report_heads)
             stored["voids"].update(voids)
             for key in ("states", "changes"):
                 stored["legacy_source"][key].update(source[key])
@@ -259,10 +257,12 @@ class ExecutionLedgerReader:
             stored["loaded"].update(missing)
         legacy = {ref: stored["legacy"][ref] for ref in operations if ref in stored["legacy"]}
         reports = {ref: stored["reports"][ref] for ref in operations if ref in stored["reports"]}
+        report_heads = {ref: stored["report_heads"][ref] for ref in operations if ref in stored["report_heads"]}
         report_refs = {report_ref for group in reports.values() for report_ref in group}
         voids = {ref: stored["voids"][ref] for ref in report_refs if ref in stored["voids"]}
+        orphan_count = sum(len(refs) for refs in report_heads.values()) - len(report_refs)
         if (sum(len(rows) for rows in legacy.values()) > MAX_FACT_ROWS
-                or sum(len(rows) for group in reports.values() for rows in group.values()) > MAX_FACT_ROWS
+                or sum(len(rows) for group in reports.values() for rows in group.values()) + orphan_count > MAX_FACT_ROWS
                 or len(voids) > MAX_FACT_ROWS):
             reject("报工及历史记录超过读取上限，请缩小范围。", "query_too_large", 413)
         source = {key: {ref: values[ref] for ref in operations if ref in values}
@@ -272,7 +272,7 @@ class ExecutionLedgerReader:
         comparison_tasks = (current_tasks
                             if comparison_plan_ref is not None and comparison_plan_ref == current_plan_ref
                             else self.task_map(operations, comparison_plan_ref))
-        return {"operations": operations, "reports": reports, "voids": voids,
+        return {"operations": operations, "reports": reports, "report_heads": report_heads, "voids": voids,
                 "legacy": legacy, "legacy_source": source,
                 "current_tasks": current_tasks, "comparison_tasks": comparison_tasks, "plan": plan,
                 "unresolved": stored["unresolved"].intersection(operations), "clock": self.revision_clock()}
@@ -299,7 +299,7 @@ class ExecutionLedgerReader:
             for start in range(MAX_OPERATIONS, len(refs), MAX_OPERATIONS):
                 batch = self.load(refs[start:start + MAX_OPERATIONS],
                                   comparison_plan_ref=comparison_plan_ref, _admitted_refs=True)
-                for key in ("operations", "reports", "voids", "legacy", "current_tasks", "comparison_tasks"):
+                for key in ("operations", "reports", "report_heads", "voids", "legacy", "current_tasks", "comparison_tasks"):
                     result[key].update(batch[key])
                 for key in ("states", "changes"):
                     result["legacy_source"][key].update(batch["legacy_source"][key])
@@ -317,7 +317,10 @@ class ExecutionLedgerReader:
         voids = facts["voids"]
         for ref, op in facts["operations"].items():
             histories = facts["reports"].get(ref, {})
-            reports = sorted((report_dto(rows) for rows in histories.values()), key=lambda row: (row.recorded_at, row.report_no))
+            if set(facts["report_heads"].get(ref, ())) - set(histories):
+                reject("报工来源或更正记录损坏，请核对报工数据；仍不行请联系维护人员。", "storage_failure", 500)
+            reports = sorted((report_dto(rows, operation_ref=ref, report_ref=report_ref)
+                              for report_ref, rows in histories.items()), key=lambda row: (row.recorded_at, row.report_no))
             voided = []
             if voids:
                 voided = [{"report": report.to_dict(), "void_fact": {key: value for key, value in voids[report.report_ref].items()

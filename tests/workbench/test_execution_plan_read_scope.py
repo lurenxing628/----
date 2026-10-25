@@ -10,6 +10,7 @@ from openpyxl import load_workbook
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan import queries
+from tests._support.gantt_current_js import run_current_js
 from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.field_workspace_support import FieldAPI, _ledger_fixture  # noqa: F401
 from tests.workbench.point_downstream_support import ACTUAL, FIELD, app_for, read
@@ -76,6 +77,14 @@ def test_scoped_actual_chain_retains_outside_predecessors_and_snapshot(ledger_ca
     assert chain['state'] == 'available' and chain['scope'] == 'full_plan'
     assert chain['plan_task_count'] == 3 and chain['task_refs'] == refs
     assert [node['in_scope'] for node in chain['nodes']] == [False, False, True]
+    # The shipped frontend contract judges each chain node's in_scope against the response items it already validated.
+    assert run_current_js(r"""
+const C = h.runtime.ActualGanttContract, flipped = h.clone(sourceData.payload);
+assert.strictEqual(C.workspace(sourceData.payload, sourceData.query), sourceData.payload);
+flipped.data.critical_chain.nodes[0].in_scope = true;
+assert.throws(() => C.workspace(flipped, sourceData.query), /关键链节点与当前计划或范围不一致/);
+return true;
+""", {'payload': actual, 'query': scope})['result'] is True
     token = actual['meta']['snapshot_ref']
     related = read(client, ACTUAL + '/chain', **scope, snapshot_ref=token, target_task_ref=refs[-1])
     assert related['data']['critical_chain']['task_refs'] == refs
@@ -131,6 +140,66 @@ def test_field_scoped_page_write_and_files_keep_same_snapshot(ledger_case, monke
                         (FIELD + '/files/template', {}), (FIELD + '/files/export', {})):
         response = api.client.get(path, query_string=dict(scope, snapshot_ref=token, **extra))
         assert response.status_code == 409 and response.get_json()['error']['code'] == 'snapshot_stale'
+
+
+def test_field_files_reuse_one_ledger_for_cohort_and_import_preparation(ledger_case, monkeypatch):
+    from core.services.workbench.execution.ledger import ExecutionLedgerService
+    from data.repositories.workbench_execution_repo import WorkbenchExecutionRepository
+    from tests.workbench.field_workspace_support import BASE, success
+
+    case = ledger_case
+    plan_ref, _ = _three_tasks(case)
+    api = FieldAPI(case)
+    api.create(task=api.task(plan_ref=plan_ref))
+    reading = api.read()
+    calls = {"ledgers": 0, "reports": 0, "current_plans": 0}
+    initialize, reports = ExecutionLedgerService.__init__, WorkbenchExecutionRepository.reports
+
+    def ledger(loaded, *args, **kwargs):
+        calls["ledgers"] += 1
+        initialize(loaded, *args, **kwargs)
+        provider = loaded.current_plan_provider
+
+        def current(conn):
+            calls["current_plans"] += 1
+            return provider(conn)
+
+        loaded.current_plan_provider = current
+
+    def report_rows(repo, refs, limit):
+        calls["reports"] += 1
+        return reports(repo, refs, limit)
+
+    monkeypatch.setattr(ExecutionLedgerService, "__init__", ledger)
+    monkeypatch.setattr(WorkbenchExecutionRepository, "reports", report_rows)
+    exported = api.client.get(BASE + "/files/export", query_string={**reading["data"]["scope"],
+        "snapshot_ref": reading["meta"]["snapshot_ref"]})
+    assert exported.status_code == 200
+    assert calls == {"ledgers": 1, "reports": 1, "current_plans": 1}
+    calls.update(ledgers=0, reports=0, current_plans=0)
+    preview = success(api.upload(exported.data, reading))
+    assert preview["data"]["can_confirm"] and preview["data"]["summary"]["unchanged"] == 1
+    assert calls == {"ledgers": 1, "reports": 1, "current_plans": 1}
+    calls.update(ledgers=0, reports=0, current_plans=0)
+    confirmed = success(api.client.post(BASE + "/files/confirm", json=api.confirm_body(preview)))
+    assert confirmed["result"] == "unchanged"
+    assert calls == {"ledgers": 1, "reports": 1, "current_plans": 1}
+
+    # Choosing an old plan does not make its tasks the current writable tasks.
+    case.plan(3, [case.op_id])
+    case.install()
+    current_task = case.task(3, case.op_id)
+    calls.update(ledgers=0, reports=0, current_plans=0)
+    old = api.read(plan_ref=plan_ref)["data"]["tasks"][0]
+    assert old["execution"]["comparison_task_ref"] == old["task_ref"]
+    assert old["execution"]["current_task_ref"] == current_task != old["task_ref"]
+    assert old["execution"]["write_context"]["capabilities"]["create"] is False
+    assert calls == {"ledgers": 1, "reports": 1, "current_plans": 1}
+    calls.update(ledgers=0, reports=0, current_plans=0)
+    actual = read(app_for(case).test_client(), ACTUAL, plan_ref=plan_ref)["data"]["items"][0]
+    assert actual["execution"]["comparison_task_ref"] == old["task_ref"]
+    assert actual["execution"]["current_task_ref"] == current_task
+    assert calls == {"ledgers": 1, "reports": 1, "current_plans": 1}
 
 
 def test_internal_execution_cohort_uses_actual_endpoint_budget(ledger_case):
@@ -189,13 +258,13 @@ def test_actual_large_plan_applies_finish_batch_and_overlap_before_ledger(ledger
         return enrich_rows(context, entry, prepared)
 
     monkeypatch.setattr(actual_gantt.PlanReadContext, "_enrich_rows", enrich)
-    original = actual_gantt.ledger_projection
+    original = actual_gantt.ExecutionLedgerService.workspace_projection
 
-    def project(conn, ref, tasks):
+    def project(ledger, ref, tasks):
         projected.append(len(tasks))
-        return original(conn, ref, tasks)
+        return original(ledger, ref, tasks)
 
-    monkeypatch.setattr(actual_gantt, 'ledger_projection', project)
+    monkeypatch.setattr(actual_gantt.ExecutionLedgerService, 'workspace_projection', project)
     monkeypatch.setattr(queries.WorkbenchPlanQueryService, 'execution_workspace',
                         lambda *args, **kwargs: pytest.fail('Actual reconstructed an execution workspace'))
     app = app_for(case)

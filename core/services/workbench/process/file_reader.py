@@ -7,7 +7,6 @@ from zipfile import ZipFile
 from core.errors import ValidationError
 from core.models.workbench_process_file import IMPORT_BYTE_LIMIT, XLSX_EXPANDED_BYTE_LIMIT, file_error
 from core.services.workbench.facts.file_source import FileReadMessages, source_rows
-from core.services.workbench.facts.process_file_xml import check_sheet_order
 
 _WORKBOOK_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"
 _CSV_ERROR = "CSV 必须是 UTF-8 编码，系统不猜编码，也不替你补引号。请另存为 UTF-8 后重新上传。"
@@ -55,10 +54,6 @@ def _check_workbook_content(archive):
                  or "macroEnabled.main+xml" in item.attrib.get("ContentType", "")]
     if workbooks != [_WORKBOOK_TYPE]:
         raise file_error("这个文件不是标准 XLSX 工作簿，只改扩展名或带宏的模板都不行。请用 Excel 另存为 xlsx 后重新上传。")
-    for item in types:
-        if item.attrib.get("ContentType", "").endswith("spreadsheetml.worksheet+xml"):
-            with archive.open(item.attrib["PartName"].lstrip("/")) as stream:
-                check_sheet_order(stream)
 
 
 def read_rows(content, fmt, state):

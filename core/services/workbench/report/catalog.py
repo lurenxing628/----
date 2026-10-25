@@ -13,6 +13,7 @@ from core.services.report.exporters.xlsx import (
     export_overdue_xlsx,
     export_utilization_xlsx,
 )
+from core.services.report.utilization import utilization_availability_note, utilization_percent
 
 from .exports import TOPIC_TITLES, ensure_export_size, metadata
 
@@ -35,17 +36,18 @@ CATALOG_CONTEXT = {
 
 def catalog_facts(reader, scope):
     _, plan, resolution, span = reader.current_plan_metadata(ReportScope(source=scope.source, plan_ref=scope.plan_ref))
-    scope = replace(scope, plan_ref=plan["plan_ref"])
+    scope_updates = {"plan_ref": plan["plan_ref"]}
     if scope.kind != "overdue":
-        scope = replace(scope, window_date_from=scope.window_date_from or span["start"][:10],
-                        window_date_to=scope.window_date_to or span["end"][:10])
+        scope_updates["window_date_from"] = scope.window_date_from or span["start"][:10]
+        scope_updates["window_date_to"] = scope.window_date_to or span["end"][:10]
+    scope = replace(scope, **scope_updates)
     engine = reader.engine
     if scope.kind == "overdue":
         raw = engine._fetch_overdue_base_rows_for_plan(resolution)
         report = None
         collections = [("batch", raw)]
     else:
-        report = getattr(engine, "utilization" if scope.kind == "utilization" else "downtime_impact")(
+        report = (engine.utilization if scope.kind == "utilization" else engine.downtime_impact)(
             resolution, scope.window_date_from, scope.window_date_to)
         raw = report
         collections = [("machine", report.get("machines", [])), ("operator", report.get("operators", []))]
@@ -64,9 +66,9 @@ def _identity(facts, kind, key):
     return facts["identities"][kind][str(key)]["ref"]
 
 
-def _overdue_rows(facts, snapshot):
+def _overdue_rows(facts, *, as_of: datetime):
     rows, source_rows = [], []
-    scheduled, unscheduled, invalid, _ = compute_overdue_bucket_groups(facts["raw"], now_dt=datetime.fromisoformat(snapshot["as_of"]))
+    scheduled, unscheduled, invalid = compute_overdue_bucket_groups(facts["raw"], now_dt=as_of)
     for row in scheduled + invalid + unscheduled:
         public = {key: row.get(key) for key, _ in CATALOG_COLUMNS["overdue"]}
         public.update({"batch_ref": _identity(facts, "batch", row["batch_id"]), "batch_label": row["batch_id"]})
@@ -85,18 +87,16 @@ def _resource_rows(facts):
                 "resource_label": row.get(kind + "_name") or "名称未填写", "resource_kind": kind,
                 "resource_kind_label": "设备" if kind == "machine" else "人员"})
             if scope.kind == "utilization":
-                public["utilization_percent"] = None if row.get("utilization") is None else round(row["utilization"] * 100, 2)
-                public["availability_note"] = "此范围无可用工时" if row.get("reason") == "zero_available_capacity" else (
-                    "；".join(issue["message"] for issue in row.get("calendar_issues", [])) or "日历资料不完整"
-                    if row.get("reason") == "calendar_unavailable" else "")
+                public["utilization_percent"] = utilization_percent(row.get("utilization"))
+                public["availability_note"] = utilization_availability_note(row)
             rows.append(public)
             source_rows.append({**row, "resource_kind": kind})
     return rows, source_rows
 
 
-def catalog_workspace(facts, snapshot, page):
+def catalog_workspace(facts, page, *, as_of: datetime):
     scope, rep = facts["scope"], facts["report"]
-    rows, source_rows = _overdue_rows(facts, snapshot) if scope.kind == "overdue" else _resource_rows(facts)
+    rows, source_rows = _overdue_rows(facts, as_of=as_of) if scope.kind == "overdue" else _resource_rows(facts)
     source_by_key = {}
     for public, raw in zip(rows, source_rows):
         source_by_key[public.get("batch_ref") or public["resource_ref"]] = raw

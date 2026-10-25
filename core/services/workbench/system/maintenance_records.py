@@ -1,10 +1,9 @@
 """Read-only file/event union; maintenance events never carry file capabilities."""
 
 import json
-import os
 from datetime import datetime
 
-from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.models.workbench_command import canonical_json
 from core.services.workbench.facts.system_reads import backup_records
 from core.services.workbench.facts.system_redaction import public_system_text
 from core.services.workbench.messages import stored_utc_text
@@ -12,7 +11,6 @@ from data.repositories.system_job_state_repo import SystemJobStateRepository
 from data.repositories.workbench_system_maintenance_repo import WorkbenchSystemMaintenanceRepository
 
 _AUDIT_LIMIT = 500
-_JOURNAL_LIMIT = 2000
 _JOBS = {"auto_backup_cleanup": ("cleanup", "备份清理", "removed_count"),
          "auto_log_cleanup": ("logs_cleanup", "操作日志清理", "deleted_count")}
 _FILE_ACTIONS = {"download": False, "restore": False, "delete": False}
@@ -37,26 +35,9 @@ def _event(kind, source, identity, time, status, summary, detail):
             "file_capabilities": dict(_FILE_ACTIONS)}
 
 
-def _require_journal_capacity(count):
-    if count > _JOURNAL_LIMIT:
-        raise WorkbenchCommandRejected("maintenance_record_capacity", "维护记录条数超过一次能读的上限，这次没有列出。请让维护人员清理维护目录后再看。", 413)
-
-
-def capture_maintenance_journal(journal):
-    """Bound this file snapshot before parsing; reuse its one directory enumeration."""
-    try:
-        names = os.listdir(journal.directory)
-    except FileNotFoundError:
-        names = []
-    _require_journal_capacity(sum(name.endswith(".json") for name in names))
-    return journal.records(names=names)
-
-
-def _restore_records(journal, records=None):
+def _restore_records(journal, records):
     if records is None:
-        records = capture_maintenance_journal(journal)
-    else:
-        _require_journal_capacity(len(records))
+        records = journal.collection()
     rows = []
     for record in records:
         if record["action"] != "restore":
@@ -118,7 +99,7 @@ def _latest_cleanup(conn, audited_actions):
     return rows, issues
 
 
-def maintenance_records(conn, backup_dir, journal, *, journal_records=None):
+def maintenance_records(conn, backup_dir, journal, *, journal_records):
     """Caller owns the database read snapshot. Journal validation failures propagate."""
     files, issues = backup_records(backup_dir)
     rows = [{**row, "record_kind": "backup_file"} for row in files]

@@ -2,7 +2,7 @@
   'use strict';
   const C = window.APSResourceContract, P = window.APSProcessContract, E = window.ProcessStageEditor, { Button, Modal, Issues } = window.ResourceControls;
   const numericText = value => value === null ? '' : String(value);
-  function mergedGroups(entity, active = E.active(entity)) {
+  function mergedGroups(entity, active) {
     const refs = new Set(active.map(row => row.external_group_ref));
     return entity.external_groups.filter(row => row.merge_mode === 'merged' && refs.has(row.ref));
   }
@@ -12,13 +12,13 @@
       groups: Object.fromEntries(mergedGroups(entity, active).map(row => [row.ref, numericText(row.total_days)])) };
   }
   function reconcile(draft, before, after) {
-    const next = build(after), original = build(before), old = new Map(before.operations.map(row => [row.ref, row]));
-    E.active(after).forEach(row => {
+    const next = build(after), original = build(before), old = new Map(before.operations.map(row => [row.ref, row])), active = E.active(after);
+    active.forEach(row => {
       const current = draft.operations[row.ref], previous = original.operations[row.ref], fresh = next.operations[row.ref];
       if (!current || !previous || old.get(row.ref).source !== row.source || old.get(row.ref).op_type_ref !== row.op_type_ref) return;
       (row.source === 'internal' ? ['setup_hours', 'unit_hours'] : ['external_days']).forEach(key => { if (current[key] !== previous[key]) fresh[key] = current[key]; });
     });
-    mergedGroups(after).forEach(row => {
+    mergedGroups(after, active).forEach(row => {
       if (C.own(original.groups, row.ref) && C.own(draft.groups, row.ref) && draft.groups[row.ref] !== original.groups[row.ref]) next.groups[row.ref] = draft.groups[row.ref];
     });
     return next;

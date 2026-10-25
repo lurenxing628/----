@@ -1,18 +1,30 @@
 """Bounded resource calendars using the workbench's exact policy projection."""
 
-from collections import defaultdict
 from datetime import date, timedelta
 
 from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLimit
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES, MAX_POLICY_CELLS
-from core.services.capacity.plan_calendar_windows import apply_resource, policy_projection, unavailable
+from core.services.capacity.plan_calendar_windows import project_resource_calendars, unavailable
 
-from .calculation_helpers import is_internal_source
+from .utilization import row_interval
 
 
 def resource_calendars(conn, rows, start, end):
-    ids = _internal_resource_ids(rows)
+    # 只为窗口内真有正时长占用的内部安排投影日历，与占用率计算同一判定；
+    # 点事件、坏时间和窗口外记录不占日历单元格预算。
+    ids = _internal_resource_ids([row for row in rows if row_interval(row, start, end) is not None])
+    return resource_calendars_for_ids(conn, ids, start, end)
+
+
+def resource_ids_from_groups(groups):
+    return {"machine": sorted(key for kind, key in groups if kind == "machine"),
+            "operator": sorted(key for kind, key in groups if kind == "operator")}
+
+
+def resource_calendars_for_ids(conn, ids, start, end):
+    if not ids["machine"] and not ids["operator"]:
+        return {}
     first, last = _projection_dates(start, end)
     limit = _projection_limit_reason(ids, first, last)
     if limit is not None:
@@ -26,14 +38,12 @@ def resource_calendars(conn, rows, start, end):
 
 
 def _internal_resource_ids(rows):
-    """Sorted machine and operator ids referenced by internal-source rows."""
+    """Sorted machine and operator ids referenced by rows already admitted as internal occupancy."""
     ids = {"machine": set(), "operator": set()}
     for row in rows:
-        if not is_internal_source(row.get("source")):
-            continue
         for kind, keys in ids.items():
             value = row.get(kind + "_id")
-            if value not in (None, ""):
+            if value is not None and str(value).strip():
                 keys.add(str(value))
     return {kind: sorted(keys) for kind, keys in ids.items()}
 
@@ -65,17 +75,10 @@ def _read_calendar_facts(reader, ids, first, last, start, end):
 def _project_resources(ids, facts, first, last, start, end):
     """Per-resource calendars: machines share the global projection, operators get their own."""
     engine = SnapshotCalendarEngine(facts)
-    global_calendar = policy_projection(engine, first, last, start, end)
-    downtime = defaultdict(list)
-    for row in facts["downtimes"]:
-        downtime[row["machine_id"]].append(row)
-    result = {}
-    for kind, keys in ids.items():
-        records = {row[kind + "_id"]: row for row in facts[kind + "s"]}
-        for key in keys:
-            base = global_calendar if kind == "machine" else policy_projection(engine, first, last, start, end, key)
-            result[kind, key] = apply_resource(base, records.get(key), kind, downtime[key] if kind == "machine" else [], start, end)
-    return result
+    return {
+        (kind, key): item
+        for kind, key, _raw, item in project_resource_calendars(engine, facts, ids, first, last, start, end)
+    }
 
 
 def _unavailable(ids, reason):

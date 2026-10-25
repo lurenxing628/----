@@ -33,7 +33,7 @@ def _filtered(descriptor, query):
     return True
 
 
-def _page(rows, number, size, *, all_rows=False):
+def _page(rows, number, size, *, all_rows):
     start = (number - 1) * size
     return (list(rows) if all_rows else rows[start:start + size],
             {"number": number, "size": size, "total": len(rows), "has_more": False if all_rows else start + size < len(rows)})
@@ -117,9 +117,9 @@ def _read(conn, values, *, all_rows):
         return data, history_snapshot_scope(query), state
 
 
-def read_decision_history(conn, query=None):
+def read_decision_history(conn, query):
     return _read(conn, query, all_rows=False)
 
 
-def read_history_all(conn, query=None):
+def read_history_all(conn, query):
     return _read(conn, query, all_rows=True)

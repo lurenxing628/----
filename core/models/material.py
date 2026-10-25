@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Optional
 
-from ._helpers import RowLike, get, parse_float_or_default
 from .enums import MaterialStatus
 
 
@@ -16,32 +15,4 @@ class Material:
     stock_qty: float = 0.0
     status: str = MaterialStatus.ACTIVE.value  # active/inactive
     remark: Optional[str] = None
-    created_at: Optional[str] = None
 
-    @classmethod
-    def from_row(cls, row: RowLike) -> Material:
-        return cls(
-            material_id=str(get(row, "material_id") or ""),
-            name=str(get(row, "name") or ""),
-            spec=get(row, "spec"),
-            unit=get(row, "unit"),
-            stock_qty=parse_float_or_default(get(row, "stock_qty"), 0.0, field="stock_qty"),
-            status=(
-                str(get(row, "status") or MaterialStatus.ACTIVE.value).strip().lower()
-                or MaterialStatus.ACTIVE.value
-            ),
-            remark=get(row, "remark"),
-            created_at=get(row, "created_at"),
-        )
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "material_id": self.material_id,
-            "name": self.name,
-            "spec": self.spec,
-            "unit": self.unit,
-            "stock_qty": self.stock_qty,
-            "status": self.status,
-            "remark": self.remark,
-            "created_at": self.created_at,
-        }

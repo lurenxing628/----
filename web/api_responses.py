@@ -23,24 +23,25 @@ def json_response(payload, *, byte_limit=None, too_large_code="query_too_large",
 
 
 def failure_payload(code, message, status, *, committed: Union[bool, Literal["unknown"]] = False, fields=None,
-                    request_key=None, conflicts=None, row_number=None):
-    reference = uuid.uuid4().hex
+                    request_key=None, conflicts=None, row_number=None, request_ref=None, result_target=None):
+    reference = request_ref or uuid.uuid4().hex
     error = {"code": code, "message": message, "fields": fields or [],
-             "retryable": status >= 500, "request_ref": reference}
+             "retryable": status >= 500 and committed != "unknown", "request_ref": reference}
     if conflicts:
         error["conflicts"] = conflicts
     if row_number is not None:
         error["row_number"] = row_number
     if request_key is not None:
         error["request_key"] = request_key
-        error["result_target"] = url_for("workbench.command_receipt", request_key=request_key)
+        error["result_target"] = result_target or url_for("workbench.command_receipt", request_key=request_key)
     return {"ok": False, "committed": committed, "error": error}
 
 
 def failure(code, message, status, *, committed: Union[bool, Literal["unknown"]] = False, fields=None,
-            request_key=None, conflicts=None, row_number=None):
+            request_key=None, conflicts=None, row_number=None, request_ref=None, result_target=None):
     response = json_response(failure_payload(code, message, status, committed=committed, fields=fields,
-        request_key=request_key, conflicts=conflicts, row_number=row_number), status=status)
+        request_key=request_key, conflicts=conflicts, row_number=row_number, request_ref=request_ref,
+        result_target=result_target), status=status)
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -48,7 +49,8 @@ def failure(code, message, status, *, committed: Union[bool, Literal["unknown"]]
 def query_payload(data, snapshot, warnings=()):
     return {"ok": True, "schema_version": 1, "data": data,
             "meta": {"request_ref": uuid.uuid4().hex, "source": "production",
-                     "time_basis": "factory_local", **snapshot}, "warnings": list(warnings)}
+                     "time_basis": "factory_local", **snapshot},
+            "warnings": warnings if isinstance(warnings, list) else list(warnings)}
 
 
 def query_success(data, snapshot, warnings=(), *, byte_limit=None, too_large_code="query_too_large",

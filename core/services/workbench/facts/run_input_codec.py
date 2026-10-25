@@ -2,7 +2,7 @@
 
 from dataclasses import fields
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from core.models.content import same
 from core.models.workbench_execution import ExecutionProjection, ProductionReport
@@ -83,13 +83,13 @@ def _validate_projection_values(values, *, check_reports=False):
     _validate_projection_times(values)
 
 
-def prepare_execution_projections(payload):
+def prepare_execution_projections(payload, *, max_operations: Optional[int] = MAX_OPERATIONS):
     """Validate complete saved fields once without building public ledger DTOs.
 
     The prepared rows retain all report/audit values for display and quantity
     readers, while workers materialize their DTOs through the adapter below.
     """
-    if not isinstance(payload, list) or len(payload) > MAX_OPERATIONS:
+    if not isinstance(payload, list) or (max_operations is not None and len(payload) > max_operations):
         fail("execution_snapshot_invalid", "存下来的工序执行快照条数超出上限或格式不对，这次排产没有开始。请刷新重试；仍不行请联系维护人员。")
     projections = []
     refs = set()
@@ -114,15 +114,8 @@ def prepare_execution_projections(payload):
 
 def restore_execution_projections(payload):
     """Materialize the worker DTOs from the same strict, prepared saved fields."""
-    if not isinstance(payload, list):
-        fail("execution_snapshot_invalid", "存下来的工序执行快照条数超出上限或格式不对，这次排产没有开始。请刷新重试；仍不行请联系维护人员。")
-    projections, refs = [], set()
-    for offset in range(0, len(payload), MAX_OPERATIONS):
-        for row in prepare_execution_projections(payload[offset:offset + MAX_OPERATIONS]):
-            ref = row["operation_ref"]
-            if ref in refs:
-                fail("execution_snapshot_invalid", "存下来的工序编号不对或者有重复，这次排产没有开始。请刷新重试；仍不行请联系维护人员。")
-            refs.add(ref)
-            row["reports"] = [ProductionReport(**report) for report in row["reports"]]
-            projections.append(ExecutionProjection(**row))
+    projections = []
+    for row in prepare_execution_projections(payload, max_operations=None):
+        row["reports"] = [ProductionReport(**report) for report in row["reports"]]
+        projections.append(ExecutionProjection(**row))
     return projections

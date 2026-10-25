@@ -3,13 +3,19 @@
 from dataclasses import dataclass
 
 from core.models.resource_capabilities import supports_source
-from core.models.workbench_batch import normalize_operation_input, object_fields
+from core.models.workbench_batch import object_fields
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
-from core.services.scheduler.contracts.external_context import context_problem, group_from_context
+from core.services.scheduler.contracts.external_context import (
+    context_group_key,
+    context_problem,
+    group_from_context,
+    member_index,
+    merged_supplier_problem,
+)
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from data.repositories.batch_operation_repo import BatchOperationRepository
 
-from .facts import BatchFacts, related, require_unreferenced
+from .facts import BatchFacts, index_relations, require_unreferenced
 from .projection import BatchProjection
 from .resource_choices import BatchResourceFacts
 from .template_preview import template_after, template_changes
@@ -52,10 +58,6 @@ class WorkbenchBatchOperationService:
             raise WorkbenchCommandRejected("constraint_conflict", "\n".join(row["message"] for row in status["diagnostics"]))
         return rows
 
-    def sync_preview(self, ref, payload):
-        self.normalize_sync(payload)
-        return self.sync_preview_normalized(ref)
-
     def sync_preview_normalized(self, ref):
         batch, facts = self.reader.batch(ref), self.reader.load()
         projection = BatchProjection(facts)
@@ -66,15 +68,11 @@ class WorkbenchBatchOperationService:
                 "before": before["operations"], "after": after, **template_changes(before["operations"], after),
                 "warnings": [], "commit_policy": "atomic"}
 
-    def sync(self, ref, payload):
-        self.normalize_sync(payload)
-        return self.sync_normalized(ref)
-
     def sync_normalized(self, ref):
         if not self.conn.in_transaction:
             raise RuntimeError("工序同步必须由工作台命令事务持有。")
         batch, facts = self.reader.batch(ref), self.reader.load()
-        rows = self._prepare_sync(batch, facts, relations=related(facts, batch), resources=BatchResourceFacts(facts))
+        rows = self._prepare_sync(batch, facts, relations=index_relations(facts)[batch["batch_id"]], resources=BatchResourceFacts(facts))
         writer = TemplateLineageWriter(self.conn)
         prepared = writer.prepare_templates(rows, facts=facts)
         BatchOperationRepository(self.conn).delete_by_batch(batch["batch_id"])
@@ -82,15 +80,12 @@ class WorkbenchBatchOperationService:
             writer.copy_prepared_template(batch["batch_id"], row)
         return WorkbenchCommandOutcome("committed", {"entity_ref": ref, "business_code": batch["batch_id"], "operation_count": len(rows)})
 
-    def update(self, ref, payload):
-        return self.apply_update(self.prepare_update(ref, normalize_operation_input(payload)))
-
     def prepare_update(self, ref, payload):
         """The command's normalized input and current facts produce the actual field changes."""
         if not self.conn.in_transaction:
             raise RuntimeError("工序编辑必须由工作台命令事务持有。")
         batch, facts = self.reader.batch(ref), self.reader.load()
-        relations = related(facts, batch)
+        relations = index_relations(facts)[batch["batch_id"]]
         require_unreferenced(relations)
         row = next((row for row in relations["operations"]
                     if facts["operation_refs"][row["id"]] == payload["operation_ref"]), None)
@@ -98,10 +93,10 @@ class WorkbenchBatchOperationService:
             raise WorkbenchCommandRejected("entity_not_found", "工序已失效或不属于该批次，不能按序号猜测替换。", 404)
         internal = row["source"] == "internal"
         changes = self._changes(row, payload["fields"], internal)
-        desired = {**row, **changes}
-        self._validate(facts, batch, desired, internal, changes)
-        changes = {key: value for key, value in changes.items() if row[key] != value}
-        return BatchOperationChange(ref, batch["batch_id"], payload["operation_ref"], row["id"], changes)
+        actual_changes = {key: value for key, value in changes.items() if row[key] != value}
+        desired = {**row, **actual_changes}
+        self._validate(facts, batch, desired, internal, actual_changes, relations["operations"])
+        return BatchOperationChange(ref, batch["batch_id"], payload["operation_ref"], row["id"], actual_changes)
 
     def apply_update(self, change):
         if not self.conn.in_transaction:
@@ -124,7 +119,7 @@ class WorkbenchBatchOperationService:
                 changes["ext_days" if key == "external_days" else key] = value
         return changes
 
-    def _validate(self, facts, batch, row, internal, changes):
+    def _validate(self, facts, batch, row, internal, changes, operations):
         resources = BatchResourceFacts(facts)
         work_type = resources.catalogs["op_type"].get(row["op_type_id"])
         if work_type is None or not supports_source(work_type["category"], row["source"]):
@@ -138,7 +133,7 @@ class WorkbenchBatchOperationService:
         if internal:
             self._validate_internal(resources, row)
         else:
-            self._validate_external(resources, facts, batch, row, changes)
+            self._validate_external(resources, facts, batch, row, changes, operations)
 
     def _validate_internal(self, resources, row):
         machine = resources.catalogs["machine"].get(row["machine_id"])
@@ -146,14 +141,26 @@ class WorkbenchBatchOperationService:
             raise WorkbenchCommandRejected("constraint_conflict", "设备与工序工种不匹配。")
         resources.require_operator(row["operator_id"], row["op_type_id"], row["machine_id"])
 
-    def _validate_external(self, resources, facts, batch, row, changes):
-        context = next((item for item in facts["BatchExternalContexts"] if item["operation_id"] == row["id"]), None)
+    def _validate_external(self, resources, facts, batch, row, changes, operations):
+        contexts = {item["operation_id"]: item for item in facts["BatchExternalContexts"]}
+        context = contexts.get(row["id"])
         problem = context_problem(context, operation_id=row["id"], part_no=batch["part_no"], sequence=row["seq"])
-        group = None if problem else group_from_context(context)
-        if group and group["merge_mode"] == "merged" and "ext_days" in changes:
-            raise WorkbenchCommandRejected("constraint_conflict", "合并外协组不能逐道改周期；请保留整组周期规则。")
-        if group and group["merge_mode"] == "merged" and "supplier_id" in changes:
-            raise WorkbenchCommandRejected("constraint_conflict", "合并外协段不能单独更换供应商。请在工艺资料中整段改派，再预检并更新本批次工序。")
+        if problem is not None:
+            raise WorkbenchCommandRejected("constraint_conflict", problem)
+        group = group_from_context(context)
+        if group and group["merge_mode"] == "merged":
+            if "ext_days" in changes:
+                raise WorkbenchCommandRejected("constraint_conflict", "合并外协组不能逐道改周期；请保留整组周期规则。")
+            if "supplier_id" in changes:
+                raise WorkbenchCommandRejected("constraint_conflict", "合并外协段不能单独更换供应商。请在工艺资料中整段改派，再预检并更新本批次工序。")
+            members = member_index(contexts, operations)
+            problem = merged_supplier_problem(
+                context,
+                row["supplier_id"],
+                members.get((row["batch_id"], context_group_key(context), row["piece_id"])),
+            )
+            if problem is not None:
+                raise WorkbenchCommandRejected("constraint_conflict", problem)
         if row["supplier_id"]:
             if not resources.supplier_capable(row["supplier_id"], row["op_type_id"]):
                 raise WorkbenchCommandRejected("constraint_conflict", "这家供应商没有登记这道外协工序的能力。")

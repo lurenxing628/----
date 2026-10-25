@@ -10,9 +10,9 @@ from flask import Blueprint, Flask, g
 
 from core.infrastructure.database import ensure_schema
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, current_schema_contract_issues
+from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.models.workbench_command import WorkbenchCommandOutcome, canonical_json
 from core.models.workbench_run_job import new_run_ref
-from core.services.scheduler.config.config_field_spec import default_snapshot_values
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from data.repositories.workbench_run_result_repo import WorkbenchRunResultRepository
@@ -62,7 +62,7 @@ def seed(case, state="queued", *, accepted="2026-09-10T12:00:00", counts=(1,), s
     """Build a synthetic but internally consistent durable ledger using real repositories."""
     conn, repo, key = case.conn, WorkbenchRunRepository(case.conn), new_run_ref()
     ref = repo.insert(request_key=key, input_ref="private-input-" + key, settings=settings if settings is not None else case.settings(),
-        facts_hash="a" * 64, facts_json='{"private":true}', projections=[], baseline={}, now=accepted)
+        facts_hash="a" * 64, facts_json='{"private":true}', projections=[], baseline={}, now=accepted, run_ref=new_run_ref())
     WorkbenchCommandRepository(conn).insert(request_key=key, receipt_ref=new_run_ref()[:32], action="scheduling.run",
         context_ref="private-input-" + key, input_hash="b" * 64, outcome=WorkbenchCommandOutcome("committed", {"run_ref": ref}))
     when = datetime.fromisoformat(accepted)

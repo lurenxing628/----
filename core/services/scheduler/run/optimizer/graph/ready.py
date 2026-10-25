@@ -6,10 +6,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithms import ScheduleResult, SortStrategy
-from core.services.scheduler.run.optimizer.graph_ready_profiles import (
-    GRAPH_READY_PHASE,
-    GraphReadyWeightProfile,
-)
+from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
 from core.services.scheduler.run.optimizer.search_stage import SearchStage
 
 from .budget import GraphReadySearchBudget
@@ -21,7 +18,6 @@ from .predecode import GraphReadyProfileSearch
 from .profile_selection import resolve_graph_ready_profiles_and_metrics
 from .repair import EliteRepairPool, EliteRepairRun
 from .repair_contract import EliteRepairLimits, resolve_elite_repair_limits
-from .reporting import mark_phase_skipped
 from .stages import GraphSearchState, IteratedGreedyStage, ProfileStage, RepairStage, iterated_greedy_parent_profile
 from .v2_features import enrich_graph_ready_v2_metrics
 
@@ -30,7 +26,7 @@ if TYPE_CHECKING:
     from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
 
-class _GraphReadyDeadlineExhausted(RuntimeError):
+class GraphReadyDeadlineExhausted(RuntimeError):
     pass
 
 
@@ -75,7 +71,7 @@ def prepare_shared_graph_features(
         operations=algo_ops_to_schedule, batches=batches,
         start_dt=start_dt, calendar_service=getattr(scheduler, "calendar", None), downtime_map=downtime_map,
         seed_results=seed_sr_list, resource_pool=resource_pool,
-        graph_ready_context=graph_ready_context, include_baseline_ordering=True,
+        graph_ready_context=graph_ready_context,
     )
     return SharedGraphFeatures(metrics, build_v2_common_rank_cache(metrics))
 
@@ -85,7 +81,7 @@ def _before_graph_metrics(*, construction: Optional[Dict[str, Any]], deadline: f
     resolve_elite_repair_limits(construction, enabled=False)
     resolve_iterated_greedy_limits(construction, enabled=False)
     if clock() >= deadline:
-        raise _GraphReadyDeadlineExhausted()
+        raise GraphReadyDeadlineExhausted()
 
 
 def build_graph_search_stages(
@@ -119,7 +115,6 @@ def build_graph_search_stages(
 ) -> GraphStageBundle:
     skip_reason = _phase_skip_reason(algo_mode=algo_mode, graph_ready_context=graph_ready_context)
     if skip_reason:
-        mark_phase_skipped(search_report_state, skip_reason)
         return GraphStageBundle(GraphSearchState(best), [])
 
     profiles, profile_summary = resolve_graph_ready_profiles_and_metrics(
@@ -136,11 +131,7 @@ def build_graph_search_stages(
     # Iterated greedy shares the incumbent during rotation and follows the repair switch.
     iterated_greedy_limits = resolve_iterated_greedy_limits(candidate_construction, enabled=repair_limits.enabled)
     if clock() >= deadline:
-        mark_phase_skipped(search_report_state, "time_budget")
-        if search_report_state is not None:
-            search_report_state.mark_deadline_reached()
         return GraphStageBundle(GraphSearchState(best), [])
-    _update_graph_ready_profile(search_report_state, profile_summary=profile_summary)
     order = _candidate_order(best, build_order=build_order, base_strategy=base_strategy, base_params=base_params)
     return _build_weight_profile_stages(
         profiles=profiles,
@@ -181,15 +172,6 @@ def _phase_skip_reason(*, algo_mode: str, graph_ready_context: Optional[Any]) ->
     return None
 
 
-def _update_graph_ready_profile(
-    search_report_state: Optional[OptimizationSearchReportState],
-    *,
-    profile_summary: Dict[str, Any],
-) -> None:
-    if search_report_state is not None:
-        search_report_state.update_candidate_profile(graph_ready_optimization=dict(profile_summary or {}))
-
-
 def _build_weight_profile_stages(
     *,
     profiles: List[GraphReadyWeightProfile],
@@ -216,7 +198,7 @@ def _build_weight_profile_stages(
     search_report_state: Optional[OptimizationSearchReportState],
     order: List[str],
     repair_limits: EliteRepairLimits,
-    iterated_greedy_limits: Optional[IteratedGreedyLimits] = None,
+    iterated_greedy_limits: IteratedGreedyLimits,
     prepared_features: SharedGraphFeatures,
     decode_session: SharedDecodeSession,
 ) -> GraphStageBundle:
@@ -244,22 +226,21 @@ def _build_weight_profile_stages(
     state = GraphSearchState(best)
     stages: List[SearchStage] = [ProfileStage(
         profiles=profiles, search=search, pool=pool, state=state, order=order, strict_mode=bool(strict_mode),
-        base_strategy=base_strategy, dispatch_rule_cfg=dispatch_rule_cfg, version=int(version), attempts=attempts,
+        base_strategy=base_strategy, dispatch_rule_cfg=dispatch_rule_cfg, attempts=attempts,
         improvement_trace=improvement_trace, search_report_state=search_report_state, clock=clock, t_begin=t_begin)]
     if _has_v2_profile(profiles) or repair_limits.enabled:
         repair = EliteRepairRun(pool, state=state, evaluate=evaluate, budget=budget, deadline=deadline, clock=clock,
                                 t_begin=t_begin, attempts=attempts, improvement_trace=improvement_trace,
                                 report_state=search_report_state, strict_mode=bool(strict_mode))
         stages.append(RepairStage(repair))
-        if iterated_greedy_limits is not None:
-            greedy = IteratedGreedyRun(
-                limits=iterated_greedy_limits, state=state,
-                parent_profile=partial(iterated_greedy_parent_profile, pool=pool, profiles=profiles),
-                pool=pool, evaluate=evaluate, operations=algo_ops_to_schedule, graph_context=graph_ready_context,
-                metrics_by_op_id=metrics_by_op_id, objective_name=objective_name, start_dt=start_dt, seed=int(version),
-                deadline=deadline, clock=clock, t_begin=t_begin, attempts=attempts, improvement_trace=improvement_trace,
-                report_state=search_report_state, strict_mode=bool(strict_mode), decode_session=decode_session)
-            stages.append(IteratedGreedyStage(greedy, startup_ready=lambda: bool(pool.elites) or not stages[0].available()))
+        greedy = IteratedGreedyRun(
+            limits=iterated_greedy_limits, state=state,
+            parent_profile=partial(iterated_greedy_parent_profile, pool=pool, profiles=profiles),
+            pool=pool, evaluate=evaluate, operations=algo_ops_to_schedule, graph_context=graph_ready_context,
+            metrics_by_op_id=metrics_by_op_id, objective_name=objective_name, start_dt=start_dt, seed=int(version),
+            deadline=deadline, clock=clock, t_begin=t_begin, attempts=attempts, improvement_trace=improvement_trace,
+            report_state=search_report_state, strict_mode=bool(strict_mode), decode_session=decode_session)
+        stages.append(IteratedGreedyStage(greedy, startup_ready=lambda: bool(pool.elites) or not stages[0].available()))
     return GraphStageBundle(state, stages)
 
 
@@ -281,7 +262,6 @@ def _candidate_order(
 
 
 __all__ = [
-    "GRAPH_READY_PHASE",
     "GraphStageBundle",
     "SharedGraphFeatures",
     "build_graph_search_stages",

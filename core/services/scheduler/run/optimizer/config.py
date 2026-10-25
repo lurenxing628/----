@@ -8,6 +8,7 @@ from core.algorithms import SortStrategy
 from core.errors import ValidationError
 from core.models.enums import YesNo
 from core.models.schedule_config_runtime import ensure_schedule_config_snapshot
+from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 from core.services.scheduler.config.config_field_spec import choices_for
 from core.shared.boolean_normalize import to_yes_no
 from core.shared.strict_parse import parse_required_float, parse_required_int
@@ -121,6 +122,8 @@ def record_optimizer_cfg_degradations(
 
 
 def ensure_optimizer_config_snapshot(cfg: Any, *, strict_mode: bool) -> Any:
+    if isinstance(cfg, ScheduleConfigSnapshot):
+        return cfg
     return ensure_schedule_config_snapshot(
         cfg,
         strict_mode=bool(strict_mode),

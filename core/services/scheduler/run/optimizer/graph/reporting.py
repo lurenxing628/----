@@ -7,7 +7,7 @@ from core.services.scheduler.run.optimizer.attempt_records import (
     append_rejected_reason_attempt,
     attempt_decision_evidence,
 )
-from core.services.scheduler.run.optimizer.graph_ready_profiles import GRAPH_READY_PHASE, GraphReadyWeightProfile
+from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
 
 if TYPE_CHECKING:
     from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
@@ -83,11 +83,6 @@ def record_rejected_attempt(
     )
 
 
-def mark_phase_skipped(search_report_state: Optional[OptimizationSearchReportState], reason: str) -> None:
-    if search_report_state is not None:
-        search_report_state.mark_phase_skipped(GRAPH_READY_PHASE, reason)
-
-
 def public_params(params: Any) -> Dict[str, Any]:
     if not isinstance(params, dict):
         return {}
@@ -96,32 +91,6 @@ def public_params(params: Any) -> Dict[str, Any]:
     if isinstance(profile, dict):
         out["graph_ready_profile"] = _public_profile(profile)
     return out
-
-
-def repair_public_message(report: Dict[str, Any]) -> str:
-    status_labels = {
-        "not_run": "未启用", "skipped_no_elite": "没有可修补精英", "skipped_by_budget": "预算不足，未执行",
-        "no_strict_improvement": "未得到严格更优方案", "strict_improvement": "已采纳严格更优方案",
-        "all_candidates_rejected": "修补候选全部拒绝",
-    }
-    rejection_labels = {
-        "same_fingerprint": "输出重复", "no_strict_improvement": "分数未严格改善",
-        "repair_infeasible": "候选不可行", "acceptance_rejected": "接受检查未通过",
-    }
-    counts: Dict[str, int] = {}
-    for reason, count in report["repair_rejection_summary"].items():
-        label = rejection_labels.get(reason, "候选校验失败")
-        counts[label] = counts.get(label, 0) + int(count)
-    rejection = "，".join(label + str(count) for label, count in sorted(counts.items())) or "无拒绝"
-    return (
-        "GraphReady 修补" + ("已启用" if report["repair_enabled"] else "未启用")
-        + "，精英上限" + str(report["repair_top_k"])
-        + "，评估" + str(report["repair_evaluated_candidates"])
-        + "，去重剪枝" + str(report["repair_pruned_candidates"])
-        + "，预算跳过" + str(report["repair_skipped_by_budget"])
-        + "；" + status_labels[report["repair_status"]] + "；" + rejection
-        + "。仅为预算内搜索，不构成最优性证明。"
-    )
 
 
 def _public_profile(profile: Dict[str, Any]) -> Dict[str, Any]:

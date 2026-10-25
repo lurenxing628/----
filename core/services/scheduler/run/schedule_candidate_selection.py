@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from .optimizer.shared_process import _numeric_score
+from .optimizer.shared_process import numeric_score
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,7 @@ class BusinessObjectiveSelectionResult:
                 "objective_winners": dict(self.objective_winners),
                 "objective_winner_reasons": dict(self.objective_winner_reasons),
                 "objective_field_order": dict(self.objective_field_order),
-                "selected_score": _numeric_score(self.selected_score,
+                "selected_score": numeric_score(self.selected_score,
                     components_known=self.scoring_scope["components_known"]),
                 "reason_code": self.reason_code, "scoring_scope": self.scoring_scope,
                 "evidence_state": self.evidence_state}

@@ -3,6 +3,7 @@
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_downtime import REASONS
 from data.repositories.machine_downtime_repo import MachineDowntimeRepository
+from data.repositories.schedule_time_sql import parse_dt_for_sql, require_dt_for_sql
 from data.repositories.workbench_downtime_repo import WorkbenchDowntimeRepository
 
 from .queries import WorkbenchResourceQueryService
@@ -17,7 +18,7 @@ class WorkbenchDowntimeService:
 
     def snapshot(self, ref):
         identity = self.reader.resolve(ref)
-        state = self.reader.domain.snapshot_current(identity)
+        state = self.reader.current_with_identity(identity)
         rows = self.facts.rows(identity.entity_key)
         if any(row["ref"] is None for row in rows):
             raise WorkbenchCommandRejected("storage_failure", "停机记录的系统编号不完整，请联系维护人员核对。", 503)
@@ -31,34 +32,47 @@ class WorkbenchDowntimeService:
     def apply_normalized(self, ref, action, payload, state):
         if not self.conn.in_transaction:
             raise RuntimeError("停机维护必须在工作台命令事务内执行。")
-        row = self._target(action, payload, state)
         if action == "cancel":
-            if row is None:
-                raise RuntimeError("取消停机前必须核对原记录。")
+            row = self._target(action, payload, state)
             self.repo.cancel(row["id"])
             return WorkbenchCommandOutcome("committed", {"entity_ref": ref, "operation": "machine.downtime_" + action, "downtime_ref": row["ref"]})
+        row = None if action == "create" else self._target(action, payload, state)
         return self._save(ref, action, payload, state, row)
 
     @staticmethod
     def _target(action, payload, state):
-        row = None
-        if action != "create":
-            row = next((row for row in state["rows"] if row["ref"] == payload["downtime_ref"]), None)
-            if row is None:
-                raise WorkbenchCommandRejected("entity_not_found", "停机记录已失效或不属于该设备，请刷新后重新选择。", 404)
-            if row["status"] != "active":
-                raise WorkbenchCommandRejected("constraint_conflict", "这条停机记录已经取消，不能再修改。")
+        row = next((row for row in state["rows"] if row["ref"] == payload["downtime_ref"]), None)
+        if row is None:
+            raise WorkbenchCommandRejected("entity_not_found", "停机记录已失效或不属于该设备，请刷新后重新选择。", 404)
+        if row["status"] == "cancelled":
+            raise WorkbenchCommandRejected("constraint_conflict", "这条停机记录已经取消，不能再修改。")
+        if action == "update" and row["status"] != "active":
+            raise WorkbenchCommandRejected("constraint_conflict", "这条停机记录状态异常，不能直接修改。")
         return row
 
     def _save(self, ref, action, payload, state, row):
         fields = {key: value for key, value in payload.items() if key != "downtime_ref"}
-        if self.repo.has_overlap(state["machine_id"], fields["start_time"], fields["end_time"], row["id"] if row else None):
-            raise WorkbenchCommandRejected("constraint_conflict", "该设备已有与此时间重叠的有效停机记录，请核对起止时间。")
+        parsed_start = require_dt_for_sql(fields["start_time"], "停机重叠检查开始时间写法不对，无法判断停机冲突")
+        parsed_end = require_dt_for_sql(fields["end_time"], "停机重叠检查结束时间写法不对，无法判断停机冲突")
+        if row is None or (parse_dt_for_sql(row["start_time"]), parse_dt_for_sql(row["end_time"])) != (parsed_start, parsed_end):
+            exclude_id = row["id"] if row else None
+            for existing in state["rows"]:
+                if existing["status"] != "active" or existing["id"] == exclude_id:
+                    continue
+                existing_start = parse_dt_for_sql(existing["start_time"])
+                existing_end = parse_dt_for_sql(existing["end_time"])
+                if (
+                    existing_start is not None
+                    and existing_end is not None
+                    and existing_start < existing_end
+                    and existing_end > parsed_start
+                    and existing_start < parsed_end
+                ):
+                    raise WorkbenchCommandRejected("constraint_conflict", "该设备已有与此时间重叠的有效停机记录，请核对起止时间。")
         if row is None:
-            created = self.repo.create({**fields, "machine_id": state["machine_id"], "scope_type": "machine",
-                                        "scope_value": state["machine_id"], "status": "active"})
-            new = next(item for item in self.facts.rows(state["machine_id"]) if item["id"] == created.id)
-            return WorkbenchCommandOutcome("committed", {"entity_ref": ref, "operation": "machine.downtime_" + action, "downtime_ref": new["ref"]})
+            created_id = self.repo.create({**fields, "machine_id": state["machine_id"], "scope_type": "machine",
+                                           "scope_value": state["machine_id"], "status": "active"})
+            return WorkbenchCommandOutcome("committed", {"entity_ref": ref, "operation": "machine.downtime_" + action, "downtime_ref": self.facts.ref_for_id(created_id)})
         changed = any(row[key] != value for key, value in fields.items())
         if changed:
             self.repo.update(row["id"], fields)

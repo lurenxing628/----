@@ -77,19 +77,24 @@
       return B.list(await adapter.list('batch', scope, signal), scope);
     }, [adapter, scope, revision], !initial.error);
     const data = list.result && list.result.data, snapshot = list.result && list.result.meta.snapshot_ref;
+    const entityRefs = React.useMemo(() => data ? new Set(data.entities.map(row => row.ref)) : null, [data]);
     const blocked = disabled || !!initial.error || command.locked || busy || !!dialog;
     const rememberedScope = Object.fromEntries(scopeKeys.filter(key => scope[key] !== undefined).map(key => [key, scope[key]]));
     window.WorkbenchPageContext.useSnapshot({ read_view: { scope: rememberedScope, selected_refs: selected, entity_ref: opened, sort_state: sort,
       source_context: opened === initial.opened ? initial.sourceContext : null } },
       !!data && !deferred && command.phase === 'idle' && !busy && !dialog
-      && list.result.meta.source === 'production' && (!opened || data.entities.some(row => row.ref === opened)));
+      && list.result.meta.source === 'production' && (!opened || entityRefs.has(opened)));
     function filter(patch) { setScope(current => ({ ...current, ...patch, page: 1, snapshot_ref: undefined })); }
     function clearFilters() { setQuery(''); filter({ query: '', status: undefined, ready_status: undefined, column_filters: {}, focus: undefined, batch_ids: undefined }); }
     function close() { if (command.locked || !command.reset()) return; setDialog(null); setBulk(emptyBulk); setError(null); }
     async function closeBulk() { if (!busy && await window.WorkbenchGuards.confirmLeave({ owner: bulkGuard })) close(); }
     function committed(receipt) {
       const deleted = receipt.data.deleted_refs || [];
-      if (deleted.length) { setSelected(current => current.filter(ref => !deleted.includes(ref))); if (deleted.includes(opened)) setOpened(null); }
+      if (deleted.length) {
+        const deletedSet = new Set(deleted);
+        setSelected(current => current.filter(ref => !deletedSet.has(ref)));
+        if (deletedSet.has(opened)) setOpened(null);
+      }
       setRevision(current => current + 1); filter({}); if (onCommitted) onCommitted(receipt);
     }
     async function preview(action, input, entity, token) {
@@ -148,7 +153,7 @@
         <window.BatchTable adapter={adapter} rows={data ? data.entities : []} scope={scope} selected={selected} setSelected={setSelected} onOpen={setOpened} onDelete={deletion}
           onSort={sortBy} onFilter={field => setDialog({ type: 'column', field, scope: { ...scope, snapshot_ref: snapshot } })} onClear={clearFilters} onRetry={() => filter({})} error={list.error} loading={list.loading} disabled={blocked || list.loading} />
         {data && <window.WorkbenchControls.Pager page={data.page} sizes={Array.from(new Set([20, 50, 100, data.page.size])).sort((a, b) => a - b)} unit="个批次" label="" sizeLabel="每页条数" showPageJump disabled={blocked} onSize={size => filter({ size })} onPage={page => setScope(current => ({ ...current, page, snapshot_ref: snapshot }))} />}
-        <div className="toolbar batch-selection"><span>已选 {selected.length} 个批次{selected.some(ref => !data || !data.entities.some(row => row.ref === ref)) ? ' · 含非当前页记录' : ''}</span>
+        <div className="toolbar batch-selection"><span>已选 {selected.length} 个批次{selected.some(ref => !entityRefs || !entityRefs.has(ref)) ? ' · 含非当前页记录' : ''}</span>
           <Button onClick={selectFiltered} disabled={blocked || !snapshot}>全选当前筛选</Button><Button icon="x" disabled={blocked || !selected.length} onClick={() => setSelected([])}>清除选择</Button>
           <Button icon="square-pen" disabled={blocked || !selected.length} onClick={() => setDialog({ type: 'bulk' })}>批量修改</Button>
           <Button icon="copy" disabled={blocked || !selected.length} onClick={() => preview('bulk', { action: 'copy', refs: selected, patch: {} })}>复制所选</Button>

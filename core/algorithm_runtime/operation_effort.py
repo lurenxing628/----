@@ -18,28 +18,27 @@ def _read_legacy_field(obj: Any, field: str) -> Any:
     return getattr(obj, field)
 
 
-def _coerce_legacy_hours_value(raw_value: Any, *, field: str) -> float:
+def _coerce_hours_value(raw_value: Any, *, field: str) -> float:
     if raw_value is _MISSING:
         return 0.0
-    if raw_value is True:
-        return 1.0
-    if raw_value is False:
-        return 0.0
-    if not raw_value:
-        return 0.0
+    if isinstance(raw_value, bool):
+        raise ValueError(f"工时字段不能是布尔值：{field}={raw_value!r}")
     try:
-        return float(raw_value)
+        number = float(raw_value or 0)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"工时字段不合法：{field}={raw_value!r}") from exc
+    if not math.isfinite(number) or number < 0:
+        raise ValueError(f"工时字段必须是非负有限数字：{field}={raw_value!r}")
+    return number
 
 
 def internal_requirement_parts(op: Any, batch: Any) -> Tuple[float, float, float, float]:
     """Consume the dispatcher's already operation-local quantity unchanged."""
     setup_raw, unit_raw = _read_legacy_field(op, "setup_hours"), _read_legacy_field(op, "unit_hours")
     quantity_raw = _read_legacy_field(batch, "quantity")
-    setup = _coerce_legacy_hours_value(setup_raw, field="setup_hours")
-    unit = _coerce_legacy_hours_value(unit_raw, field="unit_hours")
-    quantity = _coerce_legacy_hours_value(quantity_raw, field="quantity")
+    setup = _coerce_hours_value(setup_raw, field="setup_hours")
+    unit = _coerce_hours_value(unit_raw, field="unit_hours")
+    quantity = _coerce_hours_value(quantity_raw, field="quantity")
     processing = unit * quantity
     required = setup + processing
     if not math.isfinite(required) or required < 0:
@@ -48,7 +47,9 @@ def internal_requirement_parts(op: Any, batch: Any) -> Tuple[float, float, float
     return setup, processing, required, quantity
 
 
-def internal_operation_effort(op: Any, batch: Any, *, remaining_quantity: Optional[int] = None) -> OperationEffort:
+def internal_operation_effort(
+    op: Any, batch: Any, *, remaining_quantity: Optional[int] = None,
+) -> OperationEffort:
     """Apply the same piece quantity rule used by the actual dispatcher."""
     setup, processing, required, quantity = internal_requirement_parts(op, operation_batch(op, batch))
     piece = getattr(op, "piece_id", None)

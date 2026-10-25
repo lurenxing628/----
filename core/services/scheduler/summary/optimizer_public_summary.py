@@ -228,22 +228,4 @@ def _optimizer_diagnostics(diagnostic_attempts: Any, *, search_report_diagnostic
     return {}
 
 
-def project_public_result_summary(summary: Any) -> Any:
-    """把整份 result_summary 收紧为用户可见安全摘要。
-
-    这是 summary 级 public 投影的单一真相源:剔除 diagnostics、对 algo 走
-    project_public_algo_summary 投影。页面/viewmodel 默认走本函数,不允许出现
-    "未投影就直接渲染 raw summary" 的不安全默认。非 dict 原样返回。
-    """
-    if not isinstance(summary, dict):
-        return summary
-    public_summary = dict(summary)
-    public_summary.pop("diagnostics", None)
-    algo = public_summary.get("algo")
-    if isinstance(algo, dict):
-        public_algo, _diagnostics = project_public_algo_summary(algo)
-        public_summary["algo"] = public_algo
-    return public_summary
-
-
-__all__ = ["project_public_algo_summary", "project_public_result_summary"]
+__all__ = ["project_public_algo_summary"]

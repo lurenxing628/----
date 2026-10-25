@@ -99,15 +99,17 @@ def trial():
 def system_overview():
     request_ref = uuid.uuid4().hex
     try:
+        from core.infrastructure.transaction import TransactionManager
         from core.services.system.workbench_overview import build_system_overview
 
-        data = build_system_overview(
-            g.db,
-            db_path=current_app.config["DATABASE_PATH"],
-            backup_dir=current_app.config["BACKUP_DIR"],
-            log_dir=current_app.config["LOG_DIR"],
-            backup_keep_days_default=int(current_app.config["BACKUP_KEEP_DAYS"]),
-        )
+        with TransactionManager(g.db).transaction():
+            data = build_system_overview(
+                g.db,
+                db_path=current_app.config["DATABASE_PATH"],
+                backup_dir=current_app.config["BACKUP_DIR"],
+                log_dir=current_app.config["LOG_DIR"],
+                backup_keep_days_default=int(current_app.config["BACKUP_KEEP_DAYS"]),
+            )
     except Exception:
         current_app.logger.exception("工作台系统概况读取失败 request_ref=%s", request_ref)
         response = json_response({"ok": False, "committed": False, "error": {

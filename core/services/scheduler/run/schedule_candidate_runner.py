@@ -3,29 +3,19 @@ from __future__ import annotations
 import math
 import time
 from copy import deepcopy
-from dataclasses import is_dataclass, replace
-from types import SimpleNamespace
-from typing import Any, Callable, Optional, cast
+from dataclasses import replace
+from typing import Any, Callable, Optional
 
 from core.errors import ValidationError
 from core.models.schedule_config_runtime import ensure_schedule_config_snapshot
 
 from .optimizer.search_budget import SearchBudget, SearchBudgetExhausted
-from .optimizer.shared_process import _numeric_score, score_scope_payload
+from .optimizer.shared_process import numeric_score, score_scope_payload
 from .schedule_candidate_plan import CandidateComparisonOutcome, CandidatePlan
 from .schedule_candidate_selection import BusinessObjectiveSelectionResult
 from .schedule_graph_report import prepare_schedule_graph_for_dispatch
+from .schedule_input_contracts import ScheduleRunInput
 from .schedule_shared_optimizer import optimize_shared_schedule
-
-
-def _replace_schedule_input_cfg(schedule_input: Any, *, cfg: Any) -> Any:
-    if is_dataclass(schedule_input) and not isinstance(schedule_input, type):
-        return replace(cast(Any, schedule_input), cfg=cfg)
-    if hasattr(schedule_input, "__dict__"):
-        data = dict(vars(schedule_input))
-        data["cfg"] = cfg
-        return SimpleNamespace(**data)
-    raise TypeError("schedule_input 必须是 dataclass 或普通对象，才能构造候选级输入。")
 
 
 def _resolve_total_budget(run_time_budget_seconds: Optional[float], *, cfg: Any) -> float:
@@ -45,11 +35,11 @@ def _resolve_total_budget(run_time_budget_seconds: Optional[float], *, cfg: Any)
 def _public_budget(total_budget: float) -> Optional[float]:
     if not math.isfinite(total_budget):
         return None
-    return float(total_budget)
+    return total_budget
 
 
 def run_candidate_comparison(
-    *, schedule_input: Any,
+    *, schedule_input: ScheduleRunInput,
     optimize_shared_schedule_fn: Optional[Callable[..., Any]] = None,
     prepare_graph_fn: Optional[Callable[[Any], Any]] = None,
     clock: Optional[Callable[[], float]] = None,
@@ -58,7 +48,7 @@ def run_candidate_comparison(
 ) -> CandidateComparisonOutcome:
     """Publish the actual business representatives from one shared search archive."""
     now = clock or time.monotonic
-    cfg = ensure_schedule_config_snapshot(schedule_input.cfg, strict_mode=bool(strict_mode))
+    cfg = ensure_schedule_config_snapshot(schedule_input.cfg, strict_mode=strict_mode)
     total_budget = _resolve_total_budget(run_time_budget_seconds, cfg=cfg)
     if math.isfinite(total_budget) and total_budget.is_integer() and total_budget >= 1:
         cfg = replace(cfg, time_budget_seconds=int(total_budget))
@@ -71,7 +61,7 @@ def run_candidate_comparison(
 
     def graph_prepare():
         nonlocal preparation
-        preparation = prepare_graph(_replace_schedule_input_cfg(schedule_input, cfg=cfg))
+        preparation = prepare_graph(replace(schedule_input, cfg=cfg))
         return preparation
 
     shared = (optimize_shared_schedule_fn or optimize_shared_schedule)(
@@ -79,12 +69,12 @@ def run_candidate_comparison(
         algo_ops_to_schedule=schedule_input.algo_ops_to_schedule, batches=schedule_input.batches,
         start_dt=schedule_input.start_dt_norm, end_date=schedule_input.end_date_norm,
         downtime_map=schedule_input.downtime_map, seed_results=schedule_input.seed_results,
-        resource_pool=schedule_input.resource_pool, version=int(schedule_input.optimizer_seed_version),
-        logger=logger, readiness_gate_enabled=bool(schedule_input.readiness_gate_enabled),
-        strict_mode=bool(strict_mode), graph_prepare=graph_prepare, search_budget=budget,
+        resource_pool=schedule_input.resource_pool, version=schedule_input.optimizer_seed_version,
+        logger=logger, readiness_gate_enabled=schedule_input.readiness_gate_enabled,
+        strict_mode=strict_mode, graph_prepare=graph_prepare, search_budget=budget,
     )
     primary = shared.archive.primary_objective
-    targets = tuple(shared.target_objectives)
+    targets = shared.target_objectives
     selected_entries = shared.process_facts["selected_entries_by_objective"]
     candidates, entries = [], {}
     for target in targets:
@@ -149,14 +139,14 @@ def _business_representative(shared, entry, *, sequence, primary, targets, cfg, 
         graph_analysis_public=preparation.graph_analysis_public if preparation is not None else None,
         graph_analysis_diagnostics=preparation.graph_analysis_diagnostics if preparation is not None else None,
         used_strategy=candidate["strategy"], used_params=params, best_order=candidate.get("order") or [],
-        algo_mode=str(cfg.algo_mode), objective_name=primary, objective=primary,
+        algo_mode=cfg.algo_mode, objective_name=primary, objective=primary,
         algo_stats=candidate.get("algo_stats") or {}, time_budget_seconds=total_budget,
-        sort_strategy=str(getattr(candidate["strategy"], "value", candidate["strategy"])),
-        dispatch_mode=str(params["dispatch_mode"]), dispatch_rule=str(params["dispatch_rule"]),
-        adopted_dispatch_rule=str(params["dispatch_rule"]), generation_policy_version="unified_search_v1",
+        sort_strategy=candidate["strategy"].value,
+        dispatch_mode=params["dispatch_mode"], dispatch_rule=params["dispatch_rule"],
+        adopted_dispatch_rule=params["dispatch_rule"], generation_policy_version="unified_search_v1",
         representative_objectives=representatives,
         evaluations={target: {"field_order": list(entry.evaluations[target].field_order),
-            "score": _numeric_score(entry.evaluations[target].score, components_known=scope["components_known"]),
+            "score": numeric_score(entry.evaluations[target].score, components_known=scope["components_known"]),
             "scoring_scope": dict(scope)} for target in targets},
         origin=origin, first_found_elapsed_ms=entry.first_found_elapsed_ms,
         search_evidence_ref={"source_event_id": shared.process_facts["evidence_event_ids_by_entry"].get(entry.entry_id)},

@@ -14,7 +14,7 @@ from .decision_tradeoffs import aggregate_tradeoffs, tradeoff_entry
 
 
 def candidate_tradeoffs(data, before_delivery, after_delivery, before_tasks, after_tasks, *, subject_operation_refs,
-                        before_intervals=None, after_intervals=None):
+                        before_intervals, after_intervals):
     candidate_ref, run_ref = data["candidate"]["candidate_ref"], data["generation"]["run_ref"]
     common = common_completed_delivery(before_delivery, after_delivery)
     refs, pair = common["common_completed_batch_refs"], common["common_delivery"]

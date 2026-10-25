@@ -49,6 +49,9 @@ class ProductionFactsCapture:
     def __init__(self, conn):
         self.conn = conn
         self.execution_service: Any = None
+        self.runtime_resources = None
+        self.execution_event_rows = None
+        self.execution_facts = {}
         self.schema = sorted((kind, name, table, sql)
                              for name, (kind, table, sql) in schema_contract_memo(conn).structure.objects.items())
         self.table_names = {name for kind, name, _, _ in self.schema if kind == "table"}
@@ -93,7 +96,7 @@ class ProductionFactsCapture:
     def latest_plan_rows(self, version):
         """One last-official projection; preserve duplicate identities as conflicts."""
         if version not in self._latest_plans:
-            from core.services.scheduler.run.schedule_execution_resource_facts import _conflict
+            from core.services.scheduler.run.schedule_execution_resource_facts import execution_conflict
 
             operations = self.index("BatchOperations", "id")
             latest, duplicates = {}, set()
@@ -110,7 +113,7 @@ class ProductionFactsCapture:
                 elif row["version"] == previous["version"]:
                     duplicates.add(op_id)
             if duplicates:
-                raise _conflict("duplicate_previous_schedule_rows")
+                raise execution_conflict("duplicate_previous_schedule_rows")
             self._latest_plans[version] = {op_id: latest[op_id] for op_id in sorted(latest)}
         return self._latest_plans[version]
 

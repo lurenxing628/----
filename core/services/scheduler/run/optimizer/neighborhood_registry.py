@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from core.errors import ValidationError
 
@@ -35,15 +35,6 @@ def validate_neighborhood_name(name: Any) -> str:
     return text
 
 
-def validate_neighborhoods(names: Tuple[str, ...]) -> Tuple[str, ...]:
-    out: List[str] = []
-    for name in names:
-        text = validate_neighborhood_name(name)
-        if text not in out:
-            out.append(text)
-    return tuple(out)
-
-
 def build_neighborhood_move(
     name: str,
     *,
@@ -53,7 +44,7 @@ def build_neighborhood_move(
     resource_pool: Optional[Dict[str, Any]],
     rnd: Any,
     current_dispatch_rule: str = "",
-    valid_dispatch_rules: Optional[List[str]] = None,
+    valid_dispatch_rules: List[str],
 ) -> NeighborhoodMove:
     key = validate_neighborhood_name(name)
     if key == CRITICAL_CHAIN:
@@ -71,36 +62,7 @@ def build_neighborhood_move(
     return sgs_dispatch_rule_move(order, current_dispatch_rule, valid_dispatch_rules, rnd)
 
 
-def choose_neighborhood_move(
-    *,
-    order: List[str],
-    neighborhoods: Tuple[str, ...],
-    results: List[Any],
-    batches: Dict[str, Any],
-    resource_pool: Optional[Dict[str, Any]],
-    rnd: Any,
-    current_dispatch_rule: str = "",
-    valid_dispatch_rules: Optional[List[str]] = None,
-) -> NeighborhoodMove:
-    choices = neighborhoods or ALLOWED_NEIGHBORHOODS
-    if not choices:
-        raise ValidationError("业务邻域列表不能为空。", field="neighborhood")
-    index = int(rnd.randrange(len(choices))) if len(choices) > 1 else 0
-    return build_neighborhood_move(
-        choices[index],
-        order=order,
-        results=results,
-        batches=batches,
-        resource_pool=resource_pool,
-        rnd=rnd,
-        current_dispatch_rule=current_dispatch_rule,
-        valid_dispatch_rules=valid_dispatch_rules,
-    )
-
-
 __all__ = [
     "build_neighborhood_move",
-    "choose_neighborhood_move",
     "validate_neighborhood_name",
-    "validate_neighborhoods",
 ]

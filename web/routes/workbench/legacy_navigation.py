@@ -50,7 +50,7 @@ _PLAN_PAGES = frozenset(("scheduler.gantt_page", "scheduler.analysis_page", "das
 def build_legacy_destination(decision):
     if decision.kind != "redirect":
         raise ValueError("Only equivalent navigation has a destination.")
-    value = {"version": 1, "view": decision.view, "context": dict(decision.context)}
+    value = {"version": 1, "view": decision.view, "context": decision.context}
     query = {"view": decision.view, "nav": canonical_json(value)}
     read_navigation(decision.view, query)
     path = "/workbench/trial" if decision.view == "trial" else "/workbench"
@@ -96,7 +96,7 @@ def _detail(queries, legacy, args):
 
 def _plan_page(queries, legacy, args):
     plan = resolve_legacy_plan(queries, args)
-    public = dict(plan.public_context)
+    public = plan.public_context
     resource = resource_filter(args)
     if plan.fallback:
         return _unsupported("requested_role_unavailable", "要对比的方案没有保存过，页面没有打开；系统没有改成已采用的正式计划。请从侧栏进入「选择排产方案」重新选择。", public)

@@ -118,9 +118,20 @@ def _candidate_point_evidence(schedule_input, row, operations, dispositions):
     if any(disposition[key] != value for key, value in (
             ("piece_id", op.piece_id), ("batch_id", op.batch_id), ("sequence", op.seq))):
         raise PointEventError("point_identity_unproven", "零工时工序的归属与原分件工序不一致。")
-    work = {key: getattr(op, key) for key in ("id", "batch_id", "piece_id", "source")}
+    work = {"id": op.id, "batch_id": op.batch_id, "piece_id": op.piece_id, "source": op.source}
     quantity = point_work_quantity(work, {"batch_id": batch.batch_id, "quantity": batch.quantity},
                                    disposition["execution"], disposition["operation_ref"])
+    if row.op_id in schedule_input.execution_completed_op_ids:
+        if internal_duration_hours(op.setup_hours, op.unit_hours, quantity) != 0:
+            raise PointEventError("point_duration_nonzero", "这道工序有实际工时，不是零工时工序。")
+        point_event_dto(row.start_time, row.end_time)
+        fact = schedule_input.execution_facts[row.op_id]
+        if (
+            (row.start_time, row.end_time) == (fact.actual_start_time, fact.actual_end_time)
+            and (row.machine_id, row.operator_id) == (fact.actual_machine_id, fact.actual_operator_id)
+        ):
+            return SchedulePointEvidence(row.op_id, row.machine_id, row.operator_id, row.start_time,
+                                         op.setup_hours, op.unit_hours, quantity)
     start, end = estimate_point_event(schedule_input.cal_svc, setup_hours=op.setup_hours,
         unit_hours=op.unit_hours, quantity=quantity, machine_id=row.machine_id,
         operator_id=row.operator_id, priority=batch.priority, start=row.start_time)

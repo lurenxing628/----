@@ -24,11 +24,7 @@ MAX_ACTUAL_RESPONSE_BYTES = 32 * 1024 * 1024
 MAX_ACTUAL_REPORTS = 50000
 
 
-def ledger_projection(conn, plan_ref, tasks):
-    return ExecutionLedgerService(conn).workspace_projection(plan_ref, tasks)
-
-
-def bind_axis_time(data, as_of, snapshot_ref=None):
+def bind_axis_time(data, as_of, snapshot_ref):
     """The visible clock is derived from the pinned as_of, not the browser clock."""
     clock = datetime.fromisoformat(as_of).replace(minute=0, second=0, microsecond=0)
     start = clock.isoformat(timespec="seconds")
@@ -103,6 +99,7 @@ class ActualGanttService:
     def __init__(self, conn, logger=None):
         self.conn = conn
         self.plans = WorkbenchPlanQueryService(conn, logger)
+        self.ledger = ExecutionLedgerService(conn)
 
     def read_snapshot(self):
         return self.plans.read_snapshot()
@@ -137,7 +134,7 @@ class ActualGanttService:
     def _execution(self, planned, scope):
         availability = {"state": "available", "reason_code": None, "reason": None}
         try:
-            projection = ledger_projection(self.conn, scope.plan_ref, planned["tasks"])
+            projection = self.ledger.workspace_projection(scope.plan_ref, planned["tasks"])
         except WorkbenchCommandRejected as exc:
             if exc.code == "query_too_large":
                 raise WorkbenchCommandRejected(exc.code,
@@ -176,7 +173,8 @@ class ActualGanttService:
                                   "reports": "all_effective_reports_of_selected_operations", "local_filters": "search_late_selected",
                                   "export": "full_snapshot_cohort_or_explicit_local_view", "time_basis": "factory_local"}}
             state = content_text({"plan": plan_state, "execution": projection["snapshot_facts"] if projection else None,
-                                       "data": data})
+                                  "tasks": [item["task"] for item in items], "resources": resources,
+                                  "gantt_graph": gantt_graph, "availability": availability})
             if include_chain:
                 data["critical_chain"] = plan_chain(scope.plan_ref,
                     {item["task"]["task_ref"] for item in items}, target_task_ref=chain_target, context=context)

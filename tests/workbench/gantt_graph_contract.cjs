@@ -72,6 +72,10 @@ assert(routeText(routeList).includes('所选工序有 1 道前序未在本计划
 const segmentedGraph = clone(graph); segmentedGraph.nodes.push({ ...segmentedGraph.nodes[0], task_ref: ref(8) });
 const segmentedIndex = G.create(segmentedGraph);
 assert.deepEqual(refs(G.route(segmentedIndex, ref(2)).previous.get(ref(2)).map(node => node.task_ref)), expected([8]), 'A predecessor resolves to its last saved arrangement, matching the shared producer');
+const crossGraph = clone(graph); crossGraph.nodes[1].predecessor_operation_refs.push(ref(27));
+const crossRoute = G.route(G.create(crossGraph), ref(2));
+assert.deepEqual(refs(crossRoute.previous.get(ref(2)).map(node => node.task_ref)), expected([1]), 'A predecessor in another batch stays out of this batch route');
+assert.equal(crossRoute.groups.reduce((sum, group) => sum + group.nodes.length, 0), crossRoute.count, 'A cross-batch predecessor does not strand its successor');
 
 // Selecting a middle operation includes predecessors, successors and common operations without crossing to a sibling piece.
 const index = G.create(graph), active = G.selection(index, { targetRef: ref(3) });

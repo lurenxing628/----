@@ -11,16 +11,23 @@ def corrupt():
     raise WorkbenchCommandRejected("dashboard_storage_invalid", "处置记录或关联记录不完整，请联系维护人员核对。", 409)
 
 
-def load_handling(raw):
+def _load_object(raw):
+    """存储边界只解码一次：不是合法 JSON 对象就按存储损坏拒绝。"""
     try:
         value = json.loads(raw)
-        if (type(value) is not dict or set(value) != {"status"} | set(HANDLING_FIELDS)
-                or value["status"] not in STATUSES
-                or any(value[key] is not None and type(value[key]) is not str for key in HANDLING_FIELDS)):
-            corrupt()
-        return value
     except (TypeError, ValueError):
         corrupt()
+    if type(value) is not dict:
+        corrupt()
+    return value
+
+
+def load_handling(raw):
+    value = _load_object(raw)
+    if (set(value) != {"status"} | set(HANDLING_FIELDS) or value["status"] not in STATUSES
+            or any(value[key] is not None and type(value[key]) is not str for key in HANDLING_FIELDS)):
+        corrupt()
+    return value
 
 
 def require_dashboard_schema(repo):
@@ -61,9 +68,10 @@ def read_stored(repo):
         identity = row.pop("_identity")
         tail_after, receipt = row.pop("_tail_after_json"), row.pop("_receipt_ref")
         row["handling"] = load_handling(row.pop("handling_json"))
-        row["origin"] = json.loads(row.pop("origin_json"))
+        row["origin"] = _load_object(row.pop("origin_json"))
         if (receipt is None or load_handling(tail_after) != row["handling"]
-                or row["origin"].get("item_ref") != row["item_ref"] or row["origin"].get("category") != row["category"]):
+                or row["origin"].get("item_ref") != row["item_ref"] or row["origin"].get("category") != row["category"]
+                or type(row["origin"].get("source")) is not dict):
             corrupt()
         result[row["item_ref"]] = row
         identities[row["item_ref"]] = identity
@@ -73,7 +81,7 @@ def read_stored(repo):
 def read_external_stored(repo, receipts):
     stored, identities = read_stored(repo)
     for ref, row in stored.items():
-        source = row["origin"].get("source", {})
+        source = row["origin"]["source"]
         outsourcing_ref = identities[ref]["outsourcing_ref"]
         captured = receipts.get(outsourcing_ref)
         members = captured["header"]["target"]["operation_refs"] if captured is not None else []
@@ -108,15 +116,11 @@ def read_history(repo, item_ref, number, size):
 def history_contents(row):
     """Bind archived source/guard contents to the original command outcome and history identity."""
     before, after = load_handling(row["before_json"]), load_handling(row["after_json"])
-    try:
-        source = json.loads(row["source_json"])
-        facts = json.loads(row["source_facts_json"])
-        outcome = json.loads(row["receipt_outcome_json"])
-    except (TypeError, ValueError):
-        corrupt()
-    if (type(source) is not dict or type(facts) is not dict or set(facts) != {"facts", "guard"}
-            or type(facts["facts"]) is not dict or type(facts["guard"]) is not dict
-            or type(outcome) is not dict or type(outcome.get("data")) is not dict):
+    source = _load_object(row["source_json"])
+    facts = _load_object(row["source_facts_json"])
+    outcome = _load_object(row["receipt_outcome_json"])
+    if (set(facts) != {"facts", "guard"} or type(facts["facts"]) is not dict or type(facts["guard"]) is not dict
+            or type(outcome.get("data")) is not dict):
         corrupt()
     guard, data = facts["guard"], outcome["data"]
     identity = guard.get("identity")

@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 from core.errors import ValidationError
-from core.services.scheduler.graph.precedence_builder import build_linear_edges_by_batch as _NATIVE_LINEAR_EDGES
 
 from .schedule_graph_dispatch_context import (
     GRAPH_CYCLE_DISABLED_REASON as _GRAPH_CYCLE_DISABLED_REASON,
@@ -23,11 +22,11 @@ from .schedule_graph_dispatch_context import (
     graph_ready_public_fields as _graph_ready_public_fields,
 )
 from .schedule_graph_projection_helpers import (
-    _sample,
-    _truncated,
+    graph_node_metrics_sample as _graph_node_metrics_sample,
 )
 from .schedule_graph_projection_helpers import (
-    graph_node_metrics_sample as _graph_node_metrics_sample,
+    is_truncated,
+    sample_values,
 )
 from .schedule_graph_projection_helpers import (
     project_graph_warning as _project_graph_warning,
@@ -72,7 +71,7 @@ def _graph_analysis_mode(cfg: Any) -> str:
 
 
 def _graph_block_on_cycle(cfg: Any) -> str:
-    value = str(getattr(cfg, "graph_block_on_cycle", "no") or "no").strip().lower()
+    value = str(cfg.graph_block_on_cycle).strip().lower()
     if value not in ("yes", "no"):
         raise ValueError(f"graph_block_on_cycle 只支持 yes/no：{value!r}")
     return value
@@ -136,11 +135,7 @@ def _build_schedule_graph_analysis_projection(
         )
         edges = build_linear_edges_by_batch(nodes)
         analyzer = ScheduleGraphAnalysisService()
-        if build_linear_edges_by_batch is _NATIVE_LINEAR_EDGES:
-            summary = analyzer.analyze_precedence(nodes, edges, metrics_mode=metrics_mode)
-        else:
-            # Unknown edge producers retain the legacy analysis/dispatch contract boundaries.
-            summary = analyzer.analyze_precedence(nodes, _NATIVE_LINEAR_EDGES(nodes), metrics_mode=metrics_mode)
+        summary = analyzer.analyze_precedence(nodes, edges, metrics_mode=metrics_mode)
         payload = graph_summary_to_dict(summary)
         projections = build_graph_dispatch_projections(
             schedule_input,
@@ -257,7 +252,7 @@ def _graph_unavailable_projection(
             "reason": "networkx_unavailable",
             "message": str(exc),
             "time_cost_ms": int(elapsed_ms),
-            **dict(scope),
+            **scope,
     }
     if mode == "on":
         public.update(
@@ -286,7 +281,7 @@ def _graph_contract_error_projection(
             "reason": reason,
             "message": str(exc),
             "time_cost_ms": int(elapsed_ms),
-            **dict(scope),
+            **scope,
     }
     if mode == "on":
         public.update(
@@ -329,7 +324,7 @@ def _project_graph_analysis_payload(
         "warning_count": int(len(warnings)),
         "cycle_edge_count": int(len(cycle_edges)),
         "time_cost_ms": int(elapsed_ms),
-        **dict(scope),
+        **scope,
     }
     public.update(
         _graph_ready_public_fields(
@@ -339,17 +334,17 @@ def _project_graph_analysis_payload(
         )
     )
     if score_public:
-        public.update(dict(score_public))
+        public.update(score_public)
     if resource_matching_public:
-        public["resource_matching"] = dict(resource_matching_public)
+        public["resource_matching"] = resource_matching_public
     diagnostics = {
-        "topological_order_sample": _sample(topological_order, _GRAPH_TOPOLOGICAL_SAMPLE_LIMIT),
+        "topological_order_sample": sample_values(topological_order, _GRAPH_TOPOLOGICAL_SAMPLE_LIMIT),
         "topological_order_count": int(len(topological_order)),
-        "topological_order_truncated": _truncated(topological_order, _GRAPH_TOPOLOGICAL_SAMPLE_LIMIT),
-        "critical_path_sample": _sample(critical_path, _GRAPH_CRITICAL_PATH_SAMPLE_LIMIT),
+        "topological_order_truncated": is_truncated(topological_order, _GRAPH_TOPOLOGICAL_SAMPLE_LIMIT),
+        "critical_path_sample": sample_values(critical_path, _GRAPH_CRITICAL_PATH_SAMPLE_LIMIT),
         "critical_path_count": int(len(critical_path)),
-        "critical_path_truncated": _truncated(critical_path, _GRAPH_CRITICAL_PATH_SAMPLE_LIMIT),
-        "cycle_edges_sample": _sample(cycle_edges, _GRAPH_CYCLE_EDGE_SAMPLE_LIMIT),
+        "critical_path_truncated": is_truncated(critical_path, _GRAPH_CRITICAL_PATH_SAMPLE_LIMIT),
+        "cycle_edges_sample": sample_values(cycle_edges, _GRAPH_CYCLE_EDGE_SAMPLE_LIMIT),
         "cycle_edge_count": int(len(cycle_edges)),
         "warnings_sample": [_project_graph_warning(warning) for warning in warnings[:_GRAPH_WARNING_SAMPLE_LIMIT]],
         "warning_count": int(len(warnings)),
@@ -363,9 +358,9 @@ def _project_graph_analysis_payload(
         "node_metrics_status": "available" if node_metrics else "skipped_basic_report",
     }
     if score_diagnostics:
-        diagnostics.update(dict(score_diagnostics))
+        diagnostics.update(score_diagnostics)
     if resource_matching_diagnostics is not None:
-        diagnostics["resource_matching"] = dict(resource_matching_diagnostics)
+        diagnostics["resource_matching"] = resource_matching_diagnostics
     return public, diagnostics
 
 

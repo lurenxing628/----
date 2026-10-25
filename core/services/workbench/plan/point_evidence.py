@@ -30,11 +30,11 @@ def official_point_work(conn, version, *, evidence=None, context=None):
         return {row["original"]["operation"]["id"]: {"witness": trial_point_evidence(row["original"], row["current"]),
                  **{key: row["original"][key] for key in ("operation", "batch", "execution")}}
                 for row in rows if row["current"]["start"] == row["current"]["end"]}
-    except (AdoptionBaselineUnavailable, PointEventError, KeyError, TypeError, ValueError) as exc:
+    except (AdoptionBaselineUnavailable, PointEventError) as exc:
         raise WorkbenchCommandRejected("point_evidence_unproven", "零工时工序缺少可核对的原始采用记录，这里不当成正常零工时工序读。请刷新后重试。") from exc
 
 
-def annotate_plan_points(conn, rows, *, source_table="schedule", context=None, intervals=None):
+def annotate_plan_points(conn, rows, *, source_table, context=None, intervals=None):
     from datetime import datetime
     from types import SimpleNamespace
 
@@ -45,7 +45,7 @@ def annotate_plan_points(conn, rows, *, source_table="schedule", context=None, i
         row = original
         start, end = original["start_time"], original["end_time"]
         low, high = intervals[index] if intervals is not None else (parse_dt_for_sql(start), parse_dt_for_sql(end))
-        if low is not None and low == high:
+        if low is not None and high is not None and low == high:
             if source_table != "schedule":
                 raise WorkbenchCommandRejected("point_evidence_unproven", "旧候选方案或试调行没有零工时工序的采用记录，读不出来。请刷新后重试。")
             version = original["version"]
@@ -53,10 +53,16 @@ def annotate_plan_points(conn, rows, *, source_table="schedule", context=None, i
                 versions[version] = context.point_work(version) if context is not None else official_point_work(conn, version)
             work = versions[version].get(original["op_id"])
             check = SimpleNamespace(op_id=original["op_id"], source="internal", machine_id=original["machine_id"],
-                operator_id=original["operator_id"], start_time=datetime.fromisoformat(start), end_time=datetime.fromisoformat(end))
+                operator_id=original["operator_id"], start_time=datetime.fromisoformat(low), end_time=datetime.fromisoformat(high))
             if work is None or not work["witness"].matches(check):
                 raise WorkbenchCommandRejected("point_evidence_unproven", "零工时工序和原采用记录对不上。请刷新后重试。")
             # Keep only a plain immutable-work projection in read fingerprints.
-            row = dict(original, _point_work={key: value for key, value in work.items() if key != "witness"})
+            row = dict(
+                original,
+                _point_work={
+                    **{key: value for key, value in work.items() if key != "witness"},
+                    "quantity": work["witness"].quantity,
+                },
+            )
         result.append(row)
     return result

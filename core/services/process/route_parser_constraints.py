@@ -1,137 +1,63 @@
 from __future__ import annotations
 
-import inspect
-import math
 from dataclasses import dataclass
-from types import SimpleNamespace
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from core.models.enums import SupplierStatus
+from core.infrastructure.logging import safe_log
 from core.models.resource_capabilities import supports_source
-from core.services.common.enum_normalizers import normalize_supplier_status
-from core.services.common.safe_logging import safe_warning
-from core.services.process.route_parser_errors import (
-    supplier_blank_days_warning,
-    supplier_invalid_days_warning,
-    supplier_missing_days_warning,
-    supplier_unparseable_days_warning,
-)
 
 
 @dataclass(frozen=True)
 class SupplierGlobalIssue:
-    op_type_id: str
-    message: str
+    op_type_id: Optional[str]
 
 
 class SupplierConstraintResolver:
-    def __init__(self, op_types_repo, suppliers_repo, logger=None, *, op_types_by_id=None) -> None:
-        self.op_types_repo = op_types_repo
-        self.suppliers_repo = suppliers_repo
+    def __init__(self, op_types_by_id, capabilities, logger=None) -> None:
+        self.capabilities = capabilities
         self.logger = logger
         self.global_issues: List[SupplierGlobalIssue] = []
         self._op_types_by_id = op_types_by_id
 
-    def build_supplier_map(self) -> Tuple[Dict[str, Tuple[str, float]], Dict[str, List[str]]]:
+    def build_supplier_map(self) -> Dict[str, str]:
         """
-        构建 工种名 -> (supplier_id, default_days) 映射。
+        构建 工种名 -> supplier_id 映射。
         规则：使用旧单工种与显式补充关系的有效能力并集；
         若同一工种存在多条供应商记录，则按 supplier_id 字典序取最后一条
         （即 supplier_id 最大者）作为有效供应商，与预览基线保持一致。
         """
-        supplier_map: Dict[str, Tuple[str, float]] = {}
-        issues: Dict[str, List[str]] = {}
-        suppliers = self._list_capabilities()
-        for supplier in suppliers:
-            if getattr(supplier, "missing_supplier", False):
-                self.global_issues.append(SupplierGlobalIssue(
-                    op_type_id=supplier.op_type_id,
-                    message=f"供应商“{supplier.supplier_id}”工种映射加载失败，显式关系引用了不存在的供应商。"))
+        supplier_map: Dict[str, str] = {}
+        for row in self.capabilities:
+            if row["missing_supplier"]:
+                self.global_issues.append(SupplierGlobalIssue(op_type_id=row["op_type_id"]))
                 continue
-            supplier_status = normalize_supplier_status(getattr(supplier, "status", SupplierStatus.ACTIVE.value))
-            if supplier_status != SupplierStatus.ACTIVE.value:
-                continue
-            if not getattr(supplier, "op_type_id", None) and not getattr(supplier, "explicit", False):
-                continue
-            supplier_id = str(getattr(supplier, "supplier_id", "") or "").strip() or "?"
-            op_type_name = self._resolve_supplier_op_type_name(supplier, supplier_id)
+            supplier_id = str(row["supplier_id"] or "").strip() or "?"
+            op_type_name = self._resolve_supplier_op_type_name(row, supplier_id)
             if not op_type_name:
                 continue
-            default_days, issue_messages = self._resolve_supplier_default_days(
-                supplier,
-                supplier_id=supplier_id,
-                op_type_name=op_type_name,
-                has_default_days=hasattr(supplier, "default_days"),
-            )
             current = supplier_map.get(op_type_name)
-            if current is not None and supplier_id <= current[0]:
+            if current is not None and supplier_id <= current:
                 continue
-            supplier_map[op_type_name] = (supplier_id, float(default_days))
-            if issue_messages:
-                issues[op_type_name] = list(issue_messages)
-            else:
-                # 同一工种按 supplier_id 取“有效供应商”时，必须同步清掉旧候选供应商遗留的错误信息；
-                # 否则 strict_mode 可能因为已被淘汰的低优先级供应商而误报/误拒绝。
-                issues.pop(op_type_name, None)
+            supplier_map[op_type_name] = supplier_id
 
-        return supplier_map, issues
+        return supplier_map
 
-    def _list_capabilities(self):
-        projection = getattr(self.suppliers_repo, "list_capabilities", None)
-        if projection is not None:
-            return [SimpleNamespace(**row) for row in projection(status=SupplierStatus.ACTIVE.value)]
-        # Legacy injected repositories can have list() without a status keyword.
-        # Inspect binding only: a TypeError raised inside the query must propagate.
-        method = self.suppliers_repo.list
-        try:
-            inspect.signature(method).bind(status=SupplierStatus.ACTIVE.value)
-        except TypeError:
-            return method() or []
-        return method(status=SupplierStatus.ACTIVE.value) or []
-
-    def _resolve_supplier_op_type_name(self, supplier: Any, supplier_id: str) -> Optional[str]:
-        op_type_id = str(getattr(supplier, "op_type_id", "") or "").strip()
-        try:
-            op_type = (self.op_types_repo.get(supplier.op_type_id) if self._op_types_by_id is None
-                       else self._op_types_by_id.get(supplier.op_type_id))
-        except Exception as exc:
-            message = f"供应商“{supplier_id}”工种映射加载失败（op_type_id={supplier.op_type_id!r}），请检查供应商对应工种。"
-            self.global_issues.append(SupplierGlobalIssue(op_type_id=op_type_id, message=message))
-            safe_warning(self.logger, f"{message} 原因：{exc}")
-            return None
-        name = getattr(op_type, "name", None) if op_type else None
+    def _resolve_supplier_op_type_name(self, row: Dict[str, Any], supplier_id: str) -> Optional[str]:
+        raw_op_type_id = row["op_type_id"]
+        op_type_id = str(raw_op_type_id or "").strip()
+        op_type = self._op_types_by_id.get(raw_op_type_id)
+        name = op_type.name if op_type is not None else None
         if not name:
             message = (
-                f"供应商“{supplier_id}”工种映射加载失败（op_type_id={supplier.op_type_id!r}），"
+                f"供应商“{supplier_id}”工种映射加载失败（op_type_id={raw_op_type_id!r}），"
                 "没有找到对应工种，请检查供应商对应工种。"
             )
-            self.global_issues.append(SupplierGlobalIssue(op_type_id=op_type_id, message=message))
-            safe_warning(self.logger, message)
+            self.global_issues.append(SupplierGlobalIssue(op_type_id=op_type_id))
+            safe_log(self.logger, "warning", message)
             return None
-        if getattr(supplier, "explicit", False) and not supports_source(getattr(op_type, "category", None), "external"):
-            message = f"供应商“{supplier_id}”工种映射加载失败（op_type_id={supplier.op_type_id!r}），显式关系不是外协工种。"
-            self.global_issues.append(SupplierGlobalIssue(op_type_id=op_type_id, message=message))
-            safe_warning(self.logger, message)
+        if row["explicit"] and not supports_source(op_type.category, "external"):
+            message = f"供应商“{supplier_id}”工种映射加载失败（op_type_id={raw_op_type_id!r}），显式关系不是外协工种。"
+            self.global_issues.append(SupplierGlobalIssue(op_type_id=op_type_id))
+            safe_log(self.logger, "warning", message)
             return None
         return str(name)
-
-    @staticmethod
-    def _resolve_supplier_default_days(
-        supplier: Any,
-        *,
-        supplier_id: str,
-        op_type_name: str,
-        has_default_days: bool,
-    ) -> Tuple[float, List[str]]:
-        raw_default_days: Any = getattr(supplier, "default_days", None)
-        if not has_default_days:
-            return 1.0, [supplier_missing_days_warning(supplier_id, op_type_name)]
-        if raw_default_days is None or (isinstance(raw_default_days, str) and raw_default_days.strip() == ""):
-            return 1.0, [supplier_blank_days_warning(supplier_id, op_type_name)]
-        try:
-            parsed_default_days = float(raw_default_days)
-        except Exception:
-            return 1.0, [supplier_unparseable_days_warning(supplier_id, op_type_name)]
-        if not math.isfinite(parsed_default_days) or parsed_default_days <= 0:
-            return 1.0, [supplier_invalid_days_warning(supplier_id, op_type_name)]
-        return float(parsed_default_days), []

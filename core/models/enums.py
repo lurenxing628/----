@@ -19,11 +19,6 @@ class MachineStatus(str, Enum):
     MAINTAIN = "maintain"
 
 
-class ResourceTeamStatus(str, Enum):
-    ACTIVE = "active"
-    INACTIVE = "inactive"
-
-
 class SupplierStatus(str, Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"
@@ -171,7 +166,6 @@ YESNO_VALUES = tuple(m.value for m in YesNo)
 
 OPERATOR_STATUS_VALUES = tuple(m.value for m in OperatorStatus)
 MACHINE_STATUS_VALUES = tuple(m.value for m in MachineStatus)
-RESOURCE_TEAM_STATUS_VALUES = tuple(m.value for m in ResourceTeamStatus)
 
 SUPPLIER_STATUS_VALUES = tuple(m.value for m in SupplierStatus)
 MATERIAL_STATUS_VALUES = tuple(m.value for m in MaterialStatus)

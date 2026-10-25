@@ -47,8 +47,9 @@ def _list_html(lines, start, pattern, tag):
     return "<" + tag + ">" + "".join(items) + "</" + tag + ">", index
 
 
-def _block_start(line):
-    return bool(_TABLE_ROW.match(line) or _BULLET.match(line) or _ORDERED.match(line)
+def _block_start(lines, index):
+    line = lines[index]
+    return bool(_table_start(lines, index) or _BULLET.match(line) or _ORDERED.match(line)
                 or _QUOTE.match(line) or _THEMATIC.match(line) or line.strip().startswith(_FENCE))
 
 
@@ -87,7 +88,7 @@ def _quote_html(lines, index):
 
 def _paragraph_html(lines, index):
     paragraph = []
-    while index < len(lines) and lines[index].strip() and not _block_start(lines[index]):
+    while index < len(lines) and lines[index].strip() and not _block_start(lines, index):
         paragraph.append(lines[index].strip())
         index += 1
     return "<p>" + _inline("".join(paragraph)) + "</p>", index

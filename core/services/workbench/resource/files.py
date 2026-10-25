@@ -1,9 +1,8 @@
 """Atomic upsert and complete scoped export, using existing resource domains."""
 
-from contextlib import closing
 from typing import Union, cast
 
-from core.errors import ValidationError
+from core.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_resource_action import (
@@ -13,13 +12,14 @@ from core.models.workbench_resource_action import (
     check_category,
     check_resource_preview,
     reject_action_row,
+    resource_page_scope,
     resource_refs,
     resource_scope,
 )
 from core.models.workbench_resource_file import READONLY, RELATIONS, WRITABLE, import_request
 from core.models.workbench_resource_file_source import PreparedImportSource
 from core.models.workbench_resource_input import resource_text
-from core.models.workbench_resource_query import ResourcePageRequest
+from core.models.workbench_resource_table_query import table_query_required
 from core.services.workbench.facts.file_codec import read_resource_file
 from core.services.workbench.facts.file_writer import check_capacity, write_resource_file
 from data.repositories.workbench_resource_file_repo import WorkbenchResourceFileRepository
@@ -39,9 +39,6 @@ class WorkbenchResourceFileService:
         self.repo = WorkbenchResourceFileRepository(conn, logger)
         self.tx = TransactionManager(conn)
 
-    def prepare_import(self, content, *, file_format, scope, mode="upsert"):
-        return self._prepare_source(content, file_format=file_format, scope=scope, mode=mode)[0]
-
     def _prepare_source(self, content, *, file_format, scope, mode):
         request = import_request(self.kind, content, file_format, mode, scope)
         source, notices = read_resource_file(self.kind, content, file_format)
@@ -50,31 +47,27 @@ class WorkbenchResourceFileService:
         return prepared, request
 
     def preview_import(self, content, *, file_format, scope, mode="upsert"):
-        return self._prepare_import(content, file_format=file_format, scope=scope, mode=mode)[0]
-
-    def _prepare_import(self, content, *, file_format, scope, mode="upsert"):
-        if isinstance(content, PreparedImportSource):
-            prepared = content
-            request = prepared.request_for(self.kind + ".import", file_format, mode, resource_scope(self.kind, scope))
-        else:
-            prepared, request = self._prepare_source(content, file_format=file_format, scope=scope, mode=mode)
-        source, notices = prepared.parsed()
+        prepared, request = self._prepare_source(content, file_format=file_format, scope=scope, mode=mode)
         with self.tx.transaction():
-            codes = sorted({item["values"]["business_code"].strip() for item in source
-                            if isinstance(item["values"].get("business_code"), str)})
-            preparation = self._capture_import(source, codes)
-            existing = [code for code in codes if preparation.find_identity(self.kind, code) is not None]
-            references = preparation.capture_references(self.repo, self.kind, existing)
-            states = preparation.states(self.kind, existing)
-            histories = self.repo.identity_histories(self.kind, [code for code in codes if code not in states])
-            inputs = ResourceFileInput(self.reader, preparation)
-            planned = [self._import_row(item, request["scope"], preparation, states, references, histories, inputs) for item in source]
-            rows = [row for row, _change in planned]
-            self._duplicates(rows, "business_code")
-            if self.kind == "op_type":
-                self._duplicates(rows, "label")
-            preview = ResourceActionPreview.build(self.kind + ".import", request, rows, notices, source=prepared)
-            return preview, [change for _row, change in planned]
+            return self._prepare_import(prepared, request)[0]
+
+    def _prepare_import(self, prepared, request):
+        source, notices = prepared.parsed()
+        codes = sorted({item["values"]["business_code"].strip() for item in source
+                        if isinstance(item["values"].get("business_code"), str)})
+        preparation = self._capture_import(source, codes)
+        existing = [code for code in codes if preparation.find_identity(self.kind, code) is not None]
+        references = preparation.capture_references(self.repo, self.kind, existing)
+        states = preparation.states(self.kind, existing)
+        histories = self.repo.identity_histories(self.kind, [code for code in codes if code not in states])
+        inputs = ResourceFileInput(self.reader, preparation)
+        planned = [self._import_row(item, request["scope"], preparation, states, references, histories, inputs) for item in source]
+        rows = [row for row, _change in planned]
+        self._duplicates(rows, "business_code", source)
+        if self.kind == "op_type":
+            self._duplicates(rows, "label", source)
+        preview = ResourceActionPreview.build(self.kind + ".import", request, rows, notices, source=prepared)
+        return preview, [change for _row, change in planned]
 
     def _capture_import(self, source, codes):
         original = {item["values"]["business_code"] for item in source
@@ -85,19 +78,31 @@ class WorkbenchResourceFileService:
                 value = item["values"].get(field)
                 selected.setdefault(kind, set()).update(code for code in (value if type(value) is list else [value])
                                                         if type(code) is str)
-        labels = {item["values"]["label"].strip() for item in source if type(item["values"].get("label")) is str}
+        names = ({"op_type": {item["values"]["label"].strip() for item in source
+                              if type(item["values"].get("label")) is str}} if self.kind == "op_type" else None)
         return self.reader.preparation(codes={self.kind: set(codes) | original}, selected_codes=selected,
-            names={"op_type": labels} if self.kind == "op_type" else None, machine_authorizations=True)
+            names=names, machine_authorizations=(self.kind == "machine"))
 
     @staticmethod
-    def _duplicates(rows, field):
+    def _duplicates(rows, field, source):
         seen = {}
-        for row in rows:
-            value = row["business_code"] if field == "business_code" else (row["input"] or {}).get("label")
-            if value is not None:
-                seen.setdefault(value, []).append(row)
-        for repeated in seen.values():
-            if len(repeated) > 1:
+        explicit = set()
+        for row, item in zip(rows, source):
+            if field == "business_code":
+                value = row["business_code"]
+                if value is not None:
+                    seen.setdefault(value, []).append(row)
+                    explicit.add(value)
+            else:
+                raw_label = item["values"].get("label")
+                file_label = raw_label.strip() if isinstance(raw_label, str) and raw_label.strip() else None
+                value = file_label or (row["before"]["label"] if row["before"] is not None else None)
+                if value is not None:
+                    seen.setdefault(value, []).append(row)
+                    if file_label is not None:
+                        explicit.add(value)
+        for value, repeated in seen.items():
+            if len(repeated) > 1 and value in explicit:
                 numbers = ", ".join(str(row["row"]) for row in repeated)
                 for row in repeated:
                     reject_action_row(row, "文件里有重复的编号或名称，这些行都没有导入：第 " + numbers + " 行。请去掉重复项后重新上传。", field=field, code="duplicate_entry")
@@ -135,6 +140,10 @@ class WorkbenchResourceFileService:
                 self._classify(row)
         except ValidationError as exc:
             reject_action_row(row, exc.message, field=exc.field or "input")
+        except BusinessError as exc:
+            if exc.code != ErrorCode.DUPLICATE_ENTRY:
+                raise
+            reject_action_row(row, exc.message, code="duplicate_entry", field="label")
         except WorkbenchCommandRejected as exc:
             if exc.status >= 500:
                 raise
@@ -158,65 +167,70 @@ class WorkbenchResourceFileService:
     def confirm_import(self, preview, content, *, file_format, scope, mode="upsert"):
         if not self.conn.in_transaction:
             raise RuntimeError("资源导入确认必须在外层工作台写事务中执行。")
-        with self.tx.transaction():
-            try:
-                current, changes = self._prepare_import(PreparedImportSource.confirmation(preview, content), file_format=file_format, scope=scope, mode=mode)
-            except ValidationError as exc:
-                raise WorkbenchCommandRejected("stale_write", "文件或导入范围已经变了，没有导入。请点「重新预检」后再确认。") from exc
-            check_resource_preview(preview, current)
-            results = []
-            document = current.as_dict()
-            for row, change in zip(document["rows"], changes):
-                outcome = self.adapter.apply_prepared(change)
-                results.append({"row": row["row"], "result": outcome.result, **outcome.data})
-            result = "committed" if any(row["result"] == "committed" for row in results) else "unchanged"
-            return WorkbenchCommandOutcome(result, {"rows": results, "summary": document["summary"]})
+        try:
+            prepared = PreparedImportSource.confirmation(preview, content)
+            request = prepared.request_for(self.kind + ".import", file_format, mode, resource_scope(self.kind, scope))
+            current, changes = self._prepare_import(prepared, request)
+        except ValidationError as exc:
+            raise WorkbenchCommandRejected("stale_write", "文件或导入范围已经变了，没有导入。请点「重新预检」后再确认。") from exc
+        document = check_resource_preview(preview, current)
+        results = []
+        for row, change in zip(document["rows"], changes):
+            outcome = self.adapter.apply_prepared(change)
+            results.append({"row": row["row"], "result": outcome.result, **outcome.data})
+        result = "committed" if any(row["result"] == "committed" for row in results) else "unchanged"
+        return WorkbenchCommandOutcome(result, {"rows": results, "summary": document["summary"]})
 
     def preview_export(self, selection, *, scope, selected_refs=None):
         if not self.conn.in_transaction:
             raise RuntimeError("资源导出预览必须在已验证的查询快照事务中执行。")
         if selection not in ("all", "filtered", "selected") or (selection != "selected" and selected_refs is not None):
             raise WorkbenchCommandRejected("invalid_input", "导出前要先选清楚是全部、当前筛选还是勾选的记录，没有开始下载。请重新选择导出范围。", 400)
-        scope = resource_scope(self.kind, scope)
+        scope, query = resource_page_scope(self.kind, scope)
         if selection == "selected":
             refs = resource_refs(selected_refs, allow_empty=True)
-            preparation = self.reader.preparation()
+            preparation = self.reader.preparation(refs=refs)
             for ref in refs:
                 identity = preparation.identity(self.kind, ref)
                 check_category(self.kind, preparation.facts.raw_record(self.kind, identity.entity_key), scope)
             return {"scope": scope, "selected_refs": refs}, len(refs)
-        effective = resource_scope(self.kind, {"category": scope["category"]}) if selection == "all" else scope
-        count = len(self.reader.matching_keys(ResourcePageRequest(kind=self.kind, **effective)))
-        return {"scope": effective}, count
+        if selection == "all":
+            all_scope = {"query": "", "status": None, "category": scope["category"], "sort": "business_code", "direction": "asc"}
+            if scope != all_scope:
+                effective, query = resource_page_scope(self.kind, {"category": scope["category"]})
+            else:
+                effective = scope
+        else:
+            effective = scope
+        matching = (self.reader.matching_keys(query) if table_query_required(query) else
+                    self.reader.toolbar_matching_keys(query))
+        return {"scope": effective}, len(matching)
 
     def export_rows(self, file_format, *, scope, selected_refs=None):
         """在已验证的读快照里读完整份导出行；编码文件交给 write_export，在读事务结束后做。"""
         if not self.conn.in_transaction:
             raise RuntimeError("资源导出必须在已验证的查询快照事务中执行。")
-        scope = resource_scope(self.kind, scope)
-        preparation = self.reader.preparation()
+        scope, query = resource_page_scope(self.kind, scope)
         if selected_refs is None:
-            query = ResourcePageRequest(kind=self.kind, **scope)
-            index = (self.reader.table_index(query) if self.reader._table_indexes is not None else
-                     preparation.facts.index(query, self.reader.repo.toolbar_keys(query)))
-            matching = index.matching_keys(query)
-            rows, count = (index.rows[code] for code in matching), len(matching)
+            matching = (self.reader.matching_keys(query) if table_query_required(query) else
+                        self.reader.toolbar_matching_keys(query))
+            check_capacity(len(matching), file_format)
+            preparation = self.reader.preparation()
+            identities = [preparation.identity_by_code(self.kind, code) for code in matching]
         else:
             refs = resource_refs(selected_refs, allow_empty=True)
-            rows, count = ({"ref": ref} for ref in refs), len(refs)
-        with closing(rows):
-            check_capacity(count, file_format)
-            return list(self._export_rows(rows, scope, preparation))
+            check_capacity(len(refs), file_format)
+            preparation = self.reader.preparation(refs=refs, machine_authorizations=(self.kind == "machine"))
+            identities = [preparation.identity(self.kind, ref) for ref in refs]
+        return list(self._export_rows(identities, scope, preparation))
 
     def write_export(self, rows, file_format, *, scope):
         """只用 export_rows 读出的行生成 CSV/XLSX，不再查库，可在读事务之外调用。"""
-        return write_resource_file(self.kind, rows, file_format, category=resource_scope(self.kind, scope)["category"])
+        category = scope.get("category") if isinstance(scope, dict) else resource_scope(self.kind, scope)["category"]
+        return write_resource_file(self.kind, rows, file_format, category=category)
 
-    def _export_rows(self, rows, scope, preparation):
-        for row in rows:
-            if row["ref"] is None:
-                raise WorkbenchCommandRejected("storage_failure", "有资源在资料里查不到编号，请到资料总览核对后重试。", 500)
-            identity = preparation.identity(self.kind, row["ref"])
+    def _export_rows(self, identities, scope, preparation):
+        for identity in identities:
             state = preparation.export_state(self.kind, identity.entity_key)
             authorizations = preparation.authorizations(self.kind, identity.entity_key) if self.kind in ("machine", "operator") else ()
             flat = flat_resource(self.kind, identity, state, authorizations)

@@ -12,9 +12,12 @@ def supports_source(category, source):
 
 
 def machine_types(machine: Any):
-    read = machine.get if isinstance(machine, dict) else lambda key, default=None: getattr(machine, key, default)
-    primary = read("op_type_id")
-    additional = read("op_type_ids", ()) or ()
+    if isinstance(machine, dict):
+        primary = machine.get("op_type_id")
+        additional = machine.get("op_type_ids") or ()
+    else:
+        primary = machine.op_type_id
+        additional = machine.op_type_ids or ()
     return tuple(dict.fromkeys(([primary] if primary else []) + list(additional)))
 
 

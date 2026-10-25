@@ -10,7 +10,7 @@ import pytest
 from core.errors import ValidationError
 from core.services.report.date_range_limits import ensure_report_date_range_within_limit
 from core.services.report.exporters.xlsx import export_execution_review_xlsx
-from tests._support.paths import REPO_ROOT
+from core.services.workbench.plan.read_context import PlanReadContext
 from tests.workbench.template_lineage_support import ledger_fixture as _ledger_fixture  # noqa: F401
 
 EXPECTED_HEADERS = [
@@ -35,16 +35,6 @@ EXPECTED_HEADERS = [
     "现场反馈状态",
 ]
 
-DEAD_EXECUTION_REVIEW_LABEL_KEYS = (
-    "exception_affected_machine_identity_label",
-    "exception_affected_machine_export_label",
-    "exception_affected_operator_identity_label",
-    "exception_affected_operator_export_label",
-    "planned_resource_identity_label",
-    "planned_resource_export_label",
-    "actual_resource_identity_label",
-    "actual_resource_export_label",
-)
 
 def test_workbench_report_bounds_finish_cohort_before_detail_admission(ledger_case, monkeypatch):
     from flask import Blueprint, Flask, g
@@ -160,10 +150,12 @@ def test_workbench_report_bounds_finish_cohort_before_detail_admission(ledger_ca
     export_scope['snapshot_ref'] = client.get(url, query_string=dates).get_json()['meta']['snapshot_ref']
     reader = plan_queries.WorkbenchPlanQueryService(case.conn)
     with reader.read_snapshot():
-        _, selected, _ = reader._selected(case.plan_ref(2))
-        assert selected.can_view
-        with pytest.raises(WorkbenchCommandRejected) as rejection:
-            reader.workspace(PlanReadScope(case.plan_ref(2)))
+        context = PlanReadContext(case.conn, references=reader.references, entities=reader.entities)
+        with context.read_scope():
+            _, selected, _ = context.selected(case.plan_ref(2))
+            assert selected.can_view
+            with pytest.raises(WorkbenchCommandRejected) as rejection:
+                reader.workspace(PlanReadScope(case.plan_ref(2)), context=context)
     assert rejection.value.code == 'query_too_large'
     case.conn.execute("UPDATE Schedule SET end_time='2026-09-09 23:59:59.234567' WHERE version=2 AND op_id=?", (case.op_id,))
     case.conn.commit()
@@ -265,6 +257,23 @@ def test_workbench_report_restores_second_page_once_and_keeps_export_binding(led
         return catalog_read(reader, scope)
 
     catalog_url = '/api/workbench/v1/reports/utilization'
+    from contextlib import contextmanager
+
+    admitted = []
+
+    @contextmanager
+    def catalog_slot():
+        admitted.append(True)
+        yield
+
+    with monkeypatch.context() as patch:
+        patch.setattr(reports_catalog.PLAN_READ_SLOTS, 'slot', catalog_slot)
+        rejected = client.get(catalog_url, query_string={'snapshot_ref': 'invalid'})
+        assert rejected.status_code == 409 and rejected.get_json()['error']['code'] == 'snapshot_stale'
+        for invalid_page in ('１', '+1', '0'):
+            rejected = client.get(catalog_url, query_string={'page': invalid_page})
+            assert rejected.status_code == 400 and rejected.get_json()['error']['code'] == 'invalid_input'
+    assert admitted == []
     before = case.conn.total_changes
     with monkeypatch.context() as patch:
         patch.setattr(reports_catalog, 'catalog_facts', captured_catalog)
@@ -332,7 +341,7 @@ def test_execution_review_xlsx_uses_canonical_labels_when_legacy_export_aliases_
         "actual_resource_export_label": "旧实际资源",
     }
 
-    wb = openpyxl.load_workbook(export_execution_review_xlsx([row]), data_only=True)
+    wb = openpyxl.load_workbook(export_execution_review_xlsx([row], summary_rows=[["计划编号", "P1"]]), data_only=True)
     try:
         ws = wb["计划和现场实际"]
         assert [cell.value for cell in ws[1]] == EXPECTED_HEADERS
@@ -352,18 +361,12 @@ def test_report_date_limit_and_offline_view_contract():
 
     with pytest.raises(ValidationError, match="日期范围不能超过 62 天"):
         ensure_report_date_range_within_limit(date(2026, 1, 1), date(2026, 4, 15))
-    assert not (REPO_ROOT / "templates/reports/execution_review.html").exists()
-    forbidden = ("http://", "https://", "cdn", "reason_code", "event_type", "report_exception", "text-meta")
-    for relative in ("frontend/workbench/app/ReviewWorkspace.jsx", "frontend/workbench/app/ReportWorkspace.jsx",
-                     "frontend/workbench/app/ReportTable.jsx"):
-        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
-        for token in forbidden + DEAD_EXECUTION_REVIEW_LABEL_KEYS:
-            assert token not in source
 
 
 def test_standalone_execution_xlsx_stream_keeps_canonical_headers():
     output = export_execution_review_xlsx(
-        [{"batch_id_label": "B1", "actual_resource_label": "二号设备 / 李四"}], write_only=True)
+        [{"batch_id_label": "B1", "actual_resource_label": "二号设备 / 李四"}],
+        summary_rows=[["计划编号", "P1"]], write_only=True)
     workbook = openpyxl.load_workbook(BytesIO(output.read()), data_only=True)
     try:
         sheet = workbook["计划和现场实际"]

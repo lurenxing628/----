@@ -66,8 +66,9 @@ def _enriched_candidates(source, candidates, keys):
         candidate["metrics"].update(operation_changes(source.analysis_tasks(key), before_tasks,
             source.scope["operation_refs"], source.baseline["state"] == "available",
             selected_available=candidate["persisted_status"] == "completed", deferred_refs=source.deferred_refs,
-            reference_deferred_refs=reference_deferred, reference_groups=source.reference_operation_groups,
-            task_intervals=source.task_intervals(key), reference_task_intervals=source.task_intervals("reference")))
+            reference_deferred_refs=reference_deferred, reference_groups=source.analysis_groups("reference"),
+            selected_groups=source.analysis_groups(key), task_intervals=source.task_intervals(key),
+            reference_task_intervals=source.task_intervals("reference")))
         result[key] = candidate
     return result
 

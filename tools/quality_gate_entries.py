@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Callable, Dict, List, Optional, Sequence, cast
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from .long_gate_schema import content_equal
 from .quality_gate_shared import (
@@ -13,27 +13,20 @@ from .quality_gate_shared import (
 )
 
 
-def build_default_note(source: str, fallback_kind: Optional[str] = None, scope_tag: Optional[str] = None) -> str:
+def build_default_note(source: str, fallback_kind: Optional[str] = None) -> str:
     if source == "migrated_from_architecture_fitness_counter":
         return "从 tests/gate_meta/test_architecture_fitness.py 的旧内联事实迁移"
-    if source == "baseline_scan" and scope_tag == "render_bridge":
-        return "渲染桥接可观测降级，SP02 仅落账并留给 SP09 处理"
     if source == "baseline_scan" and fallback_kind:
         return "启动链基线冻结，后续治理批次再处理"
     return ""
 
 
-def _default_entry_manual_fields(source: str, fallback_kind: Optional[str] = None, scope_tag: Optional[str] = None) -> Dict[str, Any]:
-    owner = "SP03"
-    batch = "SP03"
-    if scope_tag == "render_bridge":
-        owner = "SP09"
-        batch = "SP09"
+def _default_entry_manual_fields(source: str, fallback_kind: Optional[str] = None) -> Dict[str, Any]:
     return {
         "status": "open",
-        "owner": owner,
-        "batch": batch,
-        "notes": build_default_note(source, fallback_kind=fallback_kind, scope_tag=scope_tag),
+        "owner": "SP03",
+        "batch": "SP03",
+        "notes": build_default_note(source, fallback_kind=fallback_kind),
         "last_verified_at": now_shanghai_iso(),
     }
 
@@ -99,7 +92,6 @@ def build_complexity_entry(path: str, symbol: str, current_value: int, existing:
 
 
 def build_silent_entry(entry: Dict[str, Any], source: str, existing: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    scope_tag = entry.get("scope_tag")
     base = {
         "id": entry.get("id"),
         "path": entry.get("path"),
@@ -116,11 +108,7 @@ def build_silent_entry(entry: Dict[str, Any], source: str, existing: Optional[Di
             base[field_name] = copy.deepcopy(entry[field_name])
         elif existing is not None and field_name in ("handler_fingerprint", "handler_context_hash") and field_name in existing:
             base[field_name] = existing[field_name]
-    if scope_tag is not None:
-        base["scope_tag"] = scope_tag
-    base.update(_default_entry_manual_fields(source=source, fallback_kind=str(entry.get("fallback_kind")), scope_tag=cast(Optional[str], scope_tag)))
-    if scope_tag == "render_bridge":
-        base["exit_condition"] = "完成替代渲染桥接方案或明确维持现状的长期策略"
+    base.update(_default_entry_manual_fields(source=source, fallback_kind=str(entry.get("fallback_kind"))))
     merged = _merge_manual_fields(existing, base)
     if source == "migrated_from_architecture_fitness_counter":
         merged["fallback_kind"] = "silent_swallow"
@@ -132,7 +120,7 @@ def build_silent_entry(entry: Dict[str, Any], source: str, existing: Optional[Di
     _maybe_refresh_last_verified(
         existing,
         merged,
-        ["line_start", "line_end", "handler_signature", "handler_context", "fallback_kind", "source", "scope_tag"],
+        ["line_start", "line_end", "handler_signature", "handler_context", "fallback_kind", "source"],
     )
     return merged
 

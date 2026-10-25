@@ -8,6 +8,7 @@ import sqlite3
 import pytest
 
 from core.infrastructure.transaction import TransactionManager
+from core.models import Material
 from data.repositories.material_repo import MaterialRepository
 
 
@@ -30,7 +31,7 @@ def material_repo(tmp_path):
 
 def _write(repo, path, value):
     if path == "repo_create":
-        return repo.create({"material_id": "M002", "name": "new", "stock_qty": value})
+        return repo.create(Material(material_id="M002", name="new", stock_qty=value))
     if path == "repo_update":
         return repo.update("M001", {"name": "changed", "stock_qty": value, "remark": "changed"})
     raise AssertionError(path)
@@ -46,12 +47,14 @@ def test_finite_numeric_write_contract_is_preserved(material_repo, path):
     with TransactionManager(repo.conn).transaction():
         result = _write(repo, path, 12.5)
     mid = "M001" if path.endswith("update") else "M002"
-    stored = repo.get(mid).stock_qty
+    row = repo.conn.execute("SELECT * FROM Materials WHERE material_id = ?", (mid,)).fetchone()
+    assert row is not None
+    stored = row["stock_qty"]
     assert stored == 12.5
     assert math.isfinite(stored)
     if result is not None:
         assert float(result.stock_qty) == stored
-    assert len(repo.list()) == (1 if mid == "M001" else 2)
+    assert repo.conn.execute("SELECT COUNT(*) FROM Materials").fetchone()[0] == (1 if mid == "M001" else 2)
 
 
 @pytest.mark.parametrize('path', ["repo_create", "repo_update"])
@@ -60,7 +63,7 @@ def test_invalid_quantity_rolls_back_prior_writes_in_outer_transaction(material_
     before = _snapshot(repo.conn)
     with pytest.raises(ValueError):
         with TransactionManager(repo.conn).transaction():
-            repo.create({"material_id": "M003", "name": "earlier", "stock_qty": 3})
+            repo.create(Material(material_id="M003", name="earlier", stock_qty=3))
             _write(repo, path, "Infinity")
     assert _snapshot(repo.conn) == before
     assert not repo.conn.in_transaction

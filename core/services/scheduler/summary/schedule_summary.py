@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import time
 from dataclasses import replace
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict
 
 from core.models.schedule_config_runtime import ensure_schedule_config_snapshot
+from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 from core.services.scheduler.contracts.schedule_summary_types import (
     AlgorithmSummaryState,
     SummaryBuildContext,
@@ -12,15 +13,14 @@ from core.services.scheduler.contracts.schedule_summary_types import (
 
 from .schedule_summary_assembly import _build_result_summary_obj
 from .schedule_summary_degradation import (
-    _compute_downtime_degradation,
     _compute_resource_pool_degradation,
     _hard_constraints,
     _input_build_state,
     _summary_degradation_state,
 )
+from .schedule_summary_downtime_degradation import compute_downtime_degradation
 from .schedule_summary_freeze import (
     _compute_completion_status,
-    _compute_result_status,
     _frozen_batch_ids,
 )
 from .summary_runtime_state import (
@@ -40,15 +40,16 @@ def build_result_summary(
     *,
     ctx: SummaryBuildContext,
     logger: Any = None,
-) -> Tuple[List[Dict[str, Any]], str, Dict[str, Any], int]:
-    ctx = replace(
-        ctx,
-        cfg=ensure_schedule_config_snapshot(
-            ctx.cfg,
-            strict_mode=False,
-            source="scheduler.summary",
-        ),
-    )
+) -> Dict[str, Any]:
+    if not isinstance(ctx.cfg, ScheduleConfigSnapshot):
+        ctx = replace(
+            ctx,
+            cfg=ensure_schedule_config_snapshot(
+                ctx.cfg,
+                strict_mode=False,
+                source="scheduler.summary",
+            ),
+        )
 
     runtime_state = _build_runtime_state(
         logger=logger,
@@ -57,7 +58,6 @@ def build_result_summary(
         summary=ctx.summary,
         best_metrics=ctx.best_metrics,
     )
-    result_status = _compute_result_status(ctx.summary, simulate=ctx.simulate)
     completion_status = _compute_completion_status(ctx.summary)
     time_cost_ms = int((time.time() - float(ctx.t0)) * 1000)
     frozen_batch_ids = _frozen_batch_ids(ctx.operations, frozen_op_ids=ctx.frozen_op_ids)
@@ -74,7 +74,7 @@ def build_result_summary(
         freeze_meta=ctx.freeze_meta,
         all_warnings=list(warning_state.all_warnings),
     )
-    downtime_state = _compute_downtime_degradation(ctx.cfg, downtime_meta=ctx.downtime_meta)
+    downtime_state = compute_downtime_degradation(ctx.cfg, downtime_meta=ctx.downtime_meta)
     resource_pool_enabled, resource_pool_degraded, resource_pool_degradation_reason, resource_pool_attempted = _compute_resource_pool_degradation(
         ctx.cfg, resource_pool_meta=ctx.resource_pool_meta
     )
@@ -105,7 +105,7 @@ def build_result_summary(
     )
     degraded_success, degraded_causes = _degraded_success_state(
         summary_degradation=summary_degradation,
-        result_status=result_status,
+        completion_status=completion_status,
     )
     algorithm_state = AlgorithmSummaryState(
         ctx=ctx,
@@ -136,4 +136,4 @@ def build_result_summary(
         time_cost_ms=time_cost_ms,
     )
     result_summary_obj = apply_summary_size_guard(result_summary_obj)
-    return runtime_state.overdue_items, result_status, result_summary_obj, time_cost_ms
+    return result_summary_obj

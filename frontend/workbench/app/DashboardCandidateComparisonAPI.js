@@ -12,10 +12,11 @@
   function delivery(row, available = true) {
     C.check(window.DeliveryProjectionContract.row(row, !available));
   }
-  function baselineIdentity(value, expected) {
+  function baselineIdentity(value, generation) {
     return shape(value, ['baseline_ref', 'version', 'captured_at', 'kind', 'available', 'captured_task_count', 'comparison_available', 'reason'])
-      && ['baseline_ref', 'version', 'captured_at', 'kind'].every(key => C.equal(value[key], expected[key]))
-      && typeof value.available === 'boolean' && count(value.captured_task_count) && typeof value.comparison_available === 'boolean'
+      && value.kind === 'admission_official' && A.version(value.version) && value.captured_at === generation.accepted_at
+      && value.available === (value.version !== null) && count(value.captured_task_count) && typeof value.comparison_available === 'boolean'
+      && (value.available ? C.ref(value.baseline_ref) : value.baseline_ref === null && value.captured_task_count === 0)
       && (value.reason === null || C.object(value.reason) && C.text(value.reason.code) && C.text(value.reason.message));
   }
   function summary(value, batchCount) {
@@ -44,12 +45,35 @@
     ['benefits', 'costs'].forEach((key, index) => C.check(value[key].every(item =>
       item.direction === (index ? 'worse' : 'better') && value.all_differences.some(entry => C.equal(entry, item))), '主要取舍与完整差值不一致，请刷新。'));
   }
-  function validate(payload, workspace, baseline) {
-    const d = D.envelope(payload), expected = (workspace.batch_ref ? [workspace.batch_ref] : baseline.generation.input.batch_refs).slice().sort();
+  function validate(payload, scope) {
+    const d = D.envelope(payload);
     C.check(shape(d, ['candidate', 'generation', 'baseline', 'time_scope', 'batch_ref', 'batch_refs', 'batches', 'resources', 'summary',
-      'resource_common', 'machine_changes', 'resource_scope_complete', 'resource_scope_unknown_rows', 'basis', 'capabilities', 'tradeoffs'])
-      && C.equal(d.candidate, workspace.candidate) && C.equal(d.generation, baseline.generation) && baselineIdentity(d.baseline, baseline.baseline)
-      && C.equal(d.time_scope, baseline.time_scope) && d.batch_ref === workspace.batch_ref && C.equal(d.batch_refs, expected)
+      'resource_common', 'machine_changes', 'resource_scope_complete', 'resource_scope_unknown_rows', 'basis', 'capabilities', 'tradeoffs']));
+    A.summary(d.candidate, scope.run_ref);
+    C.check(d.candidate.candidate_ref === scope.candidate_ref, '返回的候选与所选方案不一致，请重新选择。');
+    const g = d.generation;
+    C.check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'source_verification'])
+      && g.run_ref === d.candidate.run_ref && A.time(g.accepted_at) && (g.finished_at === null || A.time(g.finished_at))
+      && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission'
+      && g.current_entities_consulted === false && g.formal_version_allocated === false
+      && C.equal(g.source_verification, { facts_content_verified: true, baseline_matches_archived_schedule: true,
+        execution_verified_at: 'run_admission', input_source_verified: true, candidate_content_verified: true }));
+    const input = g.input;
+    C.check(shape(input, ['batch_refs', 'start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds'])
+      && Array.isArray(input.batch_refs) && input.batch_refs.every(C.ref) && new Set(input.batch_refs).size === input.batch_refs.length
+      && ['start_date', 'end_date'].every(key => A.time(input[key] + 'T00:00:00')) && input.start_date <= input.end_date
+      && typeof input.ready_check === 'boolean' && ['auto_assign', 'exclude'].includes(input.missing_resource_policy) && input.completed_policy === 'preserve_actuals'
+      && (input.material_strategy === undefined || ['strict', 'stage', 'split'].includes(input.material_strategy))
+      && (input.time_budget_seconds === undefined || window.RunGenerationContract.budget(input.time_budget_seconds)));
+    const hold = input.hold_window;
+    C.check(hold === undefined || hold === null || shape(hold, ['start', 'end'])
+      && A.time(hold.start + ':00') && A.time(hold.end + ':00') && hold.start < hold.end);
+    const expected = scope.batch_ref ? [scope.batch_ref] : input.batch_refs.slice().sort();
+    C.check(baselineIdentity(d.baseline, g)
+      && C.equal(d.time_scope, { range_start: scope.range_start, range_end: scope.range_end, interval: 'half_open_overlap',
+        membership: 'either_side_overlap', counterpart_policy: 'retain_complete_counterpart', time_basis: 'factory_local',
+        unplanned_policy: 'included_without_time_interval', unknown_or_zero_interval_policy: 'included_without_time_interval' })
+      && d.batch_ref === (scope.batch_ref || null) && C.equal(d.batch_refs, expected)
       && C.equal(d.capabilities, { view: true, adopt: false, edit_draft: false, report_actual: false })
       && C.equal(d.basis, { comparison: 'candidate_minus_admission_official', batch_scope: 'admission_selected_batches',
         delivery: 'complete_captured_batch_operations', resources: 'same_range_daily_peak_available_occupancy',
@@ -74,11 +98,12 @@
     return d;
   }
   function create(fetcher = window.fetch.bind(window)) {
-    return { async read(workspace, baseline, signal) {
-      const scope = window.RunBaselineAPI.scope(workspace);
-      C.check(scope.range_start && scope.range_end, '请先填写两个方案共同的开始和结束时间。');
-      const value = await D.request('/api/workbench/v1/dashboard/candidates/' + workspace.candidate.candidate_ref + '/comparison?' + new URLSearchParams(scope), fetcher, signal);
-      validate(value, workspace, baseline); return value;
+    return { async read(value, signal) {
+      const scope = context(value);
+      C.check(scope.candidate_ref && scope.range_start && scope.range_end, '请先选择候选并填写两个方案共同的开始和结束时间。');
+      const query = { range_start: scope.range_start, range_end: scope.range_end, ...(scope.batch_ref ? { batch_ref: scope.batch_ref } : {}) };
+      const payload = await D.request('/api/workbench/v1/dashboard/candidates/' + scope.candidate_ref + '/comparison?' + new URLSearchParams(query), fetcher, signal);
+      validate(payload, scope); return payload;
     } };
   }
   window.DashboardCandidateComparisonAPI = { create, validate, context };

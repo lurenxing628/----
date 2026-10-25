@@ -9,7 +9,7 @@ from core.services.workbench.facts.trial_policy import load_draft, load_scenario
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario, schedule_rows
 from core.services.workbench.trial.effort import operation_types
 from core.services.workbench.trial.preparation import apply_preparation, preparation_projection, trial_changeovers
-from core.services.workbench.trial.projection import _unplanned
+from core.services.workbench.trial.projection import unplanned_operations
 from core.services.workbench.trial.service import WorkbenchTrialService
 from tests.workbench.test_legacy_resource_projection import shipped
 from tests.workbench.trial_support import candidate, change, create, service
@@ -120,7 +120,7 @@ def test_trial_retained_requirement_keeps_original_target_separate_from_creation
     assert set(pairs) == {row["operation_ref"] for row in rows}
     assert pairs[task["operation_ref"]]["after"]["required_standard_hours"] == 7
     assert retained["role_totals"]["after"]["retained"]["setup_standard_hours"]["value"] == 2
-    unplanned = _unplanned(contexts)
+    unplanned = unplanned_operations(contexts)
     assert unplanned == []
     apply_preparation(deepcopy(draft["tasks"]), unplanned, pairs)
     shipped(draft, r"""

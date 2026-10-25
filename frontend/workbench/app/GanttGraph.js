@@ -60,9 +60,9 @@
       for (const parent of to.predecessor_operation_refs) {
         const from = operations.get(parent);
         if (!from) { missing++; continue; }
+        if (from.batch_id !== to.batch_id) continue;
         facts.previous.get(to.task_ref).push(from);
         const edge = { from_task_ref: from.task_ref, to_task_ref: to.task_ref, edge_type: 'process' };
-        if (from.batch_id !== to.batch_id) continue;
         const record = { edge, order: order++ }; facts.edges.push(record);
         if (from.piece_id === null && to.piece_id === null) facts.commonEdges.push(record);
         else if (from.piece_id === null || to.piece_id === null || from.piece_id === to.piece_id) {
@@ -160,7 +160,7 @@
   }
   function paths(active, model, width, viewport, options) {
     const prepared = options && options.locationIndex || locationIndex(options && options.locations || locations(model, options));
-    const points = prepared.locations, visible = new Set(), visibleEntries = [], scale = width / (model.end - model.start);
+    const points = prepared.locations, visible = new Set(), visibleEntries = [], span = model.end > model.start ? model.end - model.start : 1, scale = width / span;
     const x = value => (value - model.start) * scale;
     let low = 0, high = prepared.rows.length;
     while (low < high) { const mid = (low + high) >> 1; if (prepared.rows[mid].lastBottom <= viewport.top) low = mid + 1; else high = mid; }

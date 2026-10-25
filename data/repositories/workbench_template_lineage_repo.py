@@ -6,7 +6,10 @@ from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_metadata_schema import workbench_metadata_contract_issues
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
-from core.infrastructure.workbench_template_lineage_schema import contract_issues, objects
+from core.infrastructure.workbench_template_lineage_schema import (
+    template_lineage_contract_issues,
+    template_lineage_objects,
+)
 from core.models.workbench_template_lineage import (
     COPY_COLUMNS,
     EVIDENCE_VERSION,
@@ -26,6 +29,7 @@ EVIDENCE_SIZE_SQL = {
     "origins": _size_expression(("template_snapshot", "instance_snapshot")),
     "events": _size_expression(STATE_COLUMNS + ("operation_ref", "reason", "recorded_at_utc")),
 }
+_LINEAGE_OBJECT_NAMES = frozenset(template_lineage_objects())
 
 INSTANCE_SELECT = """SELECT o.*, r.ref AS operation_ref, br.ref AS batch_ref, pr.ref AS part_ref, b.quantity"""
 INSTANCE_FROM = """ FROM BatchOperations o JOIN Batches b ON b.batch_id=o.batch_id
@@ -34,41 +38,19 @@ INSTANCE_FROM = """ FROM BatchOperations o JOIN Batches b ON b.batch_id=o.batch_
     LEFT JOIN WorkbenchEntityRefs pr ON pr.kind='part' AND pr.active=1 AND pr.entity_key=b.part_no"""
 
 
-def _schema_state(conn, *, structure):
-    if not structure.objects.keys() & objects().keys():
-        return "missing"
-    return "invalid" if contract_issues(conn, structure=structure) else "loaded"
-
-
-def _identity_schema_broken(conn, *, structure):
-    return bool(workbench_metadata_contract_issues(conn, structure=structure)
-                or workbench_process_contract_issues(conn, structure=structure)
-                or workbench_plan_identity_contract_issues(conn, structure=structure))
-
-
 class WorkbenchTemplateLineageRepository(BaseRepository):
-    def __init__(self, conn, logger=None):
-        super().__init__(conn, logger=logger)
-        # 同一命令逐道复制共用结构事实；命令内不执行 DDL，下一请求新建仓储。
-
-    @property
-    def contracts(self):
-        return schema_contract_memo(self.conn)
-
     def schema_state(self):
         """'missing' (no lineage objects), 'invalid' (partial/altered DDL) or 'loaded'."""
-        return self.contracts.get_schema(_schema_state)
+        memo = schema_contract_memo(self.conn)
+        if not (memo.structure.objects.keys() & _LINEAGE_OBJECT_NAMES):
+            return "missing"
+        return "invalid" if memo.get_schema(template_lineage_contract_issues) else "loaded"
 
     def identity_schema_broken(self):
-        return self.contracts.get_schema(_identity_schema_broken)
-
-    def template(self, template_id):
-        """Active template row with permanent refs (may be NULL), or None."""
-        return self.fetchone("""SELECT o.*, r.ref AS template_operation_ref, r.revision AS template_revision,
-            p.ref AS part_ref FROM PartOperations o LEFT JOIN WorkbenchEntityRefs r
-            ON r.kind='template_operation' AND r.active=1 AND r.entity_key=CAST(o.id AS TEXT)
-            LEFT JOIN WorkbenchEntityRefs p ON p.kind='part' AND p.active=1 AND p.entity_key=o.part_no
-            WHERE o.id=? AND o.status='active'""", (template_id,))
+        memo = schema_contract_memo(self.conn)
+        return bool(memo.get_schema(workbench_metadata_contract_issues)
+                    or memo.get_schema(workbench_process_contract_issues)
+                    or memo.get_schema(workbench_plan_identity_contract_issues))
 
     def current_templates(self, refs):
         result = {}
@@ -81,17 +63,6 @@ class WorkbenchTemplateLineageRepository(BaseRepository):
                 WHERE r.kind='template_operation' AND r.active=1 AND r.ref IN (""" + marks + ")", chunk)
             result.update((row["template_operation_ref"], row) for row in rows)
         return result
-
-    def templates_for_part(self, part_no):
-        return self.fetchall("""SELECT o.*, r.ref AS template_operation_ref, r.revision AS template_revision,
-            p.ref AS part_ref FROM PartOperations o LEFT JOIN WorkbenchEntityRefs r
-            ON r.kind='template_operation' AND r.active=1 AND r.entity_key=CAST(o.id AS TEXT)
-            LEFT JOIN WorkbenchEntityRefs p ON p.kind='part' AND p.active=1 AND p.entity_key=o.part_no
-            WHERE o.part_no=? AND o.status='active' ORDER BY o.seq""", (part_no,))
-
-    def instance(self, operation_id):
-        """Batch operation row with operation/batch/part refs (may be NULL), or None."""
-        return self.fetchone(INSTANCE_SELECT + INSTANCE_FROM + " WHERE o.id=?", (operation_id,))
 
     def current_instances(self, refs):
         result = {}
@@ -139,8 +110,8 @@ class WorkbenchTemplateLineageRepository(BaseRepository):
             if total > limit:
                 break
 
-    def append_origin(self, instance, template, template_snapshot, instance_snapshot, *, birth_event_id, source=None, source_event_id=None,
-                      source_eligible=True):
+    def append_origin(self, instance, template, template_snapshot, instance_snapshot, *, birth_event_id, source, source_event_id,
+                      source_eligible):
         row = dict(lineage_ref=secrets.token_hex(24), operation_ref=instance["operation_ref"],
                    template_operation_ref=template["template_operation_ref"], template_revision=template["template_revision"],
                    source_operation_ref=source["operation_ref"] if source else None,
@@ -151,8 +122,3 @@ class WorkbenchTemplateLineageRepository(BaseRepository):
         self.conn.execute("INSERT INTO WorkbenchTemplateLineageOrigins (" + ",".join(row) + ") VALUES (" +
                           ",".join("?" for _ in row) + ")", tuple(row.values()))
         return row
-
-    def append_withdrawn_event(self, operation_ref, reason, last_event):
-        self.conn.execute("INSERT INTO WorkbenchTemplateLineageEvents(operation_ref,event_type,affects_calibration,reason," +
-                          ",".join(STATE_COLUMNS) + ") VALUES (?,'withdrawn',1,?," + ",".join("?" for _ in STATE_COLUMNS) + ")",
-                          (operation_ref, reason) + tuple(last_event[key] for key in STATE_COLUMNS))

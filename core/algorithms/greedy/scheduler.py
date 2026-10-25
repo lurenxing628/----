@@ -27,7 +27,6 @@ from core.errors import ValidationError
 
 from . import internal_operation
 from .auto_assign import (
-    auto_assign_internal_resources,
     auto_assign_internal_resources_attempt,
     native_auto_assign_unchanged,
 )
@@ -44,10 +43,10 @@ from .dispatch.sgs_score_cache import (
 from .external_groups import schedule_external
 from .internal_operation import schedule_internal_operation
 from .run_context import ScheduleRunContext
-from .run_state_setup import _prepare_run_state, replay_resumed_demand, resume_run_state
+from .run_state_setup import prepare_run_state, replay_resumed_demand, resume_run_state
 from .schedule_params import resolve_schedule_params
 from .schedule_preparation import NativeSchedulePreparation
-from .seed import _identity_int, normalize_seed_results
+from .seed import identity_int, normalize_seed_results
 
 __all__ = ["GreedyScheduler"]
 
@@ -88,16 +87,16 @@ class GreedyScheduler:
         params = resolve_schedule_params(
             config=self.config, strategy=strategy, strategy_params=strategy_params, start_dt=start_dt, end_date=end_date,
             dispatch_mode=dispatch_mode, dispatch_rule=dispatch_rule, resource_pool=resource_pool,
-            strict_mode=bool(strict_mode), algo_stats=self._last_algo_stats,
+            strict_mode=strict_mode, algo_stats=self._last_algo_stats,
         )
         preparation = prepare_native_schedule_inputs(
             machine_downtimes, scheduler=self, operations=operations, batches=batches,
             seed_results=seed_results, resource_pool=resource_pool, graph_ready_context=graph_ready_context,
         )
-        batch_order = _build_batch_order(
+        batch_order = build_batch_order(
             preparation.batches, params,
             batch_order_override=normalize_batch_order_override(batch_order_override, preparation.batches),
-            readiness_gate_enabled=bool(readiness_gate_enabled), strict_mode=bool(strict_mode),
+            readiness_gate_enabled=readiness_gate_enabled, strict_mode=strict_mode,
         )
         return self._decode_prepared(
             preparation, params=params, batch_order=batch_order, readiness_gate_enabled=readiness_gate_enabled,
@@ -153,8 +152,8 @@ class GreedyScheduler:
             checkpoint_signature = decode_input_signature(
                 operations=sorted_ops, batches=batches, batch_order=batch_order, params=params,
                 machine_downtimes=machine_downtimes, resource_pool=resource_pool, seed_results=seed_results,
-                graph_ready_context=graph_ready_context, readiness_gate_enabled=bool(readiness_gate_enabled),
-                strict_mode=bool(strict_mode), calendar_signature=calendar_signature,
+                graph_ready_context=graph_ready_context, readiness_gate_enabled=readiness_gate_enabled,
+                strict_mode=strict_mode, calendar_signature=calendar_signature,
                 prepared_calendar_signature=prepared_calendar_signature,
                 warnings=warnings, prepared_inputs=prepared_inputs)
         if decode_resume is not None:
@@ -163,13 +162,13 @@ class GreedyScheduler:
             state = resume_run_state(decode_resume, signature=checkpoint_signature, warnings=warnings,
                                      dispatch_mode_key=params.dispatch_mode_key, graph_ready_context=graph_ready_context)
         else:
-            state = _prepare_run_state(
+            state = prepare_run_state(
                 prepared_inputs=prepared_inputs,
                 params=params,
                 warnings=warnings,
                 algo_stats=algo_stats,
-                readiness_gate_enabled=bool(readiness_gate_enabled),
-                strict_mode=bool(strict_mode),
+                readiness_gate_enabled=readiness_gate_enabled,
+                strict_mode=strict_mode,
             )
         ctx = prepared_inputs.run_context
         ctx.sgs_score_cache = None
@@ -187,7 +186,7 @@ class GreedyScheduler:
         dispatch_run(
             ctx, state=state, sorted_ops=sorted_ops, batches=batches, batch_order=batch_order,
             params=params, machine_downtimes=machine_downtimes, resource_pool=resource_pool,
-            graph_ready_context=graph_ready_context, strict_mode=bool(strict_mode),
+            graph_ready_context=graph_ready_context, strict_mode=strict_mode,
             batch_dispatch=dispatch_batch_order, sgs_dispatch=dispatch_sgs,
             decode_resume=decode_resume, decode_checkpoints=decode_checkpoints,
         )
@@ -207,7 +206,6 @@ class GreedyScheduler:
     def _schedule_external(
         self,
         op: Any,
-        batch: Any,
         batch_progress: Dict[str, datetime],
         external_group_cache: Dict[Tuple[str, ...], Tuple[datetime, datetime]],
         base_time: datetime,
@@ -218,13 +216,12 @@ class GreedyScheduler:
         return schedule_external(
             self,
             op=op,
-            batch=batch,
             batch_progress=batch_progress,
             external_group_cache=external_group_cache,
             base_time=base_time,
             errors=errors,
             end_dt_exclusive=end_dt_exclusive,
-            strict_mode=bool(strict_mode),
+            strict_mode=strict_mode,
         )
 
     def _schedule_internal(
@@ -264,44 +261,7 @@ class GreedyScheduler:
             last_op_type_by_machine=last_op_type_by_machine,
             machine_busy_hours=machine_busy_hours,
             operator_busy_hours=operator_busy_hours,
-            strict_mode=bool(strict_mode),
-            total_hours_by_op_id=self._active_preparation.total_hours_by_op_id if self._active_preparation is not None else None,
-        )
-
-    def _auto_assign_internal_resources(
-        self,
-        *,
-        op: Any,
-        batch: Any,
-        batch_progress: Dict[str, datetime],
-        machine_timeline: Dict[str, List[Tuple[datetime, datetime]]],
-        operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],
-        base_time: datetime,
-        end_dt_exclusive: Optional[datetime],
-        machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
-        resource_pool: Dict[str, Any],
-        last_op_type_by_machine: Dict[str, str],
-        machine_busy_hours: Dict[str, float],
-        operator_busy_hours: Dict[str, float],
-        probe_only: bool = False,
-    ) -> Optional[Tuple[str, str]]:
-        return auto_assign_internal_resources(
-            calendar=self.calendar,
-            algo_stats=self._last_algo_stats,
-            op=op,
-            batch=batch,
-            batch_progress=batch_progress,
-            machine_timeline=machine_timeline,
-            operator_timeline=operator_timeline,
-            base_time=base_time,
-            end_dt_exclusive=end_dt_exclusive,
-            machine_downtimes=machine_downtimes,
-            resource_pool=resource_pool,
-            last_op_type_by_machine=last_op_type_by_machine,
-            machine_busy_hours=machine_busy_hours,
-            operator_busy_hours=operator_busy_hours,
-            probe_only=probe_only,
-            resource_preparation=self._active_preparation,
+            strict_mode=strict_mode,
             total_hours_by_op_id=self._active_preparation.total_hours_by_op_id if self._active_preparation is not None else None,
         )
 
@@ -347,7 +307,7 @@ def _normalize_machine_downtimes(machine_downtimes: Optional[Dict[str, List[Tupl
     if not machine_downtimes:
         return machine_downtimes
     return {
-        normalize_text_id(resource_id): sorted(list(segments or []), key=lambda segment: (segment[0], segment[1]))
+        normalize_text_id(resource_id): sorted(segments or [], key=lambda segment: (segment[0], segment[1]))
         for resource_id, segments in machine_downtimes.items()
         if normalize_text_id(resource_id)
     }
@@ -359,9 +319,9 @@ def prepare_native_schedule_inputs(
     resource_pool: Any = None, graph_ready_context: Any = None,
 ) -> NativeSchedulePreparation:
     from .dispatch.sgs_graph import (
-        _TOPOLOGY_FIELD,
-        _graph_priority_key_map,
-        _graph_score_enabled,
+        TOPOLOGY_FIELD,
+        graph_priority_key_map,
+        graph_score_enabled,
         prepare_graph_ready_topology,
     )
     from .dispatch.sgs_score_cache import plain_record_class
@@ -395,11 +355,11 @@ def prepare_native_schedule_inputs(
     context, topology = graph_ready_context, None
     if context is not None:
         topology = prepare_graph_ready_topology(context, unseeded)
-        score_enabled = _graph_score_enabled(context.get("score_enabled", False))
-        keys = (_graph_priority_key_map(context.get("graph_priority_key_by_op_id"), schedulable_ids=set(topology.schedulable_ids))
+        score_enabled = graph_score_enabled(context.get("score_enabled", False))
+        keys = (graph_priority_key_map(context.get("graph_priority_key_by_op_id"), schedulable_ids=set(topology.schedulable_ids))
                 if score_enabled else {})
         context = dict(context, score_enabled=score_enabled, graph_priority_key_by_op_id=keys,
-                       **{_TOPOLOGY_FIELD: topology})
+                       **{TOPOLOGY_FIELD: topology})
     records = list(operations) + list(normalized_batches.values())
     plain_classes = {kind: plain_record_class(kind) for kind in {type(value) for value in records}}
     from .dispatch.sgs_priority_pruning import prepare_pruning_record
@@ -418,8 +378,8 @@ def prepare_native_schedule_inputs(
         plain_classes=plain_classes, pruning_records=pruning_records,
     )
     ctx = preparation.run_context
-    from .dispatch.sgs import _native_score_functions_unchanged
-    ctx.native_scoring = _native_score_functions_unchanged()
+    from .dispatch.sgs import native_score_functions_unchanged
+    ctx.native_scoring = native_score_functions_unchanged()
     native_dispatch = dispatch_certificate(scheduler, ctx, _NATIVE_SGS_SCHEDULER_GUARD, _NATIVE_SGS_CONTEXT_GUARD,
                                            internal_operation, _NATIVE_INTERNAL_OPERATION_FUNCTIONS)()
     ctx.checkpoint_dispatch_guard = lambda: native_dispatch
@@ -429,7 +389,7 @@ def prepare_native_schedule_inputs(
     return preparation
 
 
-def _build_batch_order(
+def build_batch_order(
     batches: Dict[str, Any],
     params: Any,
     *,
@@ -442,9 +402,9 @@ def _build_batch_order(
         return {batch_id: index for index, batch_id in enumerate(override_order)}
     batch_for_sort = build_batch_sort_inputs(
         batches,
-        strict_mode=bool(strict_mode),
+        strict_mode=strict_mode,
         strategy=params.strategy,
-        readiness_gate_enabled=bool(readiness_gate_enabled),
+        readiness_gate_enabled=readiness_gate_enabled,
     )
     sorted_batches = StrategyFactory.create(params.strategy, **params.used_params).sort(batch_for_sort, base_date=params.base_time.date())
     if not override_order:
@@ -476,14 +436,14 @@ def _drop_seeded_operations(operations: List[Any], seed_op_ids: set) -> Tuple[Li
 
 def _operation_op_id(op: Any) -> int:
     raw_id = getattr(op, "id", 0)
-    op_id = _identity_int(raw_id)
+    op_id = identity_int(raw_id)
     if op_id <= 0:
         raise ValidationError(f"待排工序编号不合法：{raw_id!r}", field="operations")
     return op_id
 
 
 def _build_summary(*, state: ScheduleRunState, warnings: List[str], sorted_ops: List[Any], duration: float) -> ScheduleSummary:
-    total_ops = int(len(sorted_ops) + state.seed_count)
+    total_ops = len(sorted_ops) + state.seed_count
     return ScheduleSummary(
         success=(state.failed_count == 0),
         total_ops=total_ops,

@@ -201,6 +201,50 @@ def test_resource_export_shares_captured_facts_for_preview_and_csv(client, monke
         "名称": "Lathe", "自制工种编号": "EXPORT-T1", "设备组编号": "EXPORT-G1", "可做工种编号": "EXPORT-T1、EXPORT-T2"}
 
 
+@pytest.mark.parametrize(
+    "sort,direction,expected_codes",
+    (
+        ("label", "asc", ["EXPORT-M2", "EXPORT-M1"]),
+        ("business_code", "desc", ["EXPORT-M2", "EXPORT-M1"]),
+    ),
+)
+def test_filtered_export_without_column_filters_preserves_toolbar_sort_order(client, sort, direction, expected_codes):
+    with database(client) as conn:
+        conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('EXPORT-T1','Turning','internal')")
+        conn.executemany(
+            "INSERT INTO Machines(machine_id,name,op_type_id,status) VALUES (?,?,'EXPORT-T1','active')",
+            [("EXPORT-M1", "Zulu Lathe"), ("EXPORT-M2", "Alpha Mill")],
+        )
+        conn.commit()
+    scope = {"sort": sort, "direction": direction}
+    listed = client.get(BASE + "/entities/machine", query_string={**scope, "size": 200})
+    assert listed.status_code == 200, listed.get_json()
+    listed_codes = [item["business_code"] for item in listed.get_json()["data"]["entities"]]
+    assert listed_codes == expected_codes
+    approved = client.post(
+        BASE + "/exports/machine/preview",
+        json={
+            "selection": "filtered",
+            "scope": scope,
+            "page_size": 200,
+            "snapshot_ref": listed.get_json()["meta"]["snapshot_ref"],
+        },
+    )
+    assert approved.status_code == 200, approved.get_json()
+    result = client.get(
+        BASE + "/exports/machine",
+        query_string={"export_ref": approved.get_json()["data"]["export_ref"], "format": "csv"},
+    )
+    assert result.status_code == 200, result.get_json()
+    rows = list(csv.reader(StringIO(result.data.decode("utf-8-sig"))))
+    headers = rows[0]
+    exported_codes = [
+        dict(zip(headers, (value[1:] if value.startswith("'") else value for value in row)))["编号"]
+        for row in rows[1:]
+    ]
+    assert exported_codes == expected_codes
+
+
 @pytest.mark.parametrize("kind", ("machine", "operator", "supplier"))
 def test_resource_status_instructions_match_new_and_existing_row_rules(client, kind):
     from core.models.workbench_resource_file import REQUIRED, table_descriptor
@@ -242,3 +286,118 @@ def test_resource_work_type_errors_use_the_same_kind_specific_column_label(clien
     error, = data["rows"][0]["errors"]
     assert error["field"] == "op_type_codes"
     assert label in error["message"] and other_label not in error["message"]
+
+
+def test_op_type_import_marks_in_file_duplicate_labels_across_existing_and_conflicting_rows(client):
+    assert command(client, "op_type", new_preview(client, "op_type", "external")).status_code == 200
+    response = upload(
+        client,
+        "op_type",
+        [
+            ("R1", "", "external", "keep existing label"),
+            ("R2", "Resource 1", "external", "rename to R1 label"),
+            ("R3", "Resource 1", "external", "new with R1 label"),
+        ],
+        category="external",
+        headers=("business_code", "label", "category", "remark"),
+    )
+    assert response.status_code == 200, response.get_json()
+    data = response.get_json()["data"]
+    assert data["can_confirm"] is False
+    for row in data["rows"]:
+        assert any(
+            err["field"] == "label"
+            and err["code"] == "duplicate_entry"
+            and "第 2, 3, 4 行" in err["message"]
+            for err in row["errors"]
+        ), row
+
+
+def test_op_type_import_rejects_label_owned_by_another_saved_code_as_row_duplicate(client):
+    # 名称已被库里另一个编号占用：新增行和改名行都按行级重复报错，不让整份文件变成 409。
+    assert command(client, "op_type", new_preview(client, "op_type", "external")).status_code == 200
+    response = upload(client, "op_type", [("R2", "Resource 1", "external"), ("R3", "Resource 2", "external")],
+                      category="external")
+    assert response.status_code == 200, response.get_json()
+    data = response.get_json()["data"]
+    assert data["can_confirm"] is False
+    for row, label in zip(data["rows"], ("Resource 1", "Resource 2")):
+        error, = row["errors"]
+        assert (error["field"], error["code"]) == ("label", "duplicate_entry") and label in error["message"], row
+
+
+def test_internal_op_type_import_with_merge_mode_is_a_row_conflict(client):
+    response = upload(client, "op_type", [("T-INT", "Internal type", "internal", "separate")], category="internal",
+                      headers=("business_code", "label", "category", "default_merge_mode"))
+    assert response.status_code == 200, response.get_json()
+    data = response.get_json()["data"]
+    assert data["can_confirm"] is False
+    error, = data["rows"][0]["errors"]
+    assert error["code"] == "constraint_conflict" and "外协周期规则" in error["message"]
+
+
+@pytest.mark.parametrize(
+    "kind,field,kept_code",
+    (
+        ("machine", "op_type_codes", "LEGACY-EXT"),
+        ("operator", "skill_codes", "LEGACY-EXT"),
+        ("supplier", "op_type_codes", "LEGACY-INT"),
+    ),
+)
+def test_resource_import_allows_keeping_existing_bound_work_type_when_pruning_list(client, kind, field, kept_code):
+    with database(client) as conn:
+        conn.executemany(
+            "INSERT INTO OpTypes(op_type_id,name,category) VALUES (?,?,?)",
+            [
+                ("LEGACY-EXT", "Legacy External", "external"),
+                ("LEGACY-INT", "Legacy Internal", "internal"),
+                ("VALID-INT", "Valid Internal", "internal"),
+                ("VALID-EXT", "Valid External", "external"),
+            ],
+        )
+        conn.execute(
+            "INSERT INTO Machines(machine_id,name,op_type_id,status) VALUES ('R-LEGACY','Machine','LEGACY-EXT','active')"
+        )
+        conn.execute(
+            "INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('R-LEGACY','VALID-INT')"
+        )
+        conn.execute(
+            "INSERT INTO Operators(operator_id,name,status) VALUES ('R-LEGACY','Operator','active')"
+        )
+        conn.executemany(
+            "INSERT INTO OperatorSkill(operator_id,op_type_id) VALUES ('R-LEGACY',?)",
+            [("LEGACY-EXT",), ("VALID-INT",)],
+        )
+        conn.execute(
+            "INSERT INTO WorkbenchOperatorProfiles(operator_id,skills_declared) VALUES ('R-LEGACY',1)"
+        )
+        conn.execute(
+            "INSERT INTO Suppliers(supplier_id,name,op_type_id,default_days,status) VALUES ('R-LEGACY','Supplier','LEGACY-INT',2.0,'active')"
+        )
+        conn.executemany(
+            "INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES ('R-LEGACY',?)",
+            [("LEGACY-INT",), ("VALID-EXT",)],
+        )
+        conn.commit()
+
+    response = upload(client, kind, [("R-LEGACY", kept_code)], headers=("business_code", field))
+    assert response.status_code == 200, response.get_json()
+    preview = response.get_json()["data"]
+    assert preview["can_confirm"] is True, preview
+    row = preview["rows"][0]
+    assert row["errors"] == []
+    assert row["after"][field] == [kept_code]
+    confirmed = command(client, kind, preview, key=f"keep-existing-{kind}")
+    assert confirmed.status_code == 200, confirmed.get_json()
+    assert confirmed.get_json()["result"] == "committed"
+
+
+def test_new_machine_with_legacy_work_type_and_cleared_list_is_a_row_error(client):
+    # 新增设备同时填旧单工种和 \N：交给行级清除规则报错，不拿 None 做成员判断。
+    response = upload(client, "machine", [("T20-NEW-MACHINE", "New machine", "active", "OT1", r"\N")],
+                      headers=("business_code", "label", "status", "op_type_code", "op_type_codes"))
+    assert response.status_code == 200, response.get_json()
+    data = response.get_json()["data"]
+    assert data["can_confirm"] is False
+    error, = data["rows"][0]["errors"]
+    assert error["field"] == "op_type_codes" and r"\N" in error["message"]

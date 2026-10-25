@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Literal, Tuple, Union, cast
 
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.common.bounded_plan_query import _PagePlanQueryService
+from core.services.common.bounded_plan_query import PagePlanQueryService
+from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable
 from core.services.workbench.facts.zero_duration_evidence import overlaps
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
     from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 
 
-class PlanReadQuery(_PagePlanQueryService):
+class PlanReadQuery(PagePlanQueryService):
     """Permanent scenario keys reach the existing resolver exactly as stored."""
     def resolve_plan_view(self, version, role, scenario_id=None):
         if scenario_id is None:
@@ -39,6 +40,7 @@ class PlanReadContext:
         self._enriched = {}
         self._entities, self._points, self._tasks, self._calendar_selections = {}, {}, {}, {}
         self._adopted, self._task_memberships, self._task_resources, self._task_work = {}, {}, {}, {}
+        self._projected_resources = {}
         self._intervals, self._datetime_intervals, self._plan_time_maps = {}, {}, {}
         self._raw_source_selection: Union[Literal[False], Tuple[List[str], str], None] = False
         self._raw_sources = {}
@@ -52,14 +54,11 @@ class PlanReadContext:
 
     @contextmanager
     def read_scope(self):
-        history, scenario = self.references._history_reader, self.references._scenario_reader
-        self.references._history_reader = self.repo.history_rows
-        self.references._scenario_reader = self.repo.get_scenario_context
-        try:
-            with read_evidence_scope(self.conn), self.references.read_bindings():
-                yield self
-        finally:
-            self.references._history_reader, self.references._scenario_reader = history, scenario
+        with read_evidence_scope(self.conn), self.references.read_bindings(
+            history_reader=self.repo.history_rows,
+            scenario_reader=self.repo.get_scenario_context,
+        ):
+            yield self
 
     def resolve(self, plan_ref):
         if plan_ref not in self._locators:
@@ -67,9 +66,9 @@ class PlanReadContext:
         return self._locators[plan_ref]
 
     def selected(self, plan_ref):
-        from .queries import _selected_plan
+        from .queries import selected_plan
         if plan_ref not in self._selected:
-            self._selected[plan_ref] = _selected_plan(self, self.resolve(plan_ref))
+            self._selected[plan_ref] = selected_plan(self, self.resolve(plan_ref))
         return self._selected[plan_ref]
 
     @staticmethod
@@ -117,10 +116,25 @@ class PlanReadContext:
         return self._points[version]
 
     def adopted_source(self, plan_ref):
-        from .projection import _adopted_source_record
-        if plan_ref not in self._adopted:
-            self._adopted[plan_ref] = _adopted_source_record(self.conn, plan_ref, context=self)
-        return self._adopted[plan_ref]
+        from .projection import adopted_source_record
+        return adopted_source_record(self.conn, plan_ref, context=self)
+
+    def adoption_source(self, plan_ref, version, history, *, recorded):
+        """One exact snapshot retains available, absent and classified unavailable evidence."""
+        from .adoption_baseline import load_adoption_source
+
+        raw = history.get("result_summary") if history is not None else None
+        key = (plan_ref, version, raw)
+        if key not in self._adopted:
+            try:
+                self._adopted[key] = load_adoption_source(self.conn, plan_ref=plan_ref, version=version,
+                    history=history, recorded=recorded, context=self)
+            except AdoptionBaselineUnavailable as exc:
+                self._adopted[key] = exc.with_traceback(None)
+        result = self._adopted[key]
+        if isinstance(result, AdoptionBaselineUnavailable):
+            raise result.with_traceback(None)
+        return result
 
     def detail_rows(self, entry):
         query = self.query(entry)
@@ -181,11 +195,11 @@ class PlanReadContext:
 
     def admit_scope(self, entry, scope, rows):
         """Standalone projection inputs are admitted against one captured scope."""
-        from .baseline import _verify_selected_rows
+        from .baseline import verify_selected_rows
         _, current, _ = self.selected(scope.plan_ref)
         if current.locator != entry.locator or current.plan_identity != entry.plan_identity:
             raise WorkbenchCommandRejected("invalid_input", "所选计划已经变了，不能跨计划对比。请刷新计划列表后重新选择。", 400)
-        _verify_selected_rows(self.detail_rows(current), rows, scope)
+        verify_selected_rows(self.detail_rows(current), rows, scope)
         return self.scoped_rows(current, scope)
 
     def active_map(self, kind, keys):
@@ -220,11 +234,16 @@ class PlanReadContext:
         from .projection import project_tasks
         rows = self.detail_rows(entry) if rows is None else rows
         cache = self._tasks.setdefault(plan_ref, {})
-        resources, state = self.resources(rows)
-        task_refs = self.task_refs(plan_ref, rows)
-        operations = self.operation_refs(row["op_id"] for row in rows)
+        cached_resources = self._projected_resources.get(plan_ref)
+        if cached_resources is not None and cached_resources[0] is rows:
+            resources, state = cached_resources[1], cached_resources[2]
+        else:
+            resources, state = self.resources(rows)
+            self._projected_resources[plan_ref] = (rows, resources, state)
         missing = [row for row in rows if row["schedule_id"] not in cache]
         if missing:
+            task_refs = self.task_refs(plan_ref, missing)
+            operations = self.operation_refs(row["op_id"] for row in missing)
             facts = {}
             tasks = project_tasks(plan_ref, missing, task_refs, operations, resources, conn=self.conn, facts=facts, context=self)
             cache.update((row["schedule_id"], task) for row, task in zip(missing, tasks))

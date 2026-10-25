@@ -19,6 +19,7 @@ from web.bootstrap import launcher_cleanup_result as cleanup_mod
 from web.bootstrap import launcher_contracts as contracts_mod
 from web.bootstrap import launcher_stop as stop_mod
 from web.bootstrap.entrypoint import EntryPointDeps
+from web.bootstrap.launcher_lock_result import read_runtime_lock_result
 from web.bootstrap.launcher_paths import db_scope_lock_path, resolve_runtime_db_path
 
 _OWNER = "LOCALBOX\\tester"
@@ -127,7 +128,7 @@ def test_stale_database_lock_replacement_excludes_competing_process(tmp_path):
         assert state == "acquired", payload
         assert payload["pid"] == first.pid
         assert lock_mod.read_runtime_lock_result_from_path(str(database_lock)).payload["pid"] == first.pid
-        assert lock_mod.read_runtime_lock(str(logs1))["pid"] == first.pid
+        assert read_runtime_lock_result(str(logs1)).payload["pid"] == first.pid
         assert not (logs2 / "aps_runtime.lock").exists()
         finish.set()
         first.join(10)
@@ -203,7 +204,7 @@ def test_cleanup_rechecks_mirror_and_preserves_new_primary_instance(tmp_path, mo
     result = cleanup_mod.delete_runtime_contract_files_result(str(logs), expected_lock=old_lock, expected_contract=old_contract)
     assert not result.ok and any(failure.reason == "ownership_changed" for failure in result.failures)
     assert Path(publication["path"]).read_bytes() == saved
-    assert lock_mod.read_runtime_lock(str(logs))["started_at"] == new_lock["started_at"]
+    assert read_runtime_lock_result(str(logs)).payload["started_at"] == new_lock["started_at"]
     assert lock_mod.read_runtime_lock_result_from_path(db_scope_lock_path(str(database))).payload["started_at"] == new_lock["db_lock"]["started_at"]
     assert not lock_mod.release_runtime_lock(str(logs), db_path=str(database), expected_payload=old_lock)
     assert lock_mod.release_runtime_lock(str(logs), db_path=str(database), expected_payload=new_lock)
@@ -231,7 +232,7 @@ def test_unmanaged_exit_uses_original_three_identities_after_backup(tmp_path, mo
                       EXCEL_TEMPLATE_DIR=str(runtime_dir / "templates"), APP_UI_MODE="new_ui")
     assert entrypoint_mod._publish_runtime_contract(
         deps, app, runtime_dir=str(runtime_dir), host="127.0.0.1", port=6322,
-        runtime_owner=_OWNER, ui_mode="default", debug=False, lock_state=state,
+        runtime_owner=_OWNER, ui_mode="default", lock_state=state,
     ) is None
     assert len(callbacks) == 2
     assert state["contract_cleanup_dir"] == str(logs)
@@ -259,7 +260,7 @@ def test_unmanaged_exit_uses_original_three_identities_after_backup(tmp_path, mo
     with pytest.raises(lock_mod.RuntimeLockError, match="原实例运行时文件清理失败"):
         callback(*args, **kwargs)
     assert Path(publication["path"]).read_bytes() == current
-    assert lock_mod.read_runtime_lock(str(logs))["started_at"] == new_lock["started_at"]
+    assert read_runtime_lock_result(str(logs)).payload["started_at"] == new_lock["started_at"]
     assert lock_mod.release_runtime_lock(str(logs), db_path=str(database), expected_payload=new_lock)
 
 
@@ -282,7 +283,7 @@ def test_stop_retains_initial_shell_database_and_contract_through_wait(tmp_path,
     monkeypatch.setattr(stop_mod, "_wait_for_runtime_stop", wait_and_replace)
     assert stop_mod.stop_runtime_from_dir(str(runtime_dir)) == 1
     assert contracts_mod.read_runtime_contract_result(str(logs)).payload["instance_id"] == "new-stop-instance"
-    assert lock_mod.read_runtime_lock(str(logs))["started_at"] == new["lock"]["started_at"]
+    assert read_runtime_lock_result(str(logs)).payload["started_at"] == new["lock"]["started_at"]
     assert lock_mod.read_runtime_lock_result_from_path(db_scope_lock_path(str(database))).payload["started_at"] == new["lock"]["db_lock"]["started_at"]
     assert lock_mod.release_runtime_lock(str(logs), db_path=str(database), expected_payload=new["lock"])
 
@@ -323,7 +324,6 @@ def _make_real_lock_deps(tmp_path: Path, events: List[str], state: Dict[str, Any
     return EntryPointDeps(
         create_app=_create_app,
         clear_launch_error=lambda *a, **k: None,
-        write_launch_error=lambda *a, **k: None,
         current_runtime_owner=lambda: _OWNER,
         resolve_prelaunch_log_dir=lambda runtime_dir: str(prelaunch_log_dir),
         acquire_runtime_lock=lock_mod.acquire_runtime_lock,
@@ -337,7 +337,6 @@ def _make_real_lock_deps(tmp_path: Path, events: List[str], state: Dict[str, Any
         serve_runtime_app=lambda app, host, port: events.append("serve"),
         should_use_runtime_reloader=lambda debug: False,
         should_own_runtime_resources=lambda debug: True,
-        should_register_runtime_lifecycle_handlers=lambda debug: True,
         atexit_register=_atexit_register,
         resolve_startup_debug_flag=lambda: False,
         resolve_runtime_db_path=resolve_runtime_db_path,
@@ -378,3 +377,33 @@ def test_app_main_rejects_second_instance_on_db_conflict_before_create_app(tmp_p
     assert f"pid={os.getpid()}" in Path(db_scope_lock_path(str(db))).read_text(encoding="utf-8")
 
     lock_mod.release_runtime_lock(str(logs1), db_path=str(db))
+
+
+def test_quality_gate_runtime_probe_does_not_let_stale_contract_mask_active_lock_or_endpoint(monkeypatch) -> None:
+    import scripts.run_quality_gate as gate_mod
+
+    stale_contract = {"pid": 1001, "exe_path": "/bin/stale-aps", "host": "127.0.0.1", "port": 6322}
+    active_lock = {"pid": 2002, "exe_path": "/bin/live-aps"}
+    paths = {"contract_path": "/tmp/aps_runtime.json", "lock_path": "/tmp/aps_runtime.lock"}
+
+    monkeypatch.setattr(gate_mod, "_pid_state", lambda pid: pid == 2002)
+    monkeypatch.setattr(gate_mod, "_pid_matches_contract", lambda pid, exe_path: pid == 2002)
+
+    pid_state, pid, pid_match, exe_path = gate_mod._effective_pid_signal(stale_contract, active_lock)
+    assert pid_state == "active"
+    assert pid == 2002 and pid_match is True and exe_path == "/bin/live-aps"
+
+    monkeypatch.setattr(gate_mod, "_load_runtime_state", lambda: (stale_contract, active_lock, paths))
+    monkeypatch.setattr(
+        gate_mod, "_health_signal", lambda contract: (gate_mod.RuntimeProbeState.STALE, "127.0.0.1", 6322)
+    )
+    with pytest.raises(RuntimeError, match="pid=2002"):
+        gate_mod._assert_no_active_runtime()
+
+    monkeypatch.setattr(gate_mod, "_load_runtime_state", lambda: (stale_contract, None, paths))
+    monkeypatch.setattr(
+        gate_mod, "_health_signal", lambda contract: (gate_mod.RuntimeProbeState.ACTIVE, "127.0.0.1", 6322)
+    )
+    with pytest.raises(RuntimeError, match="pid_state=stale health_state=active"):
+        gate_mod._assert_no_active_runtime()
+

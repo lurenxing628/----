@@ -10,10 +10,6 @@ from core.services.workbench.run.preflight_facts import PreflightFacts
 from data.repositories.workbench_trial_query_repo import BOOKKEEPING_TABLES
 
 
-def capture_facts(conn, capture=None):
-    return (capture if capture is not None else ProductionFactsCapture(conn)).archive(named=True)
-
-
 def facts_unchanged(admission, live):
     """Compare saved production content; preserve original historical metadata."""
 
@@ -28,11 +24,11 @@ def facts_unchanged(admission, live):
     return same(project_facts(original), project_facts(current))
 
 
-def execution_facts(conn, tables, selected_refs, *, service, prepared=None):
-    ids = {int(row["source_key"]): row["ref"] for row in tables["WorkbenchPlanSourceRefs"]
-           if row["kind"] == "operation" and row["active"] == 1}
+def execution_facts(tables, selected_refs, *, operation_refs, service):
+    from core.services.workbench.facts.run_input_codec import validate_projection_dto
+
     refs = set(selected_refs)
-    refs.update(ids[row["op_id"]] for row in tables["Schedule"] if row["op_id"] in ids)
+    refs.update(operation_refs[row["op_id"]] for row in tables["Schedule"] if row["op_id"] in operation_refs)
     for row in tables.get("WorkbenchProductionReports", []):
         refs.add(row["operation_ref"])
     for row in tables.get("WorkbenchExecutionLegacyFacts", []):
@@ -41,28 +37,23 @@ def execution_facts(conn, tables, selected_refs, *, service, prepared=None):
     if len(refs) > MAX_TRIAL_TASKS:
         reject("query_too_large", "试调及真实执行保护范围超过10000道工序，未遗漏范围外占用。", 413)
     values = service.project_operations(sorted(refs))
-    if prepared is not None:
-        from core.services.workbench.facts.run_input_codec import validate_projection_dto
-        for projection in values:
-            validate_projection_dto(projection)
-        prepared.extend(values)
-    return {row.operation_ref: row.to_dict() for row in values}
+    for projection in values:
+        validate_projection_dto(projection)
+    return {row.operation_ref: row.to_dict() for row in values}, values
 
 
-def live_context(conn, selected_refs, capture=None, *, execution_service, prepared_execution=None):
+def live_context(conn, selected_refs, capture=None, *, execution_service):
     capture = capture if capture is not None else ProductionFactsCapture(conn)
-    facts = capture_facts(conn, capture)
+    facts = capture.archive(named=True)
     capture.execution_service = execution_service
     preflight = PreflightFacts(conn, capture=capture)
     preflight.bind_capture(capture)
-    prepared = []
-    projections = execution_facts(conn, facts["tables"], selected_refs, service=execution_service, prepared=prepared)
-    if prepared_execution is not None:
-        prepared_execution.extend(prepared)
+    projections, prepared = execution_facts(facts["tables"], selected_refs,
+                                            operation_refs=preflight.operation_refs, service=execution_service)
     preflight.execution_projections.update((row.operation_ref, row) for row in prepared)
     return {"facts": facts, "execution": projections,
             "resource_facts": CapturedResourceFacts(preflight.tables, {}),
-            "baseline": run_baseline(conn, capture=capture), "preflight_facts": preflight}
+            "baseline": run_baseline(capture=capture), "preflight_facts": preflight}
 
 
 def entity_maps(tables):

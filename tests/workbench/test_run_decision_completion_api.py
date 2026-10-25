@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 from openpyxl import load_workbook
 
-from core.services.workbench.facts.completion_scope import project_completion_scope
+from core.services.workbench.facts.completion_scope import project_completion_summary
 from core.services.workbench.run.decision_completion_queries import completion_batches, normalize_completion_filters
 from tests.workbench.legacy_run_archive_support import install_complete_legacy_archive, install_different_work_archive
 from tests.workbench.run_candidate_support import BASE, api, compute
@@ -19,7 +19,7 @@ RUN, FIRST, SECOND, VIEWER = (format(number, "048x") for number in range(1, 5))
 
 
 def completion_source(deliveries, pending, *, unavailable=()):
-    scopes = {key: project_completion_scope(items, pending[key], available=key not in unavailable)
+    scopes = {key: project_completion_summary(items, pending[key], available=key not in unavailable)
               for key, items in deliveries.items()}
     scope = {"run_ref": RUN, "selected_candidate_ref": VIEWER, "comparison_mode": "candidates",
              "reference": {"kind": "candidate", "candidate_ref": FIRST}, "reference_state": "available",

@@ -58,12 +58,13 @@
   }
   function Groups({ rows, selected, onChange, disabled }) {
     const [page, setPage] = React.useState(1), pages = Math.max(1, Math.ceil(rows.length / 50)), current = Math.min(page, pages);
+    const selectedSet = React.useMemo(() => new Set(selected), [selected]);
     if (!rows.length) return null;
-    const all = rows.every(row => selected.includes(row.ref));
+    const all = rows.every(row => selectedSet.has(row.ref));
     return <section aria-label="受影响的外协组"><h3>需明确解除的原外协组</h3>
       <label className="rm-check"><input type="checkbox" checked={all} disabled={disabled} onChange={event => onChange(event.target.checked ? rows.map(row => row.ref) : [])} />已核对全部 {rows.length} 组，同意解除这些原外协组。</label>
       <div className="rm-table-wrap"><table className="rm-table" aria-label="原外协组规则"><caption className="wb-visually-hidden">{"原外协组规则"}</caption><thead><tr><th scope="col" style={{ width: '8%' }}>解除</th><th scope="col">零件</th><th scope="col">工序范围</th><th scope="col">周期方式</th><th scope="col">原周期</th><th scope="col">供应商</th><th scope="col">原备注</th></tr></thead><tbody>
-        {rows.slice((current - 1) * 50, current * 50).map(row => <tr key={row.ref}><td><input type="checkbox" aria-label={'解除 ' + row.business_code + ' 工序 ' + row.start_sequence + ' 至 ' + row.end_sequence + ' 的外协组'} checked={selected.includes(row.ref)} disabled={disabled}
+        {rows.slice((current - 1) * 50, current * 50).map(row => <tr key={row.ref}><td><input type="checkbox" aria-label={'解除 ' + row.business_code + ' 工序 ' + row.start_sequence + ' 至 ' + row.end_sequence + ' 的外协组'} checked={selectedSet.has(row.ref)} disabled={disabled}
           onChange={event => onChange(event.target.checked ? selected.concat(row.ref) : selected.filter(ref => ref !== row.ref))} /></td><td>{row.business_code}</td><td>{row.start_sequence} 至 {row.end_sequence}</td>
           <td>{row.merge_mode === 'merged' ? '合并周期' : row.merge_mode === 'separate' ? '逐序周期' : row.merge_mode === null ? '未填写' : row.merge_mode}</td>
           <td>{row.total_days === null ? '未填写' : window.WorkbenchFormat.number(row.total_days, { digits: 4, trim: true }) + ' 天'}</td><td>{row.supplier_label === null ? '未选' : row.supplier_label}</td><td>{row.remark === null ? '未填写' : row.remark}<Issues issues={row.issues} /></td></tr>)}

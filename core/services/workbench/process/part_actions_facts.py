@@ -4,12 +4,11 @@ import math
 from collections import defaultdict
 from datetime import date, datetime
 
-from core.infrastructure.connection_guards import foreign_keys_enabled, schema_contract_memo
+from core.infrastructure.connection_guards import foreign_keys_enabled
 from core.infrastructure.workbench_metadata_schema import workbench_metadata_contract_issues
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
 from core.infrastructure.workbench_process_workflow_schema import workbench_process_workflow_contract_issues
 from core.models.workbench_command import WorkbenchCommandRejected
-from data.repositories.workbench_process_part_facts_repo import WorkbenchProcessPartFactsRepository
 
 from .projection import require_ref
 
@@ -49,9 +48,8 @@ def checked_process_facts(identity, facts):
     return identity, part, operations, groups, facts["workflow"][part_no]["workflow"]
 
 
-def check_part_action_storage(conn, contracts=None):
+def check_part_action_storage(conn, contracts):
     # 本命令不执行 DDL、不改外键设置；逐行写入共用首次入口的检查结果。
-    contracts = contracts if contracts is not None else schema_contract_memo(conn)
     issues = (contracts.get_schema(workbench_metadata_contract_issues)
               + contracts.get_schema(workbench_process_contract_issues)
               + contracts.get_schema(workbench_process_workflow_contract_issues))
@@ -73,19 +71,3 @@ def plain_part_action_facts(value):
     if isinstance(value, float) and not math.isfinite(value):
         return {"storage_type": "float", "value": str(value)}
     return value
-
-
-class ProcessPartActionFacts:
-    def __init__(self, conn, logger=None):
-        self.repo = WorkbenchProcessPartFactsRepository(conn, logger)
-
-    def capture(self, refs):
-        return self.repo.capture(refs)
-
-    @staticmethod
-    def snapshot(identity, captured):
-        code = identity.entity_key
-        snapshot = captured["parts"].get(code)
-        if snapshot is None:
-            raise WorkbenchCommandRejected("entity_not_found", "零件已不存在，请返回列表重新选择。", 404)
-        return dict(snapshot, identity=captured["identities"].get(identity.ref))

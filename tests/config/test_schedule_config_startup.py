@@ -4,9 +4,10 @@ import pytest
 
 from core.errors import ValidationError
 from core.infrastructure.database import get_connection
+from core.models.schedule_config_runtime_fields import default_for
 from core.services.scheduler.config.config_constants import ACTIVE_PRESET_KEY, BUILTIN_PRESET_DEFAULT
-from core.services.scheduler.config.config_field_spec import default_for, list_config_fields
-from core.services.workbench.run.input_config import configuration_snapshot
+from core.services.scheduler.config.config_field_spec import list_config_fields
+from core.services.scheduler.config.config_snapshot import build_schedule_config_snapshot
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from data.repositories.config_repo import ConfigRepository
 from tests.workbench.run_jobs_support import JobCase
@@ -27,7 +28,7 @@ def test_fresh_application_first_real_worker_run_needs_no_config_page(db_env):
     try:
         assert conn.execute("SELECT COUNT(*) FROM ScheduleConfig").fetchone()[0] == 0
         app = create_application()
-        assert configuration_snapshot(conn).sort_strategy == default_for("sort_strategy")
+        assert build_schedule_config_snapshot(ConfigRepository(conn)).sort_strategy == default_for("sort_strategy")
         assert ConfigRepository(conn).get_value(ACTIVE_PRESET_KEY) == BUILTIN_PRESET_DEFAULT
         assert conn.execute("SELECT COUNT(*) FROM ScheduleConfig").fetchone()[0] == len(list_config_fields()) + 3
         initialized = config_rows(conn)
@@ -67,7 +68,7 @@ def test_restart_preserves_existing_missing_or_invalid_configuration(db_env, dam
         create_application()
         assert config_rows(conn) == before
         with pytest.raises(ValidationError) as exc:
-            configuration_snapshot(conn)
+            build_schedule_config_snapshot(ConfigRepository(conn))
         assert exc.value.field == "sort_strategy"
     finally:
         conn.close()

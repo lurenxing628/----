@@ -24,10 +24,10 @@ from core.algorithm_runtime.native_snapshot import UNSUPPORTED, scalar_snapshot
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.errors import ValidationError
 
-from .sgs_due_span import _external_candidate_window
+from .sgs_due_span import external_candidate_window
 from .sgs_priority_keys import ValidatedGraphPriorityKeys
 from .sgs_score_cache import plain_record_class
-from .sgs_scoring import _parse_due_date
+from .sgs_scoring import parse_due_date
 
 _FIELDS = ("id", "seq", "batch_id", "piece_id", "source", "machine_id", "operator_id", "op_type_name",
            "setup_hours", "unit_hours", "quantity", "priority", "due_date", "ready_date", "material_ready_date", "ready_status",
@@ -51,10 +51,10 @@ class GraphPriorityPruning:
         # The cache already certified the pool and the native probe; auto-assign operations
         # are admitted only through that same certification.
         return cls(graph_state, batches, hours, strict_mode=strict_mode,
-                   resource_pool=cache._pool, eligible_resources=cache.eligible_resources,
+                   eligible_resources=cache.eligible_resources,
                    calendar=cache._timing.calendar, calendar_days=cache.calendar_days, preparation=cache.preparation)
 
-    def __init__(self, graph_state, batches, hours, *, strict_mode, resource_pool=None, eligible_resources=None, calendar=None, calendar_days=None, preparation=None):
+    def __init__(self, graph_state, batches, hours, *, strict_mode, eligible_resources=None, calendar=None, calendar_days=None, preparation=None):
         if preparation is None:
             records = list(batches.values()) + [op for _batch_id, op in (graph_state or {}).get("op_by_id", {}).values()]
             self._plain_classes = {kind: plain_record_class(kind) for kind in {type(record) for record in records}}
@@ -69,7 +69,6 @@ class GraphPriorityPruning:
         self.key_width = 0
         # True only when every schedulable operation names both resources; tail reuse requires it.
         self.fixed_resources = True
-        self._pool = resource_pool if isinstance(resource_pool, dict) and eligible_resources is not None else None
         self._eligible_resources = eligible_resources
         self._calendar = calendar
         self._has_external = False
@@ -98,7 +97,7 @@ class GraphPriorityPruning:
             if not self._record(batch):
                 return False
             try:
-                _parse_due_date(getattr(batch, "due_date", None), strict_mode=strict)
+                parse_due_date(getattr(batch, "due_date", None), strict_mode=strict)
             except (ValidationError, ValueError, OverflowError):
                 return False
         return self._certify_operations(graph, hours, strict)
@@ -132,7 +131,7 @@ class GraphPriorityPruning:
         # A native natural-day call is pure arithmetic; the earliest datetime leaves room
         # for every valid duration without depending on this operation's future progress.
         try:
-            _external_candidate_window(
+            external_candidate_window(
                 SimpleNamespace(calendar=self._calendar), ScheduleRunState(base_time=datetime.min),
                 op=op, prev_end=datetime.min, strict_mode=strict,
             )
@@ -157,9 +156,9 @@ class GraphPriorityPruning:
             return None
         if machine and machine.strip() and operator and operator.strip():
             return True
-        if self._pool is None or self._eligible_resources is None:
+        if self._eligible_resources is None:
             return None
-        eligible = self._eligible_resources(op, self._pool)
+        eligible = self._eligible_resources(op)
         if eligible is None or not eligible[0] or not eligible[1]:
             return None
         return False

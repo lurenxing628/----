@@ -98,6 +98,8 @@
     }
     function change(section, key, value) {
       setDraft(current => section ? { ...current, [section]: { ...current[section], [key]: value } } : { ...current, [key]: value }); setError(null);
+      const code = command.error && (command.error.code || command.error.error && command.error.error.code);
+      if (command.phase === 'rejected' && !['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code) && typeof command.reset === 'function') command.reset();
     }
     async function submit(event) {
       event.preventDefault(); if (disabled || reason || confirmReason) return;

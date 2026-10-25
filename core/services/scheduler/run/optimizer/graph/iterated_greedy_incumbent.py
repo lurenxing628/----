@@ -4,12 +4,12 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, List, Optional
 
 from core.services.scheduler.run.optimizer.candidate_comparison import candidate_is_preferred
+from core.services.scheduler.run.optimizer.candidate_fingerprint import score_strictly_better
 from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
     GraphReadyWeightProfile,
 )
 
-from .acceptance import build_graph_ready_improve_only_acceptance_event
 from .reporting import append_graph_trace
 
 
@@ -18,12 +18,11 @@ def feasible_candidate(candidate: Dict[str, Any]) -> bool:
 
 
 class IGIncumbentTracker:
-    def __init__(self, *, pool: Any, report_state: Any, report: Dict[str, Any], seed: int,
+    def __init__(self, *, pool: Any, report_state: Any, report: Dict[str, Any],
                  clock: Callable[[], float], t_begin: float, improvement_trace: List[Dict[str, Any]]) -> None:
         self.pool = pool
         self.report_state = report_state
         self.report = report
-        self.seed = int(seed)
         self.clock = clock
         self.t_begin = t_begin
         self.improvement_trace = improvement_trace
@@ -56,21 +55,18 @@ class IGIncumbentTracker:
         parent = self.best_identity
         fingerprint = self.pool.fingerprint(candidate, parent)
         self.pool.seen_outputs.add(fingerprint.output_key)
-        state_fingerprint = None
         if self.report_state is not None:
-            state_fingerprint = self.report_state.mark_candidate_evaluated(candidate, origin=GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
-                                                                          fingerprint=fingerprint)
+            self.report_state.mark_candidate_evaluated(candidate, origin=GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
+                                                       fingerprint=fingerprint)
         if capture_of is not None and self._capture_reproduced(fingerprint, capture_of):
             on_decision(capture_of, False, "reference_capture")
             return False
-        event = self._acceptance_event(candidate, incumbent=incumbent, fingerprint=fingerprint,
-                                       state_fingerprint=state_fingerprint)
-        if event is None:
+        if not self._can_accept(candidate, incumbent=incumbent, fingerprint=fingerprint):
             on_decision(incumbent, False, "incumbent")
             return False
         if self.report_state is not None:
             self.report_state.mark_candidate_accepted(candidate, origin=GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
-                                                       acceptance_event=event, fingerprint=fingerprint)
+                                                       fingerprint=fingerprint)
         on_decision(incumbent, True, "incumbent")
         append_graph_trace(improvement_trace=self.improvement_trace, candidate=candidate, profile=profile,
                            clock=self.clock, t_begin=self.t_begin)
@@ -88,40 +84,30 @@ class IGIncumbentTracker:
         self.report["reference_capture_divergences"] += 1
         return False
 
-    def _acceptance_event(self, candidate: Dict[str, Any], *, incumbent: Optional[Dict[str, Any]], fingerprint: Any,
-                          state_fingerprint: Any) -> Optional[Dict[str, Any]]:
-        """Return the improve-only acceptance event, or None after recording why the candidate is rejected."""
+    def _can_accept(self, candidate: Dict[str, Any], *, incumbent: Optional[Dict[str, Any]],
+                    fingerprint: Any) -> bool:
+        """Return True when the candidate can replace the incumbent, else record why it is rejected."""
         if fingerprint.same_as_parent or fingerprint.same_as_seen:
-            already = state_fingerprint is not None and (state_fingerprint.same_as_parent or state_fingerprint.same_as_seen)
-            self.reject("same_fingerprint", record=not already)
-            return None
+            self.reject("same_fingerprint")
+            return False
         if not feasible_candidate(candidate):
             self.reject("ig_infeasible")
-            return None
-        event = build_graph_ready_improve_only_acceptance_event(
-            candidate_score=candidate["score"], incumbent_score=(incumbent or {}).get("score"), seed=self.seed)
-        if event is None:
+            return False
+        if not score_strictly_better(candidate["score"], (incumbent or {}).get("score")):
             self.reject("no_strict_improvement")
-            return None
+            return False
         if not candidate_is_preferred(
                 candidate=candidate, incumbent=incumbent, candidate_origin=GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
                 incumbent_origin=str((incumbent or {}).get("candidate_origin") or "baseline"),
                 candidate_fingerprint=fingerprint,
                 incumbent_fingerprint_changed=bool(self.report_state and self.report_state.best_fingerprint_changed())):
             self.reject("acceptance_rejected")
-            return None
-        return event
+            return False
+        return True
 
-    def reject(self, reason: str, *, record: bool = True) -> None:
+    def reject(self, reason: str) -> None:
         reasons = self.report["rejected_by_reason"]
         reasons[reason] = reasons.get(reason, 0) + 1
-        if record and self.report_state is not None:
-            self.report_state.mark_candidate_rejected(reason=reason)
 
 
-def incumbent_events(report: Dict[str, Any]) -> int:
-    """Strict incumbent improvements published by the stage, whatever produced them."""
-    return report["improvements"] + report["reference_capture_improvements"]
-
-
-__all__ = ["IGIncumbentTracker", "feasible_candidate", "incumbent_events"]
+__all__ = ["IGIncumbentTracker", "feasible_candidate"]

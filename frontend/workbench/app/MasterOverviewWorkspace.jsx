@@ -3,9 +3,6 @@
   const C = window.APSMasterOverviewContract, { Button, ErrorBox, MetricValue } = window.ResourceControls;
   const { Table, Tabs, Pager } = window.MasterOverviewTable;
   const { useState, useEffect, useMemo, useRef } = React;
-  async function readList(api, scope, page, token, signal) {
-    return api.list(scope, page, token, signal);
-  }
   function readContext(context) {
     const empty = { scope: C.scope({}), page: 1, selected: null, section: 'issues', detailPage: 1 };
     if (context == null) return empty;
@@ -49,8 +46,9 @@
     const [request, setRequest] = useState(() => ({ scope: initial.scope, page: initial.page, initial: initial.initial, restore: initial }));
     const [result, setResult] = useState(null), [loading, setLoading] = useState(true), [error, setError] = useState(null);
     const [summary, setSummary] = useState(null), [completedRequest, setCompletedRequest] = useState(null);
-    const [selected, setSelected] = useState(null), [section, setSection] = useState('issues'), [detailPage, setDetailPage] = useState(1);
-    const [detail, setDetail] = useState(null), [detailLoading, setDetailLoading] = useState(false), [detailError, setDetailError] = useState(null);
+    const [detailRequest, setDetailRequest] = useState({ selected: null, section: 'issues', page: 1, captured: null });
+    const { selected, section, page: detailPage } = detailRequest;
+    const [detail, setDetail] = useState(null), [completedDetail, setCompletedDetail] = useState(null), [detailLoading, setDetailLoading] = useState(false), [detailError, setDetailError] = useState(null);
     const [search, setSearch] = useState(initial.scope.query), [column, setColumn] = useState(null), [columnText, setColumnText] = useState('');
     const [message, setMessage] = useState(initial.notice || ''), [actionError, setActionError] = useState(null), [exporting, setExporting] = useState(false), [stale, setStale] = useState(false);
     const opener = useRef(null), listRef = useRef(null), listHeight = useRef(0), exportController = useRef(null), alive = useRef(true);
@@ -58,10 +56,13 @@
     const detailFocus = useRef(!!(initial.initial || initial.selected));
     const pending = loading || completedRequest !== request, readError = completedRequest === request ? error : null;
     const data = result && (completedRequest === request || request.keep) ? result.data : null, scope = data ? data.scope : request.scope;
+    const detailPending = Boolean(selected) && !detailRequest.captured && (detailLoading || completedDetail !== detailRequest);
+    const currentDetail = !selected ? null : detailRequest.captured || (completedDetail === detailRequest ? detail : null);
+    const currentDetailError = completedDetail === detailRequest ? detailError : null;
     const currentScope = useRef(scope); currentScope.current = scope;
     React.useLayoutEffect(() => {
       if (!pending && listRef.current) listHeight.current = Math.ceil(listRef.current.parentElement.getBoundingClientRect().height);
-    }, [pending, data, selected, detail, detailLoading]);
+    }, [pending, data, selected, currentDetail, detailPending]);
     const refresh = () => { detailFocus.current = false; setActionError(null); setMessage(''); setRequest({ scope: currentScope.current, page: 1 }); };
     // Re-read the current page in place: page, selected row, detail section and detail page all survive the refresh.
     const refreshInPlace = () => { setActionError(null); setMessage(''); setRequest({ scope: currentScope.current, page: data ? data.page.number : request.page, keep: true }); };
@@ -82,15 +83,14 @@
     }, [contextKey, initial]);
     useEffect(() => {
       const controller = new AbortController(); let active = true;
-      const kept = request.keep ? selected : null;
       setLoading(true); setError(null); setStale(false); setActionError(null); setMessage(request.restore && request.restore.notice || '');
-      if (!request.keep) { setResult(null); setSelected(null); setDetail(null); }
+      if (!request.keep) { setResult(null); setDetailRequest({ selected: null, section: 'issues', page: 1, captured: null }); setDetail(null); setCompletedDetail(null); }
       if (exportController.current) exportController.current.abort();
       async function read() {
         try {
           if (initial.error) throw initial.error;
           let next = request.locate ? await api.locate(request.scope, request.locate, request.token, controller.signal)
-            : await readList(api, request.scope, request.page, request.token, controller.signal);
+            : await api.list(request.scope, request.page, request.token, controller.signal);
           if (request.initial) {
             if (!C.ref(request.initial.entity_ref) || !C.domains.some(row => row[0] === request.initial.domain)) C.fail('定位条件缺少资料类别或记录编号，页面没有跳转。请刷新后重试。');
             next = await api.locate(next.data.scope, request.initial, next.meta.snapshot_ref, controller.signal);
@@ -98,33 +98,48 @@
           if (!active) return;
           const focus = next.data.selected, restored = request.restore && request.restore.selected;
           const same = (item, target) => (item.entity_ref || item.ref) === target.entity_ref && item.domain === target.domain && (!target.issue_ref || item.issue_ref === target.issue_ref);
-          const row = kept ? next.data.rows.find(item => same(item, kept)) : restored ? next.data.rows.find(item => same(item, restored))
-            : focus ? next.data.rows.find(item => item.ref === focus.entity_ref && item.domain === focus.domain) : request.restore && request.restore.restoreSelection && request.restore.selected === null ? null : next.data.rows[0];
-          if (restored && !row) C.fail('原来选中的资料已不在当前范围，这里没有自动换成其他记录。请刷新后重试。');
-          setResult(next); setSummary({ overview: next.data.overview, asOf: next.meta.as_of }); setSelected(row ? selection(row) : null);
-          if (!request.keep) { setSection(request.restore ? request.restore.section : 'issues'); setDetailPage(request.restore ? request.restore.detailPage : 1); }
+          const restoredRow = restored ? next.data.rows.find(item => same(item, restored)) : null;
+          if (restored && !restoredRow) C.fail('原来选中的资料已不在当前范围，这里没有自动换成其他记录。请刷新后重试。');
+          const defaultRow = restored ? restoredRow
+            : focus ? next.data.rows.find(item => item.ref === focus.entity_ref && item.domain === focus.domain)
+            : request.restore && request.restore.restoreSelection && request.restore.selected === null ? null : next.data.rows[0];
+          const capturedRow = focus || next.data.rows[0], capturedSelection = capturedRow ? selection(capturedRow) : null;
+          const captured = capturedSelection ? C.detail({ ...next, data: next.data.selected_detail }, next.data.scope,
+            capturedSelection, 'issues', next.meta.snapshot_ref) : null;
+          setResult(next); setSummary({ overview: next.data.overview, asOf: next.meta.as_of });
+          setDetailRequest(current => {
+            const row = request.keep ? (current.selected ? next.data.rows.find(item => same(item, current.selected)) : null) : defaultRow;
+            const section = request.keep ? current.section : request.restore ? request.restore.section : 'issues';
+            const page = request.keep ? current.page : request.restore ? request.restore.detailPage : 1;
+            return { selected: row ? selection(row) : null, section, page,
+              captured: row && capturedSelection && row.domain === capturedSelection.domain
+                && (row.entity_ref || row.ref) === capturedSelection.entity_ref && section === 'issues' && page === 1 ? captured : null };
+          });
         } catch (failure) { if (active && failure.name !== 'AbortError') setError(failure); }
         finally { if (active) { setCompletedRequest(request); setLoading(false); } }
       }
       read(); return () => { active = false; controller.abort(); };
     }, [api, request]);
     useEffect(() => {
-      if (!result || !selected) { setDetail(null); setDetailLoading(false); setDetailError(null); return undefined; }
+      if (!result || !selected) { setDetail(null); setCompletedDetail(null); setDetailLoading(false); setDetailError(null); return undefined; }
+      if (detailRequest.captured) {
+        setDetail(detailRequest.captured); setCompletedDetail(detailRequest); setDetailLoading(false); setDetailError(null); return undefined;
+      }
       const controller = new AbortController(); let active = true;
       setDetailLoading(true); setDetail(null); setDetailError(null);
       api.detail(result.data.scope, selected, section, detailPage, result.meta.snapshot_ref, controller.signal).then(value => {
         if (active) setDetail(value);
-      }).catch(failure => { if (active && failure.name !== 'AbortError') setDetailError(failure); }).finally(() => { if (active) setDetailLoading(false); });
+      }).catch(failure => { if (active && failure.name !== 'AbortError') setDetailError(failure); }).finally(() => { if (active) { setCompletedDetail(detailRequest); setDetailLoading(false); } });
       return () => { active = false; controller.abort(); };
-    }, [api, result, selected, section, detailPage]);
+    }, [api, result, detailRequest]);
     window.WorkbenchPageContext.useSnapshot({ read_view: { scope, page: data ? data.page.number : 1,
       selected: selected ? { domain: selected.domain, entity_ref: selected.entity_ref, ...(selected.issue_ref ? { issue_ref: selected.issue_ref } : {}) } : null,
-      section, detail_page: detailPage } }, !!data && !pending && !readError && !initial.error && !detailLoading && !detailError && (!selected || !!detail));
+      section, detail_page: detailPage } }, !!data && !pending && !readError && !initial.error && !detailPending && !currentDetailError && (!selected || !!currentDetail));
     function selection(row) { return { ...row, entity_ref: row.entity_ref || row.ref }; }
     function filter(patch) { detailFocus.current = false; setRequest({ scope: C.scope({ ...scope, ...patch }), page: 1 }); setColumn(null); }
-    function select(row, button) { detailFocus.current = true; opener.current = button; setSelected(selection(row)); setSection('issues'); setDetailPage(1); }
+    function select(row, button) { detailFocus.current = true; opener.current = button; setDetailRequest({ selected: selection(row), section: 'issues', page: 1, captured: null }); }
     function clearFilters() { setSearch(''); filter({ domain: 'all', status: 'all', query: '', column_filters: {} }); }
-    function closeDetail() { detailFocus.current = false; setSelected(null); const target = opener.current && opener.current.isConnected ? opener.current : listRef.current; opener.current = target; if (target) target.focus(); }
+    function closeDetail() { detailFocus.current = false; setDetailRequest({ selected: null, section, page: detailPage, captured: null }); const target = opener.current && opener.current.isConnected ? opener.current : listRef.current; opener.current = target; if (target) target.focus(); }
     function locate(target) { if (result) { detailFocus.current = true; setSearch(''); setColumn(null); setRequest({ scope: data.scope, token: result.meta.snapshot_ref, locate: target, page: 1 }); } }
     async function navigate(target) {
       try { C.target(target); if (target.unavailable_reason) C.fail(target.unavailable_reason); if (typeof onNavigate !== 'function') C.fail('dependency not wired: props.onNavigate'); await onNavigate(target.view, target.context); }
@@ -168,13 +183,14 @@
       <div className={selected ? 'mo-workspace wb-detail-layout' : 'mo-workspace'}><div className="mo-list" ref={listRef} tabIndex={-1} style={pending && listHeight.current ? { minHeight: listHeight.current } : undefined}><Table data={data || empty} selected={selected} onSelect={select} onMaintain={navigate} onClear={clearFilters} onRetry={refresh} navigation={typeof onNavigate === 'function'} loading={pending} error={readError}
         onFilter={key => { setColumn(key); setColumnText(scope.column_filters[key] || ''); }} />
         {data && <Pager page={data.page} disabled={pending} onSize={size => filter({ size })} onPage={page => setRequest({ scope: data.scope, page, token: result.meta.snapshot_ref })} />}</div>
-        <window.MasterOverviewDetail result={detail} selected={selected} section={section} onSection={value => { setSection(value); setDetailPage(1); }} onPage={setDetailPage} onLocate={locate} onMaintain={navigate}
-          onBack={closeDetail} navigation={typeof onNavigate === 'function'} loading={detailLoading} error={detailError} triggerRef={opener} autoFocus={detailFocus.current} /></div>
+        <window.MasterOverviewDetail result={currentDetail} selected={selected} section={section}
+          onSection={value => { if (value !== section || detailPage !== 1) setDetailRequest({ selected, section: value, page: 1, captured: null }); }}
+          onPage={page => { if (page !== detailPage) setDetailRequest({ selected, section, page, captured: null }); }} onLocate={locate} onMaintain={navigate}
+          onBack={closeDetail} navigation={typeof onNavigate === 'function'} loading={detailPending} error={currentDetailError} triggerRef={opener} autoFocus={detailFocus.current} /></div>
     </section>;
   }
   window.MasterOverviewWorkspace = MasterOverviewWorkspace;
   MasterOverviewWorkspace.readContext = readContext;
-  MasterOverviewWorkspace.readList = readList;
   MasterOverviewWorkspace.Statistics = Statistics;
   MasterOverviewWorkspace.ListTabs = ListTabs;
 })();

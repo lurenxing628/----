@@ -7,6 +7,7 @@ from collections import Counter
 from copy import deepcopy
 from datetime import datetime, timedelta
 from types import SimpleNamespace
+from typing import Any, Dict
 
 import pytest
 from openpyxl import load_workbook
@@ -32,7 +33,7 @@ def history_template(tmp_path_factory):
 
 @pytest.fixture
 def history_case(history_template, tmp_path):
-    case = copy_case(history_template, tmp_path)
+    case: Any = copy_case(history_template, tmp_path)
     with case.app.app_context():
         yield case
     case.conn.close()
@@ -73,9 +74,11 @@ def test_history_event_keeps_all_metrics_but_enriches_only_its_candidate(candida
 
 
 def test_four_saved_sources_preserve_events_and_result_identity_on_two_timelines(history_case):
+    from core.infrastructure.transaction import TransactionManager
     from core.models.workbench_run_job import new_run_ref
     from core.services.workbench.facts.decision_read_model import build_failure_read_models
     from core.services.workbench.facts.decision_read_models import decode_model
+    from core.services.workbench.history.catalog import read_history_catalog
     from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
     case, refs = history_case, history_case.history_refs
@@ -134,6 +137,23 @@ def test_four_saved_sources_preserve_events_and_result_identity_on_two_timelines
             assert set(row["times"]) == {"accepted_at", "started_at", "finished_at", "adopted_at", "committed_at_utc", "schedule_time"}
         assert client.get(BASE, query_string={"timeline": "invalid"}).status_code == 422
     assert not any(sql.lstrip().upper().startswith(("INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP")) for sql in statements)
+    case.conn.execute("DELETE FROM ScheduleHistory WHERE version=?", (refs["second_candidate_version"],))
+    case.conn.execute("UPDATE WorkbenchCommandReceipts SET committed_at_utc=? WHERE receipt_ref=?",
+                      (b"bad-time", refs["second_candidate_receipt_ref"]))
+    case.conn.commit()
+    with TransactionManager(case.conn).transaction():
+        descriptors, _ = read_history_catalog(case.conn)
+    degraded = next(row for row in descriptors if row["entry_ref"] == "adoption:" + refs["second_candidate_receipt_ref"])
+    assert degraded["occurred_at"] is None
+    assert any(gap["field"] == "committed_at_utc" and gap["code"] == "invalid_stored_time"
+               for gap in degraded["evidence_gaps"])
+    official_after_blob = read(client, timeline="official")["data"]
+    degraded_entry = next(
+        row for row in official_after_blob["entries"]
+        if row["entry_ref"] == "adoption:" + refs["second_candidate_receipt_ref"]
+    )
+    assert degraded_entry["times"]["committed_at_utc"] is None
+    assert {"code": "invalid_stored_time", "message": "原记录的此项无法确认。"} in degraded_entry["issues"]
 
 
 def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments_separate(history_case, monkeypatch):
@@ -172,15 +192,22 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
         assert all(row["state"] == "unavailable" and row["value"] is None
                    for row in reference_only["comparison"]["metric_deltas"].values())
         counts = {key: Counter() for key in ("source", "production", "experiments")}
+        calendar_calls = Counter()
         source_init, production, experiments = ConditionSource.__init__, condition_module._production, condition_module._experiments
+        calendar = condition_module._calendar
 
         def count_source(self, packet):
             counts["source"][(packet["kind"], packet["ref"], packet["entry_ref"])] += 1
             return source_init(self, packet)
 
-        def count_production(source, window):
-            counts["production"][(source.kind, source.ref, window["start"], window["end"])] += 1
-            return production(source, window)
+        def count_production(source):
+            counts["production"][(source.kind, source.ref)] += 1
+            return production(source)
+
+        def count_calendar(projection, resources, known, window):
+            source = projection.source
+            calendar_calls[(source.kind, source.ref, window["start"], window["end"])] += 1
+            return calendar(projection, resources, known, window)
 
         def count_experiments(source, packet):
             counts["experiments"][(source.kind, source.ref)] += 1
@@ -189,6 +216,7 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
         with monkeypatch.context() as checks:
             checks.setattr(ConditionSource, "__init__", count_source)
             checks.setattr(condition_module, "_production", count_production)
+            checks.setattr(condition_module, "_calendar", count_calendar)
             checks.setattr(condition_module, "_experiments", count_experiments)
             equal = read(client, **query)["data"]
             assert len(equal["trend"]["points"]) == 15
@@ -208,7 +236,7 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
         assert different["comparison"]["conditions"]["summary"]["different"] > 0
         states = [row["state"] for row in different["comparison"]["conditions"]["rows"]]
         assert states[0] == "different"
-        assert states == sorted(states, key={"different": 0, "unknown": 1, "equal": 2}.get)
+        assert states == sorted(states, key={"different": 0, "unknown": 1, "equal": 2}.__getitem__)
         assert different["comparison"]["conclusion"]["state"] == "different_conditions"
         old = read(client, **dict(query, timeline="official", selected_entry_ref="legacy:" + str(refs["legacy_history_id"])))["data"]
         assert old["comparison"]["conditions"]["state"] == "unknown"
@@ -234,12 +262,15 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
         window = {"start": "2026-09-09T08:00:00", "end": "2026-09-09T16:00:00"}
         for values in counts.values():
             values.clear()
+        calendar_calls.clear()
         with monkeypatch.context() as checks, TransactionManager(case.conn).transaction():
             checks.setattr(ConditionSource, "__init__", count_source)
             checks.setattr(condition_module, "_production", count_production)
+            checks.setattr(condition_module, "_calendar", count_calendar)
             checks.setattr(condition_module, "_experiments", count_experiments)
             reader = HistoryReader(case.conn)
             source = reader.condition_source(packet)
+            assert not counts["production"] and not calendar_calls
             side = reader.condition_side(packet, window)
             alias = dict(packet, entry_ref="adoption:same-source")
             assert reader.condition_source(alias) is source
@@ -250,8 +281,11 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
             other_window = dict(window, end="2026-09-10T16:00:00")
             other_side = reader.condition_side(packet, other_window)
             assert other_side is not side and other_side["configurations"] is side["configurations"]
-            assert sum(counts["source"].values()) == sum(counts["experiments"].values()) == 1
-            assert sum(counts["production"].values()) == 2
+            assert sum(counts["source"].values()) == sum(counts["experiments"].values()) == sum(counts["production"].values()) == 1
+            assert sum(calendar_calls.values()) == 2 and set(calendar_calls.values()) == {1}
+            assert side["conditions"].rows == saved_rows and side["conditions"].families == saved_families
+            assert any(key[0] == "calendar_downtime" and "2026-09-10" in key[1] for key in other_side["conditions"].rows)
+            assert not any(key[0] == "calendar_downtime" and "2026-09-10" in key[1] for key in side["conditions"].rows)
             without_result = dict(packet, candidate=None, raw_tasks=None, entry_ref="run:without-result")
             assert reader.condition_source(without_result) is not source
             issues = []
@@ -318,14 +352,14 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
         mapping = {packet["capture"]["input"]["batch_refs"][0]: "e" * 48,
                    packet["raw_tasks"][0]["operation_ref"]: "f" * 48}
 
-        def replace_members(value):
+        def replace_members(value: Any) -> Any:
             if isinstance(value, dict):
                 return {mapping.get(key, key): replace_members(item) for key, item in value.items()}
             if isinstance(value, list):
                 return [replace_members(item) for item in value]
             return mapping.get(value, value) if isinstance(value, str) else value
 
-        members = replace_members({key: value for key, value in deepcopy(packet).items() if key != "facts"})
+        members: Dict[str, Any] = replace_members({key: value for key, value in deepcopy(packet).items() if key != "facts"})
         members["capture"]["facts_text"] = canonical_json(replace_members(json.loads(packet["capture"]["facts_text"])))
         members["facts"] = GenerationFacts(members["capture"])
         compared = compare_history_conditions(packet, members, window)
@@ -442,7 +476,7 @@ def test_shared_resource_window_uses_saved_capacity_and_keeps_missing_capacity_u
     saved = trial_service(case.conn).save(draft["draft_ref"], {"name": "Saved windowed switches"},
         draft["write_context"]["write_token"], "history-windowed-switch-save")["data"]
     saved, head, rows = load_saved_scenario(case.conn, saved["scenario_ref"])
-    packet = {"kind": "trial", "ref": saved["scenario_ref"], "entry_ref": "scenario:" + saved["scenario_ref"],
+    packet: Dict[str, Any] = {"kind": "trial", "ref": saved["scenario_ref"], "entry_ref": "scenario:" + saved["scenario_ref"],
               "saved": saved, "head": head, "rows": rows}
     for start, end, expected in (("2026-09-09T08:00:00", "2026-09-09T10:00:00", 1),
                                  ("2026-09-10T00:00:00", "2026-09-11T00:00:00", 0)):

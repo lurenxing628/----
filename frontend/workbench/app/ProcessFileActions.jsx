@@ -10,8 +10,11 @@
     const [download, setDownload] = React.useState({ busy: false }), abort = React.useRef(null), alive = React.useRef(true), notified = React.useRef(null), checkedPreview = React.useRef(null);
     const command = S.useCommand(adapter), importing = mode === 'import', recovery = original.recovery === true;
     const label = kind === 'route' ? '工艺路线' : '工时定额';
-    let saved = null, receiptError = null;
-    if (command.phase === 'done') { try { saved = F.receipt(command.result, command.intent, kind, checkedPreview.current, original.target_ref); } catch (failure) { receiptError = failure; } }
+    const { saved, receiptError } = React.useMemo(() => {
+      if (command.phase !== 'done') return { saved: null, receiptError: null };
+      try { return { saved: F.receipt(command.result, command.intent, kind, checkedPreview.current, original.target_ref), receiptError: null }; }
+      catch (failure) { return { saved: null, receiptError: failure }; }
+    }, [command.phase, command.result, command.intent, kind, original.target_ref]);
     const visible = receiptError ? { ...command, phase: 'pending', locked: true, error: receiptError } : command, done = !!saved;
     const dirty = importing && !!file && !done, locked = visible.locked || download.busy;
     const query = S.useQuery(async signal => {

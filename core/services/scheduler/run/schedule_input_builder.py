@@ -154,30 +154,7 @@ def _build_algo_operations_outcome(
                 collector=collector,
             )
         else:
-            if strict_mode:
-                raise ValidationError("工序的内制或外协来源不明确。", field="source")
-            scope = _build_scope(op)
-            setup_hours = parse_field_float(
-                getattr(op, "setup_hours", None),
-                field="setup_hours",
-                field_label="换型时间",
-                strict_mode=bool(strict_mode),
-                scope=scope,
-                fallback=0.0,
-                collector=collector,
-                min_value=0.0,
-            )
-            unit_hours = parse_field_float(
-                getattr(op, "unit_hours", None),
-                field="unit_hours",
-                field_label="单件工时",
-                strict_mode=bool(strict_mode),
-                scope=scope,
-                fallback=0.0,
-                collector=collector,
-                min_value=0.0,
-            )
-            external_context = _EMPTY_EXTERNAL_CONTEXT
+            raise ValidationError("工序的内制或外协来源不明确。", field="source")
         algo_ops.append(
             _make_algo_operation(
                 op,

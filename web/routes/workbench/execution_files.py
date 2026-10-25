@@ -28,6 +28,8 @@ PREVIEW_NAMESPACE = 'workbench-field-file-preview-v1'
 
 @read_endpoint
 def field_file_preview():
+    from core.services.workbench.execution.production_report import WorkbenchProductionReportService
+
     if request.args or request.mimetype != 'multipart/form-data' or set(request.files) != {'file'} or set(request.form) != {'scope', 'snapshot_ref'} or len(request.files.getlist('file')) != 1 or any(len(request.form.getlist(key)) != 1 for key in request.form):
         raise WorkbenchCommandRejected('invalid_input', '请先选择一个文件，并确认本页数据没有过期；报工还没有写入。请刷新页面后点「开始预检」。', 400)
     content = request.files['file'].read(BYTE_LIMIT + 1)
@@ -43,12 +45,13 @@ def field_file_preview():
     # 文件先在读事务外解析，再排队读取整份现场范围。
     decoded = decode_reports(content)
     source = PreparedFieldReportSource.build(content, decoded)
-    reader = FieldWorkspaceService(g.db)
+    files = FieldReportFileService(g.db, production=WorkbenchProductionReportService(g.db))
+    reader = FieldWorkspaceService(g.db, ledger=files.production.ledger)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
-            cohort, state = reader.cohort(scope)
+            cohort, state, _ = reader.cohort(scope)
             snapshot = bind_read_snapshot({'kind': 'field', **cohort['scope']}, state, token)
-            preview, _ = FieldReportFileService(g.db).prepare_source(source, cohort)
+            preview, _ = files.prepare_source(source, cohort)
     document = {'preview': preview, 'read_state': fact_value(state)}
     ref, expiry = retain_context(PREVIEW_NAMESPACE, document, source, key=source.source_ref)
     context = preview_write_context(ref, expiry, ['import_confirm'])
@@ -71,15 +74,19 @@ def field_file_confirm():
     ref = body['input']['preview_ref']
     # Replay must remain possible after retained bytes and edit tokens expire.
     service = WorkbenchProductionReportService(g.db)
+    files = FieldReportFileService(g.db, production=service)
+    reader = FieldWorkspaceService(g.db, ledger=service.ledger)
+
     def load_items():
         document, source = resolve_context(PREVIEW_NAMESPACE, ref, 'stale_write')
         preview = document['preview']
         if not preview['can_confirm']:
             raise WorkbenchCommandRejected('stale_write', '预检结果已过期，报工还没有写入，也没有替换任何内容。请点「重新预检」。')
-        cohort, read_state = FieldWorkspaceService(g.db).cohort(preview['scope'])
-        if fact_value(read_state) != document['read_state']:
-            raise WorkbenchCommandRejected('stale_write', '预检之后报工记录有变化，报工还没有写入。请点「重新预检」。')
-        checked, prepared = FieldReportFileService(g.db).prepare_source(source, cohort)
+        with service.ledger.read_snapshot():
+            cohort, read_state, _ = reader.cohort(preview['scope'])
+            if fact_value(read_state) != document['read_state']:
+                raise WorkbenchCommandRejected('stale_write', '预检之后报工记录有变化，报工还没有写入。请点「重新预检」。')
+            checked, prepared = files.prepare_source(source, cohort)
         if not same(checked['items'], preview['items']) or not same(checked['snapshot'], preview['snapshot']) or not checked['can_confirm']:
             raise WorkbenchCommandRejected('stale_write', '预检之后报工记录有变化，报工还没有写入。请点「重新预检」。')
         return prepared
@@ -115,11 +122,10 @@ def download(template):
     reader = FieldWorkspaceService(g.db)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
-            cohort, state = reader.cohort(normalize_scope(args))
-            resource_codes = reader.resource_codes
+            cohort, state, resource_codes = reader.cohort(normalize_scope(args))
             snapshot = bind_read_snapshot({'kind': 'field', **cohort['scope']}, state, token)
     # 读事务和读额度都已释放：XLSX 只用已读出的现场范围生成。
-    content, count = FieldReportFileService(g.db).download(cohort, template, resource_codes=resource_codes)
+    content, count = FieldReportFileService.download(cohort, template, resource_codes=resource_codes)
     response = send_file(BytesIO(content), mimetype=MIME, as_attachment=True,
                          download_name='现场分次报工模板.xlsx' if template else '现场报工导出.xlsx', max_age=0)
     response.headers['Cache-Control'] = 'no-store'

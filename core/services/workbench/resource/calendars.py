@@ -9,8 +9,8 @@ from typing import Any, Callable, Dict, List, Mapping, Optional, Union
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager, in_transaction_context
-from core.models.calendar import WorkCalendar
-from core.models.calendar_periods import decode_periods, encode_periods
+from core.models.calendar import OperatorCalendar, WorkCalendar
+from core.models.calendar_periods import decode_periods, encode_periods, normalize_periods
 from core.models.workbench_calendar import (
     CALENDAR_PREVIEW_TTL_SECONDS,
     CalendarRangePreview,
@@ -26,7 +26,7 @@ from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQue
 
 from .calendar_summary import owned_hours
 
-_CalendarRow = Union[WorkCalendar, Dict[str, Any]]
+_CalendarRow = Union[WorkCalendar, OperatorCalendar, Dict[str, Any]]
 
 
 def _date_key(value: Any) -> str:
@@ -43,26 +43,49 @@ class _CalendarProjection(CalendarEngine):
     """Overlay raw/proposed global rows (keyed by date) on the existing engine, without SQL writes."""
 
     def __init__(self, rows: Mapping[str, _CalendarRow], periods=None):
-        super().__init__(None)
-        self._default_periods_json = encode_periods(periods)
+        self.conn = None
+        self.logger = None
+        self.capture = None
+        self._default_periods = normalize_periods(periods) if periods is not None else None
+        self._default_periods_json = None
+        self._default_period_hours = 0.0
+        self._period_facts = {}
+        if self._default_periods:
+            self._default_periods_json = encode_periods(self._default_periods, normalized=True)
+            _, self._default_period_hours = self._period_facts_for_json(
+                self._default_periods_json, self._default_periods
+            )
+        else:
+            self._default_periods = None
+        self._public_calendar_rows = {}
+        self._public_policy_cache = {}
+        self._policy_cache = {}
+        self._policy_operator_keys = {}
+        self._segment_cache = {}
         self._rows = rows
 
-    def _resolve_calendar_row(self, date_str: str, op_id: Optional[str]) -> WorkCalendar:
+    def _resolve_calendar_row(self, date_str: str, op_id: Optional[str]) -> Union[WorkCalendar, OperatorCalendar]:
         # 用到哪天才解析哪天：月合计多读的次月 1 日即使存坏了，也只让合计未知，不牵连本月。
         row = self._rows.get(date_str)
-        return (row if isinstance(row, WorkCalendar) else WorkCalendar.from_row(row)) if row is not None else self._default_for_date(date_str)
+        return (
+            (row if isinstance(row, (WorkCalendar, OperatorCalendar)) else WorkCalendar.from_row(row))
+            if row is not None
+            else self._default_for_date(date_str)
+        )
 
 
-def _effective(day: str, row: Optional[_CalendarRow], periods=None) -> Dict[str, Any]:
+def effective_calendar_day(day: str, row: Optional[_CalendarRow], periods=None,
+               *, projection: Optional[_CalendarProjection] = None) -> Dict[str, Any]:
     # Date-key policy is deliberate: midnight may still belong to yesterday's shift.
     try:
-        policy = _CalendarProjection({day: row} if row is not None else {}, periods)._policy_for_date(day)
+        engine = projection if projection is not None else _CalendarProjection({day: row} if row is not None else {}, periods)
+        policy = engine._policy_for_date(day)
     except OverflowError as exc:
         raise ValidationError(f"{day} 的工作时段超出了系统能处理的最后日期 9999-12-31，算不出这一天的工作时间。"
                               "请让这一天的班次在当天结束：单独设置过的改这一天，没设置过的改默认工作时间。",
                               field="date") from exc
     normal, urgent = policy.is_priority_allowed("normal"), policy.is_priority_allowed("urgent")
-    working = policy.shift_hours > 0 and (normal or urgent)
+    working = policy.is_working()
     start, end = policy.work_window()
     return {"type": "work" if working else "rest", "day_type": policy.day_type,
             "is_working": working, "is_rest": not working, "hours": policy.shift_hours,
@@ -74,33 +97,61 @@ def _effective(day: str, row: Optional[_CalendarRow], periods=None) -> Dict[str,
             "window_start": start.isoformat(timespec="seconds"), "window_end": end.isoformat(timespec="seconds")}
 
 
-def stored_shift_reading(day: str, row: Dict[str, Any]) -> Dict[str, Any]:
-    """已存的一行日历由日历引擎读出的班次开始、工时、效率；全局日历和个人日历的这几列是同一套解释。
+_ENGINE_DEFAULTED = ("shift_start", "shift_hours", "efficiency", "allow_normal", "allow_urgent")
 
-    空着的列按引擎的默认值算：08:00 开始、工时按时段或起止推算否则 8 小时、效率 1。这一天有行，用不到默认工作时间。
-    多时段的一天，开始取第一段的开始，与保存规则补出的开始时刻相同。
-    """
-    effective = _effective(day, row)
-    return {"shift_start": effective["window_start"][11:16], "shift_hours": effective["hours"],
-            "efficiency": effective["efficiency"]}
+
+def _is_blank_value(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+def engine_read_row(row: Dict[str, Any], effective: Optional[Dict[str, Any]] = None,
+                    *, fill_shift_end: bool = False) -> Dict[str, Any]:
+    """空着的班次开始、工时、效率换成排产引擎对这一天的解释，空白备注归一为 None；没有空着的列就原样返回。"""
+    blanks = [name for name in _ENGINE_DEFAULTED if _is_blank_value(row.get(name))]
+    blank_end = fill_shift_end and _is_blank_value(row.get("shift_end")) and row.get("periods_json") is None
+    blank_remark = isinstance(row.get("remark"), str) and not row["remark"].strip()
+    if not blanks and not blank_end and not blank_remark:
+        return row
+    updates: Dict[str, Any] = {}
+    if blanks or blank_end:
+        if effective is None:
+            effective = effective_calendar_day(row["date"], row)
+        reading = {"shift_start": effective["window_start"][11:16],
+                   "shift_hours": effective["hours"], "efficiency": effective["efficiency"],
+                   "allow_normal": effective["allowNormal"], "allow_urgent": effective["allowUrgent"]}
+        for name in blanks:
+            updates[name] = reading[name]
+        if blank_end:
+            hours = effective["hours"]
+            if 0 < hours <= 24 and effective.get("periods") is None and effective["window_end"][16:19] == ":00":
+                updates["shift_end"] = effective["window_end"][11:16]
+    if blank_remark:
+        updates["remark"] = None
+    return {**row, **updates} if updates else row
+
+
+def is_working_row(row: Mapping[str, Any]) -> bool:
+    return bool(row["shift_hours"] > 0 and (row.get("allow_normal") == "yes" or row.get("allow_urgent") == "yes"))
 
 
 # 旧库升级加列时没有回填，这几列可能空着；日历引擎和日历页都按班表默认值解释它们。
-_LEGACY_BLANK_COLUMNS = ("shift_start", "shift_end", "shift_hours", "efficiency")
+_LEGACY_BLANK_COLUMNS = ("shift_start", "shift_end", "shift_hours", "efficiency", "allow_normal", "allow_urgent", "remark")
 
 
-def _defaulted_blanks(day: str, row: Dict[str, Any], proposed: Dict[str, Any]) -> set:
-    """旧行空着的班次列被保存规则补成具体值：这一天按引擎算出的时段、工时、效率都不变，就算推导列。
+def _defaulted_blanks(day: str, row: Dict[str, Any], proposed: Dict[str, Any],
+                      names, *, before_effective: Optional[Dict[str, Any]]) -> set:
+    """旧行空着的班次列被保存规则补成具体值：未修改的空列补上后，这一天按引擎算出的时段、工时、效率都不变，就算推导列。
 
     补出的值和引擎原来的解释不一样（例如假期空着效率，引擎按 1 算、保存规则补成假期默认效率）仍算改写，照旧拒绝。
     """
-    blanks = {name for name in _LEGACY_BLANK_COLUMNS
-              if row.get(name) is None or isinstance(row.get(name), str) and not row[name].strip()}
+    candidates = set(names) & set(_LEGACY_BLANK_COLUMNS)
+    blanks = {name for name in candidates if _is_blank_value(row.get(name))}
     if not blanks:
         return set()
     filled = {**row, **{name: proposed.get(name) for name in blanks}}
     try:
-        return blanks if _effective(day, row) == _effective(day, filled) else set()
+        current = effective_calendar_day(day, row) if before_effective is None else before_effective
+        return blanks if current == effective_calendar_day(day, filled) else set()
     except ValidationError:
         return set()
 
@@ -173,14 +224,16 @@ class WorkbenchCalendarService:
             result[day] = {"row": row, "identity": active[0] if active else None, "history": history}
         return result
 
-    def _snapshot(self, day: str, states: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    def _snapshot(self, day: str, states: Dict[str, Dict[str, Any]], default_periods=None,
+                  *, projection: Optional[_CalendarProjection] = None) -> Dict[str, Any]:
         state = states.get(day, {"row": None, "identity": None, "history": []})
         identity = state["identity"]
+        periods = self._calendar._engine.default_periods() if default_periods is None else default_periods
         return {"date": day, "explicit": state["row"] is not None,
                 "calendar_ref": identity["ref"] if identity else None,
                 "revision": identity["revision"] if identity else None,
-                **state, "default_periods": self._calendar._engine.default_periods(),
-                "effective": _effective(day, state["row"], self._calendar._engine.default_periods())}
+                **state, "default_periods": periods,
+                "effective": effective_calendar_day(day, state["row"], periods, projection=projection)}
 
     def snapshot(self, date_value: str) -> Dict[str, Any]:
         """Private full guard state, not public DTO: raw row, ref/revision and tombstones.
@@ -207,18 +260,18 @@ class WorkbenchCalendarService:
         last, now = first.replace(day=count), self._now()
         with self._tx.transaction():
             states = self.range_states(first.isoformat(), last.isoformat())
+            periods = self._calendar._engine.default_periods()
+            rows = {day: state["row"] for day, state in states.items() if state["row"] is not None}
+            projection = _CalendarProjection(rows, periods)
             days = []
             for offset in range(count):
                 day = first + timedelta(days=offset)
-                snapshot = self._snapshot(day.isoformat(), states)
+                snapshot = self._snapshot(day.isoformat(), states, periods, projection=projection)
                 days.append({**snapshot, "day": day.day, "weekday": day.weekday(),
                              "is_weekend": day.weekday() >= 5, "is_today": day == now.date()})
-            rows = {day: state["row"] for day, state in states.items() if state["row"] is not None}
             rows.update(self._following_row(last, days[-1]))
         cells = [None] * first.weekday() + days
         cells += [None] * (-len(cells) % 7)
-        periods = self._calendar._engine.default_periods()
-        projection = _CalendarProjection(rows, periods)
         return {"year": year, "month": month, "as_of": now.isoformat(timespec="seconds"),
                 "time_basis": "factory_local", "days": days, "cells": cells,
                 "previous_month": self._adjacent(year, month, -1), "next_month": self._adjacent(year, month, 1),
@@ -257,25 +310,42 @@ class WorkbenchCalendarService:
         fields 用的是界面字段名（type/hours/eff/allowNormal/allowUrgent/note），不经过界面的
         输入模型，所以文件可以表达界面表达不了的组合（例如假期带工时），取值合法性由调用方自己校验。
         """
+        if not fields and "effective" in before:
+            return before["row"]
         return self._window_checked(before["date"], self._proposed(fields, before))
 
     def effective_day(self, day: str, row: Optional[_CalendarRow]) -> Dict[str, Any]:
         """这一天按给定的行由日历引擎算出的实际安排（工时、效率、时间窗等），与日历页显示同一口径。"""
-        return _effective(day, row, self._calendar._engine.default_periods())
+        return effective_calendar_day(day, row, self._calendar._engine.default_periods())
 
     def _proposed(self, fields: Dict[str, Any], before: Dict[str, Any]) -> Optional[_CalendarRow]:
         row = before["row"]
         if not fields:
             return row
-        payload = dict(row) if row is not None else {"date": before["date"]}
-        if row is None and "type" not in fields:
-            default = self._calendar._engine._default_for_date(before["date"])
-            payload.update(default.to_dict())
-            payload["remark"] = None
+        if row is not None:
+            reading = engine_read_row(row, effective=before.get("effective"))
+            payload = dict(reading)
+            if row.get("day_type") == "holiday" and (
+                row.get("efficiency") is None or isinstance(row.get("efficiency"), str) and not row["efficiency"].strip()
+            ):
+                # 假期空效率保留 None，交由领域层补假期默认效率并由 _defaulted_blanks 拦截静默改写。
+                payload["efficiency"] = row.get("efficiency")
+        else:
+            reading = None
+            payload = {"date": before["date"]}
+            if "type" not in fields:
+                default = self._calendar._engine._default_for_date(before["date"])
+                payload.update(default.to_dict())
+                payload["remark"] = None
         patch = calendar_domain_fields(fields)
-        self._settle_periods(row, payload, patch, fields)
+        changed_shift = self._changed_shift_keys(reading, patch)
+        if row is not None and "periods" not in patch:
+            for key in ("shift_hours", "shift_start", "shift_end"):
+                if key in patch and key not in changed_shift and not (key == "shift_end" and changed_shift):
+                    del patch[key]
+        self._settle_periods(row, payload, patch, fields, shift_patch=bool(changed_shift))
         payload.update(patch)
-        derived = self._shift_window_is_derived(patch)
+        derived = self._shift_window_is_derived(row, patch, changed_shift)
         if derived:
             # 工时或开工时刻改变而未明确结束时刻时，按当前开始时刻重新推算结束。
             payload["shift_end"] = None
@@ -290,10 +360,20 @@ class WorkbenchCalendarService:
         return proposed
 
     @staticmethod
+    def _changed_shift_keys(reading: Optional[Dict[str, Any]], patch: Dict[str, Any]) -> set:
+        if patch.get("periods") is not None:
+            return set()
+        keys = {"shift_hours", "shift_start", "shift_end"} & patch.keys()
+        if reading is None or not keys:
+            return keys
+        if reading.get("periods_json") not in (None, "[]") and "periods" in patch and patch.get("periods") is None:
+            return keys
+        return {key for key in keys if patch[key] != reading.get(key)}
+
+    @staticmethod
     def _settle_periods(row: Optional[Dict[str, Any]], payload: Dict[str, Any], patch: Dict[str, Any],
-                        fields: Dict[str, Any]) -> None:
+                        fields: Dict[str, Any], *, shift_patch: bool) -> None:
         """补丁没给逐段时段时，决定原来的时段是保留、清空还是改回单班；多时段日只改班次列直接拒绝。"""
-        shift_patch = "periods" not in patch and bool({"shift_hours", "shift_start", "shift_end"} & patch.keys())
         if row is None:
             if shift_patch:
                 payload["periods_json"] = None
@@ -315,16 +395,23 @@ class WorkbenchCalendarService:
         范围预览本来就逐日算保存后的时间窗，不走这里，免得大范围预览重复计算。
         """
         if row is not None:
-            _effective(day, row, self._calendar._engine.default_periods())
+            effective_calendar_day(day, row, self._calendar._engine.default_periods())
         return row
 
     @staticmethod
-    def _shift_window_is_derived(patch: Dict[str, Any]) -> bool:
-        return "shift_end" not in patch and bool({"shift_hours", "shift_start"} & patch.keys())
+    def _shift_window_is_derived(row: Optional[Dict[str, Any]], patch: Dict[str, Any], changed_shift: set) -> bool:
+        return "shift_end" not in patch and (
+            bool({"shift_hours", "shift_start"} & changed_shift)
+            or (
+                row is not None
+                and row.get("periods_json") not in (None, "[]")
+                and "periods" in patch
+                and patch.get("periods") is None
+            )
+        )
 
     @staticmethod
-    def _derived_names(day: str, row: Dict[str, Any], patch: Dict[str, Any], proposed: Dict[str, Any],
-                       derived_shift_window: bool) -> set:
+    def _derived_names(row: Dict[str, Any], patch: Dict[str, Any], derived_shift_window: bool) -> set:
         """跟着补丁或推算规则一起变的列，不算"没改的项被改写"。"""
         # 旧行只存开始和工时时，结束时刻按开始加工时补出，班次没变，不算改写。
         legacy_open_end = row["shift_end"] is None and row["shift_start"] is not None and row.get("periods_json") is None
@@ -333,15 +420,17 @@ class WorkbenchCalendarService:
             names.update(("periods_json", "shift_start", "shift_end", "shift_hours"))
         if "shift_start" in patch or "shift_end" in patch:
             names.add("shift_hours")
-        return names | _defaulted_blanks(day, row, proposed)
+        return names
 
     def _check_proposed(self, before: Dict[str, Any], patch: Dict[str, Any], proposed: Dict[str, Any],
-                        *, derived_shift_window: bool = False) -> None:
+                        *, derived_shift_window: bool) -> None:
         row = before["row"]
         if row is not None:
-            derived_names = self._derived_names(before["date"], row, patch, proposed, derived_shift_window)
-            if any(proposed.get(name) != value for name, value in row.items()
-                   if name not in patch and name not in derived_names):
+            derived_names = self._derived_names(row, patch, derived_shift_window)
+            changed = [name for name, value in row.items()
+                       if name not in patch and name not in derived_names and proposed.get(name) != value]
+            if changed and set(changed) - _defaulted_blanks(before["date"], row, proposed, changed,
+                                                            before_effective=before.get("effective")):
                 raise WorkbenchCommandRejected("constraint_conflict", "这一天没改的项会被规则改写，所以没有保存；请先核对原来的配置。")
 
     def _require_write_transaction(self) -> None:
@@ -350,7 +439,6 @@ class WorkbenchCalendarService:
 
     def _apply_checked(self, action, normalized_input, checked):
         """Consume the guard's current facts in its same outer command transaction."""
-        self._require_write_transaction()
         payload = normalized_input
         if action == "confirm":
             return self.confirm(payload, checked)
@@ -402,16 +490,17 @@ class WorkbenchCalendarService:
         if expected is not None and dates != expected.dates:
             raise WorkbenchCommandRejected("snapshot_stale", "命中的日期已经变了，请重新点「预览变更」。")
         states = self.range_states(request["start_date"], request["end_date"])
+        periods = self._calendar._engine.default_periods()
         days, calendars = [], []
         for index, day in enumerate(dates):
-            before = self._snapshot(day, states)
+            before = self._snapshot(day, states, periods)
             if expected is not None and before != expected.days[index]["before"]:
                 raise WorkbenchCommandRejected("snapshot_stale", "范围里的日历已经变了，请重新点「预览变更」。")
             model = self._proposed(request["fields"], before) if request["operation"] == "upsert" else None
             calendars.append(model)
             row = model.to_dict() if isinstance(model, WorkCalendar) else model
             days.append({"date": day, "before": before,
-                         "after": {"explicit": row is not None, "row": row, "default_periods": self._calendar._engine.default_periods(), "effective": _effective(day, model, self._calendar._engine.default_periods())}})
+                         "after": {"explicit": row is not None, "row": row, "default_periods": periods, "effective": effective_calendar_day(day, model, periods)}})
         return {"request": request, "dates": dates, "days": days, "calendars": calendars}
 
     def preview(self, payload: Dict[str, Any]) -> CalendarRangePreview:

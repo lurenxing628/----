@@ -37,6 +37,19 @@ def enable_restore(api):
     host.verify()
 
 
+def test_backup_list_remains_readable_without_maintenance_directory(tmp_path):
+    api = SystemTestAPI(tmp_path)
+    backup = api.backup()
+    api.app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"] = ""
+
+    data = api.read("/backups")["data"]
+    assert [row["filename"] for row in data["rows"] if row["record_kind"] == "backup_file"] == [Path(backup).name]
+    capabilities = data["capabilities"]
+    assert not capabilities["create"] and not capabilities["delete"] and not capabilities["restore"]
+    assert "还没有配置维护目录" in capabilities["blocked_reason"]
+    assert capabilities["restore_reason"] == capabilities["blocked_reason"]
+
+
 def test_static_files_observe_stop_state_without_rereading_database_locks(system_api, monkeypatch):
     from web.bootstrap.workbench_run_runtime_lock import RunRuntimeLockProof
 
@@ -285,6 +298,7 @@ def test_legacy_journal_lookup_and_new_intent_replay_preserve_original_files(tmp
     original = original_path.read_bytes()
     journal = SystemMaintenanceJournal(str(directory), str(database))
     assert journal.lookup(old["request_key"]) == old and journal.database_scope == old["database_scope"]
+    assert SystemMaintenanceJournal(str(directory), str(database)).lookup_job(old["job_ref"]) == old
     public = journal.public(journal.lookup(old["request_key"]))
     assert public["job_ref"] == old["job_ref"] and public["target_sha256"] == old["target"]["sha256"]
     with pytest.raises(WorkbenchCommandRejected) as error:
@@ -338,7 +352,7 @@ def test_legacy_journal_lookup_and_new_intent_replay_preserve_original_files(tmp
     for content, origin in ((b"\xff", UnicodeDecodeError), (b"{", json.JSONDecodeError)):
         new_path.write_bytes(content)
         with pytest.raises(WorkbenchCommandRejected) as error:
-            journal.admission("malformed-maintenance-request")
+            SystemMaintenanceJournal(str(directory), str(database)).admission("malformed-maintenance-request")
         assert error.value.code == "maintenance_unconfirmed" and isinstance(error.value.__cause__, origin)
     assert original_path.read_bytes() == original
 
@@ -369,11 +383,11 @@ def test_system_captures_once_and_tokens_keep_relocated_journal_scope(tmp_path, 
     monkeypatch.setattr(SystemMaintenanceJournal, "_read", read)
     monkeypatch.setattr(os, "listdir", listdir)
     observed = {}
-    def counted(name, action, json_count):
+    def counted(name, action, json_count, *, enumerations=1):
         counts.update(records=0, enumerations=0, json_reads=0)
         value = action()
         observed[name] = dict(counts)
-        assert counts == {"records": 1, "enumerations": 1, "json_reads": json_count}
+        assert counts == {"records": 1, "enumerations": enumerations, "json_reads": json_count}
         return value
 
     blank = counted("empty_backup_list", lambda: api.read("/backups"), 0)
@@ -411,8 +425,10 @@ def test_system_captures_once_and_tokens_keep_relocated_journal_scope(tmp_path, 
     with closing(api.connect()) as conn:
         context = RunDataContext(conn, str(api.journal_dir))
         assert counted("relocated_run_context", context.ref, 3) == empty_context
-        assert counted("recorded_missing_run", lambda: context.resolve_missing("missing-run-request"), 3) == "unresolved"
-    assert counted("recorded_admission", lambda: api.journal().admission("captured-journal-request-0"), 3)["database_scope"] == original_scope
+        assert counted("recorded_missing_run", lambda: context.resolve_missing("missing-run-request"), 0, enumerations=0) == "unresolved"
+    admitted = counted("recorded_admission", lambda: api.journal().admission("captured-journal-request-0"), 3)
+    assert admitted is not None
+    assert admitted["database_scope"] == original_scope
     captured = counted("recorded_log_snapshot", lambda: api.read("/logs", file="aps.log"), 3)
     assert captured["data"]["rows"]
     with (api.logs / "aps.log").open("a", encoding="utf-8") as stream:
@@ -421,7 +437,114 @@ def test_system_captures_once_and_tokens_keep_relocated_journal_scope(tmp_path, 
         "/logs", file="aps.log", snapshot_ref=captured["meta"]["snapshot_ref"]), 3)
     assert reused["data"]["rows"] == captured["data"]["rows"]
     assert {path.name: path.read_bytes() for path in api.journal_dir.glob("*.json")} == history
+    selected = rows[0]
+    downloaded = counted("backup_export", lambda: api.get(
+        "/backups/" + selected["backup_ref"] + "/download", snapshot_ref=page["meta"]["snapshot_ref"]), 3)
+    assert downloaded.status_code == 200 and downloaded.data.startswith(b"SQLite format 3\x00")
+    deleted = counted("delete_admission_and_guard", lambda: api.post(
+        "/backups/delete", {"backup_ref": selected["backup_ref"]}, selected["write_context"]["write_token"],
+        key="captured-delete-request-001"), 3)
+    assert deleted.status_code == 200 and deleted.get_json()["data"]["operation"]["state"] == "succeeded"
     print("R02 capture counts: " + json.dumps(observed, sort_keys=True))
+
+
+def test_job_lookup_and_recovery_view_share_capture_and_observe_new_requests(tmp_path, monkeypatch):
+    from werkzeug.test import Client
+    from werkzeug.wrappers import Response
+
+    from web.bootstrap.workbench_system_restore import make_workbench_system_restore_recovery_app
+
+    database, directory = tmp_path / "test.db", tmp_path / "journal"
+    directory.mkdir()
+    journal = SystemMaintenanceJournal(str(directory), str(database))
+    row, _ = journal.begin("captured-recovery-request-001", "create", {})
+    captured = journal.records()
+    journal.record(row, "succeeded", code="backup_verified")
+    assert journal.lookup(row["request_key"]) is row and journal.lookup_job(row["job_ref"]) is row
+    assert captured[0]["state"] == "succeeded"
+    app = make_workbench_system_restore_recovery_app(str(database), str(directory))
+    client = Client(app, Response)
+    opened, enumerated = [], []
+    read, listdir = SystemMaintenanceJournal._read, os.listdir
+    def captured_read(current, path):
+        opened.append(path)
+        return read(current, path)
+    def captured_listdir(path):
+        enumerated.append(path)
+        return listdir(path)
+    monkeypatch.setattr(SystemMaintenanceJournal, "_read", captured_read)
+    monkeypatch.setattr(os, "listdir", captured_listdir)
+    response = client.get("/", query_string={"reference": row["request_key"], "download": "diagnostic"})
+    assert response.status_code == 200
+    payload = response.json
+    assert payload is not None
+    assert payload["result"]["operation"]["job_ref"] == row["job_ref"]
+    assert len(opened) == 1 and enumerated == [str(directory)]
+    other = SystemMaintenanceJournal(str(directory), str(database))
+    added, _ = other.begin("captured-recovery-request-002", "create", {})
+    other.record(added, "succeeded", code="backup_verified")
+    assert len(journal.records()) == 1
+    assert len(journal.refresh()) == 2
+    opened.clear()
+    enumerated.clear()
+    response = client.get("/", query_string={"reference": added["job_ref"], "kind": "job", "download": "diagnostic"})
+    payload = response.json
+    assert payload is not None
+    assert payload["result"]["operation"]["request_key"] == added["request_key"]
+    assert len(payload["recent_records"]) == 2
+    assert len(opened) == 2 and enumerated == [str(directory)]
+
+
+def test_job_result_reads_v2_file_over_collection_capacity_and_checks_database(tmp_path, monkeypatch):
+    from werkzeug.test import Client
+    from werkzeug.wrappers import Response
+
+    from web.bootstrap.workbench_system_restore import make_workbench_system_restore_recovery_app
+
+    api = SystemTestAPI(tmp_path)
+    created = api.file_action("create").get_json()["data"]["operation"]
+    original = api.journal().lookup_job(created["job_ref"])
+    assert original is not None
+    for index in range(2000):
+        job_ref = format(index, "032x")
+        row = {**original, "job_ref": job_ref, "request_key": "capacity-maintenance-request-" + str(index)}
+        (api.journal_dir / (job_ref + ".json")).write_text(canonical_json(row), encoding="utf-8")
+    assert len(assert_system_maintenance_ready(str(api.database), str(api.journal_dir))) == 2001
+    assert api.journal().admission("capacity-maintenance-next-request") is None
+    opened, enumerated = [], []
+    read, listdir = SystemMaintenanceJournal._read, os.listdir
+    def captured_read(current, path):
+        opened.append(path)
+        return read(current, path)
+    def captured_listdir(path):
+        if os.fspath(path) == str(api.journal_dir):
+            enumerated.append(path)
+        return listdir(path)
+    monkeypatch.setattr(SystemMaintenanceJournal, "_read", captured_read)
+    monkeypatch.setattr(os, "listdir", captured_listdir)
+    response = api.get("/jobs/" + created["job_ref"])
+    assert response.status_code == 200 and response.get_json()["data"]["operation"]["state"] == "succeeded"
+    assert opened == [str(api.journal_dir / (created["job_ref"] + ".json"))] and not enumerated
+    with pytest.raises(RuntimeError, match="不属于当前数据库"):
+        SystemMaintenanceJournal(str(api.journal_dir), str(tmp_path / "another.db")).lookup_job(created["job_ref"])
+    response = api.get("/backups")
+    assert response.status_code == 413 and response.get_json()["error"]["code"] == "maintenance_record_capacity"
+    opened.clear()
+    enumerated.clear()
+    recovery = Client(make_workbench_system_restore_recovery_app(str(api.database), str(api.journal_dir)), Response)
+    result = recovery.get("/api/workbench/v1/system/jobs/" + created["job_ref"])
+    payload = result.json
+    assert result.status_code == 200 and payload is not None
+    assert payload["data"]["operation"]["job_ref"] == created["job_ref"]
+    assert len(opened) == 1 and not enumerated
+    opened.clear()
+    diagnostic = recovery.get("/", query_string={"reference": created["job_ref"], "kind": "job", "download": "diagnostic"})
+    payload = diagnostic.json
+    assert payload is not None
+    assert payload["history_error"] and payload["result"]["operation"]["job_ref"] == created["job_ref"]
+    assert len(opened) == 1 and enumerated == [str(api.journal_dir)]
+    invalid = recovery.get("/", query_string={"reference": "not-a-maintenance-reference", "kind": "job"})
+    assert invalid.status_code == 400
 
 
 def test_old_scheduling_requests_capture_once_and_query_registered_protection(job_case, tmp_path, monkeypatch):
@@ -531,6 +654,7 @@ def test_restore_preflight_detects_changed_original_bytes_with_same_file_metadat
     with sqlite3.connect(str(database)) as conn:
         assert conn.execute("SELECT value FROM marker").fetchone() == ("current!",)
     saved = workspace.journal.lookup(row["request_key"])
+    assert saved is not None
     assert set(saved["target"]) == {"filename", "signature"} and set(saved["protection"]) == {"filename", "signature"}
 
 
@@ -580,3 +704,24 @@ def test_verify_failure_and_rollback_failure_are_distinct(system_api, monkeypatc
             assert_system_maintenance_ready(str(system_api.database), str(system_api.journal_dir))
         assert system_api.get("/backups").status_code == 503
         assert system_api.read("/restore-host")["data"]["host"]["operations_available"] is False
+
+
+def test_drain_timeout_before_restore_records_terminal_unchanged_and_does_not_lock_recovery(system_api, monkeypatch):
+    from web.bootstrap.workbench_system_restore import WorkbenchSystemRestoreHost
+
+    system_api.backup()
+    enable_restore(system_api)
+
+    def fail_drain(self, lease):
+        raise RuntimeError("Timed out draining active work before database restore.")
+
+    monkeypatch.setattr(WorkbenchSystemRestoreHost, "_drain", fail_drain)
+    response = system_api.file_action("restore")
+    assert response.status_code == 200, response.get_json()
+    result = response.get_json()["data"]["operation"]
+    assert result["state"] == "failed"
+    assert result["code"] == "busy"
+    assert result["database_origin"] == "unchanged"
+    assert result["terminal"] is True
+    assert result["restart_required"] is True
+    assert_system_maintenance_ready(str(system_api.database), str(system_api.journal_dir))

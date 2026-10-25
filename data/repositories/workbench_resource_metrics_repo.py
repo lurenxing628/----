@@ -34,8 +34,6 @@ class WorkbenchResourceMetricsRepository(BaseRepository):
     def op_type_dependencies(self, codes):
         if not codes:
             return {}
-        if len(codes) > 200:
-            raise ValueError("Resource projection pages are limited to 200 work types")
         tables = {"machine_capabilities": "MachineOpTypes", "machines": "Machines", "legacy_suppliers": "Suppliers",
                   "supplier_capabilities": "WorkbenchSupplierOpTypes", "skills": "OperatorSkill",
                   "part_operations": "PartOperations", "batch_operations": "BatchOperations"}

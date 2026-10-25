@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import logging
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Tuple
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.models.enums import YesNo
@@ -14,7 +13,7 @@ from core.services.scheduler.contracts.schedule_summary_types import (
     RuntimeState,
     SummaryBuildContext,
 )
-from core.services.scheduler.run.auto_assign_resource_errors import auto_assign_failed_op_ids_from_errors
+from core.services.scheduler.run.auto_assign_resource_errors import auto_assign_failed_op_ids_from_failure_details
 from core.services.scheduler.run.optimizer.search_state import compact_attempts
 from core.services.scheduler.run.schedule_persistence_errors import missing_internal_resource_samples
 from core.shared.local_datetime import format_local_datetime as fmt_dt
@@ -34,8 +33,6 @@ from .summary_visible_degradation import (
     warnings_with_graph,
 )
 
-_LOGGER = logging.getLogger(__name__)
-
 _SUMMARY_MERGE_ERROR_CODES = {
     "summary_missing",
     "summary_warnings_assignment_failed",
@@ -43,20 +40,13 @@ _SUMMARY_MERGE_ERROR_CODES = {
 }
 
 
-def serialize_end_date(end_date: Optional[Any]) -> Optional[str]:
+def serialize_end_date(end_date: Optional[Union[date, str]]) -> Optional[str]:
     if end_date is None:
         return None
     if isinstance(end_date, str):
         text = end_date.strip()
         return text if text else None
-    try:
-        isoformat = getattr(end_date, "isoformat", None)
-        if callable(isoformat):
-            return str(isoformat())
-    except Exception as exc:
-        _LOGGER.warning("排产摘要结束日期 isoformat 失败，将使用字符串兜底：%s", exc)
-    text = str(end_date).strip()
-    return text if text else None
+    return end_date.isoformat()
 
 
 def _finish_time_by_batch(results: List[ScheduleResult]) -> Dict[str, datetime]:
@@ -65,10 +55,10 @@ def _finish_time_by_batch(results: List[ScheduleResult]) -> Dict[str, datetime]:
     # due_risk_items.incomplete_batch_ids_from_failure_details 排除这类批次。
     finish_by_batch: Dict[str, datetime] = {}
     for result in results:
-        finish_time = getattr(result, "end_time", None)
-        if not finish_time:
+        finish_time = result.end_time
+        if finish_time is None:
             continue
-        batch_id = str(getattr(result, "batch_id", "") or "").strip()
+        batch_id = result.batch_id.strip()
         if not batch_id:
             continue
         current = finish_by_batch.get(batch_id)
@@ -79,11 +69,8 @@ def _finish_time_by_batch(results: List[ScheduleResult]) -> Dict[str, datetime]:
 
 def _positive_result_op_ids(results: List[ScheduleResult]) -> Set[int]:
     op_ids: Set[int] = set()
-    for result in list(results or []):
-        try:
-            op_id = int(getattr(result, "op_id", 0) or 0)
-        except Exception:
-            continue
+    for result in results:
+        op_id = result.op_id
         if op_id > 0:
             op_ids.add(op_id)
     return op_ids
@@ -91,17 +78,18 @@ def _positive_result_op_ids(results: List[ScheduleResult]) -> Set[int]:
 
 def _positive_int_set(values: Any) -> Set[int]:
     out: Set[int] = set()
-    for value in list(values or []):
-        try:
-            number = int(value or 0)
-        except Exception:
-            continue
+    for value in values or []:
+        number = int(value)
         if number > 0:
             out.add(number)
     return out
 
 
-def _actionable_missing_internal_resource_op_ids(ctx: SummaryBuildContext) -> Set[int]:
+def _actionable_missing_internal_resource_op_ids(
+    ctx: SummaryBuildContext, failure_details: List[Dict[str, Any]]
+) -> Set[int]:
+    if not ctx.missing_internal_resource_op_ids:
+        return set()
     missing_ids = _positive_int_set(ctx.missing_internal_resource_op_ids)
     if not missing_ids:
         return set()
@@ -111,15 +99,12 @@ def _actionable_missing_internal_resource_op_ids(ctx: SummaryBuildContext) -> Se
     else:
         scheduled_ids = _positive_int_set(ctx.scheduled_op_ids)
 
-    auto_assign_failed_ids = auto_assign_failed_op_ids_from_errors(
-        errors=getattr(ctx.summary, "errors", None),
-        operations=ctx.operations,
-    )
+    auto_assign_failed_ids = auto_assign_failed_op_ids_from_failure_details(failure_details)
     return missing_ids - scheduled_ids - auto_assign_failed_ids
 
 
 # _build_overdue_items / _record_invalid_due 已拆至 due_risk_items.py（fusion-due-soon-alert 微重构，只搬不改）。
-# 由 summary_runtime_state.build_overdue_items 注入 due_exclusive / append_summary_warning 后调用。
+# 由 summary_runtime_state._build_runtime_state 注入 append_summary_warning 后调用。
 
 
 def _algo_downtime_dict(*, auto_assign_enabled: bool, downtime_state: Dict[str, Any]) -> Dict[str, Any]:
@@ -152,8 +137,8 @@ def _algo_freeze_window_dict(
     freeze_window = {
         "enabled": YesNo.YES.value if bool(freeze_state.get("enabled")) else YesNo.NO.value,
         "days": int(freeze_state.get("days") or 0),
-        "frozen_op_count": int(len(state.ctx.frozen_op_ids)),
-        "frozen_batch_count": int(len(state.frozen_batch_ids)),
+        "frozen_op_count": len(state.ctx.frozen_op_ids),
+        "frozen_batch_count": len(state.frozen_batch_ids),
         "degraded": str(freeze_state.get("freeze_state") or "") == "degraded",
         "degradation_reason": freeze_state.get("degradation_reason"),
     }
@@ -186,9 +171,9 @@ def _algo_resource_pool_dict(
     resource_pool_enabled: bool,
 ) -> Dict[str, Any]:
     return {
-        "enabled": YesNo.YES.value if bool(resource_pool_enabled) else YesNo.NO.value,
-        "attempted": bool(resource_pool_attempted) if resource_pool_enabled else False,
-        "degraded": bool(resource_pool_degraded),
+        "enabled": YesNo.YES.value if resource_pool_enabled else YesNo.NO.value,
+        "attempted": resource_pool_attempted if resource_pool_enabled else False,
+        "degraded": resource_pool_degraded,
         "degradation_reason": resource_pool_degradation_reason,
     }
 
@@ -203,19 +188,12 @@ def _algo_warning_pipeline_dict(
     if summary_merge_error and summary_merge_error not in _SUMMARY_MERGE_ERROR_CODES:
         summary_merge_error = "summary_warnings_assignment_failed"
     return {
-        "algo_warning_count": int(len(algo_warning_list)),
-        "summary_warning_count": int(len(summary_warnings)),
+        "algo_warning_count": len(algo_warning_list),
+        "summary_warning_count": len(summary_warnings),
         "summary_merge_attempted": bool(warning_pipeline.get("summary_merge_attempted") or False),
         "summary_merge_failed": bool(warning_pipeline.get("summary_merge_failed") or False),
         "summary_merge_error": summary_merge_error or None,
     }
-
-
-def _summary_failure_details(summary: Optional[ScheduleSummary]) -> List[Dict[str, Any]]:
-    details = getattr(summary, "failure_details", None)
-    if not isinstance(details, list):
-        return []
-    return [dict(item) for item in details if isinstance(item, dict)]
 
 
 def _apply_optional_algo_fields(algo: Dict[str, Any], state: AlgorithmSummaryState, metrics_state: Any) -> None:
@@ -255,7 +233,7 @@ def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
         "objective": ctx.objective_name,
         "comparison_metric": comparison_metric_key(ctx.objective_name),
         "config_snapshot": ctx.cfg.to_dict(),
-        "time_budget_seconds": int(ctx.time_budget_seconds),
+        "time_budget_seconds": ctx.time_budget_seconds,
         "hard_constraints": state.hard_constraints,
         "soft_objectives": [ctx.objective_name],
         "best_score": ctx.best_score,
@@ -268,7 +246,7 @@ def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:
             auto_assign_enabled=auto_assign_enabled, downtime_state=state.downtime_state
         ),
         "input_contract": _algo_input_contract_dict(state.input_state),
-        "merge_context_degraded": bool(state.warning_state.merge_context_degraded),
+        "merge_context_degraded": state.warning_state.merge_context_degraded,
         "merge_context_events": state.warning_state.merge_context_events,
         "freeze_window": _algo_freeze_window_dict(state),
         "graph_analysis": ctx.graph_analysis_public,
@@ -332,7 +310,7 @@ def _apply_visible_degradations(
             message="工序图报告已生成，但图增强排队因循环依赖关闭，本次退回普通排法。",
             count=1,
         )
-        degraded_success = bool(degraded_success or str(completion_status or "") == "success")
+        degraded_success = degraded_success or completion_status == "success"
     dispatch_failure_count = _dispatch_failure_detail_count(failure_details)
     if dispatch_failure_count:
         # 注意：这里不像上面 graph 分支那样抬 degraded_success——这是刻意的，不是漏写。
@@ -378,12 +356,12 @@ def _build_result_summary_obj(
     completion_status: str,
     time_cost_ms: int,
 ) -> Dict[str, Any]:
-    raw_summary_errors = list(getattr(ctx.summary, "errors", None) or [])
-    failure_details = _summary_failure_details(ctx.summary)
+    raw_summary_errors = ctx.summary.errors if ctx.summary is not None else []
+    failure_details = ctx.summary.failure_details if ctx.summary is not None else []
     public_error_details, public_error_messages = public_summary_error_state(raw_summary_errors, failure_details)
     missing_resource_ops = missing_internal_resource_samples(
         ctx.operations,
-        _actionable_missing_internal_resource_op_ids(ctx),
+        _actionable_missing_internal_resource_op_ids(ctx, failure_details),
     )
     public_algo, optimizer_diagnostics = project_public_algo_summary(_algo_dict(algorithm_state))
     warnings = warnings_with_graph(freeze_state, public_algo.get("graph_analysis"))
@@ -399,38 +377,38 @@ def _build_result_summary_obj(
         counters=degradation_counters,
         causes=result_degraded_causes,
         completion_status=completion_status,
-        degraded_success=bool(degraded_success),
+        degraded_success=degraded_success,
         graph_analysis_public=ctx.graph_analysis_public,
         failure_details=failure_details,
     )
 
     result_summary = {
         "summary_schema_version": "1.2",
-        "is_simulation": bool(ctx.simulate),
-        "completion_status": str(completion_status or ""),
-        "readiness": {"gate_enabled": bool(ctx.readiness_gate_enabled)},
-        "version": int(ctx.version),
+        "is_simulation": ctx.simulate,
+        "completion_status": completion_status,
+        "readiness": {"gate_enabled": ctx.readiness_gate_enabled},
+        "version": ctx.version,
         "strategy": ctx.used_strategy.value,
-        "strategy_params": ctx.used_params or {},
+        "strategy_params": ctx.used_params,
         "algo": public_algo,
         "selected_batch_ids": list(ctx.normalized_batch_ids),
         "start_time": fmt_dt(ctx.start_dt),
         "end_date": serialize_end_date(ctx.end_date),
-        "invalid_due_count": int(runtime_state.invalid_due_count),
+        "invalid_due_count": runtime_state.invalid_due_count,
         "invalid_due_batch_ids_sample": runtime_state.invalid_due_batch_ids_sample,
-        "unscheduled_batch_count": int(runtime_state.unscheduled_batch_count),
+        "unscheduled_batch_count": runtime_state.unscheduled_batch_count,
         "unscheduled_batch_ids_sample": runtime_state.unscheduled_batch_ids_sample,
-        "legacy_external_days_defaulted_count": int(fallback_state.legacy_external_days_defaulted_count),
+        "legacy_external_days_defaulted_count": fallback_state.legacy_external_days_defaulted_count,
         "degradation_events": degradation_events,
         "degradation_counters": degradation_counters,
-        "degraded_success": bool(result_degraded_success),
+        "degraded_success": result_degraded_success,
         "degraded_causes": result_degraded_causes,
         "counts": {
             "batch_count": len(ctx.batches),
             "op_count": op_count,
             "scheduled_ops": scheduled_ops,
             "failed_ops": failed_ops,
-            "unscheduled_batch_count": int(runtime_state.unscheduled_batch_count),
+            "unscheduled_batch_count": runtime_state.unscheduled_batch_count,
         },
         "overdue_batches": {"count": len(runtime_state.overdue_items), "items": runtime_state.overdue_items},
         "near_due_batches": {
@@ -458,7 +436,7 @@ def _build_result_summary_obj(
         "missing_internal_resource_count": len(missing_resource_ops),
         "missing_internal_resource_ops": missing_resource_ops,
         "warnings": warnings,
-        "time_cost_ms": int(time_cost_ms),
+        "time_cost_ms": time_cost_ms,
     }
     if ctx.execution_snapshot_revision:
         op_ids = list(ctx.execution_snapshot_op_ids or [])

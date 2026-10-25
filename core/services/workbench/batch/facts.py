@@ -52,17 +52,23 @@ class BatchFacts:
                 self._material_day = day
         return dict(facts, material_day=day)
 
+    def load_choices(self):
+        with TransactionManager(self.conn).transaction():
+            return self.repo.choice_tables()
+
     def _load(self):
         facts = self._pinned()
         if facts is not None:
             return facts
         with TransactionManager(self.conn).transaction():
             tables: Dict[str, Any] = self.repo.whole_tables()
-            tables.update(self._versioned_tables())
+            versioned = self.repo.versioned_facts()
+            tables.update(self._versioned_tables(versioned))
             tables["plan_reference_counts"] = self.repo.plan_reference_counts()
-            workflow = load_workflow_snapshot(self.conn)
+            workflow = load_workflow_snapshot(self.conn, tables=tables)
             operation_refs = self.plan_refs.get_operation_refs(row["id"] for row in tables["BatchOperations"])
-            execution = load_execution(self.conn, operation_refs.values())
+            execution = load_execution(self.conn, operation_refs.values(), schema_version=versioned["version"],
+                                       has_execution_commands=versioned["has_execution_commands"])
             if not execution["available"]:
                 tables.update(self.repo.legacy_execution_facts())
         facts = {**tables, "workflow": project_workflow_snapshot(workflow), "operation_refs": operation_refs,
@@ -82,9 +88,8 @@ class BatchFacts:
             self._lookups = {}
         return self._facts
 
-    def _versioned_tables(self):
-        state = self.repo.versioned_facts()
-        version = state["version"]["version"] if state["version"] else None
+    def _versioned_tables(self, state):
+        version = state["version"]
         result = {}
         for name, since in (("WorkbenchOutsourcingReceipts", 30), ("BatchExternalContexts", 33)):
             rows = state["tables"][name]
@@ -119,16 +124,9 @@ class BatchFacts:
             self._lookups = {}
 
     @contextmanager
-    def read_snapshot(self):
-        with TransactionManager(self.conn).transaction():
-            with self._pin(self._load()) as fingerprint:
-                yield fingerprint
-
-    @contextmanager
     def detached_read_snapshot(self):
         """Keep one materialized snapshot while projection runs without a DB lock.
 
-        Commands and previews that perform additional SQL use read_snapshot instead.
         An existing caller transaction is never committed or released here.
         """
         with self._pin(self._load()) as fingerprint:
@@ -192,10 +190,6 @@ class BatchFacts:
         if identity.entity_key != identity.entity_key.strip():
             raise WorkbenchCommandRejected("constraint_conflict", "批次号存在首尾空格，请先核对原记录。")
         return row
-
-
-def related(facts, batch):
-    return index_relations(facts)[batch["batch_id"]]
 
 
 def require_unreferenced(relations):

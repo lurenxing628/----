@@ -9,10 +9,11 @@ import pytest
 from core.infrastructure.snapshot_connection import ddl_columns
 from core.infrastructure.transaction import TransactionManager
 from core.models.scheduler_history_parser import parse_result_summary_payload
+from core.models.workbench_batch_material import normalize_material_changes
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.batch.materials import WorkbenchBatchMaterialService
 from core.services.workbench.facts.adoption_baseline_sources import prepare_trial_adoption_facts
-from core.services.workbench.facts.candidate_facts import _table
+from core.services.workbench.facts.candidate_facts import archived_table
 from core.services.workbench.facts.candidate_read_source import read_candidate_source
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.decision_baseline import (
@@ -50,8 +51,8 @@ def _adopt(case, key, *batches, **settings):
 
 
 def _read(source, resolver=None):
-    return read_decision_baseline(source.capture, source.facts, source.disposition, source.run["accepted_at"],
-                                  source_resolver=resolver)
+    return read_decision_baseline(source.capture, source.facts, source.disposition,
+                                  source_resolver=resolver or _resolver({}, []))
 
 
 def _resolver(originals, calls):
@@ -247,9 +248,9 @@ def test_formal_deferred_ids_use_original_stage_source_independently_of_current_
     operation_ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1",
                                       (str(second),)).fetchone()[0]
     with TransactionManager(case.conn).transaction():
-        WorkbenchBatchMaterialService(case.conn).apply(case.ref("batch", "B1"), {"removed_keys": [], "rows": [{
+        WorkbenchBatchMaterialService(case.conn).apply_normalized(case.ref("batch", "B1"), normalize_material_changes({"removed_keys": [], "rows": [{
             "row_key": None, "material_ref": case.ref("material", "STEEL"), "required_quantity": 3,
-            "available_quantity": 0, "operation_ref": operation_ref, "arrivals": []}]})
+            "available_quantity": 0, "operation_ref": operation_ref, "arrivals": []}]}))
     official, _ = _adopt(case, "stage", _expected_state="partial", material_strategy="stage")
     current = _run(case, "strict-current", ready_check=False, material_strategy="strict")
     assert current.disposition[operation_ref]["status"] == "eligible"
@@ -287,7 +288,7 @@ def test_source_runtime_effort_and_type_keep_saved_context_without_recalculation
                "tables": {"OpTypes": [["TURN", "车削工种"], ["MILL", "铣削工种"]]}}
     facts = SimpleNamespace(operations={op_ref: 7}, tables={"BatchOperations": {7: operation}},
                             entity_refs={("op_type", "TURN"): type_ref, ("op_type", "MILL"): runtime_type_ref},
-                            archive=archive, table=lambda name: _table(archive, name), execution={op_ref: {"target_quantity": 5, "remaining_quantity": 2}})
+                            archive=archive, table=lambda name: archived_table(archive, name), execution={op_ref: {"target_quantity": 5, "remaining_quantity": 2}})
     candidate = SimpleNamespace(receipt={"operation_effort": ledger}, facts=facts,
                                 candidate={"artifact": {"results": [{"op_id": 7, "op_type_id": "MILL", "op_type_name": "精车"}]}})
     effort, types, standards = _operation_metadata(candidate, {"basis": "candidate_adoption"})

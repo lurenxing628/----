@@ -11,12 +11,12 @@ from .workbench_system_restore_recovery import (
 
 
 def stop_run_runtime(runtime):
-    database_path = getattr(runtime, "db_path", None)
-    if database_path is not None:
-        gate = lookup_workbench_request_lifecycle(database_path)
-        if gate is not None and gate.shutdown(wait=True) is not True:
-            raise RuntimeError("仍有请求或数据库连接未安全结束，不能释放数据库运行锁。")
-    if runtime is not None and runtime.shutdown(wait=True) is not True:
+    if runtime is None:
+        return
+    gate = lookup_workbench_request_lifecycle(runtime.db_path)
+    if gate is not None and gate.shutdown(wait=True) is not True:
+        raise RuntimeError("仍有请求或数据库连接未安全结束，不能释放数据库运行锁。")
+    if runtime.shutdown(wait=True) is not True:
         raise RuntimeError("排产后台线程尚未停止，不能释放数据库运行锁。")
 
 
@@ -32,8 +32,6 @@ def install_run_lifecycle(deps, app, lock_state):
         return _install_recovery_lifecycle(deps, app, lock_state)
     runtime = installer(app, runtime_lock=lock_state.get("payload"))
     lock_state["runtime"] = runtime
-    # Registered after factory's exit backup, hence called before it by atexit.
-    deps.atexit_register(stop_run_runtime, runtime)
     if not runtime.ready:
         raise RuntimeError("排产运行恢复检查未通过：" + str(runtime.status["reason"]))
     try:
@@ -45,6 +43,8 @@ def install_run_lifecycle(deps, app, lock_state):
         stop_run_runtime(runtime)
         configure_system_restore_recovery(app)
         return _install_recovery_lifecycle(deps, app, lock_state)
+    # Registered after factory's exit backup, hence called before it by atexit.
+    deps.atexit_register(stop_run_runtime, runtime)
     return runtime
 
 

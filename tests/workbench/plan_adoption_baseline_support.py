@@ -5,6 +5,7 @@ import json
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan.baseline import build_plan_baseline
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
+from core.services.workbench.plan.read_context import PlanReadContext
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_candidate_adoption_support import INTENT
 from tests.workbench.run_candidate_adoption_support import service as candidate_service
@@ -42,8 +43,11 @@ def read(case, official, start=None, end=None):
     query = WorkbenchPlanQueryService(conn)
     with query.read_snapshot():
         scope = PlanReadScope(official["plan_ref"], start, end)
-        repo, entry, _ = query._selected(scope.plan_ref)
-        return build_plan_baseline(conn, entry=entry, scope=scope, selected_rows=query._task_rows(repo, entry, scope))
+        context = PlanReadContext(conn, references=query.references, entities=query.entities)
+        with context.read_scope():
+            _, entry, _ = context.selected(scope.plan_ref)
+            return build_plan_baseline(conn, entry=entry, scope=scope,
+                                       selected_rows=context.scoped_rows(entry, scope), context=context)
 
 
 def two_versions(case, source="trial"):

@@ -14,7 +14,7 @@ from core.services.workbench.process.projection import capabilities
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
 from web.api_responses import query_success
 
-from .api_responses import api_endpoint
+from .api_responses import api_endpoint, read_endpoint
 from .process_json import read_process_json
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context
@@ -35,7 +35,7 @@ def _list_query():
         try:
             sort = json.loads(ordering, object_pairs_hook=unique_process_table_object) if ordering.lstrip().startswith("[") else ordering
             filters = json.loads(request.args.get("column_filters", "{}"), object_pairs_hook=unique_process_table_object)
-        except (ValueError, TypeError) as exc:
+        except json.JSONDecodeError as exc:
             raise WorkbenchCommandRejected("invalid_input", "排序或筛选内容读不出来，当前筛选没有变化。请点「清除筛选」后重新选择。", 400) from exc
         return ProcessTablePageRequest(query=request.args.get("query", ""), stage=request.args.get("stage") or None,
                                        number=values["page"], size=values["size"], sort=sort,
@@ -70,7 +70,7 @@ def process_list():
 def process_detail(ref):
     if set(request.args) - {"snapshot_ref"} or len(request.args.getlist("snapshot_ref")) > 1:
         raise WorkbenchCommandRejected("invalid_input", "详情的查询条件不对，详情没有打开。请刷新页面后重新点开这一行。", 400)
-    reader = WorkbenchProcessQueryService(g.db, current_app.logger)
+    reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=ref)
     with reader.read_snapshot() as state:
         data = reader.detail(ref)
         snapshot = bind_read_snapshot({"kind": "part", "entity_ref": ref}, state, request.args.get("snapshot_ref"))
@@ -79,31 +79,24 @@ def process_detail(ref):
     return _response(data, snapshot)
 
 
-def _body():
-    return read_process_json("路线预检", 1024 * 1024)
-
-
-@api_endpoint
+@read_endpoint
 def process_route_preview(ref):
     try:
-        body = _body()
+        body = read_process_json("路线预检", 1024 * 1024)
         token = body.pop("snapshot_ref", None)
         if body.get("mode") == "rows" and isinstance(body.get("rows"), list) and any(
                 isinstance(row, dict) and type(row.get("seq")) is int and abs(row["seq"]) > (1 << 53) - 1 for row in body["rows"]):
             raise WorkbenchCommandRejected("invalid_input", "工序号太大，页面上填不准，路线没有保存；系统没有替你四舍五入。请改用整段路线文字录入。", 422)
-        reader = WorkbenchProcessQueryService(g.db, current_app.logger)
+        reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=ref)
         with reader.read_snapshot() as state:
             if token is not None:
                 bind_read_snapshot({"kind": "part", "entity_ref": ref}, state, token)
             data, _, affected = reader.prepare_route(ref, body)
             data["affected_groups"] = []
             if data["can_confirm_route"]:
-                from core.models.workbench_process_commands import normalize_process_input
-
-                normalized = normalize_process_input("route_confirm", {"route": body, "discard_group_refs": []})
                 affected_refs = {row["ref"] for row in affected}
                 data["affected_groups"] = [row for row in reader.detail(ref)["external_groups"] if row["ref"] in affected_refs]
-                data["write_context"] = issue_write_context(ref, ["process.route_confirm"], {"state": state, "input": normalized["route"]})
+                data["write_context"] = issue_write_context(ref, ["process.route_confirm"], {"state": state, "input": body})
             snapshot = bind_read_snapshot({"kind": "process_route_preview", "entity_ref": ref,
                                            "input_content": body}, state)
         return _response(data, snapshot)

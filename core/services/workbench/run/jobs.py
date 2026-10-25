@@ -1,7 +1,7 @@
 """Admission owns a short transaction. Query and restart recovery never rerun work."""
 
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional, Tuple, cast
+from typing import Callable, Optional
 
 from core.algorithm_contracts.operation_effort import RUNTIME_REQUIREMENT_BASIS
 from core.infrastructure.read_evidence import read_evidence_scope
@@ -24,15 +24,13 @@ from core.services.workbench.facts.run_policy import require_run_schema
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
 from .input_admission import candidate_admission_issues
-from .jobs_facts import capture_run_facts
-from .preflight import PreflightService, PreparedPreflight
+from .preflight import PreparedPreflight
 from .preflight_facts import PreflightFacts
-from .progress import read_progress
 
 
 class WorkbenchRunService:
     def __init__(self, conn, *, integration_enabled=False,
-                 input_resolver: Optional[Callable[..., Tuple[Dict[str, Any], str]]] = None, context_factory=None,
+                 input_resolver: Optional[Callable[..., PreparedPreflight]] = None, context_factory=None,
                  context_validator=None, clock=None, data_context=None):
         self.conn = conn
         self.repo = WorkbenchRunRepository(conn)
@@ -52,13 +50,7 @@ class WorkbenchRunService:
             raise WorkbenchCommandRejected("run_worker_not_connected", messages.UNAVAILABLE, 503)
         facts = PreflightFacts(self.conn)
         with read_evidence_scope(self.conn), facts.snapshot(fingerprint=False):
-            continuation = getattr(self.input_resolver, "prepared", None)
-            if callable(continuation):
-                prepared = cast(Callable[..., PreparedPreflight], continuation)(self.conn, input_ref, facts=facts)
-            else:
-                data, fingerprint = self.input_resolver(self.conn, input_ref)
-                prepared = PreflightService(self.conn, facts=facts).evaluate_prepared(data["normalized_input"])
-                prepared.data, prepared.fingerprint = data, fingerprint
+            prepared = self.input_resolver(self.conn, input_ref, facts=facts)
             if not prepared.data["blockers"]:
                 issues = candidate_admission_issues(self.conn, prepared=prepared)
                 prepared.data["blockers"].extend(issues)
@@ -75,7 +67,7 @@ class WorkbenchRunService:
 
         prepared.run_ref = new_run_ref()
         prepared.accepted_at = self.clock().isoformat(timespec="microseconds")
-        _, facts_text = capture_run_facts(self.conn, prepared.capture)
+        facts_text = prepared.capture.content()
         capture = {"input": prepared.settings, "facts_text": facts_text, "facts_hash": None,
                    "execution": [row.to_dict() for row in prepared.execution_projections],
                    "baseline": prepared.baseline, "run_options": prepared.run_options}
@@ -85,7 +77,7 @@ class WorkbenchRunService:
                        {**durable_value(item.to_dict()), "operation_ref": prepared.preflight_facts.operation_refs[item.op_id]}
                        for item in prepared.prepared_input.operation_efforts]}}
         disposition = {row["operation_ref"]: row for row in receipt["dispositions"]}
-        official = read_decision_baseline(capture, facts, disposition, prepared.accepted_at,
+        official = read_decision_baseline(capture, facts, disposition,
                                          source_resolver=decision_baseline_source_resolver(self.conn))
         states = official["source_states"]
         dependencies = self.repo.dependency_heads(
@@ -183,7 +175,7 @@ class WorkbenchRunService:
             row = self.repo.status(run_ref)
             if row is None:
                 raise WorkbenchCommandRejected("entity_not_found", "找不到这次排产，页面没有打开。请到「排产记录」重新选择。", 404)
-            return self._status(row)
+            return public_job_status(row)
 
     def lookup(self, request_key):
         validate_request_key(request_key)
@@ -191,17 +183,10 @@ class WorkbenchRunService:
             require_run_schema(self.repo)
             row = self.repo.status_by_request(request_key)
             if row is not None:
-                return self._status(row)
+                return public_job_status(row)
             if self.repo.command_receipt_action(request_key) == "scheduling.run":
                 raise WorkbenchCommandRejected("run_result_inconsistent", messages.unknown("排产"), 500)
             return None
-
-    @staticmethod
-    def _status(row):
-        payload = public_job_status(row)
-        if payload["state"] == "running" and payload["stage"] == "computing":
-            payload["progress"] = read_progress(payload["run_ref"])
-        return payload
 
     def recover_unfinished_runs(self, *, executor_is_active=None):
         from .worker_recovery import recover_unfinished_runs

@@ -4,15 +4,20 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
 
 from core.models.schedule_plan_role import ROLE_ADOPTED, ROLE_BASELINE_BEST, ROLE_CRITICAL_BEST
 
-from .optimizer.shared_process import _numeric_score
-from .schedule_candidate_plan import CANDIDATE_KIND_CRITICAL_CHAIN, UNCERTIFIED, UNCERTIFIED_PREFIX
+from .optimizer.shared_process import numeric_score
+from .schedule_candidate_plan import (
+    CANDIDATE_KIND_CRITICAL_CHAIN,
+    UNCERTIFIED,
+    UNCERTIFIED_PREFIX,
+    CandidateComparisonOutcome,
+    CandidatePlan,
+)
 
 if TYPE_CHECKING:
     from .schedule_candidate_selection import BusinessObjectiveSelectionResult
 
 UNIFIED_GENERATION_VERSION = "unified_search_v1"
 ROLE_RECOMMENDED = "recommended"
-_UNSET = object()
 
 _PUBLIC_FAILURE_REASON_CODES = {
     "candidate_failed",
@@ -20,41 +25,30 @@ _PUBLIC_FAILURE_REASON_CODES = {
 }
 
 
-def _candidate_key(value: Any) -> Optional[str]:
-    text = str(value or "").strip()
-    return text or None
-
-
 def is_unified_generation(value: Any) -> bool:
-    version = value.get("generation_policy_version") if isinstance(value, dict) else getattr(value, "generation_policy_version", None)
-    return version == UNIFIED_GENERATION_VERSION
+    """Identify the generation policy on stored/public summary dictionaries."""
+    return isinstance(value, dict) and value.get("generation_policy_version") == UNIFIED_GENERATION_VERSION
 
 
-def candidate_score_summary(candidate: Any) -> Optional[List[Any]]:
-    score = getattr(candidate, "score", None)
+def candidate_score_summary(candidate: CandidatePlan) -> Optional[List[Any]]:
+    score = candidate.score
     if score is None:
         return None
-    if is_unified_generation(candidate):
-        primary = _candidate_text(candidate, "objective_name") or _candidate_text(candidate, "objective")
-        evaluation = (getattr(candidate, "evaluations", None) or {}).get(primary) or {}
-        scope = evaluation.get("scoring_scope") or {}
-        return _numeric_score(score, components_known=scope.get("components_known") is True)
-    return [float(item) for item in tuple(score)]
+    if candidate.generation_policy_version == UNIFIED_GENERATION_VERSION:
+        primary = candidate.objective_name or candidate.objective
+        scope = candidate.evaluations[primary]["scoring_scope"]
+        return numeric_score(score, components_known=scope["components_known"])
+    return [float(item) for item in score]
 
 
-def candidate_metrics_summary(candidate: Any, *, score: Any = _UNSET) -> Dict[str, Any]:
-    metrics = getattr(candidate, "metrics", None)
-    score = candidate_score_summary(candidate) if score is _UNSET else score
+def candidate_metrics_summary(candidate: CandidatePlan, *, score: Optional[List[Any]]) -> Dict[str, Any]:
+    metrics = candidate.metrics
     out: Dict[str, Any] = {}
     if score and score[0] is not None:
         out["failed_ops"] = int(score[0])
-    metrics_data: Optional[Dict[str, Any]] = None
-    if isinstance(metrics, dict):
-        metrics_data = metrics
-    elif metrics is not None and hasattr(metrics, "to_dict"):
-        raw = metrics.to_dict()
-        if isinstance(raw, dict):
-            metrics_data = raw
+    if metrics is None:
+        return out
+    metrics_data = metrics.to_dict()
     for key in (
         "overdue_count",
         "total_tardiness_hours",
@@ -62,23 +56,17 @@ def candidate_metrics_summary(candidate: Any, *, score: Any = _UNSET) -> Dict[st
         "makespan_hours",
         "changeover_count",
     ):
-        value = metrics_data.get(key) if metrics_data is not None else getattr(metrics, key, None)
+        value = metrics_data.get(key)
         if value is not None:
             out[key] = value
     return out
 
 
-def candidate_health_summary(candidate: Any) -> Optional[Dict[str, Any]]:
-    if is_unified_generation(candidate):
+def candidate_health_summary(candidate: CandidatePlan) -> Optional[Dict[str, Any]]:
+    if candidate.generation_policy_version == UNIFIED_GENERATION_VERSION:
         return None
-    health = getattr(candidate, "health", None)
-    if health is None:
-        return None
-    if isinstance(health, dict):
-        raw = health
-    elif hasattr(health, "to_dict"):
-        raw = health.to_dict()
-    else:
+    raw = candidate.health
+    if raw is None:
         return None
     return {
         "state": raw.get("state"),
@@ -93,42 +81,42 @@ def candidate_health_summary(candidate: Any) -> Optional[Dict[str, Any]]:
     }
 
 
-def candidate_roles_by_key(candidate_comparison: Any) -> Dict[str, List[str]]:
-    selection = getattr(candidate_comparison, "selection", None)
+def candidate_roles_by_key(candidate_comparison: CandidateComparisonOutcome) -> Dict[str, List[str]]:
+    selection = candidate_comparison.selection
     roles: Dict[str, List[str]] = {}
 
-    def add(key: Any, role: str) -> None:
-        candidate_key = _candidate_key(key)
-        if candidate_key is None:
+    def add(key: Optional[str], role: str) -> None:
+        if key is None:
             return
-        roles.setdefault(candidate_key, [])
-        if role not in roles[candidate_key]:
-            roles[candidate_key].append(role)
+        roles.setdefault(key, [])
+        if role not in roles[key]:
+            roles[key].append(role)
 
-    if is_unified_generation(candidate_comparison):
-        add(getattr(selection, "selected_candidate_key", None), ROLE_RECOMMENDED)
-        for objective, key in (getattr(selection, "objective_winners", None) or {}).items():
+    if candidate_comparison.generation_policy_version == UNIFIED_GENERATION_VERSION:
+        add(selection.selected_candidate_key, ROLE_RECOMMENDED)
+        for objective, key in selection.objective_winners.items():
             add(key, objective)
         return roles
-    add(getattr(selection, "selected_candidate_key", None), ROLE_ADOPTED)
-    add(getattr(selection, "baseline_best_key", None), ROLE_BASELINE_BEST)
-    add(getattr(selection, "critical_best_key", None), ROLE_CRITICAL_BEST)
+    add(selection.selected_candidate_key, ROLE_ADOPTED)
+    add(selection.baseline_best_key, ROLE_BASELINE_BEST)
+    add(selection.critical_best_key, ROLE_CRITICAL_BEST)
     return roles
 
 
-def candidate_detail_saved(candidate: Any, roles: List[str]) -> bool:
-    status = str(getattr(candidate, "status", "") or "").strip().lower()
-    if status != "completed":
+def candidate_detail_saved(candidate: CandidatePlan, roles: List[str]) -> bool:
+    if candidate.status != "completed":
         return False
-    if is_unified_generation(candidate):
+    if candidate.generation_policy_version == UNIFIED_GENERATION_VERSION:
         return ROLE_RECOMMENDED not in roles
     if ROLE_ADOPTED in roles:
         return False
     return ROLE_BASELINE_BEST in roles or ROLE_CRITICAL_BEST in roles
 
 
-def _public_failure_reason(value: Any) -> Optional[str]:
-    reason = str(value or "").strip()
+def _public_failure_reason(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    reason = value.strip()
     if not reason:
         return None
     if reason in _PUBLIC_FAILURE_REASON_CODES:
@@ -136,138 +124,111 @@ def _public_failure_reason(value: Any) -> Optional[str]:
     return "candidate_failed"
 
 
-def _candidate_text(candidate: Any, name: str) -> str:
-    """读取候选的文本属性；缺失或空值统一按空字符串对外。"""
-    return str(getattr(candidate, name, "") or "")
-
-
-def _candidate_weight(candidate: Any, name: str, *, unified: bool) -> Optional[int]:
+def _candidate_weight(value: Optional[int], *, unified: bool) -> Optional[int]:
     """新版保留真实图参数的未知值；旧记录保持原数值口径。"""
     if unified:
-        value = getattr(candidate, name, None)
-        return None if value is None else int(value)
-    return int(getattr(candidate, name, 0) or 0)
+        return value
+    return value if value is not None else 0
 
 
-def _candidate_elapsed_ms(candidate: Any, *, unified: bool) -> Optional[int]:
+def _candidate_elapsed_ms(candidate: CandidatePlan, *, unified: bool) -> Optional[int]:
     """候选耗时（秒）换算成整毫秒。"""
     if unified:
         return None
-    return int(round(float(getattr(candidate, "elapsed_seconds", 0.0) or 0.0) * 1000))
+    return round(candidate.elapsed_seconds * 1000)
 
 
-def candidate_graph_enabled(candidate: Any) -> bool:
-    if is_unified_generation(candidate):
-        origin = getattr(candidate, "origin", None) or {}
-        return bool(origin.get("graph_ready_profile"))
-    return _candidate_text(candidate, "kind") == CANDIDATE_KIND_CRITICAL_CHAIN
+def candidate_graph_enabled(candidate: CandidatePlan) -> bool:
+    if candidate.generation_policy_version == UNIFIED_GENERATION_VERSION:
+        return candidate.origin is not None and bool(candidate.origin.get("graph_ready_profile"))
+    return candidate.kind == CANDIDATE_KIND_CRITICAL_CHAIN
 
 
-def _business_candidate_fields(candidate: Any) -> Dict[str, Any]:
+def _business_candidate_fields(candidate: CandidatePlan) -> Dict[str, Any]:
     return {
         "generation_policy_version": UNIFIED_GENERATION_VERSION,
-        "representative_objectives": list(getattr(candidate, "representative_objectives", None) or []),
-        "evaluations": dict(getattr(candidate, "evaluations", None) or {}),
-        "origin": dict(getattr(candidate, "origin", None) or {}),
-        "first_found_elapsed_ms": getattr(candidate, "first_found_elapsed_ms", None),
-        "search_evidence_ref": getattr(candidate, "search_evidence_ref", None),
+        "representative_objectives": candidate.representative_objectives,
+        "evaluations": candidate.evaluations,
+        "origin": candidate.origin,
+        "first_found_elapsed_ms": candidate.first_found_elapsed_ms,
+        "search_evidence_ref": candidate.search_evidence_ref,
         "elapsed_seconds": {"value": None, "state": "not_applicable", "reason": "shared_run_time"},
     }
 
 
-def _candidate_dispatch_rule_fields(candidate: Any) -> Dict[str, str]:
+def _candidate_dispatch_rule_fields(candidate: CandidatePlan) -> Dict[str, str]:
     """公开视图的派工规则字段：实际采用的规则，以及与之不同时的配置规则。"""
     # The optimizer searches the whole rule pool; say which rule the plan really uses.
     fields: Dict[str, str] = {}
-    adopted_rule = _candidate_text(candidate, "adopted_dispatch_rule")
+    adopted_rule = candidate.adopted_dispatch_rule
     if adopted_rule:
         fields["adopted_dispatch_rule"] = adopted_rule
-        configured_rule = _candidate_text(candidate, "dispatch_rule")
+        configured_rule = candidate.dispatch_rule
         if configured_rule and configured_rule != adopted_rule:
             fields["configured_dispatch_rule"] = configured_rule
     return fields
 
 
-def candidate_public_summary(candidate: Any, *, roles: Optional[List[str]] = None) -> Dict[str, Any]:
-    unified = is_unified_generation(candidate)
+def candidate_public_summary(candidate: CandidatePlan, *, roles: Optional[List[str]] = None) -> Dict[str, Any]:
+    unified = candidate.generation_policy_version == UNIFIED_GENERATION_VERSION
     score = candidate_score_summary(candidate)
-    role_list = list(roles or [])
+    role_list = roles if roles is not None else []
     health = candidate_health_summary(candidate)
     summary: Dict[str, Any] = {
-        "label": _candidate_text(candidate, "label"),
-        "kind": _candidate_text(candidate, "kind"),
-        "status": _candidate_text(candidate, "status"),
+        "label": candidate.label,
+        "kind": candidate.kind,
+        "status": candidate.status,
         "score": score,
         "metrics": candidate_metrics_summary(candidate, score=score),
         "health": health,
         "graph_enabled": candidate_graph_enabled(candidate),
-        "critical_weight": _candidate_weight(candidate, "graph_critical_weight", unified=unified),
-        "impact_weight": _candidate_weight(candidate, "graph_impact_weight", unified=unified),
-        "downstream_weight": _candidate_weight(candidate, "graph_downstream_weight", unified=unified),
+        "critical_weight": _candidate_weight(candidate.graph_critical_weight, unified=unified),
+        "impact_weight": _candidate_weight(candidate.graph_impact_weight, unified=unified),
+        "downstream_weight": _candidate_weight(candidate.graph_downstream_weight, unified=unified),
         "elapsed_ms": _candidate_elapsed_ms(candidate, unified=unified),
         "detail_saved": candidate_detail_saved(candidate, role_list),
         "roles": role_list,
     }
     if unified:
         summary.update(_business_candidate_fields(candidate))
-    failure_reason = _public_failure_reason(getattr(candidate, "failure_reason", ""))
+    failure_reason = _public_failure_reason(candidate.failure_reason)
     if failure_reason:
         summary["failure_reason"] = failure_reason
     # Public views name the sibling by label only; candidate keys stay internal.
-    reused_from_label = _candidate_text(candidate, "reused_from_label")
+    reused_from_label = candidate.reused_from_label
     if reused_from_label:
         summary["reused_from_label"] = reused_from_label
     # Only a failed certification is worth a field, and only as a code: the reason text (raw exception
     # messages included) stays on the plan and in the run log, like failure_reason above.
-    if _candidate_text(candidate, "input_certification").startswith(UNCERTIFIED_PREFIX):
+    if candidate.input_certification.startswith(UNCERTIFIED_PREFIX):
         summary["input_certification"] = UNCERTIFIED
     summary.update(_candidate_dispatch_rule_fields(candidate))
     return summary
 
 
-def candidate_comparison_public_summary(candidate_comparison: Any) -> Dict[str, Any]:
-    selection = getattr(candidate_comparison, "selection", None)
+def candidate_comparison_public_summary(candidate_comparison: CandidateComparisonOutcome) -> Dict[str, Any]:
+    selection = cast("BusinessObjectiveSelectionResult", candidate_comparison.selection)
     roles_by_key = candidate_roles_by_key(candidate_comparison)
-    if is_unified_generation(candidate_comparison):
-        unified_selection = cast("BusinessObjectiveSelectionResult", selection)
-        candidates = list(getattr(candidate_comparison, "candidates", None) or [])
-        return {
-            "enabled": True,
-            "generation_policy_version": UNIFIED_GENERATION_VERSION,
-            "primary_objective": getattr(candidate_comparison, "primary_objective", None),
-            "target_objectives": list(getattr(candidate_comparison, "target_objectives", None) or []),
-            "planned_candidate_count": len(candidates),
-            "completed_candidate_count": len(candidates),
-            "failed_candidate_count": 0,
-            "skipped_candidate_count": 0,
-            "reused_candidate_count": 0,
-            "time_budget_reached": bool(getattr(candidate_comparison, "time_budget_reached", False)),
-            "run_time_budget_seconds": getattr(candidate_comparison, "run_time_budget_seconds", None),
-            "skipped_candidate_labels": [],
-            "selection_policy_version": getattr(selection, "selection_policy_version", None),
-            "selection_reason_code": getattr(selection, "reason_code", None),
-            "selection": unified_selection.to_dict(),
-            "unified_process": getattr(candidate_comparison, "unified_process", None),
-            "candidates": [candidate_public_summary(candidate, roles=roles_by_key.get(candidate.candidate_key, []))
-                           for candidate in candidates],
-        }
+    candidates = candidate_comparison.candidates
     return {
         "enabled": True,
-        "planned_candidate_count": int(getattr(candidate_comparison, "planned_count", 0) or 0),
-        "completed_candidate_count": int(getattr(candidate_comparison, "completed_count", 0) or 0),
-        "failed_candidate_count": int(getattr(candidate_comparison, "failed_count", 0) or 0),
-        "skipped_candidate_count": int(getattr(candidate_comparison, "skipped_count", 0) or 0),
-        "reused_candidate_count": int(getattr(candidate_comparison, "reused_count", 0) or 0),
-        "time_budget_reached": bool(getattr(candidate_comparison, "time_budget_reached", False)),
-        "run_time_budget_seconds": getattr(candidate_comparison, "run_time_budget_seconds", None),
-        "skipped_candidate_labels": list(getattr(candidate_comparison, "skipped_candidate_labels", []) or []),
-        "baseline_missing_or_failed": bool(getattr(candidate_comparison, "baseline_missing_or_failed", False)),
-        "selection_policy": getattr(selection, "selection_policy", None),
-        "selection_reason_code": getattr(selection, "reason_code", None),
-        "candidates": [
-            candidate_public_summary(candidate, roles=roles_by_key.get(str(getattr(candidate, "candidate_key", "") or ""), []))
-            for candidate in list(getattr(candidate_comparison, "candidates", None) or [])
-        ],
+        "generation_policy_version": UNIFIED_GENERATION_VERSION,
+        "primary_objective": candidate_comparison.primary_objective,
+        "target_objectives": list(candidate_comparison.target_objectives),
+        "planned_candidate_count": len(candidates),
+        "completed_candidate_count": len(candidates),
+        "failed_candidate_count": 0,
+        "skipped_candidate_count": 0,
+        "reused_candidate_count": 0,
+        "time_budget_reached": candidate_comparison.time_budget_reached,
+        "run_time_budget_seconds": candidate_comparison.run_time_budget_seconds,
+        "skipped_candidate_labels": [],
+        "selection_policy_version": selection.selection_policy_version,
+        "selection_reason_code": selection.reason_code,
+        "selection": selection.to_dict(),
+        "unified_process": candidate_comparison.unified_process,
+        "candidates": [candidate_public_summary(candidate, roles=roles_by_key.get(candidate.candidate_key, []))
+                       for candidate in candidates],
     }
 
 

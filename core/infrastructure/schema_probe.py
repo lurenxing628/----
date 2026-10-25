@@ -6,19 +6,22 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Any, Dict, Iterable, List, Optional, Set
+from typing import List, Optional
+
+from .connection_guards import SCHEMA_CONTRACTS
+from .schema_structure import SchemaStructure
 
 
-def object_names(conn: sqlite3.Connection) -> Set[str]:
-    """sqlite_master 里全部对象名（表、索引、触发器、视图）。"""
-    return {str(row[0]) for row in conn.execute("SELECT name FROM sqlite_master")}
-
-
-def table_names(conn: sqlite3.Connection) -> Set[str]:
-    return {str(row[0]) for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+def cached_structure(conn: sqlite3.Connection) -> Optional[SchemaStructure]:
+    memo = next((item for item in reversed(SCHEMA_CONTRACTS.get()) if item.conn is conn), None)
+    return memo._structure if memo is not None else None
 
 
 def user_table_count(conn: sqlite3.Connection) -> int:
+    structure = cached_structure(conn)
+    if structure is not None:
+        return sum(1 for name, (kind, _tbl, _sql) in structure.objects.items()
+                   if kind == "table" and not name.startswith("sqlite_"))
     row = conn.execute(
         "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND substr(name, 1, 7) != 'sqlite_'"
     ).fetchone()
@@ -26,22 +29,15 @@ def user_table_count(conn: sqlite3.Connection) -> int:
 
 
 def table_exists(conn: sqlite3.Connection, name: str) -> bool:
+    structure = cached_structure(conn)
+    if structure is not None:
+        return structure.has_table(name)
     return conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone() is not None
 
 
-def object_sql(conn: sqlite3.Connection, name: str) -> Optional[str]:
-    row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone()
-    if row is None:
-        return None
-    return None if row[0] is None else str(row[0])
-
-
-def object_sql_map(conn: sqlite3.Connection, names: Iterable[str]) -> Dict[str, Any]:
-    """名字在 names 里的对象及其 sql（任意类型；自动索引的 sql 为 None）。"""
-    wanted = set(names)
-    return {str(row[0]): row[1] for row in conn.execute("SELECT name,sql FROM sqlite_master") if row[0] in wanted}
-
-
 def table_columns(conn: sqlite3.Connection, name: str) -> List[str]:
+    structure = cached_structure(conn)
+    if structure is not None:
+        return [str(row[1]) for row in structure.table_info(name)]
     quoted = '"' + str(name).replace('"', '""') + '"'
     return [str(row[1]) for row in conn.execute(f"PRAGMA table_info({quoted})")]

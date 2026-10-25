@@ -8,7 +8,7 @@ from typing import Callable, Optional
 
 from .database_bootstrap import cleanup_probe_db, missing_schema_tables
 from .migration_backup import restore_db_file_from_backup
-from .migration_common import MigrationOutcome, fallback_log, table_exists
+from .migration_common import MigrationOutcome, fallback_log
 from .migration_state import (
     CURRENT_SCHEMA_VERSION,
     MigrationContractError,
@@ -19,6 +19,7 @@ from .migration_state import (
     get_schema_version,
     set_schema_version,
 )
+from .schema_probe import table_exists
 
 ConnectionFactory = Callable[[str], sqlite3.Connection]
 
@@ -116,13 +117,10 @@ def _run_preflight_on_probe(
         initial_version = get_schema_version(conn)
         ensure_schema_version_not_newer(initial_version, supported_version=to_version)
         ensure_current_schema_contract(conn, schema_version=initial_version, schema_sql=schema_sql)
-        ensure_schema_version(conn, logger=None, schema_sql=schema_sql)
-        current = get_schema_version(conn)
+        current = ensure_schema_version(conn, logger=None, schema_sql=schema_sql)
         ensure_schema_version_not_newer(current, supported_version=to_version)
         _ensure_completed_event_migration_tables(conn, current=current)
         if current >= to_version:
-            if current == CURRENT_SCHEMA_VERSION:
-                ensure_current_schema_contract(conn, schema_version=current, schema_sql=schema_sql)
             return
         with conn:
             for version in range(current + 1, to_version + 1):
@@ -141,12 +139,7 @@ def _run_preflight_on_probe(
 
 
 def _resolve_backup_dir(db_path: str, backup_dir: Optional[str], *, logger=None) -> str:
-    effective_backup_dir = ""
-    if backup_dir:
-        try:
-            effective_backup_dir = str(os.fspath(backup_dir)).strip()  # type: ignore[arg-type]
-        except Exception:
-            effective_backup_dir = str(backup_dir).strip()
+    effective_backup_dir = str(os.fspath(backup_dir)).strip() if backup_dir else ""
     if effective_backup_dir:
         return effective_backup_dir
     default_dir = os.path.join(os.path.dirname(os.path.abspath(db_path)), "backups")
@@ -194,13 +187,10 @@ def _apply_migrations(
         ensure_schema_version_not_newer(initial_version, supported_version=to_version)
         ensure_current_schema_contract(conn, schema_version=initial_version, schema_sql=schema_sql)
         with conn:
-            ensure_schema_version(conn, logger=logger, schema_sql=schema_sql)
-            current = get_schema_version(conn)
+            current = ensure_schema_version(conn, logger=logger, schema_sql=schema_sql)
             ensure_schema_version_not_newer(current, supported_version=to_version)
             _ensure_completed_event_migration_tables(conn, current=current)
             if current >= to_version:
-                if current == CURRENT_SCHEMA_VERSION:
-                    ensure_current_schema_contract(conn, schema_version=current, schema_sql=schema_sql)
                 return
             _apply_version_range(conn, current=current, to_version=to_version, schema_sql=schema_sql, logger=logger)
             if to_version == CURRENT_SCHEMA_VERSION:

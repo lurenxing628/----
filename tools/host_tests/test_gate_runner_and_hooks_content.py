@@ -101,6 +101,16 @@ def test_hook_cache_and_daily_scope_compare_full_content_and_preserve_old_record
     assert not any("hash" in key for key in extra)
 
 
+def test_daily_gate_runs_boundary_scanners_after_ruff_only_when_ruff_runs():
+    scanners = ["sql boundary check", "private imports check", "dead path literals check"]
+    for plan in (daily.RuffPlan(["app.py"], False, "changed"), daily.RuffPlan([], True, "full")):
+        commands = daily._commands([], plan)
+        assert [label for label, _command in commands][2:5] == scanners
+        assert all(command[-2:] == ["--fail-on-new", "--quiet-when-clean"] for _label, command in commands[2:5])
+    skipped = daily._commands([], daily.RuffPlan([], False, "docs only"))
+    assert not set(scanners) & {label for label, _command in skipped}
+
+
 def test_git_hook_cli_help_imports_from_outside_repository(tmp_path):
     environment = os.environ.copy()
     environment.pop("PYTHONPATH", None)

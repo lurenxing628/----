@@ -1,7 +1,7 @@
 """Resolve old plan inputs with existing parsers and SELECT-only permanent refs."""
 
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Dict
 
 from werkzeug.exceptions import NotFound
 
@@ -26,7 +26,7 @@ class ResolvedLegacyPlan:
     locator: WorkbenchPlanLocator
     plan_ref: str
     fallback: bool
-    public_context: Mapping[str, str]
+    public_context: Dict[str, str]
 
 
 def _scenario(args):

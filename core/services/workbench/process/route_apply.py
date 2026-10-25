@@ -14,14 +14,14 @@ from .route_choices import changed_route_sequences, preview_existing_route
 from .route_preview import ProcessRoutePreviewService
 
 
-def prepare_route(conn, logger, payload, operations, *, facts=None):
+def prepare_route(conn, logger, payload, operations, *, facts):
     parser = ProcessRoutePreviewService(conn, logger, facts=facts)
     with parser.reference_snapshot() if conn.in_transaction else nullcontext():
         preview = parser.preview(payload["route"])
     from .route_choices import route_choice_context
 
     changed = changed_route_sequences({row["seq"]: row for row in operations}, preview["operations"])
-    context = route_choice_context(conn, operations, facts) if operations else None
+    context = route_choice_context(operations, facts) if operations else None
     preview = preview_existing_route(preview, operations, context, changed=changed)
     if not preview["can_confirm_route"]:
         raise WorkbenchCommandRejected("route_invalid", "路线预检未通过，请核对完整诊断后重新确认。", 422)
@@ -82,7 +82,7 @@ def _persist_route_operation(op_repo, part_no, row, old, replaced, identities):
             supplier_id=_suggested_key(identities, row["supplier_ref"], "supplier"),
             ext_days=row["external_days"],
         )
-        return True, True
+        return True, row["source_suggestion"] == "external"
     if replaced:
         op_repo.update_fields_by_id(old["id"], {
             "op_type_name": row["op_type_name"], "status": "active", "source": row["source_suggestion"],
@@ -90,7 +90,7 @@ def _persist_route_operation(op_repo, part_no, row, old, replaced, identities):
             "supplier_id": _suggested_key(identities, row["supplier_ref"], "supplier"),
             "ext_days": row["external_days"], "setup_hours": None, "unit_hours": None,
         })
-        return True, True
+        return True, row["source_suggestion"] == "external"
     # Cosmetic/unknown renames retain intentional manual choices.
     if old["op_type_name"] != row["op_type_name"] or old["status"] != "active":
         op_repo.restore_with_op_type_name(old["id"], row["op_type_name"])
@@ -98,9 +98,7 @@ def _persist_route_operation(op_repo, part_no, row, old, replaced, identities):
     return False, False
 
 
-def apply_route(conn, part, operations, preview, identities, *, part_updates=None, default_catalog_reader=None):
-    if not preview["can_confirm_route"]:
-        raise WorkbenchCommandRejected("route_invalid", "路线中的工种已变化，请重新预检。", 422)
+def apply_route(conn, part, operations, preview, identities, *, default_catalog_reader, part_updates=None):
     op_repo = PartOperationRepository(conn)
     existing = {row["seq"]: row for row in operations}
     incoming = {row["sequence"] for row in preview["operations"]}

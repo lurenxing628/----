@@ -8,6 +8,15 @@ from .method import build_suggestion, summarize_samples
 from .samples import review_sample
 
 
+def _merge_exclusion_reasons(first, second):
+    counts, messages = defaultdict(int), {}
+    for row in first + second:
+        code = row["code"]
+        counts[code] += row["count"]
+        messages[code] = row["message"]
+    return [{"code": code, "message": messages[code], "count": count} for code, count in sorted(counts.items())]
+
+
 def project_lineage_calibration(templates, instances, projections, lineage, *, as_of):
     by_ref = {row.operation_ref: row for row in templates}
     samples_by_template, unbound = defaultdict(list), defaultdict(list)
@@ -34,7 +43,10 @@ def project_lineage_calibration(templates, instances, projections, lineage, *, a
         missing = unbound_summaries.get(template.part_no, empty)
         summary["candidate_count"] += missing["candidate_count"]
         summary["excluded_count"] += missing["excluded_count"]
-        summary["exclusion_reasons"] += missing["exclusion_reasons"]
+        if missing["exclusion_reasons"]:
+            summary["exclusion_reasons"] = _merge_exclusion_reasons(
+                summary["exclusion_reasons"], missing["exclusion_reasons"]
+            )
         rows.append(build_suggestion(template, summary, generated_at=generated_at))
     unbound_count = sum(map(len, unbound.values()))
     constraints = ([issue("template_lineage_missing", "部分完工记录未关联工艺模板，未参与校准。")]

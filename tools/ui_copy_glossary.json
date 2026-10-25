@@ -17,11 +17,8 @@
     "backend": [
       "core/services/workbench",
       "core/services/execution",
-      "core/services/process/quota_protection.py",
       "core/services/scheduler/template_lineage.py",
       "core/services/scheduler/template_lineage_query.py",
-      "core/services/process/part_service.py",
-      "core/services/batch/service.py",
       "core/services/scheduler/execution/execution_ledger_adapter.py",
       "web/routes/workbench",
       "core/models/workbench_*.py",

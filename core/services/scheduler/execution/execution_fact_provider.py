@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from core.models.operation_execution_event import (
-    EXECUTION_STATUS_NOT_STARTED,
     OperationExecutionEvent,
     parse_operation_event_time,
     validate_operation_execution_event_sequence,
@@ -13,7 +12,7 @@ from core.models.operation_execution_event import (
 from core.models.operation_execution_scope import OperationExecutionScope
 from core.models.workbench_execution import ExecutionProjection
 from data.repositories.operation_execution_event_repo import OperationExecutionEventRepo
-from data.repositories.operation_execution_state_builder import build_operation_execution_state
+from data.repositories.operation_execution_state_builder import fold_operation_execution_events
 
 from .execution_ledger_adapter import adapt_ledger_facts, ledger_read_snapshot
 from .operation_execution_scope_read import scopes_by_op_id_for_plan_rows
@@ -63,43 +62,21 @@ class ExecutionFact:
     execution_protection_content: Optional[Dict[str, Any]] = None
 
 
-def _state_value(state, attr: str):
-    return None if state is None else getattr(state, attr)
-
-
-def _fact_from_state(
-    op_id: int,
-    state,
-    *,
-    scope: Optional[OperationExecutionScope] = None,
-) -> ExecutionFact:
-    status = EXECUTION_STATUS_NOT_STARTED if state is None else str(state.current_status or EXECUTION_STATUS_NOT_STARTED)
+def _fact_from_events(scope: OperationExecutionScope, events: Sequence[OperationExecutionEvent]) -> ExecutionFact:
+    folded = fold_operation_execution_events(op_id=scope.op_id, batch_id=scope.batch_id, events=events)
+    exception = folded.latest_exception
     return ExecutionFact(
-        op_id=int(op_id),
-        batch_id=_state_value(state, "batch_id") or (None if scope is None else scope.batch_id),
-        actual_status=status,
-        actual_start_time=_parse_execution_time(_state_value(state, "actual_start_time")),
-        actual_end_time=_parse_execution_time(_state_value(state, "actual_end_time")),
-        actual_machine_id=_state_value(state, "actual_machine_id"),
-        actual_operator_id=_state_value(state, "actual_operator_id"),
-        state_revision=f"{int(op_id)}:0:0" if state is None else state.state_revision,
-        latest_exception_impact_minutes=_state_value(state, "latest_exception_impact_minutes"),
-        latest_exception_handling_status=_state_value(state, "latest_exception_handling_status"),
-        latest_exception_suggest_reschedule=False if state is None else bool(state.latest_exception_suggest_reschedule),
-        schedule_version=None if scope is None else int(scope.schedule_version),
-        schedule_id=None if scope is None else int(scope.schedule_id),
-        source_table=None if scope is None else scope.source_table,
-        effective_plan_role=None if scope is None else scope.effective_plan_role,
-        scenario_id=None if scope is None else scope.scenario_id,
+        op_id=scope.op_id, batch_id=folded.batch_id, actual_status=folded.current_status,
+        actual_start_time=None if folded.actual_start_time is None else parse_operation_event_time(folded.actual_start_time),
+        actual_end_time=None if folded.actual_end_time is None else parse_operation_event_time(folded.actual_end_time),
+        actual_machine_id=folded.actual_machine_id, actual_operator_id=folded.actual_operator_id,
+        state_revision=folded.state_revision,
+        latest_exception_impact_minutes=None if exception is None else exception.impact_minutes,
+        latest_exception_handling_status=None if exception is None else exception.handling_status,
+        latest_exception_suggest_reschedule=False if exception is None else bool(exception.suggest_reschedule),
+        schedule_version=scope.schedule_version, schedule_id=scope.schedule_id,
+        source_table=scope.source_table, effective_plan_role=scope.effective_plan_role, scenario_id=scope.scenario_id,
     )
-
-
-def _parse_execution_time(value: Any) -> Optional[datetime]:
-    if value is None:
-        return None
-    if isinstance(value, str) and not value.strip():
-        return None
-    return parse_operation_event_time(value)
 
 
 class ExecutionFactProvider:
@@ -120,11 +97,6 @@ class ExecutionFactProvider:
         execution_projections: Optional[Sequence[ExecutionProjection]] = None,
     ) -> Dict[OperationExecutionScope, ExecutionFact]:
         normalized = list(dict.fromkeys(scopes or ()))
-        # The injectable legacy repository also supports connection-free unit tests.
-        if self.conn is None:
-            if execution_projections is not None:
-                raise ValueError("执行投影适配需要真实连接核对永久计划身份。")
-            return self._legacy_facts(normalized)
         with ledger_read_snapshot(self.conn, ledger=self.ledger) as ledger:
             facts = self._legacy_facts(normalized)
             if ledger is None:
@@ -134,68 +106,29 @@ class ExecutionFactProvider:
             return adapt_ledger_facts(ledger, facts, execution_projections=execution_projections)
 
     def _legacy_facts(self, normalized: Sequence[OperationExecutionScope]) -> Dict[OperationExecutionScope, ExecutionFact]:
-        if self.capture is None:
-            states = self.event_repo.aggregate_states_by_scopes(normalized)
-        else:
-            states = self._captured_states(normalized)
-        return {
-            scope: _fact_from_state(
-                int(scope.op_id),
-                states.get(scope),
-                scope=scope,
-            )
-            for scope in normalized
-        }
+        if self.capture is not None:
+            return self._captured_facts(normalized)
+        events_by_scope = self.event_repo.list_events_by_scopes(normalized)
+        return {scope: _fact_from_events(scope, events_by_scope.get(scope, ())) for scope in normalized}
 
-    def _captured_states(self, scopes):
+    def _captured_facts(self, scopes):
         capture = self.capture
-        scope_fields = ("schedule_version", "schedule_id", "op_id", "batch_id", "source_table", "effective_plan_role", "scenario_id")
-        if not hasattr(capture, "execution_event_rows"):
-            capture.execution_event_rows, capture.execution_states = {}, {}
+        if capture.execution_event_rows is None:
+            capture.execution_event_rows = {}
             for row in capture.table("OperationExecutionEvents"):
-                key = tuple(row[field] for field in scope_fields)
-                capture.execution_event_rows.setdefault(key, []).append(row)
-            from core.models.resource_identity import build_resource_identity
-
-            capture.execution_machine_identities = {
-                row["machine_id"]: build_resource_identity(resource_id=row["machine_id"], resource_name=row["name"])
-                for row in capture.table("Machines")}
-            capture.execution_operator_identities = {
-                row["operator_id"]: build_resource_identity(resource_id=row["operator_id"], resource_name=row["name"])
-                for row in capture.table("Operators")}
+                scope = OperationExecutionScope(
+                    schedule_version=row["schedule_version"], schedule_id=row["schedule_id"], op_id=row["op_id"],
+                    batch_id=row["batch_id"], source_table=row["source_table"],
+                    effective_plan_role=row["effective_plan_role"], scenario_id=row["scenario_id"],
+                )
+                capture.execution_event_rows.setdefault(scope, []).append(row)
         for scope in scopes:
-            if scope in capture.execution_states:
+            if scope in capture.execution_facts:
                 continue
-            key = tuple(getattr(scope, field) for field in scope_fields)
-            events = [OperationExecutionEvent.from_row(row) for row in capture.execution_event_rows.get(key, ())]
+            events = [OperationExecutionEvent.from_row(row) for row in capture.execution_event_rows.get(scope, ())]
             validate_operation_execution_event_sequence(events)
-            capture.execution_states[scope] = build_operation_execution_state(
-                op_id=scope.op_id, batch_id=scope.batch_id, events=events,
-                machine_resources=capture.execution_machine_identities,
-                operator_resources=capture.execution_operator_identities)
-        return {scope: capture.execution_states[scope] for scope in scopes}
-
-    def facts_by_op_id_for_scopes(
-        self,
-        scopes: Sequence[OperationExecutionScope],
-        *,
-        include_op_ids: Sequence[int] = (),
-        execution_projections: Optional[Sequence[ExecutionProjection]] = None,
-    ) -> Dict[int, ExecutionFact]:
-        facts_by_scope = self.facts_by_scope(scopes, execution_projections=execution_projections)
-        out: Dict[int, ExecutionFact] = {}
-        scopes_by_op_id: Dict[int, OperationExecutionScope] = {}
-        for scope, fact in facts_by_scope.items():
-            op_id = int(scope.op_id)
-            existing = scopes_by_op_id.get(op_id)
-            if existing is not None and existing != scope:
-                raise ValueError(f"工序 {op_id} 对应多个现场执行身份，不能按 op_id 合并读取。")
-            scopes_by_op_id[op_id] = scope
-            out[op_id] = fact
-        missing = [op_id for op_id in positive_op_ids(include_op_ids) if op_id not in out]
-        if missing:
-            raise ValueError(f"现场执行事实缺少完整计划身份：op_id={missing[0]}")
-        return out
+            capture.execution_facts[scope] = _fact_from_events(scope, events)
+        return {scope: capture.execution_facts[scope] for scope in scopes}
 
     def facts_by_op_id_for_plan_rows(
         self,

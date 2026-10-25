@@ -4804,13 +4804,13 @@ function SMExport({
           missing++;
           continue;
         }
+        if (from.batch_id !== to.batch_id) continue;
         facts.previous.get(to.task_ref).push(from);
         const edge = {
           from_task_ref: from.task_ref,
           to_task_ref: to.task_ref,
           edge_type: 'process'
         };
-        if (from.batch_id !== to.batch_id) continue;
         const record = {
           edge,
           order: order++
@@ -5003,7 +5003,8 @@ function SMExport({
     const points = prepared.locations,
       visible = new Set(),
       visibleEntries = [],
-      scale = width / (model.end - model.start);
+      span = model.end > model.start ? model.end - model.start : 1,
+      scale = width / span;
     const x = value => (value - model.start) * scale;
     let low = 0,
       high = prepared.rows.length;
@@ -5207,6 +5208,7 @@ function SMExport({
   const nullableTime = value => value === null || localTime(value);
   const day = value => typeof value === 'string' && localTime(value + 'T00:00:00');
   const same = (a, b) => object(a) && object(b) && exact(a, Object.keys(b)) && Object.keys(b).every(key => a[key] === b[key]);
+  const sameArray = (a, b) => Array.isArray(a) && a.length === b.length && a.every((v, i) => v === b[i]);
   const inScope = (row, scope) => !!row && (scope.range_start === null || P.overlaps(row, scope.range_start, scope.range_end));
   const states = ['available', 'partial', 'unavailable'];
   function resourceDirectory(data) {
@@ -5231,7 +5233,7 @@ function SMExport({
     if (value.state === 'unavailable') return exact(value, ['state', 'reason_code', 'reason', 'baseline_plan', 'items', 'item_count', 'items_complete']) && ['not_recorded', 'baseline_binding_invalid', 'baseline_unavailable', 'scenario_unavailable', 'baseline_task_invalid', 'no_adoption_baseline', 'adoption_evidence_missing', 'adoption_source_archived', 'adoption_snapshot_invalid', 'adoption_baseline_archived', 'adoption_reference_invalid', 'adoption_baseline_drift', 'adoption_plan_drift'].includes(value.reason_code) && label(value.reason) && value.baseline_plan === null && Array.isArray(value.items) && value.items.length === 0 && value.item_count === 0 && value.items_complete === false;
     const fields = ['start', 'end', 'machine_ref', 'operator_ref'],
       s = value.comparison_scope;
-    if (!exact(value, ['state', 'reason_code', 'reason', 'basis', 'baseline_plan', 'comparison_scope', 'compared_fields', 'items', 'item_count', 'items_complete']) || value.state !== 'available' || value.reason_code !== null || value.reason !== null || !['scenario_base', 'candidate_adoption', 'trial_adoption'].includes(value.basis) || data.plan.kind !== (value.basis === 'scenario_base' ? 'scenario' : 'official') || !plan(value.baseline_plan) || !value.baseline_plan.capabilities.view || value.basis !== 'scenario_base' && (value.baseline_plan.kind !== 'official' || value.baseline_plan.is_current_official) || value.baseline_plan.kind === 'scenario' || value.baseline_plan.plan_ref === data.plan.plan_ref || !exact(s, ['scope', 'selection', 'boundary', 'alignment', 'time_basis', 'task_times']) || !same(s.scope, data.scope) || s.selection !== 'either_side_overlap' || s.boundary !== 'half_open' || s.alignment !== 'operation_ref' || s.time_basis !== 'factory_local' || s.task_times !== 'unclipped' || JSON.stringify(value.compared_fields) !== JSON.stringify(fields) || !Array.isArray(value.items) || value.item_count !== value.items.length || value.item_count > 20000 || value.items_complete !== true || !uniqueRefs(value.items, 'operation_ref')) return false;
+    if (!exact(value, ['state', 'reason_code', 'reason', 'basis', 'baseline_plan', 'comparison_scope', 'compared_fields', 'items', 'item_count', 'items_complete']) || value.state !== 'available' || value.reason_code !== null || value.reason !== null || !['scenario_base', 'candidate_adoption', 'trial_adoption'].includes(value.basis) || data.plan.kind !== (value.basis === 'scenario_base' ? 'scenario' : 'official') || !plan(value.baseline_plan) || !value.baseline_plan.capabilities.view || value.basis !== 'scenario_base' && (value.baseline_plan.kind !== 'official' || value.baseline_plan.is_current_official) || value.baseline_plan.kind === 'scenario' || value.baseline_plan.plan_ref === data.plan.plan_ref || !exact(s, ['scope', 'selection', 'boundary', 'alignment', 'time_basis', 'task_times']) || !same(s.scope, data.scope) || s.selection !== 'either_side_overlap' || s.boundary !== 'half_open' || s.alignment !== 'operation_ref' || s.time_basis !== 'factory_local' || s.task_times !== 'unclipped' || !sameArray(value.compared_fields, fields) || !Array.isArray(value.items) || value.item_count !== value.items.length || value.item_count > 20000 || value.items_complete !== true || !uniqueRefs(value.items, 'operation_ref')) return false;
     const selected = new Map(data.tasks.map(row => [row.task_ref, row]));
     let afterCount = 0;
     for (const row of value.items) {
@@ -5241,7 +5243,7 @@ function SMExport({
       if (before === null && after === null || before !== null && (!task(before, value.baseline_plan.plan_ref) || before.operation_ref !== row.operation_ref) || after !== null && (!task(after, data.plan.plan_ref) || after.operation_ref !== row.operation_ref)) return false;
       const changed = before && after ? fields.filter(key => before[key] !== after[key]) : [];
       const change = before === null ? 'added' : after === null ? 'removed' : changed.length ? 'changed' : 'unchanged';
-      if (row.change !== change || JSON.stringify(row.changed_fields) !== JSON.stringify(changed) || row.before_in_scope !== inScope(before, data.scope) || row.after_in_scope !== inScope(after, data.scope) || !row.before_in_scope && !row.after_in_scope) return false;
+      if (row.change !== change || !sameArray(row.changed_fields, changed) || row.before_in_scope !== inScope(before, data.scope) || row.after_in_scope !== inScope(after, data.scope) || !row.before_in_scope && !row.after_in_scope) return false;
       if (row.after_in_scope) {
         if (!same(after, selected.get(after.task_ref))) return false;
         afterCount++;
@@ -5685,15 +5687,20 @@ function SMExport({
         store.running = false;
       }
       if (store.state.phase === 'rejected' && typeof adapter.clearPending === 'function') {
+        // 服务端已明确拒绝，没有回执可查；记录清不掉时保留拒绝态和意图，由 reset() 再清。
         try {
           adapter.clearPending();
         } catch (error) {
           publish(store, {
             ...store.state,
-            phase: 'pending',
             error
           });
+          return;
         }
+        publish(store, {
+          ...store.state,
+          intent: null
+        });
       }
       if (store.state.phase === 'pending') await check();
     }
@@ -6420,10 +6427,11 @@ function SMExport({
       setPage(next);
     };
     const runSearch = () => {
-      setQuery(search);
-      setPage(1);
-      setSnapshot(undefined);
-      request.reload();
+      if (query === search && page === 1 && snapshot === undefined) request.reload();else {
+        setQuery(search);
+        setPage(1);
+        setSnapshot(undefined);
+      }
     };
     const options = Array.from(available.values());
     return /*#__PURE__*/React.createElement("div", {
@@ -6498,9 +6506,10 @@ function SMExport({
     }), request.error && /*#__PURE__*/React.createElement(Button, {
       disabled: disabled,
       onClick: () => {
-        setPage(1);
-        setSnapshot(undefined);
-        request.reload();
+        if (page === 1 && snapshot === undefined) request.reload();else {
+          setPage(1);
+          setSnapshot(undefined);
+        }
       }
     }, "\u5237\u65B0\u9009\u9879"), response && /*#__PURE__*/React.createElement(Pager, {
       page: response.data.page,
@@ -9824,6 +9833,9 @@ function SMExport({
       [error, setError] = React.useState(null);
     const done = command.phase === 'done',
       disabled = busy || command.locked || done;
+    React.useEffect(() => {
+      if (command.phase === 'rejected') setPreview(null);
+    }, [command.phase]);
     const read = S.useQuery(signal => adapter.choices('machine', {
       query,
       page: 1,
@@ -9845,7 +9857,11 @@ function SMExport({
       }))) return;
       onClose();
     }
+    function resetCommand() {
+      if (command.phase !== 'idle' && !command.locked) command.reset();
+    }
     function change(next) {
+      resetCommand();
       setRows(next);
       setPreview(null);
       setError(null);
@@ -9875,6 +9891,7 @@ function SMExport({
       if (disabled || !(await window.WorkbenchGuards.confirmLeave({
         owner
       }))) return;
+      resetCommand();
       setBusy(true);
       setError(null);
       try {
@@ -9894,6 +9911,7 @@ function SMExport({
     }
     async function inspect() {
       if (disabled || reason) return;
+      resetCommand();
       setBusy(true);
       setError(null);
       setPreview(null);
@@ -10114,6 +10132,18 @@ function SMExport({
   }
   function monthKey(year, month) {
     return String(year).padStart(4, '0') + '-' + String(month).padStart(2, '0');
+  }
+  function monthRange(target) {
+    const prefix = monthKey(target.year, target.month);
+    return {
+      start_date: prefix + '-01',
+      end_date: prefix + '-' + monthDays(target.year, target.month)
+    };
+  }
+  function isStale(command) {
+    const error = command && command.error,
+      code = error && (error.code || error.error && error.error.code);
+    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
   }
   function DayEditor({
     day,
@@ -10367,10 +10397,7 @@ function SMExport({
     const [selected, setSelected] = React.useState(null),
       [draft, setDraft] = React.useState(null);
     const [mode, setMode] = React.useState('day');
-    const [range, setRange] = React.useState(() => ({
-      start_date: monthKey(month.year, month.month) + '-01',
-      end_date: monthKey(month.year, month.month) + '-' + monthDays(month.year, month.month)
-    }));
+    const [range, setRange] = React.useState(() => monthRange(month));
     const [preview, setPreview] = React.useState(null),
       [busy, setBusy] = React.useState(false);
     const [error, setError] = React.useState(null),
@@ -10462,10 +10489,23 @@ function SMExport({
       if (!next || !(await confirmDraftTransition())) return;
       if (!command.reset()) return;
       setError(null);
+      setPreview(null);
       setClearing(false);
       setSelected(null);
       setDraft(null);
       setMonth(next);
+      setRange(monthRange(next));
+    }
+    function updateDraft(next) {
+      setDraft(next);
+      setError(null);
+      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+    }
+    function updateRange(next) {
+      setRange(next);
+      setPreview(null);
+      setError(null);
+      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
     }
     async function toggleMode() {
       const abandonDraft = dirty;
@@ -10535,6 +10575,8 @@ function SMExport({
     const saveReason = done ? '' : staleDraft ? '这一天的配置已变化，请先采用最新配置后重新填写。' : capability('calendar_upsert');
     const clearReason = done ? '' : capability('calendar_delete');
     const rangeReason = done ? '' : !preview ? '请先预检要清除的日期。' : !preview.data.count ? '这段时间没有要清除的日期。' : capability('calendar_range_clear');
+    const shownError = error || command.error;
+    const activePaths = !editorData ? [] : mode === 'range' ? ['start_date', 'end_date'] : current && draft && !(clearing && (current.explicit || done)) ? [...(draft.type !== 'rest' && draft.periods == null ? ['fields.shiftStart', 'fields.shiftEnd'] : []), 'fields.eff', 'fields.note'] : [];
     return /*#__PURE__*/React.createElement("div", {
       className: "plana resource-calendar wb-operator-calendar"
     }, /*#__PURE__*/React.createElement(Modal, {
@@ -10636,9 +10678,9 @@ function SMExport({
     })), editorData && mode === 'day' && current && draft && /*#__PURE__*/React.createElement(DayEditor, {
       day: current,
       draft: draft,
-      setDraft: setDraft,
+      setDraft: updateDraft,
       disabled: disabled,
-      error: error,
+      error: shownError,
       onSave: save,
       onClear: clearDay,
       saveReason: saveReason,
@@ -10647,26 +10689,26 @@ function SMExport({
       onClearing: value => {
         setClearing(value);
         setError(null);
+        if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
       }
     }), editorData && mode === 'day' && !current && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u70B9\u4E00\u5929\u5F00\u59CB\u7EF4\u62A4\u3002"), editorData && mode === 'range' && /*#__PURE__*/React.createElement(RangeClear, {
       range: range,
-      setRange: next => {
-        setRange(next);
-        setPreview(null);
-      },
+      setRange: updateRange,
       disabled: disabled,
-      error: error,
+      error: shownError,
       preview: preview,
       onPreview: previewRange,
       onConfirm: confirmRange,
       reason: rangeReason,
       busy: busy
     }), /*#__PURE__*/React.createElement(ErrorBox, {
-      error: error
+      error: error,
+      excludePaths: activePaths
     }), /*#__PURE__*/React.createElement(Feedback, {
-      command: command
+      command: command,
+      excludePaths: error ? [] : activePaths
     }), staleDraft && /*#__PURE__*/React.createElement("div", {
       role: "status"
     }, /*#__PURE__*/React.createElement("p", null, "\u8FD9\u4E00\u5929\u5DF2\u88AB\u4FEE\u6539\uFF0C\u65E7\u8349\u7A3F\u4E0D\u4F1A\u8986\u76D6\u6700\u65B0\u914D\u7F6E\u3002\u91C7\u7528\u6700\u65B0\u914D\u7F6E\u4F1A\u653E\u5F03\u672C\u6B21\u672A\u4FDD\u5B58\u7684\u5185\u5BB9\u3002"), /*#__PURE__*/React.createElement(Button, {
@@ -10923,6 +10965,8 @@ function SMExport({
         [key]: value
       });
       setError(null);
+      const code = command.error && (command.error.code || command.error.error && command.error.error.code);
+      if (command.phase === 'rejected' && !['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code) && typeof command.reset === 'function') command.reset();
     }
     async function submit(event) {
       event.preventDefault();
@@ -11321,13 +11365,18 @@ function SMExport({
     onClose,
     onCommitted
   }) {
-    const command = S.useCommand(adapter),
+    const commandAdapter = React.useMemo(() => ({
+      ...adapter,
+      readPending: undefined
+    }), [adapter]);
+    const command = S.useCommand(commandAdapter),
       [selection, setSelection] = React.useState(null);
     const [draft, setDraft] = React.useState(blank),
       [original, setOriginal] = React.useState(blank),
       [error, setError] = React.useState(null);
     const [confirmCancel, setConfirmCancel] = React.useState(false),
       [review, setReview] = React.useState(null),
+      [lastReceipt, setLastReceipt] = React.useState(null),
       seen = React.useRef(null);
     const query = S.useQuery(signal => adapter.downtimes(entity.ref, signal), [adapter, entity.ref]);
     const data = query.result && query.result.data,
@@ -11349,6 +11398,15 @@ function SMExport({
         return;
       }
       seen.current = receipt.receipt_ref;
+      const empty = blank();
+      setSelection(null);
+      setDraft(empty);
+      setOriginal(empty);
+      setConfirmCancel(false);
+      setReview(null);
+      setError(null);
+      setLastReceipt(receipt);
+      command.reset();
       query.reload();
       if (onCommitted) onCommitted(receipt);
     }, [done, command.result]);
@@ -11356,17 +11414,30 @@ function SMExport({
       if (command.locked) return;
       if (detail && detail.guardConfirmed && detail.guardOwner === owner || (await window.WorkbenchGuards.confirmLeave({
         owner
-      }))) onClose();
+      }))) {
+        if (command.reset()) onClose();
+      }
     }
     function select(row) {
+      if (command.phase === 'rejected') command.reset();
+      setLastReceipt(null);
       const value = row ? Object.fromEntries(Object.keys(blank()).map(key => [key, row[key] || ''])) : blank();
       value.start_time = value.start_time.replace(' ', 'T');
       value.end_time = value.end_time.replace(' ', 'T');
       setSelection(row);
       setDraft(value);
       setOriginal(value);
-      setConfirmCancel(false);
+      setConfirmCancel(Boolean(row && row.status !== 'active'));
       setError(null);
+    }
+    function updateDraft(key, value) {
+      if (command.phase === 'rejected') command.reset();
+      setLastReceipt(null);
+      setError(null);
+      setDraft(current => ({
+        ...current,
+        [key]: value
+      }));
     }
     async function save(event) {
       event.preventDefault();
@@ -11429,9 +11500,9 @@ function SMExport({
     }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u5F00\u59CB"), /*#__PURE__*/React.createElement("th", null, "\u7ED3\u675F"), /*#__PURE__*/React.createElement("th", null, "\u539F\u56E0"), /*#__PURE__*/React.createElement("th", null, "\u72B6\u6001"), /*#__PURE__*/React.createElement("th", null, "\u64CD\u4F5C"))), /*#__PURE__*/React.createElement("tbody", null, data && data.rows.map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.ref
     }, /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.dateTime(row.start_time)), /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.dateTime(row.end_time)), /*#__PURE__*/React.createElement("td", null, data.reasons[row.reason_code] || row.reason_code, " ", row.reason_detail), /*#__PURE__*/React.createElement("td", null, row.status === 'active' ? '有效' : row.status === 'cancelled' ? '已取消' : row.status), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
-      disabled: locked || dirty || row.status !== 'active',
+      disabled: locked || dirty || row.status === 'cancelled',
       onClick: () => select(row)
-    }, "\u7EF4\u62A4"))))))), !done && /*#__PURE__*/React.createElement(Button, {
+    }, row.status === 'active' ? '编辑 / 取消' : row.status === 'cancelled' ? '已取消' : '取消记录'))))))), !done && /*#__PURE__*/React.createElement(Button, {
       disabled: locked || dirty,
       onClick: () => select(null)
     }, "\u65B0\u589E\u505C\u673A"), !done && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
@@ -11444,19 +11515,13 @@ function SMExport({
       step: "1",
       value: draft[key],
       disabled: locked || confirmCancel,
-      onChange: event => setDraft({
-        ...draft,
-        [key]: event.target.value
-      })
+      onChange: event => updateDraft(key, event.target.value)
     }))), /*#__PURE__*/React.createElement(Field, {
       label: "\u505C\u673A\u539F\u56E0"
     }, /*#__PURE__*/React.createElement("select", {
       value: draft.reason_code,
       disabled: locked || confirmCancel,
-      onChange: event => setDraft({
-        ...draft,
-        reason_code: event.target.value
-      })
+      onChange: event => updateDraft('reason_code', event.target.value)
     }, data && Object.entries(data.reasons).map(([key, label]) => /*#__PURE__*/React.createElement("option", {
       key: key,
       value: key
@@ -11465,11 +11530,8 @@ function SMExport({
     }, /*#__PURE__*/React.createElement("input", {
       value: draft.reason_detail,
       disabled: locked || confirmCancel,
-      onChange: event => setDraft({
-        ...draft,
-        reason_detail: event.target.value
-      })
-    }))), selection && /*#__PURE__*/React.createElement(Button, {
+      onChange: event => updateDraft('reason_detail', event.target.value)
+    }))), selection && selection.status === 'active' && /*#__PURE__*/React.createElement(Button, {
       disabled: locked,
       onClick: () => setConfirmCancel(!confirmCancel)
     }, confirmCancel ? '返回编辑' : '取消这段停机'), confirmCancel && /*#__PURE__*/React.createElement("p", null, "\u786E\u8BA4\u540E\uFF0C\u8BE5\u65F6\u6BB5\u4E0D\u518D\u9650\u5236\u8BBE\u5907\u6392\u4EA7\u3002\u5DF2\u6709\u6392\u7A0B\u4E0D\u4F1A\u81EA\u52A8\u91CD\u6392\u3002"), /*#__PURE__*/React.createElement(Button, {
@@ -11488,8 +11550,11 @@ function SMExport({
     }, "\u91C7\u7528\u6700\u65B0\u8BB0\u5F55\u5E76\u91CD\u65B0\u586B\u5199")), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
     }), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
-      command: command
-    }), done && /*#__PURE__*/React.createElement("p", {
+      command: command.phase === 'idle' && lastReceipt ? {
+        phase: 'done',
+        result: lastReceipt
+      } : command
+    }), (done || lastReceipt && command.phase === 'idle') && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, query.loading ? '正在刷新保存结果…' : query.error ? '保存结果已确认，列表尚未刷新；请关闭后重新查看。' : '已刷新停机记录。')));
   }
@@ -11646,13 +11711,14 @@ function SMExport({
     onSort,
     onColumnFilter
   }) {
+    const selectedSet = React.useMemo(() => new Set(selected), [selected]);
     const selectAll = React.useRef(null),
-      all = entities.length > 0 && entities.every(item => selected.includes(item.ref));
+      all = entities.length > 0 && entities.every(item => selectedSet.has(item.ref));
     const table = React.useRef(null),
       [widths, setWidths] = React.useState(null);
     React.useEffect(() => {
-      if (selectAll.current) selectAll.current.indeterminate = !all && entities.some(item => selected.includes(item.ref));
-    }, [all, entities, selected]);
+      if (selectAll.current) selectAll.current.indeterminate = !all && entities.some(item => selectedSet.has(item.ref));
+    }, [all, entities, selectedSet]);
     const opCategory = category || (entities.length && entities.every(item => item.fields.category === entities[0].fields.category) ? entities[0].fields.category : null);
     const cols = [{
       key: 'business_code',
@@ -11778,7 +11844,7 @@ function SMExport({
       }, /*#__PURE__*/React.createElement("input", {
         type: "checkbox",
         "aria-label": '选择 ' + entity.business_code + ' ' + entity.label,
-        checked: selected.includes(entity.ref),
+        checked: selectedSet.has(entity.ref),
         disabled: disabled,
         onChange: event => onSelect(event.target.checked ? selected.concat(entity.ref) : selected.filter(ref => ref !== entity.ref))
       })), cols.map(col => /*#__PURE__*/React.createElement("td", {
@@ -12850,8 +12916,9 @@ function SMExport({
     }
     async function readAfterCommand() {
       if (command.phase !== 'done') return;
-      const generation = ++refreshGeneration.current,
-        intent = command.intent;
+      const intent = command.intent;
+      if (intent && /^downtime_/.test(intent.action)) return;
+      const generation = ++refreshGeneration.current;
       if (intent.action === 'delete') setSelected(current => current.filter(ref => ref !== intent.ref));
       setRefreshState({
         loading: true
@@ -12956,6 +13023,7 @@ function SMExport({
     }
     const editorEntity = detail.result && detail.result.data;
     const editorReady = dialog && (dialog.action === 'create' || editorEntity);
+    const entityRefs = React.useMemo(() => data ? new Set(data.entities.map(row => row.ref)) : null, [data]);
     return /*#__PURE__*/React.createElement("div", {
       className: "plana resource-workspace",
       "data-resource-workspace": "true"
@@ -13030,7 +13098,7 @@ function SMExport({
       "aria-live": "polite"
     }, "\u5DF2\u9009\u62E9 ", /*#__PURE__*/React.createElement("b", {
       "data-resource-selection-count": true
-    }, selected.length), " \u6761", data && selected.some(ref => !data.entities.some(row => row.ref === ref)) && /*#__PURE__*/React.createElement(React.Fragment, null, " \xB7 ", /*#__PURE__*/React.createElement("span", null, "\u542B\u975E\u5F53\u524D\u9875\u8BB0\u5F55"))), /*#__PURE__*/React.createElement(Toolbar, {
+    }, selected.length), " \u6761", entityRefs && selected.some(ref => !entityRefs.has(ref)) && /*#__PURE__*/React.createElement(React.Fragment, null, " \xB7 ", /*#__PURE__*/React.createElement("span", null, "\u542B\u975E\u5F53\u524D\u9875\u8BB0\u5F55"))), /*#__PURE__*/React.createElement(Toolbar, {
       config: config,
       scope: effectiveScope,
       onFilter: filter,
@@ -13147,7 +13215,7 @@ function SMExport({
       contextError: contextError,
       contextBusy: contextBusy,
       contextReview: contextReview
-    })), !dialog && (command.locked || command.phase === 'done') && /*#__PURE__*/React.createElement(Modal, {
+    })), !dialog && (command.locked || command.phase === 'done' || command.phase === 'rejected') && /*#__PURE__*/React.createElement(Modal, {
       title: "\u4E0A\u6B21\u64CD\u4F5C\u7ED3\u679C",
       icon: "history",
       onClose: close,
@@ -13500,6 +13568,11 @@ function SMExport({
       setReadError(null);
       setError(null);
     }
+    function toggleClearing(next) {
+      setClearing(next);
+      setError(null);
+      if (command.phase === 'rejected' && !stale && typeof command.reset === 'function') command.reset();
+    }
     return /*#__PURE__*/React.createElement(Modal, {
       title: base.date + ' · 工作日历',
       icon: "calendar-days",
@@ -13512,10 +13585,10 @@ function SMExport({
       }, done ? '关闭' : '取消'), !done && !clearing && base.explicit && /*#__PURE__*/React.createElement(Button, {
         icon: "minus",
         disabled: disabled || !!review,
-        onClick: () => setClearing(true)
+        onClick: () => toggleClearing(true)
       }, "\u6E05\u9664\u5355\u72EC\u8BBE\u7F6E"), !done && clearing && /*#__PURE__*/React.createElement(Button, {
         disabled: disabled,
-        onClick: () => setClearing(false)
+        onClick: () => toggleClearing(false)
       }, "\u8FD4\u56DE\u7F16\u8F91"), !done && /*#__PURE__*/React.createElement(Button, {
         type: "submit",
         form: formId,
@@ -13546,6 +13619,7 @@ function SMExport({
       onChange: next => {
         setValue(next);
         setError(null);
+        if (command.phase === 'rejected' && !stale && typeof command.reset === 'function') command.reset();
       }
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error,
@@ -13588,6 +13662,11 @@ function SMExport({
     ErrorBox,
     Modal
   } = window.ResourceControls;
+  function isStale(command) {
+    const error = command && command.error,
+      code = error && (error.code || error.error && error.error.code);
+    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
+  }
   function CalendarDefaultsDialog({
     adapter,
     command,
@@ -13645,6 +13724,11 @@ function SMExport({
       setError(null);
       request.reload();
     }
+    function updatePeriods(next) {
+      setPeriods(next);
+      setError(null);
+      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+    }
     return /*#__PURE__*/React.createElement(Modal, {
       title: "\u4FEE\u6539\u9ED8\u8BA4\u5DE5\u4F5C\u65F6\u95F4",
       icon: "calendar-days",
@@ -13668,7 +13752,7 @@ function SMExport({
       noValidate: true
     }, /*#__PURE__*/React.createElement("p", null, "\u4FDD\u5B58\u540E\uFF0C\u6240\u6709\u672A\u5355\u72EC\u8BBE\u7F6E\u7684\u5DE5\u4F5C\u65E5\u4F7F\u7528\u8FD9\u4E9B\u65F6\u6BB5\uFF1B\u5DF2\u6709\u5355\u65E5\u73ED\u8868\u548C\u4E2A\u4EBA\u73ED\u8868\u6309\u5404\u81EA\u8BBE\u7F6E\u6267\u884C\uFF0C\u5468\u672B\u9ED8\u8BA4\u4F11\u606F\u3002"), periods && /*#__PURE__*/React.createElement(window.WorkPeriodFields, {
       value: periods,
-      onChange: setPeriods,
+      onChange: updatePeriods,
       disabled: disabled,
       label: "\u9ED8\u8BA4\u5DE5\u4F5C\u65F6\u6BB5"
     }), request.loading && /*#__PURE__*/React.createElement("p", {
@@ -14279,12 +14363,12 @@ function SMExport({
       },
       disabled: blocked,
       onClick: () => {
-        const now = new Date();
-        setMonth({
-          year: now.getFullYear(),
-          month: now.getMonth() + 1
-        });
-        request.reload();
+        const now = new Date(),
+          next = {
+            year: now.getFullYear(),
+            month: now.getMonth() + 1
+          };
+        if (month.year === next.year && month.month === next.month) request.reload();else setMonth(next);
       }
     }, "\u672C\u6708"), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
@@ -15789,7 +15873,15 @@ function SMExport({
     machine_group: '设备组',
     shift_profile: '班次档'
   };
-  const clone = value => JSON.parse(JSON.stringify(value));
+  const cloneRow = row => ({
+    ...row,
+    ...(Array.isArray(row.periods) ? {
+      periods: row.periods.map(p => ({
+        ...p
+      }))
+    } : {})
+  });
+  const clone = value => value.map(cloneRow);
   function draft(entity) {
     const fields = entity ? entity.fields : {};
     return {
@@ -15812,9 +15904,7 @@ function SMExport({
   function resized(pattern, length) {
     return Array.from({
       length
-    }, (_, day_offset) => pattern[day_offset] ? {
-      ...pattern[day_offset]
-    } : {
+    }, (_, day_offset) => pattern[day_offset] ? cloneRow(pattern[day_offset]) : {
       day_offset,
       is_rest: null,
       shift_start: '',
@@ -15971,7 +16061,12 @@ function SMExport({
     }
     function rowChange(index, key, next) {
       const rows = value.pattern.map(row => ({
-          ...row
+          ...row,
+          ...(Array.isArray(row.periods) ? {
+            periods: row.periods.map(p => ({
+              ...p
+            }))
+          } : {})
         })),
         row = rows[index];
       row[key] = next;
@@ -16326,8 +16421,7 @@ function SMExport({
       disabled: disabled,
       busy: list.loading,
       onClick: () => {
-        filter({});
-        list.reload();
+        if (scope.page === 1 && scope.snapshot_ref === undefined) list.reload();else filter({});
       }
     }), /*#__PURE__*/React.createElement("span", {
       className: "tb-spacer"
@@ -16545,6 +16639,8 @@ function SMExport({
         }
       }));
       setError(null);
+      const code = command.error && (command.error.code || command.error.error && command.error.error.code);
+      if (!needsReview && command.phase === 'rejected' && !['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code) && typeof command.reset === 'function') command.reset();
     }
     function acknowledge(value) {
       setEditor(current => ({
@@ -17138,6 +17234,8 @@ function SMExport({
       locked: true,
       error: receiptError
     } : command;
+    const errorCode = command.error && (command.error.code || command.error.error && command.error.error.code);
+    const stale = command.phase === 'rejected' && ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(errorCode);
     const done = !!saved,
       dirty = !done && Object.values(draft).some(value => value !== ''),
       locked = visible.locked || opening || reading;
@@ -17234,7 +17332,15 @@ function SMExport({
     if (!create && data && now >= Date.parse(data.expires_at)) reason = '预检已过期，请重新预检。';
     if (!create && !reason && !ack) reason = '请先核对并勾选完整删除范围。';
     if (review) reason = '请先核对新读取的资料。';
-    if (command.phase === 'rejected') reason = create ? '本次未保存，请刷新资料后再试。' : '本次未删除，请重新预检。';
+    if (command.phase === 'rejected' && (!create || stale)) reason = create ? '本次未保存，请刷新资料后再试。' : '本次未删除，请重新预检。';
+    function updateDraft(key, value) {
+      setDraft(current => ({
+        ...current,
+        [key]: value
+      }));
+      setError(null);
+      if (command.phase === 'rejected' && !stale && typeof command.reset === 'function') command.reset();
+    }
     function confirm(event) {
       if (event && typeof event.preventDefault === 'function') event.preventDefault();
       if (disabled || locked || done || reason || recovery) return;
@@ -17292,19 +17398,13 @@ function SMExport({
       rows: key === 'route_raw' ? 4 : 2,
       disabled: disabled || locked,
       value: draft[key],
-      onChange: event => setDraft({
-        ...draft,
-        [key]: event.target.value
-      })
+      onChange: event => updateDraft(key, event.target.value)
     }) : /*#__PURE__*/React.createElement("input", {
       "aria-label": label,
       required: true,
       disabled: disabled || locked,
       value: draft[key],
-      onChange: event => setDraft({
-        ...draft,
-        [key]: event.target.value
-      })
+      onChange: event => updateDraft(key, event.target.value)
     })))), create && !done && !recovery && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u65B0\u589E\u540E\uFF0C\u8BF7\u7EE7\u7EED\u786E\u8BA4\u5DE5\u827A\u3002"), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       disabled: disabled || locked,
@@ -17385,7 +17485,25 @@ function SMExport({
     return Array.isArray(value) && value.length > 0 && value.every(row => C.object(row) && text(row.key) && /^[a-z][a-z0-9_]*$/.test(row.key) && !['id', 'entity_key', 'entity_ref', 'write_token', 'revision'].includes(row.key) && text(row.label) && row.label.trim() && row.label !== row.key) && new Set(value.map(row => row.key)).size === value.length;
   }
   function routeSummary(value) {
-    return value === null || C.object(value) && C.object(value.counts) && ['operations', 'recognized', 'unknown'].every(key => count(value.counts[key])) && value.counts.operations === value.counts.recognized + value.counts.unknown && typeof value.can_confirm_route === 'boolean' && Array.isArray(value.diagnostics) && value.diagnostics.every(row => C.object(row) && text(row.code) && text(row.message) && ['error', 'warning'].includes(row.severity) && (!C.own(row, 'sequence') || sequence(row.sequence))) && Array.isArray(value.operations) && value.operations.length === value.counts.operations && value.operations.every(row => C.object(row) && sequence(row.sequence) && text(row.op_type_name) && row.op_type_name.trim() && [null, 'internal', 'external'].includes(row.source_suggestion) && (row.supplier_label === null || text(row.supplier_label)) && (row.external_days === null || Number.isFinite(row.external_days) && row.external_days > 0)) && Array.isArray(value.differences) && value.differences.every(row => C.object(row) && sequence(row.sequence) && ['added', 'removed', 'changed', 'retained'].includes(row.change) && (row.before === null || text(row.before)) && (row.after === null || text(row.after)) && (row.before !== null || row.after !== null)) && (!value.can_confirm_route || value.differences.filter(row => row.after !== null).length === value.operations.length && value.operations.every(op => value.differences.some(row => row.sequence === op.sequence && row.after === op.op_type_name))) && (!value.can_confirm_route || !value.diagnostics.some(row => row.severity === 'error'));
+    if (value === null) return true;
+    if (!C.object(value) || !C.object(value.counts) || !['operations', 'recognized', 'unknown'].every(key => count(value.counts[key])) || value.counts.operations !== value.counts.recognized + value.counts.unknown || typeof value.can_confirm_route !== 'boolean' || !Array.isArray(value.diagnostics) || !value.diagnostics.every(row => C.object(row) && text(row.code) && text(row.message) && ['error', 'warning'].includes(row.severity) && (!C.own(row, 'sequence') || sequence(row.sequence))) || !Array.isArray(value.operations) || value.operations.length !== value.counts.operations || !value.operations.every(row => C.object(row) && sequence(row.sequence) && text(row.op_type_name) && row.op_type_name.trim() && [null, 'internal', 'external'].includes(row.source_suggestion) && (row.supplier_label === null || text(row.supplier_label)) && (row.external_days === null || Number.isFinite(row.external_days) && row.external_days > 0)) || !Array.isArray(value.differences) || !value.differences.every(row => C.object(row) && sequence(row.sequence) && ['added', 'removed', 'changed', 'retained'].includes(row.change) && (row.before === null || text(row.before)) && (row.after === null || text(row.after)) && (row.before !== null || row.after !== null))) return false;
+    if (!value.can_confirm_route) return true;
+    const afterBySeq = new Map();
+    let afterCount = 0;
+    for (const row of value.differences) {
+      if (row.after === null) continue;
+      afterCount++;
+      let names = afterBySeq.get(row.sequence);
+      if (!names) {
+        names = new Set();
+        afterBySeq.set(row.sequence, names);
+      }
+      names.add(row.after);
+    }
+    return afterCount === value.operations.length && value.operations.every(op => {
+      const names = afterBySeq.get(op.sequence);
+      return !!names && names.has(op.op_type_name);
+    }) && !value.diagnostics.some(row => row.severity === 'error');
   }
   function publicColumns(data) {
     if (!columns(data.columns)) throw C.failure('文件预检缺少明确的业务列名。');
@@ -17410,7 +17528,8 @@ function SMExport({
     return result;
   }
   function confirmInput(data, groupRefs, zero) {
-    if (!Array.isArray(groupRefs) || new Set(groupRefs).size !== groupRefs.length || groupRefs.length !== data.affected_groups.length || data.affected_groups.some(group => !groupRefs.includes(group.ref))) throw C.failure('请逐项核对并勾选全部受影响的外协组，未自动解除任何组。');
+    const groupSet = Array.isArray(groupRefs) ? new Set(groupRefs) : null;
+    if (!groupSet || groupSet.size !== groupRefs.length || groupRefs.length !== data.affected_groups.length || data.affected_groups.some(group => !groupSet.has(group.ref))) throw C.failure('请逐项核对并勾选全部受影响的外协组，未自动解除任何组。');
     if (typeof zero !== 'boolean' || data.zero_review_required && !zero) throw C.failure('单件工时为 0，排产只计算换型工时。请按 0 导入。');
     return {
       preview_ref: data.preview_ref,
@@ -17448,7 +17567,10 @@ function SMExport({
     return result;
   }
   function receipt(result, intent, requestedKind, previewData, targetRef) {
-    if (!intent || intent.kind !== 'process_' + kind(requestedKind) + '_import' || intent.action !== 'confirm' || intent.ref !== undefined && !A.token(intent.ref) || C.receipt(result) !== 'terminal' || !['committed', 'unchanged'].includes(result.result) || result.data.kind !== requestedKind || !Array.isArray(result.data.rows) || !result.data.rows.every(row => C.object(row) && count(row.row) && row.row > 0 && A.ref(row.entity_ref) && text(row.business_code) && ['committed', 'unchanged'].includes(row.result) && (!C.own(row, 'sequence') || sequence(row.sequence))) || !C.object(result.data.summary) || !results.every(key => count(result.data.summary[key])) || result.data.summary.rejected !== 0 || result.data.summary.delete !== 0 || results.reduce((sum, key) => sum + result.data.summary[key], 0) !== result.data.rows.length || new Set(result.data.rows.map(row => row.row)).size !== result.data.rows.length || !Array.isArray(result.data.affected_refs) || !result.data.affected_refs.every(A.ref) || new Set(result.data.affected_refs).size !== result.data.affected_refs.length || result.data.rows.some(row => !result.data.affected_refs.includes(row.entity_ref)) || result.data.affected_refs.some(ref => !result.data.rows.some(row => row.entity_ref === ref)) || result.result === 'unchanged' && (result.data.summary.new !== 0 || result.data.summary.update !== 0 || result.data.rows.some(row => row.result !== 'unchanged')) || targetRef && result.data.affected_refs.some(ref => ref !== targetRef)) throw C.failure(window.WorkbenchTerms.outcomes.pending('导入'));
+    if (!intent || intent.kind !== 'process_' + kind(requestedKind) + '_import' || intent.action !== 'confirm' || intent.ref !== undefined && !A.token(intent.ref) || C.receipt(result) !== 'terminal' || !['committed', 'unchanged'].includes(result.result) || result.data.kind !== requestedKind || !Array.isArray(result.data.rows) || !result.data.rows.every(row => C.object(row) && count(row.row) && row.row > 0 && A.ref(row.entity_ref) && text(row.business_code) && ['committed', 'unchanged'].includes(row.result) && (!C.own(row, 'sequence') || sequence(row.sequence))) || !C.object(result.data.summary) || !results.every(key => count(result.data.summary[key])) || result.data.summary.rejected !== 0 || result.data.summary.delete !== 0 || results.reduce((sum, key) => sum + result.data.summary[key], 0) !== result.data.rows.length || new Set(result.data.rows.map(row => row.row)).size !== result.data.rows.length || !Array.isArray(result.data.affected_refs) || !result.data.affected_refs.every(A.ref)) throw C.failure(window.WorkbenchTerms.outcomes.pending('导入'));
+    const rowRefs = new Set(result.data.rows.map(row => row.entity_ref)),
+      affectedSet = new Set(result.data.affected_refs);
+    if (affectedSet.size !== result.data.affected_refs.length || result.data.rows.some(row => !affectedSet.has(row.entity_ref)) || result.data.affected_refs.some(ref => !rowRefs.has(ref)) || result.result === 'unchanged' && (result.data.summary.new !== 0 || result.data.summary.update !== 0 || result.data.rows.some(row => row.result !== 'unchanged')) || targetRef && result.data.affected_refs.some(ref => ref !== targetRef)) throw C.failure(window.WorkbenchTerms.outcomes.pending('导入'));
     if (previewData && (result.data.rows.length !== previewData.rows.length || result.data.rows.some((row, index) => row.row !== previewData.rows[index].row || row.business_code !== previewData.rows[index].business_code || previewData.rows[index].entity_ref !== null && row.entity_ref !== previewData.rows[index].entity_ref || C.own(previewData.rows[index], 'sequence') && row.sequence !== previewData.rows[index].sequence))) throw C.failure('导入结果和预检的文件行不一致。请点「查询结果」核对，不要重复提交。');
     if (requestedKind === 'hours') {
       const counts = hoursCounts(result.data);
@@ -17690,8 +17812,9 @@ function SMExport({
     const [page, setPage] = React.useState(1),
       pages = Math.max(1, Math.ceil(rows.length / 50)),
       current = Math.min(page, pages);
+    const selectedSet = React.useMemo(() => new Set(selected), [selected]);
     if (!rows.length) return null;
-    const all = rows.every(row => selected.includes(row.ref));
+    const all = rows.every(row => selectedSet.has(row.ref));
     return /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u53D7\u5F71\u54CD\u7684\u5916\u534F\u7EC4"
     }, /*#__PURE__*/React.createElement("h3", null, "\u9700\u660E\u786E\u89E3\u9664\u7684\u539F\u5916\u534F\u7EC4"), /*#__PURE__*/React.createElement("label", {
@@ -17730,7 +17853,7 @@ function SMExport({
     }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
       "aria-label": '解除 ' + row.business_code + ' 工序 ' + row.start_sequence + ' 至 ' + row.end_sequence + ' 的外协组',
-      checked: selected.includes(row.ref),
+      checked: selectedSet.has(row.ref),
       disabled: disabled,
       onChange: event => onChange(event.target.checked ? selected.concat(row.ref) : selected.filter(ref => ref !== row.ref))
     })), /*#__PURE__*/React.createElement("td", null, row.business_code), /*#__PURE__*/React.createElement("td", null, row.start_sequence, " \u81F3 ", row.end_sequence), /*#__PURE__*/React.createElement("td", null, row.merge_mode === 'merged' ? '合并周期' : row.merge_mode === 'separate' ? '逐序周期' : row.merge_mode === null ? '未填写' : row.merge_mode), /*#__PURE__*/React.createElement("td", null, row.total_days === null ? '未填写' : window.WorkbenchFormat.number(row.total_days, {
@@ -17830,15 +17953,26 @@ function SMExport({
       importing = mode === 'import',
       recovery = original.recovery === true;
     const label = kind === 'route' ? '工艺路线' : '工时定额';
-    let saved = null,
-      receiptError = null;
-    if (command.phase === 'done') {
+    const {
+      saved,
+      receiptError
+    } = React.useMemo(() => {
+      if (command.phase !== 'done') return {
+        saved: null,
+        receiptError: null
+      };
       try {
-        saved = F.receipt(command.result, command.intent, kind, checkedPreview.current, original.target_ref);
+        return {
+          saved: F.receipt(command.result, command.intent, kind, checkedPreview.current, original.target_ref),
+          receiptError: null
+        };
       } catch (failure) {
-        receiptError = failure;
+        return {
+          saved: null,
+          receiptError: failure
+        };
       }
-    }
+    }, [command.phase, command.result, command.intent, kind, original.target_ref]);
     const visible = receiptError ? {
         ...command,
         phase: 'pending',
@@ -18627,7 +18761,6 @@ function SMExport({
     active,
     same,
     value,
-    confirmationTime,
     Confirmation,
     usePage,
     Pager,
@@ -19036,6 +19169,11 @@ function SMExport({
     React.useEffect(() => () => {
       if (request.current) request.current.abort();
     }, []);
+    // The parent overlay follows the open dialogs, including a remount or unmount while one is open.
+    React.useEffect(() => {
+      onOverlay(!!picker || !!create);
+      return () => onOverlay(false);
+    }, [!!picker, !!create, onOverlay]);
     function change(ref, patch) {
       invalidate();
       model.edit(current => ({
@@ -19047,6 +19185,7 @@ function SMExport({
       }));
     }
     function openPicker(row, kind) {
+      invalidate();
       const members = supplierMembers(entity, draft, row).map(item => ({
         ...item,
         ...draft[item.ref]
@@ -19058,11 +19197,9 @@ function SMExport({
         members,
         group: entity.external_groups.find(item => item.ref === row.external_group_ref)
       });
-      onOverlay(true);
     }
     function closePicker() {
       setPicker(null);
-      onOverlay(false);
     }
     function choose(row) {
       invalidate();
@@ -19175,7 +19312,6 @@ function SMExport({
       onClick: () => {
         invalidate();
         setCreate({});
-        onOverlay(true);
       }
     }, "\u65B0\u589E\u5DE5\u79CD")), /*#__PURE__*/React.createElement("div", {
       className: "wb-table-frame"
@@ -19307,10 +19443,7 @@ function SMExport({
       className: "plana process-detail"
     }, /*#__PURE__*/React.createElement(window.ProcessOpTypeCreate, {
       adapter: adapter.resourceAdapter,
-      onClose: () => {
-        setCreate(null);
-        onOverlay(false);
-      },
+      onClose: () => setCreate(null),
       onCommitted: receipt => {
         invalidate();
         model.reload();
@@ -19675,7 +19808,7 @@ function SMExport({
       discard: '解除段'
     }[row.action]), /*#__PURE__*/React.createElement("td", null, label(row.before)), /*#__PURE__*/React.createElement("td", null, label(row.after)))), !validPreview.response.data.changes.length && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
       colSpan: 3
-    }, "\u4E0E\u5DF2\u4FDD\u5B58\u5185\u5BB9\u4E00\u81F4\uFF0C\u65E0\u9700\u6539\u53D8\u73B0\u6709\u6BB5\u3002")))))), discard && /*#__PURE__*/React.createElement("section", {
+    }, "\u4E0E\u5DF2\u4FDD\u5B58\u5185\u5BB9\u4E00\u81F4\uFF0C\u65E0\u9700\u6539\u53D8\u73B0\u6709\u6BB5\u3002")))))), discard && model.dirty && /*#__PURE__*/React.createElement("section", {
       className: "match-note is-block",
       role: "alert"
     }, /*#__PURE__*/React.createElement("p", null, "\u672C\u6B21\u5916\u534F\u6BB5\u4FEE\u6539\u5C1A\u672A\u4FDD\u5B58\u3002"), /*#__PURE__*/React.createElement(Button, {
@@ -19718,7 +19851,7 @@ function SMExport({
       Issues
     } = window.ResourceControls;
   const numericText = value => value === null ? '' : String(value);
-  function mergedGroups(entity, active = E.active(entity)) {
+  function mergedGroups(entity, active) {
     const refs = new Set(active.map(row => row.external_group_ref));
     return entity.external_groups.filter(row => row.merge_mode === 'merged' && refs.has(row.ref));
   }
@@ -19737,8 +19870,9 @@ function SMExport({
   function reconcile(draft, before, after) {
     const next = build(after),
       original = build(before),
-      old = new Map(before.operations.map(row => [row.ref, row]));
-    E.active(after).forEach(row => {
+      old = new Map(before.operations.map(row => [row.ref, row])),
+      active = E.active(after);
+    active.forEach(row => {
       const current = draft.operations[row.ref],
         previous = original.operations[row.ref],
         fresh = next.operations[row.ref];
@@ -19747,7 +19881,7 @@ function SMExport({
         if (current[key] !== previous[key]) fresh[key] = current[key];
       });
     });
-    mergedGroups(after).forEach(row => {
+    mergedGroups(after, active).forEach(row => {
       if (C.own(original.groups, row.ref) && C.own(draft.groups, row.ref) && draft.groups[row.ref] !== original.groups[row.ref]) next.groups[row.ref] = draft.groups[row.ref];
     });
     return next;
@@ -20313,9 +20447,11 @@ function SMExport({
     }, [adapter, result, disabled, active, command && command.error]);
     React.useEffect(() => {
       if (result !== context) {
-        setReview(result);
-        setMergeReview(null);
-        setMergeChoices({});
+        if (!active && draftText === baselineDraft.current && !state.result && !state.error) acceptFresh(result);else {
+          setReview(result);
+          setMergeReview(null);
+          setMergeChoices({});
+        }
       }
     }, [result]);
     function invalidate() {
@@ -20428,9 +20564,9 @@ function SMExport({
       setMergeChoices({});
       invalidate();
     }
-    function acceptFresh() {
-      const latest = D.fromEntity(review.data),
-        text = openingText(review.data, latest),
+    function acceptFresh(target = review) {
+      const latest = D.fromEntity(target.data),
+        text = openingText(target.data, latest),
         nextRows = openingRows(latest);
       initialRows.current = latest;
       baselineDraft.current = mode === 'text' ? text : D.serialize(nextRows);
@@ -20439,7 +20575,7 @@ function SMExport({
         key: ++sequence.current
       })));
       setRouteRaw(text);
-      setContext(review);
+      setContext(target);
       setReview(null);
       setMergeReview(null);
       setMergeChoices({});
@@ -22747,6 +22883,11 @@ function SMExport({
     ENTERED_DAYS = {
       exact: true
     };
+  function isStale(command) {
+    const error = command && command.error,
+      code = error && (error.code || error.error && error.error.code);
+    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
+  }
   function BaseEditor({
     adapter,
     entity: original,
@@ -22877,6 +23018,7 @@ function SMExport({
       setValue: next => {
         setValue(next);
         setError(null);
+        if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
       },
       entity: entity,
       disabled: locked,
@@ -23070,6 +23212,11 @@ function SMExport({
     {
       Field
     } = window.BatchControls;
+  function isStale(command) {
+    const error = command && command.error,
+      code = error && (error.code || error.error && error.error.code);
+    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
+  }
   function BatchOperationEditor({
     adapter,
     entity,
@@ -23166,6 +23313,14 @@ function SMExport({
         setError(error);
       }
     }
+    function updateField(key, value) {
+      setDraft(current => ({
+        ...current,
+        [key]: value
+      }));
+      setError(null);
+      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+    }
     return /*#__PURE__*/React.createElement(Modal, {
       title: '工序 ' + operation.sequence + ' · ' + operation.label,
       icon: "wrench",
@@ -23199,10 +23354,7 @@ function SMExport({
     }, key.endsWith('_ref') ? /*#__PURE__*/React.createElement("select", {
       value: draft[key],
       disabled: locked || !catalogs || merged,
-      onChange: event => setDraft({
-        ...draft,
-        [key]: event.target.value
-      })
+      onChange: event => updateField(key, event.target.value)
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
     }, "\u672A\u9009"), catalogs && catalogs[catalogKeys[key]].map(row => {
@@ -23217,10 +23369,7 @@ function SMExport({
       type: "text",
       inputMode: "decimal",
       disabled: locked,
-      onChange: event => setDraft({
-        ...draft,
-        [key]: event.target.value
-      })
+      onChange: event => updateField(key, event.target.value)
     })))), merged && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, operation.external_group.start_sequence != null && operation.external_group.end_sequence != null ? '工序 ' + operation.external_group.start_sequence + ' 至 ' + operation.external_group.end_sequence : '合并外协段', " \xB7 \u6574\u6BB5\u5468\u671F ", window.WorkbenchFormat.number(operation.external_group.total_days, {
       digits: 20,
       trim: true
@@ -23262,6 +23411,11 @@ function SMExport({
     required_quantity: row.required_quantity == null ? '' : String(row.required_quantity),
     available_quantity: row.available_quantity == null ? '' : String(row.available_quantity)
   }));
+  function isStale(command) {
+    const error = command && command.error,
+      code = error && (error.code || error.error && error.error.code);
+    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
+  }
   function BatchMaterialEditor({
     adapter,
     entity: initial,
@@ -23308,9 +23462,14 @@ function SMExport({
         owner
       }))) onClose();
     }
+    function clearError() {
+      setError(null);
+      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+    }
     function add() {
       const item = data && data.entities.find(row => row.ref === selected);
       if (!item) return;
+      clearError();
       setRows(rows.concat({
         row_key: null,
         material_ref: item.ref,
@@ -23325,6 +23484,7 @@ function SMExport({
       setSelected('');
     }
     function patch(index, change) {
+      clearError();
       setRows(old => old.map((row, i) => i === index ? {
         ...row,
         ...change
@@ -23456,6 +23616,7 @@ function SMExport({
     }))), /*#__PURE__*/React.createElement("td", null, row.unit || '未填写'), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
       disabled: locked,
       onClick: () => {
+        clearError();
         setRows(rows.filter((_, i) => i !== index));
         if (row.row_key) setRemoved(removed.concat(row.row_key));
       }
@@ -23769,7 +23930,8 @@ function SMExport({
       return result;
     }, [adapter, scope, field]);
     const all = read.result && read.result.data.values,
-      chosen = selected || scope.column_filters && scope.column_filters[field] || all || [];
+      chosen = selected || scope.column_filters[field] || all || [];
+    const chosenSet = React.useMemo(() => new Set(chosen), [chosen]);
     return /*#__PURE__*/React.createElement(Modal, {
       title: '筛选' + B.columns.find(row => row[0] === field)[1],
       icon: "filter",
@@ -23802,7 +23964,7 @@ function SMExport({
       key: index
     }, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
-      checked: chosen.includes(value),
+      checked: chosenSet.has(value),
       onChange: event => setSelected(event.target.checked ? chosen.concat([value]) : chosen.filter(item => item !== value))
     }), B.label(field, value)))))));
   }
@@ -23841,8 +24003,10 @@ function SMExport({
     loading,
     disabled
   }) {
+    const selectedSet = React.useMemo(() => new Set(selected), [selected]);
+    const visibleSet = React.useMemo(() => new Set(rows.map(row => row.ref)), [rows]);
     const checkbox = React.useRef(null),
-      all = rows.length > 0 && rows.every(row => selected.includes(row.ref));
+      all = rows.length > 0 && rows.every(row => selectedSet.has(row.ref));
     const [widths, setWidths] = React.useState(Object.fromEntries(B.columns.map(([key,, width]) => [key, width]))),
       drag = React.useRef(null);
     function resize(key, value) {
@@ -23852,9 +24016,9 @@ function SMExport({
       }));
     }
     React.useEffect(() => {
-      if (checkbox.current) checkbox.current.indeterminate = !all && rows.some(row => selected.includes(row.ref));
-    }, [rows, selected, all]);
-    const filtered = !!(scope.query || scope.status || scope.ready_status || scope.focus || scope.batch_ids || Object.keys(scope.column_filters || {}).length);
+      if (checkbox.current) checkbox.current.indeterminate = !all && rows.some(row => selectedSet.has(row.ref));
+    }, [rows, selectedSet, all]);
+    const filtered = !!(scope.query || scope.status || scope.ready_status || scope.focus || scope.batch_ids || Object.keys(scope.column_filters).length);
     return /*#__PURE__*/React.createElement("div", {
       className: "wb-table-frame batch-table-frame",
       "data-sticky-head": true,
@@ -23884,9 +24048,9 @@ function SMExport({
       "aria-label": "\u5168\u9009\u5F53\u524D\u9875",
       checked: all,
       disabled: disabled || !rows.length,
-      onChange: event => setSelected(event.target.checked ? Array.from(new Set(selected.concat(rows.map(row => row.ref)))) : selected.filter(ref => !rows.some(row => row.ref === ref)))
+      onChange: event => setSelected(event.target.checked ? Array.from(new Set(selected.concat(rows.map(row => row.ref)))) : selected.filter(ref => !visibleSet.has(ref)))
     })), B.columns.map(([key, name]) => {
-      const hasFilter = Object.prototype.hasOwnProperty.call(scope.column_filters || {}, key);
+      const hasFilter = Object.prototype.hasOwnProperty.call(scope.column_filters, key);
       return /*#__PURE__*/React.createElement("th", {
         key: key,
         scope: "col",
@@ -23955,7 +24119,7 @@ function SMExport({
     }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
       type: "checkbox",
       "aria-label": '选择 ' + row.business_code,
-      checked: selected.includes(row.ref),
+      checked: selectedSet.has(row.ref),
       disabled: disabled,
       onChange: event => setSelected(event.target.checked ? selected.concat(row.ref) : selected.filter(ref => ref !== row.ref))
     })), /*#__PURE__*/React.createElement("td", {
@@ -24116,6 +24280,7 @@ function SMExport({
       setError(null);
       setAcknowledged(false);
       serial.current++;
+      if (command.phase === 'rejected' && typeof command.reset === 'function') command.reset();
     }
     function changeMode(value) {
       setMode(value);
@@ -24470,6 +24635,7 @@ function SMExport({
     }, [adapter, scope, revision], !initial.error);
     const data = list.result && list.result.data,
       snapshot = list.result && list.result.meta.snapshot_ref;
+    const entityRefs = React.useMemo(() => data ? new Set(data.entities.map(row => row.ref)) : null, [data]);
     const blocked = disabled || !!initial.error || command.locked || busy || !!dialog;
     const rememberedScope = Object.fromEntries(scopeKeys.filter(key => scope[key] !== undefined).map(key => [key, scope[key]]));
     window.WorkbenchPageContext.useSnapshot({
@@ -24480,7 +24646,7 @@ function SMExport({
         sort_state: sort,
         source_context: opened === initial.opened ? initial.sourceContext : null
       }
-    }, !!data && !deferred && command.phase === 'idle' && !busy && !dialog && list.result.meta.source === 'production' && (!opened || data.entities.some(row => row.ref === opened)));
+    }, !!data && !deferred && command.phase === 'idle' && !busy && !dialog && list.result.meta.source === 'production' && (!opened || entityRefs.has(opened)));
     function filter(patch) {
       setScope(current => ({
         ...current,
@@ -24514,8 +24680,9 @@ function SMExport({
     function committed(receipt) {
       const deleted = receipt.data.deleted_refs || [];
       if (deleted.length) {
-        setSelected(current => current.filter(ref => !deleted.includes(ref)));
-        if (deleted.includes(opened)) setOpened(null);
+        const deletedSet = new Set(deleted);
+        setSelected(current => current.filter(ref => !deletedSet.has(ref)));
+        if (deletedSet.has(opened)) setOpened(null);
       }
       setRevision(current => current + 1);
       filter({});
@@ -24772,7 +24939,7 @@ function SMExport({
       }))
     }), /*#__PURE__*/React.createElement("div", {
       className: "toolbar batch-selection"
-    }, /*#__PURE__*/React.createElement("span", null, "\u5DF2\u9009 ", selected.length, " \u4E2A\u6279\u6B21", selected.some(ref => !data || !data.entities.some(row => row.ref === ref)) ? ' · 含非当前页记录' : ''), /*#__PURE__*/React.createElement(Button, {
+    }, /*#__PURE__*/React.createElement("span", null, "\u5DF2\u9009 ", selected.length, " \u4E2A\u6279\u6B21", selected.some(ref => !entityRefs || !entityRefs.has(ref)) ? ' · 含非当前页记录' : ''), /*#__PURE__*/React.createElement(Button, {
       onClick: selectFiltered,
       disabled: blocked || !snapshot
     }, "\u5168\u9009\u5F53\u524D\u7B5B\u9009"), /*#__PURE__*/React.createElement(Button, {
@@ -25197,6 +25364,7 @@ function SMExport({
       comparison = data.projections.baseline;
     const before = comparison.state === 'available' ? comparison.items.filter(item => item.before).map(item => fact(item.before, true)) : [];
     const taskIndex = new Map(items.map(item => [item.task.task_ref, item])),
+      loadedRefs = new Set(items.map(item => item.task.task_ref)),
       resourceMembers = new Map();
     for (const item of items) for (const ref of [item.task.machine_ref, item.task.operator_ref]) {
       if (!ref) continue;
@@ -25221,16 +25389,19 @@ function SMExport({
         end: instant(item.end)
       }))
     }]));
+    const deliveryRisks = data.projections.delivery_risks && Array.isArray(data.projections.delivery_risks.items) ? new Map(data.projections.delivery_risks.items.map(row => [row.batch_id, row])) : null;
     return {
       labels,
       directory,
       items,
       before,
       taskIndex,
+      loadedRefs,
       beforeIndex,
       comparisons,
       changed,
       occupancy,
+      deliveryRisks,
       resourceMembers,
       start: instant(data.plan_span.start),
       end: instant(data.plan_span.end)
@@ -25314,6 +25485,9 @@ function SMExport({
     const needle = query.trim().toLocaleLowerCase(),
       selected = matchingItems(prepared, needle, changedOnly),
       shown = new Set(selected);
+    const tasks = selected.map(item => item.task),
+      shownRefs = new Set(tasks.map(task => task.task_ref));
+    const taskOrder = new Map(tasks.map((task, index) => [task.task_ref, index]));
     for (const item of baseline ? prepared.before : []) if ((!changedOnly || prepared.changed.has(item.task.operation_ref)) && (!needle || item.search.includes(needle))) shown.add(item);
     const groups = prepared.groups.map(fact => ({
       ...fact,
@@ -25330,7 +25504,9 @@ function SMExport({
     return {
       ...prepared,
       groups,
-      tasks: selected.map(item => item.task),
+      tasks,
+      shownRefs,
+      taskOrder,
       start: baseline ? prepared.baselineStart : prepared.start,
       end: baseline ? prepared.baselineEnd : prepared.end
     };
@@ -25342,7 +25518,9 @@ function SMExport({
       start,
       end,
       conflicts,
-      tasks
+      tasks,
+      shownRefs,
+      taskOrder
     } = prepared;
     const rows = [],
       locations = new Map(),
@@ -25403,6 +25581,8 @@ function SMExport({
       locations,
       baselineLocations,
       tasks,
+      shownRefs: shownRefs || new Set((tasks || []).map(task => task.task_ref)),
+      taskOrder: taskOrder || new Map((tasks || []).map((task, index) => [task.task_ref, index])),
       groupCount
     };
   }
@@ -25433,18 +25613,20 @@ function SMExport({
     return result;
   }
   function tickStep(start, end, width) {
-    const target = (end - start) / Math.max(1, width / 125);
+    const span = end > start ? end - start : 1;
+    const target = span / Math.max(1, width / 125);
     const steps = [1000, 5000, 15000, 30000, 60000, 300000, 900000, 1800000, 3600000, 10800000, 21600000, 43200000, 86400000, 172800000, 604800000, 2592000000, 31536000000];
     return steps.find(value => value >= target) || Math.ceil(target / 31536000000) * 31536000000;
   }
   function ticks(start, end, width, left, visibleWidth) {
-    const step = tickStep(start, end, width);
-    const low = start + Math.max(0, left - 150) / width * (end - start),
-      high = Math.min(end, start + (left + visibleWidth + 150) / width * (end - start));
+    const span = end > start ? end - start : 1,
+      step = tickStep(start, end, width);
+    const low = start + Math.max(0, left - 150) / width * span,
+      high = Math.min(end, start + (left + visibleWidth + 150) / width * span);
     const result = [];
     for (let at = Math.ceil(low / step) * step; at < high; at += step) result.push({
       at,
-      x: (at - start) / (end - start) * width,
+      x: (at - start) / span * width,
       label: wire(at)
     });
     return result;
@@ -25500,7 +25682,8 @@ function SMExport({
       bands: [],
       ticks: []
     };
-    const scale = width / (end - start),
+    const span = end > start ? end - start : 1;
+    const scale = width / span,
       low = start + left / scale,
       high = Math.min(end, start + (left + viewport) / scale);
     const unit = DAY * scale >= 54 ? 'day' : DAY * 30 * scale >= 70 ? 'month' : 'year';
@@ -26444,6 +26627,9 @@ function SMExport({
       viewport = Math.max(100, position.width - labelWidth);
     const before = data.projections.baseline,
       showBaseline = before.state === 'available';
+    React.useEffect(() => {
+      if (selected && selected.before && showBaseline) setBaseline(true);
+    }, [selected, showBaseline]);
     const displayBaseline = showBaseline && baseline,
       displayChangedOnly = showBaseline && changedOnly;
     // Print uses a normalized axis for tick/point layout; CSS maps its percentages to the actual paper width.
@@ -26474,13 +26660,13 @@ function SMExport({
     const printItems = printing ? model.rows.flatMap(row => row.items) : [];
     const printNumbers = new Map(printItems.map((item, index) => [item.task.task_ref, index + 1]));
     const risks = React.useMemo(() => new Map(data.projections.delivery_risks.items.map(row => [row.batch_id, row.risk])), [data]);
-    const axis = V.axis({
+    const axis = React.useMemo(() => V.axis({
         start: model.start,
         end: model.end,
         width,
         left: renderLeft,
         viewport: renderViewport
-      }),
+      }), [model.start, model.end, width, renderLeft, renderViewport]),
       ticks = axis.ticks;
     const refreshedAt = React.useMemo(() => M.instant(asOf), [asOf]);
     const timeX = at => (at - model.start) / (model.end - model.start) * width;
@@ -26572,7 +26758,7 @@ function SMExport({
       if (!selected || !selected.locate || located.current === selected) return;
       const locations = selected.before ? model.baselineLocations : model.locations;
       if (!locations.has(selectedRef)) {
-        if (!selected.before && displayChangedOnly) setChangedOnly(false);
+        if (displayChangedOnly) setChangedOnly(false);
         return;
       }
       located.current = selected;
@@ -26582,16 +26768,16 @@ function SMExport({
       setHover(null);
       onSelect(task, beforeTask);
     }
+    const currentIndex = selectedRef && model.taskOrder ? model.taskOrder.has(selectedRef) ? model.taskOrder.get(selectedRef) : -1 : model.tasks.findIndex(task => task.task_ref === selectedRef);
     function move(direction) {
       const tasks = model.tasks,
-        index = tasks.findIndex(task => task.task_ref === selectedRef);
+        index = currentIndex;
       const next = tasks[Math.max(0, Math.min(tasks.length - 1, index < 0 ? 0 : index + direction))];
       if (next) {
         onSelect(next, false);
         locate(next.task_ref, false);
       }
     }
-    const currentIndex = model.tasks.findIndex(task => task.task_ref === selectedRef);
     return /*#__PURE__*/React.createElement("div", {
       className: 'plan-gantt' + (expanded ? ' plan-expanded' : ''),
       "data-plan-gantt": true,
@@ -26791,7 +26977,7 @@ function SMExport({
         key: tick.at,
         className: "plan-gridline",
         style: {
-          left: axisLeft(tick.at)
+          left: printing ? tick.x / width * 100 + '%' : tick.x
         }
       })), items.length > 70 ? /*#__PURE__*/React.createElement(DenseRow, {
         row: row,
@@ -27157,8 +27343,7 @@ function SMExport({
     })));
   }
   window.PlanCatalogUI = {
-    Catalog,
-    Identity
+    Catalog
   };
 })();
 
@@ -27218,11 +27403,13 @@ function SMExport({
     const [open, setOpen] = React.useState(false),
       [page, setPage] = React.useState(0);
     if (windows === null) return '暂无数据';
+    const pages = Math.ceil(windows.length / 10),
+      current = Math.min(page, Math.max(0, pages - 1));
     return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Button, {
       className: "linkbtn",
       "aria-expanded": open,
       onClick: () => setOpen(!open)
-    }, windows.length, " \u6BB5"), open && /*#__PURE__*/React.createElement(React.Fragment, null, windows.slice(page * 10, page * 10 + 10).map((item, index) => /*#__PURE__*/React.createElement("div", {
+    }, windows.length, " \u6BB5"), open && /*#__PURE__*/React.createElement(React.Fragment, null, windows.slice(current * 10, current * 10 + 10).map((item, index) => /*#__PURE__*/React.createElement("div", {
       key: index,
       title: M.timeLabel(item.start) + ' 至 ' + M.timeLabel(item.end)
     }, F.compactRange(item.start, item.end), /*#__PURE__*/React.createElement("div", {
@@ -27235,14 +27422,14 @@ function SMExport({
       className: "btn plan-icon",
       icon: "chevron-left",
       "aria-label": "\u53EF\u5DE5\u4F5C\u65F6\u6BB5\u4E0A\u4E00\u6BB5",
-      disabled: !page,
-      onClick: () => setPage(page - 1)
-    }), /*#__PURE__*/React.createElement("span", null, page + 1), /*#__PURE__*/React.createElement(Button, {
+      disabled: !current,
+      onClick: () => setPage(current - 1)
+    }), /*#__PURE__*/React.createElement("span", null, current + 1), /*#__PURE__*/React.createElement(Button, {
       className: "btn plan-icon",
       icon: "chevron-right",
       "aria-label": "\u53EF\u5DE5\u4F5C\u65F6\u6BB5\u4E0B\u4E00\u6BB5",
-      disabled: (page + 1) * 10 >= windows.length,
-      onClick: () => setPage(page + 1)
+      disabled: (current + 1) * 10 >= windows.length,
+      onClick: () => setPage(current + 1)
     }))));
   }
   function DetailSection({
@@ -27264,7 +27451,7 @@ function SMExport({
     disabled,
     collapsible
   }) {
-    const loadedRefs = React.useMemo(() => new Set(data.tasks.map(task => task.task_ref)), [data.tasks]);
+    const loadedRefs = React.useMemo(() => prepared && prepared.loadedRefs || new Set(data.tasks.map(task => task.task_ref)), [prepared, data.tasks]);
     if (selected.before) return /*#__PURE__*/React.createElement("section", null, /*#__PURE__*/React.createElement("h3", null, "\u5B8C\u6574\u5DE5\u827A\u8DEF\u7EBF"), /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
     }, "\u5207\u6362\u5230\u5F53\u524D\u5B89\u6392\u67E5\u770B\u5B8C\u6574\u5DE5\u827A\u8DEF\u7EBF\u3002"));
@@ -27308,7 +27495,7 @@ function SMExport({
       }
       for (const [kind, label] of [['machine', '设备'], ['operator', '人员']]) if (comparison.before[kind + '_ref'] !== comparison.after[kind + '_ref']) changes.push([label + '变化', M.resourceLabel(comparison.before, kind, labels) + ' → ' + M.resourceLabel(comparison.after, kind, labels)]);
     }
-    const risk = task && data.projections.delivery_risks.items.find(row => row.batch_id === task.batch_id);
+    const risk = task && (prepared.deliveryRisks ? prepared.deliveryRisks.get(task.batch_id) : data.projections.delivery_risks.items.find(row => row.batch_id === task.batch_id));
     const taskFact = task && (comparison ? comparison[selected.before ? 'beforeTime' : 'afterTime'] : prepared.taskIndex.get(task.task_ref));
     const resources = task ? [task.machine_ref, task.operator_ref].map(ref => prepared.occupancy.get(ref)).filter(Boolean).map(value => value.resource) : [];
     const compact = !!onCollapse,
@@ -27402,10 +27589,10 @@ function SMExport({
       className: "plan-muted"
     }, "\u5F53\u524D\u5B89\u6392\u5DF2\u79FB\u51FA\u6240\u9009\u65F6\u95F4\u8303\u56F4\uFF0C\u4ECD\u663E\u793A\u5B8C\u6574\u8D77\u6B62\u65F6\u95F4\u3002"), comparison.before && !selected.before && /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
-      onClick: () => onSelect(comparison.before, true)
+      onClick: () => onSelect(comparison.before, true, true)
     }, "\u67E5\u770B\u539F\u5B89\u6392"), comparison.after && selected.before && /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
-      onClick: () => onSelect(comparison.after, false)
+      onClick: () => onSelect(comparison.after, false, true)
     }, "\u67E5\u770B\u5F53\u524D\u5B89\u6392")) : /*#__PURE__*/React.createElement("p", {
       className: "plan-muted"
     }, "\u672A\u627E\u5230\u5BF9\u5E94\u5BF9\u7167\u8BB0\u5F55")), /*#__PURE__*/React.createElement(DetailSection, {
@@ -27921,6 +28108,7 @@ function SMExport({
       setQuery('');
       setSelected(null);
       setRelatedRef(null);
+      setDetailsOpen(false);
       setProjectionPage(0);
       read.reload();
     }
@@ -27931,8 +28119,10 @@ function SMExport({
       };
       delete next.snapshot_ref;
       setScope(next);
+      setRangeError(null);
       setPaused(false);
       setSelected(null);
+      setRelatedRef(null);
       setProjectionPage(0);
       read.reload();
     }
@@ -27965,7 +28155,8 @@ function SMExport({
     }
     function collapseDetails() {
       setDetailsOpen(false);
-      detailsToggle.current.querySelector('button').focus();
+      const button = detailsToggle.current && detailsToggle.current.querySelector('button');
+      if (button) button.focus();
     }
     function toggleRange() {
       if (!rangeOpen && data) setRange({
@@ -28002,6 +28193,7 @@ function SMExport({
         locate: true
       });else {
         const node = prepared.graph.nodes.get(ref);
+        if (!node) return;
         setRelatedRef(ref);
         changeScope(P.workspaceScope(selection.plan_ref, {
           range_start: node.start,
@@ -28378,7 +28570,6 @@ function SMExport({
     saveFile,
     display,
     date,
-    hasSeconds,
     quantity,
     hours,
     pieceLabel,
@@ -29105,12 +29296,17 @@ function SMExport({
       }), 0);
       return () => clearTimeout(timer);
     }, [command.phase, command.result, continueAfter, context, task.task_ref, task.operation_ref, onDone]);
+    function clearRejected() {
+      const code = command.error && (command.error.code || command.error.error && command.error.error.code);
+      if (command.phase === 'rejected' && !['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code) && typeof command.reset === 'function') command.reset();
+    }
     function change(key, value) {
       setDraft(current => ({
         ...current,
         [key]: value
       }));
       setError(null);
+      clearRejected();
       setSuggestions(current => {
         const next = {
           ...current
@@ -29143,6 +29339,7 @@ function SMExport({
       const value = M.copyPrevious(draft, task);
       setDraft(value);
       setError(null);
+      clearRejected();
       setSuggestions(Object.fromEntries(['actual_start', 'actual_end'].filter(key => value[key]).map(key => [key, '复制自同任务上一条报工，请重新核对'])));
     }
     const fresh = action === 'create' && !legacy;
@@ -29217,6 +29414,11 @@ function SMExport({
       Feedback,
       Issues
     } = window.FieldControls;
+  function isStale(command) {
+    const error = command && command.error,
+      code = error && (error.code || error.error && error.error.code);
+    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
+  }
   function FieldVoidEditor({
     task,
     record,
@@ -29282,6 +29484,7 @@ function SMExport({
       }));
       setPreview(null);
       setError(null);
+      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
     }
     async function inspect() {
       if (locked || !form.current.reportValidity()) return;
@@ -29293,7 +29496,9 @@ function SMExport({
         const result = await adapter.previewVoid(record.report_ref, input(), controller.signal),
           value = result.data;
         if (!value || !value.target_report || value.target_report.report_ref !== record.report_ref || value.target_report.original_revision_ref !== baseline.revision_ref || !value.before || !value.after || !Array.isArray(value.downstream_impacts) || typeof value.can_confirm !== 'boolean' || !value.write_context || !Array.isArray(value.warnings) || !value.warnings.every(item => item && typeof item.message === 'string' && item.message)) throw window.APSResourceContract.failure('撤销预检与原报工不一致，请刷新后重试。');
+        // A fresh preview supersedes the last rejected confirmation.
         setPreview(value);
+        if (command.phase === 'rejected') command.reset();
       } catch (failure) {
         if (!controller.signal.aborted) setError(failure);
       } finally {
@@ -29304,6 +29509,8 @@ function SMExport({
       if (locked || !preview || !preview.can_confirm || !form.current.reportValidity()) return;
       await command.submit('execution', 'report_void', record.report_ref, preview.write_context, input());
     }
+    const shownError = error || command.error,
+      mapped = ['reason', 'declared_operator'];
     return /*#__PURE__*/React.createElement("form", {
       ref: form,
       className: "field-editor",
@@ -29319,7 +29526,7 @@ function SMExport({
     }, /*#__PURE__*/React.createElement(window.ResourceControls.Field, {
       label: "\u64A4\u9500\u539F\u56E0",
       path: "reason",
-      error: error,
+      error: shownError,
       required: true
     }, /*#__PURE__*/React.createElement("textarea", {
       ref: inputRef,
@@ -29332,7 +29539,7 @@ function SMExport({
     })), /*#__PURE__*/React.createElement(window.ResourceControls.Field, {
       label: "\u7ECF\u529E\u4EBA",
       path: "declared_operator",
-      error: error
+      error: shownError
     }, /*#__PURE__*/React.createElement("input", {
       "aria-label": "\u7ECF\u529E\u4EBA",
       maxLength: "2000",
@@ -29351,10 +29558,12 @@ function SMExport({
     }), preview.state === 'voided' && /*#__PURE__*/React.createElement("p", null, "\u8FD9\u6761\u62A5\u5DE5\u5DF2\u7ECF\u64A4\u9500\uFF0C\u4E0D\u4F1A\u91CD\u590D\u6263\u51CF\u3002")), changed && /*#__PURE__*/React.createElement("p", {
       role: "alert"
     }, "\u539F\u62A5\u5DE5\u5DF2\u53D8\u5316\uFF0C\u8BF7\u53D6\u6D88\u540E\u91CD\u65B0\u9009\u62E9\u3002"), /*#__PURE__*/React.createElement(ErrorBox, {
-      error: error
+      error: error,
+      excludePaths: mapped
     }), /*#__PURE__*/React.createElement(Feedback, {
       command: command,
-      onDone: onDone
+      onDone: onDone,
+      excludePaths: error ? [] : mapped
     }), /*#__PURE__*/React.createElement("div", {
       className: "field-footer"
     }, /*#__PURE__*/React.createElement(Button, {
@@ -29572,7 +29781,8 @@ function SMExport({
     onDone,
     onNavigate,
     nextDraft,
-    onContinueReady
+    onContinueReady,
+    onRefresh
   }) {
     const [historyRef, setHistoryRef] = React.useState(null);
     const [timeline, setTimeline] = React.useState(false);
@@ -29584,8 +29794,9 @@ function SMExport({
     const task = request.result && request.result.data.task,
       p = task && task.execution;
     React.useEffect(() => {
-      if (nextDraft && task) onContinueReady(task);
-    }, [nextDraft, task, onContinueReady]);
+      if (!nextDraft || request.loading) return;
+      if (task) onContinueReady(task);else if (request.error) onContinueReady(null);
+    }, [nextDraft, request.loading, task, request.error, onContinueReady]);
     React.useEffect(() => {
       if (!task || !detail.current || editor || nextDraft) return;
       // Only bring the detail into view when it is off screen; scrolling an already visible detail pushed the toolbar away.
@@ -29605,7 +29816,7 @@ function SMExport({
       error: request.error
     }), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
-      onClick: request.reload,
+      onClick: () => request.error && (request.error.error && request.error.error.code || request.error.code) === 'snapshot_stale' && onRefresh ? onRefresh() : request.reload(),
       disabled: command.locked
     }, "\u5237\u65B0\u8BE6\u60C5"), editor && /*#__PURE__*/React.createElement(Button, {
       onClick: onCloseEditor,
@@ -29914,6 +30125,7 @@ function SMExport({
     }, []);
     const locked = busy || command.locked || command.phase === 'done';
     async function run(action) {
+      if (action === 'preview' && command.phase === 'rejected' && typeof command.reset === 'function') command.reset();
       setError(null);
       setBusy(true);
       controller.current = new AbortController();
@@ -29944,8 +30156,8 @@ function SMExport({
       }, "\u5F00\u59CB\u9884\u68C0"), preview && command.phase !== 'done' && /*#__PURE__*/React.createElement(Button, {
         transfer: "import",
         className: "btn primary",
-        disabled: locked || !preview.can_confirm,
-        reason: preview.can_confirm ? C.blocked(preview.write_context, 'import_confirm') : '文件存在问题，未写入任何报工。',
+        disabled: locked || !preview.can_confirm || command.phase === 'rejected',
+        reason: command.phase === 'rejected' ? '本次未导入，请重新预检后再确认。' : preview.can_confirm ? C.blocked(preview.write_context, 'import_confirm') : '文件存在问题，未写入任何报工。',
         onClick: () => command.submit('execution', 'import_confirm', preview.preview_ref, preview.write_context, {
           preview_ref: preview.preview_ref
         })
@@ -29984,6 +30196,7 @@ function SMExport({
         setFile(event.target.files[0] || null);
         setPreview(null);
         setError(null);
+        if (command.phase === 'rejected' && typeof command.reset === 'function') command.reset();
       }
     })), busy && /*#__PURE__*/React.createElement("p", {
       role: "status"
@@ -29991,7 +30204,7 @@ function SMExport({
       className: "field-files-summary"
     }, [['total', '行数'], ['changed', '变更'], ['unchanged', '重复'], ['blank', '空白'], ['rejected', '问题']].map(([key, label]) => /*#__PURE__*/React.createElement("span", {
       key: key
-    }, label, " ", /*#__PURE__*/React.createElement("b", null, preview.summary[key] || 0)))), command.phase !== 'done' && /*#__PURE__*/React.createElement("p", {
+    }, label, " ", /*#__PURE__*/React.createElement("b", null, preview.summary[key] || 0)))), command.phase !== 'done' && command.phase !== 'rejected' && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, preview.can_confirm ? '预检通过，尚未写入报工。' : preview.summary.rejected ? '预检未通过，未写入任何报工。' : '没有可导入的实际记录，未写入报工。'), /*#__PURE__*/React.createElement("div", {
       className: "field-scroll wb-table-frame",
@@ -30148,8 +30361,9 @@ function SMExport({
       setScope(current => ({
         ...current,
         plan_ref: current.plan_ref || readPlan.current,
+        page: opened ? undefined : current.page,
         task_ref: opened || undefined,
-        operation_ref: selectedTask ? selectedTask.operation_ref : undefined,
+        operation_ref: opened ? selectedTask ? selectedTask.operation_ref : current.operation_ref : undefined,
         snapshot_ref: undefined
       }));
       setRevision(value => value + 1);
@@ -30180,6 +30394,11 @@ function SMExport({
     }
     function continueReady(task) {
       if (!nextDraft || command.locked) return;
+      if (!task) {
+        setNextDraft(null);
+        setNotice('已保存最新报工，但核对详情失败。请刷新现场记录或详情。');
+        return;
+      }
       const reason = window.FieldDraftModel.continuation(nextDraft.previousContext, task, nextDraft);
       setNextDraft(null);
       setNotice(reason || '已核对最新报工，已打开新的报工草稿。');
@@ -30188,6 +30407,17 @@ function SMExport({
         action: 'create'
       });
     }
+    React.useEffect(() => {
+      if (!nextDraft || read.loading) return;
+      if (read.error) {
+        setNextDraft(null);
+        return;
+      }
+      if (data && !selectedTask) {
+        setNextDraft(null);
+        setNotice('已保存最新报工；当前筛选范围已不含该工序，已结束连续报工。');
+      }
+    }, [nextDraft, read.loading, read.error, data, selectedTask]);
     const effectiveScope = data ? data.scope : scope;
     const filtered = !!(scope.query || scope.state && scope.state !== 'all' || scope.plan_finish_date_from || scope.plan_finish_date_to || scope.range_start || scope.batch_ids || scope.resource_ref);
     const returnTarget = initialContext.return_to;
@@ -30298,6 +30528,7 @@ function SMExport({
       onDraft: retainDraft,
       nextDraft: nextDraft,
       onContinueReady: continueReady,
+      onRefresh: refresh,
       onEdit: value => {
         if (command.reset()) setEditor(value);
       },
@@ -30694,6 +30925,7 @@ function SMExport({
     return {
       ...prepared,
       items: selected.map(fact => fact.item),
+      shownRefs: shown,
       groups
     };
   }
@@ -30735,6 +30967,7 @@ function SMExport({
       taskIndex: prepared.taskIndex,
       dataRange: prepared.dataRange,
       items: prepared.items,
+      shownRefs: prepared.shownRefs || new Set((prepared.items || []).map(item => item.task.task_ref)),
       groups: prepared.groups,
       rows,
       height: top,
@@ -31062,11 +31295,10 @@ function SMExport({
       processLabel: value => typeof value === 'string' && !!value.trim()
     })) fail('现场甘特的工序关联与所选计划不一致，请刷新重试。');
     if (d.availability.state === 'available' ? d.report_count !== count || count > 50000 : d.report_count !== null || !d.availability.reason) fail('报工数量或不可用原因不完整。');
-    validateChain(d.critical_chain, d, query, meta);
+    validateChain(d.critical_chain, d, query, meta, taskRefs);
     return result;
   }
-  function validateChain(chain, d, query, meta) {
-    const taskRefs = new Set(d.items.map(item => item.task.task_ref));
+  function validateChain(chain, d, query, meta, taskRefs) {
     if (chain.state !== 'unavailable') {
       if (chain.state !== 'available' || chain.snapshot_ref !== meta.snapshot_ref || chain.plan_ref !== query.plan_ref || chain.source !== 'core.services.scheduler.gantt.critical_chain.compute_critical_chain_from_rows' || chain.semantics !== 'selected_plan_control_predecessor_chain' || chain.scope !== 'full_plan' || chain.gap_unit !== 'minute' || !['global', 'related'].includes(chain.mode) || (chain.mode === 'global' ? chain.target_task_ref !== null : !ref(chain.target_task_ref)) || chain.time_basis !== 'factory_local' || chain.gap_rounding !== 'floor' || !local(chain.makespan_end) || !Number.isInteger(chain.omitted_point_count) || chain.omitted_point_count < 0 || chain.partial !== chain.omitted_point_count > 0 || !Array.isArray(chain.nodes) || !chain.nodes.length || chain.task_refs.length !== chain.nodes.length || new Set(chain.task_refs).size !== chain.task_refs.length || chain.edges.length !== chain.nodes.length - 1) fail('关键链和本次读到的数据版本对不上，没有显示。');
       const nodes = new Map();
@@ -31279,34 +31511,29 @@ function SMExport({
       className: "fg-icon-button",
       icon: "search",
       "aria-label": "\u5B9A\u4F4D\u9009\u4E2D\u5DE5\u5E8F",
-      disabled: !model.items.some(i => i.task.task_ref === view.selected),
+      disabled: !(model.shownRefs ? model.shownRefs.has(view.selected) : model.items.some(i => i.task.task_ref === view.selected)),
       onClick: onLocate
     }))));
   }
+  const edgeLabels = {
+    process: '工艺先后',
+    machine: '设备接续',
+    operator: '人员接续'
+  };
   function Chain({
     index,
     model,
     onLocate
   }) {
     const {
-      graph,
-      nodes
-    } = index;
-    const visible = new Set(model.items.map(item => item.task.task_ref));
-    const incoming = new Map(graph.critical_edges.map(edge => [edge.to_task_ref, edge]));
-    const edgeLabels = {
-      process: '工艺先后',
-      machine: '设备接续',
-      operator: '人员接续'
-    };
-    return /*#__PURE__*/React.createElement("div", {
-      className: "fg-chain-strip",
-      "aria-label": "\u6240\u9009\u8BA1\u5212\u5173\u952E\u94FE"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "fg-chain-flow",
-      role: "group",
-      "aria-label": "\u5173\u952E\u94FE\u5DE5\u5E8F"
-    }, graph.critical_task_refs.map(ref => {
+        graph,
+        nodes
+      } = index,
+      locateRef = React.useRef(onLocate);
+    locateRef.current = onLocate;
+    const visible = React.useMemo(() => model.shownRefs || new Set(model.items.map(item => item.task.task_ref)), [model.shownRefs, model.items]);
+    const incoming = React.useMemo(() => new Map(graph.critical_edges.map(edge => [edge.to_task_ref, edge])), [graph.critical_edges]);
+    const steps = React.useMemo(() => graph.critical_task_refs.map(ref => {
       const node = nodes.get(ref),
         edge = incoming.get(ref);
       return /*#__PURE__*/React.createElement("div", {
@@ -31321,13 +31548,22 @@ function SMExport({
         icon: "search",
         "data-chain-node": ref,
         title: M.taskLabel(node) + ' · ' + M.time(node.start) + ' 至 ' + M.time(node.end),
-        onClick: () => onLocate(ref)
+        onClick: () => locateRef.current(ref)
       }, /*#__PURE__*/React.createElement("span", {
         className: "fg-chain-node-label"
       }, /*#__PURE__*/React.createElement("span", null, node.batch_id, " \xB7 ", M.pieceLabel(node)), /*#__PURE__*/React.createElement("small", null, node.sequence, " ", node.process_label), /*#__PURE__*/React.createElement("small", null, M.time(node.start), " \u81F3 ", M.time(node.end), !visible.has(ref) && ' · 当前视图外'))));
-    })), /*#__PURE__*/React.createElement("span", {
+    }), [graph.critical_task_refs, nodes, incoming, visible]);
+    const shownCount = React.useMemo(() => graph.critical_task_refs.reduce((count, ref) => count + (visible.has(ref) ? 1 : 0), 0), [graph.critical_task_refs, visible]);
+    return /*#__PURE__*/React.createElement("div", {
+      className: "fg-chain-strip",
+      "aria-label": "\u6240\u9009\u8BA1\u5212\u5173\u952E\u94FE"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "fg-chain-flow",
+      role: "group",
+      "aria-label": "\u5173\u952E\u94FE\u5DE5\u5E8F"
+    }, steps), /*#__PURE__*/React.createElement("span", {
       className: "fg-muted"
-    }, "\u5F53\u524D\u663E\u793A ", graph.critical_task_refs.filter(ref => visible.has(ref)).length, " / ", graph.critical_task_refs.length, " \u9053\u5173\u952E\u5DE5\u5E8F \xB7 \u4E0E\u56FE\u4E2D\u7684\u91D1\u8272\u6807\u8BB0\u4E00\u81F4"));
+    }, "\u5F53\u524D\u663E\u793A ", shownCount, " / ", graph.critical_task_refs.length, " \u9053\u5173\u952E\u5DE5\u5E8F \xB7 \u4E0E\u56FE\u4E2D\u7684\u91D1\u8272\u6807\u8BB0\u4E00\u81F4"));
   }
   function Range({
     scope,
@@ -31739,10 +31975,10 @@ function SMExport({
     const scale = width / (model.end - model.start),
       nowX = (model.asOf - model.start) * scale;
     const visible = React.useMemo(() => M.visibleRows(model.rows, Math.max(0, top - 100), top + height + 100).map(row => ({
-        row,
-        visibleMarks: row.kind === 'group' ? [] : row.marks.filter(mark => (mark.end - model.start) * scale >= left - 12 && (mark.start - model.start) * scale <= left + viewport + 12)
-      })), [model, top, height, width, left, viewport]),
-      ticks = M.ticks(model, width, left, viewport);
+      row,
+      visibleMarks: row.kind === 'group' ? [] : row.marks.filter(mark => (mark.end - model.start) * scale >= left - 12 && (mark.start - model.start) * scale <= left + viewport + 12)
+    })), [model, top, height, width, left, viewport]);
+    const ticks = React.useMemo(() => M.ticks(model, width, left, viewport), [model.start, model.end, width, left, viewport]);
     return /*#__PURE__*/React.createElement(React.Fragment, null, visible.map(({
       row,
       visibleMarks
@@ -31985,6 +32221,7 @@ function SMExport({
     const [exportError, setExportError] = React.useState(null),
       [exportNotice, setExportNotice] = React.useState(''),
       [restore, setRestore] = React.useState(saved ? saved.position : seed.persisted ? seed.persisted.position : null);
+    const [chainOpen, setChainOpen] = React.useState(false);
     const board = React.useRef(null),
       detailsPanel = React.useRef(null),
       frame = React.useRef(null),
@@ -32015,7 +32252,8 @@ function SMExport({
       patch({
         details: false
       });
-      document.querySelector('[aria-controls="actual-gantt-detail"]').focus();
+      const button = typeof document !== 'undefined' && typeof document.querySelector === 'function' ? document.querySelector('[aria-controls="actual-gantt-detail"]') : null;
+      if (button) button.focus();
     }
     React.useEffect(() => {
       const controller = new AbortController();
@@ -32210,12 +32448,12 @@ function SMExport({
     }
     function locate(taskRef = view.selected) {
       if (!model) return;
-      if (!data.items.some(item => item.task.task_ref === taskRef)) {
+      if (!(taskIndex ? taskIndex.has(taskRef) : data.items.some(item => item.task.task_ref === taskRef))) {
         setLocateNotice('这道工序不在当前日期、资源或批次范围内，请调整范围后定位。');
         return;
       }
       setLocateNotice('');
-      const hidden = !model.items.some(item => item.task.task_ref === taskRef);
+      const hidden = !(model.shownRefs ? model.shownRefs.has(taskRef) : model.items.some(item => item.task.task_ref === taskRef));
       const collapsed = {
         ...view.collapsed
       };
@@ -32291,6 +32529,13 @@ function SMExport({
     }, {
       locationIndex
     }) : null, [active, model, width, position.top, position.left, position.height, viewport, locationIndex]);
+    const axis = React.useMemo(() => model ? window.GanttPresentation.axis({
+      start: model.start,
+      end: model.end,
+      width,
+      left: position.left,
+      viewport
+    }) : null, [model && model.start, model && model.end, width, position.left, viewport]);
     function clearTarget() {
       setHover(null);
       setChainTarget(null);
@@ -32485,7 +32730,7 @@ function SMExport({
     }), locateNotice && /*#__PURE__*/React.createElement("p", {
       className: "fg-note",
       role: "status"
-    }, locateNotice), view.selected && !model.items.some(i => i.task.task_ref === view.selected) && /*#__PURE__*/React.createElement("div", {
+    }, locateNotice), view.selected && !(model.shownRefs ? model.shownRefs.has(view.selected) : model.items.some(i => i.task.task_ref === view.selected)) && /*#__PURE__*/React.createElement("div", {
       role: "status",
       className: "fg-note"
     }, "\u9009\u4E2D\u5DE5\u5E8F\u5728\u5F53\u524D\u7B5B\u9009\u8303\u56F4\u5916\uFF0C\u8BF7\u8C03\u6574\u7B5B\u9009\u3002"), view.report && selected && !report && /*#__PURE__*/React.createElement("div", {
@@ -32522,13 +32767,7 @@ function SMExport({
         width
       }
     }, /*#__PURE__*/React.createElement(window.GanttPresentationUI.Axis, {
-      axis: window.GanttPresentation.axis({
-        start: model.start,
-        end: model.end,
-        width,
-        left: position.left,
-        viewport
-      }),
+      axis: axis,
       width: width
     }), /*#__PURE__*/React.createElement("i", {
       className: "fg-clock",
@@ -32633,13 +32872,15 @@ function SMExport({
     }, /*#__PURE__*/React.createElement(window.GanttRouteList, {
       index: graph,
       targetRef: selected.task.task_ref,
-      loadedRefs: new Set(model.items.map(item => item.task.task_ref)),
+      loadedRefs: model.shownRefs,
       onSelect: ref => {
         locate(ref);
       }
     }))), data.gantt_graph.state === 'available' && data.gantt_graph.critical_task_refs.length > 0 && /*#__PURE__*/React.createElement("details", {
-      className: "wb-gantt-detail-section"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u8BA1\u5212\u5173\u952E\u94FE"), /*#__PURE__*/React.createElement("div", {
+      className: "wb-gantt-detail-section",
+      open: chainOpen,
+      onToggle: e => setChainOpen(e.currentTarget.open)
+    }, /*#__PURE__*/React.createElement("summary", null, "\u8BA1\u5212\u5173\u952E\u94FE"), chainOpen && /*#__PURE__*/React.createElement("div", {
       className: "wb-gantt-detail-section-body"
     }, /*#__PURE__*/React.createElement(Chain, {
       index: graph,
@@ -32876,16 +33117,31 @@ function SMExport({
       actual = d && input(d.normalized_input),
       scope = new Set(normalized.batch_refs);
     if (actual && normalized.time_budget_seconds === undefined && actual.time_budget_seconds !== undefined) normalized.time_budget_seconds = actual.time_budget_seconds;
-    if (!object(d) || !token(d.input_ref) || !date(String(d.input_expires_at).slice(0, 10)) || !object(d.counts) || !countKeys.every(key => count(d.counts[key])) || JSON.stringify(actual) !== JSON.stringify(normalized) || own(d, 'run_options') && (d.run_options === null ? !Array.isArray(d.blockers) || !d.blockers.some(row => row.code === 'config_error') : !window.RunGenerationContract.runOptions(d.run_options) || actual.time_budget_seconds !== d.run_options.time_budget_seconds) || !Array.isArray(d.tasks) || !d.tasks.every(row => object(row) && ref(row.operation_ref) && scope.has(row.batch_ref) && typeof row.batch_id === 'string' && typeof row.label === 'string' && taskStates.includes(row.status) && typeof row.has_execution_facts === 'boolean' && issues(row.issues) && Array.isArray(row.predecessor_refs) && row.predecessor_refs.every(ref) && execution(row.execution) && own(row, 'held') && held(row.held)) || new Set(d.tasks.map(row => row.operation_ref)).size !== d.tasks.length || !issues(d.blockers) || !issues(d.warnings) || !issues(d.run_blocked_reasons) || !d.run_blocked_reasons.length || d.calendar_check !== 'not_evaluated' || d.config_scope !== 'single_run' || d.run_blocked !== true || !object(d.write_context) || !object(d.write_context.capabilities) || d.write_context.capabilities['scheduling.run'] !== false || d.write_context.write_token !== null || !Array.isArray(d.no_route_batches) || !Array.isArray(d.unready_batches) || !Array.isArray(d.included_batches) || !Array.isArray(d.excluded_batches) || !object(d.scope) || d.scope.source !== 'production' || !refs(d.scope.batch_refs) || JSON.stringify(d.scope.batch_refs) !== JSON.stringify(normalized.batch_refs) || !object(d.effective_config) || !fields.slice(3).every(key => (key === 'material_strategy' ? d.effective_config[key] || 'strict' : d.effective_config[key]) === normalized[key]) || !effectiveHold(d.effective_config, normalized) || d.effective_start !== normalized.start_date + 'T00:00:00') throw fail('排产检查结果与本次范围或能力不一致，不能继续。');
-    const c = d.counts,
-      heldRows = d.tasks.filter(row => row.held !== null);
-    ['ready_tasks', 'auto_assign_required', 'skipped_tasks', 'blocked_tasks', 'protected_tasks'].forEach((key, index) => {
-      if (c[key] !== d.tasks.filter(row => row.status === taskStates[index]).length) throw fail('排产检查计数不一致。');
+    const taskRefs = new Set(),
+      statusCounts = {
+        eligible: 0,
+        auto_assign_required: 0,
+        skipped: 0,
+        blocked: 0,
+        protected: 0
+      };
+    let heldCount = 0,
+      actualFactCount = 0,
+      invalidEligibleExecution = false;
+    const validTasks = Array.isArray(d && d.tasks) && d.tasks.every(row => {
+      if (!object(row) || !ref(row.operation_ref) || !scope.has(row.batch_ref) || typeof row.batch_id !== 'string' || typeof row.label !== 'string' || !taskStates.includes(row.status) || typeof row.has_execution_facts !== 'boolean' || !issues(row.issues) || !Array.isArray(row.predecessor_refs) || !row.predecessor_refs.every(ref) || !execution(row.execution) || !own(row, 'held') || !held(row.held) || taskRefs.has(row.operation_ref)) return false;
+      taskRefs.add(row.operation_ref);
+      statusCounts[row.status]++;
+      if (row.held !== null) heldCount++;
+      if (row.has_execution_facts) actualFactCount++;
+      if ((row.status === 'eligible' || row.status === 'auto_assign_required') && row.execution.execution_state !== 'unreported') invalidEligibleExecution = true;
+      return true;
     });
-    if (c.held_tasks !== heldRows.length || c.hold_window_tasks !== heldRows.length || d.effective_config.hold_window === null && c.held_tasks !== 0) throw fail('排产检查计数不一致。');
+    if (!object(d) || !token(d.input_ref) || !date(String(d.input_expires_at).slice(0, 10)) || !object(d.counts) || !countKeys.every(key => count(d.counts[key])) || JSON.stringify(actual) !== JSON.stringify(normalized) || own(d, 'run_options') && (d.run_options === null ? !Array.isArray(d.blockers) || !d.blockers.some(row => row.code === 'config_error') : !window.RunGenerationContract.runOptions(d.run_options) || actual.time_budget_seconds !== d.run_options.time_budget_seconds) || !validTasks || !issues(d.blockers) || !issues(d.warnings) || !issues(d.run_blocked_reasons) || !d.run_blocked_reasons.length || d.calendar_check !== 'not_evaluated' || d.config_scope !== 'single_run' || d.run_blocked !== true || !object(d.write_context) || !object(d.write_context.capabilities) || d.write_context.capabilities['scheduling.run'] !== false || d.write_context.write_token !== null || !Array.isArray(d.no_route_batches) || !Array.isArray(d.unready_batches) || !Array.isArray(d.included_batches) || !Array.isArray(d.excluded_batches) || !object(d.scope) || d.scope.source !== 'production' || !refs(d.scope.batch_refs) || JSON.stringify(d.scope.batch_refs) !== JSON.stringify(normalized.batch_refs) || !object(d.effective_config) || !fields.slice(3).every(key => (key === 'material_strategy' ? d.effective_config[key] || 'strict' : d.effective_config[key]) === normalized[key]) || !effectiveHold(d.effective_config, normalized) || d.effective_start !== normalized.start_date + 'T00:00:00') throw fail('排产检查结果与本次范围或能力不一致，不能继续。');
+    const c = d.counts;
+    if (c.ready_tasks !== statusCounts.eligible || c.auto_assign_required !== statusCounts.auto_assign_required || c.skipped_tasks !== statusCounts.skipped || c.blocked_tasks !== statusCounts.blocked || c.protected_tasks !== statusCounts.protected || c.held_tasks !== heldCount || c.hold_window_tasks !== heldCount || d.effective_config.hold_window === null && c.held_tasks !== 0) throw fail('排产检查计数不一致。');
     const batchRows = d.included_batches.concat(d.excluded_batches);
-    const taskRefs = new Set(d.tasks.map(row => row.operation_ref));
-    if (c.selected_tasks !== d.tasks.length || c.selected_batches !== scope.size || c.eligible_tasks !== c.ready_tasks + c.auto_assign_required || d.eligible_tasks !== c.eligible_tasks || d.auto_assign_required !== c.auto_assign_required || d.skipped_tasks !== c.skipped_tasks || c.actual_fact_tasks !== d.tasks.filter(row => row.has_execution_facts).length || c.no_route_batches !== d.no_route_batches.length || c.unready_batches !== d.unready_batches.length || new Set(d.no_route_batches.map(row => row.batch_ref)).size !== c.no_route_batches || new Set(d.unready_batches.map(row => row.batch_ref)).size !== c.unready_batches || !d.tasks.every(row => row.predecessor_refs.every(ref => taskRefs.has(ref))) || d.tasks.some(row => ['eligible', 'auto_assign_required'].includes(row.status) && row.execution.execution_state !== 'unreported') || batchRows.length !== scope.size || new Set(batchRows.map(row => row.batch_ref)).size !== scope.size || !batchRows.concat(d.no_route_batches, d.unready_batches).every(row => object(row) && scope.has(row.batch_ref) && typeof row.batch_id === 'string')) throw fail('排产检查遗漏了选中批次，不能继续。');
+    if (c.selected_tasks !== d.tasks.length || c.selected_batches !== scope.size || c.eligible_tasks !== c.ready_tasks + c.auto_assign_required || d.eligible_tasks !== c.eligible_tasks || d.auto_assign_required !== c.auto_assign_required || d.skipped_tasks !== c.skipped_tasks || c.actual_fact_tasks !== actualFactCount || c.no_route_batches !== d.no_route_batches.length || c.unready_batches !== d.unready_batches.length || new Set(d.no_route_batches.map(row => row.batch_ref)).size !== c.no_route_batches || new Set(d.unready_batches.map(row => row.batch_ref)).size !== c.unready_batches || !d.tasks.every(row => row.predecessor_refs.every(pred => taskRefs.has(pred))) || invalidEligibleExecution || batchRows.length !== scope.size || new Set(batchRows.map(row => row.batch_ref)).size !== scope.size || !batchRows.concat(d.no_route_batches, d.unready_batches).every(row => object(row) && scope.has(row.batch_ref) && typeof row.batch_id === 'string')) throw fail('排产检查遗漏了选中批次，不能继续。');
     return d;
   }
   function selection(envelope, snapshot) {
@@ -33311,6 +33567,10 @@ function SMExport({
     React.useEffect(() => {
       serial.current++;
       setPreview(null);
+      setQuantity('');
+      setError(null);
+      setBusy(false);
+      if (!command.locked) command.reset();
     }, [JSON.stringify(refs), day]);
     React.useEffect(() => () => {
       serial.current++;
@@ -33355,7 +33615,7 @@ function SMExport({
       } catch (e) {
         if (id === serial.current) setError(e);
       } finally {
-        setBusy(false);
+        if (id === serial.current) setBusy(false);
       }
     }
     return /*#__PURE__*/React.createElement("section", {
@@ -33374,6 +33634,8 @@ function SMExport({
       onChange: e => {
         setQuantity(e.target.value);
         setPreview(null);
+        setError(null);
+        if (command.phase === 'rejected' && typeof command.reset === 'function') command.reset();
       }
     })), /*#__PURE__*/React.createElement(Button, {
       busy: busy,
@@ -33391,11 +33653,17 @@ function SMExport({
       guardOwner: owner,
       locked: command.locked,
       onClose: () => {
-        if (!command.locked) setPreview(null);
+        if (!command.locked) {
+          setPreview(null);
+          if (command.phase === 'rejected' && typeof command.reset === 'function') command.reset();
+        }
       },
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         disabled: command.locked,
-        onClick: () => setPreview(null)
+        onClick: () => {
+          setPreview(null);
+          if (command.phase === 'rejected' && typeof command.reset === 'function') command.reset();
+        }
       }, "\u53D6\u6D88"), /*#__PURE__*/React.createElement(Button, {
         className: "btn primary",
         disabled: disabled || command.locked,
@@ -33546,7 +33814,8 @@ function SMExport({
       }
     }
     const visible = data ? data.entities : [],
-      hidden = selected.filter(ref => !visible.some(row => row.ref === ref)).length;
+      visibleSet = new Set(visible.map(row => row.ref)),
+      hidden = selected.filter(ref => !visibleSet.has(ref)).length;
     return /*#__PURE__*/React.createElement("section", {
       className: "pf-picker",
       "aria-label": "\u9009\u62E9\u6392\u4EA7\u6279\u6B21"
@@ -34099,6 +34368,7 @@ function SMExport({
     token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v);
   const key = v => text(v) && /^run-[a-f0-9]{48}$/.test(v);
   function contextRef(v) {
+    if (window.RunAdoptionAPI && typeof window.RunAdoptionAPI.contextRef === 'function') return window.RunAdoptionAPI.contextRef(v);
     if (!text(v)) return false;
     if (/^[a-f0-9]{64}$/.test(v)) return true;
     try {
@@ -34251,7 +34521,7 @@ function SMExport({
     const error = new Error(valid ? message(e) : '读到的排产数据不完整，请刷新重试。');
     error.code = valid ? e.code : 'invalid_response';
     error.status = status;
-    error.rejected = valid && v.committed === false && ([400, 409, 422].includes(status) && ['invalid_input', 'snapshot_stale', 'stale_write', 'constraint_conflict', 'input_already_used'].includes(e.code) || status === 503 && ['run_schema_unavailable', 'run_worker_not_connected', 'request_lifecycle_stopping'].includes(e.code));
+    error.rejected = valid && v.committed === false && ([400, 404, 409, 422].includes(status) && ['invalid_input', 'entity_not_found', 'snapshot_stale', 'stale_write', 'constraint_conflict', 'input_already_used'].includes(e.code) || status === 503 && ['run_schema_unavailable', 'run_worker_not_connected', 'request_lifecycle_stopping'].includes(e.code));
     if (error.rejected) rejections.add(error);
     return error;
   }
@@ -34989,12 +35259,13 @@ function SMExport({
       async function query() {
         if (!current() || querying || document.hidden || done) return;
         querying = true;
-        controller = new AbortController();
+        const localController = new AbortController();
+        controller = localController;
         setChecking(true);
         const started = Date.now();
         try {
-          const found = A.lookup(await api.lookup(intent.request_key, controller.signal, intent.data_context_ref), intent.run_ref);
-          if (!current() || controller.signal.aborted) return;
+          const found = A.lookup(await api.lookup(intent.request_key, localController.signal, intent.data_context_ref), intent.run_ref);
+          if (!current() || localController.signal.aborted) return;
           setLastChecked(Date.now());
           setResolution(found.resolution);
           clearError();
@@ -35002,8 +35273,15 @@ function SMExport({
           if (!found.found) {
             setVerified(false);
             if (found.resolution === 'context_replaced') {
-              A.pending().finish(activeIntent.current, 'context_replaced');
-              setPendingActive(false);
+              setRun(null);
+              done = true;
+              try {
+                A.pending().finish(activeIntent.current, 'context_replaced');
+                setPendingActive(false);
+              } catch (e) {
+                setStorageError(e.message);
+              }
+            } else if (!pendingActive) {
               setRun(null);
               done = true;
             } else unresolved(started);
@@ -35027,14 +35305,19 @@ function SMExport({
           unsettledSince = null;
           done = A.terminal(result);
           if (done && pendingActive) {
-            A.pending().finish(activeIntent.current, 'found');
-            setPendingActive(false);
+            try {
+              A.pending().finish(activeIntent.current, 'found');
+              setPendingActive(false);
+            } catch (e) {
+              setStorageError(e.message);
+              return;
+            }
             if (typeof onNavigate === 'function') onNavigate('run', {
               run_ref: result.run_ref
             });
           }
         } catch (e) {
-          if (current() && !controller.signal.aborted) {
+          if (current() && !localController.signal.aborted) {
             setLastChecked(Date.now());
             setResolution('lookup_failed');
             setVerified(false);
@@ -35042,10 +35325,12 @@ function SMExport({
             unresolved(started);
           }
         } finally {
-          querying = false;
-          if (current()) {
-            setChecking(false);
-            schedule();
+          if (controller === localController) {
+            querying = false;
+            if (current()) {
+              setChecking(false);
+              if (!localController.signal.aborted) schedule();else if (!document.hidden && !done) query();
+            }
           }
         }
       }
@@ -35150,16 +35435,26 @@ function SMExport({
       setSubmitting(true);
       setBusy(true);
       clearError();
-      let original;
+      let original,
+        storageFailed = false;
       try {
         // Keep admission and the durable identity claim serialized across browser tabs.
-        if (!navigator.locks || typeof navigator.locks.request !== 'function') throw new Error('当前浏览器不支持，请用 Chrome 打开。');
+        if (!navigator.locks || typeof navigator.locks.request !== 'function') {
+          if (alive.current) fail(null, '当前浏览器不支持，请用 Chrome 打开。');
+          return;
+        }
         await navigator.locks.request(A.PENDING_KEY, {
           ifAvailable: true
         }, async lock => {
-          if (!lock) throw new Error('另一个页面正在提交排产，请稍后点「查询结果」。');
+          if (!lock) {
+            if (alive.current) fail(null, '另一个页面正在提交排产，请稍后点「查询结果」。');
+            return;
+          }
           if (!alive.current || currentPreview.current !== preview || preview.input_ref !== activeInput.current) return;
-          if (pendingActive) throw new Error('上次排产还没确认结果，不能开始下一次排产。');
+          if (pendingActive) {
+            fail(null, '上次排产还没确认结果，不能开始下一次排产。');
+            return;
+          }
           original = A.pending().begin(preview.input_ref, null, preview.data_context_ref);
           confirmationSession.current = null;
           currentPreview.current = null;
@@ -35172,13 +35467,21 @@ function SMExport({
           setConfirming(false);
           try {
             const receipt = A.accepted(await api.accept(original, preview.write_context.write_token));
-            const saved = A.pending().attach(original, receipt.run_ref);
-            if (alive.current && activeIntent.current && activeIntent.current.request_key === original.request_key) {
-              activeIntent.current = saved;
-              setIntent(saved);
+            const owned = alive.current && activeIntent.current && activeIntent.current.request_key === original.request_key;
+            // 服务端已受理：先发布这次排产，本机记录写入失败只报存储问题，不当成结果没查到。
+            if (owned) {
               setRun(receipt.data);
               setVerified(true);
               setNotice(receipt.dispatch_pending ? '排产已接收，交给计算程序时没有确认。正在查询结果，没有重新提交。' : '');
+            }
+            try {
+              const saved = A.pending().attach(original, receipt.run_ref);
+              if (owned) {
+                activeIntent.current = saved;
+                setIntent(saved);
+              }
+            } catch (_) {
+              if (alive.current) setStorageError('排产已接收，但本机没能保存这次排产的编号。请不要重新提交，到排产记录页查看结果。');
             }
           } catch (e) {
             if (A.isRejected(e)) {
@@ -35194,15 +35497,19 @@ function SMExport({
           }
         });
       } catch (e) {
+        storageFailed = true;
         if (alive.current) setStorageError(e.message);
       } finally {
         locked.current = false;
         if (alive.current) {
           setSubmitting(false);
           setBusy(false);
-          setPreview(null);
-          setConfirming(false);
-          refresh();
+          // 锁被占用或前置检查拦下时保留这次确认，锁释放后可在同一弹窗里重试。
+          if (original || storageFailed) {
+            setPreview(null);
+            setConfirming(false);
+            refresh();
+          }
         }
       }
     }
@@ -35415,7 +35722,7 @@ function SMExport({
       valid = shape(v, ['ok', 'committed', 'error']) && v.ok === false && [false, 'unknown'].includes(v.committed) && shape(e, ['code', 'message', 'fields', 'retryable', 'request_ref'], ['request_key', 'result_target']) && text(e.code) && text(e.message) && Array.isArray(e.fields) && e.fields.every(f => shape(f, ['path', 'message']) && text(f.path) && text(f.message)) && typeof e.retryable === 'boolean' && text(e.request_ref) && /^[a-f0-9]{32}$/.test(e.request_ref) && (e.request_key === undefined && e.result_target === undefined || key(requestKey) && e.request_key === requestKey && e.result_target === BASE + 'commands/' + requestKey);
     const error = new Error(valid ? e.message : window.WorkbenchTerms.outcomes.pending('采用'));
     error.code = valid ? e.code : 'invalid_response';
-    if (valid && v.committed === false && [400, 409, 422, 503].includes(status) && e.code !== 'request_key_conflict') rejections.add(error);
+    if (valid && v.committed === false && [400, 404, 409, 422, 503].includes(status) && e.code !== 'request_key_conflict') rejections.add(error);
     return error;
   }
   function validIntent(v) {
@@ -35577,6 +35884,7 @@ function SMExport({
     ref,
     overview,
     validIntent,
+    contextRef,
     PENDING_KEY,
     EVENT,
     isRejected: e => rejections.has(e)
@@ -35846,7 +36154,8 @@ function SMExport({
           setConsent(false);
           setReplacedInfo(null);
           setNotice('');
-          if (saved) setDraft(saved.input);
+          setDraft(saved ? saved.input : empty());
+          if (!saved) setError('');
         }
         setStorageError('');
       } catch (e) {
@@ -35957,11 +36266,17 @@ function SMExport({
       setError('');
       setNotice('');
       try {
-        if (!navigator.locks || typeof navigator.locks.request !== 'function') throw new Error('当前浏览器不支持，请用 Chrome 打开。');
+        if (!navigator.locks || typeof navigator.locks.request !== 'function') {
+          if (alive.current) setError('当前浏览器不支持，请用 Chrome 打开。');
+          return;
+        }
         await navigator.locks.request(A.PENDING_KEY, {
           ifAvailable: true
         }, async acquired => {
-          if (!acquired) throw new Error('另一个页面正在确认采用，请稍后刷新上次操作记录。');
+          if (!acquired) {
+            if (alive.current) setError('另一个页面正在确认采用，请稍后刷新上次操作记录。');
+            return;
+          }
           if (!alive.current) return;
           const original = A.pending().begin(preview, values, active.current);
           active.current = original;
@@ -36595,6 +36910,7 @@ function SMExport({
         search: searchText(task)
       })),
       taskIndex: new Map(items.map(item => [item.task.row_ref, item])),
+      loadedRefs: new Set(items.map(item => item.task.row_ref)),
       start: bounds.start,
       end: bounds.end
     };
@@ -36631,8 +36947,16 @@ function SMExport({
     const needle = query.trim().toLocaleLowerCase(),
       groups = new Map(),
       tasks = [],
-      unplottableTasks = [];
-    for (const fact of prepared.items) if (matches(fact, needle, operationRefs, focus)) (fact.plottable ? tasks : unplottableTasks).push(fact.task);
+      unplottableTasks = [],
+      shownRefs = new Set(),
+      taskOrder = new Map();
+    for (const fact of prepared.items) if (matches(fact, needle, operationRefs, focus)) {
+      if (fact.plottable) {
+        taskOrder.set(fact.task.row_ref, tasks.length);
+        tasks.push(fact.task);
+        shownRefs.add(fact.task.row_ref);
+      } else unplottableTasks.push(fact.task);
+    }
     for (const [id, group] of prepared.groups) {
       const items = group.items.filter(item => matches(item, needle, operationRefs, focus));
       if (!items.length) continue;
@@ -36648,6 +36972,8 @@ function SMExport({
       ...prepared,
       groups,
       tasks,
+      shownRefs,
+      taskOrder,
       unplottableTasks,
       groupCount: groups.size
     };
@@ -36706,6 +37032,8 @@ function SMExport({
       height: top,
       locations,
       tasks: prepared.tasks,
+      shownRefs: prepared.shownRefs || new Set((prepared.tasks || []).map(task => task.row_ref)),
+      taskOrder: prepared.taskOrder || new Map((prepared.tasks || []).map((task, index) => [task.row_ref, index])),
       unplottableTasks: prepared.unplottableTasks,
       groupCount: prepared.groupCount,
       start: prepared.start,
@@ -37149,7 +37477,7 @@ function SMExport({
     onCollapse
   }) {
     const M = window.RunCandidateModel;
-    const loadedRefs = React.useMemo(() => new Set(data.tasks.map(row => row.row_ref)), [data.tasks]);
+    const loadedRefs = React.useMemo(() => prepared && prepared.loadedRefs || new Set(data.tasks.map(row => row.row_ref)), [prepared, data.tasks]);
     const segments = task && data.tasks.filter(row => row.operation_ref === task.operation_ref);
     const compact = !!onCollapse,
       execution = task && task.execution_at_generation;
@@ -37970,8 +38298,16 @@ function SMExport({
     }
     if (data.attempts !== undefined) check(Array.isArray(data.attempts) && data.attempts.every(attempt) && data.attempts.length === summary.saved_attempt_count && new Set(data.attempts.map(value => value.saved_index)).size === data.attempts.length, '已保存计算尝试与所选方案的计算来源不一致，请点“刷新优化过程”。');
     if (q.record_kind === 'progress') {
-      check(data.items.every(value => point(value) && progress.points.some(saved => sameSaved(saved, value))) && new Set(data.items.map(value => value.event_index)).size === data.items.length, '本页优化进展与保存的记录不一致，请点“刷新优化过程”。');
-    } else check(data.items.every(value => data.attempts === undefined ? attempt(value) : data.attempts.some(saved => sameSaved(saved, value))) && new Set(data.items.map(value => value.saved_index)).size === data.items.length, '本页计算尝试的记录不完整，请点“刷新优化过程”。');
+      const pointsByEvent = new Map();
+      progress.points.forEach(saved => {
+        const list = pointsByEvent.get(saved.event_index);
+        if (list) list.push(saved);else pointsByEvent.set(saved.event_index, [saved]);
+      });
+      check(data.items.every(value => point(value) && (pointsByEvent.get(value.event_index) || []).some(saved => sameSaved(saved, value))) && new Set(data.items.map(value => value.event_index)).size === data.items.length, '本页优化进展与保存的记录不一致，请点“刷新优化过程”。');
+    } else {
+      const attemptsByIndex = data.attempts === undefined ? null : new Map(data.attempts.map(saved => [saved.saved_index, saved]));
+      check(data.items.every(value => attemptsByIndex === null ? attempt(value) : attemptsByIndex.has(value.saved_index) && sameSaved(attemptsByIndex.get(value.saved_index), value)) && new Set(data.items.map(value => value.saved_index)).size === data.items.length, '本页计算尝试的记录不完整，请点“刷新优化过程”。');
+    }
     return data;
   }
   function detailScope(runRef, query, section) {
@@ -39526,6 +39862,9 @@ function SMExport({
         ...value,
         selected_candidate_ref: candidate.candidate_ref
       }));
+      setRangeOpen(false);
+      setRangeError(null);
+      setHistoryOpen(false);
       setFullPaused(false);
       setDetailQueries(values => {
         const next = freshDetailQueries(values);
@@ -39625,6 +39964,23 @@ function SMExport({
           } : {})
         },
         return_recommendation_context: remembered
+      });
+    }
+    function selectBatch(ref) {
+      if (ref === selectedBatchRef) return;
+      setSelectedBatchRef(ref);
+      setDetailQueries(queries => {
+        if ((!queries.delivery || queries.delivery.snapshot_ref === undefined) && (!queries.differences || queries.differences.snapshot_ref === undefined)) return queries;
+        const next = {
+          ...queries
+        };
+        for (const key of ['delivery', 'differences']) if (next[key] && next[key].snapshot_ref !== undefined) {
+          next[key] = {
+            ...next[key]
+          };
+          delete next[key].snapshot_ref;
+        }
+        return next;
       });
     }
     function detailQuery(section, value) {
@@ -40023,7 +40379,7 @@ function SMExport({
       query: detailQueries[panel] || {},
       onQuery: value => detailQuery(panel, value),
       selectedBatchRef: selectedBatchRef,
-      onSelectBatch: setSelectedBatchRef,
+      onSelectBatch: selectBatch,
       chainQuery: detailQueries[panel === 'differences' ? 'difference-chain' : 'delivery-chain'] || {},
       onChainQuery: value => chainQuery(panel, value),
       onDrill: onNavigate && drill,
@@ -40651,41 +41007,111 @@ function SMExport({
       [showAttempts, setShowAttempts] = React.useState(false);
     const metricKey = metricSelection.objective === objective.name ? metricSelection.key : objective.primary_metric_key;
     const points = progress.points,
-      mode = progress.mode,
-      definitions = metricChoices(objective),
-      definition = definitions.find(field => field.key === metricKey) || definitions[0];
-    const value = point => savedValue(point, definition),
-      viewedObjective = {
-        ...objective,
-        primary_metric_label: definition.label,
-        unit: definition.unit
+      mode = progress.mode;
+    const {
+      definitions,
+      definition,
+      value,
+      viewedObjective,
+      eventAxis,
+      xValue,
+      range,
+      hasImprovement,
+      activeWindow,
+      limit,
+      plotted,
+      scatter,
+      xDomain,
+      yDomain,
+      x,
+      y,
+      sampled,
+      lineGroups,
+      phaseMarkers,
+      xTicks,
+      yTicks,
+      xLabel,
+      chartLabel,
+      initial,
+      final,
+      lastVisible,
+      continueToEnd
+    } = React.useMemo(() => {
+      const definitions = metricChoices(objective),
+        definition = definitions.find(field => field.key === metricKey) || definitions[0];
+      const value = point => savedValue(point, definition),
+        viewedObjective = {
+          ...objective,
+          primary_metric_label: definition.label,
+          unit: definition.unit
+        };
+      const eventAxis = mode === 'discrete' && points.length > 0 && points.every(point => !known(point.elapsed_ms));
+      const xValue = point => eventAxis ? point.event_index : point.elapsed_ms,
+        range = timeRange(progress, elapsedMs, lastImprovementElapsedMs),
+        hasImprovement = range.lastImprovementElapsedMs !== null;
+      const activeWindow = mode === 'curve' && hasImprovement ? windowMode : 'full',
+        limit = activeWindow === 'improvements' ? range.improvements : range.full;
+      const plotted = mode === 'none' ? [] : points.map((point, index) => ({
+        point,
+        index
+      })).filter(item => known(xValue(item.point)) && known(value(item.point)) && (eventAxis || xValue(item.point) <= limit));
+      const scatter = showAttempts && !eventAxis ? attempts.filter(point => known(point.elapsed_ms) && point.elapsed_ms <= limit && known(value(point))) : [];
+      const eventValues = eventAxis ? points.map(xValue).filter(known) : [];
+      const xDomain = eventAxis ? {
+        min: eventValues.length ? Math.min(...eventValues) : 0,
+        max: eventValues.length ? Math.max(...eventValues) : 1
+      } : {
+        min: 0,
+        max: limit || 1
       };
-    const eventAxis = mode === 'discrete' && points.length > 0 && points.every(point => !known(point.elapsed_ms));
-    const xValue = point => eventAxis ? point.event_index : point.elapsed_ms,
-      range = timeRange(progress, elapsedMs, lastImprovementElapsedMs),
-      hasImprovement = range.lastImprovementElapsedMs !== null;
-    const activeWindow = mode === 'curve' && hasImprovement ? windowMode : 'full',
-      limit = activeWindow === 'improvements' ? range.improvements : range.full;
-    const plotted = mode === 'none' ? [] : points.map((point, index) => ({
-      point,
-      index
-    })).filter(item => known(xValue(item.point)) && known(value(item.point)) && (eventAxis || xValue(item.point) <= limit));
-    const scatter = showAttempts && !eventAxis ? attempts.filter(point => known(point.elapsed_ms) && point.elapsed_ms <= limit && known(value(point))) : [];
-    const eventValues = eventAxis ? points.map(xValue).filter(known) : [];
-    const xDomain = eventAxis ? {
-      min: eventValues.length ? Math.min(...eventValues) : 0,
-      max: eventValues.length ? Math.max(...eventValues) : 1
-    } : {
-      min: 0,
-      max: limit || 1
-    };
-    const yDomain = domain([...plotted.map(item => value(item.point)), ...scatter.map(value)]);
+      const yDomain = domain([...plotted.map(item => value(item.point)), ...scatter.map(value)]);
+      const x = point => 8 + ratio(xValue(point), xDomain) * 784,
+        y = point => 232 - ratio(value(point), yDomain) * 224;
+      const sampled = mode === 'curve' && progress.sampling && known(progress.sampling.event_total_count) && progress.sampling.event_total_count > points.length;
+      const lineGroups = segments(progress, value).map(group => group.filter(point => point.elapsed_ms <= limit)).filter(group => group.length > 1);
+      const phaseMarkers = markers(progress).filter(marker => known(value(marker.point)) && marker.point.elapsed_ms <= limit);
+      const xTicks = eventAxis && plotted.length ? [...new Set([0, Math.floor((plotted.length - 1) / 4), Math.floor((plotted.length - 1) / 2), Math.floor((plotted.length - 1) * 3 / 4), plotted.length - 1].map(index => xValue(plotted[index].point)))] : ticks(xDomain);
+      const yTicks = ticks(yDomain);
+      const xLabel = eventAxis ? '已保存事件顺序（累计计算耗时未记录）' : '累计计算耗时',
+        chartLabel = definition.label + (definition.unit ? '（' + definition.unit + '）' : '');
+      const initial = points.find(point => point.flags.includes('first_valid')),
+        final = points.find(point => point.flags.includes('final'));
+      const lastVisible = plotted.length ? plotted[plotted.length - 1].point : null,
+        nextSaved = lastVisible ? points[points.indexOf(lastVisible) + 1] : null;
+      const continueToEnd = lastVisible === final || windowMode === 'improvements' && nextSaved && nextSaved.verified === true && sameScope(lastVisible, nextSaved);
+      return {
+        definitions,
+        definition,
+        value,
+        viewedObjective,
+        eventAxis,
+        xValue,
+        range,
+        hasImprovement,
+        activeWindow,
+        limit,
+        plotted,
+        scatter,
+        xDomain,
+        yDomain,
+        x,
+        y,
+        sampled,
+        lineGroups,
+        phaseMarkers,
+        xTicks,
+        yTicks,
+        xLabel,
+        chartLabel,
+        initial,
+        final,
+        lastVisible,
+        continueToEnd
+      };
+    }, [progress, objective, metricKey, elapsedMs, lastImprovementElapsedMs, attempts, windowMode, showAttempts]);
     const sourceIndex = shared && sourceEventId !== null ? points.findIndex(point => point.source_event_id === sourceEventId) : -1;
     const cursor = selection && selection.progress === progress ? Math.min(selection.index, Math.max(0, points.length - 1)) : Math.max(0, sourceIndex),
       selected = points[cursor];
-    const x = point => 8 + ratio(xValue(point), xDomain) * 784,
-      y = point => 232 - ratio(value(point), yDomain) * 224;
-    const sampled = mode === 'curve' && progress.sampling && known(progress.sampling.event_total_count) && progress.sampling.event_total_count > points.length;
     function choose(index) {
       if (windowMode === 'improvements' && points[index] && known(points[index].elapsed_ms) && points[index].elapsed_ms > limit) setWindowMode('full');
       if (!selection || selection.progress !== progress || index !== cursor) setSelection({
@@ -40708,22 +41134,11 @@ function SMExport({
       const found = nearestPoint(plotted, xDomain.min + (relative - 8) / 784 * (xDomain.max - xDomain.min), xValue);
       if (found) choose(found.index);
     }
-    const lineGroups = segments(progress, value).map(group => group.filter(point => point.elapsed_ms <= limit)).filter(group => group.length > 1);
-    const phaseMarkers = markers(progress).filter(marker => known(value(marker.point)) && marker.point.elapsed_ms <= limit);
-    const xTicks = eventAxis && plotted.length ? [...new Set([0, Math.floor((plotted.length - 1) / 4), Math.floor((plotted.length - 1) / 2), Math.floor((plotted.length - 1) * 3 / 4), plotted.length - 1].map(index => xValue(plotted[index].point)))] : ticks(xDomain);
-    const yTicks = ticks(yDomain);
-    const xLabel = eventAxis ? '已保存事件顺序（累计计算耗时未记录）' : '累计计算耗时',
-      chartLabel = definition.label + (definition.unit ? '（' + definition.unit + '）' : '');
-    const initial = points.find(point => point.flags.includes('first_valid')),
-      final = points.find(point => point.flags.includes('final'));
     const selectedPlotted = plotted.find(item => item.index === cursor),
       selectionText = selected ? pointText({
         ...selected,
         primary_value: value(selected)
       }, cursor, points.length, viewedObjective) : '当前没有保存的过程点。';
-    const lastVisible = plotted.length ? plotted[plotted.length - 1].point : null,
-      nextSaved = lastVisible ? points[points.indexOf(lastVisible) + 1] : null;
-    const continueToEnd = lastVisible === final || windowMode === 'improvements' && nextSaved && nextSaved.verified === true && sameScope(lastVisible, nextSaved);
     return /*#__PURE__*/React.createElement("figure", {
       className: "rd-process-chart",
       "data-progress-mode": mode,
@@ -41671,6 +42086,9 @@ function SMExport({
       }),
       key = JSON.stringify(q);
     const [paused, setPaused] = React.useState(false);
+    React.useEffect(() => {
+      setPaused(false);
+    }, [runRef, key, result.meta.snapshot_ref]);
     const read = window.APSResourceSession.useQuery(signal => adapter.process(runRef, q, signal), [adapter, runRef, key, result.meta.snapshot_ref], enabled && !paused);
     const detail = read.result && (!q.process_candidate_ref || read.result.data.candidate.candidate_ref === q.process_candidate_ref) ? read.result : null,
       data = detail && detail.data;
@@ -42365,6 +42783,9 @@ function SMExport({
     }, 'operations');
     const [paused, setPaused] = React.useState(false),
       key = JSON.stringify(q);
+    React.useEffect(() => {
+      setPaused(false);
+    }, [runRef, key, result.meta.snapshot_ref]);
     const read = window.APSResourceSession.useQuery(signal => adapter.decisionDetails(runRef, q, 'operations', signal), [adapter, runRef, key, result.meta.snapshot_ref], enabled && !paused),
       detailResult = read.result,
       data = detailResult && detailResult.data;
@@ -42545,6 +42966,9 @@ function SMExport({
     const [paused, setPaused] = React.useState(false),
       headingRef = React.useRef(null),
       focusRequested = React.useRef(false);
+    React.useEffect(() => {
+      setPaused(false);
+    }, [runRef, key, section, result.meta.snapshot_ref]);
     const read = window.APSResourceSession.useQuery(signal => adapter.decisionDetails(runRef, q, 'batches', signal), [adapter, runRef, key, section, result.meta.snapshot_ref], enabled && !paused && !sameCandidate);
     const detailResult = read.result,
       data = detailResult && detailResult.data,
@@ -42565,6 +42989,7 @@ function SMExport({
     }, [enabled, selectedRef, chainQuery.batch_ref, chainQuery.change_kind]);
     function selectBatch(ref) {
       focusRequested.current = true;
+      if (ref !== selectedBatchRef && onQuery && query && query.snapshot_ref !== undefined) onQuery(Object.fromEntries(Object.entries(query).filter(([name]) => detailKeys.includes(name) && name !== 'snapshot_ref')));
       if (onChainQuery && (chainQuery.batch_ref !== ref || arrangementsEqual && chainQuery.change_kind !== 'all')) onChainQuery({
         ...chainQuery,
         batch_ref: ref,
@@ -43552,6 +43977,9 @@ function SMExport({
       [daysPaused, setDaysPaused] = React.useState(false);
     const consumed = React.useRef(null),
       qKey = JSON.stringify(q);
+    React.useEffect(() => {
+      setPaused(false);
+    }, [runRef, qKey, result]);
     const read = window.APSResourceSession.useQuery(signal => {
       if (signal && signal.aborted) throw new DOMException('读取已取消', 'AbortError');
       if (result.resource_result && consumed.current !== result && JSON.stringify(A.resourceScope(runRef, {
@@ -43582,27 +44010,35 @@ function SMExport({
         size: stored.day_size || 20,
         snapshot_ref: stored.day_snapshot_ref
       }, 'resource-days') : null;
+    const dayKey = JSON.stringify(dayQ);
+    React.useEffect(() => {
+      setDaysPaused(false);
+    }, [runRef, dayKey, result]);
     const days = window.APSResourceSession.useQuery(signal => adapter.resourceDays(runRef, {
       ...dayQ,
       expected_resource_refs: scope.resource_refs
-    }, signal), [adapter, runRef, JSON.stringify(dayQ), result], enabled && !!dayQ && !daysPaused);
+    }, signal), [adapter, runRef, dayKey, result], enabled && !!dayQ && !daysPaused);
     function change(value, type = 'filter') {
       const next = {
         ...stored,
         ...value
       };
-      if (type === 'filter') {
+      if (type === 'filter' || type === 'refresh') {
         next.page = 1;
         delete next.snapshot_ref;
       }
-      if (value.pressure_threshold !== undefined) delete next.day_snapshot_ref;
+      if (type === 'refresh' || value.pressure_threshold !== undefined) delete next.day_snapshot_ref;
       if (['page', 'heatmap'].includes(type) && read.result) next.snapshot_ref = read.result.meta.snapshot_ref;
       if (type === 'heatmap' && q.grain === 'hour') {
         next.page = 1;
         delete next.snapshot_ref;
+        delete next.display_start;
+        delete next.display_end;
       }
       if (value.resource_kind || value.grain) {
         if (value.resource_kind) delete next.resource_ref;
+        delete next.display_start;
+        delete next.display_end;
         delete next.day_resource_ref;
         delete next.day_snapshot_ref;
         delete next.day_bucket_start;
@@ -43619,9 +44055,13 @@ function SMExport({
       setPaused(false);
       onQuery(next);
     }
+    // An open day detail refreshes with the overview: a snapshot or pause change starts its one read, otherwise reload it.
     function refresh() {
-      change({});
+      const reloadDays = !!dayRef && stored.day_snapshot_ref === undefined && !daysPaused;
+      change({}, 'refresh');
+      setDaysPaused(false);
       read.reload();
+      if (reloadDays) days.reload();
     }
     function focus(row, cell) {
       const next = {
@@ -44571,6 +45011,9 @@ function SMExport({
     onDrill
   }) {
     const [openOperation, setOpenOperation] = React.useState(null);
+    React.useEffect(() => {
+      setOpenOperation(null);
+    }, [data]);
     return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
       className: "rd-preparation-direction"
     }, "\u5DE5\u65F6\uFF1A\u5BF9\u7167 \u2192 \u5F53\u524D\uFF1B\u76F8\u540C\u503C\u663E\u793A\u4E00\u6B21\u3002"), /*#__PURE__*/React.createElement("div", {
@@ -44665,6 +45108,9 @@ function SMExport({
     onDrill
   }) {
     const [openEvent, setOpenEvent] = React.useState(null);
+    React.useEffect(() => {
+      setOpenEvent(null);
+    }, [data]);
     return /*#__PURE__*/React.createElement("div", {
       className: "rc-table wb-table-frame rd-changeover-frame",
       "data-sticky-head": true,
@@ -44783,6 +45229,9 @@ function SMExport({
       }, section);
     const [paused, setPaused] = React.useState(false),
       key = JSON.stringify(q);
+    React.useEffect(() => {
+      setPaused(false);
+    }, [runRef, key, section, result.meta.snapshot_ref]);
     const read = window.APSResourceSession.useQuery(signal => adapter[section](runRef, q, signal), [adapter, runRef, key, section, result.meta.snapshot_ref], enabled && !paused),
       detail = read.result,
       data = detail && detail.data;
@@ -46077,12 +46526,13 @@ function SMExport({
       if (value && chosen && !changed.has(chosen.comparison.operation_ref)) setSelection(null);
     }
     React.useEffect(() => {
-      if (!canCompare) setChangedOnly(false);
-    }, [canCompare]);
+      if (comparison && !canCompare) setChangedOnly(false);
+    }, [comparison, canCompare]);
     React.useEffect(() => {
       // Route and delivery links can select a task outside the current change filter.
+      if (!comparison) return;
       if (selected && !changed.has(selected.operation_ref)) setChangedOnly(false);
-    }, [selected]);
+    }, [comparison, selected, changed]);
     React.useEffect(() => {
       setHover(null);
       if (expansion.expanded) owner.current.focus();
@@ -46111,6 +46561,10 @@ function SMExport({
       const frame = requestAnimationFrame(restore);
       return () => cancelAnimationFrame(frame);
     }, [printing]);
+    const syncScroll = node => setScroll(current => current.left === node.scrollLeft && current.top === node.scrollTop ? current : {
+      left: node.scrollLeft,
+      top: node.scrollTop
+    });
     React.useLayoutEffect(() => {
       if (owner.current) {
         owner.current.scrollTop = 0;
@@ -46126,7 +46580,10 @@ function SMExport({
       if (!resourceFocus || selected || chosen || printing) return;
       const row = model.rows.find(item => item.id === resourceFocus.ref),
         node = owner.current;
-      if (row && node) node.scrollTop = Math.max(0, row.top - node.clientHeight / 3);
+      if (row && node) {
+        node.scrollTop = Math.max(0, row.top - node.clientHeight / 3);
+        syncScroll(node);
+      }
     }, [resourceFocus && resourceFocus.ref, model, selected, chosen, printing]);
     React.useLayoutEffect(() => {
       const loc = chosen && chosen.segment ? model.baselineLocations.get(chosen.segment.row_ref) : selected && model.locations.get(selected.row_ref),
@@ -46135,9 +46592,14 @@ function SMExport({
       if (loc.top < node.scrollTop || loc.top + model.rows[loc.row].height > node.scrollTop + viewportHeight) node.scrollTop = loc.top;
       const x = (loc.item.start - model.start) / (model.end - model.start) * width;
       if (x < node.scrollLeft || x > node.scrollLeft + viewport) node.scrollLeft = Math.max(0, x - viewport / 3);
+      syncScroll(node);
     }, [selected, chosen, model, width, viewport, viewportHeight, printing]);
     function pan(left) {
-      if (owner.current) owner.current.scrollLeft = Math.max(0, Math.min(width - viewport, left));
+      const node = owner.current;
+      if (node) {
+        node.scrollLeft = Math.max(0, Math.min(width - viewport, left));
+        syncScroll(node);
+      }
     }
     function fit() {
       setZoom(1);
@@ -46150,8 +46612,9 @@ function SMExport({
       node.scrollTop = Math.max(0, loc.top - node.clientHeight / 3);
       pan((loc.item.start + loc.item.end - 2 * model.start) / 2 / (model.end - model.start) * width - viewport / 2);
     }
+    const currentIndex = selected && candidate.taskOrder ? candidate.taskOrder.has(selected.row_ref) ? candidate.taskOrder.get(selected.row_ref) : -1 : model.tasks.findIndex(task => selected && task.row_ref === selected.row_ref);
     function move(direction) {
-      const index = model.tasks.findIndex(task => selected && task.row_ref === selected.row_ref);
+      const index = currentIndex;
       const task = model.tasks[Math.max(0, Math.min(model.tasks.length - 1, index < 0 ? 0 : index + direction))];
       if (task) {
         selectCandidate(task);
@@ -46193,14 +46656,13 @@ function SMExport({
         items: row.point || row.baselinePoint ? window.PointGanttModel.visible(row.items, start, end, scale) : M.visibleItems(row.items, start, end)
       }));
     }, [model, printing, scroll.top, viewportHeight, width, renderLeft, renderViewport]);
-    const currentIndex = model.tasks.findIndex(task => selected && task.row_ref === selected.row_ref);
-    const axis = window.GanttPresentation.axis({
+    const axis = React.useMemo(() => window.GanttPresentation.axis({
       start: model.start,
       end: model.end,
       width,
       left: renderLeft,
       viewport: renderViewport
-    });
+    }), [model.start, model.end, width, renderLeft, renderViewport]);
     return /*#__PURE__*/React.createElement("section", {
       ref: host,
       className: 'rc-gantt' + (expansion.expanded ? ' rc-expanded' : ''),
@@ -46587,7 +47049,8 @@ function SMExport({
     const [pendingOperation, setPendingOperation] = React.useState(A.ref(initialContext.operation_ref) ? initialContext.operation_ref : null);
     const [tab, setTab] = React.useState((view === 'delay' ? ['tasks', 'unplanned'] : ['tasks', 'unplanned', 'delivery', 'history']).includes(initialContext.candidate_tab) ? initialContext.candidate_tab : 'tasks'),
       [revision, refresh] = React.useReducer(v => v + 1, 0);
-    const [analysisPaused, setAnalysisPaused] = React.useState(false);
+    const [analysisPaused, setAnalysisPaused] = React.useState(false),
+      [historyPaused, setHistoryPaused] = React.useState(false);
     const [detailsOpen, setDetailsOpen] = React.useState(view === 'gantt' && (A.ref(initialContext.operation_ref) || A.ref(initialContext.selected_row_ref)));
     const detailsToggle = React.useRef(null);
     const directory = useRead(signal => adapter.catalog(runRef, catalogQuery, signal), [adapter, runRef, catalogQuery, revision], !!runRef && !invalid && !isReference);
@@ -46615,8 +47078,8 @@ function SMExport({
     const historyRead = useRead(async signal => {
       if (typeof adapter.adoptions !== 'function') throw new Error('dependency not wired: adapter.adoptions');
       return adapter.adoptions(candidateRef, runRef, signal);
-    }, [adapter, candidateRef, revision, result && result.meta.snapshot_ref], !!shown && tab === 'history' && !analysisPaused && !isReference);
-    const analysis = shown && analysisRead.result && analysisRead.result.data.run_ref === shown.candidate.run_ref ? analysisRead.result.data : null;
+    }, [adapter, candidateRef, revision, result && result.meta.snapshot_ref], !!shown && tab === 'history' && !historyPaused && !isReference);
+    const analysis = shown && !analysisPaused && analysisRead.result && analysisRead.result.data.run_ref === shown.candidate.run_ref ? analysisRead.result.data : null;
     const ownershipError = readState => shown && readState.result && readState.result.data.run_ref !== shown.candidate.run_ref ? new Error('读到的数据不属于所选候选方案的排产记录。') : readState.error;
     window.WorkbenchCaption.useCaption(shown && !read.busy && !read.error && shown.candidate.label ? {
       reference: isReference ? shown.plan_ref || shown.reference.baseline_ref : shown.candidate.candidate_ref,
@@ -46691,6 +47154,7 @@ function SMExport({
       setPendingRow(null);
       setPendingOperation(null);
       setAnalysisPaused(false);
+      setHistoryPaused(false);
     }
     function select(task) {
       setSelected({
@@ -46700,7 +47164,8 @@ function SMExport({
     }
     function collapseDetails() {
       setDetailsOpen(false);
-      detailsToggle.current.querySelector('button').focus();
+      const button = detailsToggle.current && detailsToggle.current.querySelector('button');
+      if (button) button.focus();
     }
     function lastOperation(task) {
       setQuery('');
@@ -46726,6 +47191,7 @@ function SMExport({
       });
       setSelected(null);
       setAnalysisPaused(false);
+      setHistoryPaused(false);
       refresh();
     }
     function rangeSubmit(e) {
@@ -46744,7 +47210,7 @@ function SMExport({
         setRangeError(error);
       }
     }
-    const historyError = tab === 'history' ? ownershipError(historyRead) : null;
+    const historyError = tab === 'history' && !historyPaused ? ownershipError(historyRead) : null;
     return /*#__PURE__*/React.createElement("div", {
       className: "plana run-candidate-workspace",
       "data-run-candidate-workspace": true
@@ -46834,8 +47300,11 @@ function SMExport({
     }, "\u6B63\u5728\u6838\u5BF9\u8FD9\u4E2A\u5019\u9009\u65B9\u6848\u7684\u5B8C\u6574\u4F9D\u636E\u3002"), /*#__PURE__*/React.createElement(C.Button, {
       icon: "x",
       "aria-label": "\u53D6\u6D88\u5019\u9009\u6BD4\u8F83\u8BFB\u53D6",
-      onClick: () => setAnalysisPaused(true)
-    }, "\u53D6\u6D88\u8BFB\u53D6")), analysisPaused && /*#__PURE__*/React.createElement("div", {
+      onClick: () => {
+        if (analysisRead.busy) setAnalysisPaused(true);
+        if (historyRead.busy) setHistoryPaused(true);
+      }
+    }, "\u53D6\u6D88\u8BFB\u53D6")), (analysisPaused || tab === 'history' && historyPaused) && /*#__PURE__*/React.createElement("div", {
       className: "rc-tools"
     }, /*#__PURE__*/React.createElement("span", {
       role: "status"
@@ -46871,7 +47340,7 @@ function SMExport({
     }), /*#__PURE__*/React.createElement(C.Reasons, {
       rows: result.warnings
     }), /*#__PURE__*/React.createElement(C.ErrorBox, {
-      error: ownershipError(analysisRead)
+      error: analysisPaused ? null : ownershipError(analysisRead)
     })), A.ref(candidateRef) && !invalid && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "rc-heading"
     }, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("span", {
@@ -46953,6 +47422,7 @@ function SMExport({
     }, /*#__PURE__*/React.createElement("div", {
       className: view === 'gantt' ? 'wb-gantt-main-column' : undefined
     }, /*#__PURE__*/React.createElement(window.RunCandidateGantt, {
+      key: shown.candidate.candidate_ref,
       data: shown,
       prepared: prepared,
       comparison: analysis,
@@ -47003,7 +47473,7 @@ function SMExport({
       "aria-labelledby": 'rc-detail-tab-' + tab
     }, tab === 'history' ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(C.ErrorBox, {
       error: historyError
-    }), historyRead.result && !historyError && /*#__PURE__*/React.createElement(Analysis.History, {
+    }), !historyPaused && historyRead.result && !historyError && /*#__PURE__*/React.createElement(Analysis.History, {
       data: historyRead.result.data,
       onPlan: onNavigate && (plan => onNavigate('analysis', {
         ...historyOrigin,
@@ -49392,8 +49862,9 @@ function SMExport({
         pendingFocus.current = null;
       }
     }, [result, read.loading]);
-    function apply(next) {
+    function apply(next, lockHeight = false) {
       const value = A.scope(next);
+      if (lockHeight) readingHeight.current = workspace.current ? workspace.current.getBoundingClientRect().height : null;
       if (value.timeline !== query.timeline || value.page !== query.page || value.size !== query.size || !value.metric_keys.includes(metricKey)) {
         setMissingOpen(false);
         if (pendingFocus.current && pendingFocus.current.source === 'chart') pendingFocus.current = null;
@@ -49407,21 +49878,21 @@ function SMExport({
       if (!value.metric_keys.includes(metricKey)) setMetricKey(value.metric_keys[0]);
       refresh();
     }
-    function change(patch, paging = false) {
-      if (paging && ('condition_page' in patch || 'condition_size' in patch)) {
+    function change(patch, paging = false, lockHeight = false) {
+      const conditionPaging = paging && ('condition_page' in patch || 'condition_size' in patch);
+      if (conditionPaging) {
         const trigger = document.activeElement;
         pendingFocus.current = {
           source: 'conditions',
           label: trigger && trigger.getAttribute('aria-label'),
           reveal: false
         };
-        readingHeight.current = workspace.current ? workspace.current.getBoundingClientRect().height : null;
       }
       apply({
         ...query,
         ...patch,
         snapshot_ref: paging && result ? result.meta.snapshot_ref : null
-      });
+      }, lockHeight || conditionPaging);
     }
     function reload() {
       setPaused(false);
@@ -49443,11 +49914,10 @@ function SMExport({
           })) : []
         } : {})
       };
-      readingHeight.current = !reveal && workspace.current ? workspace.current.getBoundingClientRect().height : null;
       change({
         selected_entry_ref: entry.entry_ref,
         condition_page: 1
-      });
+      }, false, !reveal);
     }
     function reference(entry) {
       pendingFocus.current = {
@@ -49504,7 +49974,10 @@ function SMExport({
       "aria-label": "\u5237\u65B0\u5386\u53F2\u8D70\u52BF",
       onClick: reload
     }), read.loading && /*#__PURE__*/React.createElement(C.Button, {
-      onClick: () => setPaused(true)
+      onClick: () => {
+        readingHeight.current = null;
+        setPaused(true);
+      }
     }, "\u53D6\u6D88\u8BFB\u53D6"))), renderTopics && renderTopics(historyContext), /*#__PURE__*/React.createElement("div", {
       id: "dh-history-content",
       role: "tabpanel",
@@ -50001,29 +50474,33 @@ function SMExport({
       async function read() {
         if (disposed || querying || document.hidden || done) return;
         querying = true;
-        controller = new AbortController();
+        const localController = new AbortController();
+        controller = localController;
         setChecking(true);
         setVerified(false);
         const started = Date.now();
         try {
-          const value = A.run(A.envelope(await api.get(runRef, controller.signal)), runRef);
-          if (disposed || controller.signal.aborted) return;
+          const value = A.run(A.envelope(await api.get(runRef, localController.signal)), runRef);
+          if (disposed || localController.signal.aborted) return;
+          if (!value.recovery_required) attempt = 0;
           setRecord(value);
           setVerified(true);
           setError('');
           unsettledSince = null;
           done = A.terminal(value);
         } catch (problem) {
-          if (!disposed && !controller.signal.aborted) {
+          if (!disposed && !localController.signal.aborted) {
             setError(A.message(problem));
             setVerified(false);
             unresolved(started);
           }
         } finally {
-          querying = false;
-          if (!disposed) {
-            setChecking(false);
-            schedule();
+          if (controller === localController) {
+            querying = false;
+            if (!disposed) {
+              setChecking(false);
+              if (!localController.signal.aborted) schedule();else if (!document.hidden && !done) read();
+            }
           }
         }
       }
@@ -50034,7 +50511,7 @@ function SMExport({
           if (controller) controller.abort();
         } else {
           attempt = 0;
-          read();
+          if (!querying) read();
         }
       }
       document.addEventListener('visibilitychange', visibility);
@@ -50224,9 +50701,14 @@ function SMExport({
   function check(value, message = '试调数据不完整或不一致，请刷新后重试。') {
     if (!value) throw new Error(message);
   }
+  const DAYS = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   function time(v) {
-    // Keep the wire value intact: Date only validates the calendar part, never serializes business time.
-    return typeof v === 'string' && /^(?!0000)\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.(?!000000$)\d{6})?(?![\s\S])/.test(v) && Number.isFinite(Date.parse(v.slice(0, 19) + 'Z')) && new Date(v.slice(0, 19) + 'Z').toISOString().slice(0, 19) === v.slice(0, 19);
+    // Keep the wire value intact: calendar fields are validated directly without Date allocation or timezone serialization.
+    if (typeof v !== 'string' || !/^(?!0000)\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.(?!000000$)\d{6})?(?![\s\S])/.test(v)) return false;
+    const y = (v.charCodeAt(0) - 48) * 1000 + (v.charCodeAt(1) - 48) * 100 + (v.charCodeAt(2) - 48) * 10 + (v.charCodeAt(3) - 48);
+    const m = (v.charCodeAt(5) - 48) * 10 + (v.charCodeAt(6) - 48),
+      d = (v.charCodeAt(8) - 48) * 10 + (v.charCodeAt(9) - 48);
+    return m >= 1 && m <= 12 && d >= 1 && d <= (m === 2 && y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0) ? 29 : DAYS[m]);
   }
   function base(v) {
     check(object(v) && Object.keys(v).length === 1 && ['plan_ref', 'candidate_ref'].some(k => ref(v[k])));
@@ -50519,7 +51001,7 @@ function SMExport({
         const error = new Error(value.error && value.error.message || window.WorkbenchTerms.outcomes.failure);
         error.code = value.error && value.error.code;
         error.fields = value.error && value.error.fields;
-        error.rejected = response.status >= 400 && response.status < 500 && value.ok === false && value.committed === false;
+        error.rejected = (response.status >= 400 && response.status < 500 || response.status === 503) && value.ok === false && value.committed === false && error.code !== 'request_key_conflict';
         throw error;
       }
       return value;
@@ -50598,11 +51080,13 @@ function SMExport({
     const [state, set] = React.useState({
         key: null,
         error: null,
-        busy: false
+        busy: false,
+        note: ''
       }),
       running = React.useRef(false);
     const live = React.useRef(true),
-      callback = React.useRef(onReceipt);
+      callback = React.useRef(onReceipt),
+      settled = React.useRef(null);
     callback.current = onReceipt;
     const patch = data => {
       if (live.current) set(s => ({
@@ -50610,17 +51094,59 @@ function SMExport({
         ...data
       }));
     };
+    // The server outcome is final; only the local key may remain. settled keeps that key until a later clear succeeds.
+    function release(key, done, note) {
+      try {
+        A.clear(key);
+        settled.current = null;
+        patch({
+          key: null,
+          ...done
+        });
+      } catch (error) {
+        settled.current = {
+          key,
+          note
+        };
+        patch({
+          key,
+          error,
+          note
+        });
+      }
+    }
+    // Restore and lookup share this: a settled key retries its local cleanup instead of asking the server again.
+    function retry(key) {
+      if (!settled.current || settled.current.key !== key) {
+        settled.current = null;
+        return false;
+      }
+      release(key, {
+        error: null,
+        note: ''
+      }, settled.current.note);
+      return true;
+    }
     function restore() {
       try {
-        patch({
-          key: A.pending(),
-          error: null
+        const key = A.pending();
+        if (!retry(key)) patch({
+          key,
+          error: null,
+          note: ''
         });
       } catch (error) {
         patch({
           error
         });
       }
+    }
+    function clearError() {
+      if (live.current && !running.current) set(s => s.busy || s.key ? s : {
+        ...s,
+        error: null,
+        note: ''
+      });
     }
     React.useEffect(() => {
       live.current = true;
@@ -50637,13 +51163,14 @@ function SMExport({
     async function confirmed(receipt, key) {
       if (!live.current) return;
       // Ignore write contexts embedded in old immutable receipts; the parent reads the object afresh.
-      A.clear(key);
+      // A failed local clear keeps the key and its error, but never withholds the confirmed receipt.
       patch({
-        key: null,
-        receipt,
+        receipt
+      });
+      release(key, {
         error: null,
         note: ''
-      });
+      }, '');
       if (live.current) callback.current(receipt);
     }
     async function execute(intent, token) {
@@ -50665,21 +51192,10 @@ function SMExport({
         await confirmed(result, key);
         return true;
       } catch (error) {
-        if (key && error.rejected) {
-          try {
-            A.clear(key);
-            patch({
-              key: null,
-              error,
-              note: '这次没有写入。填写内容已保留，请点「刷新」后重新确认。'
-            });
-          } catch (storageError) {
-            patch({
-              key,
-              error: storageError
-            });
-          }
-        } else patch({
+        if (key && error.rejected) release(key, {
+          error,
+          note: '这次没有写入。填写内容已保留，请点「刷新」后重新确认。'
+        }, '这次没有写入，但本机操作记录还没清掉。请点「查询结果」重试清理。');else patch({
           error,
           ...(key ? {
             key,
@@ -50703,9 +51219,11 @@ function SMExport({
       });
       try {
         const key = A.pending();
+        if (retry(key)) return;
         if (!key) {
           patch({
-            key: null
+            key: null,
+            note: ''
           });
           return;
         }
@@ -50730,6 +51248,7 @@ function SMExport({
       execute,
       lookup,
       restore,
+      clearError,
       blocked: state.busy || !!state.key || !!state.error
     };
   }
@@ -51344,22 +51863,26 @@ function SMExport({
   }) {
     const [collection, setCollection] = React.useState('drafts'),
       [query, setQuery] = React.useState({
+        revision,
         page: 1,
         size: 20,
         status: 'all'
       });
     const [onlyBase, setOnlyBase] = React.useState(false),
       [reload, refresh] = React.useReducer(n => n + 1, 0);
-    React.useEffect(() => {
-      setQuery(q => ({
-        page: 1,
-        size: q.size,
-        status: q.status
-      }));
-    }, [revision]);
+    const activeQuery = query.revision === revision ? query : {
+      revision,
+      page: 1,
+      size: query.size,
+      status: query.status
+    };
+    const {
+      revision: _,
+      ...cleanQuery
+    } = activeQuery;
     const selectedBase = fixedBase || (onlyBase ? filterBase : null);
     const q = {
-      ...query,
+      ...cleanQuery,
       ...(selectedBase ? {
         base_kind: Object.keys(selectedBase)[0],
         base_ref: Object.values(selectedBase)[0]
@@ -51371,9 +51894,10 @@ function SMExport({
     }), [collection, JSON.stringify(q), revision, reload]);
     function reset(patch = {}) {
       setQuery({
+        revision,
         page: 1,
-        size: query.size,
-        status: query.status,
+        size: activeQuery.size,
+        status: activeQuery.status,
         ...patch
       });
       refresh();
@@ -51397,7 +51921,7 @@ function SMExport({
       className: "tt-tools"
     }, /*#__PURE__*/React.createElement("label", null, "\u72B6\u6001 ", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u5217\u8868\u72B6\u6001",
-      value: query.status,
+      value: activeQuery.status,
       onChange: e => reset({
         status: e.target.value
       })
@@ -51406,7 +51930,7 @@ function SMExport({
       value: s
     }, s === 'all' ? '全部' : U.statusLabel(s))))), /*#__PURE__*/React.createElement("label", null, "\u6BCF\u9875 ", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u5217\u8868\u6BCF\u9875\u6570\u91CF",
-      value: query.size,
+      value: activeQuery.size,
       onChange: e => reset({
         size: Number(e.target.value)
       })
@@ -51464,7 +51988,7 @@ function SMExport({
       page: read.result.data.page,
       label: "\u5217\u8868",
       onPage: page => setQuery({
-        ...query,
+        ...activeQuery,
         page,
         snapshot_ref: read.result.meta.snapshot_ref
       })
@@ -51656,7 +52180,11 @@ function SMExport({
           setAgreed(false);
           refresh();
         }
-      }, "\u6838\u5BF9\u539F\u6765\u6E90"), /*#__PURE__*/React.createElement(U.Button, {
+      }, "\u6838\u5BF9\u539F\u6765\u6E90"), commands.key && /*#__PURE__*/React.createElement(U.Button, {
+        icon: "refresh-cw",
+        busy: commands.busy,
+        onClick: commands.lookup
+      }, window.WorkbenchTerms.actions.query_result), /*#__PURE__*/React.createElement(U.Button, {
         icon: "plus",
         className: "btn primary",
         reason: !d ? '请先核对原来源' : !agreed ? '请先勾选确认' : '',
@@ -51685,7 +52213,12 @@ function SMExport({
       error: read.error
     }), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: commands.error
-    }), read.busy && /*#__PURE__*/React.createElement("p", {
+    }), commands.key && /*#__PURE__*/React.createElement("section", {
+      className: "tt-notice",
+      "aria-label": "\u5F85\u786E\u8BA4\u7684\u8BD5\u8C03\u63D0\u4EA4"
+    }, /*#__PURE__*/React.createElement("p", null, commands.note || '上次提交结果尚未确认。'), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      value: commands.key
+    })), read.busy && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u6B63\u5728\u6838\u5BF9\u5B8C\u6574\u539F\u6765\u6E90\u2026"), d && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", null, "\u5C06\u5B8C\u6574\u590D\u5236\u539F\u65B9\u6848\u7684 ", d.task_count, " \u9053\u5B89\u6392\u3002"), /*#__PURE__*/React.createElement(U.Issues, {
       rows: d.validation.issues
@@ -51729,7 +52262,28 @@ function SMExport({
     return name;
   }
   const matchesScope = (task, scope, batchRefs) => (!scope.range_start || window.PointContract.overlaps(task, scope.range_start, scope.range_end)) && (!batchRefs || batchRefs.has(task.batch_ref)) && (!scope.resource_ref || (scope.resource_type === 'batch' ? task.batch_ref : task[scope.resource_type + '_ref']) === scope.resource_ref);
-  const matchesQuery = (task, needle, name) => !needle || [task.batch_id, task.part_no, task.part_name, task.process_label, task.piece_id, name(task.machine_ref), name(task.operator_ref)].join(' ').toLowerCase().includes(needle);
+  const compareText = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+  const searchCache = new WeakMap();
+  function matchesQuery(task, needle, name) {
+    if (!needle) return true;
+    const machine = name(task.machine_ref),
+      operator = name(task.operator_ref);
+    let cached = searchCache.get(task);
+    if (!cached || cached.batch_id !== task.batch_id || cached.part_no !== task.part_no || cached.part_name !== task.part_name || cached.process_label !== task.process_label || cached.piece_id !== task.piece_id || cached.machine !== machine || cached.operator !== operator) {
+      cached = {
+        batch_id: task.batch_id,
+        part_no: task.part_no,
+        part_name: task.part_name,
+        process_label: task.process_label,
+        piece_id: task.piece_id,
+        machine,
+        operator,
+        text: [task.batch_id, task.part_no, task.part_name, task.process_label, task.piece_id, machine, operator].join(' ').toLowerCase()
+      };
+      searchCache.set(task, cached);
+    }
+    return cached.text.includes(needle);
+  }
   function matching(data, scope, query, changed, name, batchRefs) {
     const needle = query.trim().toLowerCase();
     return data.tasks.filter(t => (!changed || t.changed) && matchesScope(t, scope, batchRefs) && matchesQuery(t, needle, name));
@@ -51803,7 +52357,7 @@ function SMExport({
           ghost: true
         });
       });
-      return entries.sort((a, b) => String(a.group).localeCompare(String(b.group)) || a.t.start.localeCompare(b.t.start) || a.t.task_ref.localeCompare(b.t.task_ref));
+      return entries.sort((a, b) => compareText(String(a.group), String(b.group)) || compareText(a.t.start, b.t.start) || compareText(a.t.task_ref, b.t.task_ref));
     }, [filtered, view, baseline]);
     const current = Math.min(page, Math.max(1, Math.ceil(rows.length / 30))),
       visible = rows.slice((current - 1) * 30, current * 30);
@@ -51820,10 +52374,10 @@ function SMExport({
         end: end + pad
       };
     }, [data]);
-    const axis = window.GanttPresentation.axis({
+    const axis = React.useMemo(() => window.GanttPresentation.axis({
       ...bounds,
       ...chart
-    });
+    }), [bounds, chart]);
     const measure = () => {
       const node = board.current,
         track = axisHost.current;
@@ -51875,16 +52429,24 @@ function SMExport({
         } : null)
       });
     }
+    const rowIndexByTask = React.useMemo(() => {
+      const map = new Map();
+      rows.forEach((row, index) => {
+        if (!row.ghost && !map.has(row.t.task_ref)) map.set(row.t.task_ref, index);
+      });
+      return map;
+    }, [rows]);
+    const taskByRef = React.useMemo(() => new Map(data.tasks.map(task => [task.task_ref, task])), [data.tasks]);
     const {
       selectedIndex,
       hiddenSelectedTask
     } = React.useMemo(() => {
-      const selectedIndex = selected ? rows.findIndex(row => !row.ghost && row.t.task_ref === selected) : -1;
+      const selectedIndex = selected && rowIndexByTask.has(selected) ? rowIndexByTask.get(selected) : -1;
       return {
         selectedIndex,
-        hiddenSelectedTask: selected && selectedIndex < 0 ? data.tasks.find(task => task.task_ref === selected) || null : null
+        hiddenSelectedTask: selected && selectedIndex < 0 ? taskByRef.get(selected) || null : null
       };
-    }, [rows, selected, data.tasks]);
+    }, [rowIndexByTask, taskByRef, selected]);
     React.useEffect(() => {
       if (selectedIndex >= 0) setPage(Math.floor(selectedIndex / 30) + 1);
     }, [selected, selectedIndex]);
@@ -52146,7 +52708,7 @@ function SMExport({
       [reviewed, setReviewed] = React.useState(false);
     const external = task.source === 'external';
     const initial = React.useRef(null);
-    const dirty = editing && JSON.stringify(form) !== JSON.stringify(initial.current);
+    const dirty = editing && (form.machine_ref !== initial.current.machine_ref || form.operator_ref !== initial.current.operator_ref || form.start !== initial.current.start);
     window.WorkbenchGuards.useDirtyGuard({
       owner: guardOwner,
       dirty,
@@ -52160,7 +52722,10 @@ function SMExport({
     async function cancel() {
       if (!commands.busy && !commands.key && (await window.WorkbenchGuards.confirmLeave({
         owner: guardOwner
-      }))) close();
+      }))) {
+        if (commands.clearError) commands.clearError();
+        close();
+      }
     }
     function open() {
       const value = {
@@ -52248,7 +52813,7 @@ function SMExport({
       })
     })), /*#__PURE__*/React.createElement("div", {
       className: "tt-muted"
-    }, "\u6309\u73ED\u8868\u8BA1\u7B97\u9884\u8BA1\u5B8C\u5DE5\u65F6\u95F4\uFF0C\u9010\u9053\u4FDD\u5B58\u8C03\u6574\u3002"), !external && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && /*#__PURE__*/React.createElement("p", {
+    }, "\u6309\u73ED\u8868\u8BA1\u7B97\u9884\u8BA1\u5B8C\u5DE5\u65F6\u95F4\uFF0C\u9010\u9053\u4FDD\u5B58\u8C03\u6574\u3002"), !external && form.machine_ref && form.operator_ref && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && /*#__PURE__*/React.createElement("p", {
       className: "tt-notice"
     }, "\u6240\u9009\u4EBA\u5458\u5C1A\u672A\u53D6\u5F97\u8BE5\u8BBE\u5907\u7684\u64CD\u4F5C\u6388\u6743\u3002"), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: error
@@ -52902,12 +53467,13 @@ function SMExport({
       }
     }
     function selectTab(next) {
-      if (!preferences.change({
+      if (preferences.change({
         result_tab: next
-      })) setLocal({
+      })) setLocal(null);else setLocal({
         ...values,
         result_tab: next
       });
+      if (!data.scenario_ref) return;
       try {
         H.remember(data.scenario_ref, {
           tab: next
@@ -52923,11 +53489,20 @@ function SMExport({
         });
       }
     }
+    const viewNotice = {
+      ...preferences,
+      reset: () => {
+        preferences.reset();
+        setLocal(null);
+        if (data.scenario_ref || entry.tab || entry.error) clearEntry();
+      }
+    };
+    const historyRows = React.useMemo(() => data.change_history.slice().reverse(), [data.change_history]);
     const arrangement = r => /*#__PURE__*/React.createElement(React.Fragment, null, name(r.machine_ref), /*#__PURE__*/React.createElement("br", null), name(r.operator_ref), /*#__PURE__*/React.createElement("br", null), U.timeLabel(r.start), /*#__PURE__*/React.createElement("br", null), U.timeLabel(r.end));
     return /*#__PURE__*/React.createElement("section", {
       className: "tt-results"
     }, /*#__PURE__*/React.createElement(V.Notice, {
-      state: preferences,
+      state: viewNotice,
       label: "\u8BD5\u8C03\u7ED3\u679C\u67E5\u770B\u504F\u597D"
     }), entry.error && /*#__PURE__*/React.createElement("div", {
       className: "tt-notice",
@@ -52986,7 +53561,7 @@ function SMExport({
       })]]
     })), tab === 'history' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(U.Table, {
       label: "\u8C03\u6574\u8BB0\u5F55",
-      rows: data.change_history.slice().reverse(),
+      rows: historyRows,
       columns: [['记录时间', r => U.timeLabel(r.recorded_at)], ['记录人', r => r.local_operator], ['调整前', r => arrangement(r.before)], ['调整后', r => arrangement(r.after)], ['当时约束', r => U.statusLabel(r.validation.constraints_status)], ['记录依据', r => /*#__PURE__*/React.createElement("details", null, /*#__PURE__*/React.createElement("summary", null, "\u7F16\u53F7"), /*#__PURE__*/React.createElement("div", {
         className: "tt-ref"
       }, r.change_ref), /*#__PURE__*/React.createElement("div", {
@@ -53068,7 +53643,11 @@ function SMExport({
           setConfirm(false);
           onRecheck();
         }
-      }, "\u5237\u65B0\u8349\u7A3F"), /*#__PURE__*/React.createElement(U.Button, {
+      }, "\u5237\u65B0\u8349\u7A3F"), commands.key && /*#__PURE__*/React.createElement(U.Button, {
+        icon: "refresh-cw",
+        busy: commands.busy,
+        onClick: commands.lookup
+      }, window.WorkbenchTerms.actions.query_result), /*#__PURE__*/React.createElement(U.Button, {
         className: "btn primary",
         icon: save ? 'check' : 'x',
         disabled: !confirm || save && !name.trim() || commands.blocked || !data.write_context || data.write_context.capabilities['trial.' + kind] !== true,
@@ -53103,7 +53682,12 @@ function SMExport({
       onChange: e => setConfirm(e.target.checked)
     }), save ? '确认保存试调方案，冲突和未安排工序一并保留' : '确认放弃当前草稿'), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: commands.error
-    })));
+    }), commands.key && /*#__PURE__*/React.createElement("section", {
+      className: "tt-notice",
+      "aria-label": "\u5F85\u786E\u8BA4\u7684\u8BD5\u8C03\u63D0\u4EA4"
+    }, /*#__PURE__*/React.createElement("p", null, commands.note || '上次提交结果尚未确认。'), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+      value: commands.key
+    }))));
   }
   function Session({
     initialTarget,
@@ -53139,7 +53723,7 @@ function SMExport({
       [base, setBase] = React.useState(initialTarget.base || null);
     const [modal, setModal] = React.useState(initialTarget.base ? 'create' : null),
       [revision, refresh] = React.useReducer(n => n + 1, 0);
-    const [stored, setStored] = React.useState(null),
+    const stored = React.useRef(null),
       [selected, setSelected] = React.useState(null),
       [editing, setEditing] = React.useState(false);
     const [detailsOpen, setDetailsOpen] = React.useState(false);
@@ -53173,16 +53757,14 @@ function SMExport({
       C.workspace(v.data, target);
       return v;
     }, [key, isScenario, revision], !!key);
+    if (read.result) stored.current = {
+      key,
+      result: read.result
+    };
     React.useEffect(() => {
-      if (read.result) {
-        setStored({
-          key,
-          result: read.result
-        });
-        setBase(read.result.data.base);
-      }
+      if (read.result) setBase(read.result.data.base);
     }, [read.result]);
-    const result = read.result || stored && stored.key === key && stored.result,
+    const result = read.result || stored.current && stored.current.key === key && stored.current.result,
       data = result && result.data;
     const originalTask = React.useMemo(() => {
       if (!origin || !read.result) return {
@@ -53226,6 +53808,7 @@ function SMExport({
         };
       setModal(null);
       setEditing(false);
+      resetEditor();
       setTarget(next);
       setDirectory(false);
       if (d.scenario_ref) {
@@ -53233,7 +53816,7 @@ function SMExport({
         setOrigin(null);
       }
       refresh();
-      setNotice(d.scenario_ref ? '试调方案已保存，正在刷新。' : d.status === 'discarded' ? '草稿已放弃。' : '试调已保存。');
+      setNotice(d.scenario_ref ? '试调方案已保存。' : d.status === 'discarded' ? '草稿已放弃。' : '试调已保存。');
       notifyTarget(next);
     });
     const actions = {
@@ -53252,6 +53835,7 @@ function SMExport({
       }))) return false;
       setError(null);
       if (editing) {
+        if (commands.clearError) commands.clearError();
         setEditing(false);
         resetEditor();
       }
@@ -53280,8 +53864,9 @@ function SMExport({
         } : {
           draft_ref: next.draft_ref
         };
+        if (commands.clearError) commands.clearError();
         setTarget(canonical);
-        setStored(null);
+        stored.current = null;
         setSelected(null);
         setDetailsOpen(false);
         locatedOrigin.current = null;
@@ -53297,6 +53882,9 @@ function SMExport({
       commands.restore();
       refresh();
     }
+    // An actually rendered dialog owns the command feedback; the page below does not repeat it.
+    const finishing = !!data && ['save', 'discard'].includes(modal),
+      dialog = modal === 'create' || finishing;
     return /*#__PURE__*/React.createElement("div", {
       className: "plana trial-workspace",
       "data-trial-workspace": true,
@@ -53366,7 +53954,7 @@ function SMExport({
       }
     }))))), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: error
-    }), /*#__PURE__*/React.createElement(U.ErrorBox, {
+    }), !dialog && !editing && /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: commands.error
     }), /*#__PURE__*/React.createElement(U.ErrorBox, {
       error: originalTask.error
@@ -53376,7 +53964,7 @@ function SMExport({
       icon: "refresh-cw",
       onClick: reload,
       disabled: commands.busy
-    }, "\u5237\u65B0\u8BD5\u8C03\u5185\u5BB9\u548C\u64CD\u4F5C\u8BB0\u5F55"), commands.key && /*#__PURE__*/React.createElement("section", {
+    }, "\u5237\u65B0\u8BD5\u8C03\u5185\u5BB9\u548C\u64CD\u4F5C\u8BB0\u5F55"), !dialog && commands.key && /*#__PURE__*/React.createElement("section", {
       className: "tt-notice",
       "aria-label": "\u5F85\u786E\u8BA4\u7684\u8BD5\u8C03\u63D0\u4EA4"
     }, /*#__PURE__*/React.createElement("strong", null, "\u4E0A\u6B21\u8BD5\u8C03\u63D0\u4EA4\u5F85\u786E\u8BA4"), /*#__PURE__*/React.createElement("p", null, commands.note || '上次提交结果尚未确认。'), /*#__PURE__*/React.createElement("div", {
@@ -53470,16 +54058,23 @@ function SMExport({
       initialScope: initialTarget.base ? initialTarget.scope || {} : {},
       fixedBase: !!origin,
       onExisting: origin ? () => {
+        if (commands.clearError) commands.clearError();
         setModal(null);
         setDirectory(true);
       } : undefined,
       commands: commands,
-      onClose: () => setModal(null)
-    }), data && ['save', 'discard'].includes(modal) && /*#__PURE__*/React.createElement(Finish, {
+      onClose: () => {
+        if (commands.clearError) commands.clearError();
+        setModal(null);
+      }
+    }), finishing && /*#__PURE__*/React.createElement(Finish, {
       data: data,
       kind: modal,
       commands: actions,
-      onClose: () => setModal(null),
+      onClose: () => {
+        if (commands.clearError) commands.clearError();
+        setModal(null);
+      },
       onRecheck: reload
     }));
   }
@@ -53544,24 +54139,29 @@ function SMExport({
     }, {}) : x);
     return canonical(a) === canonical(b);
   }
+  const DAYS = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   function time(v) {
     if (!text(v) || !/^(?!0000)\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.(?!000000$)\d{6})?(?![\s\S])/.test(v)) return false;
-    const calendar = v.slice(0, 19),
-      d = new Date(calendar + 'Z');
-    return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 19) === calendar;
+    const y = (v.charCodeAt(0) - 48) * 1000 + (v.charCodeAt(1) - 48) * 100 + (v.charCodeAt(2) - 48) * 10 + (v.charCodeAt(3) - 48);
+    const m = (v.charCodeAt(5) - 48) * 10 + (v.charCodeAt(6) - 48),
+      d = (v.charCodeAt(8) - 48) * 10 + (v.charCodeAt(9) - 48);
+    return m >= 1 && m <= 12 && d >= 1 && d <= (m === 2 && y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0) ? 29 : DAYS[m]);
   }
   const issues = v => Array.isArray(v) && v.every(r => shape(r, ['code', 'message', 'severity'], ['task_ref', 'related_task_ref']) && text(r.code) && r.code && text(r.message) && r.message && r.severity === 'blocker' && ['task_ref', 'related_task_ref'].every(k => r[k] === undefined || r[k] === null || ref(r[k])));
   function overview(v) {
     check(object(v) && ref(v.scenario_ref) && ref(v.draft_ref) && v.scenario_ref !== v.draft_ref && positive(v.task_count) && v.scope_complete === true && shape(v.baseline, ['plan_ref', 'version']) && (v.baseline.plan_ref === null ? v.baseline.version === null : ref(v.baseline.plan_ref) && positive(v.baseline.version)));
+    if (v.data_context_ref != null) check(window.RunAdoptionAPI.contextRef(v.data_context_ref));
     return {
       scenario_ref: v.scenario_ref,
       draft_ref: v.draft_ref,
-      baseline: {
-        ...v.baseline
-      },
+      baseline: v.baseline,
       task_count: v.task_count,
-      scope_complete: true
+      scope_complete: true,
+      data_context_ref: v.data_context_ref == null ? null : v.data_context_ref
     };
+  }
+  function sameScope(a, b) {
+    return a.scenario_ref === b.scenario_ref && a.draft_ref === b.draft_ref && a.task_count === b.task_count && a.scope_complete === b.scope_complete && a.baseline.plan_ref === b.baseline.plan_ref && a.baseline.version === b.baseline.version;
   }
   function source(scenarioRef, data) {
     check(ref(scenarioRef) && object(data) && data.scenario_ref === scenarioRef && data.status === 'saved' && data.tasks_complete === true && Array.isArray(data.tasks) && data.tasks.length === data.task_count, '请先完整读取所选的试调方案；不能采用其他记录或不完整的内容。');
@@ -53580,7 +54180,7 @@ function SMExport({
       validation = d && d.validation;
     check(object(d) && d.scenario_ref === original.scenario_ref && shape(validation, ['status', 'can_adopt', 'issues']) && issues(validation.issues) && shape(c, ['write_token', 'expires_at', 'capabilities', 'blocked_reasons']) && shape(c.capabilities, [ACTION]) && issues(c.blocked_reasons));
     if (validation.can_adopt === true) {
-      check(shape(d, ['scenario_ref', 'draft_ref', 'baseline', 'task_count', 'scope_complete', 'validation', 'write_context']) && equal(overview(d), overview(original)) && validation.status === 'valid' && !validation.issues.length && c.capabilities[ACTION] === true && token(c.write_token) && time(c.expires_at) && c.expires_at > v.meta.as_of && !c.blocked_reasons.length);
+      check(shape(d, ['scenario_ref', 'draft_ref', 'baseline', 'task_count', 'scope_complete', 'validation', 'write_context'], ['data_context_ref']) && sameScope(overview(d), overview(original)) && validation.status === 'valid' && !validation.issues.length && c.capabilities[ACTION] === true && token(c.write_token) && time(c.expires_at) && c.expires_at > v.meta.as_of && !c.blocked_reasons.length);
     } else check(shape(d, ['scenario_ref', 'validation', 'write_context']) && validation.can_adopt === false && validation.status === 'blocked' && validation.issues.length > 0 && equal(validation.issues, c.blocked_reasons) && c.capabilities[ACTION] === false && c.write_token === null && c.expires_at === null);
     return d;
   }
@@ -53607,12 +54207,16 @@ function SMExport({
   }
   function lookup(v, intent) {
     const d = envelope(v);
-    check(shape(d, ['state', 'receipt', 'may_be_in_flight', 'can_retry_automatically']) && d.can_retry_automatically === false);
-    if (d.state === 'not_observed') {
-      check(d.receipt === null && d.may_be_in_flight === true);
-      return null;
+    if (d?.state === 'not_observed') {
+      check(shape(d, ['state', 'receipt', 'may_be_in_flight', 'can_retry_automatically']) && d.receipt === null && typeof d.may_be_in_flight === 'boolean' && d.can_retry_automatically === false);
+      return {
+        state: 'not_observed',
+        receipt: null,
+        may_be_in_flight: d.may_be_in_flight,
+        can_retry_automatically: false
+      };
     }
-    check(d.state === 'committed' && d.may_be_in_flight === false);
+    check(shape(d, ['state', 'receipt']) && d.state === 'committed');
     return receipt(d.receipt, intent);
   }
   function failure(v, status, intent) {
@@ -53671,9 +54275,14 @@ function SMExport({
           input: input(intent.input)
         }, undefined, intent), intent);
       },
-      async lookup(intent, signal) {
+      async lookup(intent, signal, options = {}) {
         check(key(intent.request_key) && ref(intent.scenario_ref));
-        return lookup(await request(intent.scenario_ref + '/adoption-commands/' + intent.request_key, undefined, signal, intent), intent);
+        let query = '';
+        if (options.data_context_ref != null) {
+          check(window.RunAdoptionAPI.contextRef(options.data_context_ref));
+          query = '?data_context_ref=' + encodeURIComponent(options.data_context_ref);
+        }
+        return lookup(await request(intent.scenario_ref + '/adoption-commands/' + intent.request_key + query, undefined, signal, intent), intent);
       }
     };
   }
@@ -53681,6 +54290,7 @@ function SMExport({
     create,
     source,
     overview,
+    sameScope,
     receipt,
     input,
     check,
@@ -53700,7 +54310,7 @@ function SMExport({
     EVENT = KEY + '_changed';
   function valid(v) {
     try {
-      return A.shape(v, ['schema_version', 'scenario_ref', 'request_key', 'input', 'preview', 'phase'], v.phase === 'committed' ? ['receipt'] : []) && v.schema_version === 1 && A.key(v.request_key) && A.equal(A.overview(v.preview), v.preview) && v.scenario_ref === v.preview.scenario_ref && A.equal(A.input(v.input), v.input) && ['pending', 'rejected', 'committed'].includes(v.phase) && (v.phase !== 'committed' || !!A.receipt(v.receipt, v));
+      return A.shape(v, ['schema_version', 'scenario_ref', 'request_key', 'input', 'preview', 'phase'], v.phase === 'committed' ? ['receipt'] : []) && v.schema_version === 1 && A.key(v.request_key) && A.shape(v.preview, ['scenario_ref', 'draft_ref', 'baseline', 'task_count', 'scope_complete'], ['data_context_ref']) && A.overview(v.preview) && v.scenario_ref === v.preview.scenario_ref && A.equal(A.input(v.input), v.input) && ['pending', 'rejected', 'committed'].includes(v.phase) && (v.phase !== 'committed' || !!A.receipt(v.receipt, v));
     } catch (_) {
       return false;
     }
@@ -53738,7 +54348,7 @@ function SMExport({
   function begin(preview, values, previous) {
     const scope = A.overview(preview),
       input = A.input(values);
-    A.check(!previous || valid(previous) && previous.phase === 'rejected' && A.equal(previous.preview, scope) && A.equal(previous.input, input), '上次提交的试调方案、原因和经办人已绑定，改了内容不能沿用同一个操作编号。');
+    A.check(!previous || valid(previous) && previous.phase === 'rejected' && A.sameScope(previous.preview, scope) && A.equal(previous.input, input), '上次提交的试调方案、原因和经办人已绑定，改了内容不能沿用同一个操作编号。');
     const requestKey = previous ? previous.request_key : 'trial-adoption-' + Array.from(crypto.getRandomValues(new Uint8Array(24)), n => n.toString(16).padStart(2, '0')).join('');
     return save({
       schema_version: 1,
@@ -53786,7 +54396,7 @@ function SMExport({
       [error, setError] = React.useState(''),
       [notice, setNotice] = React.useState('');
     window.WorkbenchGuards.useDirtyGuard({
-      dirty: !saved && (!!draft.reason || draft.declared_operator !== remembered()),
+      dirty: open && !saved && (!!draft.reason || draft.declared_operator !== remembered()),
       message: '正式采用的原因或经办人还没提交。'
     });
     const [revision, refresh] = React.useReducer(v => v + 1, 0);
@@ -53831,7 +54441,7 @@ function SMExport({
           setSaved(value);
           setPreview(null);
           setConsent(false);
-          if (value) setDraft(value.input);
+          setDraft(value ? value.input : empty());
         }
         setStorageError('');
       } catch (e) {
@@ -53890,12 +54500,24 @@ function SMExport({
       if (!intent || intent.phase === 'rejected' || lock.current || storageError) return;
       setChecking(true);
       try {
-        const found = await api.lookup(intent, signal);
+        const found = await api.lookup(intent, signal, {
+          data_context_ref: intent.preview.data_context_ref
+        });
         if (!mounted.current || signal && signal.aborted) return;
-        if (found) accept(found, intent);else {
-          setError('');
-          setNotice(window.WorkbenchTerms.outcomes.pending('采用'));
-        }
+        if (found.state === 'not_observed') {
+          if (found.may_be_in_flight === false) {
+            if (!A.equal(active.current, intent)) {
+              sync();
+              return;
+            }
+            save(null, intent);
+            setError('');
+            setNotice('上次采用记录的数据来源已失效，已结束本机待确认记录。请对当前试调方案重新预检。');
+          } else {
+            setError('');
+            setNotice(window.WorkbenchTerms.outcomes.pending('采用'));
+          }
+        } else accept(found, intent);
       } catch (e) {
         if (mounted.current && !(signal && signal.aborted)) setError('上次采用的结果还没查到。' + e.message);
       } finally {
@@ -53913,7 +54535,7 @@ function SMExport({
     }, [saved, revision, storageError]);
     async function inspect() {
       if (lock.current || storageError || disabled || !original || saved && saved.phase !== 'rejected') return;
-      if (saved && !A.equal(saved.preview, original)) {
+      if (saved && !A.sameScope(saved.preview, original)) {
         setError('上次采用操作属于另一个试调方案或范围，请先查询那条记录的结果。');
         return;
       }
@@ -53937,7 +54559,7 @@ function SMExport({
       }
     }
     async function submit() {
-      if (lock.current || storageError || disabled || !original || !preview || !preview.validation.can_adopt || !consent || !A.equal(original, A.overview(preview)) || saved && saved.phase !== 'rejected') return;
+      if (lock.current || storageError || disabled || !original || !preview || !preview.validation.can_adopt || !consent || !A.sameScope(original, A.overview(preview)) || saved && saved.phase !== 'rejected') return;
       let values;
       try {
         values = A.input({
@@ -53955,11 +54577,17 @@ function SMExport({
       setError('');
       setNotice('');
       try {
-        A.check(navigator.locks && typeof navigator.locks.request === 'function', '当前浏览器不支持这项操作，请用 Chrome 打开。');
+        if (!navigator.locks || typeof navigator.locks.request !== 'function') {
+          if (mounted.current) setError('当前浏览器不支持这项操作，请用 Chrome 打开。');
+          return;
+        }
         await navigator.locks.request(KEY, {
           ifAvailable: true
         }, async acquired => {
-          A.check(acquired, '另一个页面正在处理这次采用，请先在那个页面点「查询结果」。');
+          if (!acquired) {
+            if (mounted.current) setError('另一个页面正在处理这次采用，请先在那个页面点「查询结果」。');
+            return;
+          }
           if (!mounted.current || current.current.disabled || !A.equal(original, current.current.original)) return;
           const intent = begin(preview, values, active.current);
           active.current = intent;
@@ -54011,6 +54639,10 @@ function SMExport({
       setOpen(false);
       setPreview(null);
       setConsent(false);
+      if (!active.current) {
+        setError('');
+        setDraft(empty());
+      }
     }
     return {
       saved,
@@ -54258,7 +54890,7 @@ function SMExport({
       }
     }, label), !s.open && s.saved && /*#__PURE__*/React.createElement("span", {
       className: "ta-inline"
-    }, s.result ? '提交时的采用结果已恢复。' : '上次的采用操作还在，请先查询结果。'), !s.open && s.storageError && /*#__PURE__*/React.createElement("span", {
+    }, s.result ? '提交时的采用结果已恢复。' : s.saved.phase === 'pending' ? '上次的采用操作还在，请先查询结果。' : '上次采用未通过，可重新核对或结束本次未采用。'), !s.open && s.storageError && /*#__PURE__*/React.createElement("span", {
       className: "ta-inline",
       role: "alert"
     }, s.storageError, /*#__PURE__*/React.createElement(U.Button, {
@@ -54521,12 +55153,16 @@ function SMExport({
     }), /*#__PURE__*/React.createElement(Button, {
       icon: "x",
       "aria-label": "\u6E05\u9664\u7B5B\u9009",
-      onClick: () => onChange({
-        source: 'production',
-        ...(value.plan_ref ? {
-          plan_ref: value.plan_ref
-        } : {})
-      })
+      onClick: () => {
+        const next = {
+          source: 'production',
+          ...(value.plan_ref ? {
+            plan_ref: value.plan_ref
+          } : {})
+        };
+        setDraft(next);
+        onChange(next);
+      }
     }))), /*#__PURE__*/React.createElement("div", {
       className: "aw-scope-filters",
       hidden: !more
@@ -54611,7 +55247,8 @@ function SMExport({
         const next = event.key === 'Home' ? 0 : event.key === 'End' ? 4 : (index + (event.key === 'ArrowRight' ? 1 : -1) + 5) % 5;
         const nextTopic = window.ReportAPI.topics[next];
         onChange(nextTopic);
-        document.getElementById('report-tab-' + nextTopic).focus();
+        const el = document.getElementById('report-tab-' + nextTopic);
+        if (el) el.focus();
       }
     }, labels[index])));
   }
@@ -55318,7 +55955,27 @@ function SMExport({
     const detail = request.result && request.result.data.detail;
     const [page, setPage] = React.useState(initialView ? initialView.page : 1),
       [size, setSize] = React.useState(initialView ? initialView.size : 10);
-    React.useEffect(() => setPage(initialView ? initialView.page : 1), [operationRef, input.snapshot_ref]);
+    const prevRef = React.useRef({
+      operationRef,
+      snapshotRef: input.snapshot_ref
+    });
+    React.useEffect(() => {
+      const prev = prevRef.current;
+      prevRef.current = {
+        operationRef,
+        snapshotRef: input.snapshot_ref
+      };
+      if (prev.operationRef !== operationRef) {
+        setPage(initialView ? initialView.page : 1);
+        setSize(initialView ? initialView.size : 10);
+      } else if (prev.snapshotRef !== input.snapshot_ref) {
+        setPage(1);
+        if (onView) onView({
+          page: 1,
+          size
+        });
+      }
+    }, [operationRef, input.snapshot_ref]);
     const row = detail && detail.operation;
     const actions = /*#__PURE__*/React.createElement("div", {
       className: "rw-actions"
@@ -55335,7 +55992,18 @@ function SMExport({
       reason: typeof onOpenOperation !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: () => onOpenOperation(operationRef, input, row, 'fieldgantt')
     }, "\u67E5\u770B\u73B0\u573A\u5B9E\u9645\u7518\u7279"));
-    const records = detail ? detail.records.slice((page - 1) * size, page * size) : [];
+    const pages = detail ? Math.max(1, Math.ceil(detail.records.length / size)) : 1,
+      currentPage = Math.min(page, pages);
+    React.useEffect(() => {
+      if (detail && currentPage !== page) {
+        setPage(currentPage);
+        if (onView) onView({
+          page: currentPage,
+          size
+        });
+      }
+    }, [detail, currentPage, page, size]);
+    const records = React.useMemo(() => detail ? detail.records.slice((currentPage - 1) * size, currentPage * size) : [], [detail, currentPage, size]);
     return /*#__PURE__*/React.createElement(window.WorkbenchDetailPanel, {
       className: "rw-detail",
       detailKey: operationRef,
@@ -55367,10 +56035,10 @@ function SMExport({
       className: "rw-detail-pager"
     }, /*#__PURE__*/React.createElement(window.ReportControls.Page, {
       page: {
-        number: page,
+        number: currentPage,
         size,
         total: detail.records.length,
-        pages: Math.max(1, Math.ceil(detail.records.length / size))
+        pages
       },
       onChange: patch => {
         setPage(patch.page);
@@ -55659,6 +56327,11 @@ function SMExport({
     onResourceView,
     expanded = false
   }) {
+    if (!expanded && !open) return /*#__PURE__*/React.createElement("details", {
+      className: "er-chart-disclosure",
+      open: open,
+      onToggle: event => onChange(event.currentTarget.open)
+    }, /*#__PURE__*/React.createElement("summary", null, title));
     const {
         DistributionChart,
         TrendChart
@@ -55783,6 +56456,7 @@ function SMExport({
     async function download() {
       setDownloading(true);
       setError(null);
+      setNotice('');
       try {
         const result = await api.download('/api/workbench/v1/reports/' + kind + '/export', {
           ...input,
@@ -55834,10 +56508,11 @@ function SMExport({
       "aria-label": "\u8BFB\u53D6\u62A5\u8868\u8303\u56F4",
       onClick: () => {
         setFilter(draft);
-        setTable({
+        setTable(old => ({
+          ...old,
           page: 1,
-          size: 10
-        });
+          snapshot_ref: undefined
+        }));
       }
     })), kind !== 'official-review' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "\u641C\u7D22", /*#__PURE__*/React.createElement("input", {
       type: "search",
@@ -55850,10 +56525,11 @@ function SMExport({
       onKeyDown: event => {
         if (event.key === 'Enter') {
           setFilter(draft);
-          setTable({
+          setTable(old => ({
+            ...old,
             page: 1,
-            size: 10
-          });
+            snapshot_ref: undefined
+          }));
         }
       }
     })), /*#__PURE__*/React.createElement(Button, {
@@ -55861,10 +56537,11 @@ function SMExport({
       "aria-label": "\u641C\u7D22\u62A5\u8868\u7ED3\u679C",
       onClick: () => {
         setFilter(draft);
-        setTable({
+        setTable(old => ({
+          ...old,
           page: 1,
-          size: 10
-        });
+          snapshot_ref: undefined
+        }));
       }
     }), response && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("label", null, "\u6392\u5E8F", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u62A5\u8868\u6392\u5E8F\u5217",
@@ -55880,7 +56557,7 @@ function SMExport({
       value: column.key
     }, column.label)))), /*#__PURE__*/React.createElement("label", null, "\u987A\u5E8F", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u62A5\u8868\u6392\u5E8F\u65B9\u5411",
-      value: table.direction || 'asc',
+      value: table.direction || response.data.page.sort[0].direction || 'asc',
       onChange: event => setTable(old => ({
         ...old,
         page: 1,
@@ -56014,16 +56691,23 @@ function SMExport({
       let frame = 0;
       const remember = event => {
         const node = root.current,
-          table = node && node.querySelector('.rw-primary-table'),
+          table = node && (node.querySelector('.rw-primary-table') || node.querySelector('.rw-table-scroll')),
           main = node && node.closest('.main-content');
         if (!node || ![table, main, document, window].includes(event.target)) return;
         cancelAnimationFrame(frame);
-        frame = requestAnimationFrame(() => setScroll({
-          tableLeft: table ? table.scrollLeft : 0,
-          tableTop: table ? table.scrollTop : 0,
-          mainTop: main ? main.scrollTop : 0,
-          windowTop: window.pageYOffset
-        }));
+        frame = requestAnimationFrame(() => {
+          const current = root.current;
+          if (!current) return;
+          const activeTable = current.querySelector('.rw-primary-table') || current.querySelector('.rw-table-scroll'),
+            activeMain = current.closest('.main-content');
+          const next = {
+            tableLeft: activeTable ? activeTable.scrollLeft : 0,
+            tableTop: activeTable ? activeTable.scrollTop : 0,
+            mainTop: activeMain ? activeMain.scrollTop : 0,
+            windowTop: window.pageYOffset
+          };
+          setScroll(old => old && old.tableLeft === next.tableLeft && old.tableTop === next.tableTop && old.mainTop === next.mainTop && old.windowTop === next.windowTop ? old : next);
+        });
       };
       document.addEventListener('scroll', remember, true);
       return () => {
@@ -56039,8 +56723,10 @@ function SMExport({
       restored.current = true;
       if (!initialContext.scroll) return;
       const frame = requestAnimationFrame(() => {
-        const table = root.current.querySelector('.rw-table-scroll'),
-          main = root.current.closest('.main-content');
+        const node = root.current;
+        if (!node) return;
+        const table = node.querySelector('.rw-primary-table') || node.querySelector('.rw-table-scroll'),
+          main = node.closest('.main-content');
         if (table) {
           table.scrollLeft = initialContext.scroll.tableLeft || 0;
           table.scrollTop = initialContext.scroll.tableTop || 0;
@@ -56081,6 +56767,10 @@ function SMExport({
         ...old,
         snapshot_ref: undefined
       }));
+      setDetailView(old => ({
+        ...old,
+        page: 1
+      }));
       setNotice('');
       setError(null);
       refresh();
@@ -56115,8 +56805,9 @@ function SMExport({
       }
     }, [mode, !!data]);
     function currentContext() {
-      const table = root.current.querySelector('.rw-primary-table'),
-        main = root.current.closest('.main-content');
+      const node = root.current,
+        table = node && (node.querySelector('.rw-primary-table') || node.querySelector('.rw-table-scroll')),
+        main = node && node.closest('.main-content');
       return {
         scope: window.ReportAPI.scope(data.scope),
         topic: data.topic,
@@ -57153,8 +57844,23 @@ function SMExport({
     function sync(event) {
       try {
         const value = event && event.type === EVENT ? event.detail : read();
-        active.current = value;
-        setSaved(value);
+        if (value !== active.current && !A.equal(value, active.current)) {
+          active.current = value;
+          setSaved(value);
+          setPreview(null);
+          setConsent(false);
+          setDraft(value ? {
+            reason: value.input.reason,
+            declared_operator: value.input.declared_operator
+          } : {
+            reason: '',
+            declared_operator: ''
+          });
+          if (!value || value.phase === 'committed') {
+            setError('');
+            setNotice('');
+          }
+        }
         setStorageError('');
       } catch (e) {
         setStorageError(e.message);
@@ -57177,11 +57883,16 @@ function SMExport({
         phase: 'committed',
         receipt: value
       };
-      save(committed, original);
-      if (mounted.current) {
-        setSaved(committed);
-        setError('');
-        setNotice('');
+      try {
+        save(committed, original);
+        active.current = committed;
+        if (mounted.current) {
+          setSaved(committed);
+          setError('');
+          setNotice('');
+        }
+      } catch (e) {
+        if (mounted.current) setStorageError(e.message);
       }
     }
     React.useEffect(() => {
@@ -57240,17 +57951,23 @@ function SMExport({
       }
     }
     async function submit() {
-      if (lock.current || stale || storageError || !preview || !preview.validation.can_adopt || !consent || !detail || !A.equal(A.binding(detail.suggestion), A.binding(preview.suggestion)) || !A.equal(A.input(draft), preview.input)) return;
+      if (lock.current || stale || storageError || !preview || !preview.validation.can_adopt || !consent || !detail || saved && saved.phase !== 'rejected' || !A.equal(A.binding(detail.suggestion), A.binding(preview.suggestion)) || !A.equal(A.input(draft), preview.input)) return;
       lock.current = true;
       setBusy(true);
       setError('');
       setNotice('');
       try {
-        A.check(navigator.locks && typeof navigator.locks.request === 'function', '当前浏览器不支持这一步，请用 Chrome 打开后重试。');
+        if (!navigator.locks || typeof navigator.locks.request !== 'function') {
+          if (mounted.current) setError('当前浏览器不支持这一步，请用 Chrome 打开后重试。');
+          return;
+        }
         await navigator.locks.request(KEY, {
           ifAvailable: true
         }, async acquired => {
-          A.check(acquired, '另一个页面正在采用，请先在那边查询结果。');
+          if (!acquired) {
+            if (mounted.current) setError('另一个页面正在采用，请先在那边查询结果。');
+            return;
+          }
           const original = begin(preview, active.current);
           active.current = original;
           setSaved(original);
@@ -57286,6 +58003,12 @@ function SMExport({
         setOpen(false);
         setPreview(null);
         setConsent(false);
+        setError('');
+        setNotice('');
+        setDraft({
+          reason: '',
+          declared_operator: ''
+        });
       } catch (e) {
         setStorageError(e.message);
       }
@@ -58293,7 +59016,6 @@ function SMExport({
   window.APSMasterOverviewContract = {
     domains,
     statuses,
-    defaults,
     columns,
     scope,
     target,
@@ -58702,9 +59424,6 @@ function SMExport({
     useMemo,
     useRef
   } = React;
-  async function readList(api, scope, page, token, signal) {
-    return api.list(scope, page, token, signal);
-  }
   function readContext(context) {
     const empty = {
       scope: C.scope({}),
@@ -58848,10 +59567,19 @@ function SMExport({
       [error, setError] = useState(null);
     const [summary, setSummary] = useState(null),
       [completedRequest, setCompletedRequest] = useState(null);
-    const [selected, setSelected] = useState(null),
-      [section, setSection] = useState('issues'),
-      [detailPage, setDetailPage] = useState(1);
+    const [detailRequest, setDetailRequest] = useState({
+      selected: null,
+      section: 'issues',
+      page: 1,
+      captured: null
+    });
+    const {
+      selected,
+      section,
+      page: detailPage
+    } = detailRequest;
     const [detail, setDetail] = useState(null),
+      [completedDetail, setCompletedDetail] = useState(null),
       [detailLoading, setDetailLoading] = useState(false),
       [detailError, setDetailError] = useState(null);
     const [search, setSearch] = useState(initial.scope.query),
@@ -58872,11 +59600,14 @@ function SMExport({
       readError = completedRequest === request ? error : null;
     const data = result && (completedRequest === request || request.keep) ? result.data : null,
       scope = data ? data.scope : request.scope;
+    const detailPending = Boolean(selected) && !detailRequest.captured && (detailLoading || completedDetail !== detailRequest);
+    const currentDetail = !selected ? null : detailRequest.captured || (completedDetail === detailRequest ? detail : null);
+    const currentDetailError = completedDetail === detailRequest ? detailError : null;
     const currentScope = useRef(scope);
     currentScope.current = scope;
     React.useLayoutEffect(() => {
       if (!pending && listRef.current) listHeight.current = Math.ceil(listRef.current.parentElement.getBoundingClientRect().height);
-    }, [pending, data, selected, detail, detailLoading]);
+    }, [pending, data, selected, currentDetail, detailPending]);
     const refresh = () => {
       detailFocus.current = false;
       setActionError(null);
@@ -58935,7 +59666,6 @@ function SMExport({
     useEffect(() => {
       const controller = new AbortController();
       let active = true;
-      const kept = request.keep ? selected : null;
       setLoading(true);
       setError(null);
       setStale(false);
@@ -58943,14 +59673,20 @@ function SMExport({
       setMessage(request.restore && request.restore.notice || '');
       if (!request.keep) {
         setResult(null);
-        setSelected(null);
+        setDetailRequest({
+          selected: null,
+          section: 'issues',
+          page: 1,
+          captured: null
+        });
         setDetail(null);
+        setCompletedDetail(null);
       }
       if (exportController.current) exportController.current.abort();
       async function read() {
         try {
           if (initial.error) throw initial.error;
-          let next = request.locate ? await api.locate(request.scope, request.locate, request.token, controller.signal) : await readList(api, request.scope, request.page, request.token, controller.signal);
+          let next = request.locate ? await api.locate(request.scope, request.locate, request.token, controller.signal) : await api.list(request.scope, request.page, request.token, controller.signal);
           if (request.initial) {
             if (!C.ref(request.initial.entity_ref) || !C.domains.some(row => row[0] === request.initial.domain)) C.fail('定位条件缺少资料类别或记录编号，页面没有跳转。请刷新后重试。');
             next = await api.locate(next.data.scope, request.initial, next.meta.snapshot_ref, controller.signal);
@@ -58959,18 +59695,31 @@ function SMExport({
           const focus = next.data.selected,
             restored = request.restore && request.restore.selected;
           const same = (item, target) => (item.entity_ref || item.ref) === target.entity_ref && item.domain === target.domain && (!target.issue_ref || item.issue_ref === target.issue_ref);
-          const row = kept ? next.data.rows.find(item => same(item, kept)) : restored ? next.data.rows.find(item => same(item, restored)) : focus ? next.data.rows.find(item => item.ref === focus.entity_ref && item.domain === focus.domain) : request.restore && request.restore.restoreSelection && request.restore.selected === null ? null : next.data.rows[0];
-          if (restored && !row) C.fail('原来选中的资料已不在当前范围，这里没有自动换成其他记录。请刷新后重试。');
+          const restoredRow = restored ? next.data.rows.find(item => same(item, restored)) : null;
+          if (restored && !restoredRow) C.fail('原来选中的资料已不在当前范围，这里没有自动换成其他记录。请刷新后重试。');
+          const defaultRow = restored ? restoredRow : focus ? next.data.rows.find(item => item.ref === focus.entity_ref && item.domain === focus.domain) : request.restore && request.restore.restoreSelection && request.restore.selected === null ? null : next.data.rows[0];
+          const capturedRow = focus || next.data.rows[0],
+            capturedSelection = capturedRow ? selection(capturedRow) : null;
+          const captured = capturedSelection ? C.detail({
+            ...next,
+            data: next.data.selected_detail
+          }, next.data.scope, capturedSelection, 'issues', next.meta.snapshot_ref) : null;
           setResult(next);
           setSummary({
             overview: next.data.overview,
             asOf: next.meta.as_of
           });
-          setSelected(row ? selection(row) : null);
-          if (!request.keep) {
-            setSection(request.restore ? request.restore.section : 'issues');
-            setDetailPage(request.restore ? request.restore.detailPage : 1);
-          }
+          setDetailRequest(current => {
+            const row = request.keep ? current.selected ? next.data.rows.find(item => same(item, current.selected)) : null : defaultRow;
+            const section = request.keep ? current.section : request.restore ? request.restore.section : 'issues';
+            const page = request.keep ? current.page : request.restore ? request.restore.detailPage : 1;
+            return {
+              selected: row ? selection(row) : null,
+              section,
+              page,
+              captured: row && capturedSelection && row.domain === capturedSelection.domain && (row.entity_ref || row.ref) === capturedSelection.entity_ref && section === 'issues' && page === 1 ? captured : null
+            };
+          });
         } catch (failure) {
           if (active && failure.name !== 'AbortError') setError(failure);
         } finally {
@@ -58989,6 +59738,14 @@ function SMExport({
     useEffect(() => {
       if (!result || !selected) {
         setDetail(null);
+        setCompletedDetail(null);
+        setDetailLoading(false);
+        setDetailError(null);
+        return undefined;
+      }
+      if (detailRequest.captured) {
+        setDetail(detailRequest.captured);
+        setCompletedDetail(detailRequest);
         setDetailLoading(false);
         setDetailError(null);
         return undefined;
@@ -59003,13 +59760,16 @@ function SMExport({
       }).catch(failure => {
         if (active && failure.name !== 'AbortError') setDetailError(failure);
       }).finally(() => {
-        if (active) setDetailLoading(false);
+        if (active) {
+          setCompletedDetail(detailRequest);
+          setDetailLoading(false);
+        }
       });
       return () => {
         active = false;
         controller.abort();
       };
-    }, [api, result, selected, section, detailPage]);
+    }, [api, result, detailRequest]);
     window.WorkbenchPageContext.useSnapshot({
       read_view: {
         scope,
@@ -59024,7 +59784,7 @@ function SMExport({
         section,
         detail_page: detailPage
       }
-    }, !!data && !pending && !readError && !initial.error && !detailLoading && !detailError && (!selected || !!detail));
+    }, !!data && !pending && !readError && !initial.error && !detailPending && !currentDetailError && (!selected || !!currentDetail));
     function selection(row) {
       return {
         ...row,
@@ -59045,9 +59805,12 @@ function SMExport({
     function select(row, button) {
       detailFocus.current = true;
       opener.current = button;
-      setSelected(selection(row));
-      setSection('issues');
-      setDetailPage(1);
+      setDetailRequest({
+        selected: selection(row),
+        section: 'issues',
+        page: 1,
+        captured: null
+      });
     }
     function clearFilters() {
       setSearch('');
@@ -59060,7 +59823,12 @@ function SMExport({
     }
     function closeDetail() {
       detailFocus.current = false;
-      setSelected(null);
+      setDetailRequest({
+        selected: null,
+        section,
+        page: detailPage,
+        captured: null
+      });
       const target = opener.current && opener.current.isConnected ? opener.current : listRef.current;
       opener.current = target;
       if (target) target.focus();
@@ -59333,27 +60101,37 @@ function SMExport({
         token: result.meta.snapshot_ref
       })
     })), /*#__PURE__*/React.createElement(window.MasterOverviewDetail, {
-      result: detail,
+      result: currentDetail,
       selected: selected,
       section: section,
       onSection: value => {
-        setSection(value);
-        setDetailPage(1);
+        if (value !== section || detailPage !== 1) setDetailRequest({
+          selected,
+          section: value,
+          page: 1,
+          captured: null
+        });
       },
-      onPage: setDetailPage,
+      onPage: page => {
+        if (page !== detailPage) setDetailRequest({
+          selected,
+          section,
+          page,
+          captured: null
+        });
+      },
       onLocate: locate,
       onMaintain: navigate,
       onBack: closeDetail,
       navigation: typeof onNavigate === 'function',
-      loading: detailLoading,
-      error: detailError,
+      loading: detailPending,
+      error: currentDetailError,
       triggerRef: opener,
       autoFocus: detailFocus.current
     })));
   }
   window.MasterOverviewWorkspace = MasterOverviewWorkspace;
   MasterOverviewWorkspace.readContext = readContext;
-  MasterOverviewWorkspace.readList = readList;
   MasterOverviewWorkspace.Statistics = Statistics;
   MasterOverviewWorkspace.ListTabs = ListTabs;
 })();
@@ -62013,24 +62791,28 @@ function SystemLiveOverview({
         window.removeEventListener(EVENT, changed);
       };
     }, []);
+    // api.command/api.lookup already checked the receipt; a failed local write belongs to storageError.
     function accept(v, original) {
-      C.receipt(v, original);
-      save({
-        ...original,
-        phase: 'confirmed',
-        receipt: v
-      }, original);
-      if (mounted.current) {
-        setError(null);
-        setNotice('请点「完成」查看最新登记。');
+      try {
+        save({
+          ...original,
+          phase: 'confirmed',
+          receipt: v
+        }, original);
+        if (mounted.current) {
+          setError(null);
+          setNotice('请点「完成」查看最新登记。');
+        }
+      } catch (e) {
+        if (mounted.current) setStorageError(e);
       }
     }
-    async function lookup() {
+    async function lookup(preserveError = false) {
       if (running.current || !active.current || active.current.phase !== 'pending') return;
       const original = active.current;
       running.current = true;
       setBusy(true);
-      setError(null);
+      if (!preserveError) setError(null);
       try {
         const v = await api.lookup(original);
         if (v) accept(v, original);else if (mounted.current) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。');
@@ -62050,14 +62832,28 @@ function SystemLiveOverview({
       setBusy(true);
       setError(null);
       setNotice('');
-      let original;
+      let original,
+        needLookup = false;
       try {
-        C.check(navigator.locks && typeof navigator.locks.request === 'function', '当前浏览器不支持，请用 Chrome 打开。');
+        if (!navigator.locks || typeof navigator.locks.request !== 'function') {
+          if (mounted.current) setError(new Error('当前浏览器不支持，请用 Chrome 打开。'));
+          return;
+        }
         await navigator.locks.request(KEY, {
           ifAvailable: true
         }, async lock => {
-          C.check(lock, '另一个页面有还没确认的外协登记，请先在那里点「查询结果」。');
-          const d = C.preview(preview, preview.data.input).data;
+          if (!lock) {
+            if (mounted.current) setError(new Error('另一个页面有还没确认的外协登记，请先在那里点「查询结果」。'));
+            return;
+          }
+          // The precheck has not touched localStorage, so its failure is an operation error.
+          let d;
+          try {
+            d = C.preview(preview, preview.data.input).data;
+          } catch (e) {
+            if (mounted.current) setError(e);
+            return;
+          }
           original = {
             version: 1,
             phase: 'pending',
@@ -62071,7 +62867,7 @@ function SystemLiveOverview({
             accept(await api.command(original, d.write_context.write_token), original);
           } catch (e) {
             // 明确被拒的登记什么都没写入：直接放弃这条待确认记录，表单回到可编辑状态，改好后重新预检提交。
-            if (C.isRejected(e)) save(null, original);
+            if (C.isRejected(e)) save(null, original);else needLookup = true;
             // Rejection returns to the form; pending outcomes remain in Pending. Keep the reason in the error box.
             if (mounted.current) {
               setError(e);
@@ -62085,7 +62881,7 @@ function SystemLiveOverview({
         running.current = false;
         if (mounted.current) setBusy(false);
       }
-      if (original && active.current && active.current.phase === 'pending') await lookup();
+      if (needLookup && active.current && active.current.request_key === original.request_key && active.current.phase === 'pending') await lookup(true);
     }
     function finish() {
       if (running.current) return false;
@@ -62109,7 +62905,7 @@ function SystemLiveOverview({
       busy,
       sync,
       submit,
-      lookup,
+      lookup: () => lookup(),
       finish
     };
   }
@@ -62155,7 +62951,6 @@ function SystemLiveOverview({
   }
   window.OutsourcingSession = {
     KEY,
-    valid,
     read,
     save,
     useCommand,
@@ -63507,8 +64302,8 @@ function SystemLiveOverview({
   function delivery(row, available = true) {
     C.check(window.DeliveryProjectionContract.row(row, !available));
   }
-  function baselineIdentity(value, expected) {
-    return shape(value, ['baseline_ref', 'version', 'captured_at', 'kind', 'available', 'captured_task_count', 'comparison_available', 'reason']) && ['baseline_ref', 'version', 'captured_at', 'kind'].every(key => C.equal(value[key], expected[key])) && typeof value.available === 'boolean' && count(value.captured_task_count) && typeof value.comparison_available === 'boolean' && (value.reason === null || C.object(value.reason) && C.text(value.reason.code) && C.text(value.reason.message));
+  function baselineIdentity(value, generation) {
+    return shape(value, ['baseline_ref', 'version', 'captured_at', 'kind', 'available', 'captured_task_count', 'comparison_available', 'reason']) && value.kind === 'admission_official' && A.version(value.version) && value.captured_at === generation.accepted_at && value.available === (value.version !== null) && count(value.captured_task_count) && typeof value.comparison_available === 'boolean' && (value.available ? C.ref(value.baseline_ref) : value.baseline_ref === null && value.captured_task_count === 0) && (value.reason === null || C.object(value.reason) && C.text(value.reason.code) && C.text(value.reason.message));
   }
   function summary(value, batchCount) {
     C.check(window.DeliveryProjectionContract.summary(value) && value.batch_count === batchCount && shape(value.changeovers, ['value', 'reason']) && nullable(count)(value.changeovers.value) && (value.changeovers.value === null ? C.text(value.changeovers.reason) : value.changeovers.reason === null));
@@ -63529,10 +64324,34 @@ function SystemLiveOverview({
     });
     ['benefits', 'costs'].forEach((key, index) => C.check(value[key].every(item => item.direction === (index ? 'worse' : 'better') && value.all_differences.some(entry => C.equal(entry, item))), '主要取舍与完整差值不一致，请刷新。'));
   }
-  function validate(payload, workspace, baseline) {
-    const d = D.envelope(payload),
-      expected = (workspace.batch_ref ? [workspace.batch_ref] : baseline.generation.input.batch_refs).slice().sort();
-    C.check(shape(d, ['candidate', 'generation', 'baseline', 'time_scope', 'batch_ref', 'batch_refs', 'batches', 'resources', 'summary', 'resource_common', 'machine_changes', 'resource_scope_complete', 'resource_scope_unknown_rows', 'basis', 'capabilities', 'tradeoffs']) && C.equal(d.candidate, workspace.candidate) && C.equal(d.generation, baseline.generation) && baselineIdentity(d.baseline, baseline.baseline) && C.equal(d.time_scope, baseline.time_scope) && d.batch_ref === workspace.batch_ref && C.equal(d.batch_refs, expected) && C.equal(d.capabilities, {
+  function validate(payload, scope) {
+    const d = D.envelope(payload);
+    C.check(shape(d, ['candidate', 'generation', 'baseline', 'time_scope', 'batch_ref', 'batch_refs', 'batches', 'resources', 'summary', 'resource_common', 'machine_changes', 'resource_scope_complete', 'resource_scope_unknown_rows', 'basis', 'capabilities', 'tradeoffs']));
+    A.summary(d.candidate, scope.run_ref);
+    C.check(d.candidate.candidate_ref === scope.candidate_ref, '返回的候选与所选方案不一致，请重新选择。');
+    const g = d.generation;
+    C.check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'source_verification']) && g.run_ref === d.candidate.run_ref && A.time(g.accepted_at) && (g.finished_at === null || A.time(g.finished_at)) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && g.current_entities_consulted === false && g.formal_version_allocated === false && C.equal(g.source_verification, {
+      facts_content_verified: true,
+      baseline_matches_archived_schedule: true,
+      execution_verified_at: 'run_admission',
+      input_source_verified: true,
+      candidate_content_verified: true
+    }));
+    const input = g.input;
+    C.check(shape(input, ['batch_refs', 'start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds']) && Array.isArray(input.batch_refs) && input.batch_refs.every(C.ref) && new Set(input.batch_refs).size === input.batch_refs.length && ['start_date', 'end_date'].every(key => A.time(input[key] + 'T00:00:00')) && input.start_date <= input.end_date && typeof input.ready_check === 'boolean' && ['auto_assign', 'exclude'].includes(input.missing_resource_policy) && input.completed_policy === 'preserve_actuals' && (input.material_strategy === undefined || ['strict', 'stage', 'split'].includes(input.material_strategy)) && (input.time_budget_seconds === undefined || window.RunGenerationContract.budget(input.time_budget_seconds)));
+    const hold = input.hold_window;
+    C.check(hold === undefined || hold === null || shape(hold, ['start', 'end']) && A.time(hold.start + ':00') && A.time(hold.end + ':00') && hold.start < hold.end);
+    const expected = scope.batch_ref ? [scope.batch_ref] : input.batch_refs.slice().sort();
+    C.check(baselineIdentity(d.baseline, g) && C.equal(d.time_scope, {
+      range_start: scope.range_start,
+      range_end: scope.range_end,
+      interval: 'half_open_overlap',
+      membership: 'either_side_overlap',
+      counterpart_policy: 'retain_complete_counterpart',
+      time_basis: 'factory_local',
+      unplanned_policy: 'included_without_time_interval',
+      unknown_or_zero_interval_policy: 'included_without_time_interval'
+    }) && d.batch_ref === (scope.batch_ref || null) && C.equal(d.batch_refs, expected) && C.equal(d.capabilities, {
       view: true,
       adopt: false,
       edit_draft: false,
@@ -63569,12 +64388,19 @@ function SystemLiveOverview({
   }
   function create(fetcher = window.fetch.bind(window)) {
     return {
-      async read(workspace, baseline, signal) {
-        const scope = window.RunBaselineAPI.scope(workspace);
-        C.check(scope.range_start && scope.range_end, '请先填写两个方案共同的开始和结束时间。');
-        const value = await D.request('/api/workbench/v1/dashboard/candidates/' + workspace.candidate.candidate_ref + '/comparison?' + new URLSearchParams(scope), fetcher, signal);
-        validate(value, workspace, baseline);
-        return value;
+      async read(value, signal) {
+        const scope = context(value);
+        C.check(scope.candidate_ref && scope.range_start && scope.range_end, '请先选择候选并填写两个方案共同的开始和结束时间。');
+        const query = {
+          range_start: scope.range_start,
+          range_end: scope.range_end,
+          ...(scope.batch_ref ? {
+            batch_ref: scope.batch_ref
+          } : {})
+        };
+        const payload = await D.request('/api/workbench/v1/dashboard/candidates/' + scope.candidate_ref + '/comparison?' + new URLSearchParams(query), fetcher, signal);
+        validate(payload, scope);
+        return payload;
       }
     };
   }
@@ -63853,16 +64679,23 @@ function SystemLiveOverview({
       selection.current.located = true;
       // Wait for the selected task's page, then locate once; later data, zoom and resize keep the user's position.
     }, [selectedBatch, focusTask, picker, model]);
-    const axis = V.axis({
+    const axis = React.useMemo(() => V.axis({
       start: model.start,
       end: model.end,
       width,
       left: position.left,
       viewport
-    });
-    const rows = M.visibleRows(model.rows, Math.max(0, position.top - 60), position.top + position.height + 60);
+    }), [model.start, model.end, width, position.left, viewport]);
     const rangeStart = model.start + position.left / width * (model.end - model.start),
       rangeEnd = model.start + (position.left + viewport) / width * (model.end - model.start);
+    const visible = React.useMemo(() => {
+      const rows = M.visibleRows(model.rows, Math.max(0, position.top - 60), position.top + position.height + 60);
+      const scale = width / (model.end - model.start);
+      return rows.map(row => ({
+        row,
+        items: row.point ? window.PointGanttModel.visible(row.items, rangeStart, rangeEnd, scale) : M.visibleItems(row.items, rangeStart, rangeEnd)
+      }));
+    }, [model, position.top, position.height, rangeStart, rangeEnd, width]);
     function show(event, text) {
       if (!event) {
         setHover(null);
@@ -63948,61 +64781,61 @@ function SystemLiveOverview({
     }, /*#__PURE__*/React.createElement(window.GanttPresentationUI.Axis, {
       axis: axis,
       width: width
-    }))), rows.map(row => {
-      const items = row.point ? window.PointGanttModel.visible(row.items, rangeStart, rangeEnd, width / (model.end - model.start)) : M.visibleItems(row.items, rangeStart, rangeEnd);
-      return /*#__PURE__*/React.createElement("div", {
-        key: row.key,
-        className: "dy-timeline-row",
-        "data-analysis-row-kind": row.point ? 'point' : row.overlap ? 'overlap' : 'task',
+    }))), visible.map(({
+      row,
+      items
+    }) => /*#__PURE__*/React.createElement("div", {
+      key: row.key,
+      className: "dy-timeline-row",
+      "data-analysis-row-kind": row.point ? 'point' : row.overlap ? 'overlap' : 'task',
+      style: {
+        top: row.top + 52,
+        height: row.height,
+        width: labelWidth + width
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "dy-timeline-label"
+    }, /*#__PURE__*/React.createElement("b", null, row.label), /*#__PURE__*/React.createElement("small", null, row.items.length, " \u9053", row.point ? '零工时工序' : '安排', !row.point && row.overlap > 0 ? ' · 时间重叠分行' : '')), /*#__PURE__*/React.createElement("div", {
+      className: "dy-timeline-track",
+      style: {
+        width
+      }
+    }, axis.ticks.map(tick => /*#__PURE__*/React.createElement("i", {
+      className: "dy-timeline-grid",
+      key: tick.at,
+      style: {
+        left: tick.x
+      }
+    })), mode === 'downtime' && (model.windows.get(row.id) || []).map(stop => {
+      const low = Math.max(model.start, stop.startAt),
+        high = Math.min(model.end, stop.endAt);
+      const text = ['停机：' + (stop.reason || '原因未填写'), M.timeLabel(stop.start) + ' 至 ' + M.timeLabel(stop.end), '登记时间：' + M.timeLabel(stop.recorded_at)].join('\n');
+      return high > low ? /*#__PURE__*/React.createElement("span", {
+        key: stop.downtime_ref,
+        role: "img",
+        tabIndex: 0,
+        "aria-label": text,
+        title: text,
+        "data-downtime-ref": stop.downtime_ref,
+        className: "dy-downtime-window",
         style: {
-          top: row.top + 52,
-          height: row.height,
-          width: labelWidth + width
-        }
-      }, /*#__PURE__*/React.createElement("div", {
-        className: "dy-timeline-label"
-      }, /*#__PURE__*/React.createElement("b", null, row.label), /*#__PURE__*/React.createElement("small", null, row.items.length, " \u9053", row.point ? '零工时工序' : '安排', !row.point && row.overlap > 0 ? ' · 时间重叠分行' : '')), /*#__PURE__*/React.createElement("div", {
-        className: "dy-timeline-track",
-        style: {
-          width
-        }
-      }, axis.ticks.map(tick => /*#__PURE__*/React.createElement("i", {
-        className: "dy-timeline-grid",
-        key: tick.at,
-        style: {
-          left: tick.x
-        }
-      })), mode === 'downtime' && (model.windows.get(row.id) || []).map(stop => {
-        const low = Math.max(model.start, stop.startAt),
-          high = Math.min(model.end, stop.endAt);
-        const text = ['停机：' + (stop.reason || '原因未填写'), M.timeLabel(stop.start) + ' 至 ' + M.timeLabel(stop.end), '登记时间：' + M.timeLabel(stop.recorded_at)].join('\n');
-        return high > low ? /*#__PURE__*/React.createElement("span", {
-          key: stop.downtime_ref,
-          role: "img",
-          tabIndex: 0,
-          "aria-label": text,
-          title: text,
-          "data-downtime-ref": stop.downtime_ref,
-          className: "dy-downtime-window",
-          style: {
-            left: (low - model.start) / (model.end - model.start) * width,
-            width: (high - low) / (model.end - model.start) * width
-          },
-          onMouseEnter: event => show(event, text),
-          onMouseLeave: () => setHover(null),
-          onFocus: event => show(event, text),
-          onBlur: () => setHover(null)
-        }) : null;
-      }), items.map(item => /*#__PURE__*/React.createElement(TaskBar, {
-        key: item.task.task_ref,
-        item,
-        model,
-        width,
-        selectedBatch,
-        onSelect,
-        onHover: show
-      }))));
-    }), !model.rows.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
+          left: (low - model.start) / (model.end - model.start) * width,
+          width: (high - low) / (model.end - model.start) * width
+        },
+        onMouseEnter: event => show(event, text),
+        onMouseLeave: () => setHover(null),
+        onFocus: event => show(event, text),
+        onBlur: () => setHover(null)
+      }) : null;
+    }), items.map(item => /*#__PURE__*/React.createElement(TaskBar, {
+      key: item.task.task_ref,
+      item,
+      model,
+      width,
+      selectedBatch,
+      onSelect,
+      onHover: show
+    }))))), !model.rows.length && /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: "empty",
       title: "\u5F53\u524D\u8BFB\u53D6\u8303\u56F4\u6CA1\u6709\u53EF\u663E\u793A\u7684\u8BBE\u5907\u5B89\u6392\u3002"
     }))), /*#__PURE__*/React.createElement("div", {
@@ -64772,7 +65605,6 @@ function SystemLiveOverview({
   'use strict';
 
   const A = window.RunCandidateAPI,
-    B = window.RunBaselineAPI,
     Q = window.DashboardCandidateComparisonAPI,
     C = window.DashboardContract;
   const P = window.DashboardCandidatePanels,
@@ -64781,11 +65613,6 @@ function SystemLiveOverview({
       ErrorBox,
       Issues
     } = window.ResourceControls;
-  // 排产时的不重排时段：没有这一项是旧记录；不是完整的起止时刻按记录无效显示。
-  function holdText(value) {
-    const valid = value === undefined || value === null || !!value && typeof value.start === 'string' && typeof value.end === 'string';
-    return window.WorkbenchTerms.hold_window(value, !valid);
-  }
   function rangeFor(input) {
     const start = input && input.start_date + 'T00:00:00',
       raw = input && input.end_date + 'T00:00:00';
@@ -64828,7 +65655,6 @@ function SystemLiveOverview({
     issueBatchRef = null
   }) {
     const api = React.useMemo(() => A.create(), []),
-      baselineApi = React.useMemo(() => B.create(), []),
       comparisonApi = React.useMemo(() => Q.create(), []);
     const [choice, setChoice] = React.useState(() => {
         const value = Q.context(initialContext);
@@ -64916,24 +65742,10 @@ function SystemLiveOverview({
           } : previous);
           return;
         }
-        const scope = {
-          range_start: context.range_start,
-          range_end: context.range_end,
-          ...(context.batch_ref ? {
-            batch_ref: context.batch_ref
-          } : {})
-        };
-        const workspace = await api.workspace(context.candidate_ref, scope, controller.signal);
-        C.check(workspace.data.candidate.run_ref === context.run_ref, '返回的候选不属于原排产记录，未改指其他记录。');
-        const baseline = await baselineApi.read(workspace.data, controller.signal);
-        const comparison = await comparisonApi.read(workspace.data, baseline.data, controller.signal);
+        const comparison = await comparisonApi.read(context, controller.signal);
         if (!controller.signal.aborted) setRead({
           signature,
-          data: {
-            workspace,
-            baseline,
-            comparison
-          },
+          data: comparison,
           error: null,
           loading: false
         });
@@ -64947,10 +65759,10 @@ function SystemLiveOverview({
         });
       });
       return () => controller.abort();
-    }, [api, baselineApi, comparisonApi, signature, revision]);
+    }, [api, comparisonApi, signature, revision]);
     const current = read.signature === signature ? read : null,
       result = current && current.data;
-    const data = result && result.comparison.data,
+    const data = result && result.data,
       options = list.run === choice.run_ref && list.data;
     const caption = data ? {
       reference: data.candidate.candidate_ref,
@@ -65125,7 +65937,7 @@ function SystemLiveOverview({
       className: "dy-evidence"
     }, /*#__PURE__*/React.createElement("summary", null, "\u6392\u4EA7\u65F6\u7684\u8303\u56F4\u4E0E\u89C4\u5219"), /*#__PURE__*/React.createElement("dl", {
       className: "dy-facts"
-    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6BD4\u8F83\u6279\u6B21"), /*#__PURE__*/React.createElement("dd", null, data.batch_refs.length, " \u6279\uFF1B\u9884\u8BA1\u5B8C\u5DE5\u6309\u5168\u90E8\u5DE5\u5E8F\u5B89\u6392\u8BA1\u7B97")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5"), /*#__PURE__*/React.createElement("dd", null, data.generation.input.ready_check ? '开启' : '关闭')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7269\u6599\u9F50\u5957\u89C4\u5219"), /*#__PURE__*/React.createElement("dd", null, window.WorkbenchTerms.material_strategy(data.generation.input.material_strategy, data.generation.input.ready_check))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7F3A\u8BBE\u5907\u4EBA\u5458\u65F6\u7684\u89C4\u5219"), /*#__PURE__*/React.createElement("dd", null, data.generation.input.missing_resource_policy === 'auto_assign' ? '按匹配规则自动分配' : '排除缺设备人员的工序')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4E0D\u91CD\u6392\u65F6\u6BB5"), /*#__PURE__*/React.createElement("dd", null, holdText(data.generation.input.hold_window))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u5F00\u5DE5\u5DE5\u5E8F\u7684\u89C4\u5219"), /*#__PURE__*/React.createElement("dd", null, "\u4FDD\u7559\u5DF2\u767B\u8BB0\u7684\u5B9E\u9645\u6570\u636E\u548C\u53D7\u4FDD\u62A4\u7684\u5B89\u6392"))), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u6BD4\u8F83\u6279\u6B21"), /*#__PURE__*/React.createElement("dd", null, data.batch_refs.length, " \u6279\uFF1B\u9884\u8BA1\u5B8C\u5DE5\u6309\u5168\u90E8\u5DE5\u5E8F\u5B89\u6392\u8BA1\u7B97")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u9F50\u5957\u68C0\u67E5"), /*#__PURE__*/React.createElement("dd", null, data.generation.input.ready_check ? '开启' : '关闭')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7269\u6599\u9F50\u5957\u89C4\u5219"), /*#__PURE__*/React.createElement("dd", null, window.WorkbenchTerms.material_strategy(data.generation.input.material_strategy, data.generation.input.ready_check))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u7F3A\u8BBE\u5907\u4EBA\u5458\u65F6\u7684\u89C4\u5219"), /*#__PURE__*/React.createElement("dd", null, data.generation.input.missing_resource_policy === 'auto_assign' ? '按匹配规则自动分配' : '排除缺设备人员的工序')), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u4E0D\u91CD\u6392\u65F6\u6BB5"), /*#__PURE__*/React.createElement("dd", null, window.WorkbenchTerms.hold_window(data.generation.input.hold_window))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("dt", null, "\u5DF2\u5F00\u5DE5\u5DE5\u5E8F\u7684\u89C4\u5219"), /*#__PURE__*/React.createElement("dd", null, "\u4FDD\u7559\u5DF2\u767B\u8BB0\u7684\u5B9E\u9645\u6570\u636E\u548C\u53D7\u4FDD\u62A4\u7684\u5B89\u6392"))), /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
         '排产编号': data.generation.run_ref
       }
@@ -65230,23 +66042,28 @@ function SystemLiveOverview({
         window.removeEventListener(EVENT, changed);
       };
     }, []);
+    // api.command/api.lookup already checked the receipt; a failed local write belongs to storageError.
     function accept(v, original) {
-      save({
-        ...original,
-        phase: 'confirmed',
-        receipt: v
-      }, original);
-      if (mounted.current) {
-        setError(null);
-        setNotice('请点「完成」查看最新风险。');
+      try {
+        save({
+          ...original,
+          phase: 'confirmed',
+          receipt: v
+        }, original);
+        if (mounted.current) {
+          setError(null);
+          setNotice('请点「完成」查看最新风险。');
+        }
+      } catch (e) {
+        if (mounted.current) setStorageError(e);
       }
     }
-    async function lookup() {
+    async function lookup(preserveError = false) {
       if (running.current || !active.current || active.current.phase !== 'pending') return;
       const original = active.current;
       running.current = true;
       setBusy(true);
-      setError(null);
+      if (!preserveError) setError(null);
       try {
         const v = await api.lookup(original);
         if (v) accept(v, original);else if (mounted.current) setNotice('还是没有查到结果。请稍后再点「查询结果」，不要重复提交。');
@@ -65266,14 +66083,24 @@ function SystemLiveOverview({
       setBusy(true);
       setError(null);
       setNotice('');
-      let original;
+      let original,
+        needLookup = false;
       try {
-        C.check(navigator.locks && typeof navigator.locks.request === 'function', '当前浏览器不支持，请用 Chrome 打开。');
+        if (!navigator.locks || typeof navigator.locks.request !== 'function') {
+          if (mounted.current) setError(new Error('当前浏览器不支持，请用 Chrome 打开。'));
+          return;
+        }
         await navigator.locks.request(KEY, {
           ifAvailable: true
         }, async acquired => {
-          C.check(acquired, '另一个页面正在处置，这里没有开始新的处置。请先完成那边的处置。');
-          C.check(item.write_context && item.write_context.capabilities[action] === true, '这条记录现在不能处置，请刷新后重试。');
+          if (!acquired) {
+            if (mounted.current) setError(new Error('另一个页面正在处置，这里没有开始新的处置。请先完成那边的处置。'));
+            return;
+          }
+          if (!item.write_context || item.write_context.capabilities[action] !== true) {
+            if (mounted.current) setError(new Error('这条记录现在不能处置，请刷新后重试。'));
+            return;
+          }
           original = {
             version: 1,
             request_key: 'dashboard-' + Array.from(crypto.getRandomValues(new Uint8Array(24)), n => n.toString(16).padStart(2, '0')).join(''),
@@ -65293,7 +66120,7 @@ function SystemLiveOverview({
             if (C.isRejected(e)) save({
               ...original,
               phase: 'rejected'
-            }, original);
+            }, original);else needLookup = true;
             // Receipt owns the rejected/pending outcome; the error box owns the failure reason.
             if (mounted.current) setError(e);
           }
@@ -65304,8 +66131,8 @@ function SystemLiveOverview({
         running.current = false;
         if (mounted.current) setBusy(false);
       }
-      const stored = original && read();
-      if (stored && stored.phase === 'pending') await lookup();
+      // Only an unanswered command follows up; the lookup keeps the submit failure unless it finds a receipt or fails itself.
+      if (needLookup && active.current && active.current.request_key === original.request_key && active.current.phase === 'pending') await lookup(true);
     }
     function finish() {
       if (running.current) return false;
@@ -65327,7 +66154,7 @@ function SystemLiveOverview({
       error,
       storageError,
       notice,
-      lookup,
+      lookup: () => lookup(),
       submit,
       finish,
       sync

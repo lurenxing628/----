@@ -93,13 +93,7 @@ def _pid_state(pid: int) -> Optional[bool]:
     return _posix_pid_state(pid_i)
 
 
-def runtime_pid_state(pid: int) -> Optional[bool]:
-    """公开三态探针：True=存在，False=不存在，None=无法确认。"""
-
-    return _pid_state(pid)
-
-
-def _run_powershell_text(script: str, timeout_s: float = 8.0) -> Tuple[Optional[int], str]:
+def run_powershell_text(script: str, timeout_s: float = 8.0) -> Tuple[Optional[int], str]:
     if os.name != "nt":
         return None, ""
     try:
@@ -203,25 +197,18 @@ def _decode_base64_path_output(output: bytes, pid_i: int) -> Optional[str]:
 
 
 def _query_process_executable_path(pid: int) -> Optional[str]:
-    try:
-        pid_i = int(pid)
-    except (TypeError, ValueError, OverflowError) as exc:
-        _log_warning(None, "解析进程路径 pid 失败，无法确认运行时身份：pid=%r error=%s", pid, exc)
-        return None
-    if pid_i <= 0:
-        return None
     if os.name != "nt":
         return None
     if launcher_win32.available():
         try:
-            path = launcher_win32.executable_path(pid_i)
+            path = launcher_win32.executable_path(pid)
             return os.path.normcase(os.path.abspath(path)) if path else ""
         except OSError as exc:
-            _log_warning(None, "查询进程路径失败，无法确认运行时身份：pid=%s error=%s", pid_i, exc)
+            _log_warning(None, "查询进程路径失败，无法确认运行时身份：pid=%s error=%s", pid, exc)
             return None
     script = (
         "$ErrorActionPreference='Stop';"
-        f"$pid0={pid_i};"
+        f"$pid0={pid};"
         "$proc = $null;"
         "if (Get-Command Get-CimInstance -ErrorAction SilentlyContinue) {"
         "try { $proc = Get-CimInstance Win32_Process -Filter \"ProcessId=$pid0\" -ErrorAction Stop | Select-Object -First 1 }"
@@ -242,18 +229,18 @@ def _query_process_executable_path(pid: int) -> Optional[str]:
     )
     rc, stdout_bytes, stderr_bytes = _run_powershell_bytes(script, timeout_s=8.0)
     if rc == 2:
-        _log_warning(None, "进程路径为空，无法确认运行时身份：pid=%s", pid_i)
+        _log_warning(None, "进程路径为空，无法确认运行时身份：pid=%s", pid)
         return ""
     if rc is None or rc != 0:
         _log_warning(
             None,
             "查询进程路径失败，无法确认运行时身份：pid=%s rc=%s stderr=%r",
-            pid_i,
+            pid,
             rc,
             stderr_bytes[:200],
         )
         return None
-    value_s = _decode_base64_path_output(stdout_bytes, pid_i)
+    value_s = _decode_base64_path_output(stdout_bytes, pid)
     if value_s is None:
         return None
     return os.path.normcase(os.path.abspath(value_s))
@@ -271,38 +258,25 @@ def _pid_matches_contract(pid: int, expected_exe_path: str) -> Optional[bool]:
     return actual == expected
 
 
-def runtime_pid_matches_executable(pid: int, expected_exe_path: str) -> Optional[bool]:
-    """公开只读探针：判断 pid 是否匹配期望可执行文件路径。"""
-
-    return _pid_matches_contract(pid, expected_exe_path)
-
-
-def _kill_runtime_pid(pid: int) -> bool:
-    try:
-        pid_i = int(pid)
-    except (TypeError, ValueError, OverflowError) as exc:
-        _log_warning(None, "解析待强制停止 pid 失败，已拒绝强杀：pid=%r error=%s", pid, exc)
-        return False
-    if pid_i <= 0:
-        return False
+def kill_runtime_pid(pid: int) -> bool:
     if os.name == "nt":
         try:
             result = subprocess.run(
-                ["taskkill", "/PID", str(pid_i), "/F", "/T"],
+                ["taskkill", "/PID", str(pid), "/F", "/T"],
                 capture_output=True,
                 text=True,
                 timeout=10,
                 check=False,
         )
         except Exception as exc:
-            _log_warning(None, "强制停止运行时 pid 失败：pid=%s error=%s", pid_i, exc)
+            _log_warning(None, "强制停止运行时 pid 失败：pid=%s error=%s", pid, exc)
             return False
         ok = int(result.returncode or 0) == 0
         if not ok:
             _log_warning(
                 None,
                 "强制停止运行时 pid 返回失败：pid=%s rc=%s stderr=%s",
-                pid_i,
+                pid,
                 result.returncode,
                 (result.stderr or "").strip(),
             )

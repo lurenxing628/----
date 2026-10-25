@@ -3,9 +3,8 @@
 import math
 import re
 
-from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.process.template_source import group_suppliers_consistent, valid_external_group
+from core.services.process.template_source import SOURCE_MESSAGES, external_group_issues
 
 
 def capabilities():
@@ -88,23 +87,21 @@ def project_external_days(row, source, group_ref, group, issues):
     return days, "operation" if days is not None else None
 
 
-def project_operation(row, confirmation, group=None):
+def project_operation(row, confirmation, source_facts, group):
     issues = []
     if type(row["seq"]) is not int or row["seq"] <= 0:
         issues.append(issue("sequence_invalid", "原工序号不合法，当前按原值展示；未自动改号。"))
     source = row["source"] if row["source"] in ("internal", "external") else None
-    if source is None:
-        issues.append(issue("source_unknown", "这道工序的归属说不清。请到基础资料确认归属。"))
+    source_codes = {"source_missing": "source_unknown", "type_missing": "op_type_unbound",
+                    "type_source_mismatch": "source_category_mismatch"}
+    for code in source_facts.issues(row, type_name=row["op_type_label"], category=row["op_type_category"]):
+        public_code = source_codes.get(code, "external_" + code if code.startswith("group_") else code)
+        issues.append(issue(public_code, "这道工序" + SOURCE_MESSAGES[code]))
     op_ref = _relation(row, "op_type_id", "op_type_exists", "op_type_ref", "工种", issues)
-    if not op_ref:
-        issues.append(issue("op_type_unbound", "还没选有效工种，归属还要核对。请到基础资料选工种。"))
     supplier_ref = _relation(row, "supplier_id", "supplier_exists", "supplier_ref", "供应商", issues)
     group_ref = _relation(row, "ext_group_id", "group_exists", "external_group_ref", "外协组", issues)
     if group_ref and row["group_part_no"] != row["part_no"]:
-        issues.append(issue("external_group_part_mismatch", "关联的外协组属于别的零件，这里不拿它当本模板的规则。请到基础资料核对外协组。"))
         group_ref = None
-    if op_ref and not supports_source(row["op_type_category"], source):
-        issues.append(issue("source_category_mismatch", "当前工种类别与本序原归属不一致，请核对；未修改任何一方。"))
     setup, unit = _setup_and_unit_hours(row, source, issues)
     days, days_source = project_external_days(row, source, group_ref, group, issues)
     if source == "internal" and unit == 0 and confirmation["hours"]["state"] != "confirmed":
@@ -119,27 +116,11 @@ def project_operation(row, confirmation, group=None):
             "confirmation": confirmation}
 
 
-def _group_member_issues(row, members, issues):
-    # Reuse the confirmation rule; also retain the command-side cross-part reference guard.
-    valid = valid_external_group(row, row["part_no"],
-        [(op["seq"], op["source"], op["supplier_id"]) for op in members])
-    if any(op["part_no"] != row["part_no"] for op in members):
-        issues.append(issue("external_group_part_mismatch", "这个外协组被别的零件的工序用着，这里不拿它当有效合并周期。请到基础资料核对外协组。"))
-    if not group_suppliers_consistent(row, (op["supplier_id"] for op in members)):
-        issues.append(issue("external_group_supplier_mismatch", "合并外协段的工序分属不同供应商，不能作为同一次外协。请在归属页整段核对供应商，或拆分外协段。"))
-    elif not valid and not any(item["code"] in ("external_group_range_invalid", "external_group_mode_unknown") for item in issues):
-        issues.append(issue("external_group_members_invalid", "外协组里有非外协工序，或者有超出起止序范围的工序，这里不拿它当有效合并周期。请到基础资料核对外协组。"))
-
-
-def project_group(row, members=None):
+def project_group(row, members):
     issues = []
     supplier = _relation(row, "supplier_id", "supplier_exists", "supplier_ref", "供应商", issues)
-    if type(row["start_seq"]) is not int or type(row["end_seq"]) is not int or not 0 < row["start_seq"] <= row["end_seq"]:
-        issues.append(issue("external_group_range_invalid", "外协组的起止序不合法。请到基础资料核对。"))
-    if row["merge_mode"] not in ("separate", "merged"):
-        issues.append(issue("external_group_mode_unknown", "原外协组用哪种周期算法说不清。请到基础资料核对外协组。"))
-    if members is not None:
-        _group_member_issues(row, members, issues)
+    for code in external_group_issues(row, members):
+        issues.append(issue("external_" + code, "这个外协组" + SOURCE_MESSAGES[code]))
     days = _number(row["total_days"], "合并周期", issues, positive=True) if row["merge_mode"] == "merged" or row["total_days"] is not None else None
     return {"ref": require_ref(row["ref"], "模板外协组"), "start_sequence": public_sequence(row["start_seq"]), "end_sequence": public_sequence(row["end_seq"]),
             "merge_mode": row["merge_mode"], "total_days": days, "supplier_ref": supplier,

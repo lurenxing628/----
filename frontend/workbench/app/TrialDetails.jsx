@@ -23,10 +23,10 @@
     const [editing, setEditing] = React.useState(false), [form, setForm] = React.useState(null), [error, setError] = React.useState(null), [reviewed, setReviewed] = React.useState(false);
     const external = task.source === 'external';
     const initial = React.useRef(null);
-    const dirty = editing && JSON.stringify(form) !== JSON.stringify(initial.current);
+    const dirty = editing && (form.machine_ref !== initial.current.machine_ref || form.operator_ref !== initial.current.operator_ref || form.start !== initial.current.start);
     window.WorkbenchGuards.useDirtyGuard({ owner: guardOwner, dirty, message: '试调工序的设备、人员或开工调整尚未保存。' });
     function close() { setEditing(false); onEditing(false); setError(null); }
-    async function cancel() { if (!commands.busy && !commands.key && await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) close(); }
+    async function cancel() { if (!commands.busy && !commands.key && await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) { if (commands.clearError) commands.clearError(); close(); } }
     function open() { const value = { machine_ref: external ? null : task.machine_ref, operator_ref: external ? null : task.operator_ref, start: task.start }; initial.current = value; setForm(value); setEditing(true); onEditing(true); setReviewed(true); }
     React.useEffect(() => { if (editing) setReviewed(false); }, [data]);
     React.useEffect(() => () => onEditing(false), []);
@@ -50,7 +50,7 @@
           {data.resources[listKey].map(r => <option key={r.ref} value={r.ref} disabled={r.status !== 'active'}>{r.business_code} · {r.label || '名称未填写'}{r.status !== 'active' ? '（不可用）' : ''}</option>)}</select></label>)}
         <label>调整开工<input type="text" data-picker-type="factory-local" aria-label="调整开工" placeholder="选择日期和时间" spellCheck={false} required value={form.start} disabled={commands.busy} onChange={e => setForm({ ...form, start: e.target.value })} /></label>
         <div className="tt-muted">按班表计算预计完工时间，逐道保存调整。</div>
-        {!external && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && <p className="tt-notice">所选人员尚未取得该设备的操作授权。</p>}
+        {!external && form.machine_ref && form.operator_ref && !data.resources.authorizations.some(r => r.machine_ref === form.machine_ref && r.operator_ref === form.operator_ref) && <p className="tt-notice">所选人员尚未取得该设备的操作授权。</p>}
         <U.ErrorBox error={error} /><U.ErrorBox error={commands.error} />
         <label className="tt-check"><input type="checkbox" checked={reviewed} onChange={e => setReviewed(e.target.checked)} />已核对当前工序与保留输入</label>
         <div className="tt-tools"><U.Button icon="check" className="btn primary" type="submit" disabled={!editable || !reviewed || commands.blocked}>保存调整</U.Button>

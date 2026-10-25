@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from .candidate_profile import ITERATION_CEILING, RESTART_CEILING, RESTART_FLOOR
 
@@ -19,22 +19,6 @@ class LocalSearchLimits:
     decode_limit: int
     restart_after: int
     idle_round_limit: int
-    source: str
-    remaining_ms: Optional[int]
-    decode_cost_ms: Optional[int]
-    affordable_decodes: Optional[int]
-
-    def to_report_dict(self) -> Dict[str, Any]:
-        return {
-            "policy": "shared_algorithm_rounds_v1",
-            "round_limit": int(self.decode_limit),
-            "restart_after": int(self.restart_after),
-            "idle_round_limit": int(self.idle_round_limit),
-            "source": str(self.source),
-            "remaining_ms": self.remaining_ms,
-            "decode_cost_ms": self.decode_cost_ms,
-            "affordable_decodes": self.affordable_decodes,
-        }
 
 
 def _clamp(value: int, floor: int, ceiling: int) -> int:
@@ -50,10 +34,6 @@ def derive_local_search_limits(*, neighborhood_count: int) -> LocalSearchLimits:
         decode_limit=decode_limit,
         restart_after=restart_after,
         idle_round_limit=idle_round_limit,
-        source="shared_round_limit",
-        remaining_ms=None,
-        decode_cost_ms=None,
-        affordable_decodes=None,
     )
 
 
@@ -71,29 +51,16 @@ def local_search_stop_reason(
 
 @dataclass
 class LocalSearchCounters:
-    """Decoder invocations, the current idle streak, and rounds since the last best improvement."""
+    """The current idle streak and rounds since the last best improvement."""
 
-    decodes: int = 0
     idle_rounds: int = 0
     no_improve: int = 0
-    noop_rounds: int = 0
 
-    def record_round(self, *, decode_attempted: bool, noop: bool = False) -> None:
+    def record_round(self, *, decode_attempted: bool) -> None:
         if decode_attempted:
-            self.decodes += 1
             self.idle_rounds = 0
             return
         self.idle_rounds += 1
-        if noop:
-            self.noop_rounds += 1
-
-    def to_report_dict(self) -> Dict[str, Any]:
-        return {
-            "decodes": int(self.decodes),
-            "idle_rounds_at_stop": int(self.idle_rounds),
-            "duplicate_rounds": 0,
-            "noop_rounds": int(self.noop_rounds),
-        }
 
 
 __all__ = [

@@ -27,6 +27,7 @@
   }
   // expanded：执行复盘页把图表当主体，直接展开，不再折叠；报表中心仍是可折叠的辅助区。
   function Charts({ data, open, onChange, onDrill, resourceView, onResourceView, expanded = false }) {
+    if (!expanded && !open) return <details className="er-chart-disclosure" open={open} onToggle={event => onChange(event.currentTarget.open)}><summary>{title}</summary></details>;
     const { DistributionChart, TrendChart } = window.ReviewChartViews, { hoursText } = window.ReportTable, legacy = window.WorkbenchTerms.legacy_field_records;
     const points = data.charts.trend.map(row => ({ time: new Date(row.date + 'T00:00:00').getTime(), label: row.date,
       planned: row.planned, actual: row.actual }));

@@ -12,6 +12,8 @@
 - 不计入：运行时产物目录（evidence/ db/ logs/ backups/ tmp/ dist/ build/
   user-data/ output/）、含空白或通配或格式占位的字符串、绝对路径与 URL。
   这些要么是运行时才生成，要么根本不是路径。
+- 也不计入只在本机存在的路径：本地工作流目录 .codestable/、.limcode/ 与本地生成的
+  全景图样式/脚本。pre-push 在干净 worktree 里跑本扫描，结果必须与主工作区一致。
 - 条目键是 (源文件, 那条失效路径)，count 是出现次数。门禁元测试在临时目录里
   合成假仓库（core/services/example.py 之类）是正常做法，它们进基线当存量；
   基线只减不增，所以新删一个真文件必定报红。
@@ -48,11 +50,12 @@ SCAN_ROOTS = ("core", "web", "data", "tools", "scripts", "tests", "plugins")
 BASELINE_NOTE = "失效仓库路径字面量棘轮基线：删文件必须同步删掉引用它的字符串；条目只减不增，刷新走 --refresh。"
 
 #: 仓库顶层目录。首段不在这里的字符串不当成仓库路径，避免把 URL 片段、
-#: 包名、SQL 里的斜杠误判成路径。
+#: 包名、SQL 里的斜杠误判成路径。.codestable/ 与 .limcode/ 是 .git/info/exclude
+#: 里的本地工作流目录，pre-push 的干净 worktree 里没有，不能参与判定。
 REPO_TOP_DIRS = frozenset({
     "core", "web", "data", "tools", "scripts", "tests", "static", "templates",
     "frontend", "plugins", "installer", "assets", "docs", "开发文档",
-    "templates_excel", ".codestable", ".github", ".limcode",
+    "templates_excel", ".github",
 })
 
 #: 运行时才生成的目录，源码里写它们的路径是正常的，不算失效。
@@ -60,6 +63,11 @@ RUNTIME_PREFIXES = (
     "evidence/", "db/", "logs/", "backups/", "tmp/", "dist/", "build/",
     "user-data/", "output/",
 )
+#: 本地生成、不进仓库的文件（见 tools/git_hook_blocked_paths.py）：只在本机存在，
+#: 干净 worktree 里没有，按存在与否判定会让两边结果不一致。
+LOCAL_GENERATED_PATHS = frozenset({
+    "docs/panorama.css", "docs/panorama.js", "docs/v2/panorama.css", "docs/v2/panorama.js",
+})
 
 _EXTENSION = re.compile(r"\.(py|js|jsx|cjs|json|html|css|md|xlsx|txt|bat|iss|ya?ml|cfg|toml|ini)$")
 #: 含这些字符的就不是一条确定的仓库路径：空白和逗号多半是散文，
@@ -85,13 +93,14 @@ def _iter_python_files(repo_root: str, roots: Sequence[str]) -> List[str]:
 
 
 def is_repo_path_literal(value: str) -> bool:
-    # 注意别把 .codestable/ .github/ .limcode/ 当成相对路径前缀一起排掉，
-    # 它们是仓库顶层目录；要排的只有 ./ 与 ../ 这两种写法。
+    # 注意别把 .github/ 当成相对路径前缀一起排掉，它是仓库顶层目录；
+    # 要排的只有 ./ 与 ../ 这两种写法。.codestable/ .limcode/ 是本地工作流目录，
+    # 靠 REPO_TOP_DIRS 不收录来排除。
     if "/" not in value or value.startswith(("/", "http", "~", "./", "../")):
         return False
     if _NOT_A_PLAIN_PATH.search(value):
         return False
-    if value.startswith(RUNTIME_PREFIXES):
+    if value.startswith(RUNTIME_PREFIXES) or value in LOCAL_GENERATED_PATHS:
         return False
     return value.split("/", 1)[0] in REPO_TOP_DIRS and bool(_EXTENSION.search(value))
 

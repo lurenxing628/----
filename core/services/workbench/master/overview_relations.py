@@ -1,7 +1,6 @@
 """Batch requirements are explicit cross-page facts, never stock reservations."""
 
-from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.material.stage_availability import MaterialAvailability, covers_quantity, quantity
+from core.services.material.stage_availability import MaterialAvailability, covers_quantity
 
 from .overview_graph import number, text
 
@@ -27,7 +26,8 @@ def batch_relations(graph):
             graph.link(part, batches[row["batch_id"]], "本零件的批次", "Batches.part_no")
     raw_batches = facts.index("Batches", "batch_id")
     availability = MaterialAvailability(facts.tables) if facts.available(*MATERIAL_SOURCES) else None
-    readiness = {key: availability.readiness_state(row, facts.material_day) for key, row in raw_batches.items()} if availability else {}
+    readiness = {key: availability.readiness_diagnostics(row, facts.material_day)
+                 for key, row in raw_batches.items()} if availability else {}
     for row in facts.rows("BatchMaterials"):
         material = graph.by_key.get(("material", row["material_id"]))
         batch = batches.get(row["batch_id"])
@@ -51,7 +51,7 @@ def _requirement_fields(graph, entity, row, batch, availability, readiness):
     for key, label, positive in (("required_qty", "需求数量", True), ("available_qty", "已有到料数量", False)):
         value = row[key]
         graph.field(entity, code + " " + label, value, "BatchMaterials." + key, valid=number(value, positive))
-        if not number(value, positive):
+        if availability is None and not number(value, positive):
             item = graph.issue(entity, "batch_material." + key, "批次" + label + "待核对",
                                "批次 " + code + " 的" + label + "填的是" + text(value) + "。", action="核对批次物料需求", related_ref=evidence_key)
             item["target"] = batch["target"]
@@ -59,22 +59,19 @@ def _requirement_fields(graph, entity, row, batch, availability, readiness):
     if availability is None:
         graph.unknown(entity, code + " 当前有效齐套", " / ".join(MATERIAL_SOURCES))
         return
-    state, problems = readiness
-    amount = None
-    try:
-        amount = availability.available(row, graph.facts.material_day) if row["id"] in availability.reviews else quantity(row["available_qty"])
-    except WorkbenchCommandRejected as exc:
-        problems = problems + [{"code": exc.code, "message": str(exc)}] if not problems else problems
+    requirement = readiness["requirements"][row["id"]]
+    amount, required = requirement["available"], requirement["required"]
     graph.field(entity, code + " 当前到料数量", float(amount) if amount is not None else None,
                 "BatchMaterials.available_qty + BatchMaterialArrivals", required=False)
-    graph.field(entity, code + " 批次当前有效齐套", "待核对" if problems else READY_TEXT.get(state, state),
+    state = readiness["status"]
+    graph.field(entity, code + " 批次当前有效齐套", "待核对" if state is None else READY_TEXT.get(state, state),
                 "MaterialAvailability.readiness_state", required=False)
-    for problem in problems:
-        item = graph.issue(entity, "batch_material." + problem["code"], "批次物料依据待核对",
+    for problem in requirement["problems"] + readiness["batch_problems"]:
+        rule = problem.get("field", problem["code"])
+        item = graph.issue(entity, "batch_material." + rule, "批次物料依据待核对",
                            "批次 " + code + "：" + problem["message"], action="核对批次物料需求", related_ref=evidence_key)
         item["target"] = batch["target"]
-    if (not problems and amount is not None and number(row["required_qty"], True)
-            and not covers_quantity(amount, quantity(row["required_qty"], positive=True))):
+    if not requirement["problems"] and not covers_quantity(amount, required):
         item = graph.issue(entity, "batch_material.pending", "批次到料记录不足",
                            "批次 " + code + " 需求 " + text(row["required_qty"]) + "，截至 " + graph.facts.material_day + " 已到料 " + str(amount) + "；库存不算预留也不算到料。",
                            action="核对批次物料需求", related_ref=evidence_key)

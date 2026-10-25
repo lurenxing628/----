@@ -176,5 +176,5 @@
       (entity.workflow[stage === 'source' ? 'route' : 'source'].state !== 'confirmed' ? stage === 'source' ? '请先确认路线。' : '请先确认归属。' : '') ||
       (stage === 'source' ? model.base.meta.source !== 'production' ? '当前不是生产数据，不能保存。' : '' : C.blocked(entity.write_context, 'process', stage + '_confirm', model.base.meta.source));
   }
-  window.ProcessStageEditor = { active, same, value, confirmationTime, Confirmation, usePage, Pager, Search, Groups, Review, useDraft, Feedback, reason, location, locate, useFocus };
+  window.ProcessStageEditor = { active, same, value, Confirmation, usePage, Pager, Search, Groups, Review, useDraft, Feedback, reason, location, locate, useFocus };
 })();

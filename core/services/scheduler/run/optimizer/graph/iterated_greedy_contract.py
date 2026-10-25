@@ -148,30 +148,6 @@ def new_iterated_greedy_report(limits: IteratedGreedyLimits, *, objective_name: 
     }
 
 
-_SKIPPED_BY_BUDGET_LABELS = {
-    "decode_would_overrun": "预计一次完整解码放不进剩余预算，未执行",
-    "decode_budget": "解码次数上限已用完，未执行",
-}
-
-
-def iterated_greedy_public_message(report: Dict[str, Any]) -> str:
-    status_labels = {
-        "not_run": "未启用", "skipped_no_parent": "没有可作起点的完整方案", "skipped_by_budget": "预算不足，未执行",
-        "no_strict_improvement": "未得到严格更优方案", "strict_improvement": "已采纳严格更优方案",
-    }
-    label = status_labels[report["status"]]
-    if report["status"] == "skipped_by_budget":
-        label = _SKIPPED_BY_BUDGET_LABELS.get(str(report.get("stop_reason") or ""), label)
-    return (
-        "GraphReady 迭代贪心" + ("已启用" if report["enabled"] else "未启用")
-        + "，迭代" + str(report["iterations"]) + "，解码" + str(report["decodes"])
-        + "（其中续排" + str(report["checkpoints"]["resumed_decodes"]) + "）"
-        + "，去重剪枝" + str(report["duplicate_decision_pruned"])
-        + "；" + label
-        + "。仅为预算内搜索，不构成最优性证明。"
-    )
-
-
 def _generators(value: Any) -> Tuple[str, ...]:
     if isinstance(value, str) or not isinstance(value, (list, tuple)) or not value:
         _invalid("generators")

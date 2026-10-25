@@ -133,6 +133,7 @@
     React.useEffect(() => { if (!enabled) return; const prior = Object.fromEntries(Object.entries(query).filter(([key]) => leafKeys.includes(key))); if (JSON.stringify(prior) !== storedKey) onQuery(stored); }, [enabled, storedKey, JSON.stringify(query)]);
     const [paused, setPaused] = React.useState(false), [daysPaused, setDaysPaused] = React.useState(false);
     const consumed = React.useRef(null), qKey = JSON.stringify(q);
+    React.useEffect(() => { setPaused(false); }, [runRef, qKey, result]);
     const read = window.APSResourceSession.useQuery(signal => {
       if (signal && signal.aborted) throw new DOMException('读取已取消', 'AbortError');
       if (result.resource_result && consumed.current !== result
@@ -146,18 +147,21 @@
     const data = read.result && read.result.data;
     const activeFilters = [q.resource_ref && data && data.filter_options.resources.find(row => row.ref === q.resource_ref)?.label, !['all', 'high_pressure', 'conflicts'].includes(q.pressure_filter) && pressureFilters.find(row => row[0] === q.pressure_filter)[1]].filter(Boolean);
     const dayRef = stored.day_resource_ref, dayQ = dayRef ? A.resourceScope(runRef, { ...shared, resource_kind: q.resource_kind, resource_ref: dayRef, grain: stored.day_grain || 'day', bucket_start: stored.day_bucket_start, bucket_end: stored.day_bucket_end, pressure_threshold: q.pressure_threshold, page: stored.day_page || 1, size: stored.day_size || 20, snapshot_ref: stored.day_snapshot_ref }, 'resource-days') : null;
-    const days = window.APSResourceSession.useQuery(signal => adapter.resourceDays(runRef, { ...dayQ, expected_resource_refs: scope.resource_refs }, signal), [adapter, runRef, JSON.stringify(dayQ), result], enabled && !!dayQ && !daysPaused);
+    const dayKey = JSON.stringify(dayQ);
+    React.useEffect(() => { setDaysPaused(false); }, [runRef, dayKey, result]);
+    const days = window.APSResourceSession.useQuery(signal => adapter.resourceDays(runRef, { ...dayQ, expected_resource_refs: scope.resource_refs }, signal), [adapter, runRef, dayKey, result], enabled && !!dayQ && !daysPaused);
     function change(value, type = 'filter') {
       const next = { ...stored, ...value };
-      if (type === 'filter') { next.page = 1; delete next.snapshot_ref; }
-      if (value.pressure_threshold !== undefined) delete next.day_snapshot_ref;
+      if (type === 'filter' || type === 'refresh') { next.page = 1; delete next.snapshot_ref; }
+      if (type === 'refresh' || value.pressure_threshold !== undefined) delete next.day_snapshot_ref;
       if (['page', 'heatmap'].includes(type) && read.result) next.snapshot_ref = read.result.meta.snapshot_ref;
-      if (type === 'heatmap' && q.grain === 'hour') { next.page = 1; delete next.snapshot_ref; }
-      if (value.resource_kind || value.grain) { if (value.resource_kind) delete next.resource_ref; delete next.day_resource_ref; delete next.day_snapshot_ref; delete next.day_bucket_start; delete next.day_bucket_end; delete next.day_grain; delete next.heatmap_focus; next.day_page = 1; next.heatmap_page = 1; }
+      if (type === 'heatmap' && q.grain === 'hour') { next.page = 1; delete next.snapshot_ref; delete next.display_start; delete next.display_end; }
+      if (value.resource_kind || value.grain) { if (value.resource_kind) delete next.resource_ref; delete next.display_start; delete next.display_end; delete next.day_resource_ref; delete next.day_snapshot_ref; delete next.day_bucket_start; delete next.day_bucket_end; delete next.day_grain; delete next.heatmap_focus; next.day_page = 1; next.heatmap_page = 1; }
       if (value.grain && value.grain !== 'hour') { delete next.display_start; delete next.display_end; }
       setPaused(false); onQuery(next);
     }
-    function refresh() { change({}); read.reload(); }
+    // An open day detail refreshes with the overview: a snapshot or pause change starts its one read, otherwise reload it.
+    function refresh() { const reloadDays = !!dayRef && stored.day_snapshot_ref === undefined && !daysPaused; change({}, 'refresh'); setDaysPaused(false); read.reload(); if (reloadDays) days.reload(); }
     function focus(row, cell) {
       const next = { ...stored, day_resource_ref: row.resource_ref, day_page: 1, day_grain: cell ? q.grain : 'day' };
       delete next.day_snapshot_ref;

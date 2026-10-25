@@ -14,9 +14,9 @@ from core.models.workbench_command import (
 )
 from core.models.workbench_run_job import valid_data_context_ref
 from core.services.workbench.facts.run_data_context import RunDataContext
-from web.api_responses import failure, failure_payload, json_response, query_success
+from web.api_responses import failure, json_response, query_success
 
-from .preflight import evaluate_preflight_input
+from .preflight import evaluate_preflight_input_prepared
 from .write_context import issue_write_context, validate_write_context
 
 
@@ -25,7 +25,7 @@ def _service():
 
     dispatcher = current_app.extensions.get("workbench_run_dispatcher")
     enabled = current_app.config.get("WORKBENCH_RUN_JOBS_ENABLED") is True and callable(dispatcher)
-    return WorkbenchRunService(g.db, integration_enabled=enabled, input_resolver=evaluate_preflight_input,
+    return WorkbenchRunService(g.db, integration_enabled=enabled, input_resolver=evaluate_preflight_input_prepared,
                                context_factory=issue_write_context, context_validator=validate_write_context,
                                data_context=RunDataContext(g.db, current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"),
                                                            current_app.config.get("BACKUP_DIR")))
@@ -40,16 +40,17 @@ def _boundary(function):
             response = failure(exc.code, str(exc), exc.status)
         except WorkbenchCommandUncertain as exc:
             current_app.logger.exception("排产受理结果待核实")
-            data = failure_payload("storage_failure", str(exc), 500, committed="unknown")
-            data["error"].update(request_key=exc.request_key,
-                                 result_target="/api/workbench/v1/scheduling/requests/" + exc.request_key)
-            response = json_response(data, status=500)
+            response = failure("storage_failure", str(exc), 500, committed="unknown", request_key=exc.request_key,
+                               result_target="/api/workbench/v1/scheduling/requests/" + exc.request_key)
         except HTTPException as exc:
             response = failure("invalid_input", "提交的内容格式不正确，这次排产没有开始。请刷新页面后重新点「确认开始排产」。", exc.code or 400)
         except Exception:
             current_app.logger.exception("排产运行接口失败")
+            is_accept = function.__name__ == "accept_scheduling_run"
+            request_key = g.get("workbench_request_key") if is_accept else None
             response = failure("storage_failure", "排产记录没有读出来。请刷新重试；仍不行请联系维护人员，并告知下方编号。", 500,
-                               committed="unknown" if function.__name__ == "accept_scheduling_run" else False)
+                               committed="unknown" if is_accept else False, request_key=request_key,
+                               result_target=("/api/workbench/v1/scheduling/requests/" + request_key) if request_key else None)
         response.headers["Cache-Control"] = "no-store"
         return response
     return wrapped
@@ -79,6 +80,7 @@ def preview_scheduling_run():
 def accept_scheduling_run():
     value = _input(("input_ref", "write_token", "request_key"))
     validate_request_key(value["request_key"])
+    g.workbench_request_key = value["request_key"]
     result = _service().accept(**value)
     if not result["replayed"]:
         try:

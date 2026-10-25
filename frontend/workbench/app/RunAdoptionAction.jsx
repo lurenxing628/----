@@ -20,7 +20,7 @@
         const saved = event && event.type === A.EVENT ? event.detail : A.pending().read();
         if (saved !== active.current && JSON.stringify(saved) !== JSON.stringify(active.current)) {
           active.current = saved; setIntent(saved); setResult(null); setPreview(null); setConsent(false); setReplacedInfo(null); setNotice('');
-          if (saved) setDraft(saved.input);
+          setDraft(saved ? saved.input : empty()); if (!saved) setError('');
         }
         setStorageError('');
       } catch (e) { setStorageError(e.message); }
@@ -78,9 +78,9 @@
       window.WorkbenchHandlerMemory.write(values.declared_operator);
       lock.current = true; setBusy(true); setError(''); setNotice('');
       try {
-        if (!navigator.locks || typeof navigator.locks.request !== 'function') throw new Error('当前浏览器不支持，请用 Chrome 打开。');
+        if (!navigator.locks || typeof navigator.locks.request !== 'function') { if (alive.current) setError('当前浏览器不支持，请用 Chrome 打开。'); return; }
         await navigator.locks.request(A.PENDING_KEY, { ifAvailable: true }, async acquired => {
-          if (!acquired) throw new Error('另一个页面正在确认采用，请稍后刷新上次操作记录。');
+          if (!acquired) { if (alive.current) setError('另一个页面正在确认采用，请稍后刷新上次操作记录。'); return; }
           if (!alive.current) return;
           const original = A.pending().begin(preview, values, active.current);
           active.current = original; setIntent(original); setDraft(values); setPreview(null); setConsent(false);

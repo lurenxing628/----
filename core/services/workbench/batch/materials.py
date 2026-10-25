@@ -7,11 +7,10 @@ from core.models.enums import ReadyStatus
 from core.models.workbench_batch import number
 from core.models.workbench_batch_material import (
     material_row_key,
-    normalize_material_changes,
     numbered_material_requirements,
 )
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
-from core.services.material.stage_availability import covers_quantity, quantity
+from core.services.material.stage_availability import arrival_day, covers_quantity, quantity
 from data.repositories.batch_material_repo import BatchMaterialRepository
 from data.repositories.batch_material_stage_repo import BatchMaterialStageRepository
 from data.repositories.batch_repo import BatchRepository
@@ -42,12 +41,17 @@ class WorkbenchBatchMaterialService:
             raise WorkbenchCommandRejected("stale_write", "要移除的物料需求已变化，请刷新后重新核对。")
         final = {key: dict(row) for key, row in old.items() if key not in payload["removed_keys"]}
         materials = {row["material_id"]: row for row in facts["Materials"]}
+        op_ids_by_ref = {
+            facts["operation_refs"][row["id"]]: row["id"]
+            for row in facts["BatchOperations"]
+            if row["batch_id"] == batch["batch_id"] and row.get("piece_id") is None
+        }
         for index, item in enumerate(payload["rows"]):
             key = item["row_key"]
-            final[key or "new:" + str(index)] = self._material_row(item, key, old, materials, batch, facts)
+            final[key or "new:" + str(index)] = self._material_row(item, key, old, materials, batch, op_ids_by_ref)
         return old, final
 
-    def _material_row(self, item, key, old, materials, batch, facts):
+    def _material_row(self, item, key, old, materials, batch, op_ids_by_ref):
         if key is not None and key not in old:
             raise WorkbenchCommandRejected("stale_write", "要修改的物料需求已变化，请刷新后重新核对。")
         identity = self.reader.resolve(item["material_ref"], "material")
@@ -55,23 +59,22 @@ class WorkbenchBatchMaterialService:
             raise WorkbenchCommandRejected("constraint_conflict", "已有需求不能直接更换物料，请明确移除后重新新增。")
         if key is None and materials[identity.entity_key]["status"] != "active":
             raise WorkbenchCommandRejected("constraint_conflict", "所选物料已停用，请选择启用的物料。")
-        operation = self._operation_id(item, old[key]["operation_id"] if key else None, batch, facts)
+        operation = self._operation_id(item, old[key]["operation_id"] if key else None, op_ids_by_ref)
         return {"id": old[key]["id"] if key else None, "operation_id": operation,
             "arrivals": item.get("arrivals", old[key]["arrivals"] if key else []),
             "batch_id": batch["batch_id"], "material_id": identity.entity_key,
             "required_qty": item["required_quantity"], "available_qty": item["available_quantity"]}
 
     @staticmethod
-    def _operation_id(item, previous, batch, facts):
+    def _operation_id(item, previous, op_ids_by_ref):
         if "operation_ref" not in item:
             return previous
         if item["operation_ref"] is None:
             return None
-        match = next((row for row in facts["BatchOperations"] if row["batch_id"] == batch["batch_id"]
-                      and facts["operation_refs"][row["id"]] == item["operation_ref"]), None)
-        if match is None or match.get("piece_id") is not None:
+        match = op_ids_by_ref.get(item["operation_ref"])
+        if match is None:
             raise WorkbenchCommandRejected("constraint_conflict", "请选择本批次有效的整批用料工序。")
-        return match["id"]
+        return match
 
     @staticmethod
     def _ready(rows, material_day):
@@ -82,22 +85,21 @@ class WorkbenchBatchMaterialService:
             codes.add((row["material_id"], row["operation_id"]))
             required = number(row["required_qty"], "required_quantity", positive=True)
             available = number(row["available_qty"], "available_quantity")
-            if required is None or available is None:
-                raise WorkbenchCommandRejected("invalid_input", "需求量和到料量不能为空，请明确填写。", 422)
-            available = quantity(available) + sum(quantity(item["quantity"]) for item in row["arrivals"] if item["arrival_date"] <= material_day)
+            # 存量到料与排产读取同一口径：全部到料先校验（含齐套日之后的），坏日期或非正到料量直接拒绝。
+            arrivals = [(arrival_day(item["arrival_date"]), quantity(item["quantity"], positive=True))
+                        for item in row["arrivals"]]
+            available = quantity(available) + sum(amount for day, amount in arrivals if day <= material_day)
             row["ready_status"] = ReadyStatus.YES.value if covers_quantity(available, quantity(required)) else ReadyStatus.NO.value
             flags.append((row["ready_status"] == ReadyStatus.YES.value, available > 0))
         if flags and all(flag[0] for flag in flags):
             return ReadyStatus.YES.value
         return ReadyStatus.PARTIAL.value if any(flag[1] for flag in flags) else ReadyStatus.NO.value
 
-    def apply(self, ref, payload):
-        return self.apply_normalized(ref, normalize_material_changes(payload))
-
     def apply_normalized(self, ref, payload):
         if not self.conn.in_transaction:
             raise RuntimeError("物料需求维护必须由工作台命令事务持有。")
-        batch, facts = self.reader.batch(ref), self.reader.load()
+        facts = self.reader.load()
+        batch = self.reader.batch(ref)
         if type(batch["quantity"]) is not int or batch["quantity"] < 0:
             raise WorkbenchCommandRejected("constraint_conflict", "请先在批次基础信息中填好数量，再核对物料需求。")
         old, final = self._proposed(ref, payload, batch, facts)
@@ -129,7 +131,7 @@ class WorkbenchBatchMaterialService:
     def _save_row(self, batch, row, previous):
         fields = {name: row[name] for name in ("required_qty", "available_qty", "ready_status")}
         if row["id"] is None:
-            row["id"] = self.repo.add(batch["batch_id"], row["material_id"], **fields).id
+            row["id"] = self.repo.add(batch["batch_id"], row["material_id"], **fields)
             if row["operation_id"] is not None:
                 self.stages.replace_operation(row["id"], row["operation_id"])
             if row["arrivals"]:

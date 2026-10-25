@@ -148,7 +148,9 @@ def test_dispatch_blocking_consistency():
 
 
 def test_dispatch_sgs_missing_batch_records_structured_failure_detail() -> None:
+    from core.algorithms import GreedyScheduler
     from core.algorithms.greedy.dispatch.sgs import dispatch_sgs
+    from core.algorithms.greedy.run_context import ScheduleRunContext
 
     op_bad = SimpleNamespace(
         id=999,
@@ -169,9 +171,10 @@ def test_dispatch_sgs_missing_batch_records_structured_failure_detail() -> None:
         ext_group_total_days=None,
     )
     state = ScheduleRunState(base_time=datetime(2026, 1, 1, 8, 0, 0))
+    scheduler = GreedyScheduler(calendar_service=_StubCalendarService(), config_service={})
 
     scheduled_count, failed_count = dispatch_sgs(
-        SimpleNamespace(calendar_service=_StubCalendarService()),
+        ScheduleRunContext.from_legacy_scheduler(scheduler),
         sorted_ops=[op_bad],
         batches={},
         batch_order={},
@@ -248,3 +251,84 @@ def test_dispatch_failures_record_structured_details_without_raw_error_duplicati
     assert extra_failed == 1
     assert graph_state_run.errors == []
     assert [item["code"] for item in graph_state_run.failure_details] == ["graph_blocked_after_failure"]
+
+
+def test_graph_blocked_public_error_keeps_operation_codes_through_size_guard_projections() -> None:
+    """回归：图阻塞的公开错误带上 failed_op_code；体积裁剪逐级投影（含对自身输出再投影、最小摘要）
+    后 op_code / op_id / failed_op_code 仍在，文案不坍塌成 “工序 -”“前序工序 -”。"""
+    from core.algorithms.greedy.dispatch.sgs_graph import _record_graph_blocked_operations
+    from core.models.scheduler_public_errors import build_public_error_records
+    from core.services.scheduler.summary.summary_size_guard_fields import (
+        minimal_summary_for_size_guard,
+        size_guard_public_error_detail,
+    )
+
+    failed_op = SimpleNamespace(id=1, op_code="OP1", batch_id="B001", seq=1)
+    blocked_op = SimpleNamespace(id=2, op_code="OP2", batch_id="B001", seq=2)
+    state = ScheduleRunState(base_time=datetime(2026, 1, 1, 8, 0, 0))
+    _record_graph_blocked_operations(
+        state,
+        graph_state={"op_by_id": {1: ("B001", failed_op), 2: ("B001", blocked_op)}},
+        failed_op_id=1,
+        newly_blocked_op_ids=[2],
+        already_counted_op_ids={1},
+    )
+
+    (record,) = build_public_error_records([], structured_details=state.failure_details)
+    assert record["message"] == "工序 OP2：依赖的前序工序 OP1 排产失败，本次跳过。"
+    assert (record["op_code"], record["op_id"], record["failed_op_code"]) == ("OP2", 2, "OP1")
+
+    tier_once = size_guard_public_error_detail(record)
+    tier_twice = size_guard_public_error_detail(tier_once)
+    assert tier_once == record
+    assert tier_twice == record
+    minimal = minimal_summary_for_size_guard(
+        {"public_error_details": [tier_twice]},
+        original_size=1,
+        diagnostics_truncated=False,
+    )
+    assert minimal["public_error_details"] == [record]
+
+
+
+def test_graph_skipped_operation_blocks_its_cross_batch_successors_once() -> None:
+    """回归：批内失败后被同批跳过的工序同样不会完成，它的跨批后继要随之图阻塞。
+
+    B1 的 OP1 超窗失败，同批 OP2 被跳过；OP2 的前驱 OP10（B0）随后也超窗失败。
+    旧实现只阻塞失败工序自己的图后继，OP2 留在图里，等 OP10 失败传播时再被记一次
+    graph_blocked_after_failure，失败数超过总工序数。"""
+    from core.algorithms import GreedyScheduler
+    from tests._support.busy_block_case import BASE, native_calendar
+
+    batches = {bid: SimpleNamespace(batch_id=bid, priority="normal", due_date=None, ready_status="yes",
+                                    ready_date=None, created_at=None, quantity=1) for bid in ("B0", "B1", "B2")}
+
+    def op(op_id, batch_id, seq, hours):
+        return SimpleNamespace(id=op_id, op_code=f"OP{op_id}", batch_id=batch_id, seq=seq, source="internal",
+                               machine_id="M1", operator_id="O1", setup_hours=0.0, unit_hours=hours,
+                               op_type_id="T1", op_type_name="TYPE1")
+
+    context = {
+        "enabled": True, "schedulable_op_ids": [10, 1, 2, 3], "fixed_op_ids": [], "score_enabled": True,
+        "predecessor_op_ids_by_op_id": {10: [], 1: [], 2: [10], 3: [2]},
+        "successor_op_ids_by_op_id": {10: [2], 1: [], 2: [3], 3: []},
+        "sort_key_by_op_id": {10: (0, 0, 10), 1: (1, 0, 1), 2: (1, 1, 2), 3: (2, 0, 3)},
+        # Both 80-hour operations overrun the window; OP1's smaller graph key makes it fail first.
+        "graph_priority_key_by_op_id": {10: (2.0, 10.0), 1: (0.0, 1.0), 2: (5.0, 2.0), 3: (1.0, 3.0)},
+    }
+    with native_calendar() as calendar:
+        scheduler = GreedyScheduler(calendar_service=calendar, config_service={"auto_assign_enabled": "no"})
+        results, summary, _strategy, _params = scheduler.schedule(
+            operations=[op(10, "B0", 0, 80.0), op(1, "B1", 0, 80.0), op(2, "B1", 1, 1.0), op(3, "B2", 0, 1.0)],
+            batches=batches, start_dt=BASE, end_date=(BASE + timedelta(days=2)).date(),
+            dispatch_mode="sgs", dispatch_rule="atc", graph_ready_context=context,
+        )
+
+    assert results == []
+    assert (summary.scheduled_ops, summary.failed_ops, summary.total_ops) == (0, 4, 4)
+    assert sorted((item["code"], item["op_id"]) for item in summary.failure_details) == [
+        ("dispatch_operation_failed", 1),
+        ("dispatch_operation_failed", 10),
+        ("graph_blocked_after_failure", 3),
+        ("skipped_after_batch_failure", 2),
+    ]

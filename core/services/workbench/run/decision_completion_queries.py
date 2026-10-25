@@ -5,12 +5,12 @@ from typing import Union
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_run_candidate import reference, reject
 from core.services.workbench.facts.candidate_store import CandidateStore
-from core.services.workbench.facts.decision_candidate import _candidate_reason
+from core.services.workbench.facts.decision_candidate import candidate_reason
 from core.services.workbench.facts.decision_metrics import METRIC_VERSION
 from core.services.workbench.facts.preparation_projection import preparation_summary, public_preparation_metrics
 
 from .decision_completion import compact_completion
-from .decision_queries import _page
+from .decision_queries import parse_page
 from .decision_recommendation import detail_drill
 from .decision_source import DecisionSource
 
@@ -72,7 +72,7 @@ def completion_batches(source, filters, *, page: Union[int, str] = 1, size: Unio
     filters = {**filters, "completion_candidate_ref": key}
     scope = source.completion.scope(key)
     available = scope["source_available"]
-    reason = _candidate_reason(candidate)
+    reason = candidate_reason(candidate)
     membership = COMPLETION_FILTERS[filters["completion_filter"]]
     refs = set(source.scope["batch_refs"] if membership is None else scope[membership])
     items = [row for row in source.completion.delivery(key) if row["batch_ref"] in refs]
@@ -81,7 +81,7 @@ def completion_batches(source, filters, *, page: Union[int, str] = 1, size: Unio
     unknown = [row for row in items if row["batch_id"] is None]
     known.sort(key=lambda row: row["batch_id"], reverse=filters["order"] == "desc")
     items = known + unknown
-    page, size = _page(page), _page(size, size=True)
+    page, size = parse_page(page), parse_page(size, size=True)
     offset = (page - 1) * size
     selected = items[offset:offset + size]
     remaining = source.completion.remaining_operation_refs(key)

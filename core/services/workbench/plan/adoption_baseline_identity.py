@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 
+from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.services.workbench.facts.adoption_baseline_values import (
@@ -9,7 +10,6 @@ from core.services.workbench.facts.adoption_baseline_values import (
     indexed,
     raw_table_rows,
     require,
-    same,
     schedule_rows,
 )
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
@@ -120,10 +120,10 @@ def _arrangement_matches(row, original, *, known_times=None):
     return True
 
 
-def baseline_tasks(conn, baseline, tables, facts, *, point_annotator=None, context=None):
+def baseline_tasks(conn, baseline, tables, facts, *, point_annotator, context):
     from core.services.workbench.facts.adoption_baseline_sources import read_adoption_operation_facts
 
-    from .projection import _adopted_source_record
+    from .projection import adopted_source_record
 
     ref, version = baseline["plan_ref"], baseline["version"]
     references = context.references if context is not None else WorkbenchPlanIdentityRepository(conn)
@@ -145,7 +145,7 @@ def baseline_tasks(conn, baseline, tables, facts, *, point_annotator=None, conte
         fail("adoption_baseline_drift", "Schedule.complete_original_values_and_types")
     task_refs, operations = _task_bindings(conn, baseline, tables, references, context=context)
     resources = _resources(conn, captured, tables, context=context)
-    source = context.adopted_source(ref) if context is not None else _adopted_source_record(conn, ref)
+    source = context.adopted_source(ref) if context is not None else adopted_source_record(conn, ref)
     if source is None:
         fail("adoption_evidence_missing", "baseline.original_adoption")
     origins = read_adoption_operation_facts(conn, source)
@@ -197,7 +197,7 @@ def _captured_row_binding(row, source, operation):
     return operation
 
 
-def _task_bindings(conn, baseline, tables, references, *, context=None):
+def _task_bindings(conn, baseline, tables, references, *, context):
     ref, rows = baseline["plan_ref"], baseline["rows"]
     tasks, task_refs, operations, used = _captured_tasks(baseline, tables)
     _live_sources(conn, list({row["ref"]: row for row in used}.values()), context=context)
@@ -215,7 +215,7 @@ def _task_bindings(conn, baseline, tables, references, *, context=None):
     return task_refs, operations
 
 
-def _resources(conn, rows, tables, *, context=None):
+def _resources(conn, rows, tables, *, context):
     archived = {(row["kind"], row["entity_key"]): row["ref"] for row in tables["WorkbenchEntityRefs"] if row["active"] == 1}
     repo, result = WorkbenchIdentityRepository(conn), {"supplier": {}}
     operations = indexed(tables["BatchOperations"], "id")

@@ -104,11 +104,11 @@ class SampleInjector:
         result = self.client.command(path + "/sync-confirm", preview["write_context"],
                                      {"preview_ref": preview["preview_ref"]})
         detail = self.client.get(path)
-        self.operation_refs[row["business_code"]] = {op["sequence"]: op["ref"] for op in detail["operations"]}
+        self.operation_refs[row["business_code"]] = {str(op["sequence"]): op["ref"] for op in detail["operations"]}
         if row["materials"]:
             rows = [{"row_key": None, "material_ref": self.refs["material"][item["material_code"]],
                      "required_quantity": item["required_quantity"], "available_quantity": item["available_quantity"],
-                     "operation_ref": self.operation_refs[row["business_code"]][item["operation_seq"]]
+                     "operation_ref": self.operation_refs[row["business_code"]][str(item["operation_seq"])]
                        if item["operation_seq"] is not None else None,
                      "arrivals": item["arrivals"]} for item in row["materials"]]
             self.client.command(path + "/materials_update", detail["write_context"], {"rows": rows, "removed_keys": []})

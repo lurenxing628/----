@@ -4,10 +4,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.errors import ValidationError
 from core.models.scheduler_public_errors import public_safe_identifier, public_safe_label
-from core.services.scheduler.run.auto_assign_resource_errors import (
-    first_auto_assign_resource_error,
-    first_public_auto_assign_resource_error,
-)
+from core.services.scheduler.run.auto_assign_resource_errors import first_public_auto_assign_resource_error
 
 
 def _positive_int(value: Any) -> Optional[int]:
@@ -28,32 +25,28 @@ def _normalize_positive_ids(raw_ids: Optional[Set[int]]) -> Set[int]:
     return out
 
 
-def _operation_sort_key(op: Any) -> Tuple[str, int, int]:
-    return (
-        str(getattr(op, "batch_id", "") or ""),
-        int(getattr(op, "seq", 0) or 0),
-        int(getattr(op, "id", 0) or 0),
-    )
+def _operation_row(op: Any) -> Dict[str, Any]:
+    return op if isinstance(op, dict) else vars(op)
 
 
-def _safe_missing_fields(op: Any) -> List[str]:
+def _safe_missing_fields(row: Dict[str, Any]) -> List[str]:
     missing: List[str] = []
-    if not str(getattr(op, "machine_id", "") or "").strip():
+    if not str(row.get("machine_id") or "").strip():
         missing.append("设备")
-    if not str(getattr(op, "operator_id", "") or "").strip():
+    if not str(row.get("operator_id") or "").strip():
         missing.append("人员")
     return missing
 
 
-def _missing_internal_resource_sample(op: Any, *, op_id: int) -> Dict[str, Any]:
-    seq = _positive_int(getattr(op, "seq", 0)) or 0
+def _missing_internal_resource_sample(row: Dict[str, Any], *, op_id: int) -> Dict[str, Any]:
+    seq = _positive_int(row.get("seq", 0)) or 0
     return {
         "op_id": int(op_id),
-        "batch_id": public_safe_identifier(getattr(op, "batch_id", "")),
-        "op_code": public_safe_identifier(getattr(op, "op_code", "")),
+        "batch_id": public_safe_identifier(row.get("batch_id", "")),
+        "op_code": public_safe_identifier(row.get("op_code", "")),
         "seq": int(seq),
-        "op_type_name": public_safe_label(getattr(op, "op_type_name", "")),
-        "missing_fields": _safe_missing_fields(op),
+        "op_type_name": public_safe_label(row.get("op_type_name", "")),
+        "missing_fields": _safe_missing_fields(row),
     }
 
 
@@ -65,14 +58,18 @@ def missing_internal_resource_samples(
     if not missing_ids:
         return []
 
-    matching_operations: List[Tuple[Any, int]] = []
+    matching_operations: List[Tuple[Tuple[str, int, int], Dict[str, Any], int]] = []
     for op in operations or ():
-        op_id = _positive_int(getattr(op, "id", 0))
+        if op is None:
+            continue
+        row = _operation_row(op)
+        op_id = _positive_int(row.get("id", 0))
         if op_id is not None and op_id in missing_ids:
-            matching_operations.append((op, op_id))
+            sort_key = (str(row.get("batch_id") or ""), int(row.get("seq") or 0), op_id)
+            matching_operations.append((sort_key, row, op_id))
     return [
-        _missing_internal_resource_sample(op, op_id=op_id)
-        for op, op_id in sorted(matching_operations, key=lambda item: _operation_sort_key(item[0]))
+        _missing_internal_resource_sample(row, op_id=op_id)
+        for _, row, op_id in sorted(matching_operations, key=lambda item: item[0])
     ]
 
 
@@ -100,14 +97,13 @@ def raise_no_actionable_schedule_error(
     if validation_errors:
         details["validation_errors"] = list(validation_errors)
 
-    root_error_message = first_auto_assign_resource_error(validation_errors)
     public_root_error_message = first_public_auto_assign_resource_error(validation_errors)
     missing_samples = missing_internal_resource_samples(operations, missing_internal_resource_op_ids)
     if missing_samples:
         total = len(missing_samples)
         details["missing_internal_resource_count"] = total
         details["missing_internal_resource_ops"] = missing_samples[:10]
-        if not root_error_message and not public_root_error_message:
+        if not public_root_error_message:
             sample_text = _format_missing_internal_resource_sample(missing_samples)
             suffix = f"；还有 {total - 10} 条未展示" if total > 10 else ""
             details["user_message"] = (

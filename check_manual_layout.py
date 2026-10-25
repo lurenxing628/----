@@ -17,7 +17,9 @@ REPO_ROOT = Path(__file__).resolve().parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from web.bootstrap.runtime_probe import probe_health, resolve_healthy_endpoint
+from web.bootstrap.launcher_endpoint_result import read_runtime_endpoint_files_result
+from web.bootstrap.launcher_health import probe_runtime_health_result
+from web.bootstrap.launcher_paths import resolve_runtime_state_dir_for_read
 
 # 检查是否有 selenium
 webdriver: Any = None
@@ -69,14 +71,18 @@ def _normalize_base_url(base_url: str) -> str:
 def _resolve_base_url(explicit_base_url: Optional[str], runtime_dir: Path = REPO_ROOT) -> Tuple[str, str]:
     if explicit_base_url and str(explicit_base_url).strip():
         return _normalize_base_url(str(explicit_base_url)), "explicit"
-    endpoint = resolve_healthy_endpoint(str(runtime_dir))
-    if endpoint is not None:
-        return _normalize_base_url(str(endpoint["base_url"])), str(endpoint.get("source") or "runtime_files")
+    state_dir = resolve_runtime_state_dir_for_read(str(runtime_dir))
+    endpoint = read_runtime_endpoint_files_result(state_dir)
+    if not endpoint.uncertain and endpoint.port > 0:
+        host = "127.0.0.1" if endpoint.host == "0.0.0.0" else endpoint.host
+        base_url = f"http://{host}:{endpoint.port}"
+        if probe_runtime_health_result(base_url, timeout_s=2.0, log_failures=True, state_dir=state_dir).ok:
+            return base_url, "runtime_files"
     return _DEFAULT_BASE_URL, "default"
 
 
 def _server_is_reachable(base_url: str) -> bool:
-    return probe_health(_normalize_base_url(base_url), timeout=2.0) is not None
+    return probe_runtime_health_result(_normalize_base_url(base_url), timeout_s=2.0).ok
 
 
 def _parse_args(argv=None):

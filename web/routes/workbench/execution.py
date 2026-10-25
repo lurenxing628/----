@@ -2,16 +2,15 @@
 
 from flask import g, request
 
-from core.models.content import content_text
-from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_plan_scope import MAX_PLAN_RESPONSE_BYTES
 from core.services.workbench.execution.field_workspace import FieldWorkspaceService
 from core.services.workbench.execution.field_workspace_scope import PARAMETERS, normalize_scope, page_input
 from web.api_responses import json_response, query_success
-from web.routes.workbench.api_responses import api_endpoint
+from web.routes.workbench.api_responses import api_endpoint, read_endpoint
 from web.routes.workbench.read_budget import PLAN_READ_SLOTS
-from web.routes.workbench.read_context import bind_read_snapshot, fact_value
-from web.routes.workbench.write_context import WriteContextFactory, validate_write_context
+from web.routes.workbench.read_context import bind_read_snapshot
+from web.routes.workbench.write_context import issue_write_context, validate_write_context
 
 
 def arguments():
@@ -20,21 +19,14 @@ def arguments():
     return request.args.to_dict()
 
 
-field_context = WriteContextFactory(lambda state: fact_value(state if isinstance(state, str) else content_text(state)))
-
-
-def validate_field_context(token, subject, action, state):
-    return validate_write_context(token, subject, action, state if isinstance(state, str) else content_text(state))
-
-
 def field_query(task_ref=None):
     args = arguments()
     scope = normalize_scope(args)
     number, size = page_input(args)
-    reader = FieldWorkspaceService(g.db, context_factory=field_context)
+    reader = FieldWorkspaceService(g.db, context_factory=issue_write_context)
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
-            cohort, state = reader.cohort(scope)
+            cohort, state, _ = reader.cohort(scope)
     # 读事务已结束：定位页码、给这一页签发报工令牌只用已算好的范围，不再占着读锁。
     snapshot = bind_read_snapshot({'kind': 'field', **cohort['scope']}, state, args.get('snapshot_ref'))
     if args.get('task_ref'):
@@ -68,6 +60,7 @@ def command_body():
     body = request.get_json()
     if type(body) is not dict or set(body) != {'input', 'request_key', 'write_token'} or type(body['input']) is not dict:
         raise WorkbenchCommandRejected('invalid_input', '提交的内容不完整或有多余项，报工还没有保存。请刷新页面后重新填写。', 400)
+    validate_request_key(body['request_key'])
     g.workbench_request_key = body['request_key']
     return body
 
@@ -78,7 +71,7 @@ def save_report(action, ref):
     body = command_body()
     service = WorkbenchProductionReportService(g.db)
     result = service.execute(action, ref, body['input'], request_key=body['request_key'],
-                             validate_context=lambda subject, operation, snapshot: validate_field_context(body['write_token'], subject, operation, snapshot))
+                             validate_context=lambda subject, operation, snapshot: validate_write_context(body['write_token'], subject, operation, snapshot))
     response = json_response(result)
     response.headers['Cache-Control'] = 'no-store'
     return response
@@ -104,14 +97,14 @@ def field_report_void(report_ref):
     return save_report('report_void', report_ref)
 
 
-@api_endpoint
+@read_endpoint
 def field_report_void_preview(report_ref):
     from core.services.workbench.execution.production_report import WorkbenchProductionReportService
 
     body = request.get_json(silent=True)
     if request.args or type(body) is not dict or set(body) != {'input'} or type(body['input']) is not dict:
         raise WorkbenchCommandRejected('invalid_input', '请填写撤销原因后重新查看影响。', 400)
-    service = WorkbenchProductionReportService(g.db, context_factory=field_context)
+    service = WorkbenchProductionReportService(g.db, context_factory=issue_write_context)
     preview = service.preview('report_void', report_ref, body['input'])
     snapshot = bind_read_snapshot({'kind': 'report_void', 'report_ref': report_ref}, preview.pop('snapshot'))
     response = query_success(preview, snapshot, byte_limit=MAX_PLAN_RESPONSE_BYTES)

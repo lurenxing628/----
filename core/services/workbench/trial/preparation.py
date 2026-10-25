@@ -17,6 +17,7 @@ from core.services.workbench.facts.zero_duration_evidence import trial_point_evi
 
 from .arrangements import same_arrangement
 from .effort import operation_types, retained_role
+from .facts import entity_maps
 
 
 def _allocation(runtime, *, arranged, deferred=False, source=None):
@@ -55,7 +56,7 @@ def preparation_projection(rows, admission, current_ledger, *, current_evidence=
             if name == "after" and runtime is None and context["arranged"]:
                 row = context["row"]
                 held = row["original"].get("execution_anchor") is not None or same_arrangement(row["current"], row["original"]["arrangement"])
-                role = retained_role(row, admission, current_execution) if held else "new_schedule"
+                role = retained_role(row, current_execution) if held else "new_schedule"
                 value.update(requirement_role=role, allocation_state="external" if op["source"] == "external" else role,
                     execution_target_quantity=current_execution.get("target_quantity"),
                     execution_quantity_basis=current_execution.get("target_basis", "unknown"),
@@ -79,7 +80,7 @@ def trial_changeovers(rows, admission, *, start=None, end=None, next_operation_r
     slot_types = source.get("trial_operation_types")
     if slot_types is None:
         tables = admission["facts"]["tables"]
-        refs = {(item["kind"], item["entity_key"]): item["ref"] for item in tables["WorkbenchEntityRefs"] if item["active"] == 1}
+        refs = entity_maps(tables)
         slot_types = operation_types(rows, refs, {item["op_type_id"]: item for item in tables["OpTypes"]})
     if "capture" in source:
         facts = facts if facts is not None else GenerationFacts(source["capture"])

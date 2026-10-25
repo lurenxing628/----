@@ -10,10 +10,6 @@ from urllib.request import Request, urlopen
 import pytest
 from flask import Blueprint, g
 
-from core.services.scheduler.operation_execution_feedback_service import (
-    ExecutionFeedbackContext,
-    OperationExecutionFeedbackService,
-)
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.execution_ledger_support import all_rows
 from tests.workbench.run_candidate_adoption_support import INTENT, preview, service
@@ -155,9 +151,13 @@ def test_outside_legacy_release_unknown_is_blocked_before_worker(scope_server):
     case, base_url, dispatched = scope_server
     schedule = case.conn.execute("SELECT id FROM Schedule WHERE version=? AND op_id=?",
                                   (case.version, case.op_id)).fetchone()[0]
-    context = ExecutionFeedbackContext(case.version, schedule, case.op_id, "B1", f"{case.op_id}:0:0",
-        "legacy-operator", "scope-legacy-start-001", "adopted", "schedule", "adopted")
-    OperationExecutionFeedbackService(case.conn).start_operation(
-        context, event_time="2026-09-09 08:00", machine_id="M1", operator_id="O1")
+    case.conn.execute("""INSERT INTO OperationExecutionEvents
+        (schedule_version,schedule_id,op_id,batch_id,source_table,effective_plan_role,
+         event_type,reported_status,event_time,actual_machine_id,actual_operator_id,
+         created_by,idempotency_key,request_fingerprint,previous_state_revision)
+        VALUES (?,?,?,'B1','schedule','adopted','start','processing','2026-09-09T08:00:00',
+                'M1','O1','legacy-operator','scope-legacy-start-001','legacy-start-fingerprint',?)""",
+        (case.version, schedule, case.op_id, f"{case.op_id}:0:0"))
+    case.conn.commit()
     assert_rejected_without_writes(case, base_url, dispatched,
         case.settings("B2", start_date="2026-09-10"), "execution_resource_release_unknown")

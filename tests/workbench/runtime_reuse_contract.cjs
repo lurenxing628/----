@@ -160,6 +160,73 @@ async function main() {
   await window.TrialAdoptionHistoryState.openPlan(scenario, planB, find(appNode, 'remember').navigate); renderApp();
   assert.equal(history.state.workbench.context.plan_ref, planB); assert.equal(history.state.workbench.context.query, undefined);
 
+  // Overview initialization and location consume their captured detail; later interaction reads current facts.
+  const masterHooks = hooks(), masterRequests = [], masterRefs = ['a'.repeat(48), 'b'.repeat(48)];
+  const masterEntity = ref => ({ key: 'material:' + ref, ref, domain: 'material', business_code: ref[0], label: '原料 ' + ref[0],
+    status: 'attention', issue_count: 1, relation_count: 0, known_relation_count: 0, filled_fields: 0, checked_fields: 0,
+    checks_complete: true, relations_complete: true, summary: '待核对到料',
+    target: { view: 'process', context: { source: 'production', kind: 'material', entity_ref: ref } } });
+  const masterIssue = (ref, title) => ({ key: 'issue:' + ref, issue_ref: 'arrival:' + ref, entity_ref: ref, domain: 'material',
+    business_code: ref[0], label: '原料 ' + ref[0], status: 'attention', issue_count: 1, relation_count: 0,
+    rule: 'arrival', title, evidence: title, action: '核对到料', target: masterEntity(ref).target });
+  const masterListeners = {};
+  const masterWindow = { ResourceControls: { Button: 'button', ErrorBox: 'error', MetricValue: 'metric' },
+    MasterOverviewTable: { Table: 'master-table', Tabs: 'master-tabs', Pager: 'master-pager' }, MasterOverviewDetail: 'master-detail',
+    WorkbenchPageContext: { useSnapshot() {} }, WorkbenchFormat: { dateTime: String },
+    addEventListener(name, fn) { masterListeners[name] = fn; }, removeEventListener() {} };
+  const masterContext = vm.createContext({ window: masterWindow, React: masterHooks.React, AbortController, URLSearchParams });
+  load(masterContext, 'WorkbenchTerms.js'); load(masterContext, 'MasterOverviewContract.js');
+  const masterDetail = (scope, ref, section, title) => ({ scope, entity: masterEntity(ref), section,
+    counts: { issues: 1, relations: 0, fields: 0 }, rows: section === 'issues' ? [masterIssue(ref, title)] : [],
+    page: { number: 1, pages: 1, size: 10, total: section === 'issues' ? 1 : 0 } });
+  const masterEnvelope = (data, snapshot) => ({ ok: true, schema_version: 1, warnings: [], data,
+    meta: { source: 'production', time_basis: 'factory_local', snapshot_ref: snapshot, as_of: '2026-10-22T08:00:00' } });
+  masterWindow.APSWorkbenchTransport = { async read(path) {
+    const url = new URL(path, 'http://localhost'), scope = JSON.parse(url.searchParams.get('scope')); masterRequests.push(url);
+    if (url.pathname.includes('/entities/')) return masterEnvelope(masterDetail(scope, url.pathname.split('/').at(-1),
+      url.searchParams.get('section'), '当前到料'), url.searchParams.get('snapshot_ref'));
+    const located = url.pathname.includes('/locate/'), ref = located ? url.pathname.split('/').at(-1) : masterRefs[0];
+    const currentScope = located ? masterWindow.APSMasterOverviewContract.scope({ view: 'entities', domain: 'material', sort: 'business_code', direction: 'asc' }) : scope;
+    return masterEnvelope({ scope: currentScope, rows: masterRefs.map(value => located ? masterEntity(value) : masterIssue(value, '捕获到料')),
+      page: { number: 1, pages: 1, size: 20, total: 2 }, selected_detail: masterDetail(currentScope, ref, 'issues', '捕获到料'),
+      ...(located ? { selected: { domain: 'material', entity_ref: ref } } : {}),
+      overview: { complete: true, basis: '基础资料', gaps: [], stats: { entities: 2, issues: 2, affected: 2, relations: 0, known_relation_pairs: 0 },
+        domains: masterWindow.APSMasterOverviewContract.domains.map(([id]) => ({ id, loaded: true,
+          count: id === 'material' ? 2 : 0, attention: id === 'material' ? 2 : 0, unknown: 0 })) } }, located ? 'master-located' : 'master-list');
+  } };
+  load(masterContext, 'MasterOverviewAPI.js'); load(masterContext, 'MasterOverviewWorkspace.jsx');
+  let masterTree;
+  async function settleMaster() {
+    for (let index = 0; index < 4; index++) { masterTree = masterHooks.render(() => masterWindow.MasterOverviewWorkspace({})); masterHooks.flush(); await turns(); }
+  }
+  const masterDetailReads = () => masterRequests.filter(url => url.pathname.includes('/entities/')).length;
+  await settleMaster();
+  assert.equal(masterRequests.length, 1); assert.equal(masterDetailReads(), 0);
+  assert.equal(find(masterTree, 'master-detail').result.data.entity.ref, masterRefs[0]);
+  find(masterTree, 'master-table').onSelect(find(masterTree, 'master-table').data.rows[1], null); await settleMaster();
+  assert.equal(masterDetailReads(), 1); assert.equal(find(masterTree, 'master-detail').result.data.rows[0].title, '当前到料');
+  find(masterTree, 'master-detail').onLocate({ domain: 'material', entity_ref: masterRefs[1] }); await settleMaster();
+  assert.equal(masterRequests.filter(url => url.pathname.includes('/locate/')).length, 1); assert.equal(masterDetailReads(), 1);
+  assert.equal(find(masterTree, 'master-detail').result.data.entity.ref, masterRefs[1]);
+  assert.equal(find(masterTree, 'master-detail').result.data.rows[0].title, '捕获到料');
+  find(masterTree, 'master-detail').onSection('fields'); await settleMaster();
+  find(masterTree, 'master-table').onSelect(find(masterTree, 'master-table').data.rows[0], null);
+  masterTree = masterHooks.render(() => masterWindow.MasterOverviewWorkspace({}));
+  assert.equal(find(masterTree, 'master-detail').section, 'issues');
+  assert.equal(find(masterTree, 'master-detail').result, null);
+  assert.equal(find(masterTree, 'master-detail').loading, true);
+  await settleMaster();
+  assert.equal(masterDetailReads(), 3); assert.equal(find(masterTree, 'master-detail').result.data.rows[0].title, '当前到料');
+  find(masterTree, 'master-detail').onBack();
+  masterListeners.focus();
+  masterTree = masterHooks.render(() => masterWindow.MasterOverviewWorkspace({}));
+  assert.equal(find(masterTree, 'master-detail').selected, null);
+  find(masterTree, 'button', props => Array.isArray(props.children) && props.children.includes('刷新本页')).onClick();
+  await settleMaster();
+  assert.equal(find(masterTree, 'master-detail').selected, null);
+  assert.equal(find(masterTree, 'master-detail').result, null);
+  masterHooks.unmount();
+
   // The current issue batch owns the comparison scope across analysis changes and page restoration.
   let dashboardHooks = hooks(); const dashboardRequests = [], dashboardStates = [];
   const dashboardRun = '1'.repeat(48), dashboardCandidate = '2'.repeat(48), batchOne = '3'.repeat(48), batchTwo = '4'.repeat(48);
@@ -168,30 +235,31 @@ async function main() {
   const dashboardApi = {
     catalog: async () => ({ data: { candidates: [{ candidate_ref: dashboardCandidate, label: '原算法', status: 'completed', task_count: 2 }],
       candidate_count: 1, page: { has_more: false } }, meta: { snapshot_ref: 'dashboard-directory' } }),
-    workspace: (candidateRef, scope, signal) => new Promise(resolve => dashboardRequests.push({ candidateRef, scope, signal, resolve }))
+    workspace: (candidateRef, scope, signal) => new Promise(resolve => dashboardRequests.push({ kind: 'workspace', candidateRef, scope, signal, resolve }))
   };
   const dashboardWindow = { RunCandidateAPI: { create: () => dashboardApi, time: value => typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(value) },
-    RunBaselineAPI: { create: () => ({ read: async data => ({ data: { batch_ref: data.batch_ref } }) }) },
     DashboardCandidatePanels: { Metrics: 'dashboard-metrics', Batches: 'dashboard-batches', Summary: 'dashboard-summary' },
     ResourceControls: { Button: 'button', ErrorBox: 'error', Issues: 'issues' }, WorkbenchReference: 'reference',
     WorkbenchFormat: { dateTime: String, compactRange: (start, end) => start + ' / ' + end, compactDateTime: String },
     WorkbenchTerms: { candidate_statuses: { completed: '计算完成' }, hold_window: () => '未设置', material_strategy: () => '全部齐套' } };
   const dashboardContext = vm.createContext({ window: dashboardWindow, React: dashboardHooks.React, AbortController });
   load(dashboardContext, 'DashboardContract.js'); load(dashboardContext, 'DashboardAnalysisAPI.js'); load(dashboardContext, 'DashboardCandidateComparisonAPI.js');
-  dashboardWindow.DashboardCandidateComparisonAPI.create = () => ({ read: async (data, baseline) => {
-    assert.equal(baseline.batch_ref, data.batch_ref);
-    const batchRefs = data.batch_ref ? [data.batch_ref] : [batchOne, batchTwo];
-    return { data: { candidate: data.candidate, generation: data.generation, baseline: { available: false }, batch_refs: batchRefs,
-      batches: batchRefs.map(batch_ref => ({ batch_ref, batch_id: batch_ref === batchOne ? 'DC-01' : 'DC-02' })) } };
-  } });
+  dashboardWindow.DashboardCandidateComparisonAPI.create = () => ({ read: (scope, signal) => new Promise(resolve =>
+    dashboardRequests.push({ kind: 'comparison', candidateRef: scope.candidate_ref, scope, signal, resolve })) });
   load(dashboardContext, 'DashboardCandidates.jsx');
   let dashboardProps = { catalog: { runs: [{ run_ref: dashboardRun, candidate_count: 1, accepted_at: dashboardChoice.range_start }] },
     initialContext: { run_ref: dashboardRun, candidate_ref: dashboardCandidate, batch_ref: batchTwo }, issueBatchRef: batchOne, selectedBatch: batchOne,
     onSelectBatch() {}, onState: state => dashboardStates.push(JSON.parse(JSON.stringify(state))) };
   const renderDashboard = () => { const tree = dashboardHooks.render(() => dashboardWindow.DashboardCandidates(dashboardProps)); dashboardHooks.flush(); return tree; };
   const completeDashboard = async request => {
-    request.resolve({ data: { candidate: { candidate_ref: request.candidateRef, run_ref: dashboardRun, label: '原算法' }, batch_ref: request.scope.batch_ref || null,
-      generation: { run_ref: dashboardRun, input: { start_date: '2026-10-13', end_date: '2026-10-30', ready_check: true, missing_resource_policy: 'exclude', hold_window: null } } } }); await turns(); await turns();
+    const data = { candidate: { candidate_ref: request.candidateRef, run_ref: dashboardRun, label: '原算法' }, batch_ref: request.scope.batch_ref || null,
+      generation: { run_ref: dashboardRun, input: { start_date: '2026-10-13', end_date: '2026-10-30', ready_check: true, missing_resource_policy: 'exclude', hold_window: null } } };
+    if (request.kind === 'comparison') {
+      const batchRefs = request.scope.batch_ref ? [request.scope.batch_ref] : [batchOne, batchTwo];
+      Object.assign(data, { baseline: { available: false }, batch_refs: batchRefs,
+        batches: batchRefs.map(batch_ref => ({ batch_ref, batch_id: batch_ref === batchOne ? 'DC-01' : 'DC-02' })) });
+    }
+    request.resolve({ data }); await turns(); await turns();
     return renderDashboard();
   };
   const assertDashboardBatch = (tree, request, batchRef) => {
@@ -203,6 +271,7 @@ async function main() {
   let dashboardTree = renderDashboard(); dashboardTree = await completeDashboard(dashboardRequests[0]);
   assert.deepEqual({ ...dashboardRequests[0].scope }, { batch_ref: batchOne }, 'Admission-range discovery already follows the current issue batch');
   const initialDashboardRequest = dashboardRequests.at(-1); dashboardTree = await completeDashboard(initialDashboardRequest);
+  assert.deepEqual(dashboardRequests.map(request => request.kind), ['workspace', 'comparison']);
   assertDashboardBatch(dashboardTree, initialDashboardRequest, batchOne); const savedDashboard = dashboardStates.at(-1);
   find(dashboardTree, 'button', props => props['aria-label'] === '刷新候选方案比较').onClick(); renderDashboard();
   const oldDashboardRequest = dashboardRequests.at(-1);
@@ -219,6 +288,8 @@ async function main() {
   assertDashboardBatch(dashboardTree, restoredDashboardRequest, batchTwo);
   dashboardProps = { ...dashboardProps, issueBatchRef: null, selectedBatch: batchOne }; renderDashboard();
   const wholeDashboardRequest = dashboardRequests.at(-1); dashboardTree = await completeDashboard(wholeDashboardRequest);
+  assert.equal(dashboardRequests.length, 6, 'Each known-range read issues one complete comparison request');
+  assert.equal(dashboardRequests.filter(request => request.kind === 'workspace').length, 1, 'Only the initial missing range reads the workspace');
   assert.equal(Object.prototype.hasOwnProperty.call(wholeDashboardRequest.scope, 'batch_ref'), false);
   assert.equal(find(dashboardTree, 'reference', props => props.entries && '原问题批次编号' in props.entries), null);
   assert.deepEqual(Array.from(find(dashboardTree, 'dashboard-batches').data.batches, row => row.batch_id), ['DC-01', 'DC-02']);
@@ -306,6 +377,11 @@ async function main() {
   let fileTree = renderFile(); find(fileTree, 'input').onChange({ target: { files: [{ name: '报工.xlsx', size: 10 }] } }); fileTree = renderFile();
   await find(find(fileTree, 'modal').footer, 'button', props => props.children.includes('开始预检')).onClick(); fileTree = renderFile();
   assert(find(fileTree, 'p', props => props.children.includes('预检通过，尚未写入报工。')));
+  command.phase = 'rejected'; fileTree = renderFile();
+  const rejectedImport = find(find(fileTree, 'modal').footer, 'button', props => props.children.includes('确认导入'));
+  assert.equal(rejectedImport.disabled, true, 'A rejected import must be prechecked again before another confirmation');
+  assert.equal(rejectedImport.reason, '本次未导入，请重新预检后再确认。');
+  assert.equal(find(fileTree, 'p', props => props.children.includes('预检通过，尚未写入报工。')), null);
   command.phase = 'done'; fileTree = renderFile();
   assert.equal(find(fileTree, 'p', props => props.children.includes('预检通过，尚未写入报工。')), null);
   assert(find(fileTree, 'div', props => props.className === 'field-files-summary')); assert(find(fileTree, 'table'));
@@ -315,15 +391,16 @@ async function main() {
   // Result/constraint/preparation task selection uses the same guarded detail-opening action.
   const trialHooks = hooks(), trialData = { draft_ref: 'draft', base: {}, base_identity: {}, name: '试调', status: 'editing',
     baseline: { version: null }, time_scope: { start: timeScope.range_start, end: timeScope.range_end }, comparison: {}, tasks: [], validation: { constraints_status: 'valid' } };
-  let mayLeave = true, guardCalls = 0;
+  let mayLeave = true, guardCalls = 0, trialCommands = { blocked: false };
   const trialWindow = { addEventListener() {}, removeEventListener() {}, TrialAPI: {}, TrialContract: {},
-    TrialControls: { Button: 'button', ErrorBox: 'error', statusLabel: String, sourceLabel: () => '原安排' },
-    TrialSession: { useRead: () => ({ result: { data: trialData, meta: {} }, busy: false, error: null }), useCommands: () => ({ blocked: false }) },
-    WorkbenchGuards: { useDirtyGuard() {}, confirmLeave: async () => { guardCalls++; return mayLeave; } },
-    WorkbenchCaption: { useCaption() {} }, WorkbenchFormat: { dateTime: String, compactRange: () => '时间范围' }, WorkbenchTerms: { delivery_coverage: () => '' },
-    TrialCatalog: { Directory: 'trial-directory' }, TrialGantt: 'trial-gantt', TrialDetails: 'trial-details', TrialResults: { Summary: 'trial-summary', Results: 'trial-results' } };
+    TrialControls: { Button: 'button', ErrorBox: 'error', Modal: 'modal', Issues: 'issues', statusLabel: String, sourceLabel: () => '原安排' },
+    TrialSession: { useRead: () => ({ result: { data: trialData, meta: {} }, busy: false, error: null }), useCommands: () => trialCommands },
+    WorkbenchGuards: { useDirtyGuard() {}, confirmLeave: async () => { guardCalls++; return mayLeave; } }, WorkbenchReference: 'reference',
+    WorkbenchCaption: { useCaption() {} }, WorkbenchFormat: { dateTime: String, compactRange: () => '时间范围' }, WorkbenchTerms: { delivery_coverage: () => '', actions: { query_result: '查询结果' } },
+    TrialCatalog: { Directory: 'trial-directory', Create: 'trial-create' }, TrialGantt: 'trial-gantt', TrialDetails: 'trial-details', TrialResults: { Summary: 'trial-summary', Results: 'trial-results' } };
+  const trialSource = source('TrialWorkspace.jsx').replace('window.WorkbenchTrialWorkspace = WorkbenchTrialWorkspace;', 'window.TrialWorkspaceSession = Session; window.TrialFinish = Finish;');
   const trialContext = vm.createContext({ window: trialWindow, React: trialHooks.React, document: { documentElement: {} } });
-  load(trialContext, 'TrialWorkspace.jsx', source('TrialWorkspace.jsx').replace('window.WorkbenchTrialWorkspace = WorkbenchTrialWorkspace;', 'window.TrialWorkspaceSession = Session;'));
+  load(trialContext, 'TrialWorkspace.jsx', trialSource);
   const renderTrial = () => trialHooks.render(() => trialWindow.TrialWorkspaceSession({ initialTarget: { draft_ref: 'draft' } }));
   let trialTree = renderTrial(); assert.equal(find(trialTree, 'trial-details'), null);
   await find(trialTree, 'trial-gantt').onSelect('task-one'); trialTree = renderTrial();
@@ -335,6 +412,65 @@ async function main() {
   mayLeave = true; await find(trialTree, 'trial-details').onCollapse(); trialTree = renderTrial(); assert.equal(find(trialTree, 'trial-details'), null);
   const beforeReopen = guardCalls; await find(trialTree, 'trial-results').onSelect('task-one'); trialTree = renderTrial();
   assert.equal(find(trialTree, 'trial-details').selected, 'task-one'); assert.equal(guardCalls, beforeReopen);
+
+  // A pending trial submission has one visible owner: the rendered dialog, otherwise the page notice.
+  const pendingKey = 'trial-' + 'a'.repeat(48), commandError = new Error('上次试调提交结果还没查到');
+  trialCommands = { blocked: true, busy: false, key: pendingKey, note: '上次试调提交待确认。', error: commandError, lookup() {}, restore() {} };
+  const pendingNotice = tree => find(tree, 'section', props => props['aria-label'] === '待确认的试调提交');
+  const commandErrorBox = tree => find(tree, 'error', props => props.error === commandError);
+  trialTree = renderTrial(); assert(pendingNotice(trialTree) && commandErrorBox(trialTree), 'Without a dialog the page owns the pending submission');
+  await find(trialTree, 'button', props => props.children.includes('保存试调方案')).onClick(); trialTree = renderTrial();
+  const finishProps = find(trialTree, trialWindow.TrialFinish);
+  assert(finishProps); assert.equal(pendingNotice(trialTree), null, 'The save dialog owns the pending submission'); assert.equal(commandErrorBox(trialTree), null);
+  const finishHooks = hooks(), finishWindow = { ...trialWindow };
+  load(vm.createContext({ window: finishWindow, React: finishHooks.React, document: { documentElement: {} } }), 'TrialWorkspace.jsx', trialSource);
+  const finishModal = finishHooks.render(() => finishWindow.TrialFinish({ ...finishProps, data: { ...trialData, task_count: 0, unplanned_operations: [] } }));
+  assert.equal(finishModal.props.locked, true);
+  assert.strictEqual(find(finishModal.props.footer, 'button', props => props.children.includes('查询结果')).onClick, trialCommands.lookup, 'The locked dialog keeps result lookup reachable');
+  assert(find(finishModal, 'reference', props => props.value === pendingKey)); assert(find(finishModal, 'p', props => props.children.includes(trialCommands.note)));
+  finishProps.onClose(); trialTree = renderTrial(); assert(pendingNotice(trialTree));
+  await find(trialTree, 'button', props => props.children.includes('新增试调')).onClick(); trialTree = renderTrial();
+  assert(find(trialTree, 'trial-create')); assert.equal(pendingNotice(trialTree), null, 'The create dialog owns the pending submission'); assert.equal(commandErrorBox(trialTree), null);
+  const catalogHooks = hooks(), catalogWindow = { ...trialWindow, TrialSession: { useRead: () => ({ result: null, busy: false, error: null }) } };
+  load(vm.createContext({ window: catalogWindow, React: catalogHooks.React }), 'TrialCatalog.jsx');
+  const catalogModal = commands => catalogHooks.render(() => catalogWindow.TrialCatalog.Create({ initialBase: { plan_ref: 'plan' }, commands, onClose() {} }));
+  let createModal = catalogModal(trialCommands); assert.equal(createModal.props.locked, true);
+  assert.strictEqual(find(createModal.props.footer, 'button', props => props.children.includes('查询结果')).onClick, trialCommands.lookup);
+  assert(find(createModal, 'reference', props => props.value === pendingKey)); assert(find(createModal, 'p', props => props.children.includes(trialCommands.note)));
+  createModal = catalogModal({ ...trialCommands, key: null, error: null, blocked: false });
+  assert.equal(find(createModal.props.footer, 'button', props => props.children.includes('查询结果')), null);
+
+  {
+  // A server-confirmed outcome stays final when the local key cannot be cleared; lookup and restore retry only that cleanup.
+  const sessionHooks = hooks(), storage = { key: null }, receipts = [];
+  let clearFailure = null, lookups = 0, outcome = null;
+  const sessionWindow = { addEventListener() {}, removeEventListener() {}, WorkbenchTerms: { outcomes: { pending: action => '上次' + action + '待确认' } },
+    TrialAPI: { PENDING_KEY: 'pending', pending: () => storage.key, reserve: () => (storage.key = 'trial-' + 'b'.repeat(48)),
+      clear() { if (clearFailure) throw clearFailure; storage.key = null; }, command: async () => outcome(), lookup: async () => { lookups++; return { state: 'not_observed', receipt: null }; } } };
+  load(vm.createContext({ window: sessionWindow, React: sessionHooks.React }), 'TrialSession.js');
+  const useSession = () => sessionHooks.render(() => sessionWindow.TrialSession.useCommands(receipt => receipts.push(receipt)));
+  let session = useSession(); sessionHooks.flush();
+  const receipt = { data: { draft_ref: 'draft' } }, rejected = Object.assign(new Error('来源已变化'), { rejected: true });
+  clearFailure = new Error('本机操作记录没清掉'); outcome = async () => receipt;
+  assert.equal(await useSession().execute({ action: 'save' }, 'token'), true); session = useSession();
+  assert.strictEqual(session.receipt, receipt); assert.deepEqual(receipts, [receipt], 'A failed local clear must not withhold the confirmed receipt');
+  assert.equal(session.key, storage.key); assert.strictEqual(session.error, clearFailure); assert.equal(session.blocked, true);
+  await session.lookup(); session = useSession();
+  assert.equal(session.key, storage.key); assert.strictEqual(session.error, clearFailure); assert.equal(lookups, 0, 'A confirmed receipt only retries its local cleanup');
+  clearFailure = null; await session.lookup(); session = useSession();
+  assert.deepEqual([storage.key, session.key, session.error, session.note, lookups], [null, null, null, '', 0]); assert.deepEqual(receipts, [receipt], 'Cleanup does not replay the receipt');
+  clearFailure = new Error('本机操作记录没清掉'); outcome = async () => { throw rejected; };
+  assert.equal(await session.execute({ action: 'save' }, 'token'), false); session = useSession();
+  assert.equal(session.key, storage.key); assert.strictEqual(session.error, clearFailure);
+  assert.equal(session.note, '这次没有写入，但本机操作记录还没清掉。请点「查询结果」重试清理。');
+  clearFailure = null; await session.lookup(); session = useSession();
+  assert.deepEqual([storage.key, session.key, session.error, session.note, lookups], [null, null, null, '', 0], 'A rejected command must not wait on not_observed');
+  clearFailure = new Error('本机操作记录没清掉'); await session.execute({ action: 'save' }, 'token'); clearFailure = null;
+  session.restore(); session = useSession(); assert.deepEqual([storage.key, session.key, session.error], [null, null, null], 'Restore shares the same cleanup retry');
+  storage.key = 'trial-' + 'c'.repeat(48); session.restore(); await session.lookup(); session = useSession();
+  assert.deepEqual([session.key, session.note, lookups], [storage.key, '上次提交待确认', 1], 'An unconfirmed key still asks the server');
+  sessionHooks.unmount();
+  }
 
   // Related-resource editing keeps the current list on its displayed clamped page.
   const resourceHooks = hooks(), resourceRequests = [], resourceDetails = [], resourceSnapshots = [];
@@ -458,6 +594,53 @@ async function main() {
   assert.equal(relatedBoth.saved[0].category, 'external');
   assert.deepEqual(relatedBoth.requests.slice(-2).map(request => [request.kind, request.category || null]), [['op_type', 'external'], ['supplier', null]],
     'Saving a related both entity refreshes its source category and the parent list'); relatedBoth.dispose();
+
+  {
+    // A definite rejection stays rejected: a failed local cleanup is retried by reset(), never turned into a receipt lookup.
+    const commandHooks = hooks(), rejectedForms = () => null, rejectedTables = () => null;
+    rejectedForms.Detail = 'resource-detail'; rejectedForms.Feedback = 'resource-feedback'; rejectedTables.Pager = 'resource-pager';
+    const commandWindow = { crypto: { getRandomValues: bytes => bytes.fill(2) }, addEventListener() {}, removeEventListener() {},
+      ResourceControls: Object.fromEntries(['Button', 'Icon', 'ErrorBox', 'Issues', 'Modal'].map(name => [name, name.toLowerCase()])),
+      ResourceForms: rejectedForms, ResourceTables: rejectedTables, ResourceRail: 'resource-rail', ResourceMetrics: 'resource-metrics',
+      ResourceTableFilterModel: { restore: filters => ({ filters, notice: '' }) }, WorkbenchPageContext: { useSnapshot() {} } };
+    const commandContext = vm.createContext({ window: commandWindow, React: commandHooks.React, AbortController, DOMException });
+    for (const name of ['resource-contract.js', 'resource-session.js', 'ResourceWorkspace.jsx']) load(commandContext, name);
+    commandWindow.APSResourceSession.useCounts = () => ({ summary: { reload() {} } });
+    const rejection = { ok: false, committed: false, error: { code: 'validation_failed', message: '编号重复。' } }, cleared = [], lookups = [];
+    let clearFailure = new Error('上次操作记录没清掉');
+    const commandAdapter = { savePending() {}, clearPending() { cleared.push(clearFailure ? 'failed' : 'cleared'); if (clearFailure) throw clearFailure; },
+      async lookup(key) { lookups.push(key); return { ok: true, state: 'not_recorded', receipt: null, may_be_in_flight: true }; },
+      async command() { return rejection; } };
+    const useRejected = () => commandHooks.render(() => commandWindow.APSResourceSession.useCommand(commandAdapter));
+    useRejected(); commandHooks.flush();
+    await useRejected().submit('machine', 'create', null, { write_token: 'token' }, { label: '设备' });
+    const kept = useRejected();
+    assert.equal(kept.phase, 'rejected', 'A failed cleanup after a definite rejection keeps the rejected state');
+    assert.equal(kept.intent.action, 'create', 'The saved intent stays so reset() can retry the cleanup');
+    assert.strictEqual(kept.error, clearFailure); assert.deepEqual(lookups, [], 'A rejection has no receipt to look up');
+    assert.equal(kept.reset(), false); assert.equal(useRejected().phase, 'rejected'); assert.deepEqual(cleared, ['failed', 'failed']);
+    commandHooks.unmount();
+
+    // A remounted workspace shows the orphan rejection; closing it retries the cleanup.
+    const workspaceHooks = hooks(); commandContext.React = workspaceHooks.React;
+    const renderWorkspace = () => { const tree = workspaceHooks.render(() => commandWindow.ResourceWorkspace({ adapter: commandAdapter, initialNode: 'machine' })); workspaceHooks.flush(); return tree; };
+    const orphan = find(renderWorkspace(), 'modal', props => props.title === '上次操作结果');
+    assert(orphan && !orphan.locked, 'A rejected command without its dialog still offers a closable previous result');
+    clearFailure = null; orphan.onClose(); await turns();
+    assert.equal(find(renderWorkspace(), 'modal', props => props.title === '上次操作结果'), null); assert.deepEqual(cleared, ['failed', 'failed', 'cleared']);
+    workspaceHooks.unmount();
+
+    // A successful cleanup drops the saved intent, so reset() has nothing left to clear.
+    const clearedHooks = hooks(); commandContext.React = clearedHooks.React;
+    const useCleared = () => clearedHooks.render(() => commandWindow.APSResourceSession.useCommand(commandAdapter));
+    useCleared(); clearedHooks.flush();
+    await useCleared().submit('machine', 'create', null, { write_token: 'token' }, { label: '设备' });
+    const dropped = useCleared();
+    assert.equal(dropped.phase, 'rejected'); assert.strictEqual(dropped.intent, null, 'A cleared rejection no longer carries the saved intent');
+    assert.strictEqual(dropped.error, rejection); assert.deepEqual(cleared, ['failed', 'failed', 'cleared', 'cleared']);
+    assert.equal(dropped.reset(), true); assert.deepEqual(cleared, ['failed', 'failed', 'cleared', 'cleared']); assert.deepEqual(lookups, []);
+    clearedHooks.unmount();
+  }
 
   const modelContext = vm.createContext({ window: { WorkbenchFormat: {}, FieldContract: { quantityReasons: {}, states: {} } } });
   load(modelContext, 'PlanGanttModel.js'); load(modelContext, 'ActualGanttModel.js'); let reads = 0;

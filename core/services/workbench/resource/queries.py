@@ -8,14 +8,13 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_resource_query import RESOURCE_KINDS
 from core.models.workbench_resource_table_query import table_query_required, toolbar_scope
-from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_resource_query_repo import WorkbenchResourceQueryRepository
 from data.repositories.workbench_resource_table_repo import WorkbenchResourceTableRepository
 
 from .calendar_summary import resource_calendar_summary
 from .catalogs import WorkbenchResourceCatalogService
 from .entities import WorkbenchResourceService
-from .metrics import WorkbenchResourceMetricsService
+from .metrics import RESOURCE_KEYS, WorkbenchResourceMetricsService
 from .projection import project_resource
 from .readiness import process_readiness, resource_readiness
 from .states import ResourceChangePreparation
@@ -37,14 +36,15 @@ class WorkbenchResourceQueryService:
             raise WorkbenchCommandRejected("entity_not_found", "没有这个资源页面。请从左边的资料总览重新进入。", 404)
         self.conn, self.kind = conn, kind
         self.repo = WorkbenchResourceQueryRepository(conn, logger=logger)
-        self.identities = WorkbenchIdentityRepository(conn, logger=logger)
         self.logger = logger
         self._snapshot_metrics = None
         self._table_facts = None
         self._table_indexes = None
         self._table_identities = None
         self._identities_by_ref = None
+        self._resolved_by_ref = {}
         self._snapshot_scope = None
+        self._report_revisions = {}
         if kind == "supplier":
             self.domain = WorkbenchSupplierService(conn, logger=logger)
         elif kind in ("machine_group", "shift_profile"):
@@ -56,18 +56,22 @@ class WorkbenchResourceQueryService:
     def read_snapshot(self, *, capture_fingerprint=True):
         with TransactionManager(self.conn).transaction():
             previous = (self._snapshot_metrics, self._table_facts, self._table_indexes,
-                        self._table_identities, self._identities_by_ref, self._snapshot_scope)
+                        self._table_identities, self._identities_by_ref, self._resolved_by_ref,
+                        self._snapshot_scope, self._report_revisions)
             try:
                 self._snapshot_metrics = WorkbenchResourceMetricsService(self.conn, self.logger)
                 self._table_facts, self._table_indexes = None, {}
                 identities = self._read_identities() if capture_fingerprint else None
                 self._table_identities = identities
                 self._identities_by_ref = None if identities is None else {row["ref"]: row for row in identities}
+                self._resolved_by_ref = {}
                 self._snapshot_scope = None
+                self._report_revisions = {}
                 yield self.state_fingerprint() if capture_fingerprint else None
             finally:
                 (self._snapshot_metrics, self._table_facts, self._table_indexes,
-                 self._table_identities, self._identities_by_ref, self._snapshot_scope) = previous
+                 self._table_identities, self._identities_by_ref, self._resolved_by_ref,
+                 self._snapshot_scope, self._report_revisions) = previous
 
     def _metrics_reader(self):
         return self._snapshot_metrics or WorkbenchResourceMetricsService(self.conn, self.logger)
@@ -75,7 +79,9 @@ class WorkbenchResourceQueryService:
     def state_fingerprint(self):
         scope = self._snapshot_scope
         if scope is None:
-            scope = self.repo.scope_state(self.kind)
+            scope = self.repo.scope_state(
+                self.kind, identities=self._table_identities, report_revisions=self._report_revisions
+            )
             if self._snapshot_metrics is not None:
                 self._snapshot_scope = scope
         return {"scope": scope,
@@ -86,10 +92,31 @@ class WorkbenchResourceQueryService:
         return WorkbenchResourceTableRepository(self.conn, self.logger).identities(self._metrics_reader().identity_kinds(self.kind))
 
     def create_snapshot(self):
-        return self.repo.create_relations(self.kind)
+        if self._snapshot_metrics is None or self._table_identities is None:
+            return self.repo.create_relations(self.kind)
+        relations = {"machine": ("op_type", "machine_group"),
+                     "operator": ("op_type", "shift_profile"), "supplier": ("op_type",)}.get(self.kind, ())
+        if not relations:
+            return None
+        facts = self._snapshot_metrics.facts
+        refs = self._table_reader().identities
+        result = {}
+        for relation in relations:
+            key = RESOURCE_KEYS[relation]
+            allowed = (("external", "both") if self.kind == "supplier" else ("internal", "both")) if relation == "op_type" else None
+            rows = [
+                {**row, "ref": refs.get((relation, row[key]), {}).get("ref"),
+                 "revision": refs.get((relation, row[key]), {}).get("revision")}
+                for row in facts[relation] if allowed is None or row["category"] in allowed
+            ]
+            rows.sort(key=lambda item: item[key])
+            result[relation] = rows
+        if self.kind == "operator":
+            result["shift_pattern"] = sorted(facts["shift_pattern"], key=lambda item: (item["profile_id"], item["day_offset"]))
+        return result
 
     def preparation(self, *, refs=None, codes=None, selected_refs=(), selected_codes=None, names=None,
-                    machine_authorizations=False):
+                    machine_authorizations=False, known_identities=()):
         if self._table_identities is not None:
             return ResourceChangePreparation(self._table_reader())
         repo = WorkbenchResourceTableRepository(self.conn, self.logger)
@@ -97,11 +124,13 @@ class WorkbenchResourceQueryService:
             metrics = WorkbenchResourceMetricsService(self.conn, self.logger)
             facts = capture_change_facts(metrics, refs=refs or (), codes=codes,
                                          selected_refs=selected_refs, selected_codes=selected_codes,
-                                         machine_authorizations=machine_authorizations)
+                                         machine_authorizations=machine_authorizations,
+                                         known_identities=known_identities)
             owners = {kind: repo.name_owners(kind, values) for kind, values in (names or {}).items()}
             return ResourceChangePreparation(facts, name_reader=repo.name_owners, names=owners)
         return ResourceChangePreparation(ResourceTableFacts(self._metrics_reader(), repo.identities(),
-                                                           scope_state=self._snapshot_scope))
+                                                           scope_state=self._snapshot_scope,
+                                                           report_revisions=self._report_revisions))
 
     def preparation_for(self, action, payload, *, ref=None):
         selected = [ref for value in payload.get("relationships", {}).values()
@@ -119,40 +148,55 @@ class WorkbenchResourceQueryService:
         return self._metrics_reader().summary_metrics()
 
     def summary_projection(self, *, clock=None):
-        with TransactionManager(self.conn).transaction():
-            counts, metrics = self.summary(), self.summary_metrics()
-            calendar = resource_calendar_summary(self.conn, self.logger, clock=clock)
-            process = process_readiness(self.conn, counts["part"], self.logger)
-            return {"counts": counts, "metrics": metrics, "calendar": calendar,
-                    "readiness": resource_readiness(counts, metrics, calendar, process)}
+        if not self.conn.in_transaction:
+            with TransactionManager(self.conn).transaction():
+                return self._summary_projection(clock=clock)
+        return self._summary_projection(clock=clock)
 
-    def metrics(self, query):
-        if query.kind != self.kind:
-            raise WorkbenchCommandRejected("invalid_input", "查询类型与当前资源不一致。", 400)
-        codes = self.matching_keys(query) if table_query_required(query) else self.toolbar_matching_keys(query)
-        return self._metrics_reader().metrics(self.kind, codes)
+    def _summary_projection(self, *, clock=None):
+        counts, metrics = self.summary(), self.summary_metrics()
+        calendar = resource_calendar_summary(self.conn, self.logger, clock=clock)
+        process = process_readiness(self.conn, counts["part"], self.logger)
+        return {"counts": counts, "metrics": metrics, "calendar": calendar,
+                "readiness": resource_readiness(counts, metrics, calendar, process)}
+
+    def resolve_refs(self, refs):
+        for ref in refs:
+            if type(ref) is not str or len(ref) != 48 or any(char not in "0123456789abcdef" for char in ref):
+                raise WorkbenchCommandRejected("entity_not_found", "这条资源记录已失效，页面没有打开。请从列表重新选择。", 404)
+        if not refs:
+            return []
+        by_ref = (self._identities_by_ref if self._identities_by_ref is not None else {
+            row["ref"]: row
+            for row in WorkbenchResourceTableRepository(self.conn, self.logger).identities_by_refs(refs)
+        })
+        result = []
+        for ref in refs:
+            row = by_ref.get(ref)
+            if row is None or row["kind"] != self.kind:
+                raise WorkbenchCommandRejected("entity_not_found", "这条资源已经删除了。请从列表重新选择。", 404)
+            self._resolved_by_ref[ref] = row
+            result.append(WorkbenchEntityIdentity(row["ref"], row["kind"], row["entity_key"], int(row["revision"]), True))
+        return result
 
     def resolve(self, ref):
-        if type(ref) is not str or len(ref) != 48 or any(char not in "0123456789abcdef" for char in ref):
-            raise WorkbenchCommandRejected("entity_not_found", "这条资源记录已失效，页面没有打开。请从列表重新选择。", 404)
-        if self._identities_by_ref is not None:
-            row = self._identities_by_ref.get(ref)
-            if row is not None and row["kind"] == self.kind:
-                return WorkbenchEntityIdentity(row["ref"], row["kind"], row["entity_key"], row["revision"], True)
-        else:
-            identity = self.identities.get(ref)
-            if identity is not None and identity.kind == self.kind and identity.active:
-                return identity
-        raise WorkbenchCommandRejected("entity_not_found", "这条资源已经删除了。请从列表重新选择。", 404)
+        return self.resolve_refs([ref])[0]
+
+    def current_with_identity(self, identity):
+        known = self._resolved_by_ref.pop(identity.ref, None)
+        preparation = self.preparation(refs=[identity.ref],
+                                       known_identities=[known] if known is not None else ())
+        current = preparation.current(self.kind, identity)
+        return preparation.state(self.kind, current.entity_key)
 
     def detail(self, ref):
         identity = self.resolve(ref)
-        if self._table_identities is not None and self.kind != "supplier":
+        if self._table_identities is not None:
             if self.kind == "op_type":
                 return self._op_type_page([{"ref": identity.ref, "business_code": identity.entity_key,
                                            "revision": identity.revision}], self._metrics_reader())[0]
             return self._table_page_records([{"business_code": identity.entity_key}])[0]
-        state = self.domain.snapshot_current(identity)
+        state = self.current_with_identity(identity)
         projection = {}
         if self.kind == "op_type":
             metrics = self._metrics_reader()
@@ -165,7 +209,14 @@ class WorkbenchResourceQueryService:
         if query.kind != self.kind:
             raise WorkbenchCommandRejected("invalid_input", "查询类型与当前资源不一致。", 400)
         advanced = table_query_required(query)
-        rows, total = self.table_index(query).page(query) if advanced else self.repo.page(query)
+        if advanced:
+            index = self.table_index(query)
+            keys = index.matching_keys(query)
+            offset = (query.number - 1) * query.size
+            rows, total = [index.rows[code] for code in keys[offset:offset + query.size]], len(keys)
+        else:
+            rows, total = self.repo.page(query)
+            keys = None
         if any(row["ref"] is None for row in rows):
             raise WorkbenchCommandRejected("storage_failure", "这条资源在资料里查不到编号，页面没有打开，数据也没有被改动。请到资料总览核对后重试。", 500)
         metrics = self._metrics_reader()
@@ -175,14 +226,13 @@ class WorkbenchResourceQueryService:
             records = self._table_page_records(rows)
         page = {"number": query.number, "size": query.size, "total": total,
                 "pages": max(1, (total + query.size - 1) // query.size), "sort": [{"field": query.sort, "direction": query.direction}],
-                "metrics": metrics.metrics(self.kind, self.matching_keys(query) if advanced else self.toolbar_matching_keys(query))}
+                "metrics": metrics.metrics(self.kind, keys if keys is not None else self.toolbar_matching_keys(query))}
         return records, page
 
     def _op_type_page(self, rows, metrics):
         metrics.op_type_records()
         codes = [row["business_code"] for row in rows]
-        dependencies = (metrics.repo.op_type_dependencies(codes) if self._snapshot_scope is None else
-                        self._table_reader().op_type_dependencies(codes))
+        dependencies = self._table_reader().op_type_dependencies(codes)
         result = []
         for row in rows:
             code = row["business_code"]
@@ -202,7 +252,8 @@ class WorkbenchResourceQueryService:
             return self._table_facts
         identities = self._table_identities if self._table_identities is not None else self._read_identities()
         facts = ResourceTableFacts(self._metrics_reader(), identities, scope_state=self._snapshot_scope,
-                                   identity_kinds=self._metrics_reader().identity_kinds(self.kind))
+                                   identity_kinds=self._metrics_reader().identity_kinds(self.kind),
+                                   report_revisions=self._report_revisions)
         if self._table_indexes is not None:
             self._table_facts = facts
         return facts

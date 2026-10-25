@@ -2,33 +2,36 @@
 
 from collections import defaultdict
 
+from core.errors import BusinessError, ValidationError
 from core.models.resource_capabilities import machine_type_index, supports_source
 from core.services.capacity.plan_calendar_engine import SnapshotCalendarEngine
 from core.services.capacity.plan_calendar_intervals import IntervalIndex, instant
+from core.services.capacity.plan_calendar_issues import issue
 from core.services.capacity.plan_calendar_windows import available_intervals
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from core.services.workbench.facts.zero_duration import estimate_point_event
-from data.repositories.operator_machine_repo import OperatorMachineRepository
-from data.repositories.operator_qualification_repo import OperatorQualificationRepository
 
-from .calendar_context import issue
+# 区分“调用方没给点时间日历”和“调用方明确给了 None（归档日历本身已损坏）”。
+_UNSET = object()
 
 
-class _SkillFacts(OperatorQualificationRepository):
+class _SkillFacts:
     """Connection-free read_skill_facts implementation for the domain service."""
 
     def __init__(self, facts):
-        self.profiles = {row["operator_id"]: row for row in facts["skill_profiles"]}
+        self.profiles = defaultdict(list)
+        for row in facts["skill_profiles"]:
+            self.profiles[row["operator_id"]].append(row)
         self.skills = defaultdict(list)
         for row in facts["skills"]:
             self.skills[row["operator_id"]].append(row)
 
     def read_skill_facts(self, operator_ids):
-        return ([self.profiles[key] for key in operator_ids if key in self.profiles],
+        return ([row for key in operator_ids for row in self.profiles[key]],
                 [row for key in operator_ids for row in self.skills[key]])
 
 
-class _Authorizations(OperatorMachineRepository):
+class _Authorizations:
     """Connection-free authorization lookup for the domain service."""
 
     def __init__(self, facts):
@@ -39,7 +42,7 @@ class _Authorizations(OperatorMachineRepository):
 
 
 class TaskConstraints:
-    def __init__(self, calendar_facts, *, calendar_lookup=None):
+    def __init__(self, calendar_facts, *, calendar_lookup=None, point_calendar=_UNSET):
         self.available = calendar_facts["sources"] is not None
         self.resources = calendar_facts["resources"]
         self.calendar_lookup = calendar_lookup
@@ -48,15 +51,15 @@ class TaskConstraints:
         if not self.available:
             return
         facts = calendar_facts["sources"]
-        self.point_calendar = SnapshotCalendarEngine(facts)
+        # 点时间日历只有零工时点事件才用，未给时到第一次点事件检查再建。
+        self._facts, self.point_calendar = facts, point_calendar
         self.records = {kind: {row[kind + "_id"]: row for row in facts[kind + "s"]}
                         for kind in ("machine", "operator")}
         self.operations = {row["id"]: row for row in facts["operations"]}
         self.machine_types = machine_type_index(facts["machines"], facts["machine_capabilities"])
         self.work_types = {row["op_type_id"]: row for row in facts["work_types"]}
-        self.qualification = OperatorQualificationService(None)
-        self.qualification.repo = _SkillFacts(facts)
-        self.qualification.authorizations = _Authorizations(facts)
+        self.qualification = OperatorQualificationService(None, repo=_SkillFacts(facts),
+                                                          authorizations=_Authorizations(facts))
         self.downtime = defaultdict(list)
         for row in facts["downtimes"]:
             self.downtime[row["machine_id"]].append(row)
@@ -97,14 +100,20 @@ class TaskConstraints:
         self._check_type_and_qualification(row)
 
     def _check_point_calendar(self, row, work, at):
+        if self.point_calendar is _UNSET:
+            # 坏日历内容由引擎留到读到那天再抛，下面记为算不出。
+            self.point_calendar = SnapshotCalendarEngine(self._facts)
+        if self.point_calendar is None:
+            self._add("assignment_calendar_unavailable", row["op_id"])
+            return
         op, batch = work["operation"], work["batch"]
         try:
             start, end = estimate_point_event(self.point_calendar, setup_hours=op["setup_hours"],
-                unit_hours=op["unit_hours"], quantity=batch["quantity"], priority=batch["priority"],
+                unit_hours=op["unit_hours"], quantity=work["quantity"], priority=batch["priority"],
                 machine_id=row["machine_id"], operator_id=row["operator_id"], start=at)
             if start != at or end != at:
                 self._add("assignment_outside_calendar", row["op_id"])
-        except (ValueError, TypeError, OverflowError):
+        except (ValidationError, BusinessError, ValueError, TypeError, OverflowError):
             self._add("assignment_calendar_unavailable", row["op_id"])
 
     def _check_downtime(self, row, start, end):
@@ -143,8 +152,8 @@ class TaskConstraints:
         if index is None:
             self._add("assignment_calendar_unavailable", op_id)
         # Native jobs pause between work periods. View clipping is not a real job boundary.
-        elif ((start == instant(row["start_time"]) and not index.contains(start))
-              or (end == instant(row["end_time"]) and not index.contains(end, ending=True))):
+        elif ((not index.contains(start) and start == instant(row["start_time"]))
+              or (not index.contains(end, ending=True) and end == instant(row["end_time"]))):
             self._add("assignment_outside_calendar", op_id)
 
     def _check_type_and_qualification(self, row):

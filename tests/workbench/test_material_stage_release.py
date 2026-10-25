@@ -7,6 +7,7 @@ from unittest.mock import patch
 import pytest
 
 from core.infrastructure.transaction import TransactionManager
+from core.models.workbench_batch_material import normalize_material_changes
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.material import stage_availability
@@ -25,9 +26,9 @@ def add_requirement(case, second, arrivals):
     case.conn.commit()
     operation_ref = case.conn.execute("SELECT ref FROM WorkbenchPlanSourceRefs WHERE kind='operation' AND source_key=? AND active=1", (str(second),)).fetchone()[0]
     with TransactionManager(case.conn).transaction():
-        WorkbenchBatchMaterialService(case.conn).apply(case.ref("batch", "B1"), {"removed_keys": [], "rows": [{
+        WorkbenchBatchMaterialService(case.conn).apply_normalized(case.ref("batch", "B1"), normalize_material_changes({"removed_keys": [], "rows": [{
             "row_key": None, "material_ref": case.ref("material", "STEEL"), "required_quantity": 3,
-            "available_quantity": 0, "operation_ref": operation_ref, "arrivals": arrivals}]})
+            "available_quantity": 0, "operation_ref": operation_ref, "arrivals": arrivals}]}))
 
 
 def material_tables(case):
@@ -142,3 +143,22 @@ def test_merged_material_facts_keep_cross_piece_sequence_and_decimal_boundaries(
     with pytest.raises(WorkbenchCommandRejected, match="单件分支"):
         MaterialAvailability(tables).use_sequence(first)
     assert MaterialAvailability({}).operation_release(batch, {"seq": 1}, "stage") == "1900-01-01"
+
+
+def test_unreviewed_batch_ready_status_matches_preflight_without_stage_probe(run_case):
+    case = run_case
+    second = case.operation(seq=2)
+    add_requirement(case, second, [{"arrival_date": "2026-09-10", "quantity": 3}])
+    case.batch("B2")
+    other_op = case.operation("B2", seq=1)
+    case.conn.execute("DELETE FROM BatchMaterialReviews")
+    case.conn.execute("UPDATE Batches SET ready_status='yes' WHERE batch_id='B1'")
+    case.conn.execute("UPDATE BatchMaterials SET available_qty=3, ready_status='yes' WHERE batch_id='B1'")
+    case.conn.execute("UPDATE BatchMaterialStages SET operation_id=?", (other_op,))
+    case.conn.commit()
+    settings = case.settings(material_strategy="stage")
+    data, _ = PreflightService(case.conn).evaluate(settings)
+    assert [row["status"] for row in data["tasks"]] == ["eligible", "eligible"]
+    assert [row["material_ready_date"] for row in data["tasks"]] == [None, None]
+    prepared = prepare_candidate_run_input(case.conn, settings, case.projections("B1"))
+    assert [op.material_ready_date for op in prepared.algo_ops] == [None, None]

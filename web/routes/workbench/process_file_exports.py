@@ -33,6 +33,8 @@ def _query_scope(body):
         scope = {"query": scope["query"], "stage": scope["stage"],
                  "sort": [{"field": scope["sort"], "direction": scope["direction"]}]}
     if "target_ref" in body:
+        if type(body["target_ref"]) is not str:
+            raise WorkbenchCommandRejected("invalid_input", "当前零件编号不对，没有开始下载。请刷新详情后重新点「导出」。", 400)
         if body["scope"]:
             raise WorkbenchCommandRejected("invalid_input", "当前详情导出不需要其他筛选条件，没有开始下载。请直接点「导出」。", 400)
         query_scope = {"kind": "part", "entity_ref": body["target_ref"]}
@@ -49,7 +51,7 @@ def process_file_export_preview(kind):
     check_format(body["format"])
     token = opaque_ref(body["snapshot_ref"], "snapshot_ref")
     scope, query_scope = _query_scope(body)
-    reader = WorkbenchProcessQueryService(g.db, current_app.logger)
+    reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=body.get("target_ref"))
     with reader.read_snapshot() as state:
         read_binding = resolve_read_snapshot(token)
         snapshot = bind_read_snapshot(query_scope, state, token, binding=read_binding)
@@ -79,7 +81,7 @@ def process_file_export(kind):
     if saved["kind"] != kind:
         raise WorkbenchCommandRejected("snapshot_stale", "预检结果属于另一类工艺文件，没有开始下载；系统没有替你换内容。请点「重新预检」。")
     body = saved["body"]
-    reader = WorkbenchProcessQueryService(g.db, current_app.logger)
+    reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=body.get("target_ref"))
     with reader.read_snapshot() as state:
         snapshot = bind_read_snapshot(saved["query_scope"], state, body["snapshot_ref"], binding=read_binding)
         parts, _ = select_export_parts(reader, body, scope=saved["scope"])

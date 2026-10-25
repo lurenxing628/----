@@ -1,11 +1,8 @@
 """Exclusive route hook. Mainline owns registration, receipt endpoint and schema."""
 
-from datetime import datetime
-
 from flask import current_app, g, request
 
-from core.errors import ValidationError
-from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_dashboard import MAX_BYTES, DashboardQuery
 from core.services.workbench import messages
 from core.services.workbench.dashboard.commands import WorkbenchDashboardCommandService
@@ -15,7 +12,7 @@ from web.api_responses import json_response, query_success
 from .api_responses import api_endpoint
 from .dashboard_analysis import dashboard_analysis, dashboard_candidate_comparison
 from .read_budget import PLAN_READ_SLOTS
-from .read_context import bind_read_snapshot, resolve_read_snapshot
+from .read_context import bind_read_snapshot, page_integer, read_snapshot_time
 from .write_context import issue_write_context, validate_write_context
 
 
@@ -28,28 +25,13 @@ def _arguments(detail, history):
     numbers = {}
     for key, default in (("page", "1"), ("size", "20"), ("history_page", "1")):
         value = request.args.get(key, default)
-        if not value.isascii() or not value.isdigit() or not 1 <= len(value) <= 6 or int(value) < 1:
-            raise WorkbenchCommandRejected("invalid_input", "页码或每页数量填写不对，列表没有变化。请回到第 1 页重新查询。", 400)
-        numbers[key] = int(value)
+        numbers[key] = page_integer(value)
     query = DashboardQuery(**{key: value for key, value in request.args.items() if key not in
                               ("page", "size", "snapshot_ref", "history_page")}, number=numbers["page"], size=numbers["size"])
     token = request.args.get("snapshot_ref")
     if detail and not token:
         raise WorkbenchCommandRejected("snapshot_required", messages.STALE, 400)
     return query, token, numbers["history_page"]
-
-
-def _time(binding):
-    if binding is None:
-        return datetime.now().replace(microsecond=0)
-    try:
-        stamp = binding.as_of
-        parsed = datetime.fromisoformat(stamp)
-        if parsed.tzinfo is not None or parsed.isoformat(timespec="seconds") != stamp:
-            raise ValueError()
-        return parsed
-    except (ValidationError, ValueError, TypeError, KeyError) as exc:
-        raise WorkbenchCommandRejected("snapshot_stale", messages.STALE) from exc
 
 
 def _history(reader, item_ref, number, size):
@@ -62,12 +44,12 @@ def _history(reader, item_ref, number, size):
 
 def _read(item_ref=None, history=False):
     query, token, history_page = _arguments(item_ref is not None, history)
-    binding = resolve_read_snapshot(token) if token is not None else None
+    as_of, binding = read_snapshot_time(token)
     reader = WorkbenchDashboardService(g.db, context_factory=issue_write_context)
     admission = PLAN_READ_SLOTS.slot(lane=request.headers.get("X-Workbench-Read-Lane")) if item_ref is None else PLAN_READ_SLOTS.slot()
     with admission:
         with reader.read_snapshot():
-            sources = reader.load(_time(binding))
+            sources = reader.load(as_of)
             records = _history(reader, item_ref, history_page, query.size) if history else None
         # 读事务到此结束：整份看板的投影和指纹只用已读出的事实，算多久都不挡别人提交写入。
         data = reader.project(sources)
@@ -119,6 +101,7 @@ def _command(item_ref, action):
     body = request.get_json()
     if type(body) is not dict or set(body) != {"request_key", "write_token", "input"} or type(body["input"]) is not dict:
         raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，处置还没有保存。请刷新页面后重新填写。", 400)
+    validate_request_key(body["request_key"])
     g.workbench_request_key = body["request_key"]
     service = WorkbenchDashboardCommandService(g.db)
     result = service.execute(action, item_ref, body["input"], request_key=body["request_key"], admission=PLAN_READ_SLOTS.slot,

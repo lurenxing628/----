@@ -4,7 +4,7 @@ from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_trial import reference, reject
-from core.services.common.bounded_plan_query import _PagePlanQueryService
+from core.services.common.bounded_plan_query import PagePlanQueryService
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.plan.read_context import PlanReadContext
@@ -12,10 +12,10 @@ from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
 
 from .adoption_history_evidence import audit_fields, gap, invalid, receipt_plan, scenario_evidence
-from .adoption_history_policy import adoption_receipts
+from .adoption_history_policy import adoption_receipts, history_audit_row
 
 
-def history_scope(scenario_ref, status="all", size=20):
+def history_scope(scenario_ref, status, size):
     reference(scenario_ref)
     if status not in ("all", "current", "historical", "unavailable") or type(size) is not int or not 1 <= size <= 50:
         reject("invalid_input", "采用记录的状态筛选或每页条数不对，请重新选择。", 400)
@@ -50,18 +50,26 @@ class WorkbenchTrialAdoptionHistoryService:
         catalog = context.repo
         # This is current-state evidence only. It never chooses the requested scene.
         current_version = catalog.latest_version()
-        query = _PagePlanQueryService(catalog, current_version)
+        query = PagePlanQueryService(catalog, current_version)
         reader = WorkbenchPlanQueryService(self.conn)
         reader.references = refs
-        rows, all_items, seen = adoption_receipts(repo, scope["scenario_ref"]), [], set()
-        command_repo = WorkbenchCommandRepository(self.conn)
+        rows, plans, all_items, seen = adoption_receipts(repo, scope["scenario_ref"]), [], [], set()
         for row in rows:
             plan = receipt_plan(row, saved)
             if plan["plan_ref"] in seen:
                 invalid()
             seen.add(plan["plan_ref"])
-            audit, audit_gaps = audit_fields(repo, row, plan, saved, header, draft,
-                                            command_repo=command_repo, context=context)
+            plans.append(plan)
+        versions = [plan["version"] for plan in plans]
+        catalog.prefetch_history_rows(versions)
+        refs.role_rows(versions)
+        histories = [history_audit_row(catalog.history_rows(version)) for version in versions]
+        command_repo = WorkbenchCommandRepository(self.conn)
+        adoption_inputs = command_repo.adoption_input_contents([row for row, history in zip(rows, histories)
+            if row["input_json"] is None and history is not None])
+        for row, plan, history in zip(rows, plans, histories):
+            audit, audit_gaps = audit_fields(row, plan, saved, header, draft,
+                history=history, command_repo=command_repo, adoption_inputs=adoption_inputs)
             identity, issues = self._identity(context, reader, query, plan)
             state = "unavailable" if identity is None or not identity["capabilities"]["view"] else (
                 "current" if identity["is_current_official"] else "historical")

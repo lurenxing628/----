@@ -30,7 +30,7 @@ def run(case, key):
     return result["run_ref"], result["candidates"][0]["candidate_ref"]
 
 
-def test_partial_formal_version_current_analysis_dashboard_and_decision_share_whole_batches(candidate_case, monkeypatch):
+def test_partial_formal_version_current_analysis_dashboard_and_decision_share_whole_batches(candidate_case):
     case = candidate_case
     case.conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('T2','Milling')")
     case.conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES ('M1','T2')")
@@ -76,8 +76,6 @@ def test_partial_formal_version_current_analysis_dashboard_and_decision_share_wh
     run_ref, candidate = run(case, "comparison")
     source = read_candidate_source(CandidateStore(case.conn), candidate)
     captured = deepcopy(source.capture)
-    # Force a real multi-chunk historical read without changing the worker quota.
-    monkeypatch.setattr("core.services.workbench.facts.candidate_baseline.MAX_OPERATIONS", 1)
     legacy, _ = WorkbenchRunCandidateBaselineQueryService(case.conn).baseline(RunCandidateBaselineScope(candidate))
     assert legacy["baseline"]["captured_task_count"] == 1
     assert next(row for row in legacy["comparisons"] if row["batch_label"] == "B2")["baseline_segments"] == []
@@ -102,5 +100,5 @@ def test_partial_formal_version_current_analysis_dashboard_and_decision_share_wh
     duplicate = deepcopy(captured)
     duplicate["execution"][1] = deepcopy(duplicate["execution"][0])
     with pytest.raises(WorkbenchCommandRejected) as rejected:
-        AdmissionBaseline(duplicate, source.facts, source.disposition, source.run["accepted_at"])
+        AdmissionBaseline(duplicate, source.facts, source.disposition)
     assert rejected.value.code == "candidate_baseline_invalid"

@@ -342,6 +342,7 @@ def test_changeover_api_keeps_type_identity_points_predecessors_and_partial_over
     query = {"selected_candidate_ref": refs[0], "reference_candidate_ref": refs[-1], "event_side": "selected",
              "range_start": DAY + "T08:00:00", "range_end": DAY + "T12:00:00"}
     document = detail(client, run_ref, "changeovers", **query)
+    assert document["data"]["filter_options"]["batches"] == []
     count = document["data"]["summary"]["after"]["type_changeover_count"]
     assert count["value"] == 1 and count["state"] == "complete"
     assert document["data"]["summary"]["after"]["changed_machine_count"]["value"] == 1

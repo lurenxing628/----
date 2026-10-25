@@ -19,7 +19,7 @@ def saved_seed_efforts(svc, facts, seed_results, execution_facts):
         for seed in seed_results:
             op_id = seed["op_id"]
             fact = execution_facts.get(op_id)
-            version = getattr(fact, "schedule_version", None)
+            version = fact.schedule_version if fact is not None else None
             if version not in sources:
                 if type(version) is not int:
                     sources[version] = None

@@ -19,11 +19,12 @@ from datetime import datetime
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.capacity.plan_calendar_intervals import hours, instant, union, wire
+from core.services.capacity.plan_calendar_issues import issue
 from core.services.capacity.plan_calendar_windows import available_intervals
 from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
 from core.services.workbench.facts.resource_projection import RESOURCE_METRIC_VERSION
 
-from .calendar_context import issue, public_resource, selected_context
+from .calendar_context import public_resource, selected_context
 from .occupancy_constraints import TaskConstraints
 
 

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from .review_projection import project_cohort, project_detail, validate_selected_refs
+from core.services.execution.processing_hours import covered_legacy_scopes
+
+from .review_projection import project_cohort, project_detail
 from .review_summary import charts, resource_rows, summary
 
 GAPS = ["执行状态与累计数量按报工记录统计，历史完工记录单独列示。",
@@ -15,18 +17,20 @@ SORTS = {"delivery": ("batch_label", "planned_end", "finish_deviation_minutes", 
          "people": ("resource_label", "events", "effective_processing_hours")}
 
 
-def report_workspace(reader, facts, snapshot, topic, page):
-    facts["reader"] = reader
-    validate_selected_refs(facts["scope"], facts)
+def report_workspace(facts, snapshot, topic, page):
     operations, records, labels = project_cohort(facts, snapshot["as_of"])
-    resources = {"machines": resource_rows(records, "machine"), "people": resource_rows(records, "operator")}
+    covered = covered_legacy_scopes(records)
+    resources = {
+        "machines": resource_rows(records, "machine", covered=covered),
+        "people": resource_rows(records, "operator", covered=covered),
+    }
     rows = records if topic == "records" else resources[topic] if topic in resources else operations
     ordered, visible, pagination = page.apply(rows, SORTS[topic])
     choices = facts["choices"]
     scope_gaps = list(dict.fromkeys(gap for operation in operations for gap in operation["data_gaps"]))
     data = {"plan": facts["plan"], "scope": facts["scope"].scope(), "topic": topic, "provenance": "当前正式计划与报工记录（逐次报工、更正、旧现场记录）",
             "time_scope": {"selection": "plan_finish_date", "boundary": "inclusive_dates", "time_basis": "factory_local"},
-            "rows": visible, "summary": summary(operations, records), "page": pagination,
+            "rows": visible, "summary": summary(operations, records, covered=covered), "page": pagination,
             "charts": charts(operations, snapshot["as_of"]), "resources": resources,
             "capabilities": {"state": "partial" if any(row["data_quality"] != "complete" for row in operations) else "complete",
                              "legacy_events": True, "production_reports": True,
@@ -36,7 +40,5 @@ def report_workspace(reader, facts, snapshot, topic, page):
     return data, ordered, labels
 
 
-def report_detail(reader, facts, snapshot, operation_ref):
-    facts["reader"] = reader
-    validate_selected_refs(facts["scope"], facts)
+def report_detail(facts, snapshot, operation_ref):
     return {"plan": facts["plan"], "detail": project_detail(facts, snapshot["as_of"], operation_ref)}

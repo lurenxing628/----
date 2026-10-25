@@ -9,39 +9,29 @@ from .connection_guards import schema_contract_scope
 
 logger = logging.getLogger(__name__)
 
-_TX_LOCAL = threading.local()
+class _TxLocal(threading.local):
+    def __init__(self) -> None:
+        self.depth_map: Dict[int, int] = {}
+        self.poison_map: Dict[int, BaseException] = {}
 
 
-def _depth_map() -> Dict[int, int]:
-    m = getattr(_TX_LOCAL, "depth_map", None)
-    if m is None:
-        m = {}
-        _TX_LOCAL.depth_map = m
-    return m
-
-
-def _poison_map() -> Dict[int, BaseException]:
-    m = getattr(_TX_LOCAL, "poison_map", None)
-    if m is None:
-        m = {}
-        _TX_LOCAL.poison_map = m
-    return m
+_TX_LOCAL = _TxLocal()
 
 
 def _mark_poisoned(conn, exc: BaseException) -> None:
-    _poison_map()[id(conn)] = exc
+    _TX_LOCAL.poison_map[id(conn)] = exc
 
 
 def _poison_reason(conn) -> Optional[BaseException]:
-    return _poison_map().get(id(conn))
+    return _TX_LOCAL.poison_map.get(id(conn))
 
 
 def _clear_poison(conn) -> None:
-    _poison_map().pop(id(conn), None)
+    _TX_LOCAL.poison_map.pop(id(conn), None)
 
 
 def _inc_depth(conn) -> int:
-    m = _depth_map()
+    m = _TX_LOCAL.depth_map
     key = id(conn)
     depth = m.get(key, 0) + 1
     m[key] = depth
@@ -49,7 +39,7 @@ def _inc_depth(conn) -> int:
 
 
 def _dec_depth(conn) -> None:
-    m = _depth_map()
+    m = _TX_LOCAL.depth_map
     key = id(conn)
     d = m.get(key, 0)
     if d <= 1:
@@ -70,7 +60,7 @@ def in_transaction_context(conn) -> bool:
 
 
 def _current_depth(conn) -> int:
-    return _depth_map().get(id(conn), 0)
+    return _TX_LOCAL.depth_map.get(id(conn), 0)
 
 
 def _owns_transaction(conn, depth: int) -> bool:
@@ -190,16 +180,20 @@ def _transaction_scope(conn, begin_sql: str = "BEGIN"):
         sp_name = _begin_scope(conn, depth, owns_tx, begin_sql=begin_sql)
 
         try:
-            with schema_contract_scope(conn):
+            if depth == 1:
+                with schema_contract_scope(conn):
+                    yield conn
+            else:
                 yield conn
-        except Exception as e:
+        except BaseException as e:
             try:
                 _rollback_scope(conn, depth, owns_tx, sp_name)
             except Exception as rollback_exc:
                 _mark_poisoned(conn, rollback_exc)
                 logger.error(f"事务回滚失败，事务状态不可信：原始异常={e}; 回滚异常={rollback_exc}")
                 raise RuntimeError("事务回滚失败，连接状态不可信") from rollback_exc
-            logger.error(f"事务已回滚：{e}")
+            if isinstance(e, Exception):
+                logger.error(f"事务已回滚：{e}")
             raise
         else:
             _block_commit_if_poisoned(conn, depth, owns_tx, sp_name)

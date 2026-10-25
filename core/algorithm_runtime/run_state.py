@@ -82,11 +82,11 @@ class ScheduleRunState:
             return
         self.batch_progress[batch_id] = max(self.batch_progress.get(batch_id, self.base_time), end_time)
 
-    def record_seed_result(self, result: ScheduleResult) -> None:
+    def record_seed_result(self, result: ScheduleResult, *, segments: Any) -> None:
         self.results.append(result)
         self.seed_count += 1
         self.advance_batch(normalize_text_id(result.batch_id), result.end_time)
-        self._record_internal_usage(result, seed_mode=True)
+        self._record_internal_usage(result, seed_mode=True, segments=segments)
         if (result.source or "").strip().lower() == INTERNAL:
             self._record_missing_seed_resources(result)
 
@@ -105,10 +105,16 @@ class ScheduleRunState:
         remaining_failed: int = 0,
         failed_op: Optional[Any] = None,
         skipped_ops: Optional[List[Any]] = None,
+        error_message: str = "",
     ) -> None:
         self.failed_count += 1 + max(int(remaining_failed or 0), 0)
         if failed_op is not None:
-            detail = self._failure_detail("dispatch_operation_failed", failed_op, batch_id=batch_id)
+            detail = self._failure_detail(
+                "dispatch_operation_failed",
+                failed_op,
+                batch_id=batch_id,
+                extra={"error_message": str(error_message)} if error_message else None,
+            )
             self.failure_details.append(detail)
             self._retire_resource_demand(detail["op_id"])
             if batch_id:
@@ -204,32 +210,35 @@ class ScheduleRunState:
             )
         return warnings
 
-    def _record_internal_usage(self, result: ScheduleResult, *, seed_mode: bool) -> None:
+    def _record_internal_usage(self, result: ScheduleResult, *, seed_mode: bool, segments: Any = None) -> None:
         if (result.source or "").strip().lower() != INTERNAL:
             return
         if not isinstance(result.start_time, datetime) or not isinstance(result.end_time, datetime):
             return
-        machine_id = normalize_text_id(result.machine_id)
-        operator_id = normalize_text_id(result.operator_id)
-        accumulate_busy_hours(
-            machine_busy_hours=self.machine_busy_hours,
-            operator_busy_hours=self.operator_busy_hours,
-            machine_id=machine_id,
-            operator_id=operator_id,
-            start_time=result.start_time,
-            end_time=result.end_time,
-        )
-        update_machine_last_state(
-            last_end_by_machine=self.last_end_by_machine,
-            last_op_type_by_machine=self.last_op_type_by_machine,
-            machine_id=machine_id,
-            end_time=result.end_time,
-            op_type_name=result.op_type_name,
-            seed_mode=bool(seed_mode),
-            start_time=result.start_time,
-            op_id=result.op_id,
-            op_type_id=result.op_type_id,
-        )
+        # A multi-report seed occupies each segment's actual resources; the result row keeps only the first pair.
+        usages = segments or ((result.start_time, result.end_time, result.machine_id, result.operator_id),)
+        for start, end, machine, operator in usages:
+            machine_id = normalize_text_id(machine)
+            operator_id = normalize_text_id(operator)
+            accumulate_busy_hours(
+                machine_busy_hours=self.machine_busy_hours,
+                operator_busy_hours=self.operator_busy_hours,
+                machine_id=machine_id,
+                operator_id=operator_id,
+                start_time=start,
+                end_time=end,
+            )
+            update_machine_last_state(
+                last_end_by_machine=self.last_end_by_machine,
+                last_op_type_by_machine=self.last_op_type_by_machine,
+                machine_id=machine_id,
+                end_time=end,
+                op_type_name=result.op_type_name,
+                seed_mode=bool(seed_mode),
+                start_time=start,
+                op_id=result.op_id,
+                op_type_id=result.op_type_id,
+            )
 
     def _record_missing_seed_resources(self, result: ScheduleResult) -> None:
         op_id = normalize_text_id(getattr(result, "op_id", "") or "?") or "?"
@@ -262,24 +271,9 @@ class ScheduleRunState:
 
     @staticmethod
     def _op_identity(op: Any) -> Dict[str, Any]:
-        try:
-            op_id = int(getattr(op, "id", 0) or getattr(op, "op_id", 0) or 0)
-        except Exception:
-            op_id = 0
-        try:
-            seq = int(getattr(op, "seq", 0) or 0)
-        except Exception:
-            seq = 0
         return {
-            "op_id": op_id,
-            "op_code": normalize_text_id(ScheduleRunState._safe_text_attr(op, "op_code", "")),
-            "batch_id": normalize_text_id(ScheduleRunState._safe_text_attr(op, "batch_id", "")),
-            "seq": seq,
+            "op_id": int(op.id),
+            "op_code": normalize_text_id(str(op.op_code or "")),
+            "batch_id": normalize_text_id(str(op.batch_id or "")),
+            "seq": int(op.seq),
         }
-
-    @staticmethod
-    def _safe_text_attr(op: Any, name: str, default: str) -> str:
-        try:
-            return str(getattr(op, name, default) or default)
-        except Exception:
-            return str(default or "")

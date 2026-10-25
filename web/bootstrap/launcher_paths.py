@@ -4,9 +4,7 @@ import getpass
 import ntpath
 import os
 import sys
-from typing import Any, Dict, Optional, Tuple
-
-from web.runtime_host import normalize_runtime_db_path
+from typing import Dict, Optional, Tuple
 
 from .launcher_observability import launcher_log_warning
 
@@ -21,10 +19,6 @@ PORTABLE_MARKER_FILE = "aps-portable.txt"
 def is_portable_runtime(base_dir: str) -> bool:
     """随交付目录携带的标记优先于旧安装记录和账户环境变量。"""
     return os.path.isfile(os.path.join(base_dir, PORTABLE_MARKER_FILE))
-
-
-def _normalize_db_path_for_runtime(db_path: Optional[str]) -> str:
-    return normalize_runtime_db_path(db_path)
 
 
 def _normalize_abs_dir(path: Optional[str]) -> str:
@@ -59,29 +53,23 @@ def read_shared_data_root_from_registry() -> str:
         import winreg  # type: ignore
     except ImportError:
         return ""
-    key_read = int(getattr(winreg, "KEY_READ", 0))
-    wow64_64 = int(getattr(winreg, "KEY_WOW64_64KEY", 0))
-    open_key: Any = getattr(winreg, "OpenKey", None)
-    query_value_ex: Any = getattr(winreg, "QueryValueEx", None)
-    close_key: Any = getattr(winreg, "CloseKey", None)
-    hkey_local_machine: Any = getattr(winreg, "HKEY_LOCAL_MACHINE", None)
-    if not callable(open_key) or not callable(query_value_ex) or not callable(close_key) or hkey_local_machine is None:
-        return ""
+    key_read = int(winreg.KEY_READ)
+    wow64_64 = int(winreg.KEY_WOW64_64KEY)
     for access in (key_read | wow64_64, key_read):
         try:
-            key = open_key(hkey_local_machine, r"SOFTWARE\APS", 0, access)
+            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\APS", 0, access)
         except OSError as exc:
             launcher_log_warning(None, "读取 APS 共享数据目录注册表失败，尝试下一个访问模式：access=%s error=%s", access, exc)
             continue
         try:
-            result = query_value_ex(key, "SharedDataRoot")
+            result = winreg.QueryValueEx(key, "SharedDataRoot")
             value = result[0] if isinstance(result, tuple) and result else ""
         except Exception as exc:
             launcher_log_warning(None, "读取 APS SharedDataRoot 注册表值失败，将继续使用后续回退路径：%s", exc)
             value = ""
         finally:
             try:
-                close_key(key)
+                winreg.CloseKey(key)
             except Exception as exc:
                 launcher_log_warning(None, "关闭 APS 注册表句柄失败，已继续：%s", exc)
         shared_root = _normalize_abs_dir(value)
@@ -152,12 +140,7 @@ def runtime_log_dir(runtime_dir: str) -> str:
 
 
 def resolve_runtime_state_dir(runtime_dir: str, cfg_log_dir: Optional[str] = None) -> str:
-    cfg_log_dir_s = ""
-    try:
-        cfg_log_dir_s = str(cfg_log_dir).strip() if cfg_log_dir is not None else ""
-    except Exception as exc:
-        launcher_log_warning(None, "解析运行时状态目录配置失败，已回退到 runtime/logs：%s", exc, runtime_dir=runtime_dir)
-        cfg_log_dir_s = ""
+    cfg_log_dir_s = str(cfg_log_dir).strip() if cfg_log_dir is not None else ""
     if cfg_log_dir_s:
         return os.path.abspath(cfg_log_dir_s)
     return os.path.abspath(runtime_log_dir(runtime_dir))

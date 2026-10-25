@@ -1,16 +1,33 @@
 """Route checks retain the current workflow's zero/unknown and merged-group rules."""
 
-from core.models.resource_capabilities import supports_source
+from core.services.process.template_source import SOURCE_MESSAGES, TemplateSourceFacts
 
 from .overview_graph import number, text
 
 PARSED_TEXT = {"yes": "已解析", "no": "未解析"}
 MERGE_TEXT = {"merged": "合并设置", "separate": "分别设置"}
+SOURCE_TITLES = {
+    "source_missing": ("operation.source", "归属未明确"),
+    "type_source_mismatch": ("operation.category", "归属与工种类别不一致"),
+    "supplier_invalid": ("operation.supplier", "工序供应商状态或能力待核对"),
+    "group_missing": ("operation.group", "外协组缺失"),
+    "group_part_mismatch": ("group.invalid", "外协组所属零件不符"),
+    "group_range_invalid": ("group.invalid", "外协组范围无效"),
+    "group_mode_unknown": ("group.invalid", "外协组周期算法无效"),
+    "group_members_invalid": ("group.members", "外协组成员无效"),
+    "group_supplier_mismatch": ("group.supplier", "合并外协组供应商不一致"),
+    "group_supplier_invalid": ("group.supplier_invalid", "合并外协组供应商状态或能力待核对"),
+    "internal_external_binding": ("operation.internal_external", "自制工序保留外协绑定"),
+}
 
 
 def add_process(graph):
     facts = graph.facts
     grouped = facts.grouped("PartOperations", "part_no")
+    sources = (TemplateSourceFacts(facts.rows("PartOperations"), facts.rows("ExternalGroups"), facts.rows("Suppliers"),
+                                   facts.rows("WorkbenchSupplierOpTypes"), facts.rows("WorkbenchSupplierProfiles"))
+               if facts.available("PartOperations", "ExternalGroups", "OpTypes", "Suppliers",
+                                  "WorkbenchSupplierOpTypes", "WorkbenchSupplierProfiles") else None)
     for row in facts.rows("Parts"):
         key = row["part_no"]
         part = graph.add("part", key, key, row["part_name"])
@@ -29,13 +46,14 @@ def add_process(graph):
             graph.issue(part, "part.route_missing", "零件无有效模板工序", "请为该零件建立并确认工序。",
                         stage="route", action="录入或核对路线")
         if operations or isinstance(row["route_raw"], str) and row["route_raw"].strip():
-            route = graph.add("route", key, key, (row["part_name"] or key) + " · 工艺路线")
+            name = row["part_name"] if isinstance(row["part_name"], str) and row["part_name"].strip() else key
+            route = graph.add("route", key, key, name + " · 工艺路线")
             graph.link(part, route, "工艺路线", "Parts -> PartOperations", "所属零件")
-            _route(graph, route, row, operations, active)
+            _route(graph, route, row, operations, active, sources)
     _orphan_operations(graph, grouped)
 
 
-def _route(graph, route, row, operations, active):
+def _route(graph, route, row, operations, active, sources):
     graph.field(route, "原始路线", row["route_raw"], "Parts.route_raw", required=False)
     graph.field(route, "路线解析标记", PARSED_TEXT.get(row["route_parsed"], row["route_parsed"]), "Parts.route_parsed")
     graph.field(route, "有效工序数", len(active), "PartOperations.status=active")
@@ -58,7 +76,7 @@ def _route(graph, route, row, operations, active):
             graph.issue(route, "operation.sequence", "工序号重复或无效", "工序号是" + text(op["seq"]) + "，重复了或者不是大于 0 的整数。",
                         stage="route", operation_ref=op_ref)
         seen.add(op["seq"])
-        _operation(graph, route, op, op_ref, groups, state)
+        _operation(graph, route, op, op_ref, groups, state, sources)
 
 
 def _workflow_confirmation(graph, route, state):
@@ -82,18 +100,24 @@ def _workflow_confirmation(graph, route, state):
                     message, stage=stage, action=action)
 
 
-def _operation(graph, route, op, ref, groups, state):
+def _operation(graph, route, op, ref, groups, state, sources):
     prefix = "工序 " + text(op["seq"]) + " " + text(op["op_type_name"])
     source = op["source"]
     def issue(rule, title, evidence, stage="source"):
         graph.issue(route, rule, title, prefix + "；" + evidence, stage=stage, operation_ref=ref)
     graph.field(route, prefix + "归属", {"internal": "自制", "external": "外协"}.get(source, source),
                 "PartOperations.source", valid=source in ("internal", "external"))
-    if source not in ("internal", "external"):
-        issue("operation.source", "归属未明确", "资料里记的归属是「" + text(source) + "」，只能填自制或外协。")
-    target = graph.related(route, "opType", op["op_type_id"], "工序使用工种", "PartOperations.op_type_id", "使用它的路线", required=True, operation_ref=ref, stage="source")
-    if target and not supports_source(graph.facts.index("OpTypes", "op_type_id")[op["op_type_id"]]["category"], source):
-        issue("operation.category", "归属与工种类别不一致", "这道工序用的工种是" + target["business_code"] + "，和工序自己填的归属不是一回事。")
+    graph.related(route, "opType", op["op_type_id"], "工序使用工种", "PartOperations.op_type_id", "使用它的路线", required=True, operation_ref=ref, stage="source")
+    if sources is None:
+        graph.unknown(route, prefix + "归属诊断", "PartOperations / ExternalGroups / Suppliers / WorkbenchSupplierProfiles")
+    else:
+        kind = graph.facts.index("OpTypes", "op_type_id").get(op["op_type_id"])
+        errors = sources.issues(op, type_name=kind["name"] if kind else None, category=kind["category"] if kind else None)
+        for code in errors:
+            # Required relation reads above/below already display missing types and suppliers.
+            if code not in ("type_missing", "supplier_missing"):
+                rule, title = SOURCE_TITLES[code]
+                issue(rule, title, SOURCE_MESSAGES[code])
     if source == "internal":
         for key, label in (("setup_hours", "换型工时"), ("unit_hours", "单件工时")):
             value = op[key]
@@ -104,50 +128,30 @@ def _operation(graph, route, op, ref, groups, state):
         confirmation = state["operations"].get(ref) if state else None
         if op["unit_hours"] == 0 and (not confirmation or confirmation["hours"]["state"] != "confirmed"):
             issue("operation.zero_review", "单件工时 0 待复核", "请核对单件工时；确实为 0 时，在工时定额页按 0 保存。", "hours")
-        if op["supplier_id"] is not None or op["ext_group_id"] is not None:
-            issue("operation.internal_external", "自制工序保留外协绑定", "自制工序关联了供应商或外协组，请核对工序归属。")
     if source == "external":
         _external(graph, route, op, ref, groups, prefix, issue)
 
 
 def _external(graph, route, op, ref, groups, prefix, issue):
-    _external_supplier(graph, route, op, ref, issue)
-    group = _external_group(graph, route, op, ref, groups, prefix, issue)
+    graph.related(route, "supplier", op["supplier_id"], "工序供应商", "PartOperations.supplier_id", "使用它的路线", required=True, operation_ref=ref, stage="source")
+    group = _external_group(graph, route, op, groups, prefix)
     merged = group and group["merge_mode"] == "merged"
     value = group["total_days"] if group is not None and merged else op["ext_days"]
     label = "整组周期" if merged else "逐序周期"
     graph.field(route, prefix + label + "（天）", value, "ExternalGroups.total_days" if merged else "PartOperations.ext_days", valid=number(value, True))
     if not number(value, True):
         issue("operation.days", "外协周期待维护", label + "填的是" + text(value) + "，请填写大于 0 的周期。", "hours")
-    if merged and op["ext_days"] is not None and not number(op["ext_days"], True):
-        issue("operation.retained_days", "合并组保留的逐序周期无效", "逐序周期填的是" + text(op["ext_days"]) + "，不是大于 0 的天数。", "hours")
+    if merged:
+        graph.field(route, prefix + "保留的逐序周期（天）", op["ext_days"], "PartOperations.ext_days", required=False)
 
 
-def _external_supplier(graph, route, op, ref, issue):
-    supplier = graph.related(route, "supplier", op["supplier_id"], "工序供应商", "PartOperations.supplier_id", "使用它的路线", required=True, operation_ref=ref, stage="source")
-    suppliers = graph.facts.index("Suppliers", "supplier_id")
-    if supplier:
-        raw = suppliers[op["supplier_id"]]
-        capabilities = {row["op_type_id"] for row in graph.facts.grouped("WorkbenchSupplierOpTypes", "supplier_id").get(op["supplier_id"], [])} | {raw["op_type_id"]}
-        if raw["status"] != "active" or op["op_type_id"] not in capabilities:
-            issue("operation.supplier", "工序供应商状态或能力待核对",
-                  "供应商是" + supplier["business_code"] + "，可能已停用，或者没有登记这道工序的外协能力。")
-
-
-def _external_group(graph, route, op, ref, groups, prefix, issue):
+def _external_group(graph, route, op, groups, prefix):
     group = groups.get(op["ext_group_id"])
     if op["ext_group_id"] is not None and (group is None or group["part_no"] != op["part_no"]):
-        issue("operation.group", "外协组缺失或不属于本零件", "外协组不存在或所属零件不符，请重新选择。")
         group = None
     if group:
-        group_ref = graph.facts.ref("template_external_group", group["group_id"])
         graph.field(route, prefix + "外协组周期算法", MERGE_TEXT.get(group["merge_mode"], group["merge_mode"]), "ExternalGroups.merge_mode")
         graph.related(route, "supplier", group["supplier_id"], "外协组供应商", "ExternalGroups.supplier_id", "使用它的路线")
-        valid_range = (type(group["start_seq"]) is int and type(group["end_seq"]) is int and
-                       0 < group["start_seq"] <= group["end_seq"] and type(op["seq"]) is int and group["start_seq"] <= op["seq"] <= group["end_seq"])
-        if not valid_range or group["merge_mode"] not in ("merged", "separate"):
-            graph.issue(route, "group.invalid", "外协组范围或周期算法无效", prefix + "；这个外协组的工序范围或周期算法填得不对。",
-                        stage="source", operation_ref=ref, group_ref=group_ref)
     return group
 
 

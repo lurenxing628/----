@@ -134,6 +134,7 @@
   const nullableTime = value => value === null || localTime(value);
   const day = value => typeof value === 'string' && localTime(value + 'T00:00:00');
   const same = (a, b) => object(a) && object(b) && exact(a, Object.keys(b)) && Object.keys(b).every(key => a[key] === b[key]);
+  const sameArray = (a, b) => Array.isArray(a) && a.length === b.length && a.every((v, i) => v === b[i]);
   const inScope = (row, scope) => !!row && (scope.range_start === null || P.overlaps(row, scope.range_start, scope.range_end));
   const states = ['available', 'partial', 'unavailable'];
   function resourceDirectory(data) {
@@ -172,7 +173,7 @@
         || value.baseline_plan.kind === 'scenario' || value.baseline_plan.plan_ref === data.plan.plan_ref
         || !exact(s, ['scope', 'selection', 'boundary', 'alignment', 'time_basis', 'task_times']) || !same(s.scope, data.scope)
         || s.selection !== 'either_side_overlap' || s.boundary !== 'half_open' || s.alignment !== 'operation_ref'
-        || s.time_basis !== 'factory_local' || s.task_times !== 'unclipped' || JSON.stringify(value.compared_fields) !== JSON.stringify(fields)
+        || s.time_basis !== 'factory_local' || s.task_times !== 'unclipped' || !sameArray(value.compared_fields, fields)
         || !Array.isArray(value.items) || value.item_count !== value.items.length || value.item_count > 20000
         || value.items_complete !== true || !uniqueRefs(value.items, 'operation_ref')) return false;
     const selected = new Map(data.tasks.map(row => [row.task_ref, row]));
@@ -184,7 +185,7 @@
           || after !== null && (!task(after, data.plan.plan_ref) || after.operation_ref !== row.operation_ref)) return false;
       const changed = before && after ? fields.filter(key => before[key] !== after[key]) : [];
       const change = before === null ? 'added' : after === null ? 'removed' : changed.length ? 'changed' : 'unchanged';
-      if (row.change !== change || JSON.stringify(row.changed_fields) !== JSON.stringify(changed)
+      if (row.change !== change || !sameArray(row.changed_fields, changed)
           || row.before_in_scope !== inScope(before, data.scope) || row.after_in_scope !== inScope(after, data.scope)
           || !row.before_in_scope && !row.after_in_scope) return false;
       if (row.after_in_scope) {

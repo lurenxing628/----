@@ -42,9 +42,8 @@ def adoption_receipts(repo, scenario_ref):
     return selected
 
 
-def load_history(repo, version, *, context=None):
-    """One exact history body, or None when this version has no unique audit."""
-    rows = context.history_rows(version) if context is not None else repo.history_rows(version)
+def history_audit_row(rows):
+    """One captured history body, or None when this version has no unique audit."""
     if len(rows) != 1:
         return None
     raw = rows[0]["result_summary"]

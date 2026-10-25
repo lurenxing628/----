@@ -48,10 +48,6 @@ def _read_origins(repo, refs, evidence_bytes=0):
     return result, evidence_bytes
 
 
-def read_origins(repo, refs):
-    return _read_origins(repo, refs)[0]
-
-
 def read_events(repo, refs):
     result = {}
     event_count = evidence_bytes = 0
@@ -207,7 +203,7 @@ class TemplateLineageQuery:
     def prepared_origin(self, operation_ref):
         return self._prepared[operation_ref]
 
-    def read(self, operation_refs, *, current=None, templates=None, captured_current=None):
+    def read(self, operation_refs, *, current=None, templates=None):
         self._prepared = {}
         refs = sorted(set(operation_refs))
         if not lineage_available(self.repo):
@@ -215,12 +211,7 @@ class TemplateLineageQuery:
         origins, evidence_bytes = _read_origins(self.repo, refs)
         self._ancestors(origins, evidence_bytes)
         events = read_events(self.repo, list(origins))
-        if current is None and captured_current is not None:
-            current = {ref: captured_current[ref] for ref in origins if ref in captured_current}
-            missing_current = [ref for ref in origins if ref not in captured_current]
-            if missing_current:
-                current.update(self.repo.current_instances(missing_current))
-        elif current is None:
+        if current is None:
             current = self.repo.current_instances(list(origins))
         else:
             current = {ref: current[ref] for ref in origins if ref in current}

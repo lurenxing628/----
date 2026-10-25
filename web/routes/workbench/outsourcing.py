@@ -8,32 +8,17 @@ An omitted date is preserved; explicit null only clears returned with matching s
 Each new intent records a confirmation, including unchanged-value reconfirmations.
 """
 
-from datetime import datetime
-
 from flask import g, request
 
-from core.errors import ValidationError
-from core.models.content import content_text
-from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_command import validate_request_key
 from core.models.workbench_outsourcing import MAX_BYTES, reject
-from core.models.workbench_outsourcing_input import factory_time
-from core.services.workbench import messages
 from core.services.workbench.outsourcing.commands import WorkbenchOutsourcingCommandService
 from core.services.workbench.outsourcing.service import WorkbenchOutsourcingService
 from web.api_responses import json_response, query_success
-from web.public_token_registry import issue_public_token, resolve_public_token
 
-from .api_responses import api_endpoint
-from .read_context import fact_value
+from .api_responses import api_endpoint, read_endpoint
+from .read_context import bind_read_snapshot, page_integer, read_snapshot_time
 from .write_context import issue_write_context, validate_write_context
-
-_SCOPE = "workbench-outsourcing-read-v1"
-
-
-def _positive_integer(value: str) -> int:
-    if not value.isascii() or not value.isdigit() or len(value) > 6 or int(value) < 1:
-        reject("页码或每页数量填写不对，列表没有变化。请回到第 1 页重新查询。", status=400)
-    return int(value)
 
 
 def _arguments(kind):
@@ -47,30 +32,18 @@ def _arguments(kind):
     if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
         reject("外协的筛选条件有重复或不支持的项，当前筛选没有变化。请刷新页面后重新选择。", status=400)
     args = request.args.to_dict()
-    number = _positive_integer(args.pop("page", "1"))
-    size = _positive_integer(args.pop("size", "20"))
+    number = page_integer(args.pop("page", "1"))
+    size = page_integer(args.pop("size", "20"))
     if number > 1 and not args.get("snapshot_ref"):
         reject("翻页位置已失效，请回到第 1 页重新查询。", "snapshot_required", 400)
     return args, number, size
-
-
-def _snapshot_time(token, scope):
-    if token is None:
-        return datetime.now().replace(microsecond=0), None
-    try:
-        saved = resolve_public_token(_SCOPE, token, message=messages.STALE, field="snapshot_ref")
-    except ValidationError as exc:
-        raise WorkbenchCommandRejected("snapshot_stale", messages.STALE) from exc
-    if saved["scope"] != scope:
-        raise WorkbenchCommandRejected("snapshot_stale", messages.STALE)
-    return factory_time(saved["as_of"]), saved
 
 
 def _read(kind, ref=None):
     args, number, size = _arguments(kind)
     token = args.pop("snapshot_ref", None)
     scope = {"kind": kind, "outsourcing_ref": ref, "size": size, **args}
-    now, saved = _snapshot_time(token, scope)
+    now, binding = read_snapshot_time(token)
     reader = WorkbenchOutsourcingService(g.db)
     with reader.read_snapshot():
         if kind == "targets":
@@ -83,15 +56,9 @@ def _read(kind, ref=None):
             if number != 1:
                 reject("单条外协登记没有分页。请直接查看这一条。", status=400)
             data = reader.detail(ref, as_of=now)
-        content = data.pop("content")
-        facts = fact_value(content)
-        if saved is not None and saved["content"] != facts:
-            reject("外协来源或登记内容有变化，还没有保存；系统没有偷偷用新数据。请点「刷新」后重新核对。", "snapshot_stale", 409)
-        stamp = now.isoformat(timespec="seconds")
-        if token is None:
-            token = issue_public_token(_SCOPE, {"scope": scope, "content": facts, "as_of": stamp},
-                                       key=(content_text(scope), stamp), group=facts, ttl_seconds=900)
-    response = query_success(data, {"snapshot_ref": token, "as_of": stamp}, byte_limit=MAX_BYTES)
+        snapshot = bind_read_snapshot(scope, data.pop("content"), token, as_of=now, binding=binding,
+            stale_message="外协来源或登记内容有变化，还没有保存；系统没有偷偷用新数据。请点「刷新」后重新核对。")
+    response = query_success(data, snapshot, byte_limit=MAX_BYTES)
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -126,7 +93,7 @@ def _body(confirm):
     return body
 
 
-@api_endpoint
+@read_endpoint
 def outsourcing_preview():
     body = _body(False)
     service = WorkbenchOutsourcingCommandService(g.db, context_factory=issue_write_context)
@@ -140,6 +107,7 @@ def outsourcing_preview():
 @api_endpoint
 def outsourcing_confirm():
     body = _body(True)
+    validate_request_key(body["request_key"])
     g.workbench_request_key = body["request_key"]
     service = WorkbenchOutsourcingCommandService(g.db)
     result = service.execute(body["input"], request_key=body["request_key"],

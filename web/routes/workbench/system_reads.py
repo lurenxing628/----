@@ -9,7 +9,7 @@ from core.models.workbench_system import RESTORE_DISABLED, filter_records, query
 from core.services.workbench.facts.system_reads import log_records
 from core.services.workbench.facts.system_redaction import public_system_text
 from core.services.workbench.system.config import SystemConfigWorkspace
-from core.services.workbench.system.maintenance_records import capture_maintenance_journal, maintenance_records
+from core.services.workbench.system.maintenance_records import maintenance_records
 from web.api_responses import query_success
 from web.runtime_host import restore_host
 
@@ -22,12 +22,12 @@ def restore_available():
     return callable(current_app.extensions.get("workbench_system_restore_guard"))
 
 
-def file_capabilities(journal_records=None, *, event_journal=None):
-    try:
-        (event_journal or journal()).assert_ready(journal_records)
-        reason = ""
-    except Exception as exc:
-        reason = str(exc) if isinstance(exc, WorkbenchCommandRejected) else "维护记录读不出来，数据没有改动。请刷新重试；仍不行请联系维护人员，并告知下方编号。"
+def file_capabilities(journal_records, *, event_journal, reason):
+    if not reason:
+        try:
+            event_journal.assert_ready(journal_records)
+        except WorkbenchCommandRejected as exc:
+            reason = str(exc)
     can_restore = restore_available()
     return {"create": not bool(reason), "delete": not bool(reason),
             "restore": not bool(reason) and can_restore, "blocked_reason": reason,
@@ -44,8 +44,6 @@ def collection(kind, *, event_journal=None, journal_records=None):
         rows, sources, snapshot = resolve_log_snapshot(scope, token)
         return rows, sources, query, snapshot
     if kind == "backups":
-        if event_journal is None and current_app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR"):
-            event_journal = journal()
         rows, sources = maintenance_records(g.db, current_app.config["BACKUP_DIR"], event_journal,
                                             journal_records=journal_records)
     else:
@@ -63,7 +61,7 @@ def system_collection(kind):
     host = restore_host(current_app) if event_journal is not None else None
     records = None
     if event_journal is not None:
-        records = host.capture_maintenance_records() if host is not None else capture_maintenance_journal(event_journal)
+        records = host.capture_maintenance_records() if host is not None else event_journal.collection()
     database = (event_journal.scope_from_records(records) if event_journal is not None else database_scope()) if kind == "backups" else None
     with TransactionManager(g.db).transaction():
         rows, sources, query, snapshot = collection(kind, event_journal=event_journal, journal_records=records)
@@ -82,7 +80,9 @@ def system_collection(kind):
     data = {"rows": public, "page": {"number": page, "size": size, "total": count, "pages": pages},
             "sources": sources, "scope": "backup-files-and-maintenance-events" if kind == "backups" else "bounded-log-windows"}
     if kind == "backups":
-        data.update({"capabilities": file_capabilities(records, event_journal=event_journal),
+        reason = ("" if event_journal is not None else
+                  "还没有配置维护目录，备份和恢复暂时不能用。请先在系统维护页设置维护目录。")
+        data.update({"capabilities": file_capabilities(records, event_journal=event_journal, reason=reason),
                      "create_context": {"write_token": issue_context("create", {}, database=database)}})
     return query_success(data, snapshot)
 

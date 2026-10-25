@@ -6,7 +6,7 @@ from . import sgs_dispatch_step
 from .sgs_checkpoint import plan_decode_checkpoints
 from .sgs_priority_frontier import make_priority_queue
 
-_SCHEDULE_OPERATION = sgs_dispatch_step._schedule_op
+_SCHEDULE_OPERATION = sgs_dispatch_step.schedule_op
 
 
 def pristine_functions(module):
@@ -26,15 +26,15 @@ def dispatch_certificate(scheduler, context, scheduler_guard, context_guard, gua
             return False
         if callback.__func__.__globals__.get("schedule_internal_operation") is not guarded_functions["schedule_internal_operation"]:
             return False
-        return (sgs_dispatch_step._schedule_op is _SCHEDULE_OPERATION
+        return (sgs_dispatch_step.schedule_op is _SCHEDULE_OPERATION
                 and all(vars(guarded_module).get(name) is function for name, function in guarded_functions.items()))
 
     return current
 
 
 class DecodeAcceleration:
-    def __init__(self, request, graph, pruning, hours, context):
-        self.plan = plan_decode_checkpoints(request, graph_state=graph)
+    def __init__(self, request, graph, pruning, hours, context, *, resume):
+        self.plan = plan_decode_checkpoints(request, graph_state=graph, resume=resume)
         self.frontier = make_priority_queue(graph, pruning)
         self.tail = getattr(request, "tail_reuse", None)
         self.check = getattr(request, "check_budget", None)

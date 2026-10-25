@@ -43,7 +43,9 @@ def execution_guards(svc, facts, operations, batches, projections, prev_version,
         _quantities(piece_scope, {op.id: facts.operation_refs[op.id] for op in operations}, projections)
     for op in operations:
         projection = projections[facts.operation_refs[op.id]]
-        _validate_execution_target(op, batches, projection)
+        if piece_scope is None:
+            # 分件时 _quantities 已按同一份工序逐条核对过目标数量和口径。
+            _validate_execution_target(op, batches, projection)
         _validate_execution_origin(op.id, projection, prior_refs)
     return build_execution_guardrails_from_projections(
         svc, operations, prev_version=prev_version,

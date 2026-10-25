@@ -8,18 +8,10 @@ from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_contract_issues
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
-from data.repositories.workbench_preflight_facts_repo import WorkbenchPreflightFactsRepository
 
 if TYPE_CHECKING:
     from core.errors import ValidationError
     from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
-
-
-def full_facts_content(conn, capture=None):
-    if capture is not None:
-        return capture.content()
-    with TransactionManager(conn).transaction():
-        return ProductionFactsCapture(conn).content()
 
 
 class PreflightFacts:
@@ -28,9 +20,9 @@ class PreflightFacts:
 
     def __init__(self, conn, *, capture=None):
         self.conn = conn
-        self.repo = WorkbenchPreflightFactsRepository(conn)
         self._shared_capture = capture
         self.capture: Any = capture
+        self.execution_service = None
         self.tables = {}
         self.refs = {}
         self.operation_refs = {}
@@ -38,6 +30,7 @@ class PreflightFacts:
         self.resource_execution = {}
         self.external_groups = {}
         self._checks = None
+        self._calendar = None
         self._official_sources, self._source_resolver = {}, None
         self._configuration_ready = False
         self.config_snapshot, self.config_error = None, None
@@ -52,7 +45,7 @@ class PreflightFacts:
             self._snapshot_depth += 1
             try:
                 with self.execution_snapshot():
-                    yield full_facts_content(self.conn, self.capture) if fingerprint else ""
+                    yield self.capture.content() if fingerprint else ""
             finally:
                 self._snapshot_depth -= 1
 
@@ -63,7 +56,7 @@ class PreflightFacts:
         if schema_contract_memo(self.conn).get_schema(execution_ledger_contract_issues):
             yield None
             return
-        with ledger_read_snapshot(self.conn, ledger=getattr(self, "execution_service", None)) as ledger:
+        with ledger_read_snapshot(self.conn, ledger=self.execution_service) as ledger:
             self.execution_service = ledger
             self.capture.execution_service = ledger
             yield ledger
@@ -73,12 +66,13 @@ class PreflightFacts:
             return
         self.execution_projections, self.resource_execution, self.external_groups = {}, {}, {}
         self._checks = None
+        self._calendar = None
         self._official_sources, self._source_resolver = {}, None
         self._configuration_ready = False
         self.config_snapshot, self.config_error = None, None
         self.capture = capture
-        self.execution_service = getattr(capture, "execution_service", None)
-        self.tables = self.repo.preflight_tables(capture)
+        self.execution_service = capture.execution_service
+        self.tables = capture.repo.preflight_tables(capture)
         self.refs = {(row["kind"], row["entity_key"]): row["ref"]
                      for row in self.tables["WorkbenchEntityRefs"] if row["active"]}
         self.operation_refs = {int(row["source_key"]): row["ref"] for row in self.tables["WorkbenchPlanSourceRefs"]
@@ -113,14 +107,20 @@ class PreflightFacts:
             self._checks = PreflightChecks(self.tables)
         return self._checks
 
+    def calendar(self):
+        if self._calendar is None:
+            from core.services.scheduler.calendar.service import CalendarService
+
+            self._calendar = CalendarService(self.conn, capture=self.capture)
+        return self._calendar
+
     def configuration(self):
         if not self._configuration_ready:
             from core.errors import ValidationError
-
-            from .input_config import configuration_snapshot
+            from core.services.scheduler.config.config_snapshot import build_schedule_config_snapshot
 
             try:
-                self.config_snapshot = configuration_snapshot(self.conn, rows=self.tables["ScheduleConfig"])
+                self.config_snapshot = build_schedule_config_snapshot(rows=self.tables["ScheduleConfig"])
             except ValidationError as exc:
                 self.config_error = exc
             self._configuration_ready = True

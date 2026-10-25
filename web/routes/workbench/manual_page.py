@@ -39,12 +39,7 @@ def _resolve_scheduler_manual_md_path() -> Tuple[Optional[str], List[str]]:
     - 只允许 BASE_DIR 推导出的唯一路径，不再在 static_folder 等位置做首个命中式猜测
     - 返回：(命中的路径 or None, 唯一路径候选)
     """
-    base_dir = None
-    try:
-        base_dir = current_app.config.get("BASE_DIR")
-    except Exception:
-        base_dir = None
-
+    base_dir = current_app.config.get("BASE_DIR")
     base_dir = str(base_dir).strip() if base_dir is not None else ""
     if not base_dir:
         return None, []
@@ -106,20 +101,14 @@ def _load_manual_source(manual_path: Optional[str], candidates: List[str]) -> Tu
     """返回 (正文或错误提示, 文件时间, 说明书是否可用)；不可用时正文就是给用户看的提示句。"""
     if not manual_path:
         if not candidates:
-            try:
-                current_app.logger.warning("scheduler manual path resolution failed: BASE_DIR missing or empty")
-            except Exception:
-                pass
+            current_app.logger.warning("scheduler manual path resolution failed: BASE_DIR missing or empty")
             return (
                 "找不到说明书文件：本机安装信息不完整。请联系维护人员检查安装目录。",
                 None,
                 False,
             )
 
-        try:
-            current_app.logger.warning("系统使用说明文件不存在（candidates=%s）", candidates)
-        except Exception:
-            pass
+        current_app.logger.warning("系统使用说明文件不存在（candidates=%s）", candidates)
         return "找不到说明书文件，可能安装包里没带或文件被删了。请联系维护人员。", None, False
 
     try:
@@ -257,7 +246,6 @@ def config_manual_page():
     raw_page = (request.args.get("page") or "").strip()
     safe_src, safe_page, entry, page_warning = _normalize_scheduler_manual_args(raw_src, raw_page)
     link_src = safe_src or ""
-    back_url = safe_src
     manual_path, candidates = _resolve_scheduler_manual_md_path()
     manual_text, manual_mtime, manual_available = _load_manual_source(manual_path, candidates)
     download_url = _build_manual_download_url(manual_path, safe_src, safe_page)
@@ -266,7 +254,7 @@ def config_manual_page():
         manual_text=manual_text,
         manual_available=manual_available,
         link_src=link_src,
-        back_url=back_url,
+        back_url=safe_src,
     )
     for warning in (page_warning, view_state["page_warning"]):
         if warning:

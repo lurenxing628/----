@@ -1,10 +1,13 @@
 """Factory wall-clock presentation; unknown values are not zero measurements."""
 
-from core.services.execution.processing_hours import hour_totals as hour_totals
+from datetime import datetime
+
 from core.shared.local_datetime import parse_local_datetime
 
 
-def _local_dt(value):
+def local_dt(value):
+    if isinstance(value, datetime):
+        return value if value.tzinfo is None else None
     parsed = parse_local_datetime(value)
     if parsed is None or parsed.tzinfo is not None:
         return None
@@ -18,27 +21,28 @@ def _minutes_between(planned_dt, actual_dt):
 
 
 def local_time(value):
-    parsed = _local_dt(value)
+    parsed = local_dt(value)
     return parsed.isoformat() if parsed is not None else None
 
 
 def minutes(planned, actual):
-    return _minutes_between(_local_dt(planned), _local_dt(actual))
+    return _minutes_between(local_dt(planned), local_dt(actual))
 
 
 def execution_deviation(planned_end, projection, as_of):
     """One rounded-minute deadline rule for the saved plan and execution ledger."""
-    result = {"state": "unavailable", "as_of": as_of,
+    as_of_value = as_of.isoformat() if isinstance(as_of, datetime) else as_of
+    result = {"state": "unavailable", "as_of": as_of_value,
               "finish_deviation_minutes": None, "elapsed_since_planned_minutes": None,
               "forecast_deviation_minutes": None, "due": False, "complete": False,
               "unclosed": False, "late_open": False, "finish_late": False, "forecast_late": False}
     if projection is None:
         return result
-    planned, clock = _local_dt(planned_end), _local_dt(as_of)
+    planned, clock = local_dt(planned_end), local_dt(as_of)
     complete = projection["execution_state"] == "complete"
-    confirmed = _local_dt(projection["confirmed_finish"])
+    confirmed = local_dt(projection["confirmed_finish"])
     remaining = projection["remaining_plan"] if not complete else None
-    forecast = _local_dt(remaining["end"]) if remaining else None
+    forecast = local_dt(remaining["end"]) if remaining else None
     due = planned is not None and clock is not None and planned <= clock
     finish = _minutes_between(planned, confirmed) if complete else None
     elapsed = _minutes_between(planned, clock) if due and not complete else None

@@ -2,10 +2,10 @@
 
 from flask import current_app, g, request
 
-from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from web.api_responses import json_response, query_success
 
-from .api_responses import api_endpoint
+from .api_responses import api_endpoint, read_endpoint
 from .read_context import bind_read_snapshot
 from .write_context import issue_write_context, validate_write_context
 
@@ -29,7 +29,7 @@ def _body(fields):
     return value
 
 
-@api_endpoint
+@read_endpoint
 def run_candidate_adopt_preview(candidate_ref):
     _body(())
     data = _service().preview(candidate_ref)
@@ -42,6 +42,7 @@ def run_candidate_adopt_preview(candidate_ref):
 @api_endpoint
 def run_candidate_adopt(candidate_ref):
     value = _body(("write_token", "request_key", "input"))
+    validate_request_key(value["request_key"])
     g.workbench_request_key = value["request_key"]
     result = _service().adopt(candidate_ref, value["write_token"], value["request_key"], value["input"])
     response = json_response(result)

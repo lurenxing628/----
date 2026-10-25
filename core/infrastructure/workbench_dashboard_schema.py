@@ -81,12 +81,19 @@ def workbench_dashboard_objects(*, legacy=False):
 
 
 def workbench_dashboard_contract_issues(conn, *, structure=None, allow_legacy=True):
+    structure = structure or SchemaStructure(conn)
     actual = schema_objects(conn, structure=structure)
     legacy = workbench_dashboard_objects(legacy=True)
-    return [("missing_dashboard_schema:" if name not in actual else "invalid_dashboard_schema:") + name
-            for name, sql in workbench_dashboard_objects().items()
-            if name not in actual or not schema_contract_matches(
-                conn, actual[name] or "", sql, legacy[name], allow_legacy=allow_legacy)]
+    issues = [("missing_dashboard_schema:" if name not in actual else "invalid_dashboard_schema:") + name
+              for name, sql in workbench_dashboard_objects().items()
+              if name not in actual or not schema_contract_matches(
+                  conn, actual[name] or "", sql, legacy[name], allow_legacy=allow_legacy)]
+    if ("WorkbenchDashboardDowntimeRefs" in actual
+            and "invalid_dashboard_schema:WorkbenchDashboardDowntimeRefs" not in issues
+            and tuple(col[1] for col in structure.table_info("WorkbenchDashboardDowntimeRefs"))
+            != ("ref", "source_id", "active", "revision")):
+        issues.append("invalid_dashboard_schema:WorkbenchDashboardDowntimeRefs")
+    return issues
 
 
 def install_workbench_dashboard_schema(conn):
@@ -113,7 +120,7 @@ def install_workbench_dashboard_schema(conn):
     for category in ("actual", "downtime"):
         conn.execute("INSERT INTO WorkbenchDashboardItems(item_ref,category,task_ref) "
                      "SELECT lower(hex(randomblob(24))),?,ref FROM WorkbenchTaskRefs", (category,))
-    conn.execute("INSERT INTO WorkbenchDashboardDowntimeRefs SELECT lower(hex(randomblob(24))),id,1,1 FROM MachineDowntimes")
+    conn.execute("INSERT INTO WorkbenchDashboardDowntimeRefs(ref,source_id,active,revision) SELECT lower(hex(randomblob(24))),id,1,1 FROM MachineDowntimes")
 
 
 objects = workbench_dashboard_objects

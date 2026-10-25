@@ -10,9 +10,9 @@ from .workbench_execution_repo import chunks
 
 class WorkbenchCalibrationQueryRepository(BaseRepository):
     def schema_installed(self):
-        structure = schema_contract_memo(self.conn).structure
-        return not (workbench_metadata_contract_issues(self.conn, structure=structure) or
-                    workbench_process_contract_issues(self.conn, structure=structure))
+        memo = schema_contract_memo(self.conn)
+        return not (memo.get_schema(workbench_metadata_contract_issues) or
+                    memo.get_schema(workbench_process_contract_issues))
 
     def part_identity(self, part_ref):
         """Active part identity's stored entity key, or None when the ref is no longer live."""
@@ -42,18 +42,6 @@ class WorkbenchCalibrationQueryRepository(BaseRepository):
                     AND r.source_key=CAST(bo.id AS TEXT)
                 WHERE b.part_no IN (""" + marks + ") ORDER BY b.part_no,bo.id LIMIT ?", chunk + [limit + 1 - len(result)])
             result.extend(rows)
-            if len(result) > limit:
-                break
-        return result
-
-    def report_head_refs(self, operation_refs, limit):
-        """Distinct report refs for the operations; reads at most limit+1 and stops when exceeded."""
-        result = set()
-        for chunk in chunks(list(operation_refs)):
-            marks = ",".join("?" for _ in chunk)
-            rows = self.fetchall("SELECT report_ref FROM WorkbenchProductionReports WHERE operation_ref IN (" + marks +
-                                 ") LIMIT ?", chunk + [limit + 1 - len(result)])
-            result.update(row["report_ref"] for row in rows)
             if len(result) > limit:
                 break
         return result

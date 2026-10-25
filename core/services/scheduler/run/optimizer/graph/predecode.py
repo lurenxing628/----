@@ -4,7 +4,7 @@ from itertools import groupby
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.errors import ValidationError
-from core.services.scheduler.run.optimizer.graph_ready_profiles import GRAPH_READY_PHASE, GraphReadyWeightProfile
+from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
 
 from .budget import GraphReadySearchBudget
@@ -59,6 +59,10 @@ class GraphReadyProfileSearch:
             self.report["skipped_before_decode"] += 1
             counts = self.report["shared_skip_by_reason"]
             counts[exc.reason] = counts.get(exc.reason, 0) + 1
+            if exc.reason == "estimated_decode_cost":
+                self.report["skipped_by_estimated_decode_cost"] += 1
+            if exc.reason in ("estimated_decode_cost", "time_budget"):
+                self.budget.stop_reason = exc.reason
             return None
         except ValidationError:
             if not started:
@@ -72,18 +76,8 @@ class GraphReadyProfileSearch:
                                                         "request_id": candidate["decode_receipt"]["request_id"]})
         return candidate
 
-    def publish(self, *, attempts: List[Dict[str, Any]], report_state: Any) -> None:
+    def publish(self, *, attempts: List[Dict[str, Any]]) -> None:
         self.report["unvisited_profiles"] = self.report["configured_profiles"] - self.report["considered_profiles"]
         self.report.update(self.budget.summary())
         attempts.append({"tag": "graph_ready_profile_efficiency", "candidate_status": "phase_summary",
                          "profile_efficiency": self.report})
-        if report_state is None:
-            return
-        graph = dict((report_state.candidate_profile or {}).get("graph_ready_optimization") or {})
-        graph["profile_efficiency"] = self.report
-        report_state.update_candidate_profile(graph_ready_optimization=graph)
-        if self.budget.stop_reason == "time_budget":
-            report_state.mark_deadline_reached()
-            # The phase ran once any profile was decoded; only a phase without decodes was skipped for time.
-            if self.budget.profile_decodes == 0:
-                report_state.mark_phase_skipped(GRAPH_READY_PHASE, "time_budget")

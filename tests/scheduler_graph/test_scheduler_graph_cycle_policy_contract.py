@@ -13,11 +13,14 @@ import pytest
 
 from core.algorithms import GreedyScheduler, ScheduleResult, ScheduleSummary, SortStrategy
 from core.errors import ValidationError
+from core.models.batch import Batch
+from core.models.batch_operation import BatchOperation
 from core.models.schedule_config_runtime import ScheduleConfigSnapshot
-from core.services.scheduler.run.optimizer.outcome import OptimizationOutcome
+from core.services.common.build_outcome import BuildOutcome
 from core.services.scheduler.run.optimizer.runtime import _default_runtime
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
 from core.services.scheduler.run.schedule_graph_report import prepare_schedule_graph_for_dispatch
+from core.services.scheduler.run.schedule_input_contracts import ScheduleRunInput
 from core.services.scheduler.run.schedule_orchestrator import orchestrate_schedule_run
 from core.services.scheduler.run.schedule_shared_optimizer import optimize_shared_schedule
 
@@ -61,9 +64,10 @@ def _algo_op(op_id: int = 1, seq: int = 10) -> SimpleNamespace:
     )
 
 
-def _schedule_input(mode: str, *, block_on_cycle: str) -> SimpleNamespace:
+def _schedule_input(mode: str, *, block_on_cycle: str) -> ScheduleRunInput:
     algo_ops = [_algo_op()]
-    return SimpleNamespace(
+    operations = [BatchOperation(id=1, op_code="OP-B001-010", batch_id="B001", source="internal")]
+    return ScheduleRunInput(
         cfg=ScheduleConfigSnapshot(
             sort_strategy="priority_first",
             priority_weight=0.4,
@@ -94,24 +98,23 @@ def _schedule_input(mode: str, *, block_on_cycle: str) -> SimpleNamespace:
         readiness_gate_enabled=True,
         algo_ops=algo_ops,
         algo_ops_to_schedule=list(algo_ops),
-        batches={"B001": SimpleNamespace(batch_id="B001", quantity=1, due_date="2026-01-02")},
+        batches={"B001": Batch(batch_id="B001", part_no="P001", quantity=1, due_date="2026-01-02")},
         start_dt_norm=datetime(2026, 1, 1, 8, 0, 0),
         end_date_norm=None,
         downtime_map={},
         seed_results=[],
         resource_pool={"machines_by_op_type": {}, "operators_by_machine": {}, "machines_by_operator": {}},
-        operations=[SimpleNamespace(id=1, batch_id="B001", source="internal")],
-        reschedulable_operations=[SimpleNamespace(id=1, batch_id="B001", source="internal")],
-        reschedulable_op_ids={1},
+        operations=operations,
         schedule_output_allowed_op_ids={1},
-        payload_validation_operations=[SimpleNamespace(id=1, batch_id="B001", source="internal")],
+        payload_validation_operations=operations,
+        operation_sources=None,
         execution_snapshot_revision="rev-0",
         execution_snapshot_op_ids=[1],
         execution_snapshot_op_count=1,
         run_time_budget_seconds=None,
         normalized_batch_ids=["B001"],
         freeze_meta={"loaded": True},
-        algo_input_outcome=SimpleNamespace(value=[]),
+        algo_input_outcome=BuildOutcome([]),
         downtime_meta={"load_ok": True},
         resource_pool_meta={"build_ok": True},
         algo_warnings=[],
@@ -120,6 +123,7 @@ def _schedule_input(mode: str, *, block_on_cycle: str) -> SimpleNamespace:
         optimizer_seed_version=6,
         prev_version=5,
         missing_internal_resource_op_ids=set(),
+        execution_facts={}, execution_fixed_op_ids=set(), execution_completed_op_ids=set(), execution_seed_results=[],
     )
 
 
@@ -138,10 +142,10 @@ def _valid_result() -> ScheduleResult:
     )
 
 
-def _optimizer_outcome() -> OptimizationOutcome:
-    return OptimizationOutcome(
-        results=[_valid_result()],
-        summary=ScheduleSummary(
+def _optimizer_outcome() -> Tuple[List[ScheduleResult], ScheduleSummary, SortStrategy, Dict[str, Any]]:
+    return (
+        [_valid_result()],
+        ScheduleSummary(
             success=True,
             total_ops=1,
             scheduled_ops=1,
@@ -150,17 +154,8 @@ def _optimizer_outcome() -> OptimizationOutcome:
             errors=[],
             duration_seconds=0.0,
         ),
-        used_strategy=SortStrategy.PRIORITY_FIRST,
-        used_params={"dispatch": "fifo"},
-        metrics=None,
-        best_score=(0.0, 0.0),
-        best_order=["B001"],
-        attempts=[{"score": [0.0, 0.0]}],
-        improvement_trace=[{"score": [0.0, 0.0]}],
-        algo_mode="greedy",
-        objective_name="min_overdue",
-        time_budget_seconds=3,
-        algo_stats={},
+        SortStrategy.PRIORITY_FIRST,
+        {"dispatch": "fifo"},
     )
 
 
@@ -187,14 +182,14 @@ def _cycle_graph_payload() -> Dict[str, Any]:
     }
 
 
-def _summary_from_ctx(*, ctx: Any, logger: Any = None) -> Tuple[List[Dict[str, Any]], str, Dict[str, Any], int]:
+def _summary_from_ctx(*, ctx: Any, logger: Any = None) -> Dict[str, Any]:
     algo: Dict[str, Any] = {"ok": 1, "used_params": dict(ctx.used_params)}
     result_summary_obj: Dict[str, Any] = {"algo": algo, "warnings": [], "errors": []}
     if ctx.graph_analysis_public is not None:
         algo["graph_analysis"] = dict(ctx.graph_analysis_public)
     if ctx.graph_analysis_diagnostics is not None:
         result_summary_obj["diagnostics"] = {"graph_analysis": dict(ctx.graph_analysis_diagnostics)}
-    return [], "success", result_summary_obj, 12
+    return result_summary_obj
 
 
 def _run_orchestrator(schedule_input: Any, svc: _Svc) -> Any:
@@ -211,9 +206,12 @@ def _run_orchestrator_with_decoder(schedule_input: Any, svc: _Svc, *, decode_fn:
 
     class ContractScheduler(GreedyScheduler):
         def schedule(self, **kwargs):
-            outcome = decode_fn(**kwargs, graph_dispatch_mode_override=preparation.graph_dispatch_mode_override)
-            params = dict(outcome.used_params, dispatch_mode=kwargs["dispatch_mode"], dispatch_rule=kwargs["dispatch_rule"])
-            return outcome.results, outcome.summary, outcome.used_strategy, params
+            assert preparation is not None
+            results, summary, used_strategy, used_params = decode_fn(
+                **kwargs, graph_dispatch_mode_override=preparation.graph_dispatch_mode_override
+            )
+            params = dict(used_params, dispatch_mode=kwargs["dispatch_mode"], dispatch_rule=kwargs["dispatch_rule"])
+            return results, summary, used_strategy, params
 
     compare = partial(run_candidate_comparison, prepare_graph_fn=prepare_graph,
         optimize_shared_schedule_fn=partial(optimize_shared_schedule,
@@ -280,7 +278,7 @@ def test_on_mode_cycle_with_block_no_disables_graph_enhancement_and_keeps_old_sg
     svc = _Svc()
     captured: Dict[str, Any] = {}
 
-    def _optimize(**kwargs: Any) -> OptimizationOutcome:
+    def _optimize(**kwargs: Any) -> Tuple[List[ScheduleResult], ScheduleSummary, SortStrategy, Dict[str, Any]]:
         captured.update(kwargs)
         return _optimizer_outcome()
 
@@ -299,6 +297,28 @@ def test_on_mode_cycle_with_block_no_disables_graph_enhancement_and_keeps_old_sg
     assert selected.dispatch_mode == "sgs"
     assert "graph_ready_profile" not in selected.origin
     assert outcome.result_summary_obj["algo"]["used_params"]["dispatch_mode"] == "sgs"
+    assert svc.history_repo.allocate_calls == 0
+
+
+def test_on_mode_improve_with_zero_score_weights_skips_graph_feature_prep_and_keeps_scheduling() -> None:
+    svc = _Svc()
+    schedule_input = _schedule_input("on", block_on_cycle="yes")
+    schedule_input.cfg = replace(
+        schedule_input.cfg,
+        algo_mode="improve",
+        graph_critical_weight=0,
+        graph_impact_weight=0,
+    )
+
+    outcome = _run_orchestrator(schedule_input, svc)
+
+    graph_analysis = outcome.result_summary_obj["algo"]["graph_analysis"]
+    assert graph_analysis["mode"] == "on"
+    assert graph_analysis["effective_mode"] == "graph_ready_queue"
+    assert graph_analysis["score_enabled"] is False
+    assert graph_analysis["score_disabled_reason"] == "score_weights_zero"
+    selected = outcome.candidate_comparison.selection.selected_plan
+    assert "graph_ready_profile" not in selected.origin
     assert svc.history_repo.allocate_calls == 0
 
 
@@ -380,7 +400,7 @@ def _analysis_graph(durations: List[Tuple[str, int]], edges: List[Tuple[str, str
 
     graph = import_networkx().DiGraph()
     for node_id, duration in durations:
-        graph.add_node(node_id, batch_id="B", seq=0, op_code=node_id, duration_minutes=duration)
+        graph.add_node(node_id, batch_id="B", piece_id=None, seq=0, op_code=node_id, duration_minutes=duration)
     for parent, child, lag in edges:
         graph.add_edge(parent, child, lag_minutes=lag, kind="precedence")
     return graph
@@ -507,3 +527,30 @@ def test_standalone_node_metrics_prepares_topology_once_and_reuses_given_order(m
     topology.reset_mock()
     assert metrics.build_node_metrics(graph, topological_order=["a", "b"]) == expected
     assert topology.call_count == 0
+
+
+def test_piece_sequences_chain_and_duplicate_check_stay_within_each_piece() -> None:
+    """回归：同批不同分件各自从 seq=10 起排，线性边不跨分件串连，也不误报 DUPLICATE_SEQ；同一分件内真重复仍告警。"""
+    from core.services.scheduler.graph.input_adapter import build_operation_nodes_from_rows
+    from core.services.scheduler.graph.precedence_builder import build_linear_edges_by_batch, build_precedence_graph
+    from core.services.scheduler.graph.validators import collect_graph_warnings
+
+    def _row(op_id: int, piece_id: Any, seq: int) -> Dict[str, Any]:
+        return {"id": op_id, "batch_id": "B001", "piece_id": piece_id, "op_code": f"OP{op_id}", "seq": seq,
+                "source": "internal", "setup_hours": 0, "unit_hours": 1}
+
+    rows = [_row(1, "P1", 10), _row(2, "P2", 10), _row(3, "P1", 20), _row(4, "P2", 20), _row(5, "P2", 20)]
+    nodes = build_operation_nodes_from_rows(rows, batches={"B001": {"quantity": 1}})
+    assert [node.piece_id for node in nodes] == ["P1", "P2", "P1", "P2", "P2"]
+
+    edges = build_linear_edges_by_batch(nodes)
+    op_id_by_node = {node.node_id: node.raw["id"] for node in nodes}
+    assert sorted((op_id_by_node[edge.from_node_id], op_id_by_node[edge.to_node_id]) for edge in edges) == [
+        (1, 3), (2, 4), (4, 5),
+    ]
+
+    graph = build_precedence_graph(nodes, edges)
+    duplicates = [warning for warning in collect_graph_warnings(graph) if warning.code == "DUPLICATE_SEQ"]
+    assert [(warning.data["batch_id"], warning.data["seq"], warning.data["op_codes"]) for warning in duplicates] == [
+        ("B001", 20, ["OP4", "OP5"]),
+    ]

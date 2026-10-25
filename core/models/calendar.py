@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any, Dict, Optional, Tuple
 
 from ._helpers import RowLike, get, parse_float_or_default
@@ -9,7 +10,16 @@ from .calendar_periods import decode_periods
 from .enums import CalendarDayType, YesNo
 
 
+@lru_cache(maxsize=256)
+def _canonical_periods_json(raw: str) -> str:
+    return json.dumps(decode_periods(raw), ensure_ascii=False, separators=(",", ":"))
+
+
 def _decode_and_encode_periods(raw):
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        return _canonical_periods_json(raw)
     periods = decode_periods(raw)
     return None if periods is None else json.dumps(periods, ensure_ascii=False, separators=(",", ":"))
 
@@ -20,6 +30,50 @@ def _validate_calendar_numbers(*, shift_hours: float, efficiency: float, scope: 
     if efficiency <= 0:
         raise ValueError(f"{scope}.efficiency 必须大于 0：{efficiency!r}")
     return float(shift_hours), float(efficiency)
+
+
+def _parse_common_calendar_row(row: RowLike, scope: str) -> Dict[str, Any]:
+    raw_shift_hours = get(row, "shift_hours")
+    raw_efficiency = get(row, "efficiency")
+    shift_hours = parse_float_or_default(raw_shift_hours, 8.0, field="shift_hours")
+    efficiency = parse_float_or_default(raw_efficiency, 1.0, field="efficiency")
+    shift_hours, efficiency = _validate_calendar_numbers(
+        shift_hours=shift_hours,
+        efficiency=efficiency,
+        scope=scope,
+    )
+    shift_start = get(row, "shift_start")
+    shift_end = get(row, "shift_end")
+    return {
+        "date": str(get(row, "date") or ""),
+        "day_type": (
+            str(get(row, "day_type") or CalendarDayType.WORKDAY.value).strip().lower()
+            or CalendarDayType.WORKDAY.value
+        ),
+        "shift_start": str(shift_start) if shift_start is not None and shift_start != "" else None,
+        "shift_end": str(shift_end) if shift_end is not None and shift_end != "" else None,
+        "shift_hours": shift_hours,
+        "efficiency": efficiency,
+        "allow_normal": (str(get(row, "allow_normal") or YesNo.YES.value).strip().lower() or YesNo.YES.value),
+        "allow_urgent": (str(get(row, "allow_urgent") or YesNo.YES.value).strip().lower() or YesNo.YES.value),
+        "remark": get(row, "remark"),
+        "periods_json": _decode_and_encode_periods(get(row, "periods_json")),
+    }
+
+
+def _common_calendar_dict(cal: Any) -> Dict[str, Any]:
+    return {
+        "date": cal.date,
+        "day_type": cal.day_type,
+        "shift_start": cal.shift_start,
+        "shift_end": cal.shift_end,
+        "shift_hours": cal.shift_hours,
+        "efficiency": cal.efficiency,
+        "allow_normal": cal.allow_normal,
+        "allow_urgent": cal.allow_urgent,
+        "remark": cal.remark,
+        "periods_json": cal.periods_json,
+    }
 
 
 @dataclass
@@ -38,46 +92,10 @@ class WorkCalendar:
 
     @classmethod
     def from_row(cls, row: RowLike) -> WorkCalendar:
-        raw_shift_hours = get(row, "shift_hours")
-        raw_efficiency = get(row, "efficiency")
-        shift_hours = parse_float_or_default(raw_shift_hours, 8.0, field="shift_hours")
-        efficiency = parse_float_or_default(raw_efficiency, 1.0, field="efficiency")
-        shift_hours, efficiency = _validate_calendar_numbers(
-            shift_hours=shift_hours,
-            efficiency=efficiency,
-            scope="WorkCalendar",
-        )
-        shift_start = get(row, "shift_start")
-        shift_end = get(row, "shift_end")
-        return cls(
-            date=str(get(row, "date") or ""),
-            day_type=(
-                str(get(row, "day_type") or CalendarDayType.WORKDAY.value).strip().lower()
-                or CalendarDayType.WORKDAY.value
-            ),
-            shift_start=str(shift_start) if shift_start is not None and shift_start != "" else None,
-            shift_end=str(shift_end) if shift_end is not None and shift_end != "" else None,
-            shift_hours=shift_hours,
-            efficiency=efficiency,
-            allow_normal=(str(get(row, "allow_normal") or YesNo.YES.value).strip().lower() or YesNo.YES.value),
-            allow_urgent=(str(get(row, "allow_urgent") or YesNo.YES.value).strip().lower() or YesNo.YES.value),
-            remark=get(row, "remark"),
-            periods_json=_decode_and_encode_periods(get(row, "periods_json")),
-        )
+        return cls(**_parse_common_calendar_row(row, "WorkCalendar"))
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "date": self.date,
-            "day_type": self.day_type,
-            "shift_start": self.shift_start,
-            "shift_end": self.shift_end,
-            "shift_hours": self.shift_hours,
-            "efficiency": self.efficiency,
-            "allow_normal": self.allow_normal,
-            "allow_urgent": self.allow_urgent,
-            "remark": self.remark,
-            "periods_json": self.periods_json,
-        }
+        return _common_calendar_dict(self)
 
 
 @dataclass
@@ -105,45 +123,10 @@ class OperatorCalendar:
 
     @classmethod
     def from_row(cls, row: RowLike) -> OperatorCalendar:
-        raw_shift_hours = get(row, "shift_hours")
-        raw_efficiency = get(row, "efficiency")
-        shift_hours = parse_float_or_default(raw_shift_hours, 8.0, field="shift_hours")
-        efficiency = parse_float_or_default(raw_efficiency, 1.0, field="efficiency")
-        shift_hours, efficiency = _validate_calendar_numbers(
-            shift_hours=shift_hours,
-            efficiency=efficiency,
-            scope="OperatorCalendar",
-        )
-        shift_start = get(row, "shift_start")
-        shift_end = get(row, "shift_end")
         return cls(
             operator_id=str(get(row, "operator_id") or ""),
-            date=str(get(row, "date") or ""),
-            day_type=(
-                str(get(row, "day_type") or CalendarDayType.WORKDAY.value).strip().lower()
-                or CalendarDayType.WORKDAY.value
-            ),
-            shift_start=str(shift_start) if shift_start is not None and shift_start != "" else None,
-            shift_end=str(shift_end) if shift_end is not None and shift_end != "" else None,
-            shift_hours=shift_hours,
-            efficiency=efficiency,
-            allow_normal=(str(get(row, "allow_normal") or YesNo.YES.value).strip().lower() or YesNo.YES.value),
-            allow_urgent=(str(get(row, "allow_urgent") or YesNo.YES.value).strip().lower() or YesNo.YES.value),
-            remark=get(row, "remark"),
-            periods_json=_decode_and_encode_periods(get(row, "periods_json")),
+            **_parse_common_calendar_row(row, "OperatorCalendar"),
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "operator_id": self.operator_id,
-            "date": self.date,
-            "day_type": self.day_type,
-            "shift_start": self.shift_start,
-            "shift_end": self.shift_end,
-            "shift_hours": self.shift_hours,
-            "efficiency": self.efficiency,
-            "allow_normal": self.allow_normal,
-            "allow_urgent": self.allow_urgent,
-            "remark": self.remark,
-            "periods_json": self.periods_json,
-        }
+        return {"operator_id": self.operator_id, **_common_calendar_dict(self)}

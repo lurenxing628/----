@@ -53,7 +53,7 @@ def _reachable_from(graph, pending):
 
 
 class ReportDependencies:
-    def __init__(self, ledger, projections=()):
+    def __init__(self, ledger, projections):
         self.ledger = ledger
         self.repo = WorkbenchReportValidationRepository(ledger.conn)
         self.routes = {}
@@ -108,6 +108,27 @@ class ReportDependencies:
             reachable = _reachable(parents if predecessors else children, ref)
             self._relative_rows[predecessors] = [other for other in reachable if not self.same_merged_cycle(ref, other)]
         return self._relative_rows[predecessors]
+
+    def downstream_refs(self, operations):
+        operations = list(operations)
+        if not operations:
+            return []
+        if len(operations) == 1:
+            return self.relatives(operations[0])
+        batches = defaultdict(set)
+        for operation in operations:
+            batches[operation["batch_id"]].add(operation["operation_ref"])
+        refs = set()
+        for batch_id, roots in batches.items():
+            _, children = self._route(batch_id)
+            reachable = _reachable_from(children, (other for ref in roots for other in children[ref]))
+            cycles = {self.merged.get(ref) for ref in roots}
+            shared_cycle = next(iter(cycles)) if len(cycles) == 1 else None
+            if shared_cycle is None:
+                refs.update(reachable)
+            else:
+                refs.update(other for other in reachable if self.merged.get(other) != shared_cycle)
+        return sorted(refs)
 
     def prepare(self, operations):
         batches = defaultdict(set)

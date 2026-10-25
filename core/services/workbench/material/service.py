@@ -64,23 +64,33 @@ class WorkbenchMaterialService:
         changes = {key: value for key, value in changes.items() if checked["material"][key] != value}
         return PreparedMaterialChange(action, current, current.entity_key, changes)
 
-    def apply_prepared(self, prepared):
+    def apply_prepared_many(self, changes):
         if not self.conn.in_transaction:
             raise RuntimeError("物料操作必须在外层工作台命令事务中执行。")
-        current = prepared.identity
-        if prepared.action == "create":
-            created = self._materials.create(Material(**prepared.values))
-            current = self._identities.find_active("material", created.material_id)
-            if current is None:
-                raise RuntimeError("新增物料缺少永久引用，不能确认保存。")
-        else:
-            if prepared.action == "delete":
+        created_codes = []
+        for prepared in changes:
+            if prepared.action == "create":
+                self._materials.create(Material(**prepared.values))
+                created_codes.append(prepared.business_code)
+            elif prepared.action == "delete":
                 self._delete(prepared.business_code)
             elif prepared.values:
                 self._materials.update(prepared.business_code, prepared.values)
+        created_identities = self._identities.active_map("material", created_codes) if created_codes else {}
+        outcomes = []
+        for prepared in changes:
+            if prepared.action == "create":
+                current = created_identities.get(prepared.business_code)
+                if current is None:
+                    raise RuntimeError("新增物料缺少永久引用，不能确认保存。")
+                outcomes.append(self._outcome("committed", current))
             else:
-                return self._outcome("unchanged", current)
-        return self._outcome("committed", current)
+                result = "committed" if prepared.action == "delete" or prepared.values else "unchanged"
+                outcomes.append(self._outcome(result, prepared.identity))
+        return outcomes
+
+    def apply_prepared(self, prepared):
+        return self.apply_prepared_many([prepared])[0]
 
     def _delete(self, material_id: str) -> None:
         try:
@@ -94,5 +104,5 @@ class WorkbenchMaterialService:
             raise
 
     @staticmethod
-    def _outcome(result: str, identity: WorkbenchEntityIdentity) -> WorkbenchCommandOutcome:
+    def _outcome(result: str, identity) -> WorkbenchCommandOutcome:
         return WorkbenchCommandOutcome(result, {"entity_ref": identity.ref, "business_code": identity.entity_key})

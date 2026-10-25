@@ -13,6 +13,8 @@
     let saved = null, receiptError = null;
     if (command.phase === 'done') { try { saved = A.receipt(command.result, command.intent, !create && !recovery ? original.refs : undefined); } catch (failure) { receiptError = failure; } }
     const visible = receiptError ? { ...command, phase: 'pending', locked: true, error: receiptError } : command;
+    const errorCode = command.error && (command.error.code || command.error.error && command.error.error.code);
+    const stale = command.phase === 'rejected' && ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(errorCode);
     const done = !!saved, dirty = !done && Object.values(draft).some(value => value !== ''), locked = visible.locked || opening || reading;
     const preview = S.useQuery(async signal => A.deletePreview(await adapter.bulkPreview(job.body, signal), original), [adapter, job], !!job);
     const result = preview.result, data = result && result.data;
@@ -63,7 +65,11 @@
     if (!create && data && now >= Date.parse(data.expires_at)) reason = '预检已过期，请重新预检。';
     if (!create && !reason && !ack) reason = '请先核对并勾选完整删除范围。';
     if (review) reason = '请先核对新读取的资料。';
-    if (command.phase === 'rejected') reason = create ? '本次未保存，请刷新资料后再试。' : '本次未删除，请重新预检。';
+    if (command.phase === 'rejected' && (!create || stale)) reason = create ? '本次未保存，请刷新资料后再试。' : '本次未删除，请重新预检。';
+    function updateDraft(key, value) {
+      setDraft(current => ({ ...current, [key]: value })); setError(null);
+      if (command.phase === 'rejected' && !stale && typeof command.reset === 'function') command.reset();
+    }
     function confirm(event) {
       if (event && typeof event.preventDefault === 'function') event.preventDefault();
       if (disabled || locked || done || reason || recovery) return;
@@ -82,7 +88,7 @@
           {done && create && <Button icon="arrow-right" className="btn primary" busy={opening} disabled={disabled || locked} onClick={openCreated}>打开工艺详情</Button>}</>}>
         <div className="modal-b scroll rm-body">
           {create && !recovery && !done && <form id={formId} className="fgrid" onSubmit={confirm}>{[['business_code', '图号'], ['label', '零件名称'], ['route_raw', '路线文字（选填）'], ['remark', '备注（选填）']].map(([key, label]) => <label className={'field' + (['route_raw', 'remark'].includes(key) ? ' full' : '')} key={key}>{label}
-            {['route_raw', 'remark'].includes(key) ? <textarea aria-label={label} rows={key === 'route_raw' ? 4 : 2} disabled={disabled || locked} value={draft[key]} onChange={event => setDraft({ ...draft, [key]: event.target.value })} /> : <input aria-label={label} required disabled={disabled || locked} value={draft[key]} onChange={event => setDraft({ ...draft, [key]: event.target.value })} />}</label>)}</form>}
+            {['route_raw', 'remark'].includes(key) ? <textarea aria-label={label} rows={key === 'route_raw' ? 4 : 2} disabled={disabled || locked} value={draft[key]} onChange={event => updateDraft(key, event.target.value)} /> : <input aria-label={label} required disabled={disabled || locked} value={draft[key]} onChange={event => updateDraft(key, event.target.value)} />}</label>)}</form>}
           {create && !done && !recovery && <><p>新增后，请继续确认工艺。</p><Button icon="refresh-cw" disabled={disabled || locked} onClick={readCurrent}>{window.WorkbenchTerms.refresh_latest}</Button></>}
           {review && <div role="status"><p>已读取最新资料，填写内容未改。请核对后继续保存。</p><Button disabled={locked} onClick={() => { if (command.reset()) { setContext(review); setReview(null); } }}>{window.WorkbenchTerms.accept_latest}</Button></div>}
           {!create && !recovery && <p>本次选中 {original.refs.length} 个零件，包含其他页的选择；已被批次使用的零件不能删除。有一项不能删，本次就一项也不删。</p>}

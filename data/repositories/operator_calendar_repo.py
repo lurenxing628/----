@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, List, Optional
+from typing import Iterable, Optional
 
 from core.models import OperatorCalendar
 
@@ -20,32 +20,6 @@ class OperatorCalendarRepository(BaseRepository):
             (operator_id, date),
         )
         return OperatorCalendar.from_row(row) if row else None
-
-    def list_by_operator(self, operator_id: str) -> List[OperatorCalendar]:
-        rows = self.fetchall(
-            """
-            SELECT operator_id, date, day_type, shift_start, shift_end, shift_hours, efficiency, allow_normal, allow_urgent, remark, periods_json
-            FROM OperatorCalendar
-            WHERE operator_id = ?
-            ORDER BY date
-            """,
-            (operator_id,),
-        )
-        return [OperatorCalendar.from_row(r) for r in rows]
-
-    def list_all(self) -> List[OperatorCalendar]:
-        rows = self.fetchall(
-            """
-            SELECT operator_id, date, day_type, shift_start, shift_end, shift_hours, efficiency, allow_normal, allow_urgent, remark, periods_json
-            FROM OperatorCalendar
-            ORDER BY operator_id, date
-            """
-        )
-        return [OperatorCalendar.from_row(r) for r in rows]
-
-    def upsert(self, calendar: OperatorCalendar) -> OperatorCalendar:
-        self.upsert_many((calendar,))
-        return calendar
 
     def upsert_many(self, calendars: Iterable[OperatorCalendar]) -> None:
         self.executemany(
@@ -68,10 +42,4 @@ class OperatorCalendarRepository(BaseRepository):
 
     def delete_many(self, keys) -> None:
         self.executemany("DELETE FROM OperatorCalendar WHERE operator_id = ? AND date = ?", keys)
-
-    def delete(self, operator_id: str, date: str) -> None:
-        self.execute("DELETE FROM OperatorCalendar WHERE operator_id = ? AND date = ?", (operator_id, date))
-
-    def delete_all(self) -> None:
-        self.execute("DELETE FROM OperatorCalendar")
 

@@ -2,7 +2,7 @@
 
 from flask import current_app, g, request
 
-from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_action import action_kind
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.bulk import WorkbenchResourceBulkService
@@ -12,7 +12,14 @@ from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
-from .resource_action_context import issue_preview, json_body, opaque_ref, read_endpoint, resolve_preview, scope_input
+from .resource_action_context import (
+    confirm_body,
+    issue_preview,
+    json_body,
+    read_endpoint,
+    resolve_preview,
+    scope_input,
+)
 
 
 @read_endpoint
@@ -62,17 +69,6 @@ def resource_import_preview(kind):
     return query_success(data, snapshot, preview.as_dict()["notices"])
 
 
-def _confirm_body():
-    body = json_body({"request_key", "write_token", "input"})
-    validate_request_key(body["request_key"])
-    g.workbench_request_key = body["request_key"]
-    opaque_ref(body["write_token"], "write_token")
-    if type(body["input"]) is not dict or set(body["input"]) != {"preview_ref"}:
-        raise WorkbenchCommandRejected("invalid_input", "只能确认刚才预检过的那一批，数据没有改动。请点「重新预检」。", 400)
-    opaque_ref(body["input"]["preview_ref"], "preview_ref")
-    return body
-
-
 def _apply(kind, action, checked):
     preview, content = checked
     original = preview.as_dict()["request"]
@@ -85,7 +81,7 @@ def _apply(kind, action, checked):
 @api_endpoint
 def resource_action_confirm(kind, action):
     action_kind(kind)
-    body = _confirm_body()
+    body = confirm_body()
     ref, operation = body["input"]["preview_ref"], kind + "." + action
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=operation, context_ref=ref, normalized_input={"preview_ref": ref},

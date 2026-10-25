@@ -1,52 +1,35 @@
 """One saved scenario, one transactional official adoption and durable receipt."""
 
-import getpass
-
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_run_adoption import adoption_input
+from core.models.workbench_run_job import valid_data_context_ref
 from core.models.workbench_trial import reference
 from core.models.workbench_trial_adoption import ADOPT_ACTION, TrialAdoptionBlocked
-from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
-from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.messages import UNAVAILABLE
-from core.services.workbench.run.candidate_adoption import _ADOPTION_LOCK
+from core.services.workbench.run.adoption_host import AdoptionCommandHost
+from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
 from .adoption_persistence import persist_trial_adoption_in_tx
 from .adoption_validation import validate_trial_adoption
 
 
-class WorkbenchTrialAdoptionService:
-    def __init__(self, conn, *, integration_enabled=False, context_factory=None, context_validator=None,
-                 point_rendering_enabled=False):
-        self.conn = conn
-        self.integration_enabled = integration_enabled is True
-        self.context_factory, self.context_validator = context_factory, context_validator
-        self.point_rendering_enabled = point_rendering_enabled is True
-
-    def _point_surface(self, evidence):
-        if not self.point_rendering_enabled and any(row.start_time == row.end_time for row in evidence.payload.schedule_rows):
-            raise TrialAdoptionBlocked("point_rendering_not_connected", UNAVAILABLE)
-
-    def _outer(self):
-        if self.conn.in_transaction:
-            raise RuntimeError("Scenario adoption must own the outer transaction")
-
-    def _enabled(self):
-        if not self.integration_enabled:
-            raise TrialAdoptionBlocked("scenario_adoption_not_connected", UNAVAILABLE)
-        factory, validator = self.context_factory, self.context_validator
-        if not callable(factory) or not callable(validator):
-            raise RuntimeError("Scenario adoption authorization callbacks are not connected")
-        return factory, validator
+class WorkbenchTrialAdoptionService(AdoptionCommandHost):
+    _action = ADOPT_ACTION
+    _blocked_error = TrialAdoptionBlocked
+    _disabled_code = "scenario_adoption_not_connected"
+    _outer_message = "Scenario adoption must own the outer transaction"
+    _authorization_message = "Scenario adoption authorization callbacks are not connected"
+    _point_message = UNAVAILABLE
+    _stale_message = "请先点「预检」并核对试调方案，再采用。"
+    _busy_message = "正在排产，这次采用没有执行。请等排产结束后重新点「确认正式采用」。"
+    _conflict_message = "这个操作编号不是本试调方案的采用结果，请回到试调列表重新打开。"
 
     def preview(self, scenario_ref):
         self._outer()
         reference(scenario_ref)
         try:
-            context_factory, _ = self._enabled()
-            evidence = validate_trial_adoption(self.conn, scenario_ref)
-            self._point_surface(evidence)
+            evidence, context_factory, data_context_ref = self._prepare_preview(scenario_ref, validate_trial_adoption)
         except TrialAdoptionBlocked as exc:
             return {"scenario_ref": scenario_ref,
                     "validation": {"status": "blocked", "can_adopt": False, "issues": exc.issues},
@@ -57,56 +40,27 @@ class WorkbenchTrialAdoptionService:
         except Exception as exc:
             raise WorkbenchCommandRejected("storage_failure", "试调方案的采用预检没有完成，正式计划没有改变。请刷新重试；仍不行请联系维护人员。", 500) from exc
         return {"scenario_ref": scenario_ref, "draft_ref": evidence.draft_ref,
-                "baseline": {key: evidence.baseline[key] for key in ("plan_ref", "version")},
-                "task_count": len(evidence.payload.schedule_rows), "scope_complete": True,
-                "validation": {"status": "valid", "can_adopt": True, "issues": []},
-                "write_context": context_factory(scenario_ref, [ADOPT_ACTION], evidence.snapshot)}
+                **self._preview_result(scenario_ref, evidence, context_factory, data_context_ref)}
 
     def adopt(self, scenario_ref, write_token, request_key, value):
-        self._outer()
         reference(scenario_ref)
         validate_request_key(request_key)
         intent = adoption_input(value)
-
-        def guard():
-            _, context_validator = self._enabled()
-            if type(write_token) is not str or not write_token:
-                raise WorkbenchCommandRejected("stale_write", "请先点「预检」并核对试调方案，再采用。")
-            evidence = validate_trial_adoption(self.conn, scenario_ref)
-            self._point_surface(evidence)
-            context_validator(write_token, scenario_ref, ADOPT_ACTION, evidence.snapshot)
-            return evidence
-
-        def mutate(evidence):
-            return persist_trial_adoption_in_tx(self.conn, evidence, intent, request_key,
-                                                application_operator=getpass.getuser())
-
-        commands = WorkbenchCommandService(self.conn)
-        # A retry of an already committed adoption replays its receipt even while a
-        # run computes; only new work is refused below.
-        replayed = commands.replay(request_key=request_key, action=ADOPT_ACTION, context_ref=scenario_ref,
-                                   normalized_input=intent)
-        if replayed is not None:
-            return replayed
-        # Same admission mutex and global scheduler lock as real candidate adopt.
-        with _ADOPTION_LOCK:
-            lock = RUN_SCHEDULE_LOCK
-            if not lock.acquire(blocking=False):
-                raise WorkbenchCommandRejected("scheduling_busy", "正在排产，这次采用没有执行。请等排产结束后重新点「确认正式采用」。")
-            try:
-                return commands.execute(request_key=request_key, action=ADOPT_ACTION,
-                    context_ref=scenario_ref, normalized_input=intent, guard=guard, mutate=mutate)
-            finally:
-                lock.release()
+        return self._execute_adoption(scenario_ref, write_token, request_key, intent,
+                                      validate=validate_trial_adoption, persist=persist_trial_adoption_in_tx)
 
     def lookup(self, scenario_ref, request_key):
         reference(scenario_ref)
-        validate_request_key(request_key)
+        return self._lookup(scenario_ref, request_key)
+
+    def resolve_command(self, scenario_ref, request_key, *, data_context_ref=None):
+        if data_context_ref is not None and not valid_data_context_ref(data_context_ref):
+            raise WorkbenchCommandRejected("invalid_input", "这条待确认采用记录的数据来源编号无效，请核对本机保存的记录。", 400)
+        found = self.lookup(scenario_ref, request_key)
+        if found is not None:
+            return {"state": "committed", "receipt": found}
         with candidate_read_snapshot(self.conn):
-            commands = WorkbenchCommandService(self.conn)
-            row = commands.repo.get(request_key)
-            if row is None:
-                return None
-            if (row["action"], row["context_ref"]) != (ADOPT_ACTION, scenario_ref):
-                raise WorkbenchCommandRejected("request_key_conflict", "这个操作编号不是本试调方案的采用结果，请回到试调列表重新打开。")
-            return commands.repo.public_result(row, replayed=True)
+            exists = WorkbenchTrialRepository(self.conn).scenario_header(scenario_ref) is not None
+            may_be_in_flight = exists and (data_context_ref is None or self.data_context.ref() == data_context_ref)
+        return {"state": "not_observed", "receipt": None, "may_be_in_flight": may_be_in_flight,
+                "can_retry_automatically": False}

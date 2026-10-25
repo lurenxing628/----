@@ -6,6 +6,7 @@
   const ref = v => text(v) && /^[a-f0-9]{48}$/.test(v), token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v);
   const key = v => text(v) && /^run-[a-f0-9]{48}$/.test(v);
   function contextRef(v) {
+    if (window.RunAdoptionAPI && typeof window.RunAdoptionAPI.contextRef === 'function') return window.RunAdoptionAPI.contextRef(v);
     if (!text(v)) return false;
     if (/^[a-f0-9]{64}$/.test(v)) return true;
     try {
@@ -188,8 +189,8 @@
       && (e.request_key === undefined && e.result_target === undefined || e.request_key === requestKey && key(requestKey) && e.result_target === BASE + '/requests/' + requestKey);
     const error = new Error(valid ? message(e) : '读到的排产数据不完整，请刷新重试。');
     error.code = valid ? e.code : 'invalid_response'; error.status = status;
-    error.rejected = valid && v.committed === false && (([400, 409, 422].includes(status)
-      && ['invalid_input', 'snapshot_stale', 'stale_write', 'constraint_conflict', 'input_already_used'].includes(e.code))
+    error.rejected = valid && v.committed === false && (([400, 404, 409, 422].includes(status)
+      && ['invalid_input', 'entity_not_found', 'snapshot_stale', 'stale_write', 'constraint_conflict', 'input_already_used'].includes(e.code))
       || status === 503 && ['run_schema_unavailable', 'run_worker_not_connected', 'request_lifecycle_stopping'].includes(e.code));
     if (error.rejected) rejections.add(error);
     return error;

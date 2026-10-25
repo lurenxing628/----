@@ -2,6 +2,10 @@
   'use strict';
   const B = window.APSBatchContract, C = window.APSResourceContract, S = window.APSResourceSession;
   const { Button, Modal, ErrorBox } = window.ResourceControls, { Field } = window.BatchControls;
+  function isStale(command) {
+    const error = command && command.error, code = error && (error.code || error.error && error.error.code);
+    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
+  }
   function BatchOperationEditor({ adapter, entity, operation, source, command, onCommitted, onClose, disabled }) {
     const internal = operation.source === 'internal', merged = operation.external_group && operation.external_group.merge_mode === 'merged';
     const keys = internal ? ['machine_ref', 'operator_ref', 'setup_hours', 'unit_hours'] : ['supplier_ref'].concat(merged ? [] : ['external_days']);
@@ -47,16 +51,20 @@
         setError(null); await command.submit('batch', 'operation_update', entity.ref, entity.write_context, { operation_ref: operation.ref, fields });
       } catch (error) { setError(error); }
     }
+    function updateField(key, value) {
+      setDraft(current => ({ ...current, [key]: value })); setError(null);
+      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+    }
     return <Modal title={'工序 ' + operation.sequence + ' · ' + operation.label} icon="wrench" guardOwner={guardOwner} locked={command.locked} onClose={onClose}
       footer={<><Button onClick={close} disabled={command.locked}>{done || merged ? '关闭' : '取消'}</Button>{!done && !merged && <Button form={form} type="submit" icon="check" className="btn primary"
         disabled={locked || !catalogs || !!mismatch || unsuitable.length > 0} reason={B.reason(entity.write_context, 'operation_update', source)}>保存工序</Button>}</>}>
       <form id={form} ref={formElement} className="modal-b form" onSubmit={submit} noValidate><div className="fgrid batch-fields">
-        {keys.map(key => <Field key={key} label={names[key]} path={'fields.' + key} error={currentError}>{key.endsWith('_ref') ? <select value={draft[key]} disabled={locked || !catalogs || merged} onChange={event => setDraft({ ...draft, [key]: event.target.value })}>
+        {keys.map(key => <Field key={key} label={names[key]} path={'fields.' + key} error={currentError}>{key.endsWith('_ref') ? <select value={draft[key]} disabled={locked || !catalogs || merged} onChange={event => updateField(key, event.target.value)}>
           <option value="">未选</option>{catalogs && catalogs[catalogKeys[key]].map(row => {
             const unauthorized = key === 'operator_ref' && allowed && !allowed.includes(row.ref);
             return <option key={row.ref} value={row.ref} disabled={row.eligible === false || row.status !== 'active' || unauthorized}>{row.business_code} · {row.label}{row.unavailable_reason ? '（' + row.unavailable_reason + '）' : unauthorized ? '（未获设备授权）' : ''}</option>;
           })}</select>
-          : <input value={draft[key]} type="text" inputMode="decimal" disabled={locked} onChange={event => setDraft({ ...draft, [key]: event.target.value })} />}</Field>)}
+          : <input value={draft[key]} type="text" inputMode="decimal" disabled={locked} onChange={event => updateField(key, event.target.value)} />}</Field>)}
       </div>{merged && <><p>{operation.external_group.start_sequence != null && operation.external_group.end_sequence != null
         ? '工序 ' + operation.external_group.start_sequence + ' 至 ' + operation.external_group.end_sequence : '合并外协段'} · 整段周期 {window.WorkbenchFormat.number(operation.external_group.total_days, { digits: 20, trim: true })} 天（只读）</p>
         <p>合并外协段不能逐道更换供应商。请在工艺资料中整段改派，再到批次中预检工序更新。</p></>}

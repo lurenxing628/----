@@ -27,7 +27,16 @@ def run(conn, logger=None):
         conn.execute("ALTER TABLE WorkbenchCalibrationAdoptions RENAME TO WorkbenchCalibrationAdoptions_v38")
         definitions = objects()
         conn.execute(definitions[ADOPTIONS])
-        conn.execute("INSERT INTO WorkbenchCalibrationAdoptions SELECT * FROM WorkbenchCalibrationAdoptions_v38")
+        columns = (
+            "adoption_ref,template_operation_ref,request_key,template_revision_before,"
+            "template_revision_after,old_unit_hours,new_unit_hours,reason,declared_operator,"
+            "confirmed,application_operator,adopted_at,generated_at,method_version,"
+            "sample_count,evidence_json,template_before,template_after"
+        )
+        conn.execute(
+            f"INSERT INTO WorkbenchCalibrationAdoptions({columns}) "
+            f"SELECT {columns} FROM WorkbenchCalibrationAdoptions_v38"
+        )
         conn.execute("DROP TABLE WorkbenchCalibrationAdoptions_v38")
         for name, sql in definitions.items():
             if name != ADOPTIONS:

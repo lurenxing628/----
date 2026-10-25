@@ -38,12 +38,13 @@ def test_unselected_overlap_index_preserves_strict_endpoints_points_and_first_co
                 for op_id, machine, operator, start, end in reservations]
     expected = next((reservation.op_id for reservation in reserved for row in payload.schedule_rows
                      if (row.machine_id == reservation.machine_id or row.operator_id == reservation.operator_id)
+                     and row.start_time < row.end_time
                      and row.start_time < reservation.end_time and row.end_time > reservation.start_time), None)
     if expected is None:
-        _validate_unselected_resource_overlap(payload=payload, reservations=reserved)
+        _validate_unselected_resource_overlap(payload=payload, reservations=reserved, execution_facts={})
     else:
         with pytest.raises(AppError) as actual:
-            _validate_unselected_resource_overlap(payload=payload, reservations=reserved)
+            _validate_unselected_resource_overlap(payload=payload, reservations=reserved, execution_facts={})
         assert actual.value.details == {"reason": "unselected_execution_resource_overlap", "op_id": expected}
         assert actual.value.message == "新排程与未选中的在制工序占用冲突，本次没有写入新排程。请刷新后重新排。"
 
@@ -62,7 +63,7 @@ def test_unselected_overlap_reads_the_payload_once_for_many_reservations():
     start = datetime(2026, 9, 8)
     reservations = [ExecutionResourceReservation(index, "other", "other", start, start + timedelta(hours=1))
                     for index in range(250)]
-    _validate_unselected_resource_overlap(payload=payload, reservations=reservations)
+    _validate_unselected_resource_overlap(payload=payload, reservations=reservations, execution_facts={})
     assert rows.iterations == 1
 
 

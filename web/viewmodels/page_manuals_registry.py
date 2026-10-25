@@ -104,6 +104,8 @@ VIEW_MANUALS: Dict[str, Dict[str, Any]] = {
         "related": ("dashboard",),
     },
 }
+for _view_id, _entry in VIEW_MANUALS.items():
+    _entry["view"] = _view_id
 
 
 def manual_entry(view_id: Optional[str]) -> Optional[Dict[str, Any]]:
@@ -111,7 +113,4 @@ def manual_entry(view_id: Optional[str]) -> Optional[Dict[str, Any]]:
     key = str(view_id or "").strip()
     if not key:
         return None
-    entry = VIEW_MANUALS.get(key)
-    if entry is None:
-        return None
-    return dict(entry, view=key)
+    return VIEW_MANUALS.get(key)

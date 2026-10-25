@@ -117,10 +117,10 @@ def test_compute_consumes_captured_calendar_rows_once_and_next_run_sees_changes(
         return result, signature
 
     original, signature = unchanged(case, run)
-    assert original.orchestration.results[0].start_time == datetime(2026, 9, 9, 9)
+    assert original.orchestration.validated_schedule_payload.schedule_rows[0].start_time == datetime(2026, 9, 9, 9)
     conn.execute("UPDATE WorkbenchShiftDayPeriods SET periods_json=? WHERE profile_id='S'",
                  ('[{"start":"11:00","end":"17:00","day_offset":0}]',))
     conn.commit()
     changed, changed_signature = unchanged(case, run)
-    assert changed.orchestration.results[0].start_time == datetime(2026, 9, 9, 11)
+    assert changed.orchestration.validated_schedule_payload.schedule_rows[0].start_time == datetime(2026, 9, 9, 11)
     assert changed_signature != signature

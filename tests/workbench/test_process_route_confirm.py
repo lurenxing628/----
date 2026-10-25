@@ -39,13 +39,24 @@ def test_route_review_reuses_current_facts_for_parser_and_choices(stage_conn, mo
         raise AssertionError("route references must come from current process facts")
 
     monkeypatch.setattr(ProcessRoutePreviewService, "preview", parse)
-    monkeypatch.setattr(WorkbenchProcessQueryRepository, "op_type_reference_rows", reread)
-    monkeypatch.setattr(WorkbenchProcessQueryRepository, "supplier_reference_rows", reread)
-    reader = WorkbenchProcessQueryService(stage_conn)
+    identity = identity_for(stage_conn)
+    assert identity is not None
+    reader = WorkbenchProcessQueryService(stage_conn, part_ref=identity.ref)
     with reader.read_snapshot():
-        preview, _, affected = reader.prepare_route(identity_for(stage_conn).ref,
+        facts = reader.facts()
+        assert [row["part_no"] for row in facts["parts"]] == ["PROC-001"]
+        assert {row["part_no"] for row in facts["operations"]} == {"PROC-001"}
+        assert {row["part_no"] for row in facts["groups"]} == {"PROC-001"}
+        assert set(facts["workflow"]) == {"PROC-001"}
+        monkeypatch.setattr(WorkbenchProcessQueryRepository, "references", reread)
+        monkeypatch.setattr(WorkbenchProcessQueryRepository, "identities", reread)
+        preview, _, affected = reader.prepare_route(identity.ref,
                                                     {"mode": "text", "route_raw": "10车削30检验"})
-    assert len(calls) == 1 and preview["can_confirm_route"]
+        mixed_preview, _, _ = reader.prepare_route(identity.ref,
+                                                   {"mode": "text", "route_raw": "10车削20:热处理"})
+    assert len(calls) == 2 and preview["can_confirm_route"]
+    assert not mixed_preview["can_confirm_route"]
+    assert "explicit_route_invalid" in {row["code"] for row in mixed_preview["diagnostics"]}
     assert [row["ref"] for row in affected] == [ref_for(stage_conn, "template_external_group", "PROC-G")]
 
 
@@ -56,10 +67,14 @@ def test_catalog_workflow_reuses_operation_states_and_preserves_stage_results(st
     prepare_stages(stage_conn)
     with TransactionManager(stage_conn).transaction():
         raw = workflow_state.load_workflow_snapshot(stage_conn)
-    expected = {part["part_no"]: {
-        "workflow": workflow_state.read_workflow(stage_conn, part["part_no"]),
-        "operations": workflow_state.operation_confirmations(stage_conn, part["part_no"]),
-    } for part in raw["parts"]}
+        expected = {}
+        for row in raw["parts"]:
+            part, stored = workflow_state._part(stage_conn, row["part_no"])
+            facts = workflow_state._facts(part, workflow_state._load_facts(stage_conn, row["part_no"]), stored)
+            expected[row["part_no"]] = {
+                "workflow": workflow_state._view(stored, facts),
+                "operations": workflow_state._operation_states(facts[2], facts[3], stored),
+            }
     calls, original = [], workflow_state._operation_states
 
     def once(per_op, records, stored=None):
@@ -69,6 +84,31 @@ def test_catalog_workflow_reuses_operation_states_and_preserves_stage_results(st
     monkeypatch.setattr(workflow_state, "_operation_states", once)
     assert workflow_state.project_workflow_snapshot(raw) == expected
     assert len(calls) == len(raw["parts"])
+
+
+def test_master_workflow_reuses_catalog_identity_index(stage_conn, monkeypatch):
+    from core.services.process.workflow_state import workflow_snapshot
+    from core.services.workbench.master.overview_facts import MasterOverviewFacts
+
+    prepare_stages(stage_conn)
+    expected = workflow_snapshot(stage_conn)
+    facts, scans = MasterOverviewFacts(stage_conn), []
+    original = facts.repo.overview_tables
+
+    class IdentityRows(list):
+        def __iter__(self):
+            scans.append(None)
+            return super().__iter__()
+
+    def capture():
+        tables, present = original()
+        tables["WorkbenchEntityRefs"] = IdentityRows(tables["WorkbenchEntityRefs"])
+        return tables, present
+
+    monkeypatch.setattr(facts.repo, "overview_tables", capture)
+    with facts.read_snapshot():
+        assert facts.workflow == expected
+    assert len(scans) == 1
 
 
 @pytest.mark.parametrize("change", ("remove",))
@@ -85,7 +125,9 @@ def test_group_impact_is_readonly_and_exact_ack_is_required(stage_conn, change):
     service = WorkbenchProcessMutationService(stage_conn)
     reader = WorkbenchProcessQueryService(stage_conn)
     with reader.read_snapshot():
-        checked = service.checked_facts(reader.resolve(identity_for(stage_conn).ref), reader.facts())
+        identity = identity_for(stage_conn)
+        assert identity is not None
+        checked = service.checked_facts(reader.resolve(identity.ref), reader.facts())
         normalized = service.normalize("route_confirm", payload)
         with read_only_probe(stage_conn):
             prepared = service.prepare_review("route_confirm", normalized, checked, facts=reader.facts())

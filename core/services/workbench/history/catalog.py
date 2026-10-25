@@ -215,13 +215,14 @@ def read_history_catalog(conn):
     if not conn.in_transaction:
         raise RuntimeError("History catalog requires the caller's read transaction")
     repo = WorkbenchHistoryCatalogRepository(conn)
-    jobs, receipts, histories, bindings = repo.runs(), repo.adoption_receipts(), repo.histories(), repo.official_bindings()
     byte_count = 0
-    for records, fields in ((jobs, ("scope_json", "header_json")), (receipts, ("outcome_json",)),
-                           (histories, ("result_summary",)), (bindings, ("ref",))):
-        if len(records) > MAX_DIRECTORY_ROWS:
-            raise WorkbenchCommandRejected("history_capacity_exceeded", "历史目录超过读取上限，请联系维护人员处理。", 413)
-        for row in records:
+
+    def _collect(rows, fields):
+        nonlocal byte_count
+        collected = []
+        for count, row in enumerate(rows, 1):
+            if count > MAX_DIRECTORY_ROWS:
+                raise WorkbenchCommandRejected("history_capacity_exceeded", "历史目录超过读取上限，请联系维护人员处理。", 413)
             for field in fields:
                 raw = row[field]
                 if raw is not None:
@@ -231,6 +232,20 @@ def read_history_catalog(conn):
                     byte_count += size
                     if size > MAX_DOCUMENT_BYTES or byte_count > MAX_DIRECTORY_BYTES:
                         raise WorkbenchCommandRejected("history_capacity_exceeded", "历史目录超过读取上限，请联系维护人员处理。", 413)
+            collected.append(row)
+        return collected
+
+    jobs = _collect(repo.runs(), ("scope_json", "header_json"))
+    receipts = _collect(repo.adoption_receipts(), ("outcome_json",))
+    receipts.sort(
+        key=lambda row: (
+            (0, row["committed_at_utc"], row["request_key"])
+            if type(row["committed_at_utc"]) is str
+            else (1, f"{type(row['committed_at_utc']).__name__}:{row['committed_at_utc']!r}", row["request_key"])
+        )
+    )
+    histories = _collect(repo.histories(), ("result_summary",))
+    bindings = _collect(repo.official_bindings(), ("ref",))
     by_version, official = defaultdict(list), {}
     for row in histories:
         by_version[row["version"]].append(row)

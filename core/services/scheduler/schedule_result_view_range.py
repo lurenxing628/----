@@ -26,21 +26,6 @@ def normalize_week_offset_for_explicit_range(
     return offset_int
 
 
-def has_explicit_display_range(
-    *,
-    week_start: Optional[str],
-    offset_weeks: Any,
-    start_date: Optional[str],
-    end_date: Optional[str],
-) -> bool:
-    effective_offset = normalize_week_offset_for_explicit_range(
-        start_date=start_date,
-        end_date=end_date,
-        offset_weeks=offset_weeks,
-    )
-    return bool(_has_text(week_start) or _has_text(start_date) or _has_text(end_date) or effective_offset != 0)
-
-
 def get_plan_time_span_dates(
     plan_query_service,
     version: int,
@@ -87,14 +72,13 @@ def resolve_schedule_result_week_range(
     default_to_version_span: bool,
     max_explicit_date_days: Optional[int] = None,
 ) -> Tuple[WeekRange, str]:
+    has_explicit_dates = _has_text(start_date) or _has_text(end_date)
     effective_offset_weeks = normalize_week_offset_for_explicit_range(
         start_date=start_date,
         end_date=end_date,
         offset_weeks=offset_weeks,
     )
-    explicit_range = bool(
-        _has_text(week_start) or _has_text(start_date) or _has_text(end_date) or effective_offset_weeks != 0
-    )
+    explicit_range = bool(has_explicit_dates or _has_text(week_start) or effective_offset_weeks != 0)
 
     if default_to_version_span and not explicit_range and version is not None:
         version_span = get_plan_time_span_dates(
@@ -118,7 +102,7 @@ def resolve_schedule_result_week_range(
         start_date=start_date,
         end_date=end_date,
     )
-    if max_explicit_date_days is not None and (_has_text(start_date) or _has_text(end_date)):
+    if max_explicit_date_days is not None and has_explicit_dates:
         day_count = (wr.week_end_date - wr.week_start_date).days + 1
         if day_count > int(max_explicit_date_days):
             raise ValidationError(f"日期范围不能超过 {int(max_explicit_date_days)} 天", field="date_range")

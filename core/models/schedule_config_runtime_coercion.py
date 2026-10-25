@@ -383,63 +383,46 @@ def coerce_config_field(
     raise TypeError(f"不支持的运行期配置字段类型：{spec.field_type!r}")
 
 
-def _validate_present_runtime_cfg_fields(
-    cfg: Any,
-    *,
-    source: str,
-) -> Dict[str, Any]:
-    values: Dict[str, Any] = {}
-    for spec in list_runtime_config_fields():
-        missing, raw = read_runtime_cfg_raw_value(cfg, spec.key)
-        if missing:
-            continue
-        values[spec.key] = coerce_config_field(
-            spec.key,
-            raw,
-            strict_mode=True,
-            source=source,
-            collector=DegradationCollector(),
-            missing=False,
-            missing_policy=MISSING_POLICY_ERROR,
-        )
-    return values
-
 def ensure_schedule_config_snapshot(
     cfg: Any,
     *,
     strict_mode: bool = False,
     source: str = "scheduler.runtime_config",
 ) -> ScheduleConfigSnapshot:
-    values: Dict[str, Any] = {}
-    if bool(strict_mode):
-        values = _validate_present_runtime_cfg_fields(
-            cfg,
-            source=source,
-        )
+    strict = bool(strict_mode)
     collector = seed_snapshot_degradation_collector(cfg)
+    values: Dict[str, Any] = {}
+    missing_keys = []
     for spec in list_runtime_config_fields():
-        if bool(strict_mode) and spec.key in values:
+        missing, raw = read_runtime_cfg_raw_value(cfg, spec.key)
+        if strict and missing:
+            missing_keys.append(spec.key)
             continue
-        missing, raw = (True, None) if bool(strict_mode) else read_runtime_cfg_raw_value(cfg, spec.key)
         values[spec.key] = coerce_config_field(
             spec.key,
             raw,
-            strict_mode=bool(strict_mode),
+            strict_mode=strict,
             source=source,
             collector=collector,
             missing=missing,
-            missing_policy=(MISSING_POLICY_ERROR if bool(strict_mode) else MISSING_POLICY_FALLBACK_WITH_DEGRADATION),
+            missing_policy=(MISSING_POLICY_ERROR if strict else MISSING_POLICY_FALLBACK_WITH_DEGRADATION),
         )
-    if bool(strict_mode):
-        values["priority_weight"], values["due_weight"], values["ready_weight"] = normalize_weight_triplet(
-            values["priority_weight"],
-            values["due_weight"],
-            values["ready_weight"],
-            require_sum_1=True,
-            priority_field="优先级权重",
-            due_field="交期权重",
-            ready_field="齐套权重",
+    if missing_keys:
+        _handle_missing_value(
+            collector,
+            field_name=missing_keys[0],
+            fallback=None,
+            scope=source,
+            missing_policy=MISSING_POLICY_ERROR,
         )
+    if strict:
+        pw, dw, rw = values["priority_weight"], values["due_weight"], values["ready_weight"]
+        if abs(pw + dw + rw - 1.0) > 1e-6:
+            values["priority_weight"], values["due_weight"], values["ready_weight"] = normalize_weight_triplet(
+                pw,
+                dw,
+                rw,
+            )
 
     return snapshot_from_values(
         values, degradation_events=tuple(degradation_events_to_dicts(collector.to_list())),

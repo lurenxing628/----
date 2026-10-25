@@ -24,18 +24,18 @@ from .decision_preparation import (
     project_decision_preparation,
 )
 from .decision_read_models import (
-    _BATCH_MEMBERS,
-    _OPERATION_MEMBERS,
     ARRANGEMENT_COLUMNS,
+    BATCH_MEMBERS,
+    OPERATION_MEMBERS,
     PROJECTION_VERSION,
     Memberships,
 )
 from .decision_selection import selection_basis
 from .operation_effort_evidence import saved_operation_efforts
 from .preflight_dependencies import material_deferred_ids
-from .preparation_projection import _ALLOCATIONS
+from .preparation_projection import ALLOCATIONS
 from .resource_intervals import resource_cohort, task_interval
-from .run_history_projection import _failure, scope_summary
+from .run_history_projection import failure_reason, scope_summary
 from .schema_compat import archived_columns
 
 CALENDAR_TABLES = (
@@ -98,9 +98,9 @@ class _Members:
         for field, item in value.items():
             if field == "input":
                 result[field] = item
-            elif type(item) is list and (field in _OPERATION_MEMBERS or parent == "coverage" and field in _ALLOCATIONS):
+            elif type(item) is list and (field in OPERATION_MEMBERS or parent == "coverage" and field in ALLOCATIONS):
                 result[field] = self.member(item, "operation")
-            elif type(item) is list and field in _BATCH_MEMBERS:
+            elif type(item) is list and field in BATCH_MEMBERS:
                 result[field] = self.member(item, "batch")
             else:
                 result[field] = self.encode(item, field)
@@ -164,7 +164,7 @@ def _calendar(facts):
             "tables": {name: source["tables"][name] for name in CALENDAR_TABLES if name in names}}
 
 
-def _resources(facts, tasks=()):
+def _resources(facts, tasks):
     resources = {}
     for (kind, key), ref in facts.entity_refs.items():
         if kind not in ("machine", "operator", "supplier"):
@@ -201,15 +201,14 @@ def _arrangements(tasks):
     return {"columns": list(ARRANGEMENT_COLUMNS), "rows": rows, "resource_values": resources}
 
 
-def _resource_views(tasks, operation_refs, intervals=None):
+def _resource_views(tasks, operation_refs, intervals):
     selected = set(operation_refs)
     result = {}
     for name, rows in (("selected_batches", [row for row in tasks if row["operation_ref"] in selected]), ("full_candidate", tasks)):
-        saved = intervals if intervals is not None else {row["row_ref"]: task_interval(row) for row in rows}
-        members = resource_cohort([rows], task_intervals=[saved])
+        members = resource_cohort([rows], task_intervals=[intervals])
         by_resource = {(row["kind"], row["ref"]): [] for row in members}
         for row in rows:
-            interval = saved[row["row_ref"]]
+            interval = intervals[row["row_ref"]]
             if row.get("source") == "external" or interval is not None and interval[0] == interval[1]:
                 continue
             for kind in ("machine", "operator"):
@@ -233,7 +232,7 @@ def _operation_batches(facts, members):
     return positions
 
 
-def _official_projection(run, facts, receipt, official, refs, deferred, batch_refs, dependencies):
+def _official_projection(run, facts, receipt, official, refs, batch_refs, dependencies):
     tasks = official["tasks"]
     scope_refs = set(refs)
     selected = [row for row in tasks if row["operation_ref"] in scope_refs]
@@ -267,7 +266,7 @@ def _missing_candidate_reference(run, facts, refs, deferred, batch_refs, receipt
             "completion": project_completion_summary(delivery, [], available=False)}
 
 
-def build_admission_decision_read_model(run, capture, official, *, facts, receipt=None, dependencies=None):
+def build_admission_decision_read_model(run, capture, official, *, facts, receipt, dependencies):
     """Project the actual admission baseline once; callers own source resolution."""
     disposition = dispositions(receipt)
     refs, deferred, _ = admission_operations(facts, capture["input"], disposition)
@@ -279,14 +278,14 @@ def build_admission_decision_read_model(run, capture, official, *, facts, receip
         members.position(ref, "batch")
     saved_official = ({**read_decision_baseline_members(capture, facts), "projection_state": "disposition_not_recorded"}
                       if official is None else
-                      _official_projection(run, facts, receipt, official, refs, deferred, batch_refs, dependencies))
+                      _official_projection(run, facts, receipt, official, refs, batch_refs, dependencies))
     range_start, range_end = preflight_window(capture["input"])
     context = {"input": capture["input"], "run_options": _run_options(capture, facts, receipt),
         "range_start": range_start, "range_end": range_end,
         "admission_operation_refs": refs, "expected_operation_refs": sorted(set(refs) - deferred),
         "deferred_operation_refs": sorted(deferred), "official_members": {
             "identity": dict(saved_official["identity"]), "operation_refs": saved_official["operation_refs"]},
-        "resources": _resources(facts, official["tasks"] if official is not None else ()),
+        "resources": _resources(facts, ()) if official is None else saved_official["resources"],
         # Guard facts own actual deferrals; the public pending run has no result receipt.
         "missing_candidate_reference": _missing_candidate_reference(
             run, facts, refs, deferred, batch_refs, None)}
@@ -295,7 +294,7 @@ def build_admission_decision_read_model(run, capture, official, *, facts, receip
     return {"context": encoded_context, "memberships": members.value, "calendar": _calendar(facts), "official": encoded_official}
 
 
-def prepare_admission_read_models(run, capture, official, *, facts, receipt=None, dependencies=None):
+def prepare_admission_read_models(run, capture, official, *, facts, receipt, dependencies=None):
     return {"scope": build_admission_read_model(capture, facts=facts),
             "decision": build_admission_decision_read_model(run, capture, official, facts=facts, receipt=receipt, dependencies=dependencies)}
 
@@ -322,7 +321,7 @@ def _header(run, receipt, candidates):
         artifact=_header_artifact(row["artifact"])) for row in candidates]
     summary = receipt.get("summary") or {}
     return {"state": receipt.get("state", run["state"]), "result_persisted": receipt.get("result_persisted", False),
-        "error": _failure(dict(run, state=receipt.get("state", run["state"])), receipt), "candidates": manifest,
+        "error": failure_reason(dict(run, state=receipt.get("state", run["state"])), receipt), "candidates": manifest,
         "selection": receipt.get("selection"),
         "summary": {key: value for key, value in summary.items() if type(value) in (int, float, str, bool) or value is None}}
 
@@ -334,7 +333,7 @@ def build_failure_read_models(run, admission_decision, result):
         "candidate_models": []}
 
 
-def build_decision_read_models(run, capture, receipt, candidates, prepared_candidates, *, facts, admission, process=None):
+def build_decision_read_models(run, capture, receipt, candidates, prepared_candidates, *, facts, admission, process):
     """Consume verified rows once; receipt/capture/tasks are never read here."""
     members = _Members(admission["memberships"])
     context = dict(admission["context"])
@@ -380,8 +379,11 @@ def build_decision_read_models(run, capture, receipt, candidates, prepared_candi
             requirements_available=(receipt or {}).get("operation_effort") is not None or available)
         work = preparation_work_items(facts, prepared["rows"], disposition, available=available)
         completion = project_completion_summary(delivery, work, available=available, schedulable_coverage=summary["coverage"]["schedulable"])
-        detail = project_legacy_delivery_detail(candidate, facts, tasks, disposition, capture["input"], intervals=intervals,
-                                                deferred_ids=legacy_deferred_ids)
+        detail = project_legacy_delivery_detail(
+            candidate, facts, tasks, disposition, capture["input"], intervals=intervals,
+            deferred_ids=legacy_deferred_ids,
+            precomputed_delivery=delivery if available and deferred_ids == legacy_deferred_ids else None,
+        )
         candidate_models.append({"candidate_ref": ref, "run_ref": run["run_ref"], "projection_version": PROJECTION_VERSION,
             "summary": members.encode(summary), "preparation": members.encode(prepared["summary"]),
             "completion": members.encode(completion), "delivery": delivery, "delivery_detail": detail,

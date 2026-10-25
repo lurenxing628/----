@@ -5,7 +5,11 @@ import json
 import pytest
 from flask import g, request
 
+from core.errors import AppError, ErrorCode
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.models.workbench_run_job import valid_data_context_ref
+from core.services.workbench.facts.run_data_context import RunDataContext, restored_context_ref
+from core.services.workbench.trial.adoption import WorkbenchTrialAdoptionService
 from core.services.workbench.trial.adoption_history import WorkbenchTrialAdoptionHistoryService
 from tests.workbench.trial_adoption_support import BASE, INTENT, KEY, api, saved_scenario
 from tests.workbench.trial_adoption_support import trial_case as trial_case
@@ -75,12 +79,62 @@ def test_real_http_preview_confirm_and_receipt(trial_case):
     entry = duplicate["items"][0]
     assert any(gap["code"] == "audit_missing" for gap in entry["evidence_gaps"])
     assert entry["adoption"] == dict.fromkeys(("reason", "declared_operator", "application_operator", "adopted_at"))
-    from core.services.workbench.trial.adoption_history_policy import load_history
-    from data.repositories.workbench_trial_adoption_history import TrialAdoptionHistoryRepository
-
     case.conn.execute("DELETE FROM ScheduleHistory WHERE version=?", (version,))
     case.conn.commit()
-    assert load_history(TrialAdoptionHistoryRepository(case.conn), version) is None
+    missing, _ = WorkbenchTrialAdoptionHistoryService(case.conn).read(saved["scenario_ref"])
+    entry = missing["items"][0]
+    assert entry["current_state"] == "unavailable" and entry["official_plan"] is None
+    assert {issue["code"] for issue in entry["evidence_gaps"]} == {"audit_missing", "official_identity_unavailable"}
+
+
+def test_http_adoption_recovery_distinguishes_replaced_context_and_replays_receipt(trial_case, monkeypatch):
+    case = trial_case
+    saved = saved_scenario(case)
+    client = api(case)
+    path = BASE + saved["scenario_ref"]
+    response = client.post(path + "/adopt-preview", json={})
+    assert response.status_code == 200
+    checked = response.get_json()["data"]
+    context = checked["data_context_ref"]
+    assert valid_data_context_ref(context)
+    other_context = restored_context_ref("another-database", [])
+    assert valid_data_context_ref(other_context) and other_context != context
+    command_path = path + "/adoption-commands/" + KEY
+    before = snapshot(case.conn)
+    for query in ({}, {"data_context_ref": context}):
+        response = client.get(command_path, query_string=query)
+        assert response.status_code == 200 and response.headers["Cache-Control"] == "no-store"
+        assert response.get_json()["data"] == {
+            "state": "not_observed", "receipt": None, "may_be_in_flight": True, "can_retry_automatically": False}
+    for target, query in (
+        (command_path, {"data_context_ref": other_context}),
+        (BASE + "f" * 48 + "/adoption-commands/" + KEY, {}),
+    ):
+        response = client.get(target, query_string=query)
+        assert response.status_code == 200
+        assert response.get_json()["data"] == {
+            "state": "not_observed", "receipt": None, "may_be_in_flight": False, "can_retry_automatically": False}
+    assert snapshot(case.conn) == before
+
+    adopted = client.post(path + "/adopt", json={"write_token": checked["write_context"]["write_token"],
+        "request_key": KEY, "input": INTENT})
+    assert adopted.status_code == 200
+    context_reads = []
+    original_ref = RunDataContext.ref
+
+    def tracked_context(data_context):
+        context_reads.append(data_context.database_path)
+        return original_ref(data_context)
+
+    monkeypatch.setattr(RunDataContext, "ref", tracked_context)
+    response = client.get(command_path, query_string={"data_context_ref": other_context})
+    assert response.status_code == 200 and response.headers["Cache-Control"] == "no-store"
+    result = response.get_json()
+    assert result["ok"] is True and result["schema_version"] == 1
+    assert set(result["data"]) == {"state", "receipt"} and result["data"]["state"] == "committed"
+    assert result["data"]["receipt"]["receipt_ref"] == adopted.get_json()["receipt_ref"]
+    assert result["data"]["receipt"]["replayed"] is True
+    assert context_reads == []
 
 
 def test_http_ack_unknown_points_to_original_scenario_and_key(trial_case):
@@ -104,3 +158,26 @@ def test_http_ack_unknown_points_to_original_scenario_and_key(trial_case):
     receipt = client.get(value["error"]["result_target"]).get_json()["data"]
     assert receipt["state"] == "committed" and receipt["receipt"]["data"]["scenario_ref"] == saved["scenario_ref"]
     assert case.conn.execute("SELECT COUNT(*) FROM ScheduleHistory").fetchone()[0] == 2
+
+
+@pytest.mark.parametrize("injected", [AppError(ErrorCode.DB_QUERY_ERROR, "注入的存储失败"), RuntimeError("注入的未预期失败")])
+def test_http_adopt_failure_after_binding_key_points_to_original_receipt(trial_case, monkeypatch, injected):
+    case = trial_case
+    saved = saved_scenario(case)
+    client = api(case)
+    path = BASE + saved["scenario_ref"]
+    token = client.post(path + "/adopt-preview", json={}).get_json()["data"]["write_context"]["write_token"]
+
+    def fail(*_args, **_kwargs):
+        raise injected
+
+    monkeypatch.setattr(WorkbenchTrialAdoptionService, "preview", fail)
+    read = client.post(path + "/adopt-preview", json={})
+    assert read.status_code == 500
+    assert read.get_json()["committed"] is False and "request_key" not in read.get_json()["error"]
+    monkeypatch.setattr(WorkbenchTrialAdoptionService, "adopt", fail)
+    response = client.post(path + "/adopt", json={"write_token": token, "request_key": KEY, "input": INTENT})
+    assert response.status_code == 500
+    error = response.get_json()["error"]
+    assert response.get_json()["committed"] == "unknown" and error["code"] == "storage_failure" and error["retryable"] is False
+    assert error["request_key"] == KEY and error["result_target"] == path + "/adoption-commands/" + KEY

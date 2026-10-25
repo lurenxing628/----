@@ -73,11 +73,3 @@ def link_predecessors(rows, *, piece_scope=None):
                     row["issues"].append(issue("dependency_ambiguous", "同一个分件的工序顺序号缺失或重复，排不出前后关系。请到批次管理核对工序号。"))
         else:
             link_chain(chain)
-
-
-def piece_scope_problem(rows, settings):
-    deferred = material_deferred_ids(rows, settings)
-    if any(row["status"] not in ("eligible", "auto_assign_required", "protected")
-           and row["op_id"] not in deferred for row in rows):
-        return issue("piece_scope_incomplete", "单件排产要把这条链上的公共工序和单件工序都选上，或者都保持原安排，这次排产没有开始。请重新选择范围。")
-    return None

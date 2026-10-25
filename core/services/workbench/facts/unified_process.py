@@ -3,7 +3,7 @@
 from core.models.workbench_run_candidate import reject
 from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
 
-from .candidate_process import _objective
+from .candidate_process import candidate_objective
 from .candidate_values import corrupt
 
 PROCESS_CANDIDATE_FIELDS = ("candidate_ref", "label", "status", "representative_objectives", "origin",
@@ -36,7 +36,7 @@ def project_unified_process(process, *, objective=None, candidate=None, candidat
     selected = process["primary_objective"] if objective is None else objective
     if selected not in process["target_objectives"]:
         reject("invalid_input", "请选择本次排产的优化方向。", 422)
-    objectives = [_objective({"objective_name": name}, {}, {}) for name in process["target_objectives"]]
+    objectives = [candidate_objective({"objective_name": name}, {}, {}) for name in process["target_objectives"]]
     if any(row["primary_metric_key"] is None for row in objectives):
         corrupt()
     descriptor = next(row for row in objectives if row["name"] == selected)

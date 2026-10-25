@@ -57,7 +57,7 @@
     const [pendingRow, setPendingRow] = React.useState(A.ref(initialContext.selected_row_ref) ? initialContext.selected_row_ref : null);
     const [pendingOperation, setPendingOperation] = React.useState(A.ref(initialContext.operation_ref) ? initialContext.operation_ref : null);
     const [tab, setTab] = React.useState((view === 'delay' ? ['tasks', 'unplanned'] : ['tasks', 'unplanned', 'delivery', 'history']).includes(initialContext.candidate_tab) ? initialContext.candidate_tab : 'tasks'), [revision, refresh] = React.useReducer(v => v + 1, 0);
-    const [analysisPaused, setAnalysisPaused] = React.useState(false);
+    const [analysisPaused, setAnalysisPaused] = React.useState(false), [historyPaused, setHistoryPaused] = React.useState(false);
     const [detailsOpen, setDetailsOpen] = React.useState(view === 'gantt' && (A.ref(initialContext.operation_ref) || A.ref(initialContext.selected_row_ref)));
     const detailsToggle = React.useRef(null);
     const directory = useRead(signal => adapter.catalog(runRef, catalogQuery, signal),
@@ -75,8 +75,8 @@
     const historyRead = useRead(async signal => {
       if (typeof adapter.adoptions !== 'function') throw new Error('dependency not wired: adapter.adoptions');
       return adapter.adoptions(candidateRef, runRef, signal);
-    }, [adapter, candidateRef, revision, result && result.meta.snapshot_ref], !!shown && tab === 'history' && !analysisPaused && !isReference);
-    const analysis = shown && analysisRead.result && analysisRead.result.data.run_ref === shown.candidate.run_ref ? analysisRead.result.data : null;
+    }, [adapter, candidateRef, revision, result && result.meta.snapshot_ref], !!shown && tab === 'history' && !historyPaused && !isReference);
+    const analysis = shown && !analysisPaused && analysisRead.result && analysisRead.result.data.run_ref === shown.candidate.run_ref ? analysisRead.result.data : null;
     const ownershipError = readState => shown && readState.result && readState.result.data.run_ref !== shown.candidate.run_ref
       ? new Error('读到的数据不属于所选候选方案的排产记录。') : readState.error;
     window.WorkbenchCaption.useCaption(shown && !read.busy && !read.error && shown.candidate.label ? {
@@ -106,16 +106,16 @@
     for (const key of ['range_start', 'range_end', 'batch_ref', 'sort', 'order', 'snapshot_ref', 'selected_row_ref', 'operation_ref']) delete remembered[key];
     Object.assign(remembered, scope, chosen ? { operation_ref: chosen.operation_ref, ...(chosen.row_ref ? { selected_row_ref: chosen.row_ref } : {}) } : {});
     window.WorkbenchPageContext.useSnapshot(remembered, !!shown && !read.busy && !read.error && !invalid);
-    function choose(candidate) { setCandidateRef(candidate.candidate_ref); setScope({}); setRange({ start: '', end: '' }); setRangeError(null); setQuery(''); setSelected(null); setPendingRow(null); setPendingOperation(null); setAnalysisPaused(false); }
+    function choose(candidate) { setCandidateRef(candidate.candidate_ref); setScope({}); setRange({ start: '', end: '' }); setRangeError(null); setQuery(''); setSelected(null); setPendingRow(null); setPendingOperation(null); setAnalysisPaused(false); setHistoryPaused(false); }
     function select(task) { setSelected({ task, result }); }
-    function collapseDetails() { setDetailsOpen(false); detailsToggle.current.querySelector('button').focus(); }
+    function collapseDetails() { setDetailsOpen(false); const button = detailsToggle.current && detailsToggle.current.querySelector('button'); if (button) button.focus(); }
     function lastOperation(task) {
       setQuery('');
       const fact = prepared.taskIndex.get(task.row_ref), visible = fact && fact.task;
       if (visible) select(visible);
       else { setPendingRow(task.row_ref); setScope({}); setRange({ start: '', end: '' }); setSelected(null); }
     }
-    function reload() { setCatalogQuery(q => { const value = { ...q }; delete value.snapshot_ref; return value; }); setSelected(null); setAnalysisPaused(false); refresh(); }
+    function reload() { setCatalogQuery(q => { const value = { ...q }; delete value.snapshot_ref; return value; }); setSelected(null); setAnalysisPaused(false); setHistoryPaused(false); refresh(); }
     function rangeSubmit(e) {
       e.preventDefault();
       try {
@@ -124,7 +124,7 @@
         setScope(next); setRangeError(null); setSelected(null);
       } catch (error) { setRangeError(error); }
     }
-    const historyError = tab === 'history' ? ownershipError(historyRead) : null;
+    const historyError = tab === 'history' && !historyPaused ? ownershipError(historyRead) : null;
     return <div className="plana run-candidate-workspace" data-run-candidate-workspace>
       <h2 className="wb-page-title">{isReference ? '排产时的正式计划甘特' : view === 'delay' ? '候选交付风险' : view === 'gantt' ? '候选甘特' : '候选排产结果'}</h2>
       <div className="rc-heading scheduling-page-tools">{navigation}<div className="rc-tools">
@@ -143,14 +143,14 @@
         onQuery={(change, paging) => setCatalogQuery(q => ({ ...q, ...change, page: paging ? change.page : 1, snapshot_ref: paging ? directory.result.meta.snapshot_ref : undefined }))} onSelect={choose} /></>}
       <C.ErrorBox error={read.error} />{(read.busy || directory.busy) && <p className="rc-muted" role="status">{isReference ? '正在读取排产时的正式计划。' : '正在读取这个候选方案。'}</p>}
       {read.error && <div className="rc-empty">候选方案读取失败，可通过“读取范围”调整日期后重新读取，或点击刷新重试。</div>}
-      {(analysisRead.busy || historyRead.busy) && <div className="rc-tools"><span role="status">正在核对这个候选方案的完整依据。</span><C.Button icon="x" aria-label="取消候选比较读取" onClick={() => setAnalysisPaused(true)}>取消读取</C.Button></div>}
-      {analysisPaused && <div className="rc-tools"><span role="status">候选比较读取已取消。</span><C.Button icon="refresh-cw" onClick={reload}>刷新候选比较</C.Button></div>}
+      {(analysisRead.busy || historyRead.busy) && <div className="rc-tools"><span role="status">正在核对这个候选方案的完整依据。</span><C.Button icon="x" aria-label="取消候选比较读取" onClick={() => { if (analysisRead.busy) setAnalysisPaused(true); if (historyRead.busy) setHistoryPaused(true); }}>取消读取</C.Button></div>}
+      {(analysisPaused || tab === 'history' && historyPaused) && <div className="rc-tools"><span role="status">候选比较读取已取消。</span><C.Button icon="refresh-cw" onClick={reload}>刷新候选比较</C.Button></div>}
       {runRef && !candidateRef && <div className="rc-empty">尚未选择这次排产里的候选方案。</div>}
       {data && !shown && <div className="rc-notice">当前不能查看这个候选方案。<C.Reasons rows={data.blocked_reasons} /></div>}
       {initialContext.drill_range_adjusted && <p className="rc-muted" role="status">定位时间窗已覆盖目标安排；返回方案对比后恢复原查看窗。</p>}
       {resourceFocus && <p className="rc-muted" role="status">当前按指定{M.kindLabels[resourceFocus.kind]}查看安排。<window.WorkbenchReference value={resourceFocus.ref} /></p>}
       {shown && <>{isReference ? <details className="rc-reasons"><summary>来源与记录编号</summary><div>提交试排时保存的正式计划：{shown.candidate.label}</div><div>本次刷新：{M.timeLabel(result.meta.as_of)}</div><window.WorkbenchReference entries={{ '正式计划编号': shown.plan_ref || shown.reference.baseline_ref, '来源候选': shown.reference.source_candidate_ref }} /></details> : <C.Generation key={shown.candidate.candidate_ref} data={shown} analysis={analysis} meta={result.meta} />}<C.Reasons rows={result.warnings} />
-        <C.ErrorBox error={ownershipError(analysisRead)} /></>}
+        <C.ErrorBox error={analysisPaused ? null : ownershipError(analysisRead)} /></>}
       {A.ref(candidateRef) && !invalid && <>
         <div className="rc-heading"><span><span title={scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束时刻）' : '全部保存时间'}>查看范围：{scope.range_start ? F.compactRange(scope.range_start, scope.range_end) : '全部时间'}{scope.batch_ref && ' · 指定批次'}</span>
           {shown && ' · 当前显示 ' + tasks.length + ' 道安排'}</span>
@@ -168,7 +168,7 @@
         {view === 'delay' && <C.Delivery data={shown.delivery_risks} onLast={lastOperation} />}
         <div className={'rc-main' + (view === 'gantt' ? ' wb-gantt-detail-layout' : '')} data-details-open={view === 'gantt' && detailsOpen && !['delivery', 'history'].includes(tab) || undefined}
           data-single-column={['delivery', 'history'].includes(tab) || view === 'gantt' && !detailsOpen ? 'true' : undefined}><div className={view === 'gantt' ? 'wb-gantt-main-column' : undefined}>
-          <window.RunCandidateGantt data={shown} prepared={prepared} comparison={analysis} query={query} onQuery={setQuery} selected={chosen} onSelect={select} resourceFocus={resourceFocus}
+          <window.RunCandidateGantt key={shown.candidate.candidate_ref} data={shown} prepared={prepared} comparison={analysis} query={query} onQuery={setQuery} selected={chosen} onSelect={select} resourceFocus={resourceFocus}
             toolbarActions={view === 'gantt' && !['delivery', 'history'].includes(tab) && <span ref={detailsToggle}><C.Button icon={detailsOpen ? 'panel-right-close' : 'panel-right-open'} aria-expanded={detailsOpen} aria-controls="candidate-gantt-detail" onClick={() => setDetailsOpen(!detailsOpen)}>{detailsOpen ? '收起详情' : '详情'}</C.Button></span>} />
           <section aria-label="候选明细"><div className="rc-heading"><div role="tablist" className="rc-tabs" aria-label="候选明细类别" onKeyDown={event => {
             if (event.altKey || event.ctrlKey || event.metaKey) return;
@@ -177,7 +177,7 @@
             if (target >= 0) { event.preventDefault(); tabs[target].focus(); tabs[target].click(); }
           }}>
             {['tasks', 'unplanned', ...(view === 'delay' || isReference ? [] : ['delivery', 'history'])].map(t => <C.Button key={t} role="tab" id={'rc-detail-tab-' + t} aria-controls="rc-detail-panel" tabIndex={tab === t ? 0 : -1} icon={t === 'tasks' ? 'chart-gantt' : t === 'history' ? 'history' : 'circle-alert'} aria-selected={tab === t} onClick={() => setTab(t)}>{t === 'tasks' ? '任务安排' : t === 'delivery' ? '交付风险' : t === 'history' ? '采用记录' : '未安排明细'}</C.Button>)}</div></div>
-            <div role="tabpanel" id="rc-detail-panel" aria-labelledby={'rc-detail-tab-' + tab}>{tab === 'history' ? <><C.ErrorBox error={historyError} />{historyRead.result && !historyError && <Analysis.History data={historyRead.result.data}
+            <div role="tabpanel" id="rc-detail-panel" aria-labelledby={'rc-detail-tab-' + tab}>{tab === 'history' ? <><C.ErrorBox error={historyError} />{!historyPaused && historyRead.result && !historyError && <Analysis.History data={historyRead.result.data}
               onPlan={onNavigate && (plan => onNavigate('analysis', { ...historyOrigin, plan_ref: plan.plan_ref }))} />}</> :
               tab === 'delivery' ? analysis && <Analysis.Batches key={analysis.candidate_ref} data={analysis} onLast={task => { lastOperation(task); setTab('tasks'); }}
                 onBatch={onNavigate && (row => onNavigate('gantt', { ...historyOrigin, run_ref: analysis.run_ref, candidate_ref: analysis.candidate_ref, batch_ref: row.batch_ref, candidate_tab: 'tasks' }))} /> : tab === 'unplanned' && shown.unplanned_operations === null ? <div className="rc-notice">未记录排产时的未排工序明细。</div> :

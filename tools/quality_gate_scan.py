@@ -29,10 +29,6 @@ from .quality_gate_shared import (
     FILE_SIZE_LIMIT,
     REPOSITORY_BUNDLE_DRIFT_SCOPE_PATTERNS,
     STARTUP_SAMPLE_EXPECTATIONS,
-    UI_MODE_RENDER_BRIDGE_PATHS,
-    UI_MODE_SCOPE_TAG_VALUES,
-    UI_MODE_STARTUP_GUARD_PATHS,
-    UI_MODE_STARTUP_GUARD_SYMBOLS,
     WEB_HELPER_SCAN_SCOPE_PATTERNS,
     QualityGateError,
     collect_globbed_files,
@@ -393,12 +389,6 @@ def classify_silent_fallback(try_node: ast.Try, handler: ast.ExceptHandler) -> T
     return fallback_kind, signature
 
 
-def ui_mode_scope_tag(symbol: str, path: str = "web/manual_src_security.py") -> str:
-    # 双轨退役（2026-06）后启动链 UI 范围只剩 manual_src_security，统一 render_bridge 标签
-    del symbol, path
-    return "render_bridge"
-
-
 def scan_silent_fallback_fact_entries(paths: Sequence[str], context: Optional[ScanContext] = None) -> List[Dict[str, Any]]:
     """返回静默回退单文件扫描事实，不分配最终台账 id。"""
 
@@ -435,8 +425,6 @@ def scan_silent_fallback_fact_entries(paths: Sequence[str], context: Optional[Sc
                 "fallback_kind": fallback_kind,
                 "signature": signature,
             }
-            if rel_path in UI_MODE_STARTUP_GUARD_PATHS or rel_path in UI_MODE_RENDER_BRIDGE_PATHS:
-                entry["scope_tag"] = ui_mode_scope_tag(symbol, rel_path)
             entries.append(entry)
     return sorted(entries, key=entry_sort_key)
 
@@ -462,7 +450,6 @@ def validate_startup_samples(entries: Optional[Sequence[Dict[str, Any]]] = None)
     entry_list = list(entries)
     errors = []
     matched_kinds = set()
-    matched_scopes = set()
     for sample in STARTUP_SAMPLE_EXPECTATIONS:
         matches = [
             entry
@@ -497,13 +484,7 @@ def validate_startup_samples(entries: Optional[Sequence[Dict[str, Any]]] = None)
             errors.append(
                 "样本分类不匹配：{}:{} 期望 {}，实际 {}".format(sample.path, sample.symbol, sample.fallback_kind, match.get("fallback_kind"))
             )
-        if sample.scope_tag is not None and str(match.get("scope_tag")) != sample.scope_tag:
-            errors.append(
-                "样本 scope_tag 不匹配：{}:{} 期望 {}，实际 {}".format(sample.path, sample.symbol, sample.scope_tag, match.get("scope_tag"))
-            )
         matched_kinds.add(str(match.get("fallback_kind")))
-        if match.get("scope_tag"):
-            matched_scopes.add(str(match.get("scope_tag")))
     present_kinds = {
         str(entry.get("fallback_kind"))
         for entry in entry_list
@@ -512,15 +493,11 @@ def validate_startup_samples(entries: Optional[Sequence[Dict[str, Any]]] = None)
     missing_kinds = sorted(present_kinds - matched_kinds)
     if missing_kinds:
         errors.append("四类分类样本覆盖不完整：{}".format(", ".join(missing_kinds)))
-    missing_scopes = sorted(UI_MODE_SCOPE_TAG_VALUES - matched_scopes)
-    if missing_scopes:
-        errors.append("UI 启动链 scope 样本覆盖不完整：{}".format(", ".join(missing_scopes)))
     if errors:
         raise QualityGateError("启动链样本点校验失败：\n" + "\n".join(errors))
     return {
         "sample_count": len(STARTUP_SAMPLE_EXPECTATIONS),
         "fallback_kinds": sorted(matched_kinds),
-        "scope_tags": sorted(matched_scopes),
     }
 
 
@@ -707,43 +684,6 @@ def _is_repository_bundle_chain(chain: str) -> bool:
     return _is_repository_bundle_root_chain(chain) or "._repos." in chain or ".repos." in chain
 
 
-def _outermost_attribute(node: ast.Attribute) -> ast.Attribute:
-    current = node
-    while True:
-        parent = getattr(current, "_ast_parent", None)
-        if not isinstance(parent, ast.Attribute) or parent.value is not current:
-            return current
-        current = parent
-
-
-def _is_allowed_schedule_service_repo_proxy(rel_path: str, node: ast.Attribute, chain: str) -> bool:
-    if rel_path != "core/services/scheduler/schedule_service.py":
-        return False
-    if _find_enclosing_symbol(node) != "__init__":
-        return False
-    outer = _outermost_attribute(node)
-    outer_chain = _call_target_name(outer)
-    if chain == "self._repos":
-        parent = getattr(node, "_ast_parent", None)
-        if (
-            isinstance(parent, ast.Assign)
-            and len(parent.targets) == 1
-            and parent.targets[0] is node
-            and _call_target_name(parent.value) == "build_schedule_repository_bundle"
-        ):
-            return True
-    if not outer_chain.startswith("self._repos."):
-        return False
-    parent = getattr(outer, "_ast_parent", None)
-    if not isinstance(parent, ast.Assign) or parent.value is not outer or len(parent.targets) != 1:
-        return False
-    lhs = parent.targets[0]
-    if not isinstance(lhs, ast.Attribute):
-        return False
-    lhs_chain = _call_target_name(lhs)
-    return lhs_chain.startswith("self.") and lhs_chain.split(".")[-1] == outer_chain.split(".")[-1]
-
-
 def _resolve_repository_bundle_alias(value: Any, aliases: Dict[str, str]) -> Optional[str]:
     if isinstance(value, str):
         chain = value
@@ -788,8 +728,6 @@ def scan_repository_bundle_drift_entries(
                 chain = _call_target_name(node)
                 resolved_chain = _alias_resolved_chain(node, scope_aliases)
                 if not _is_repository_bundle_chain(chain) and not (resolved_chain and _is_repository_bundle_chain(resolved_chain)):
-                    continue
-                if _is_repository_bundle_chain(chain) and _is_allowed_schedule_service_repo_proxy(rel_path, node, chain):
                     continue
             elif isinstance(node, ast.Return):
                 if isinstance(node.value, ast.Attribute) and _is_repository_bundle_chain(_call_target_name(node.value)):
@@ -1050,7 +988,6 @@ __all__ = [
     "scan_silent_fallback_entries",
     "scan_direct_assembly_entries",
     "scan_repository_bundle_drift_entries",
-    "ui_mode_scope_tag",
     "validate_startup_samples",
     "complexity_scan_map",
     "run_strict_silent_fallback_gate",

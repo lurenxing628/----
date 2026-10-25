@@ -10,31 +10,9 @@ from core.services.workbench.resource.queries import WorkbenchResourceQueryServi
 from data.repositories.base_repo import BaseRepository
 from tests.workbench.identity_metadata_support import insert_row
 from tests.workbench.resource_entity_support import (
-    create_catalog,
     identity_for,
     resource_database,  # noqa: F401
-    resource_service,
 )
-
-
-@pytest.mark.parametrize("kind,code", (("op_type", "OT1"), ("machine", "M1"), ("operator", "O1"),
-                                      ("supplier", "S1"), ("machine_group", "G1"), ("shift_profile", "SHIFT1")))
-def test_scoped_resource_states_preserve_the_complete_existing_write_contract(resource_conn, kind, code):
-    conn = resource_conn
-    group, shift = create_catalog(conn, "machine_group"), create_catalog(conn, "shift_profile")
-    conn.execute("INSERT INTO WorkbenchMachineGroupMembers(machine_id,group_id) VALUES('M1','G1')")
-    conn.execute("INSERT INTO WorkbenchOperatorProfiles(operator_id,shift_profile_id,skills_declared) VALUES('O1','SHIFT1',1)")
-    conn.execute("INSERT INTO MachineOpTypes(machine_id,op_type_id) VALUES('M1','OT2')")
-    conn.execute("INSERT INTO WorkbenchSupplierOpTypes(supplier_id,op_type_id) VALUES('S1','EXT')")
-    conn.commit()
-    identity = identity_for(conn, kind, code)
-    reader = WorkbenchResourceQueryService(conn, kind)
-    with TransactionManager(conn).transaction():
-        expected = reader.domain.snapshot(identity)
-        preparation = reader.preparation(refs=[identity.ref])
-        assert preparation.state(kind, code) == expected
-        assert preparation.identity(kind, identity.ref) == identity
-    assert group.ref and shift.ref
 
 
 def test_single_update_reads_a_bounded_number_of_rows_and_keeps_name_uniqueness(resource_conn, monkeypatch):
@@ -43,6 +21,9 @@ def test_single_update_reads_a_bounded_number_of_rows_and_keeps_name_uniqueness(
     conn.executemany("INSERT INTO Operators(operator_id,name) VALUES(?,?)", [(f"UNRELATED-{i}", f"operator {i}") for i in range(401)])
     conn.commit()
     identity = identity_for(conn, "machine")
+    assert identity is not None
+    reader = WorkbenchResourceQueryService(conn, "machine")
+    normalized = reader.domain.normalize_input("update", {"label": "changed"})
     reads, original = [], BaseRepository.fetchall
 
     def captured(repo, sql, params=None):
@@ -52,13 +33,25 @@ def test_single_update_reads_a_bounded_number_of_rows_and_keeps_name_uniqueness(
 
     monkeypatch.setattr(BaseRepository, "fetchall", captured)
     with TransactionManager(conn).transaction():
-        outcome = resource_service(conn, "machine").apply("update", {"label": "changed"}, identity)
+        preparation = reader.preparation_for("update", normalized, ref=identity.ref)
+        checked = preparation.state("machine", preparation.current("machine", identity).entity_key)
+        outcome = reader.domain.apply_prepared(reader.domain.prepare("update", normalized, checked, preparation))
     assert outcome.result == "committed"
     assert sum(amount for _sql, amount in reads) < 20
     assert not any("FROM Operators" in sql for sql, _amount in reads)
     assert not any("FROM Machines ORDER BY" in sql or "kind IN (" in sql for sql, _amount in reads)
+    reads.clear()
+    with TransactionManager(conn).transaction():
+        assert reader.detail(identity.ref).identity.entity_key == identity.entity_key
+    assert sum("FROM WorkbenchEntityRefs WHERE active=1 AND ref IN (" in sql for sql, _amount in reads) == 1
     with TransactionManager(conn).transaction(), pytest.raises(BusinessError):
-        resource_service(conn, "op_type").apply("update", {"label": "OT2"}, identity_for(conn, "op_type"))
+        reader = WorkbenchResourceQueryService(conn, "op_type")
+        identity = identity_for(conn, "op_type")
+        assert identity is not None
+        normalized = reader.domain.normalize_input("update", {"label": "OT2"})
+        preparation = reader.preparation_for("update", normalized, ref=identity.ref)
+        checked = preparation.state("op_type", preparation.current("op_type", identity).entity_key)
+        reader.domain.apply_prepared(reader.domain.prepare("update", normalized, checked, preparation))
 
 
 def test_scoped_preparation_batches_selected_refs_and_rechecks_in_the_next_transaction(resource_conn):
@@ -82,14 +75,114 @@ def test_selected_relationships_keep_category_and_deleted_identity_rejections(re
     conn = resource_conn
     reader = WorkbenchResourceQueryService(conn, "machine")
     identity, external = identity_for(conn, "machine"), identity_for(conn, "op_type", "EXT")
+    assert identity is not None and external is not None
+    normalized = reader.domain.normalize_input("update", {"relationships": {"op_type_refs": [external.ref]}})
     with TransactionManager(conn).transaction(), pytest.raises(WorkbenchCommandRejected) as error:
-        reader.domain.apply("update", {"relationships": {"op_type_refs": [external.ref]}}, identity)
+        preparation = reader.preparation_for("update", normalized, ref=identity.ref)
+        checked = preparation.state("machine", preparation.current("machine", identity).entity_key)
+        reader.domain.apply_prepared(reader.domain.prepare("update", normalized, checked, preparation))
     assert error.value.code == "constraint_conflict"
     conn.execute("UPDATE WorkbenchEntityRefs SET active=0 WHERE ref=?", (identity.ref,))
     conn.commit()
+    normalized = reader.domain.normalize_input("update", {"label": "changed"})
     with TransactionManager(conn).transaction(), pytest.raises(WorkbenchCommandRejected) as error:
-        reader.domain.apply("update", {"label": "changed"}, identity)
+        preparation = reader.preparation_for("update", normalized, ref=identity.ref)
+        checked = preparation.state("machine", preparation.current("machine", identity).entity_key)
+        reader.domain.apply_prepared(reader.domain.prepare("update", normalized, checked, preparation))
     assert error.value.code == "entity_not_found"
+
+
+def test_unchanged_relations_allow_remark_updates_and_preserve_undeclared_operator_skills(resource_conn):
+    conn = resource_conn
+    ot1 = identity_for(conn, "op_type", "OT1")
+    ot2 = identity_for(conn, "op_type", "OT2")
+    machine = identity_for(conn, "machine", "M1")
+    operator = identity_for(conn, "operator", "O1")
+    empty_op = identity_for(conn, "operator", "EMPTY")
+    supplier = identity_for(conn, "supplier", "S1")
+    assert (
+        ot1 is not None
+        and ot2 is not None
+        and machine is not None
+        and operator is not None
+        and empty_op is not None
+        and supplier is not None
+    )
+
+    # M1, O1 and S1 all reference OT1 in seed data; flip OT1 to external so it is legacy-mismatched for M1/O1,
+    # while S1's legacy OT1 is tested by flipping OT1 back to internal.
+    conn.execute("UPDATE OpTypes SET category='external' WHERE op_type_id='OT1'")
+    conn.commit()
+    for kind, target, relations in (
+        ("machine", machine, {"op_type_refs": [ot1.ref]}),
+        ("operator", operator, {"skill_refs": [ot1.ref]}),
+    ):
+        reader = WorkbenchResourceQueryService(conn, kind)
+        normalized = reader.domain.normalize_input("update", {"fields": {"remark": "updated"}, "relationships": relations})
+        with TransactionManager(conn).transaction():
+            preparation = reader.preparation_for("update", normalized, ref=target.ref)
+            checked = preparation.state(kind, preparation.current(kind, target).entity_key)
+            outcome = reader.domain.apply_prepared(reader.domain.prepare("update", normalized, checked, preparation))
+        assert outcome.result == "committed"
+
+    conn.execute("UPDATE OpTypes SET category='internal' WHERE op_type_id='OT1'")
+    conn.commit()
+    supplier_reader = WorkbenchResourceQueryService(conn, "supplier")
+    normalized = supplier_reader.domain.normalize_input(
+        "update", {"fields": {"remark": "supplier-updated"}, "relationships": {"op_type_refs": [ot1.ref]}}
+    )
+    with TransactionManager(conn).transaction():
+        preparation = supplier_reader.preparation_for("update", normalized, ref=supplier.ref)
+        checked = preparation.state("supplier", preparation.current("supplier", supplier).entity_key)
+        change = supplier_reader.domain.prepare("update", normalized, checked, preparation)
+        assert change.identity is not None and change.identity.kind == "supplier"
+        result = supplier_reader.domain.apply_prepared(change)
+    assert result.result == "committed"
+    assert result.data["entity_ref"] == supplier.ref
+
+    # Adding a newly mismatched work type to supplier is still rejected.
+    supplier = identity_for(conn, "supplier", "S1")
+    assert supplier is not None
+    normalized_bad = supplier_reader.domain.normalize_input(
+        "update", {"relationships": {"op_type_refs": [ot1.ref, ot2.ref]}}
+    )
+    with TransactionManager(conn).transaction(), pytest.raises(WorkbenchCommandRejected) as error:
+        preparation = supplier_reader.preparation_for("update", normalized_bad, ref=supplier.ref)
+        checked = preparation.state("supplier", preparation.current("supplier", supplier).entity_key)
+        supplier_reader.domain.prepare("update", normalized_bad, checked, preparation)
+    assert error.value.code == "constraint_conflict"
+
+    # Historical operator with skills_declared=0 and empty skills:
+    # 1) Updating remark without skill_refs keeps skills_declared=0;
+    # 2) Explicit empty skill_refs (e.g. file import "清除") declares skills_declared=1.
+    op_reader = WorkbenchResourceQueryService(conn, "operator")
+    normalized_op = op_reader.domain.normalize_input(
+        "update", {"fields": {"remark": "keep-fallback"}}
+    )
+    with TransactionManager(conn).transaction():
+        preparation = op_reader.preparation_for("update", normalized_op, ref=empty_op.ref)
+        checked = preparation.state("operator", preparation.current("operator", empty_op).entity_key)
+        outcome = op_reader.domain.apply_prepared(op_reader.domain.prepare("update", normalized_op, checked, preparation))
+    assert outcome.result == "committed"
+    profile_row = conn.execute(
+        "SELECT skills_declared FROM WorkbenchOperatorProfiles WHERE operator_id='EMPTY'"
+    ).fetchone()
+    assert profile_row is None or profile_row[0] == 0
+
+    empty_op = identity_for(conn, "operator", "EMPTY")
+    assert empty_op is not None
+    normalized_clear = op_reader.domain.normalize_input(
+        "update", {"relationships": {"skill_refs": []}}
+    )
+    with TransactionManager(conn).transaction():
+        preparation = op_reader.preparation_for("update", normalized_clear, ref=empty_op.ref)
+        checked = preparation.state("operator", preparation.current("operator", empty_op).entity_key)
+        clear_outcome = op_reader.domain.apply_prepared(op_reader.domain.prepare("update", normalized_clear, checked, preparation))
+    assert clear_outcome.result == "committed"
+    declared_row = conn.execute(
+        "SELECT skills_declared FROM WorkbenchOperatorProfiles WHERE operator_id='EMPTY'"
+    ).fetchone()
+    assert declared_row is not None and declared_row[0] == 1
 
 
 @pytest.mark.parametrize("replace", (False, True))
@@ -102,11 +195,14 @@ def test_permission_capture_includes_complete_old_machine_states_before_removal(
     insert_row(conn, "WorkbenchMachineGroups", {"group_id": "OLD-GROUP", "name": "old machine group"})
     insert_row(conn, "WorkbenchMachineGroupMembers", {"machine_id": "M1", "group_id": "OLD-GROUP"})
     insert_row(conn, "Machines", {"machine_id": "M2", "name": "replacement", "op_type_id": "NEW-TYPE"})
+    insert_row(conn, "OperatorMachine", {"operator_id": "EMPTY", "machine_id": "M2", "skill_level": "normal", "is_primary": "no"})
     conn.commit()
     operator = identity_for(conn, "operator")
+    replacement = identity_for(conn, "machine", "M2")
+    assert operator is not None and replacement is not None
     service = WorkbenchOperatorMachinePermissions(conn)
     reader = WorkbenchResourceQueryService(conn, "operator")
-    desired = ([{"machine_ref": identity_for(conn, "machine", "M2").ref, "skill_level": "normal", "is_primary": "yes"}]
+    desired = ([{"machine_ref": replacement.ref, "skill_level": "normal", "is_primary": "yes"}]
                if replace else [])
     with TransactionManager(conn).transaction():
         expected = service.preview(operator.ref, desired, preparation=reader.preparation())

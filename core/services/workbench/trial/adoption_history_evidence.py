@@ -5,14 +5,14 @@ import re
 from datetime import datetime
 from typing import NoReturn
 
-from core.models.content import content_text
+from core.models.content import content_text, same
 from core.models.workbench_command import validate_request_key
 from core.models.workbench_trial import reference, reject
-from core.models.workbench_trial_codec import load_object, require_object, same
+from core.models.workbench_trial_codec import load_object, require_object
 from core.services.workbench.facts.trial_policy import load_scenario_record
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
-from .adoption_history_policy import MAX_SCENARIO_BYTES, bound, load_history, load_receipt
+from .adoption_history_policy import MAX_SCENARIO_BYTES, bound, load_receipt
 
 
 def invalid() -> NoReturn:
@@ -128,9 +128,8 @@ def _audit_lineage(audit, row, plan, saved, header, draft):
         raise ValueError("Audit lineage mismatch")
 
 
-def audit_fields(repo, row, plan, saved, header, draft, *, command_repo, context=None):
+def audit_fields(row, plan, saved, header, draft, *, history, command_repo, adoption_inputs):
     empty = {"reason": None, "declared_operator": None, "application_operator": None, "adopted_at": None}
-    history = load_history(repo, plan["version"], context=context)
     if history is None:
         return empty, [gap("audit_missing", "找不到对应的正式计划历史，或同一版本有多条记录，采用信息暂时无法确认。")]
     try:
@@ -139,7 +138,8 @@ def audit_fields(repo, row, plan, saved, header, draft, *, command_repo, context
         if history["result_status"] != "success":
             raise ValueError("Not a successful history record")
         intent = {"confirm": True, "reason": audit["reason"], "declared_operator": audit["declared_operator"]}
-        if content_text(intent) != command_repo.input_content(row):
+        original_input = (adoption_inputs[row["request_key"]] if row["input_json"] is None else command_repo.input_content(row))
+        if content_text(intent) != original_input:
             raise ValueError("Audit intent does not match immutable receipt")
         fields = {key: audit[key] for key in empty}
         if any(type(value) is not str or not value.strip() for value in fields.values()):

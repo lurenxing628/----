@@ -11,28 +11,24 @@ from typing import Any, Optional, cast
 from flask import Flask, current_app, g, request
 from werkzeug.serving import ThreadedWSGIServer
 
-from core.infrastructure.backup import BackupManager, MaintenanceWindowError, is_maintenance_window_active
+from core.infrastructure.backup import BackupManager, is_maintenance_window_active
 from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.logging import AppLogger, OperationLogger, safe_log
-from core.models.workbench_command import WorkbenchCommandRejected
 from web.error_boundary import (
     render_error_template,
-    render_minimal_error_page,
-    wants_json_error_response_or_default,
+    wants_json_error_response,
 )
 from web.error_handlers import register_error_handlers
 from web.routes.workbench.legacy_blueprints import register_legacy_blueprints
 from web.routes.workbench.legacy_dispatch import install_legacy_retirement
 from web.routes.workbench.registration import bp as workbench_bp
-from web.runtime_host import install_runtime_host, restore_host
+from web.runtime_host import install_runtime_host
 
 from .app_config import config as _config_map
-from .launcher import resolve_shared_data_root
 from .launcher_observability import launcher_log_warning
-from .launcher_paths import is_portable_runtime, resolve_runtime_db_path
+from .launcher_paths import is_portable_runtime, resolve_runtime_db_path, resolve_shared_data_root
 from .launcher_shutdown import (
     RuntimeExitBackupManager,
-    RuntimeHostStopTransport,
     read_exit_backup_enabled,
     run_exit_backup,
 )
@@ -45,7 +41,6 @@ from .security import apply_session_cookie_hardening, ensure_secret_key, registe
 from .startup_config import resolve_config_class
 from .static_versioning import install_versioned_url_for
 from .workbench_request_lifecycle import (
-    WorkbenchRequestHandler,
     close_workbench_request_connection,
     install_workbench_request_lifecycle,
     track_workbench_request_connection,
@@ -63,20 +58,13 @@ _FACTORY_ONCE_FLAGS_KEY = "aps.factory.once_flags"
 make_server = make_runtime_server
 
 
-def _resolve_config_class():
-    return resolve_config_class(_config_map)
-
-
 def resolve_startup_debug_flag() -> bool:
     # 此处只读同一配置源；锁归属判定仍先于 create_app 的数据库及退出备份副作用。
-    return bool(_resolve_config_class().DEBUG)
+    return bool(resolve_config_class(_config_map).DEBUG)
 
 
 def _app_log_once(app: Flask, key: str, level: str, message: str, *args: Any) -> None:
-    flags = app.extensions.get(_FACTORY_ONCE_FLAGS_KEY)
-    if not isinstance(flags, set):
-        flags = set()
-        app.extensions[_FACTORY_ONCE_FLAGS_KEY] = flags
+    flags = app.extensions.setdefault(_FACTORY_ONCE_FLAGS_KEY, set())
     if key in flags:
         return
     flags.add(key)
@@ -105,7 +93,11 @@ def should_use_runtime_reloader(debug: bool, frozen: Optional[bool] = None) -> b
     return bool(debug) and not is_frozen
 
 
-def _should_register_exit_backup(*, debug: bool, frozen: Optional[bool] = None, run_main: Optional[str] = None) -> bool:
+def should_own_runtime_resources(
+    debug: bool,
+    frozen: Optional[bool] = None,
+    run_main: Optional[str] = None,
+) -> bool:
     is_frozen = bool(getattr(sys, "frozen", False)) if frozen is None else bool(frozen)
     if not should_use_runtime_reloader(debug=bool(debug), frozen=is_frozen):
         return True
@@ -113,41 +105,23 @@ def _should_register_exit_backup(*, debug: bool, frozen: Optional[bool] = None, 
     return str(marker or "").strip().lower() == "true"
 
 
-def should_own_runtime_resources(
-    debug: bool,
-    frozen: Optional[bool] = None,
-    run_main: Optional[str] = None,
-) -> bool:
-    return _should_register_exit_backup(debug=bool(debug), frozen=frozen, run_main=run_main)
-
-
-
-
-def _is_exit_backup_enabled(bm: BackupManager) -> Optional[bool]:
-    return read_exit_backup_enabled(bm, get_connection)
-
-
 def _run_exit_backup(manager: Optional[BackupManager] = None) -> bool:
     bm = manager or _EXIT_BACKUP_MANAGER
     if bm is None:
         return False
-    return run_exit_backup(bm, _is_exit_backup_enabled)
+    return run_exit_backup(bm, lambda target: read_exit_backup_enabled(target, get_connection))
 
 
 def _maintenance_gate_response():
     message = "系统正在维护中，请稍后重试。"
-    if wants_json_error_response_or_default(
-        log_message="维护窗口响应分类失败，已回退 HTML 503：%s",
-    ):
+    if wants_json_error_response():
         return {"success": False, "error": {"code": "503", "message": message}}, 503
     return render_error_template(title="系统维护中", message=message), 503
 
 
 def _maintenance_detection_failure_response():
     message = "系统状态检测失败，请稍后重试。"
-    if wants_json_error_response_or_default(
-        log_message="系统状态检测错误响应分类失败，已回退 HTML 500：%s",
-    ):
+    if wants_json_error_response():
         return {"success": False, "error": {"code": "500", "message": message}}, 500
     return render_error_template(title="系统状态检测失败", message=message), 500
 
@@ -155,10 +129,6 @@ def _maintenance_detection_failure_response():
 def _default_anchor_file() -> str:
     # 源码布局固定：web/bootstrap/factory.py 向上两级即仓库根目录
     return str(Path(__file__).resolve().parents[2] / "app.py")
-
-
-def should_register_runtime_lifecycle_handlers(debug: bool) -> bool:
-    return should_own_runtime_resources(debug=bool(debug))
 
 
 def prepare_runtime_server(app: Flask, host: str, port: int) -> ThreadedWSGIServer:
@@ -202,13 +172,6 @@ def request_runtime_server_shutdown(logger=None) -> bool:
     return True
 
 
-def _request_runtime_shutdown(logger=None) -> bool:
-    """运行时宿主接缝用的适配器：按调用时的模块属性取函数，便于测试替换。"""
-    return request_runtime_server_shutdown(logger=logger)
-
-
-
-
 def _ensure_runtime_dirs(app: Flask) -> None:
     db_dir = os.path.dirname(app.config["DATABASE_PATH"])
     if db_dir:
@@ -234,7 +197,7 @@ def _register_exit_backup(app: Flask) -> None:
     global _EXIT_BACKUP_MANAGER, _EXIT_BACKUP_REGISTERED
     _EXIT_BACKUP_MANAGER = backup_manager
 
-    if not _EXIT_BACKUP_REGISTERED and _should_register_exit_backup(debug=bool(app.config.get("DEBUG", False))):
+    if not _EXIT_BACKUP_REGISTERED and should_own_runtime_resources(bool(app.config.get("DEBUG", False))):
         atexit.register(_run_exit_backup)
         _EXIT_BACKUP_REGISTERED = True
     elif not _EXIT_BACKUP_REGISTERED:
@@ -248,14 +211,14 @@ def create_app_core(
     enable_security_headers: bool,
     enable_session_cookie_hardening: bool,
 ) -> Flask:
-    cfg_class = _resolve_config_class()
+    cfg_class = resolve_config_class(_config_map)
 
     base_dir = runtime_base_dir(anchor_file=_default_anchor_file())
     static_dir = os.path.join(base_dir, "static")
     templates_dir = os.path.join(base_dir, "templates")
 
     app = Flask(__name__, static_folder=static_dir, template_folder=templates_dir)
-    install_runtime_host(app, request_shutdown=_request_runtime_shutdown)
+    install_runtime_host(app, request_shutdown=request_runtime_server_shutdown)
     app.config.from_object(cfg_class)
     _apply_runtime_config(app, base_dir=base_dir)
     app.config["APP_UI_MODE"] = ui_mode
@@ -308,23 +271,13 @@ def create_app_core(
 
     @app.before_request
     def _open_db():
-        try:
-            g._aps_req_started = time.perf_counter()
-        except Exception as exc:
-            g._aps_req_started = None
-            _app_log_once(app, "request_started_unavailable", "warning", "请求耗时起点记录失败，当前请求将跳过性能头：%s", exc)
-        req_path = ""
-        try:
-            req_path = str(request.path or "")
-            # 白名单短路路径只允许走“无业务依赖”的轻量请求：
-            # 不挂载 g.app_logger / g.db / g.op_logger，避免把静态资源与健康检查误带入请求级连接生命周期。
-            # 若未来某个中间件需要这些请求级对象，则不应复用该白名单短路路径。
-            if req_path.startswith("/static") or req_path in {"/system/health", "/system/runtime/shutdown"}:
-                return
-        except Exception as exc:
-            _app_log_once(
-                app, "request_whitelist_path_unavailable", "warning", "请求白名单判定失败，将继续主路径：%s", exc
-            )
+        g._aps_req_started = time.perf_counter()
+        req_path = request.path
+        # 白名单短路路径只允许走“无业务依赖”的轻量请求：
+        # 不挂载 g.app_logger / g.db / g.op_logger，避免把静态资源与健康检查误带入请求级连接生命周期。
+        # 若未来某个中间件需要这些请求级对象，则不应复用该白名单短路路径。
+        if req_path.startswith("/static") or req_path in {"/system/health", "/system/runtime/shutdown"}:
+            return
         maintenance_active = False
         maintenance_detection_error = None
         try:
@@ -333,31 +286,9 @@ def create_app_core(
             maintenance_detection_error = e
         if maintenance_detection_error is not None:
             app.logger.error("系统状态检测失败，已中止请求：%s", maintenance_detection_error)
-            try:
-                return _maintenance_detection_failure_response()
-            except Exception as exc:
-                app.logger.error("系统状态检测失败响应构造失败，已回退最小 500：%s", exc)
-                return (
-                    render_minimal_error_page(
-                        title="系统状态检测失败",
-                        code="500",
-                        message="系统状态检测失败，请稍后重试。",
-                    ),
-                    500,
-                )
+            return _maintenance_detection_failure_response()
         if maintenance_active:
-            try:
-                return _maintenance_gate_response()
-            except Exception as exc:
-                app.logger.error("维护窗口响应构造失败，已回退最小 503：%s", exc)
-                return (
-                    render_minimal_error_page(
-                        title="系统维护中",
-                        code="503",
-                        message="系统正在维护中，请稍后重试。",
-                    ),
-                    503,
-                )
+            return _maintenance_gate_response()
         g.app_logger = current_app.logger
 
         if "db" not in g:
@@ -408,31 +339,22 @@ def create_app_core(
     def _perf_headers(resp):
         # 慢请求可观测：帮助区分“前端卡”与“后端慢”
         def _is_prefetch_req() -> bool:
-            try:
-                purpose = (request.headers.get("Purpose") or "").strip().lower()
-                sec_purpose = (request.headers.get("Sec-Purpose") or "").strip().lower()
-                x_moz = (request.headers.get("X-Moz") or "").strip().lower()
-                return (
-                    "prefetch" in purpose
-                    or "prefetch" in sec_purpose
-                    or x_moz == "prefetch"
-                )
-            except Exception as exc:
-                _app_log_once(
-                    app, "prefetch_detect_failed", "warning", "预取请求判定失败，已按普通请求继续：%s", exc
-                )
-                return False
+            purpose = (request.headers.get("Purpose") or "").strip().lower()
+            sec_purpose = (request.headers.get("Sec-Purpose") or "").strip().lower()
+            x_moz = (request.headers.get("X-Moz") or "").strip().lower()
+            return (
+                "prefetch" in purpose
+                or "prefetch" in sec_purpose
+                or x_moz == "prefetch"
+            )
 
-        try:
-            started = getattr(g, "_aps_req_started", None)
-            if started is not None:
-                total_ms = int((time.perf_counter() - float(started)) * 1000)
-                resp.headers.setdefault("Server-Timing", f"app;dur={total_ms}")
-                req_path = str(getattr(request, "path", "") or "")
-                if total_ms >= 300 and not req_path.startswith("/static") and not _is_prefetch_req():
-                    app.logger.warning(f"慢请求: {request.method} {request.path} {total_ms}ms")
-        except Exception as exc:
-            _app_log_once(app, "perf_headers_failed", "warning", "性能头写入失败，已跳过附加观测：%s", exc)
+        started = g.get("_aps_req_started")
+        if started is not None:
+            total_ms = int((time.perf_counter() - float(started)) * 1000)
+            resp.headers.setdefault("Server-Timing", f"app;dur={total_ms}")
+            req_path = request.path
+            if total_ms >= 300 and not req_path.startswith("/static") and not _is_prefetch_req():
+                app.logger.warning(f"慢请求: {request.method} {req_path} {total_ms}ms")
         return resp
 
     register_error_handlers(app)

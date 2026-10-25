@@ -57,6 +57,7 @@
   }
   function PreparationTable({ data, onDrill }) {
     const [openOperation, setOpenOperation] = React.useState(null);
+    React.useEffect(() => { setOpenOperation(null); }, [data]);
     return <><p className="rd-preparation-direction">工时：对照 → 当前；相同值显示一次。</p><div className="rc-table wb-table-frame rd-preparation-frame" data-sticky-head data-sticky-key data-sticky-actions><table className="wb-table rd-preparation-table" aria-label="逐道准备与加工需求"><caption className="wb-visually-hidden">逐道工序准备与加工工时及安排方式</caption>
       <thead><tr><th scope="col" className="wb-col-key">批次 / 工序</th><th scope="col">准备工时<small>小时</small></th><th scope="col">加工工时<small>小时</small></th><th scope="col">合计<small>小时</small></th><th scope="col">安排状态</th><th scope="col" className="wb-col-actions">查看</th></tr></thead>
       <tbody>{data.items.map(row => <React.Fragment key={row.operation_ref}><tr data-decision-preparation={row.operation_ref}><td className="wb-col-key">{onDrill ? <C.Button className="btn link" data-preparation-operation={row.operation_ref} onClick={() => onDrill(row.drill.selected)}>{row.batch_label} · {E.amount(row.sequence)} {row.process_label || T.name_missing}</C.Button> : <strong>{row.batch_label} · {E.amount(row.sequence)} {row.process_label || T.name_missing}</strong>}<small>{row.part_label || T.name_missing} · {M.pieceLabel(row)}</small></td>
@@ -69,6 +70,7 @@
   }
   function ChangeoverTable({ data, onDrill }) {
     const [openEvent, setOpenEvent] = React.useState(null);
+    React.useEffect(() => { setOpenEvent(null); }, [data]);
     return <div className="rc-table wb-table-frame rd-changeover-frame" data-sticky-head data-sticky-key data-sticky-actions><table className="wb-table rd-changeover-table" aria-label="设备工种切换"><caption className="wb-visually-hidden">设备工种切换，包含范围开始前的前序工序</caption>
       <thead><tr><th scope="col" className="wb-col-key">设备 / 方案</th><th scope="col">切换时间</th><th scope="col">前一道工序 → 后一道工序</th><th scope="col">异常</th><th scope="col" className="wb-col-actions">查看</th></tr></thead>
       <tbody>{data.items.map(row => <React.Fragment key={row.event_ref}><tr data-decision-changeover={row.event_ref}><td className="wb-col-key"><strong>{row.machine_label || T.name_missing}</strong><small>{T.changeover_sides[row.event_side]}</small></td>
@@ -83,6 +85,7 @@
       ...(scope.comparison_mode === 'candidates' ? { reference_candidate_ref: scope.reference.candidate_ref } : {}) };
     const stored = Object.fromEntries(Object.entries(query).filter(([key]) => queryKeys.includes(key))), q = window.RunDecisionAPI.preparationScope(runRef, { ...stored, ...shared }, section);
     const [paused, setPaused] = React.useState(false), key = JSON.stringify(q);
+    React.useEffect(() => { setPaused(false); }, [runRef, key, section, result.meta.snapshot_ref]);
     const read = window.APSResourceSession.useQuery(signal => adapter[section](runRef, q, signal), [adapter, runRef, key, section, result.meta.snapshot_ref], enabled && !paused), detail = read.result, data = detail && detail.data;
     function update(change, paging = false) {
       const next = { ...q, ...change, page: paging ? change.page : 1 }; delete next.snapshot_ref;

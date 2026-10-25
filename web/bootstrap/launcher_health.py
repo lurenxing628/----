@@ -19,26 +19,17 @@ class HealthProbeResult:
 
 
 def probe_runtime_health_result(
-    host: str,
-    port: int,
+    base_url: str,
     timeout_s: float = 1.5,
     *,
     log_failures: bool = False,
     state_dir: Optional[str] = None,
 ) -> HealthProbeResult:
-    host_s = str(host or "").strip() or "127.0.0.1"
-    try:
-        port_i = int(port)
-    except (TypeError, ValueError) as exc:
-        url = f"http://{host_s}:0/system/health"
-        if log_failures:
-            launcher_log_warning(None, "运行时健康探测端口非法：host=%s port=%r error=%s", host_s, port, exc, state_dir=state_dir)
-        return HealthProbeResult(False, url, "invalid_port", error=str(exc))
-    url = f"http://{host_s}:{port_i}/system/health"
+    url = base_url.rstrip("/") + "/system/health"
     req = urllib.request.Request(url, method="GET")
     try:
         with urllib.request.urlopen(req, timeout=max(float(timeout_s), 0.2)) as resp:
-            status = int(getattr(resp, "status", 200))
+            status = resp.status
             payload = json.loads(resp.read().decode("utf-8"))
     except (OSError, TypeError, ValueError) as exc:
         if log_failures:

@@ -113,9 +113,10 @@ class IteratedGreedyRun:
                 self.report["stop_reason"] = "max_iterations"
                 self.stopped = True
                 return
-            if self.pending_adoption is self.state.best and self.pending_adoption is not None:
-                search.adopt_incumbent(self.state.best, self.parent_profile(self.state.best))
+            pending = self.pending_adoption
             self.pending_adoption = None
+            if pending is self.state.best and pending is not None:
+                search.adopt_incumbent(self.state.best, self.parent_profile(self.state.best))
             self.iteration = iteration_for(search)
         if not self.iteration.step():
             self.iteration = None
@@ -133,9 +134,7 @@ class IteratedGreedyRun:
         last = self.last_task_end if self.last_task_end is not None else self.clock()
         report["deadline_overrun_ms"] = max(int((last - self.deadline) * 1000), 0) if self.started_at is not None else 0
         report["best_score"] = list((self.state.best or {}).get("score") or [])
-        _publish(report, report_state=self.report_state, attempts=self.attempts)
-        if self.report_state is not None and last >= self.deadline:
-            self.report_state.mark_deadline_reached()
+        _publish(report, attempts=self.attempts)
 
     def _finish_status(self, report: Dict[str, Any]) -> None:
         if self.search is not None:

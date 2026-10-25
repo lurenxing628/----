@@ -65,7 +65,7 @@ payload = acquire_runtime_lock(scope, db_path=str(root / Path(os.environ['APS_DB
 runtime = install_run_lifecycle(_default_deps('default'), app, {'payload': payload})
 try:
     assert runtime.ready and app.extensions['workbench_system_restore_host'].status['operations_available']
-    for name in ('openpyxl', 'core.services.scheduler.schedule_service', 'core.services.workbench.run.worker',
+    for name in ('openpyxl', 'core.services.workbench.run.worker',
                  'core.services.workbench.run.compute'):
         assert name not in sys.modules, name
     response = app.test_client().get('/api/workbench/v1/entities/batch/template', buffered=True)
@@ -75,11 +75,10 @@ try:
     from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
     from core.services.workbench.run.worker import RUN_SCHEDULE_LOCK as worker_lock
     from core.services.workbench.run.worker_recovery import RUN_SCHEDULE_LOCK as recovery_lock
-    from core.services.workbench.run.candidate_adoption import RUN_SCHEDULE_LOCK as adoption_lock
-    from core.services.workbench.trial.adoption import RUN_SCHEDULE_LOCK as trial_lock
+    from core.services.workbench.run.adoption_host import RUN_SCHEDULE_LOCK as adoption_lock
     from web.bootstrap.workbench_system_restore import RUN_SCHEDULE_LOCK as restore_lock
     assert all(lock is RUN_SCHEDULE_LOCK for lock in
-               (worker_lock, recovery_lock, adoption_lock, trial_lock, restore_lock))
+               (worker_lock, recovery_lock, adoption_lock, restore_lock))
     print(json.dumps({'ready': runtime.ready, 'xlsx': response.status_code, 'shared_lock': True}))
 finally:
     stop_run_runtime(runtime)

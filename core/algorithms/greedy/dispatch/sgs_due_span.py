@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from typing import Any, Optional, Tuple
 
 from core.algorithm_contracts.date_parsers import due_exclusive
+from core.algorithm_contracts.material_release import released_start
 from core.algorithm_contracts.value_domains import MERGED
 from core.algorithm_runtime.piece_input import external_group_key
 from core.algorithm_runtime.run_state import ScheduleRunState
@@ -67,7 +68,7 @@ def due_span_inputs(
     )
 
 
-def _external_candidate_window(
+def external_candidate_window(
     ctx: Any,
     state: ScheduleRunState,
     *,
@@ -75,6 +76,8 @@ def _external_candidate_window(
     prev_end: datetime,
     strict_mode: bool,
 ) -> Tuple[datetime, datetime]:
+    # Same material-release lower bound as the formal placement in external_groups.schedule_external.
+    prev_end = released_start(op, prev_end)
     merge_mode = str(getattr(op, "ext_merge_mode", None) or "").strip().lower()
     ext_group_id = str(getattr(op, "ext_group_id", None) or "").strip()
     if merge_mode == MERGED and ext_group_id:
@@ -102,4 +105,4 @@ def _parse_external_days(value: Any, *, field: str, strict_mode: bool, default_d
     return parse_required_float(value, field=field, min_value=0.0, min_inclusive=False)
 
 
-__all__ = ["FAR_DUE_LOOKAHEAD", "due_span_inputs", "working_hour_span", "_external_candidate_window", "_parse_external_days"]
+__all__ = ["FAR_DUE_LOOKAHEAD", "due_span_inputs", "working_hour_span", "external_candidate_window", "_parse_external_days"]

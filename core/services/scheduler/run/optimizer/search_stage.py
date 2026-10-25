@@ -12,8 +12,8 @@ class SearchStage:
     def available(self) -> bool:
         raise NotImplementedError
 
-    def run_task(self) -> int:
-        """Run one task and return its nonnegative strict improvement event count."""
+    def run_task(self) -> None:
+        """Run one cooperative search task."""
         raise NotImplementedError
 
     def unavailable_reason(self) -> Optional[str]:

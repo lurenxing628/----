@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, List, Optional
+from typing import Iterable, Optional
 
 from core.models import WorkCalendar
 
@@ -16,23 +16,6 @@ class CalendarRepository(BaseRepository):
             (date,),
         )
         return WorkCalendar.from_row(row) if row else None
-
-    def list_all(self) -> List[WorkCalendar]:
-        rows = self.fetchall(
-            "SELECT date, day_type, shift_start, shift_end, shift_hours, efficiency, allow_normal, allow_urgent, remark, periods_json FROM WorkCalendar ORDER BY date"
-        )
-        return [WorkCalendar.from_row(r) for r in rows]
-
-    def list_range(self, start_date: str, end_date: str) -> List[WorkCalendar]:
-        rows = self.fetchall(
-            "SELECT date, day_type, shift_start, shift_end, shift_hours, efficiency, allow_normal, allow_urgent, remark, periods_json FROM WorkCalendar WHERE date >= ? AND date <= ? ORDER BY date",
-            (start_date, end_date),
-        )
-        return [WorkCalendar.from_row(r) for r in rows]
-
-    def upsert(self, calendar: WorkCalendar) -> WorkCalendar:
-        self.upsert_many((calendar,))
-        return calendar
 
     def upsert_many(self, calendars: Iterable[WorkCalendar]) -> None:
         self.executemany(
@@ -55,10 +38,3 @@ class CalendarRepository(BaseRepository):
 
     def delete_many(self, keys) -> None:
         self.executemany("DELETE FROM WorkCalendar WHERE date = ?", ((day,) for day in keys))
-
-    def delete(self, date: str) -> None:
-        self.execute("DELETE FROM WorkCalendar WHERE date = ?", (date,))
-
-    def delete_all(self) -> None:
-        self.execute("DELETE FROM WorkCalendar")
-

@@ -15,8 +15,8 @@ MASTER_OVERVIEW_TABLES = (
     "Parts", "PartOperations", "ExternalGroups", "OpTypes", "Machines", "Operators", "Materials", "Suppliers", "WorkCalendar",
     "OperatorSkill", "OperatorMachine", "WorkbenchOperatorProfiles", "WorkbenchSupplierOpTypes",
     "WorkbenchSupplierProfiles", "WorkbenchMachineGroupMembers", "WorkbenchMachineGroups",
-    "WorkbenchShiftProfiles", "WorkbenchShiftPatternDays", "WorkbenchOpTypePolicies",
-    "Batches", "BatchMaterials", "BatchMaterialArrivals", "BatchMaterialReviews", "OperatorCalendar", "MachineOpTypes",
+    "WorkbenchShiftProfiles", "WorkbenchOpTypePolicies",
+    "Batches", "BatchMaterials", "BatchMaterialArrivals", "BatchMaterialReviews", "MachineOpTypes",
     "WorkbenchProcessWorkflow", "WorkbenchProcessOperationConfirmations",
     "WorkbenchEntityRefs",
 )
@@ -51,6 +51,4 @@ class WorkbenchMasterQueryRepository(BaseRepository):
 
     def legacy_entity_row(self, kind: str, business_key: str) -> Optional[Dict[str, Any]]:
         """按业务键取旧导航实体原始行；kind 只能是 LEGACY_ENTITY_KINDS 之一。"""
-        if kind not in _LEGACY_ENTITY_SQL:
-            raise ValueError("unsupported legacy entity kind: " + repr(kind))
         return self.fetchone(_LEGACY_ENTITY_SQL[kind], (business_key,))

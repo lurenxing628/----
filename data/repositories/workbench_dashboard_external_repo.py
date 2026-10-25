@@ -12,10 +12,10 @@ class WorkbenchDashboardExternalRepository(WorkbenchDashboardRepository):
     history_table = "WorkbenchDashboardExternalHistory"
 
     def schema_state(self):
-        structure = schema_contract_memo(self.conn).structure
-        if not structure.objects.keys() & set(objects()):
+        memo = schema_contract_memo(self.conn)
+        if not memo.structure.objects.keys() & objects().keys():
             return "unavailable" if orphaned_handling_receipts(self.conn) else "not_connected"
-        return "unavailable" if contract_issues(self.conn, structure=structure) else "loaded"
+        return "unavailable" if memo.get_schema(contract_issues) else "loaded"
 
     def schema_installed(self):
         return self.schema_state() == "loaded"

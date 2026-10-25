@@ -1,6 +1,7 @@
 """归档/备份库的只读连接与“在隔离内存库里解析已知 DDL”两类特殊 SQLite 访问。
 
-- open_readonly_immutable：以 mode=ro&immutable=1 打开备份文件，只做证据核对，绝不迁移、绝不写。
+- open_readonly_immutable：以 mode=ro&immutable=1 打开备份文件，只做证据核对，绝不迁移、绝不写；
+  与 database.get_connection 一致开启 foreign_keys，供读取外键开关的契约核对使用。
 - ddl_columns：把一条 CREATE TABLE 语句放进空的 :memory: 库执行，取回列名；restricted=True 时挂授权器，
   只允许建这张表、读 sqlite_master 与该表的 table_info，拒绝一切其它动作。解析失败抛 ValueError。
 """
@@ -20,6 +21,7 @@ def open_readonly_immutable(path: str, *, detect_types: int = 0, row_factory=Non
     uri = Path(path).absolute().as_uri() + "?mode=ro&immutable=1"
     with closing(sqlite3.connect(uri, uri=True, detect_types=detect_types)) as conn:
         conn.row_factory = row_factory
+        conn.execute("PRAGMA foreign_keys=ON")
         yield conn
 
 

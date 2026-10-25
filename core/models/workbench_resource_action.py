@@ -17,13 +17,20 @@ def action_kind(kind):
     return kind
 
 
-def resource_scope(kind, scope):
+def resource_page_scope(kind, scope, *, size=20):
     action_kind(kind)
-    allowed = {"query", "status", "category", "sort", "direction", "column_filters"}
-    if type(scope) is not dict or set(scope) - allowed:
-        raise ValidationError("范围只能包含搜索、状态、归属、排序和列筛选，不接受页码。", field="scope")
-    page = ResourcePageRequest(kind=kind, **scope)
-    return {key: value for key, value in page.scope().items() if key not in ("kind", "size")}
+    if isinstance(scope, ResourcePageRequest) and scope.kind == kind:
+        page = scope
+    else:
+        allowed = {"query", "status", "category", "sort", "direction", "column_filters"}
+        if type(scope) is not dict or set(scope) - allowed:
+            raise ValidationError("范围只能包含搜索、状态、归属、排序和列筛选，不接受页码。", field="scope")
+        page = ResourcePageRequest(kind=kind, size=size, **scope)
+    return {key: value for key, value in page.scope().items() if key not in ("kind", "size")}, page
+
+
+def resource_scope(kind, scope):
+    return resource_page_scope(kind, scope)[0]
 
 
 def resource_refs(refs, *, allow_empty=False):
@@ -49,8 +56,10 @@ class ResourceActionPreview(AtomicActionPreview):
 def check_resource_preview(original, current):
     if not isinstance(original, ResourceActionPreview) or original.document != current.document:
         raise WorkbenchCommandRejected("stale_write", "预检结果、文件或相关数据已更新，没有写入数据。请重新预检并核对整批内容。")
-    if current.as_dict()["summary"]["rejected"]:
+    body = current.as_dict()
+    if body["summary"]["rejected"]:
         raise WorkbenchCommandRejected("constraint_conflict", "预检里有不通过的行，这一批没有写入任何数据。请改好后重新预检。")
+    return body
 
 
 def action_row(number, code=None, action=None):

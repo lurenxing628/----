@@ -78,8 +78,6 @@ def _explanations(data):
                       "相关明细比较起点": drill["range_start"], "相关明细比较终点": drill["range_end"]}
             query = {"side": support.get("side", "selected"), **(drill.get("detail_query") or {key: drill[key] for key in (
                 "batch_ref", "operation_ref", "selected_row_ref", "resource_ref", "resource_kind", "reference_view", "plan_ref") if key in drill})}
-            if not query:
-                yield record
             for key, value in query.items():
                 yield {**record, "相关明细筛选字段": key, "相关明细筛选值": value}
 
@@ -122,7 +120,7 @@ def recommendation_export_records(source, data):
     return {"推荐说明": explanation, "工序安排": completion, "剩余需求": remaining}
 
 
-def _common(data, snapshot):
+def common_export_columns(data, snapshot):
     scope, baseline, basis = data["scope"], data["baseline"], data["selection_basis"]
     return [data["run"]["run_ref"], data["capture_ref"], snapshot["snapshot_ref"], snapshot["as_of"],
             data["recommendation"]["candidate_ref"], scope["selected_candidate_ref"], scope["comparison_mode"],
@@ -132,13 +130,13 @@ def _common(data, snapshot):
 
 
 def recommendation_export_tables(data, snapshot):
-    common = _common(data, snapshot)
+    common = common_export_columns(data, snapshot)
     definitions = (("推荐说明", EXPLANATION_FIELDS), ("工序安排", COMPLETION_FIELDS), ("剩余需求", REMAINING_FIELDS))
     return {title: (COMMON_HEADERS + fields, [common + [row.get(field) for field in fields] for row in data["export_recommendation"][title]])
             for title, fields in definitions}
 
 
 def recommendation_csv(data, snapshot):
-    common = dict(zip(COMMON_HEADERS, _common(data, snapshot)))
+    common = dict(zip(COMMON_HEADERS, common_export_columns(data, snapshot)))
     return RECOMMENDATION_CSV_HEADERS, [[{**common, **row}.get(field) for field in RECOMMENDATION_CSV_HEADERS]
         for rows in data["export_recommendation"].values() for row in rows]
