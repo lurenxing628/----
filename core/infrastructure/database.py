@@ -69,9 +69,9 @@ def _sqlite_file_uri(db_path: str) -> str:
 
 
 def _ensure_sqlite_db_target_ready(db_path: str) -> None:
-    if guard_fixed_file_open_target(db_path, ensure_parent=True) is not None:
+    if guard_fixed_file_open_target(db_path) is not None:
         return
-    fd = create_fixed_file_exclusive(db_path, ensure_parent=True)
+    fd = create_fixed_file_exclusive(db_path)
     os.close(fd)
 
 

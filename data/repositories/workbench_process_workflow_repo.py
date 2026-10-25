@@ -130,13 +130,12 @@ class WorkbenchProcessWorkflowRepository(BaseRepository):
         stage: str,
         content_json: str,
         confirmed_at: str,
-        confirmed_by: Optional[str],
     ) -> None:
         self.execute(
             """INSERT INTO WorkbenchProcessOperationConfirmations
                 (part_ref,operation_ref,stage,signature,confirmed_at,confirmed_by,content_json)
-                VALUES (?,?,?,NULL,?,?,?)""",
-            (part_ref, operation_ref, stage, confirmed_at, confirmed_by, content_json),
+                VALUES (?,?,?,NULL,?,NULL,?)""",
+            (part_ref, operation_ref, stage, confirmed_at, content_json),
         )
 
     def update_confirmation(
@@ -147,12 +146,11 @@ class WorkbenchProcessWorkflowRepository(BaseRepository):
         stage: str,
         content_json: str,
         confirmed_at: str,
-        confirmed_by: Optional[str],
     ) -> None:
         self.execute(
-            """UPDATE WorkbenchProcessOperationConfirmations SET content_json=?,confirmed_at=?,confirmed_by=?
+            """UPDATE WorkbenchProcessOperationConfirmations SET content_json=?,confirmed_at=?,confirmed_by=NULL
                 WHERE part_ref=? AND operation_ref=? AND stage=?""",
-            (content_json, confirmed_at, confirmed_by, part_ref, operation_ref, stage),
+            (content_json, confirmed_at, part_ref, operation_ref, stage),
         )
 
     def delete_confirmations_outside_active_route(self, part_ref: str, part_no: str) -> None:
@@ -170,10 +168,9 @@ class WorkbenchProcessWorkflowRepository(BaseRepository):
         stage: str,
         content_json: str,
         confirmed_at: str,
-        confirmed_by: Optional[str],
     ) -> None:
         self.execute(
             f"""UPDATE WorkbenchProcessWorkflow SET {stage}_content_json=?,
-                {stage}_confirmed_at=?,{stage}_confirmed_by=? WHERE part_ref=?""",
-            (content_json, confirmed_at, confirmed_by, part_ref),
+                {stage}_confirmed_at=?,{stage}_confirmed_by=NULL WHERE part_ref=?""",
+            (content_json, confirmed_at, part_ref),
         )

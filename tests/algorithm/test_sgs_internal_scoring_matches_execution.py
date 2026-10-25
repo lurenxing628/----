@@ -1,29 +1,30 @@
-"""回归测试：GreedyScheduler 的 SGS 派工——评分阶段必须复用统一的 estimate_internal_slot 估算器且其排序与实际执行顺序一致（含 seed_results 占用资源后 B_B 先于 B_A），with_graph_priority_key 把图评分惩罚作为首位排序分量，且当日历效率探测返回 None 走默认值时只计 internal_efficiency_fallback_count 一次、不污染正式计数。"""
+"""回归测试：GreedyScheduler 的 SGS 派工——评分阶段必须复用统一的 estimate_internal_slot 估算器且其排序与实际执行顺序一致（含 seed_results 占用资源后 B_B 先于 B_A），with_graph_priority_key 把图评分惩罚作为首位排序分量。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from unittest import mock
 
-from core.algorithms import GreedyScheduler, ScheduleResult
+from core.algorithm_contracts.types import ScheduleResult
 from core.algorithms.greedy.dispatch import sgs as sgs_module
 from core.algorithms.greedy.dispatch.sgs_scoring import with_graph_priority_key
+from core.algorithms.greedy.scheduler import GreedyScheduler
+from tests._support.algo_operations import make_algo_op, make_batch
 
 
 @dataclass
 class _Calendar:
-    efficiency: float = 1.0
+    """Round-the-clock calendar at constant efficiency 1.0."""
 
     def adjust_to_working_time(self, dt: datetime, priority=None, operator_id=None):
         return dt
 
-    def add_working_hours(self, dt: datetime, hours: float, priority=None, operator_id=None):
-        return dt + timedelta(hours=float(hours or 0.0))
+    def add_effective_hours(self, dt: datetime, hours: float, priority=None, operator_id=None):
+        return dt + timedelta(hours=float(hours))
 
-    def get_efficiency(self, dt: datetime, operator_id=None):
-        return self.efficiency
+    def working_hours_between(self, start: datetime, end: datetime, priority=None, operator_id=None):
+        return (end - start).total_seconds() / 3600.0
 
     def add_calendar_days(self, dt: datetime, days: float, machine_id=None, operator_id=None):
         return dt + timedelta(days=float(days or 0.0))
@@ -35,15 +36,7 @@ class _Config:
 
 
 def _batch(batch_id: str):
-    return SimpleNamespace(
-        batch_id=batch_id,
-        priority="normal",
-        due_date="2026-01-02",
-        ready_status="yes",
-        ready_date=None,
-        created_at=None,
-        quantity=1,
-    )
+    return make_batch(batch_id=batch_id, due_date="2026-01-02")
 
 
 def test_sgs_internal_scoring_uses_shared_estimator_and_matches_execution_order():
@@ -52,32 +45,10 @@ def test_sgs_internal_scoring_uses_shared_estimator_and_matches_execution_order(
 
     batches = {"B_A": _batch("B_A"), "B_B": _batch("B_B")}
     operations = [
-        SimpleNamespace(
-            id=1,
-            op_code="OP_A",
-            batch_id="B_A",
-            seq=1,
-            source="internal",
-            machine_id="M1",
-            operator_id="O1",
-            setup_hours=1.0,
-            unit_hours=0.0,
-            op_type_id="OT1",
-            op_type_name="车削",
-        ),
-        SimpleNamespace(
-            id=2,
-            op_code="OP_B",
-            batch_id="B_B",
-            seq=1,
-            source="internal",
-            machine_id="M2",
-            operator_id="O2",
-            setup_hours=1.0,
-            unit_hours=0.0,
-            op_type_id="OT1",
-            op_type_name="车削",
-        ),
+        make_algo_op(id=1, op_code="OP_A", batch_id="B_A", machine_id="M1", operator_id="O1",
+                     setup_hours=1.0, unit_hours=0.0, op_type_id="OT1", op_type_name="车削"),
+        make_algo_op(id=2, op_code="OP_B", batch_id="B_B", machine_id="M2", operator_id="O2",
+                     setup_hours=1.0, unit_hours=0.0, op_type_id="OT1", op_type_name="车削"),
     ]
     seed_results = [
         ScheduleResult(
@@ -164,9 +135,9 @@ def test_graph_priority_key_keeps_score_penalty_as_first_sort_component():
 def test_sgs_native_order_keeps_seq_id_ties_and_missing_batch_with_raw_downtime():
     start = datetime(2026, 1, 1, 8)
     operations = [
-        SimpleNamespace(id=op_id, op_code="OP" + str(op_id), batch_id=batch_id, seq=seq,
-                        source="internal", machine_id="M1", operator_id="O1", setup_hours=1.0,
-                        unit_hours=0.0, op_type_id="OT1", op_type_name="cut")
+        make_algo_op(id=op_id, op_code="OP" + str(op_id), batch_id=batch_id, seq=seq,
+                     source="internal", machine_id="M1", operator_id="O1", setup_hours=1.0,
+                     unit_hours=0.0, op_type_id="OT1", op_type_name="cut")
         for op_id, batch_id, seq in ((4, "B_A", 2), (3, "B_A", 1), (1, "B_B", 1),
                                      (2, "B_A", 1), (5, "MISSING", 1))
     ]
@@ -189,45 +160,3 @@ def test_sgs_native_order_keeps_seq_id_ties_and_missing_batch_with_raw_downtime(
     assert (summary.total_ops, summary.scheduled_ops, summary.failed_ops) == (5, 4, 1)
     assert summary.failure_details == [{"op_id": 5, "op_code": "OP5", "batch_id": "MISSING",
                                         "seq": 1, "code": "missing_batch"}]
-
-
-def test_sgs_probe_none_efficiency_default_does_not_pollute_formal_counter():
-    start_dt = datetime(2026, 1, 1, 8, 0, 0)
-    scheduler = GreedyScheduler(calendar_service=_Calendar(efficiency=None), config_service={"auto_assign_enabled": "yes"})  # type: ignore[arg-type]
-
-    batches = {"B1": _batch("B1")}
-    operations = [
-        SimpleNamespace(
-            id=1,
-            op_code="OP1",
-            batch_id="B1",
-            seq=1,
-            source="internal",
-            machine_id="",
-            operator_id="",
-            setup_hours=1.0,
-            unit_hours=0.0,
-            op_type_id="OT1",
-            op_type_name="车削",
-        )
-    ]
-    resource_pool = {
-        "machines_by_op_type": {"OT1": ["M1"]},
-        "operators_by_machine": {"M1": ["O1"]},
-        "machines_by_operator": {},
-        "pair_rank": {},
-    }
-
-    results, summary, _strategy, _used_params = scheduler.schedule(
-        operations=operations,
-        batches=batches,
-        start_dt=start_dt,
-        dispatch_mode="sgs",
-        dispatch_rule="slack",
-        resource_pool=resource_pool,
-    )
-
-    assert summary.failed_ops == 0
-    assert len(results) == 1
-    fallback_counts = (scheduler._last_algo_stats.get("fallback_counts") or {})
-    assert int(fallback_counts.get("internal_efficiency_fallback_count") or 0) == 1

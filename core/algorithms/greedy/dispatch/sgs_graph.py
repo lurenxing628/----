@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import AbstractSet, Any, Dict, FrozenSet, List, Mapping, Optional, Set, Tuple, cast
+from typing import TYPE_CHECKING, AbstractSet, Any, Dict, FrozenSet, List, Mapping, Optional, Set, Tuple, cast
 
 from core.algorithm_runtime.graph_cycle import kahn_unreachable_op_ids
 from core.errors import ValidationError
@@ -11,6 +11,9 @@ from core.shared.strict_parse import parse_required_int
 
 from .sgs_priority_keys import ValidatedGraphPriorityKeys
 from .sgs_scoring import _collect_sgs_candidates
+
+if TYPE_CHECKING:
+    from core.algorithm_contracts.types import OpForScheduleAlgo
 
 TOPOLOGY_FIELD = "_prepared_graph_ready_topology"
 
@@ -27,13 +30,13 @@ class PreparedGraphReadyTopology:
 
 
 
-def prepare_graph_ready_topology(context, operations) -> PreparedGraphReadyTopology:
+def prepare_graph_ready_topology(context, operations: List[OpForScheduleAlgo]) -> PreparedGraphReadyTopology:
     raw = dict(context)
     raw.pop(TOPOLOGY_FIELD, None)
     raw["score_enabled"] = False
-    grouped: Dict[str, List[Any]] = {}
+    grouped: Dict[str, List[OpForScheduleAlgo]] = {}
     for op in operations:
-        grouped.setdefault(str(op.batch_id), []).append(op)
+        grouped.setdefault(op.batch_id, []).append(op)
     state = _prepare_graph_ready_state(raw, ops_by_batch=grouped)
     if state is None:
         raise ValidationError("图 ready 队列上下文无效，不能启用图排产候选。", field="graph_ready_context")
@@ -43,10 +46,6 @@ def prepare_graph_ready_topology(context, operations) -> PreparedGraphReadyTopol
         MappingProxyType({key: frozenset(value) for key, value in state["successor_op_ids_by_op_id"].items()}),
         MappingProxyType(dict(state["sort_key_by_op_id"])),
     )
-
-
-def graph_op_id(op: Any) -> int:
-    return parse_required_int(getattr(op, "id", 0), field="id")
 
 
 def _is_graph_like(value: Any) -> bool:
@@ -69,7 +68,7 @@ def _graph_ready_op_id_set(value: Any, *, field: str) -> set:
 def _prepare_graph_ready_state(
     graph_ready_context: Optional[Any],
     *,
-    ops_by_batch: Dict[str, List[Any]],
+    ops_by_batch: Dict[str, List[OpForScheduleAlgo]],
     skip_initial_frontier: bool = False,
 ) -> Optional[Dict[str, Any]]:
     if graph_ready_context is None:
@@ -77,10 +76,10 @@ def _prepare_graph_ready_state(
     if not isinstance(graph_ready_context, dict) or not graph_ready_context.get("enabled"):
         raise ValidationError("图 ready 队列上下文无效，不能启用图排产候选。", field="graph_ready_context")
 
-    op_by_id: Dict[int, Tuple[str, Any]] = {}
+    op_by_id: Dict[int, Tuple[str, OpForScheduleAlgo]] = {}
     for batch_id, operations in ops_by_batch.items():
         for op in operations:
-            op_id = graph_op_id(op)
+            op_id = op.id
             if op_id in op_by_id:
                 raise ValidationError(f"图 ready 队列上下文发现重复 op_id：{op_id}", field="graph_ready_context")
             op_by_id[op_id] = (batch_id, op)
@@ -339,10 +338,10 @@ def _collect_candidates(
     *,
     graph_state: Optional[Dict[str, Any]],
     batch_ids: List[str],
-    ops_by_batch: Dict[str, List[Any]],
+    ops_by_batch: Dict[str, List[OpForScheduleAlgo]],
     next_idx: Dict[str, int],
     blocked_batches: set,
-) -> List[Tuple[str, Any]]:
+) -> List[Tuple[str, OpForScheduleAlgo]]:
     if graph_state is None:
         return _collect_sgs_candidates(
             batch_ids_in_order=batch_ids,
@@ -366,53 +365,18 @@ def _collect_candidates(
     return [graph_state["op_by_id"][op_id] for op_id in ready_op_ids]
 
 
-def _ensure_graph_ready_complete(*, graph_state: Dict[str, Any], ops_by_batch: Dict[str, List[Any]], blocked_batches: set) -> None:
+def _ensure_graph_ready_complete(
+    *, graph_state: Dict[str, Any], ops_by_batch: Dict[str, List[OpForScheduleAlgo]], blocked_batches: set,
+) -> None:
     expected = set(graph_state["op_by_id"])
     finished = graph_state["completed_or_fixed_op_ids"]
     blocked = set(graph_state["blocked_op_ids"])
     for batch_id in blocked_batches:
-        blocked.update(graph_op_id(op) for op in ops_by_batch.get(batch_id, []))
+        blocked.update(op.id for op in ops_by_batch.get(batch_id, []))
     if expected.issubset(finished.union(blocked)):
         return
     remaining = sorted(expected.difference(finished).difference(blocked))
     raise ValidationError(f"图 ready 队列没有可排工序，但仍有未完成工序：{remaining}", field="graph_ready_context")
-
-
-def _block_graph_operation(graph_state: Dict[str, Any], op_id: int) -> Tuple[List[int], List[int]]:
-    """阻塞失败工序及其尚未完成的待排后继，返回 (newly_blocked, fixed_conflicts)。
-
-    - newly_blocked：本次新阻塞的待排工序（含失败工序自身）。
-    - fixed_conflicts：传播撞到的"输入即固定"后继——即后道已报工（PROCESSING/
-      PAUSED 进固定集）但前道排产失败的现场乱序报工形态（审计 A02）。这是
-      可发生的生产输入，不再整趟 ValidationError 中止：固定工序现实中已执行，
-      无需阻塞也不经它继续传播，由调用方按批失败留痕降级处理。
-    - 传播撞到"本趟运行内已完成"的待排工序仍是内部不变量破坏（ready 队列要求
-      前驱先完成，失败工序的后继不可能已完成），保持 fail-loud。
-    """
-    blocked = graph_state["blocked_op_ids"]
-    successors_by_op_id = graph_state["successor_op_ids_by_op_id"]
-    completed_or_fixed = graph_state["completed_or_fixed_op_ids"]
-    input_fixed_op_ids = graph_state["input_fixed_op_ids"]
-    newly_blocked: List[int] = []
-    fixed_conflicts: List[int] = []
-    stack = [op_id]
-    while stack:
-        current = stack.pop()
-        if current in blocked:
-            continue
-        if current in completed_or_fixed:
-            if current in input_fixed_op_ids:
-                fixed_conflicts.append(current)
-                continue
-            raise ValidationError(
-                f"图 ready 队列阻塞状态和固定/已完成工序冲突：{current}",
-                field="graph_ready_context",
-            )
-        blocked.add(current)
-        graph_state["ready_op_ids"].discard(current)
-        newly_blocked.append(current)
-        stack.extend(successors_by_op_id.get(current) or set())
-    return newly_blocked, sorted(set(fixed_conflicts))
 
 
 def mark_graph_operation_completed(graph_state: Dict[str, Any], op_id: int) -> None:
@@ -431,111 +395,3 @@ def mark_graph_operation_completed(graph_state: Dict[str, Any], op_id: int) -> N
         graph_state["remaining_predecessor_count_by_op_id"][successor_id] = remaining
         if remaining == 0:
             graph_state["ready_op_ids"].add(successor_id)
-
-
-def _graph_batch_unreachable_ops(graph_state: Dict[str, Any], batch_id: str, ops_by_batch: Dict[str, List[Any]]) -> List[Any]:
-    """图模式失败簿记（审计 A04）：按图状态推导该批内"尚未完成且不再可达"的待排工序。
-
-    替代旧的按列表位置切片（operations[idx0:]）——批内列表按 (seq,id) 排、图链按
-    (seq,op_code,node_id) 排，同批同 seq（多 piece 合法形态）时两套 tie-break 错位
-    会造成失败工序双记、已成功工序被记跳过、真被阻塞工序零留痕（scheduled+failed
-    可超 total）。必须在 _block_graph_operation 之后调用：失败工序与图传播新阻塞的
-    工序都已进入 blocked_op_ids，这里只补"图传播覆盖不到、但因批级阻塞不再可达"
-    的剩余工序（例如固定后继下游的待排工序）。
-    """
-    completed_or_fixed = graph_state["completed_or_fixed_op_ids"]
-    blocked_op_ids = graph_state["blocked_op_ids"]
-    remaining: List[Any] = []
-    for op in ops_by_batch[batch_id]:
-        op_id = graph_op_id(op)
-        if op_id in completed_or_fixed or op_id in blocked_op_ids:
-            continue
-        remaining.append(op)
-    return remaining
-
-
-def apply_graph_failure_bookkeeping(
-    state: Any,
-    *,
-    graph_state: Dict[str, Any],
-    batch_id: str,
-    failed_op_id: int,
-    ops_by_batch: Dict[str, List[Any]],
-) -> Tuple[List[Any], int]:
-    """派工失败后的图侧记账：阻塞传播 + 图状态推导被牵连集合 + 结构化留痕。
-
-    返回 (skipped_ops, extra_failed_count)：
-    - skipped_ops：批级阻塞后不再可达的剩余工序，由调用方按
-      skipped_after_batch_failure 记明细并计数；
-    - extra_failed_count：图传播新阻塞工序（graph_blocked_after_failure 明细）的
-      追加失败计数。失败工序自身由调用方计 1，不在两者之内，保证
-      scheduled + failed <= total 且明细与真实一致（审计 A04）。
-    """
-    newly_blocked_op_ids, fixed_conflict_op_ids = _block_graph_operation(graph_state, failed_op_id)
-    skipped_ops = _graph_batch_unreachable_ops(graph_state, batch_id, ops_by_batch)
-    # Skipped operations never complete either, so their successors outside the batch are blocked too.
-    fixed_conflicts = set(fixed_conflict_op_ids)
-    for skipped_op in skipped_ops:
-        skipped_blocked, skipped_conflicts = _block_graph_operation(graph_state, graph_op_id(skipped_op))
-        newly_blocked_op_ids.extend(skipped_blocked)
-        fixed_conflicts.update(skipped_conflicts)
-    fixed_conflict_op_ids = sorted(fixed_conflicts)
-    extra_failed_count = _record_graph_blocked_operations(
-        state,
-        graph_state=graph_state,
-        failed_op_id=failed_op_id,
-        newly_blocked_op_ids=newly_blocked_op_ids,
-        already_counted_op_ids={failed_op_id}.union(graph_op_id(op) for op in skipped_ops),
-    )
-    if fixed_conflict_op_ids:
-        _record_graph_fixed_order_conflict(
-            state,
-            graph_state=graph_state,
-            batch_id=batch_id,
-            failed_op_id=failed_op_id,
-            fixed_conflict_op_ids=fixed_conflict_op_ids,
-        )
-    return skipped_ops, extra_failed_count
-
-
-def _record_graph_fixed_order_conflict(
-    state: Any,
-    *,
-    graph_state: Dict[str, Any],
-    batch_id: str,
-    failed_op_id: int,
-    fixed_conflict_op_ids: List[int],
-) -> None:
-    # 审计 A02：后道工序已报工/冻结（输入即固定）但前道排产失败——数据顺序异常。
-    # 按批失败留痕（不中止整趟）：给失败工序追加一条结构化明细并写清冲突的固定
-    # 后继 op_id，业务侧据此核对报工顺序；渲染文案见
-    # core/models/scheduler_public_errors._structured_failure_message。
-    _failed_batch_id, failed_op = graph_state["op_by_id"].get(failed_op_id, ("", None))
-    if failed_op is None:
-        return
-    state.record_graph_fixed_order_conflict(
-        failed_op,
-        batch_id,
-        fixed_successor_op_ids=fixed_conflict_op_ids,
-    )
-
-
-def _record_graph_blocked_operations(
-    state: Any,
-    *,
-    graph_state: Dict[str, Any],
-    failed_op_id: int,
-    newly_blocked_op_ids: List[int],
-    already_counted_op_ids: set,
-) -> int:
-    extra_failed_count = 0
-    _failed_batch_id, failed_op = graph_state["op_by_id"].get(failed_op_id, ("", None))
-    for blocked_op_id in sorted(newly_blocked_op_ids):
-        if blocked_op_id == failed_op_id or blocked_op_id not in graph_state["op_by_id"]:
-            continue
-        if blocked_op_id in already_counted_op_ids:
-            continue
-        blocked_batch_id, blocked_op = graph_state["op_by_id"][blocked_op_id]
-        state.record_graph_blocked_after_failure(blocked_op, blocked_batch_id, failed_op=failed_op)
-        extra_failed_count += 1
-    return extra_failed_count

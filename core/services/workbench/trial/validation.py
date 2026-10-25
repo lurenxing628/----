@@ -1,7 +1,6 @@
 """Live constraints over saved original work, using the unique execution ledger."""
 
 from datetime import datetime
-from types import SimpleNamespace
 
 from core.errors import AppError
 from core.models.content import content_text, same
@@ -10,13 +9,14 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_trial import issue, reject, validation
 from core.services.personnel.operator_qualification import OperatorQualificationError
+from core.services.workbench.facts.stored_algo_inputs import stored_operation
 from core.services.workbench.run.input_runtime import HeldArrangements
 from core.services.workbench.run.piece_adoption_trial import trial_piece_issues
 
 from .arrangements import same_arrangement
 from .calendar import calendar_engine, estimate, new_slot_effort
 from .constraints import interval, relation_issues, resource_issues
-from .execution_anchors import anchor_issue, execution_anchors
+from .execution_anchors import resolve_execution_anchors
 from .facts import facts_unchanged
 from .materials import adoption_settings, hold_settings, material_issues
 from .protection import TrialProtection, frozen_issue, frozen_note, keeps_frozen, prepare_frozen_arrangements
@@ -27,26 +27,17 @@ class TrialValidator:
         self.conn, self.admission, self.rows, self.live = conn, admission, rows, live
         self.tables = live["facts"]["tables"]
         self.checks = live["preflight_facts"].checks()
-        self.calendar_issue = None
-        try:
-            self.engine = calendar_engine(self.tables)
-        except (AppError, ValueError, TypeError, OverflowError):
-            self.engine = None
-            self.calendar_issue = issue("calendar_unproven", "日历数据无效，请核对工作日历。")
+        self.engine = calendar_engine(self.tables)
+        self.calendar_issue = None if self.engine is not None else issue(
+            "calendar_unproven", "日历数据无效，请核对工作日历。")
         self.qualification = live["resource_facts"]
         self.qualification_cache = {}
         self._protected_state = None
         self._hold_key = None
+        # 建草稿时已在同一份现场资料上算过报工固定安排；读取已有草稿时这里现算。
         prepared_anchors = live.get("execution_anchors")
-        if prepared_anchors is not None:
-            self.anchors, self.anchor_error = prepared_anchors
-        else:
-            try:
-                self.anchors = execution_anchors(conn, rows, live)
-                self.anchor_error = None
-            except (AppError, ValueError, KeyError) as exc:
-                self.anchors = {}
-                self.anchor_error = anchor_issue(exc)
+        self.anchors, self.anchor_error = (prepared_anchors if prepared_anchors is not None
+                                           else resolve_execution_anchors(conn, rows, live))
         self.downtime = {}
         for row in self.tables["MachineDowntimes"]:
             self.downtime.setdefault(row["machine_id"], []).append(row)
@@ -67,10 +58,10 @@ class TrialValidator:
         self._hold_key = hold_key
         self.frozen, self.frozen_issue = {}, None
         try:
-            self.held = prepare_frozen_arrangements(self.conn, self.admission, self.rows, self.live,
+            self.held = prepare_frozen_arrangements(self.admission, self.rows, self.live,
                                                    settings=self.settings)
         except (AppError, CandidateRunInputError, ValueError):
-            self.held = HeldArrangements(set(), [], [], {})
+            self.held = HeldArrangements(set(), [], {})
             self.frozen_issue = issue("freeze_window_unavailable", "正式采用要原样保留来源排产不重排时段里的原安排，"
                                       "但正式计划里这段时间的安排读不出来或者对不上，不能正式采用。请联系维护人员核对正式计划。")
         else:
@@ -195,7 +186,7 @@ class TrialValidator:
         key = op["operator_id"], op["machine_id"], op["op_type_id"]
         if key not in self.qualification_cache:
             try:
-                self.qualification.validate_fixed(self.conn, [SimpleNamespace(**op)])
+                self.qualification.validate_fixed(self.conn, [stored_operation(op)])
                 result = None
             except OperatorQualificationError:
                 result = issue("operator_qualification_invalid", "人员工种资格或设备操作授权不符合真实登记。")

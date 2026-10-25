@@ -4,9 +4,10 @@ import itertools
 
 import pytest
 
-from core.models.schedule_config_runtime import default_snapshot_values
+from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.models.schedule_config_runtime_snapshot import snapshot_from_values
 from core.services.scheduler.config.config_field_spec import choices_for
+from core.services.scheduler.run import schedule_candidate_runner
 from core.services.scheduler.run.optimizer.multi_start import _iter_multi_start_specs
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
 from core.services.scheduler.run.schedule_candidate_summary import (
@@ -23,10 +24,10 @@ def _compare(scenario, objective="min_overdue"):
     config = {"seed": 0, "time_budget_seconds": 2, "run_time_budget_seconds": 20.0}
     ticks = itertools.count(0.0, 0.01)
     data = fixture_data(scenario)
-    with case_environment(data, objective, config) as schedule_input:
+    with case_environment(data, objective, config) as schedule_input, pytest.MonkeyPatch.context() as runner_patch:
+        runner_patch.setattr(schedule_candidate_runner, "monotonic", lambda: next(ticks))
         return run_candidate_comparison(
-            schedule_input=schedule_input, clock=lambda: next(ticks), run_time_budget_seconds=config["run_time_budget_seconds"],
-            strict_mode=True,
+            schedule_input=schedule_input, run_time_budget_seconds=config["run_time_budget_seconds"], strict_mode=True,
         )
 
 

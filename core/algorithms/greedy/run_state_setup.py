@@ -10,14 +10,17 @@ from core.algorithm_runtime.downtime import occupy_resource
 from core.algorithm_runtime.resource_quality import MachineTypeState
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.errors import ValidationError
+from core.models.batch import Batch
 
 from .dispatch.sgs_checkpoint import CHECKPOINT_FIELD, DecodeCheckpoint
+from .schedule_params import ScheduleParams
+from .schedule_preparation import NativeSchedulePreparation
 
 
 def prepare_run_state(
     *,
-    prepared_inputs: Any,
-    params: Any,
+    prepared_inputs: NativeSchedulePreparation,
+    params: ScheduleParams,
     warnings: List[str],
     algo_stats: Dict[str, Any],
     readiness_gate_enabled: bool,
@@ -46,10 +49,11 @@ def prepare_run_state(
     return state
 
 
-def _initialize_ready_progress(*, state: ScheduleRunState, batches: Dict[str, Any], strict_mode: bool) -> None:
+def _initialize_ready_progress(*, state: ScheduleRunState, batches: Dict[str, Batch], strict_mode: bool) -> None:
+    # 键来自 build_normalized_batches_map，已保证非空。
     for batch_id, batch in batches.items():
-        ready_date = parse_ready_date_for_sort(getattr(batch, "ready_date", None), strict_mode=strict_mode)
-        if batch_id and ready_date is not None:
+        ready_date = parse_ready_date_for_sort(batch.ready_date, strict_mode=strict_mode)
+        if ready_date is not None:
             ready_start = datetime(ready_date.year, ready_date.month, ready_date.day, 0, 0, 0)
             # 齐套只设时间下界；日历校验留给实际资源排槽，外协仍按自然日推进。
             state.advance_batch(batch_id, ready_start)
@@ -62,9 +66,6 @@ def resume_run_state(checkpoint: DecodeCheckpoint, *, signature: Tuple[Any, ...]
     The checkpoint's warnings replace the ones collected so far: they were produced by the same
     deterministic parameter/batch/seed normalisation of an identical input (the signature proves it).
     """
-    if not isinstance(checkpoint, DecodeCheckpoint):
-        raise ValidationError("断点续排需要一个解码断点对象。", field=CHECKPOINT_FIELD,
-                              details={"reason": "decode_checkpoint_bad_object"})
     if dispatch_mode_key != "sgs" or graph_ready_context is None:
         raise ValidationError("断点续排只支持图模式下的 SGS 派工。", field=CHECKPOINT_FIELD,
                               details={"reason": "decode_checkpoint_requires_graph_mode"})

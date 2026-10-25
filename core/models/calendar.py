@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Dict, Optional, Tuple
 
-from ._helpers import RowLike, get, parse_float_or_default
+from ._helpers import RowLike, parse_float_or_default
 from .calendar_periods import decode_periods
 from .enums import CalendarDayType, YesNo
 
@@ -33,31 +33,29 @@ def _validate_calendar_numbers(*, shift_hours: float, efficiency: float, scope: 
 
 
 def _parse_common_calendar_row(row: RowLike, scope: str) -> Dict[str, Any]:
-    raw_shift_hours = get(row, "shift_hours")
-    raw_efficiency = get(row, "efficiency")
-    shift_hours = parse_float_or_default(raw_shift_hours, 8.0, field="shift_hours")
-    efficiency = parse_float_or_default(raw_efficiency, 1.0, field="efficiency")
+    shift_hours = parse_float_or_default(row["shift_hours"], 8.0, field="shift_hours")
+    efficiency = parse_float_or_default(row["efficiency"], 1.0, field="efficiency")
     shift_hours, efficiency = _validate_calendar_numbers(
         shift_hours=shift_hours,
         efficiency=efficiency,
         scope=scope,
     )
-    shift_start = get(row, "shift_start")
-    shift_end = get(row, "shift_end")
+    shift_start = row["shift_start"]
+    shift_end = row["shift_end"]
     return {
-        "date": str(get(row, "date") or ""),
+        "date": str(row["date"] or ""),
         "day_type": (
-            str(get(row, "day_type") or CalendarDayType.WORKDAY.value).strip().lower()
+            str(row["day_type"] or CalendarDayType.WORKDAY.value).strip().lower()
             or CalendarDayType.WORKDAY.value
         ),
         "shift_start": str(shift_start) if shift_start is not None and shift_start != "" else None,
         "shift_end": str(shift_end) if shift_end is not None and shift_end != "" else None,
         "shift_hours": shift_hours,
         "efficiency": efficiency,
-        "allow_normal": (str(get(row, "allow_normal") or YesNo.YES.value).strip().lower() or YesNo.YES.value),
-        "allow_urgent": (str(get(row, "allow_urgent") or YesNo.YES.value).strip().lower() or YesNo.YES.value),
-        "remark": get(row, "remark"),
-        "periods_json": _decode_and_encode_periods(get(row, "periods_json")),
+        "allow_normal": (str(row["allow_normal"] or YesNo.YES.value).strip().lower() or YesNo.YES.value),
+        "allow_urgent": (str(row["allow_urgent"] or YesNo.YES.value).strip().lower() or YesNo.YES.value),
+        "remark": row["remark"],
+        "periods_json": _decode_and_encode_periods(row["periods_json"]),
     }
 
 
@@ -124,7 +122,7 @@ class OperatorCalendar:
     @classmethod
     def from_row(cls, row: RowLike) -> OperatorCalendar:
         return cls(
-            operator_id=str(get(row, "operator_id") or ""),
+            operator_id=str(row["operator_id"] or ""),
             **_parse_common_calendar_row(row, "OperatorCalendar"),
         )
 

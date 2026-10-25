@@ -2,10 +2,8 @@
 
 from copy import deepcopy
 
-from core.services.workbench.history.conditions import (
-    compare_history_conditions,
-    prepare_history_condition_source,
-)
+from core.services.workbench.history.conditions import prepare_history_condition_source
+from tests.workbench.decision_history_support import compare_conditions
 
 
 def test_saved_primary_order_and_native_budget_keep_their_original_sources():
@@ -41,7 +39,7 @@ def test_saved_primary_order_and_native_budget_keep_their_original_sources():
 
     shorter = deepcopy(native)
     shorter["parsed_summary"]["algo"]["candidate_comparison"]["run_time_budget_seconds"] = 10
-    compared = compare_history_conditions(shorter, native, {"start": "2026-10-15T08:00:00", "end": "2026-10-15T16:00:00"})
+    compared = compare_conditions(shorter, native, {"start": "2026-10-15T08:00:00", "end": "2026-10-15T16:00:00"})
     assert compared["conditions"]["state"] == "unknown"
     assert compared["configurations"]["state"] == "different"
     budget = next(row for row in compared["configurations"]["rows"] if row["field"] == "time_budget_seconds")

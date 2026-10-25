@@ -64,9 +64,9 @@ def decode_periods(raw):
     return normalize_periods(value)
 
 
-def encode_periods(value, *, normalized=False):
-    items = value if normalized else normalize_periods(value)
-    return None if items is None else json.dumps(items, ensure_ascii=False, separators=(",", ":"))
+def encode_periods(periods):
+    """Stored text for periods already produced by ``normalize_periods``; None stays legacy NULL."""
+    return None if periods is None else json.dumps(periods, ensure_ascii=False, separators=(",", ":"))
 
 
 def period_windows(day, periods):

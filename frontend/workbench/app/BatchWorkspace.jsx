@@ -3,7 +3,6 @@
   const B = window.APSBatchContract, C = window.APSResourceContract, S = window.APSResourceSession;
   const { Button, Modal, ErrorBox } = window.ResourceControls, { Field } = window.BatchControls;
   const defaults = { query: '', page: 1, size: 20, sort: 'business_code', direction: 'asc', column_filters: {} };
-  const emptyAdapter = {};
   const emptyBulk = { priority: '', due_date: '', remark: '' };
   const scopeKeys = ['query', 'page', 'size', 'sort', 'direction', 'column_filters', 'status', 'ready_status', 'focus', 'batch_ids'];
   const sourceKeys = ['plan_ref', 'batch_ref', 'task_ref', 'operation_ref', 'return_to'];
@@ -51,7 +50,8 @@
     const scope = readScope(view ? view.scope : { ...defaults, focus: context.focus, batch_ids: context.batchIds });
     const selected = view && view.selected_refs !== undefined ? view.selected_refs : [];
     if (!Array.isArray(selected) || !selected.every(B.ref) || new Set(selected).size !== selected.length) throw C.failure('上次勾选的批次已失效' + fallbackList);
-    const opened = view && view.entity_ref !== undefined ? view.entity_ref : context.entity_ref || context.batch_ref || null;
+    const located = context.entity_ref !== undefined ? context.entity_ref : context.batch_ref !== undefined ? context.batch_ref : null;
+    const opened = view && view.entity_ref !== undefined ? view.entity_ref : located;
     if (opened !== null && !B.ref(opened)) throw C.failure('上次打开的批次已失效' + fallbackList);
     if (view && context.entity_ref && context.entity_ref !== opened) throw C.failure('批次导航与恢复详情不一致。');
     const sort = view && view.sort_state !== undefined ? view.sort_state : null;
@@ -60,7 +60,7 @@
     const origin = sourceContext(view ? view.source_context : Object.fromEntries(sourceKeys.filter(key => C.own(context, key)).map(key => [key, context[key]])), opened);
     return { scope, selected, opened, sort, sourceContext: origin };
   }
-  function BatchWorkspace({ adapter = emptyAdapter, onCommitted, disabled = false, initialContext, onNav }) {
+  function BatchWorkspace({ adapter, onCommitted, disabled = false, initialContext, onNav }) {
     const [initial] = React.useState(() => { try { return readContext(initialContext); } catch (error) { return { ...readContext(null), error }; } });
     const command = S.useCommand(adapter), alive = React.useRef(true), serial = React.useRef(0);
     const [deferred, setDeferred] = React.useState(() => !!initialContext && command.phase !== 'idle');
@@ -73,7 +73,6 @@
       locked: !!dialog && dialog.type === 'bulk' && busy, message: '批量修改条件尚未确认，离开会放弃本次修改。' });
     React.useEffect(() => { alive.current = true; return () => { alive.current = false; serial.current++; }; }, [adapter]);
     const list = S.useQuery(async signal => {
-      if (typeof adapter.list !== 'function') throw C.failure('dependency not wired: window.APSBatchAPI.list');
       return B.list(await adapter.list('batch', scope, signal), scope);
     }, [adapter, scope, revision], !initial.error);
     const data = list.result && list.result.data, snapshot = list.result && list.result.meta.snapshot_ref;
@@ -89,7 +88,8 @@
     function close() { if (command.locked || !command.reset()) return; setDialog(null); setBulk(emptyBulk); setError(null); }
     async function closeBulk() { if (!busy && await window.WorkbenchGuards.confirmLeave({ owner: bulkGuard })) close(); }
     function committed(receipt) {
-      const deleted = receipt.data.deleted_refs || [];
+      // 只有删除类回执（批量删除、文件导入）带 deleted_refs。
+      const deleted = receipt.data.deleted_refs === undefined ? [] : receipt.data.deleted_refs;
       if (deleted.length) {
         const deletedSet = new Set(deleted);
         setSelected(current => current.filter(ref => !deletedSet.has(ref)));
@@ -120,7 +120,7 @@
       setSort(next); filter(next ? { sort: next.key, direction: next.direction } : { sort: 'business_code', direction: 'asc' });
     }
     // 没有来源入口时是从侧栏直接进来的，按钮是去下一步而不是返回。
-    const returnSource = initial.sourceContext && initial.sourceContext.return_to || null;
+    const returnSource = initial.sourceContext !== null && initial.sourceContext.return_to !== undefined ? initial.sourceContext.return_to : null;
     const returnTarget = returnSource || 'run';
     const returnView = typeof returnTarget === 'string' ? returnTarget : returnTarget.view;
     const openEditor = entity => { command.reset(); setDialog({ type: 'base', entity }); };
@@ -139,8 +139,8 @@
           <label className="search"><window.ResourceControls.Icon name="search" /><input type="search" aria-label="搜索批次号、图号、零件名" placeholder="搜索批次号、图号、零件名…" value={query} disabled={blocked} onChange={event => setQuery(event.target.value)} /></label>
           <Button type="submit" icon="search" disabled={blocked}>搜索</Button><Button icon="filter" disabled={blocked} onClick={() => setDialog({ type: 'filters' })}>筛选</Button>
           <Button icon="refresh-cw" aria-label="刷新批次列表" disabled={blocked} onClick={() => filter({})} /><span className="tb-spacer" />
-          <Button transfer="import" disabled={blocked || !snapshot} reason={typeof adapter.importPreview !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={() => { command.reset(); setDialog({ type: 'files', mode: 'import', scope, snapshot }); }}>批量导入</Button>
-          <Button transfer="export" disabled={blocked || !snapshot} reason={typeof adapter.exportPreview !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={() => setDialog({ type: 'files', mode: 'export', scope, snapshot })}>批量导出</Button>
+          <Button transfer="import" disabled={blocked || !snapshot} onClick={() => { command.reset(); setDialog({ type: 'files', mode: 'import', scope, snapshot }); }}>批量导入</Button>
+          <Button transfer="export" disabled={blocked || !snapshot} onClick={() => setDialog({ type: 'files', mode: 'export', scope, snapshot })}>批量导出</Button>
           <Button icon="plus" className="btn primary" disabled={blocked || !data} onClick={() => openEditor(null)}>新增批次</Button>
         </form>
         <div className="toolbar">{[['status', B.statuses], ['ready_status', B.ready]].map(([key]) => scope[key] && <Button key={key} icon="x" disabled={blocked} onClick={() => filter({ [key]: undefined })}>{B.label(key, scope[key])}</Button>)}
@@ -169,7 +169,7 @@
         const filters = { ...scope.column_filters }; if (values === undefined) delete filters[dialog.field]; else filters[dialog.field] = values; filter({ column_filters: filters }); close();
       }} />}
       {dialog && dialog.type === 'filters' && <Modal title="筛选批次" icon="filter" onClose={close} footer={<Button onClick={close}>完成</Button>}><div className="modal-b form batch-fields">
-        {[['status', '状态', B.statuses], ['ready_status', '齐套显示', B.ready]].map(([key, label, options]) => <Field label={label} key={key}><select value={scope[key] || ''} onChange={event => filter({ [key]: event.target.value || undefined })}>
+        {[['status', '状态', B.statuses], ['ready_status', '齐套显示', B.ready]].map(([key, label, options]) => <Field label={label} key={key}><select value={scope[key] == null ? '' : scope[key]} onChange={event => filter({ [key]: event.target.value === '' ? undefined : event.target.value })}>
           <option value="">全部</option>{options.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></Field>)}
       </div></Modal>}
       {dialog && dialog.type === 'bulk' && <Modal title="批量修改批次" icon="square-pen" guardOwner={bulkGuard} locked={busy} onClose={close} footer={<><Button onClick={closeBulk} disabled={busy}>取消</Button>

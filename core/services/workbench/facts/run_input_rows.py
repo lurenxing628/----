@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import fields, replace
 from typing import NoReturn
 
+from core.algorithm_contracts.value_domains import INTERNAL, OPERATION_SOURCES
 from core.models.batch import Batch
 from core.models.batch_operation import BatchOperation
 from core.models.workbench_preflight import issue
@@ -52,9 +53,9 @@ def operation_model(row):
         _required_text(row[key], key)
     for key in ("piece_id", "machine_id", "operator_id", "supplier_id"):
         _optional_text(row[key], key)
-    if row["status"] not in OPERATION_STATES or row["source"] not in ("internal", "external"):
+    if row["status"] not in OPERATION_STATES or row["source"] not in OPERATION_SOURCES:
         fail("invalid_operation_state", "有工序的状态或来源资料不完整，这次排产没有开始。请到批次管理核对。", op_id=row["id"])
-    if row["source"] == "internal":
+    if row["source"] == INTERNAL:
         for key in ("setup_hours", "unit_hours"):
             if not number(row[key]):
                 fail("hours_missing", "工序工时缺失，本次未开始排产。请到工艺资料补填。", op_id=row["id"], field=key)

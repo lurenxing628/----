@@ -7,10 +7,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.errors import ValidationError
 from core.models.enums import YesNo
-from core.models.scheduler_degradation_messages import (
-    FREEZE_WINDOW_DEGRADED_MESSAGE,
-    FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE,
-)
+from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
+from core.models.scheduler_degradation_messages import FREEZE_WINDOW_DEGRADED_MESSAGE
 from core.shared.boolean_normalize import to_yes_no
 from core.shared.local_datetime import format_local_datetime as fmt_dt
 
@@ -26,16 +24,12 @@ from .freeze_window_seed_rows import (
 from .freeze_window_seed_rows import (
     cache_seed_for_prefix as _cache_seed_for_prefix,
 )
-from .freeze_window_seed_rows import (
-    discard_seed_cache as _discard_seed_cache,
-)
 
 _FREEZE_DEGRADATION_CODE = "freeze_seed_unavailable"
 _FREEZE_CONFIG_FIELDS = {"freeze_window_enabled", "freeze_window_days"}
 _FREEZE_DISABLED_CONFIG_DISABLED = "config_disabled"
 _FREEZE_DISABLED_NO_DAYS = "no_days"
 _FREEZE_DISABLED_NO_PREVIOUS_VERSION = "no_previous_version"
-_FREEZE_DISABLED_CONFIG_DEGRADED = "config_degraded"
 _FREEZE_DISABLED_NO_RESCHEDULABLE_OPERATIONS = "no_reschedulable_operations"
 _FREEZE_DISABLED_NO_PREVIOUS_SCHEDULE_ROWS = "no_previous_schedule_rows"
 _FREEZE_DISABLED_NO_FREEZABLE_PREFIX = "no_freezable_prefix"
@@ -60,29 +54,19 @@ class _FreezeSeedScope:
     anchor_end: Optional[datetime] = None
 
 
-def _init_freeze_meta(meta: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    out = meta if isinstance(meta, dict) else {}
-    out.setdefault("freeze_state", "disabled")
-    out.setdefault("freeze_applied", False)
-    out.setdefault("freeze_application_status", None)
-    out.setdefault("freeze_degradation_codes", [])
-    out.setdefault("freeze_enabled", False)
-    out.setdefault("freeze_days", 0)
-    out.setdefault("freeze_degradation_reason", None)
-    out.setdefault("freeze_degradation_count", 0)
-    out.setdefault("freeze_disabled_reason", None)
-    return out
+def _init_freeze_meta(meta: Dict[str, Any]) -> Dict[str, Any]:
+    meta.setdefault("freeze_state", "disabled")
+    meta.setdefault("freeze_applied", False)
+    meta.setdefault("freeze_enabled", False)
+    meta.setdefault("freeze_days", 0)
+    meta.setdefault("freeze_disabled_reason", None)
+    return meta
 
 
-def _freeze_config_degraded(cfg: Any) -> bool:
-    for event in list(getattr(cfg, "degradation_events", ()) or ()):
-        if not isinstance(event, dict):
-            continue
-        field = str(event.get("field") or "").strip()
-        code = str(event.get("code") or "").strip()
-        if field in _FREEZE_CONFIG_FIELDS or code == _FREEZE_DEGRADATION_CODE:
-            return True
-    return False
+def _freeze_config_degraded(cfg: ScheduleConfigSnapshot) -> bool:
+    # 配置快照的降级事件统一由 degradation_events_to_dicts 生成：field 为字段名或 None，code 为规范代码。
+    return any(event["field"] in _FREEZE_CONFIG_FIELDS or event["code"] == _FREEZE_DEGRADATION_CODE
+               for event in cfg.degradation_events)
 
 
 def _set_freeze_disabled(meta: Dict[str, Any], reason: str) -> None:
@@ -90,23 +74,14 @@ def _set_freeze_disabled(meta: Dict[str, Any], reason: str) -> None:
     meta["freeze_disabled_reason"] = reason
 
 
-def _freeze_window_days(
-    cfg: Any, prev_version: int, *, strict_mode: bool, meta: Dict[str, Any], warnings: List[str]
-) -> int:
-    cfg_degraded = _freeze_config_degraded(cfg)
+def _freeze_window_days(cfg: Any, prev_version: int, *, meta: Dict[str, Any]) -> int:
+    if _freeze_config_degraded(cfg):
+        raise _freeze_unavailable()
     enabled = to_yes_no(cfg.freeze_window_enabled, default=YesNo.NO.value) == YesNo.YES.value
     meta["freeze_enabled"] = bool(enabled)
     days = int(cfg.freeze_window_days or 0)
     meta["freeze_days"] = int(days)
 
-    if cfg_degraded:
-        _record_freeze_degradation(
-            meta,
-            warnings,
-            strict_mode=strict_mode,
-            disabled_reason=_FREEZE_DISABLED_CONFIG_DEGRADED,
-        )
-        return 0
     if not enabled:
         _set_freeze_disabled(meta, _FREEZE_DISABLED_CONFIG_DISABLED)
         meta["freeze_days"] = 0
@@ -120,43 +95,13 @@ def _freeze_window_days(
     return int(days)
 
 
-def _record_freeze_degradation(
-    meta: Dict[str, Any],
-    warnings: List[str],
-    *,
-    strict_mode: bool,
-    disabled_reason: Optional[str] = None,
-) -> None:
-    meta["freeze_state"] = "degraded"
-    meta["freeze_disabled_reason"] = disabled_reason
-    codes = [str(code).strip() for code in list(meta.get("freeze_degradation_codes") or []) if str(code).strip()]
-    if _FREEZE_DEGRADATION_CODE not in codes:
-        codes.append(_FREEZE_DEGRADATION_CODE)
-    meta["freeze_degradation_codes"] = codes
-    meta["freeze_degradation_reason"] = FREEZE_WINDOW_DEGRADED_MESSAGE
-    meta["freeze_degradation_count"] = int(meta.get("freeze_degradation_count") or 0) + 1
-    if strict_mode:
-        raise ValidationError(FREEZE_WINDOW_DEGRADED_MESSAGE, field="freeze_window")
-    warnings.append(f"[freeze_window] {FREEZE_WINDOW_DEGRADED_MESSAGE}")
+def _freeze_unavailable() -> ValidationError:
+    # 上一版计划的存储数据或冻结配置读不出来：整次拒绝，不降级成部分冻结。
+    return ValidationError(FREEZE_WINDOW_DEGRADED_MESSAGE, field="freeze_window")
 
 
-def _finalize_freeze_application_status(meta: Dict[str, Any]) -> None:
-    if str(meta.get("freeze_state") or "").strip().lower() != "degraded":
-        if bool(meta.get("freeze_applied")):
-            meta["freeze_application_status"] = "applied"
-        else:
-            meta["freeze_application_status"] = None
-        return
-
-    if bool(meta.get("freeze_applied")):
-        meta["freeze_application_status"] = "partially_applied"
-        meta["freeze_degradation_public_code"] = "freeze_window_partially_applied"
-        meta["freeze_degradation_reason"] = FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE
-        return
-
-    meta["freeze_application_status"] = "unapplied"
-    meta["freeze_degradation_public_code"] = "freeze_window_unapplied"
-    meta["freeze_degradation_reason"] = FREEZE_WINDOW_DEGRADED_MESSAGE
+def _set_freeze_applied(meta: Dict[str, Any], frozen_op_ids: Set[int]) -> None:
+    meta["freeze_applied"] = bool(frozen_op_ids)
 
 
 def _load_schedule_map(
@@ -196,13 +141,9 @@ def _load_schedule_map(
     )
 
 
-def _empty_freeze_seed_result(
-    freeze_meta: Dict[str, Any],
-    warnings: List[str],
-) -> Tuple[Set[int], List[Dict[str, Any]], List[str]]:
-    freeze_meta["freeze_applied"] = False
-    _finalize_freeze_application_status(freeze_meta)
-    return set(), [], warnings
+def _empty_freeze_seed_result(freeze_meta: Dict[str, Any]) -> Tuple[Set[int], List[Dict[str, Any]]]:
+    _set_freeze_applied(freeze_meta, set())
+    return set(), []
 
 
 def _hold_window_days(hold_window: Tuple[datetime, datetime], start_dt: datetime, prev_version: int,
@@ -226,28 +167,18 @@ def _prepare_freeze_seed_scope(
     cfg: Any,
     prev_version: int,
     start_dt: datetime,
-    operations: List[Any],
-    reschedulable_operations: Optional[List[Any]],
-    strict_mode: bool,
+    seed_operations: List[Any],
     freeze_meta: Dict[str, Any],
-    warnings: List[str],
-    hold_window: Optional[Tuple[datetime, datetime]] = None,
+    hold_window: Optional[Tuple[datetime, datetime]],
 ) -> Optional[_FreezeSeedScope]:
     if hold_window is not None:
         freeze_days = _hold_window_days(hold_window, start_dt, prev_version, freeze_meta)
     else:
-        freeze_days = _freeze_window_days(
-            cfg,
-            prev_version,
-            strict_mode=bool(strict_mode),
-            meta=freeze_meta,
-            warnings=warnings,
-        )
+        freeze_days = _freeze_window_days(cfg, prev_version, meta=freeze_meta)
     if freeze_days <= 0:
         return None
 
     freeze_end = hold_window[1] if hold_window is not None else start_dt + timedelta(days=freeze_days)
-    seed_operations = reschedulable_operations if reschedulable_operations is not None else operations
     seed_operations_by_batch = group_seed_operations_by_batch(seed_operations)
     op_by_id: Dict[int, Any] = {int(op.id): op for op in seed_operations if op and op.id}
     op_ids_all = sorted(op_by_id)
@@ -267,13 +198,10 @@ def _prepare_freeze_seed_scope(
 
 
 def _load_previous_schedule_for_freeze(
-    svc,
     *,
     scope: _FreezeSeedScope,
     prev_version: int,
-    strict_mode: bool,
     freeze_meta: Dict[str, Any],
-    warnings: List[str],
     schedule_rows_reader: Any,
 ) -> Optional[_LoadedScheduleMapOutcome]:
     try:
@@ -284,25 +212,11 @@ def _load_previous_schedule_for_freeze(
             freeze_end_str=scope.freeze_end_str,
             schedule_rows_reader=schedule_rows_reader,
         )
-    except Exception:
-        logger = svc.logger
-        if logger is not None:
-            logger.exception("冻结窗口加载上一版本排程失败")
-        _record_freeze_degradation(
-            freeze_meta,
-            warnings,
-            strict_mode=bool(strict_mode),
-        )
-        return None
+    except Exception as exc:
+        raise _freeze_unavailable() from exc
 
     if load_outcome.invalid_row_count > 0:
-        _record_freeze_degradation(
-            freeze_meta,
-            warnings,
-            strict_mode=bool(strict_mode),
-        )
-        if not load_outcome.schedule_map:
-            return None
+        raise _freeze_unavailable()
 
     if not load_outcome.schedule_map:
         _set_freeze_disabled(freeze_meta, _FREEZE_DISABLED_NO_PREVIOUS_SCHEDULE_ROWS)
@@ -317,10 +231,7 @@ def _apply_freeze_prefixes(
     schedule_map: Dict[int, Dict[str, Any]],
     seed_tmp: Dict[int, Dict[str, Any]],
     freeze_meta: Dict[str, Any],
-    warnings: List[str],
-    strict_mode: bool,
     point_validator: Any,
-    skip_incomplete_prefix: bool = False,
 ) -> Set[int]:
     frozen_op_ids: Set[int] = set()
     anchors_lookup = window_anchors_by_batch(
@@ -328,30 +239,15 @@ def _apply_freeze_prefixes(
 
     for bid, anchors in anchors_lookup.items():
         prefix = prefix_op_ids_for_anchors(scope.seed_operations_by_batch.get(bid, []), bid, anchors)
-        missing = [oid for oid in prefix if oid not in schedule_map]
-        if missing and skip_incomplete_prefix:
-            # 调用方明确接受：前道原安排不在冻结窗口里（窗口前还没报工，或者没排过）的批次整批不冻结、
-            # 照常重排，由调用方事先提醒；窗口内读到的行本身没有坏，严格模式下也不整次拒绝。
+        if any(oid not in schedule_map for oid in prefix):
+            # 前道原安排不在冻结窗口里（窗口前还没报工，或者没排过）的批次整批不冻结、照常重排，
+            # 由调用方事先提醒；窗口内读到的行本身没有坏，不整次拒绝。
             freeze_meta.setdefault("freeze_skipped_batch_ids", []).append(bid)
             continue
-        if missing:
-            _record_freeze_degradation(
-                freeze_meta,
-                warnings,
-                strict_mode=bool(strict_mode),
-            )
-            continue
 
-        invalid_oid = _cache_seed_for_prefix(prefix=prefix, schedule_map=schedule_map, op_by_id=scope.op_by_id,
-                                             seed_tmp=seed_tmp, point_validator=point_validator)
-        if invalid_oid:
-            _record_freeze_degradation(
-                freeze_meta,
-                warnings,
-                strict_mode=bool(strict_mode),
-            )
-            _discard_seed_cache(prefix, seed_tmp)
-            continue
+        if _cache_seed_for_prefix(prefix=prefix, schedule_map=schedule_map, op_by_id=scope.op_by_id,
+                                  seed_tmp=seed_tmp, point_validator=point_validator):
+            raise _freeze_unavailable()
 
         for oid in prefix:
             frozen_op_ids.add(int(oid))
@@ -365,71 +261,58 @@ def _finish_freeze_seed_result(
     scope: _FreezeSeedScope,
     seed_tmp: Dict[int, Dict[str, Any]],
     freeze_meta: Dict[str, Any],
-    warnings: List[str],
-) -> Tuple[Set[int], List[Dict[str, Any]], List[str]]:
+) -> Tuple[Set[int], List[Dict[str, Any]]]:
     seed_results = _build_seed_results(frozen_op_ids, op_by_id=scope.op_by_id, seed_tmp=seed_tmp)
 
-    freeze_meta["freeze_applied"] = bool(frozen_op_ids)
-    if str(freeze_meta.get("freeze_state") or "").strip().lower() != "degraded":
-        if frozen_op_ids:
-            freeze_meta["freeze_state"] = "active"
-        else:
-            # 走到收尾且非 degraded 但一个前缀都没冻住（如上一版窗内命中行全部对应
-            # seq<=0 工序，被 freeze_window_prefixes.window_anchors_by_batch 跳过）。补上
-            # reason，保住"disabled 必带可查原因"的诊断口径（audit 2026-07-20 A15）。
-            _set_freeze_disabled(freeze_meta, _FREEZE_DISABLED_NO_FREEZABLE_PREFIX)
-    _finalize_freeze_application_status(freeze_meta)
-    return frozen_op_ids, seed_results, warnings
+    if frozen_op_ids:
+        freeze_meta["freeze_state"] = "active"
+    else:
+        # 一个前缀都没冻住（如上一版窗内命中行全部对应 seq<=0 工序，被
+        # freeze_window_prefixes.window_anchors_by_batch 跳过，或前道不全的批次全被跳过）。补上
+        # reason，保住"disabled 必带可查原因"的诊断口径（audit 2026-07-20 A15）。
+        _set_freeze_disabled(freeze_meta, _FREEZE_DISABLED_NO_FREEZABLE_PREFIX)
+    _set_freeze_applied(freeze_meta, frozen_op_ids)
+    return frozen_op_ids, seed_results
 
 
 def build_freeze_window_seed(
-    svc,
     *,
     cfg: Any,
     prev_version: int,
     start_dt: datetime,
-    operations: List[Any],
-    reschedulable_operations: Optional[List[Any]] = None,
-    strict_mode: bool = False,
-    meta: Optional[Dict[str, Any]] = None,
+    reschedulable_operations: List[Any],
+    meta: Dict[str, Any],
     point_validator: Any,
     schedule_rows_reader: Any,
-    skip_incomplete_prefix: bool = False,
     hold_window: Optional[Tuple[datetime, datetime]] = None,
-) -> Tuple[Set[int], List[Dict[str, Any]], List[str]]:
-    """skip_incomplete_prefix=True 时，前道原安排不在窗口里的批次不冻结、记进 meta["freeze_skipped_batch_ids"]。
+) -> Tuple[Set[int], List[Dict[str, Any]]]:
+    """上一版计划读不出来或冻结前缀有坏行时抛 ValidationError(field="freeze_window")，不降级成部分冻结。
 
+    前道原安排不在窗口里的批次不冻结、记进 meta["freeze_skipped_batch_ids"]。
     hold_window=(开始, 结束) 时不看配置里的冻结开关和天数：和这段时间重叠的原安排保留，同批次排在前面的
-    从 start_dt 起读到的原安排一起保留；记进 meta["hold_window"]。为 None 时行为不变。
+    从 start_dt 起读到的原安排一起保留；记进 meta["hold_window"]。为 None 时按配置里的冻结天数。
     """
-    warnings: List[str] = []
     freeze_meta = _init_freeze_meta(meta)
 
     scope = _prepare_freeze_seed_scope(
         cfg=cfg,
         prev_version=int(prev_version),
         start_dt=start_dt,
-        operations=operations,
-        reschedulable_operations=reschedulable_operations,
-        strict_mode=bool(strict_mode),
+        seed_operations=reschedulable_operations,
         freeze_meta=freeze_meta,
-        warnings=warnings,
         hold_window=hold_window,
     )
     if scope is None:
-        return _empty_freeze_seed_result(freeze_meta, warnings)
+        return _empty_freeze_seed_result(freeze_meta)
 
     load_outcome = _load_previous_schedule_for_freeze(
-        svc,
         scope=scope,
         prev_version=int(prev_version),
-        strict_mode=bool(strict_mode),
         freeze_meta=freeze_meta,
-        warnings=warnings,
         schedule_rows_reader=schedule_rows_reader,
     )
     if load_outcome is None:
-        return _empty_freeze_seed_result(freeze_meta, warnings)
+        return _empty_freeze_seed_result(freeze_meta)
 
     seed_tmp: Dict[int, Dict[str, Any]] = {}
     frozen_op_ids = _apply_freeze_prefixes(
@@ -437,15 +320,11 @@ def build_freeze_window_seed(
         schedule_map=load_outcome.schedule_map,
         seed_tmp=seed_tmp,
         freeze_meta=freeze_meta,
-        warnings=warnings,
-        strict_mode=bool(strict_mode),
         point_validator=point_validator,
-        skip_incomplete_prefix=bool(skip_incomplete_prefix),
     )
     return _finish_freeze_seed_result(
         frozen_op_ids,
         scope=scope,
         seed_tmp=seed_tmp,
         freeze_meta=freeze_meta,
-        warnings=warnings,
     )

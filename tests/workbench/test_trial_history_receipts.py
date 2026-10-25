@@ -4,14 +4,16 @@ import json
 import sqlite3
 from collections import Counter
 
+import pytest
 from flask import Blueprint
 
 from core.infrastructure.transaction import TransactionManager
 from core.models.content import content_text
-from core.models.workbench_command import canonical_json
+from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.plan.read_context import PlanReadContext
 from core.services.workbench.trial.adoption_history import WorkbenchTrialAdoptionHistoryService
+from core.services.workbench.trial.adoption_history_evidence import audit_fields, json_object
 from data.repositories import workbench_plan_identity_repo
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_trial_repo import HISTORY_REFERENCE_FORMAT, WorkbenchTrialRepository
@@ -172,3 +174,43 @@ def test_real_adoptions_batch_history_and_legacy_intent_reads(trial_case, monkey
     assert sum(sql.upper() == "SELECT RESULT_SUMMARY FROM SCHEDULEHISTORY" for sql in statements) == 1
     assert schema_checks == [case.conn, case.conn]
     assert adoption_service(case.conn).adopt(first_saved["scenario_ref"], "expired-token", keys[0], INTENT) == dict(first, replayed=True)
+
+
+@pytest.mark.parametrize("raw", ['{"result":"committed","result":"committed"}', '{"version":NaN}', '{"version":1e999}',
+                                 '{', '[]', None])
+def test_stored_adoption_bodies_reject_duplicate_keys_nonfinite_numbers_and_non_objects(raw):
+    # Receipt readers surface the rejection unchanged; the audit reader keeps it as an unproven-audit gap.
+    with pytest.raises(WorkbenchCommandRejected) as error:
+        json_object(raw)
+    assert (error.value.code, error.value.status, str(error.value)) == (
+        "adoption_history_invalid", 409, "采用记录里的试调方案、草稿和结果对不上，这里没有改动原记录。请刷新后重试。")
+    audit, gaps = audit_fields({}, {}, {}, {}, {}, history={"result_summary": raw}, command_repo=None, adoption_inputs={})
+    assert audit == dict.fromkeys(("reason", "declared_operator", "application_operator", "adopted_at"))
+    assert gaps == [{"code": "audit_unproven", "message": "正式计划历史与保存结果对不上，经办人、原因和采用时间暂时不采信。"}]
+
+
+def test_adoption_history_reader_keeps_its_outcomes_for_unreadable_stored_json(trial_case):
+    case = trial_case
+    saved = saved_scenario(case)
+    key = "trial-strict-json-adopt-01"
+    version = adoption_service(case.conn).adopt(saved["scenario_ref"], preview(case, saved), key, INTENT)["data"]["official_plan"]["version"]
+    summary = case.conn.execute("SELECT result_summary FROM ScheduleHistory WHERE version=?", (version,)).fetchone()[0]
+    reader = WorkbenchTrialAdoptionHistoryService(case.conn)
+    for tail in (',"reason":"dup"}', ',"extra":NaN}', ',"extra":1e999}'):
+        case.conn.execute("UPDATE ScheduleHistory SET result_summary=? WHERE version=?", (summary[:-1] + tail, version))
+        case.conn.commit()
+        entry = reader.read(saved["scenario_ref"])[0]["items"][0]
+        assert [gap["code"] for gap in entry["evidence_gaps"] if gap["code"].startswith("audit_")] == ["audit_unproven"], tail
+    case.conn.execute("UPDATE ScheduleHistory SET result_summary=? WHERE version=?", (summary, version))
+    save_key = case.conn.execute("SELECT request_key FROM WorkbenchCommandReceipts WHERE action='trial.save'").fetchone()[0]
+    for receipt_key in (save_key, key):
+        outcome = case.conn.execute("SELECT outcome_json FROM WorkbenchCommandReceipts WHERE request_key=?", (receipt_key,)).fetchone()[0]
+        for tail in (',"result":"committed"}', ',"extra":NaN}', ',"extra":1e999}'):
+            case.conn.execute("UPDATE WorkbenchCommandReceipts SET outcome_json=? WHERE request_key=?", (outcome[:-1] + tail, receipt_key))
+            case.conn.commit()
+            with pytest.raises(WorkbenchCommandRejected) as error:
+                reader.read(saved["scenario_ref"])
+            assert (error.value.code, error.value.status, str(error.value)) == ("adoption_history_invalid", 409,
+                "采用记录里的试调方案、草稿和结果对不上，这里没有改动原记录。请刷新后重试。"), (receipt_key, tail)
+        case.conn.execute("UPDATE WorkbenchCommandReceipts SET outcome_json=? WHERE request_key=?", (outcome, receipt_key))
+        case.conn.commit()

@@ -108,7 +108,7 @@ def calendar_export_preview(kind):
     body = json_body({"range"}, {"snapshot_ref", "scope"})
     start_date, end_date = _range_input(body)
     extra = _operator_refs(kind, body)
-    provided = opaque_ref(body["snapshot_ref"], "snapshot_ref") if body.get("snapshot_ref") else None
+    provided = opaque_ref(body["snapshot_ref"]) if body.get("snapshot_ref") else None
     service = _service(kind)
     with TransactionManager(g.db).transaction():
         fingerprint, rows = service._states_and_rows(start_date, end_date, **extra)
@@ -128,7 +128,7 @@ def calendar_export_preview(kind):
 def calendar_export(kind):
     calendar_kind(kind)
     fmt = download_args({"export_ref", "format"})
-    ref = opaque_ref(request.args["export_ref"], "export_ref")
+    ref = opaque_ref(request.args["export_ref"])
     binding, read_binding = resolve_context(EXPORT_SCOPE, ref, "snapshot_stale")
     if binding["kind"] != kind:
         raise WorkbenchCommandRejected("snapshot_stale", "这次导出的编号属于另一类记录，没有开始下载。请刷新页面后重新点「导出」。")

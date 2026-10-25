@@ -2,6 +2,8 @@
   'use strict';
   const A = window.RunCandidateAPI, Q = window.DashboardCandidateComparisonAPI, C = window.DashboardContract;
   const P = window.DashboardCandidatePanels, { Button, ErrorBox, Issues } = window.ResourceControls;
+  // Q.context 保证 range_start / range_end 成对出现；未设置范围时输入框显示为空。
+  const rangeDraft = value => value.range_start === undefined ? { start: '', end: '' } : { start: value.range_start, end: value.range_end };
   function rangeFor(input) {
     const start = input && input.start_date + 'T00:00:00', raw = input && input.end_date + 'T00:00:00';
     C.check(A.time(start) && A.time(raw), '这次排产没有有效的提交时间范围，无法比较。请重新选择排产记录。');
@@ -24,9 +26,9 @@
     const context = Q.context({ ...choice, ...(issueBatchRef ? { batch_ref: issueBatchRef } : {}) });
     const [list, setList] = React.useState({ run: null, data: null, error: null, loading: false });
     const [read, setRead] = React.useState({ signature: null, data: null, error: null, loading: false });
-    const [range, setRange] = React.useState({ start: choice.range_start || '', end: choice.range_end || '' }), [rangeError, setRangeError] = React.useState(null);
+    const [range, setRange] = React.useState(() => rangeDraft(choice)), [rangeError, setRangeError] = React.useState(null);
     const [summary, setSummary] = React.useState(false), [rangeOpen, setRangeOpen] = React.useState(false), signature = JSON.stringify(context);
-    React.useEffect(() => { setRange({ start: choice.range_start || '', end: choice.range_end || '' }); }, [choice.range_start, choice.range_end]);
+    React.useEffect(() => { setRange(rangeDraft(choice)); }, [choice.range_start, choice.range_end]);
     React.useEffect(() => {
       const controller = new AbortController(), run = choice.run_ref;
       setList({ run, data: null, error: null, loading: !!run });
@@ -79,14 +81,14 @@
     return <section aria-label="已保存候选方案同范围比较" data-dashboard-candidates data-comparison-ready={!!data}>
       <div className="dy-heading"><h3>与排产时的正式计划比较</h3><div className="dy-tools">
         {choice.run_ref && <Button reasonDisplay="inline" icon="calendar-days" aria-expanded={rangeOpen} aria-controls="dashboard-comparison-range" title={choice.range_start && choice.range_end ? '开始（包含）' + window.WorkbenchFormat.dateTime(choice.range_start, { seconds: true, fractions: true }) + '；结束（不含）' + window.WorkbenchFormat.dateTime(choice.range_end, { seconds: true, fractions: true }) : '编辑比较时间范围'}
-          aria-label="编辑候选比较时间范围" onClick={() => { if (!rangeOpen) setRange({ start: choice.range_start || '', end: choice.range_end || '' }); setRangeOpen(!rangeOpen); }}>{choice.range_start && choice.range_end ? window.WorkbenchFormat.compactRange(choice.range_start, choice.range_end) : '时间范围'}</Button>}
+          aria-label="编辑候选比较时间范围" onClick={() => { if (!rangeOpen) setRange(rangeDraft(choice)); setRangeOpen(!rangeOpen); }}>{choice.range_start && choice.range_end ? window.WorkbenchFormat.compactRange(choice.range_start, choice.range_end) : '时间范围'}</Button>}
         <Button reasonDisplay="inline" icon="refresh-cw" aria-label="刷新候选方案比较" onClick={refresh} />
       </div></div>
-      <label className="dy-run-picker">排产记录<select aria-label="选择排产记录" value={choice.run_ref || ''} onChange={event => changeRun(event.target.value)}><option value="">请选择排产记录</option>
+      <label className="dy-run-picker">排产记录<select aria-label="选择排产记录" value={choice.run_ref === undefined ? '' : choice.run_ref} onChange={event => changeRun(event.target.value)}><option value="">请选择排产记录</option>
         {choice.run_ref && !catalog.runs.some(row => row.run_ref === choice.run_ref) && <option value={choice.run_ref}>原来选中的排产记录</option>}
         {catalog.runs.map(run => <option key={run.run_ref} value={run.run_ref}>{window.WorkbenchFormat.compactDateTime(run.accepted_at)} · {run.candidate_count} 份候选</option>)}
       </select></label>
-      <Issues issues={catalog.issues || []} /><ErrorBox error={list.error} /><ErrorBox error={rangeError || current && current.error} />
+      <Issues issues={catalog.issues} /><ErrorBox error={list.error} /><ErrorBox error={rangeError || current && current.error} />
       {context.batch_ref && <div className="dy-context">仅比较原问题批次。<window.WorkbenchReference entries={{ '原问题批次编号': context.batch_ref }} /></div>}
       {list.loading && <p role="status">正在读取这次排产已保存的候选方案列表。</p>}
       {options && <fieldset className="dy-candidate-options"><legend>候选方案</legend>{options.candidates.map(row => <label key={row.candidate_ref} data-candidate-choice={row.candidate_ref} data-selected={choice.candidate_ref === row.candidate_ref}>

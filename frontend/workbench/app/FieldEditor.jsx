@@ -31,8 +31,7 @@
       return () => clearTimeout(timer);
     }, [command.phase, command.result, continueAfter, context, task.task_ref, task.operation_ref, onDone]);
     function clearRejected() {
-      const code = command.error && (command.error.code || command.error.error && command.error.error.code);
-      if (command.phase === 'rejected' && !['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code) && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     function change(key, value) {
       setDraft(current => ({ ...current, [key]: value })); setError(null); clearRejected();

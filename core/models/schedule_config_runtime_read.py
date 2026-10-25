@@ -21,7 +21,7 @@ def read_runtime_cfg_raw_value(cfg: Any, key: str) -> Tuple[bool, Any]:
     except ValidationError:
         raise
     except Exception as exc:
-        raise runtime_cfg_read_error(key, exc) from exc
+        raise runtime_cfg_read_error(key) from exc
     if value is raw_missing:
         missing, value = _read_runtime_cfg_mapping_like_value(cfg, key, raw_missing)
         if not missing:
@@ -30,7 +30,7 @@ def read_runtime_cfg_raw_value(cfg: Any, key: str) -> Tuple[bool, Any]:
     return False, value
 
 
-def runtime_cfg_read_error(key: str, exc: Exception) -> ValidationError:
+def runtime_cfg_read_error(key: str) -> ValidationError:
     label = display_field_label(key, fallback="配置项")
     return ValidationError(f"读取运行期配置“{label}”失败。", field=key)
 
@@ -48,7 +48,7 @@ def _read_runtime_cfg_mapping_like_value(cfg: Any, key: str, raw_missing: object
     except ValidationError:
         raise
     except Exception as exc:
-        raise runtime_cfg_read_error(key, exc) from exc
+        raise runtime_cfg_read_error(key) from exc
     if value is raw_missing:
         return True, None
     return False, value
@@ -62,7 +62,7 @@ def _read_runtime_cfg_mapping_like_value_without_default(getter: Any, key: str, 
     except ValidationError:
         raise
     except Exception as exc:
-        raise runtime_cfg_read_error(key, exc) from exc
+        raise runtime_cfg_read_error(key) from exc
 
 
 def coerce_degradation_event(raw: Any) -> Optional[DegradationEvent]:

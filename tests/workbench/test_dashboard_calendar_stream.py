@@ -8,12 +8,14 @@ import pytest
 
 from core.models.workbench_dashboard import DashboardAnalysisQuery
 from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLimit
-from core.services.report.utilization_calendars import resource_calendars
+from core.services.report.utilization import group_utilization_rows
+from core.services.report.utilization_calendars import resource_calendars_for_ids, resource_ids_from_groups
 from core.services.workbench.dashboard import calendar_capture
 from core.services.workbench.dashboard.service import WorkbenchDashboardService
 from core.services.workbench.facts.archived_calendar import ArchivedCalendar
 from core.services.workbench.plan.calendar import project_plan_calendar
 from core.services.workbench.plan.occupancy_constraints import TaskConstraints
+from core.shared.degradation import DegradationCollector
 from tests.workbench.dashboard_support import NOW
 from tests.workbench.dashboard_support import dashboard_case as dashboard_case  # noqa: F401
 
@@ -84,7 +86,7 @@ def test_over_40000_resource_dates_keep_complete_sources_and_current_resource_ca
     case.conn.set_authorizer(lambda *_: 1)
     try:
         analysis = reader.analysis(sources, DashboardAnalysisQuery("pressure", size=100))
-        calendar_factory = facts.calendar_factory
+        calendar_factory = facts.pressure_metrics.factory
         assert calendar_factory is not None
         resource = analysis["resources"][0]
         kind, ref = resource["kind"], resource["resource_ref"]
@@ -137,11 +139,37 @@ def test_capture_retains_real_calendar_date_and_source_fact_limits(dashboard_cas
     assert {item["code"] for item in sources.facts.pressure["issues"]} == {"assignment_calendar_unavailable"}
 
 
+def test_unstreamed_pressure_builds_one_index_and_repeats_identity_gaps(dashboard_case, monkeypatch):
+    case = dashboard_case
+    case.conn.execute("UPDATE Schedule SET machine_id=NULL")
+    case.conn.commit()
+    index_type, indexes = calendar_capture.ResourceTaskIndex, []
+
+    def resource_task_index(*args, **kwargs):
+        indexes.append(index_type(*args, **kwargs))
+        return indexes[-1]
+
+    def over_budget(*args, **kwargs):
+        raise ProjectionLimit("calendar_fact_limit")
+
+    monkeypatch.setattr(CalendarFacts, "resources", over_budget)
+    monkeypatch.setattr(calendar_capture, "ResourceTaskIndex", resource_task_index)
+    reader, sources = _capture(case)
+    assert sources.facts.raw["resource_pressure"]["calendar"]["reason"] == "calendar_fact_limit"
+    assert indexes == [] and sources.facts.pressure_metrics.summaries == {}
+    first = reader.analysis(sources, DashboardAnalysisQuery("pressure", size=100))
+    # Analysis projects the uncaptured cohort once; a later read reuses those
+    # summaries and still reports the same missing machine identity.
+    assert first["resource_common"]["machine"]["unknown_workload_count"] == 1
+    assert reader.analysis(sources, DashboardAnalysisQuery("pressure", size=100)) == first
+    assert len(indexes) == 1 and indexes[0] is sources.facts.pressure_metrics.index
+
+
 def test_one_streamed_operator_window_supplies_both_priorities(dashboard_case):
     _, sources = _capture(dashboard_case)
     calendar = sources.facts.raw["resource_pressure"]["calendar"]
     scope = sources.facts.pressure["time_scope"]
-    factory = sources.facts.calendar_factory
+    factory = sources.facts.pressure_metrics.factory
     assert factory is not None
     ref = next(ref for (kind, ref) in factory.bindings if kind == "operator")
     calls = []
@@ -211,11 +239,12 @@ def _report_and_plan_calendars(case, operators):
     start, end = datetime(2026, 9, 9, 8), datetime(2026, 9, 9, 10)
     rows = [{"op_id": case.op, "machine_id": "DM1", "operator_id": key, "source": "internal",
              "start_time": start.isoformat(), "end_time": end.isoformat()} for key in operators]
-    report = resource_calendars(case.conn, rows, start, end)
+    groups = group_utilization_rows(rows, start, end, DegradationCollector())
+    report = resource_calendars_for_ids(case.conn, resource_ids_from_groups(groups), start, end)
     identities = {"machine": {"DM1": SimpleNamespace(ref="ref-DM1")},
                   "operator": {key: SimpleNamespace(ref="ref-" + key) for key in operators}}
-    dto, facts = project_plan_calendar(case.conn, entry=None, scope=SimpleNamespace(plan_ref="plan-ref"), rows=rows,
-                                       resources=identities, plan_span=None, selected=(rows, start, end, {}, None))
+    dto, facts = project_plan_calendar(case.conn, scope=SimpleNamespace(plan_ref="plan-ref"), resources=identities,
+                                       selected=(rows, start, end, {}, None))
     return dto["global"], report, facts["resources"]
 
 
@@ -228,7 +257,7 @@ def test_damaged_calendar_keeps_dashboard_unavailable_without_rebuilding_point_e
     _, sources = _capture(case)
     facts = sources.facts
     calendar = facts.raw["resource_pressure"]["calendar"]
-    factory = facts.calendar_factory
+    factory = facts.pressure_metrics.factory
     assert calendar["sources"] is not None and factory.engine is not None
     assert calendar["state"] == facts.pressure["state"] == "unavailable"
     assert "assignment_calendar_unavailable" in {item["code"] for item in facts.pressure["issues"]}
@@ -271,7 +300,7 @@ def test_damaged_personal_calendar_invalidates_personnel_but_keeps_global_and_ma
         assert _codes(report["operator", key]) == _codes(plan["operator"][key]) == _INVALID
     # 看板归档日历工厂同一口径：空的个人日历索引不能让人员借用全局日历的结果。
     _, sources = _capture(case)
-    factory, scope = sources.facts.calendar_factory, sources.facts.pressure["time_scope"]
+    factory, scope = sources.facts.pressure_metrics.factory, sources.facts.pressure["time_scope"]
     assert _streamed(factory, scope, "machine", "DM1")["state"] == "available"
     assert _codes(_streamed(factory, scope, "operator", "DO1")) == _INVALID
     assert sources.facts.raw["resource_pressure"]["calendar"]["state"] == "partial"

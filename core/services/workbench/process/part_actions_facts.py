@@ -48,7 +48,7 @@ def checked_process_facts(identity, facts):
     return identity, part, operations, groups, facts["workflow"][part_no]["workflow"]
 
 
-def check_part_action_storage(conn, contracts):
+def check_part_action_storage(contracts):
     # 本命令不执行 DDL、不改外键设置；逐行写入共用首次入口的检查结果。
     issues = (contracts.get_schema(workbench_metadata_contract_issues)
               + contracts.get_schema(workbench_process_contract_issues)

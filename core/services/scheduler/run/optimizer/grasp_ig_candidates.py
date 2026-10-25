@@ -4,7 +4,7 @@ from datetime import date, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
 
-from core.algorithms import SortStrategy
+from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithms.evaluation import objective_score
 from core.errors import ValidationError
 

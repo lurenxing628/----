@@ -2,10 +2,11 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from typing import Optional
 
 import pytest
+
+from tests._support.algo_operations import make_algo_op, make_batch
 
 
 @dataclass
@@ -13,11 +14,11 @@ class _StubCalendarService:
     def adjust_to_working_time(self, dt: datetime, priority=None, operator_id: Optional[str] = None) -> datetime:  # noqa: D401
         return dt
 
-    def add_working_hours(self, dt: datetime, hours: float, priority=None, operator_id: Optional[str] = None) -> datetime:
-        return dt + timedelta(hours=float(hours or 0.0))
+    def add_effective_hours(self, dt: datetime, hours: float, priority=None, operator_id: Optional[str] = None) -> datetime:
+        return dt + timedelta(hours=float(hours))  # round the clock at efficiency 1.0
 
-    def get_efficiency(self, dt: datetime, operator_id: Optional[str] = None) -> float:
-        return 1.0
+    def working_hours_between(self, start: datetime, end: datetime, priority=None, operator_id: Optional[str] = None) -> float:
+        return (end - start).total_seconds() / 3600.0
 
     def add_calendar_days(self, dt: datetime, days: float) -> datetime:
         return dt + timedelta(days=float(days or 0.0))
@@ -30,37 +31,21 @@ class _Cfg:
 
 def test_auto_assign_fixed_operator_respects_op_type() -> None:
 
-    from core.algorithms import GreedyScheduler
+    from core.algorithms.greedy.scheduler import GreedyScheduler
 
-    batch = SimpleNamespace(
-        batch_id="B001",
-        priority="normal",
-        due_date=None,
-        ready_status="yes",
-        ready_date=None,
-        created_at=None,
-        quantity=1,
-    )
-    batches = {"B001": batch}
+    batches = {"B001": make_batch(batch_id="B001")}
 
     # 固定 operator_id，machine_id 缺省：应自动选机，且必须匹配 op_type_id
-    op = SimpleNamespace(
+    op = make_algo_op(
         id=1,
         op_code="OP1",
         batch_id="B001",
-        seq=1,
-        source="internal",
-        machine_id="",  # missing
+        machine_id=None,  # missing
         operator_id="O1",  # fixed
         setup_hours=1.0,
         unit_hours=0.0,
         op_type_id="OT_OK",
         op_type_name="车削",
-        supplier_id=None,
-        ext_days=None,
-        ext_group_id=None,
-        ext_merge_mode=None,
-        ext_group_total_days=None,
     )
 
     # machines_by_operator 含一个“错误工种”的设备 M_BAD，以及正确设备 M_OK
@@ -98,14 +83,13 @@ def test_auto_assign_keeps_machine_hours_qualification_failure_order(failure):
         AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS,
         AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL,
     )
-    from core.algorithms import GreedyScheduler
     from core.algorithms.greedy.auto_assign import auto_assign_internal_resources_attempt
-    from core.algorithms.greedy.scheduler import prepare_native_schedule_inputs
+    from core.algorithms.greedy.scheduler import GreedyScheduler, prepare_native_schedule_inputs
     from core.errors import ValidationError
 
-    op = SimpleNamespace(id=1, batch_id="B1", machine_id="", operator_id="", op_type_id="T1",
-                         setup_hours=1.0 if failure == "qualification" else float("nan"), unit_hours=0.0)
-    batch = SimpleNamespace(batch_id="B1", quantity=1)
+    op = make_algo_op(id=1, batch_id="B1", op_type_id="T1",
+                      setup_hours=1.0 if failure == "qualification" else float("nan"), unit_hours=0.0)
+    batch = make_batch(batch_id="B1", quantity=1)
     pool = {"machines_by_op_type": {"T1": [] if failure == "machine_and_hours" else ["M1"]},
             "operators_by_machine": {"M1": ["O1"]}, "machines_by_operator": {},
             "operator_skills": {}, "pair_rank": {}}

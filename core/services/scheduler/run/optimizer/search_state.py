@@ -1,19 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 
-def score_tuple(score: Any) -> Tuple[float, ...]:
-    if not isinstance(score, (list, tuple)) or not score:
+def score_tuple(score: Optional[Sequence[float]]) -> Tuple[float, ...]:
+    # 跳过、阶段汇总这类尝试不带分数，排在所有已评分尝试之后；已评分尝试的分数
+    # 是解码算出的非空数字列表。
+    if score is None:
         return (float("inf"),)
-    out: List[float] = []
-    for item in score:
-        try:
-            out.append(float(item))
-        except (TypeError, ValueError, OverflowError):
-            out.append(float("inf"))
-    return tuple(out)
+    return tuple(score)
 
 
 def _attempt_dispatch_mode(item: Dict[str, Any]) -> str:

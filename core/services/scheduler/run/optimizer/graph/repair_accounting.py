@@ -17,9 +17,8 @@ class RepairWorkAccounting:
             }
 
     def finish(self, pool: Any) -> None:
-        if pool.limits.enabled:
-            # Newly selected parents that never got a task are pending work, not top-k exclusions.
-            self.observe(pool.elites)
+        # Newly selected parents that never got a task are pending work, not top-k exclusions.
+        self.observe(pool.elites)
         report, pruning = pool.report, pool.report["repair_pruning_report"]
         parents = pool.profile_parent_sizes
         report["eligible_elites"] = len(parents)

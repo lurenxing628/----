@@ -1,21 +1,14 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from core.models import Batch
+from core.models.batch import Batch
 
 from .base_repo import BaseRepository
 
 
 class BatchRepository(BaseRepository):
     """批次仓库（Batches）。"""
-
-    def get(self, batch_id: str) -> Optional[Batch]:
-        row = self.fetchone(
-            "SELECT batch_id, part_no, part_name, quantity, due_date, priority, ready_status, ready_date, status, remark, created_at, updated_at FROM Batches WHERE batch_id = ?",
-            (batch_id,),
-        )
-        return Batch.from_row(row) if row else None
 
     def create(self, batch: Batch) -> None:
         self.execute(

@@ -4,6 +4,8 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Any, Dict, FrozenSet, Optional, Tuple
 
+from core.algorithm_contracts.types import OpForScheduleAlgo
+
 _WINDOW_SIZE = 64
 
 
@@ -58,7 +60,7 @@ class ResourceDemand:
             self._by_token[record.token] = record
             self._by_batch.setdefault(record.batch_id, set()).add(record.group)
 
-    def comparison_is_neutral(self, op: Any, first: Tuple[str, str], second: Tuple[str, str]) -> bool:
+    def comparison_is_neutral(self, op: OpForScheduleAlgo, first: Tuple[str, str], second: Tuple[str, str]) -> bool:
         """Skip equal reservation hints before forming the tie-break score."""
         if not _native_pair(first) or not _native_pair(second):
             return True
@@ -68,7 +70,7 @@ class ResourceDemand:
         self._refresh_window()
         return self._score(current, *first) == self._score(current, *second)
 
-    def penalties(self, op: Any, pairs: Tuple[Tuple[str, str], ...]) -> Tuple[float, ...]:
+    def penalties(self, op: OpForScheduleAlgo, pairs: Tuple[Tuple[str, str], ...]) -> Tuple[float, ...]:
         """Compare tied pairs against the current decode window."""
         if type(pairs) not in (list, tuple):
             return ()

@@ -46,12 +46,12 @@ def project_plan(entry, plan_ref):
             "blocked_reasons": _public_reasons(issue.code for issue in entry.blocked_reasons)}
 
 
-def project_unavailable_plan(locator, plan_ref, display_name, reason_codes, *, completeness="invalid"):
+def project_unavailable_plan(locator, plan_ref, display_name, reason_codes):
     """A disabled header; a missing permanent identity stays null, never allocated."""
     kind = "scenario" if locator.scenario_id is not None else "official" if locator.plan_role == ROLE_ADOPTED else "candidate"
     version = wire_positive_int64(locator.version)
     return {"plan_ref": plan_ref, "version": version, "kind": kind,
-            "is_current_official": False, "display_name": display_name, "completeness": completeness,
+            "is_current_official": False, "display_name": display_name, "completeness": "invalid",
             "capabilities": {"view": False, "export": False, "edit_draft": False, "adopt": False, "report_actual": False},
             "blocked_reasons": _public_reasons(reason_codes)}
 

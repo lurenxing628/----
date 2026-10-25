@@ -3,16 +3,17 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 
-from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_runtime.auto_assign_contract import AutoAssignAttempt
+from core.models.batch import Batch
 
 
 class InternalScheduleCallback(Protocol):
     def __call__(
         self,
         *,
-        op: Any,
-        batch: Any,
+        op: OpForScheduleAlgo,
+        batch: Batch,
         batch_progress: Dict[str, datetime],
         machine_timeline: Dict[str, List[Tuple[datetime, datetime]]],
         operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],
@@ -32,13 +33,12 @@ class ExternalScheduleCallback(Protocol):
     def __call__(
         self,
         *,
-        op: Any,
+        op: OpForScheduleAlgo,
         batch_progress: Dict[str, datetime],
         external_group_cache: Dict[Tuple[str, ...], Tuple[datetime, datetime]],
         base_time: datetime,
         errors: List[str],
         end_dt_exclusive: Optional[datetime],
-        strict_mode: bool = False,
     ) -> Tuple[Optional[ScheduleResult], bool]: ...
 
 
@@ -46,8 +46,8 @@ class AutoAssignAttemptCallback(Protocol):
     def __call__(
         self,
         *,
-        op: Any,
-        batch: Any,
+        op: OpForScheduleAlgo,
+        batch: Batch,
         batch_progress: Dict[str, datetime],
         machine_timeline: Dict[str, List[Tuple[datetime, datetime]]],
         operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],

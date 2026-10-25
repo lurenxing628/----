@@ -7,9 +7,7 @@ import sqlite3
 import subprocess
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timedelta
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -38,10 +36,6 @@ def page_contract(script, data):
 class CalendarApi:
     def __init__(self, client):
         self.client = client
-        self.now = datetime(2026, 9, 9, 12, 34, 56)
-
-    def advance(self, seconds):
-        self.now += timedelta(seconds=seconds)
 
     @contextmanager
     def db(self):
@@ -125,21 +119,17 @@ def seed_calendars(api):
 
 
 @pytest.fixture(name="calendar_api")
-def calendar_api_fixture(app_client, monkeypatch):
+def calendar_api_fixture(app_client):
     # db_env sets APS_* before app import; production factory supplies g.db/error handling.
     from flask import Blueprint
 
-    import web.public_token_registry as tokens
-    from web.routes.workbench import calendars, calendars_preview
+    from web.routes.workbench import calendars
 
     if not any(rule.rule == BASE + "/month" for rule in app_client.application.url_map.iter_rules()):
         bp = Blueprint("calendar_api_test", __name__)
         calendars.register_calendar_routes(bp)
         app_client.application.register_blueprint(bp)
     api = CalendarApi(app_client)
-    monkeypatch.setattr(calendars, "calendar_now", lambda: api.now)
-    monkeypatch.setattr(calendars_preview, "calendar_now", lambda: api.now)
-    monkeypatch.setattr(tokens, "time", SimpleNamespace(time=lambda: api.now.timestamp()))
     seed_calendars(api)
     return api
 

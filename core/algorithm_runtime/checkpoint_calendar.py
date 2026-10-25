@@ -15,11 +15,6 @@ def register_checkpoint_calendar(calendar_type, snapshot):
     _CERTIFICATES[calendar_type] = make_class_guard(calendar_type), snapshot
 
 
-def register_stateless_checkpoint_calendar(calendar_type):
-    """A declared continuous calendar is reusable only while its class and empty state are intact."""
-    register_checkpoint_calendar(calendar_type, lambda calendar: () if not vars(calendar) else None)
-
-
 def checkpoint_calendar_signature(calendar):
     certificate = _CERTIFICATES.get(type(calendar))
     if certificate is None or not certificate[0](calendar):

@@ -73,7 +73,7 @@ async function contract(h, assert) {
     draft: w.FieldContract.draft(null), initialDraft: w.FieldContract.draft(null), suggestions: {} };
   once(h.render(w.FieldEditor, { task, retained, action: 'create', adapter: {}, command: idle }), '原记录或任务已变化，暂存内容未写入；请取消后重新核对。', 2);
   w.FieldEditorFields = fields;
-  const day = { date: '2026-10-10', explicit: false, fields: { type: 'work', hours: 8, eff: 100, allowNormal: 'yes', allowUrgent: 'yes', note: '', periods: null },
+  const day = { date: '2026-10-10', explicit: false, stored: null, fields: { type: 'work', hours: 8, eff: 100, allowNormal: 'yes', allowUrgent: 'yes', note: '', periods: null },
     effective: { is_working: true, window_start: '2026-10-10T08:00:00', window_end: '2026-10-10T16:00:00', periods: null } };
   once(h.render(w.CalendarDayDialog, { adapter: {}, day, source: 'production', command: idle }), missingContext, 1);
   const groupProps = { adapter: { command() {}, stagePreview() {} }, command: idle,

@@ -29,7 +29,7 @@ def _requests(values):
 
 class WorkbenchOutsourcingSourceFacts:
     """Exact, caller-owned source facts captured within one outsourcing transaction."""
-    def __init__(self):
+    def __init__(self, revision):
         self._entities = {}
         self._source_rows = {}
         self._active_refs = {}
@@ -39,7 +39,7 @@ class WorkbenchOutsourcingSourceFacts:
         self._memberships = {}
         self._receipt_matches = set()
         self._routes = {}
-        self._revision = None
+        self._revision = revision
 
     def source_row(self, kind, value):
         return self._source_rows.get(_key(kind, value))
@@ -150,7 +150,8 @@ class WorkbenchOutsourcingSourceRepository:
         """
         if not self.conn.in_transaction:
             raise RuntimeError("Outsourcing source capture requires a caller-owned snapshot")
-        facts = WorkbenchOutsourcingSourceFacts()
+        # The caller's transaction pins one snapshot, so the plan clock is the same before or after the reads.
+        facts = WorkbenchOutsourcingSourceFacts(self.plan_identity_revision())
         targets = list(targets)
         for entity in entities:
             identity = entity["identity"]
@@ -198,7 +199,6 @@ class WorkbenchOutsourcingSourceRepository:
                     key = row["batch_id"], row["piece_id"]
                     if key not in facts._routes:
                         facts._routes[key] = self.route_rows(*key)
-        facts._revision = self.plan_identity_revision()
         return facts
 
     def route_rows(self, batch_id, piece_id):

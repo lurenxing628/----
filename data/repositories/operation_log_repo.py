@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List
 
-from core.models import OperationLog
+from core.models.operation_log import OperationLog
 
 from .base_repo import BaseRepository
 

@@ -6,8 +6,9 @@ import math
 import re
 from collections import defaultdict
 from contextlib import contextmanager
-from types import SimpleNamespace
+from dataclasses import fields
 
+from core.models.op_type import OpType
 from core.models.process_route_text import serialize_route_rows
 from core.models.resource_capabilities import supplier_capability_rows, supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -171,7 +172,8 @@ class ProcessRoutePreviewService:
 
     def _reference_facts(self):
         references = self._facts.references
-        types = {row["op_type_id"]: SimpleNamespace(**row) for row in references["OpTypes"]}
+        types = {row["op_type_id"]: OpType(**{item.name: row[item.name] for item in fields(OpType)})
+                 for row in references["OpTypes"]}
         capabilities = supplier_capability_rows(references["Suppliers"], references["WorkbenchSupplierOpTypes"], "active")
         parser = RouteParser(types, capabilities, logger=self.logger)
         return types, capabilities, parser.build_parse_context(), {row["supplier_id"]: row for row in references["Suppliers"]}

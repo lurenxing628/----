@@ -65,7 +65,7 @@
       && text(v.receipt_ref) && /^[a-f0-9]{32}$/.test(v.receipt_ref) && typeof v.replayed === 'boolean' && Array.isArray(v.warnings) && v.warnings.length === 0
       && shape(d, ['candidate_ref', 'run_ref', 'official_plan', 'row_count']) && d.candidate_ref === intent.candidate_ref && d.run_ref === s.run_ref && d.row_count === s.task_count
       && shape(p, ['plan_ref', 'version', 'kind', 'is_current_official', 'display_name', 'source_run_ref', 'baseline_ref', 'completeness', 'capabilities', 'blocked_reasons'])
-      && ref(p.plan_ref) && p.plan_ref !== intent.candidate_ref && p.plan_ref !== s.baseline.plan_ref && count(p.version) && p.version > (s.baseline.version || 0)
+      && ref(p.plan_ref) && p.plan_ref !== intent.candidate_ref && p.plan_ref !== s.baseline.plan_ref && count(p.version) && p.version > (s.baseline.version === null ? 0 : s.baseline.version)
       && p.kind === 'official' && p.is_current_official === true && p.display_name === '正式计划 v' + p.version && p.source_run_ref === s.run_ref
       && p.baseline_ref === s.baseline.plan_ref && p.completeness === 'complete' && shape(p.capabilities, ['view', 'edit_draft', 'adopt', 'report_actual'])
       && p.capabilities.view === true && p.capabilities.edit_draft === false && p.capabilities.adopt === false && p.capabilities.report_actual === true

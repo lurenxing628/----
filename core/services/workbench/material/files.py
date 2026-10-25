@@ -21,7 +21,7 @@ Filters export every matching row in query order; selected refs retain their
 explicit order. The 2000-row import cap does not apply to either selection.
 XLSX is limited only by worksheet capacity; CSV has no worksheet row/cell cap.
 write_export(rows, file_format) encodes those rows after the read transaction
-ends and returns MaterialFileDownload(filename, mime_type, content: bytes, row_count).
+ends and returns FileDownload(filename, mime_type, content: bytes, row_count).
 template(file_format='xlsx') returns header-only bytes, with XLSX field examples
 in header comments (no demo records that could accidentally be imported).
 """

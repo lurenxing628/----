@@ -7,7 +7,8 @@ from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from core.algorithm_contracts.changeover_events import count_known_changeovers
-from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_contracts.ordering import normalize_text_id
+from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
 from core.algorithms.evaluation_completion import (
     UNKNOWN_OBJECTIVE_VALUE,
@@ -17,6 +18,7 @@ from core.algorithms.evaluation_completion import (
     collect_batch_completion,
     prepare_evaluation_context,
 )
+from core.models.batch import Batch
 from core.models.objective import objective_metric_keys
 
 
@@ -26,6 +28,7 @@ class ScheduleMetrics:
     total_tardiness_hours: float
     makespan_hours: float
     changeover_count: int
+    completion: BatchCompletion
     # 软指标扩展（V1.2）：更贴近业务的加权拖期 + 利用率/负荷均衡
     weighted_tardiness_hours: float = 0.0
     makespan_internal_hours: float = 0.0
@@ -44,7 +47,6 @@ class ScheduleMetrics:
     unscheduled_batch_count: int = 0
     invalid_due_batch_ids_sample: List[str] = field(default_factory=list)
     unscheduled_batch_ids_sample: List[str] = field(default_factory=list)
-    completion: Optional[BatchCompletion] = None
 
     def to_dict(self) -> Dict[str, Any]:
         def _round_finite(key: str, v: Any, ndigits: int) -> float:
@@ -77,9 +79,8 @@ class ScheduleMetrics:
             "unscheduled_batch_count": int(self.unscheduled_batch_count),
             "invalid_due_batch_ids_sample": [str(x) for x in (self.invalid_due_batch_ids_sample or ())[:10]],
             "unscheduled_batch_ids_sample": [str(x) for x in (self.unscheduled_batch_ids_sample or ())[:20]],
+            "completion": self.completion.to_dict(),
         }
-        if self.completion is not None:
-            payload["completion"] = self.completion.to_dict()
         return payload
 
 
@@ -118,27 +119,23 @@ class _UtilizationMetrics:
 
 def compute_metrics(
     results: List[ScheduleResult],
-    batches: Dict[str, Any],
+    batches: Dict[str, Batch],
     *,
-    expected_operations: Optional[Iterable[Any]] = None,
+    expected_operations: Iterable[OpForScheduleAlgo],
     seed_results: Optional[Iterable[ScheduleResult]] = None,
     failure_details: Optional[Iterable[Dict[str, Any]]] = None,
     prepared: Optional[PreparedEvaluationContext] = None,
 ) -> ScheduleMetrics:
     """Use explicit run inputs to distinguish completion from a partial result.
 
-    Two-argument legacy callers retain their result-only projection. All runtime
-    candidates supply expected_operations directly or in a prepared context,
-    including when that list is empty.
-    Seeds are expected output identities, not extra synthesized output records.
+    Every caller supplies expected_operations (possibly empty), directly or already
+    folded into a prepared context. Seeds are expected output identities, not extra
+    synthesized output records.
     """
     context = prepared if prepared is not None else prepare_evaluation_context(
         batches=batches, expected_operations=expected_operations, seed_results=seed_results,
     )
-    completion = collect_batch_completion(
-        results, batches, expected_operations=expected_operations,
-        seed_results=seed_results, failure_details=failure_details, prepared=context,
-    )
+    completion = collect_batch_completion(results, prepared=context, failure_details=failure_details)
     result_state = _collect_result_metric_state(results)
     due_state = _compute_due_metrics(context, result_state.finish_by_batch, completion=completion)
     utilization = _build_utilization_metrics(result_state)
@@ -147,7 +144,9 @@ def compute_metrics(
         overdue_count=int(due_state.overdue_count),
         total_tardiness_hours=float(due_state.tardiness_hours),
         makespan_hours=float(_hours_between(result_state.min_start, result_state.max_end)),
-        changeover_count=int(_count_changeovers(result_state.by_machine)),
+        # The public algorithm metric is an integer. Saved-event consumers retain the
+        # shared projection's separate completeness and known subtotal.
+        changeover_count=count_known_changeovers(result_state.by_machine),
         weighted_tardiness_hours=float(due_state.weighted_tardiness_hours),
         makespan_internal_hours=float(utilization.makespan_internal_hours),
         machine_used_count=int(len(utilization.machine_hours)),
@@ -174,14 +173,13 @@ def _collect_result_metric_state(results: List[ScheduleResult]) -> _ResultMetric
     # partial output still contributes real resource usage, never a forecast.
     state = _ResultMetricState()
     for result in results:
-        st = getattr(result, "start_time", None)
-        et = getattr(result, "end_time", None)
-        if not st or not et:
+        st, et = result.start_time, result.end_time
+        if st is None or et is None:
             continue
-        bid = str(getattr(result, "batch_id", "") or "").strip()
-        if bid:
-            _record_batch_finish(state, bid=bid, start_time=st, end_time=et)
-        if (getattr(result, "source", "") or "").strip().lower() == INTERNAL:
+        # 旧种子在存储边界可能缺批次号（空串），这类结果不计入批次完工。
+        if result.batch_id:
+            _record_batch_finish(state, bid=result.batch_id, start_time=st, end_time=et)
+        if result.source == INTERNAL:
             _record_internal_result(state, result=result, start_time=st, end_time=et)
     return state
 
@@ -209,20 +207,21 @@ def _record_internal_result(
         state.max_internal_end = end_time
 
     duration_hours = _duration_hours(start_time, end_time)
-    machine_id = str(getattr(result, "machine_id", None) or "").strip()
+    # 种子资源编号来自上一版排程存储，按文本标识口径归一（None 表示未占资源）。
+    machine_id = normalize_text_id(result.machine_id)
     if machine_id:
         state.by_machine.setdefault(machine_id, []).append(result)
         state.machine_busy[machine_id] = state.machine_busy.get(machine_id, 0.0) + float(duration_hours)
-    operator_id = str(getattr(result, "operator_id", None) or "").strip()
+    operator_id = normalize_text_id(result.operator_id)
     if operator_id:
         state.operator_busy[operator_id] = state.operator_busy.get(operator_id, 0.0) + float(duration_hours)
 
 
 def _compute_due_metrics(
-    prepared: PreparedEvaluationContext, finish_by_batch: Dict[str, datetime], *, completion: Optional[BatchCompletion],
+    prepared: PreparedEvaluationContext, finish_by_batch: Dict[str, datetime], *, completion: BatchCompletion,
 ) -> _DueMetricState:
     state = _DueMetricState()
-    incomplete = set(completion.incomplete_batch_ids) if completion is not None else set()
+    incomplete = set(completion.incomplete_batch_ids)
     for batch_due in prepared.due_batches:
         bid = batch_due.batch_id
         _record_batch_due_state(
@@ -272,12 +271,6 @@ def _record_tardiness_if_overdue(
     delta_hours = (finish_time - batch_due_exclusive).total_seconds() / 3600.0
     state.tardiness_hours += float(delta_hours)
     state.weighted_tardiness_hours += float(delta_hours) * priority_weight
-
-
-def _count_changeovers(by_machine: Dict[str, List[ScheduleResult]]) -> int:
-    # The public algorithm metric is an integer. Saved-event consumers retain the
-    # shared projection's separate completeness and known subtotal.
-    return count_known_changeovers(by_machine)
 
 
 def _build_utilization_metrics(state: _ResultMetricState) -> _UtilizationMetrics:
@@ -341,7 +334,7 @@ def objective_score(objective: str, metrics: ScheduleMetrics) -> Tuple[float, ..
     component is the sentinel, which no finite complete score can lose to.
     """
     keys = objective_metric_keys(objective)
-    if metrics.completion is not None and not metrics.completion.components_known:
+    if not metrics.completion.components_known:
         return (UNKNOWN_OBJECTIVE_VALUE,) * len(keys)
     score = tuple(float(getattr(metrics, key)) for key in keys)
     if not all(math.isfinite(value) for value in score):

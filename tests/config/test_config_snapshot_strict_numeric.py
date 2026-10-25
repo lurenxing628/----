@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.models.schedule_config_runtime import ensure_schedule_config_snapshot
+from core.models.schedule_config_runtime_coercion import ensure_schedule_config_snapshot
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.services.scheduler.config.config_snapshot import build_schedule_config_snapshot
 from core.shared.field_labels import display_field_label

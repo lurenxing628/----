@@ -1,10 +1,11 @@
 """Strict, page-independent read scope for the master-data overview."""
 
-import json
 import re
 from dataclasses import dataclass, field
+from typing import NoReturn
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.strict_json import load_strict_json
 
 DOMAINS = (("part", "零件"), ("route", "工艺路线"), ("opType", "工种"),
            ("equipment", "设备"), ("personnel", "人员"), ("material", "物料"),
@@ -15,7 +16,7 @@ COLUMNS = {"entities": ("business_code", "label", "domain", "status", "filled_fi
            "issues": ("business_code", "label", "domain", "status", "title", "evidence", "action", "rule")}
 
 
-def invalid(message):
+def invalid(message) -> NoReturn:
     raise WorkbenchCommandRejected("invalid_input", message, 400)
 
 
@@ -28,22 +29,17 @@ def public_ref(value):
     return type(value) is str and re.fullmatch(r"[0-9a-f]{48}", value) is not None
 
 
-def unique_object(pairs):
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            invalid("查询条件里有重复的项，请重新选择。")
-        result[key] = value
-    return result
+def _malformed_scope():
+    invalid("资料总览的查询条件格式不对，请刷新页面后重试。")
+
+
+def _oversized_scope():
+    invalid("主数据筛选范围过长。")
 
 
 def read_scope(text):
-    if len(text) > 65536:
-        invalid("主数据筛选范围过长。")
-    try:
-        value = json.loads(text, object_pairs_hook=unique_object)
-    except (ValueError, TypeError) as exc:
-        raise WorkbenchCommandRejected("invalid_input", "资料总览的查询条件格式不对，请刷新页面后重试。", 400) from exc
+    """Duplicate keys and non-finite numbers read as a malformed scope; 65536 counts UTF-8 bytes."""
+    value = load_strict_json(text, on_malformed=_malformed_scope, limit=(65536, _oversized_scope))
     allowed = {"view", "domain", "status", "query", "sort", "direction", "size", "column_filters"}
     if type(value) is not dict or set(value) - allowed:
         invalid("资料总览的查询条件含有不支持的项，请刷新页面后重试。")

@@ -32,14 +32,14 @@
       }
     }
     function select(row) {
-      if (command.phase === 'rejected') command.reset();
+      command.clearRejection({ includeStale: true });
       setLastReceipt(null);
       const value = row ? Object.fromEntries(Object.keys(blank()).map(key => [key, row[key] || ''])) : blank();
       value.start_time = value.start_time.replace(' ', 'T'); value.end_time = value.end_time.replace(' ', 'T');
       setSelection(row); setDraft(value); setOriginal(value); setConfirmCancel(Boolean(row && row.status !== 'active')); setError(null);
     }
     function updateDraft(key, value) {
-      if (command.phase === 'rejected') command.reset();
+      command.clearRejection({ includeStale: true });
       setLastReceipt(null); setError(null);
       setDraft(current => ({ ...current, [key]: value }));
     }

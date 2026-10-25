@@ -17,14 +17,13 @@ hours remain visible. DB/schema errors propagate. Caller owns the read snapshot.
 from collections import defaultdict
 from datetime import datetime
 
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.capacity.plan_calendar_intervals import hours, instant, union, wire
 from core.services.capacity.plan_calendar_issues import issue
 from core.services.capacity.plan_calendar_windows import available_intervals
 from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
 from core.services.workbench.facts.resource_projection import RESOURCE_METRIC_VERSION
 
-from .calendar_context import public_resource, selected_context
+from .calendar_context import public_resource
 from .occupancy_constraints import TaskConstraints
 
 
@@ -108,15 +107,9 @@ def _capacity_measures(metrics):
             "outside_available_hours": outside, "capacity_shortfall_hours": shortage}, utilization, shortage > 1e-9
 
 
-def project_plan_occupancy(conn, *, entry, scope, rows, resources, plan_span, calendar_facts, context=None, selected=None):
-    """calendar_facts is the private result of project_plan_calendar in this read."""
-    owned = selected is None and context is None
-    if selected is None:
-        selected = (context.calendar_selection(entry, scope, resources, plan_span) if context is not None else
-                    selected_context(conn, entry, scope, rows, resources, plan_span))
+def project_plan_occupancy(*, scope, resources, calendar_facts, selected):
+    """calendar_facts is the private result of project_plan_calendar over the same selection."""
     rows, start, end, time_scope, context = selected
-    if owned and calendar_facts["context"] != context:
-        raise WorkbenchCommandRejected("snapshot_stale", "班表和安排的计划或时间范围不一致，请刷新后重试。")
     constraints = TaskConstraints(calendar_facts)
     groups, unknown = _occupancy_groups(rows, start, end, constraints)
     calendars = calendar_facts["resources"]

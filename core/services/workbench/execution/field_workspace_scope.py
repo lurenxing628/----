@@ -1,10 +1,10 @@
 """Field-only scope normalization. Pagination never changes the selected cohort."""
 
-import json
 import re
 from datetime import datetime
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.strict_json import load_strict_json
 
 from .actual_gantt_scope import matches_execution_resource
 
@@ -58,10 +58,10 @@ def _dates(result, keys, *, times=False):
 def _batches(result):
     if 'batch_ids' not in result:
         return
-    try:
-        ids = json.loads(result['batch_ids']) if type(result['batch_ids']) is str else result['batch_ids']
-    except (ValueError, TypeError) as exc:
-        raise WorkbenchCommandRejected('invalid_input', '批次范围无效。', 400) from exc
+    # Query arguments carry the list as JSON text; the file-preview form scope is already decoded.
+    ids = result['batch_ids']
+    if type(ids) is str:
+        ids = load_strict_json(ids, on_malformed=lambda: invalid('批次范围无效。'))
     if type(ids) is not list or not 1 <= len(ids) <= 5000 or any(type(item) is not str or not item or len(item) > 200 for item in ids):
         invalid('批次范围须为明确的非空批次号列表。')
     result['batch_ids'] = sorted(set(ids))

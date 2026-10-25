@@ -192,3 +192,27 @@ def test_corrupt_official_schedule_time_in_hold_window_blocks_strict_freeze(cand
     with pytest.raises(ValidationError) as exc:
         prepare_candidate_run_input(case.conn, settings, execution_projections=case.projections())
     assert exc.value.field == "freeze_window"
+
+
+def test_unexpected_preflight_failure_logs_the_request_ref_shown_to_the_user(pf, monkeypatch, caplog):
+    """排产检查的未预期错误：日志记下的编号就是用户看到的「下方编号」，原始异常留在日志里。"""
+    import logging
+
+    from core.services.workbench.run.preflight import PreflightService
+
+    def broken(service, value):
+        raise RuntimeError("preflight evaluation broke")
+
+    monkeypatch.setattr(PreflightService, "evaluate", broken)
+    with caplog.at_level(logging.ERROR):
+        response = pf.post("/api/workbench/v1/scheduling/preflight", json=payload(pf))
+    assert response.status_code == 500, response.get_data(as_text=True)
+    assert response.headers["Cache-Control"] == "no-store"
+    result = response.get_json()
+    error = result["error"]
+    assert result["committed"] is False
+    assert (error["code"], error["message"]) == ("storage_failure", "排产检查没有完成，没有生成这次排产，也没有改动任何业务数据。"
+                                                 "请刷新重试；仍不行请联系维护人员，并告知下方编号。")
+    record, = [item for item in caplog.records if item.getMessage().startswith("只读排产前检查失败")]
+    assert record.getMessage() == "只读排产前检查失败 request_ref=" + error["request_ref"]
+    assert isinstance(record.exc_info[1], RuntimeError)

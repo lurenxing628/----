@@ -8,7 +8,7 @@ from core.services.workbench.run import worker as run_worker
 from core.services.workbench.run.jobs import WorkbenchRunService
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_jobs_support import job_case as _job_case  # noqa: F401
-from tests.workbench.run_runtime_support import BASE, intent, paused_compute
+from tests.workbench.run_runtime_support import BASE, intent, paused_compute, wait_runtime_idle
 from tests.workbench.run_runtime_support import owned_case as _owned_case  # noqa: F401
 from tests.workbench.run_runtime_support import runtime_api as _runtime_api  # noqa: F401
 from web.bootstrap import workbench_run_runtime as run_runtime
@@ -29,7 +29,7 @@ def test_http_202_single_background_worker_real_engine_and_replay(runtime_api, m
         for _ in range(10):
             runtime(ref)
         release.set()
-        assert runtime.wait_idle(timeout=20)
+        assert wait_runtime_idle(runtime, 20)
     final = client.get(BASE + "/runs/" + ref).get_json()["data"]
     assert final["state"] == "complete" and final["result_persisted"]
     assert 1 <= len(final["candidates"]) <= 3 and len(calls) == 1
@@ -51,7 +51,7 @@ def test_http_202_single_background_worker_real_engine_and_replay(runtime_api, m
 
     monkeypatch.setattr(WorkbenchRunWorker, "execute", forbidden)
     runtime(ref)
-    assert runtime.wait_idle(timeout=5)
+    assert wait_runtime_idle(runtime, 5)
     assert redundant_calls == []
 
 
@@ -65,7 +65,7 @@ def test_compute_exception_is_logged_with_original_ref_and_durable_failure(runti
     monkeypatch.setattr(WorkbenchRunWorker, "_compute", fail)
     response = client.post(BASE + "/runs", json=value)
     ref = response.get_json()["run_ref"]
-    assert response.status_code == 202 and runtime.wait_idle(timeout=15)
+    assert response.status_code == 202 and wait_runtime_idle(runtime, 15)
     final = client.get(BASE + "/runs/" + ref).get_json()["data"]
     assert final["state"] == "failed"
     assert ref in caplog.text and "BN explicit compute failure" in caplog.text

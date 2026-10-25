@@ -78,6 +78,19 @@ class LedgerCase:
     def ref(self, kind, key):
         return self.conn.execute("SELECT ref FROM WorkbenchEntityRefs WHERE kind=? AND entity_key=? AND active=1", (kind, key)).fetchone()[0]
 
+    def task_projection(self, task_ref):
+        """按任务所属计划读出该工序的执行投影；生产只按工序批量读投影，没有按任务编号单读的入口。"""
+        with self.ledger.read_snapshot():
+            task = self.ledger.repo.task_headers([task_ref])[task_ref]
+            return self.ledger.project_operations([task["operation_ref"]], comparison_plan_ref=task["plan_ref"])[0]
+
+    def report_projection(self, report_ref):
+        """从所属工序的执行投影里取出这条报工；生产只按工序批量读投影，没有按报工单号单读的入口。"""
+        with self.ledger.read_snapshot():
+            operation_ref = self.ledger.report_header(report_ref=report_ref)["operation_ref"]
+            projection = self.ledger.project_operations([operation_ref])[0]
+        return next(report for report in projection.reports if report.report_ref == report_ref)
+
     def values(self, quantity=1, **patch):
         return {"actual_start": START, "actual_end": END, "completed_quantity": quantity,
                 "effective_processing_hours": 1.5, "actual_machine_ref": self.ref("machine", "M1"),

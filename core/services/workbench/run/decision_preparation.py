@@ -30,12 +30,6 @@ class DecisionPreparation:
             return self.source.baseline["state"] == "available"
         return next(row["status"] for row in self.source.rows if row["candidate_ref"] == key) == "completed"
 
-    def tasks(self, key):
-        return self.source.analysis_tasks(key)
-
-    def groups(self, key):
-        return self.source.analysis_groups(key)
-
     @cached_property
     def labels(self):
         return {ref: operation_labels(self.source.facts, ref)[0] for ref in self.source.scope["operation_refs"]}
@@ -58,10 +52,10 @@ class DecisionPreparation:
             available = self.available(key)
             requirements_available = available if formal else (source.receipt or {}).get("operation_effort") is not None or available
             projection = project_decision_preparation(source.facts, source.scope["operation_refs"],
-                {} if formal else source.operation_efforts, self.tasks(key), run_ref=source.run["run_ref"], available=available,
+                {} if formal else source.operation_efforts, self.source.analysis_tasks(key), run_ref=source.run["run_ref"], available=available,
                 deferred_refs=self.reference_deferred if key == "reference" else source.deferred_refs,
                 requirements_available=requirements_available, official=source.official_details if formal else None,
-                standards=None if formal else self.current_standards, task_groups=self.groups(key))
+                standards=None if formal else self.current_standards, task_groups=self.source.analysis_groups(key))
             rows = projection["rows"]
             self._rows[key] = rows
             self._rows_by_ref[key] = {row["operation_ref"]: row for row in rows}
@@ -92,13 +86,13 @@ class DecisionPreparation:
         key = self.source.computation_key(key)
         self.rows(key)
         if ref not in self._rows_by_ref[key] and key == "reference" and self.source.comparison_mode == "admission_official":
-            self._rows_by_ref[key][ref] = self._row(key, ref, self.groups("reference")[ref])
+            self._rows_by_ref[key][ref] = self._row(key, ref, self.source.analysis_groups("reference")[ref])
         return {field: value for field, value in self._rows_by_ref[key][ref].items()
                 if field not in ("operation_ref", "arranged")}
 
     def _side(self, key, row):
         source, ref = self.source, row["operation_ref"]
-        tasks = self.groups(key)[ref]
+        tasks = self.source.analysis_groups(key)[ref]
         machines = {task["machine"]["ref"]: task["machine"] for task in tasks if task["machine"] and task["machine"]["ref"] is not None}
         formal = key == "reference" and source.comparison_mode == "admission_official"
         if not tasks and not formal:
@@ -124,8 +118,8 @@ class DecisionPreparation:
             row = {**{field: labels[field] for field in ("operation_ref", "batch_ref", "batch_label", "part_label", "sequence", "process_label", "piece_id")},
                          "batch_id": labels["batch_label"], "before": previous, "after": selected, "deltas": deltas,
                          "data_gaps": labels["data_gaps"],
-                         "drill": {"selected": drill_target(self.source, tasks=self.groups(self.source.selected_ref)[ref], batch_ref=labels["batch_ref"], operation_ref=ref),
-                                   "reference": drill_target(self.source, tasks=self.groups("reference")[ref], batch_ref=labels["batch_ref"], operation_ref=ref, before=True)}}
+                         "drill": {"selected": drill_target(self.source, tasks=self.source.analysis_groups(self.source.selected_ref)[ref], batch_ref=labels["batch_ref"], operation_ref=ref),
+                                   "reference": drill_target(self.source, tasks=self.source.analysis_groups("reference")[ref], batch_ref=labels["batch_ref"], operation_ref=ref, before=True)}}
             for drill in row["drill"].values():
                 if drill is not None:
                     drill.update(resource_view=self.source.resource_view, comparison_tab="preparation")

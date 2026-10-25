@@ -53,10 +53,7 @@
     }, [editor && editor.action, editor && editor.ref, done, showList]);
     React.useEffect(() => {
       if (done) setLastReceipt(command.result);
-      if (command.phase === 'rejected') {
-        const code = command.error && command.error.error && command.error.error.code;
-        if (['stale_write', 'stale_context', 'context_expired'].includes(code)) setNeedsReview(true);
-      }
+      if (command.stale) setNeedsReview(true);
     }, [command.phase, command.result, command.error]);
     async function load(action, ref, reviewing = false) {
       if (locked) return;
@@ -98,8 +95,7 @@
     }
     function change(key, value) {
       setEditor(current => ({ ...current, draft: { ...current.draft, [key]: value } })); setError(null);
-      const code = command.error && (command.error.code || command.error.error && command.error.error.code);
-      if (!needsReview && command.phase === 'rejected' && !['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code) && typeof command.reset === 'function') command.reset();
+      if (!needsReview) command.clearRejection();
     }
     function acknowledge(value) { setEditor(current => ({ ...current, acknowledged: value })); }
     function acceptReview() {

@@ -121,7 +121,7 @@
     check(shape(v, ['candidate_ref', 'scope', 'state', 'items', 'items_complete', 'batch_count', 'issues', 'summary', 'basis'])
       && v.candidate_ref === data.candidate.candidate_ref && shape(v.scope, ['kind', 'candidate_ref', 'range_start', 'range_end', 'batch_ref', 'sort', 'order'])
       && v.scope.kind === 'run-candidate-workspace' && v.scope.candidate_ref === v.candidate_ref
-      && ['range_start', 'range_end', 'batch_ref'].every(k => v.scope[k] === (query[k] || null))
+      && ['range_start', 'range_end', 'batch_ref'].every(k => v.scope[k] === (query[k] ?? null))
       && v.scope.sort === query.sort && v.scope.order === query.order
       && ['available', 'partial', 'unavailable'].includes(v.state) && typeof v.items_complete === 'boolean'
       && count(v.batch_count) && Array.isArray(v.items) && v.items.length <= v.batch_count
@@ -184,9 +184,9 @@
       && d.candidate_task_count === d.candidate.task_count && d.task_count <= d.candidate_task_count && span(d.candidate_span) && span(d.task_span)
       && (d.task_count === 0) === (d.task_span === null) && (d.candidate_task_count === 0) === (d.candidate_span === null)
       && caps(d.capabilities) && blocked(d.blocked_reasons) && gaps(d.data_gaps)
-      && (!q.snapshot_ref || q.snapshot_ref === v.meta.snapshot_ref) && d.batch_ref === (q.batch_ref || null));
+      && (!q.snapshot_ref || q.snapshot_ref === v.meta.snapshot_ref) && d.batch_ref === (q.batch_ref ?? null));
     check(shape(d.time_scope, ['range_start', 'range_end', 'interval', 'time_basis', 'unplanned_policy'])
-      && d.time_scope.range_start === (q.range_start || null) && d.time_scope.range_end === (q.range_end || null)
+      && d.time_scope.range_start === (q.range_start ?? null) && d.time_scope.range_end === (q.range_end ?? null)
       && d.time_scope.interval === 'half_open_overlap' && d.time_scope.time_basis === 'factory_local' && d.time_scope.unplanned_policy === 'included_without_time_interval');
     const rowRefs = new Set(), operationRefs = new Set();
     let start = null, end = null;
@@ -243,7 +243,8 @@
     const d = result.data;
     check(value && value.blob instanceof Blob && value.blob.size > 0 && value.candidate_ref === d.candidate.candidate_ref
       && value.snapshot_ref === result.meta.snapshot_ref && value.task_count === d.task_count
-      && value.row_count === Math.max(1, d.task_count + (d.unplanned_operation_count || 0))
+      // 未安排工序资料缺项时 unplanned_operation_count 为 null，导出与后端一样只算已安排行（candidate_export.py）。
+      && value.row_count === Math.max(1, d.task_count + (d.unplanned_operation_count === null ? 0 : d.unplanned_operation_count))
       && text(value.filename) && !/[\\/\r\n]/.test(value.filename) && value.filename.endsWith('.' + fmt), '下载结果与当前完整范围不一致，没有保存文件。');
     return value;
   }
@@ -287,5 +288,5 @@
       workspace: (result, candidateRef, query) => workspace(result, candidateRef, query)
     });
   }
-  window.RunCandidateAPI = { create, adapter, check, ref, time, version, shape, envelope, summary, identity, catalog, catalogScope, workspace, workspaceScope, download, metricKeys, operationKeys, executionKeys, quantityContext };
+  window.RunCandidateAPI = { create, adapter, check, ref, time, timeKey, version, shape, envelope, summary, identity, catalog, catalogScope, workspace, workspaceScope, download, metricKeys, operationKeys, executionKeys, quantityContext };
 })();

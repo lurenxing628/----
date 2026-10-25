@@ -1,7 +1,5 @@
 """Use the scheduler's execution seeds when a trial includes actual production."""
 
-from types import SimpleNamespace
-
 from core.errors import AppError
 from core.models.workbench_trial import issue
 from core.services.scheduler.repository_bundle import build_schedule_repository_bundle
@@ -10,6 +8,7 @@ from core.services.scheduler.run.schedule_input_seed_metadata import (
     MERGED_EXECUTION_GROUP_SOURCE,
     merged_actual_group_intervals,
 )
+from core.services.workbench.facts.stored_algo_inputs import stored_batch, stored_batch_operation
 from core.services.workbench.run.input_external import execution_groups
 
 
@@ -59,9 +58,9 @@ def execution_anchors(conn, rows, live):
         raise ValueError("Actual production has no official plan")
     svc = build_schedule_repository_bundle(conn)
     projections = _prior_plan_projections(version, live)
-    operations = [SimpleNamespace(**row["original"]["operation"]) for row in rows]
+    operations = [stored_batch_operation(row["original"]["operation"]) for row in rows]
     facts = live["preflight_facts"]
-    batches = {row["batch_id"]: SimpleNamespace(**row) for row in facts.tables["Batches"]}
+    batches = {row["batch_id"]: stored_batch(row) for row in facts.tables["Batches"]}
     groups = execution_groups(facts, batches, operations)
     _, fixed, completed, seeds, _ = build_execution_guardrails_from_projections(
         svc, operations, prev_version=version, execution_projections=projections, facts=facts,
@@ -96,14 +95,19 @@ def anchor_issue(exc):
     return issue("execution_anchor_unproven", message)
 
 
-def attach_execution_anchors(conn, rows, live):
+def resolve_execution_anchors(conn, rows, live):
+    """(anchors, problem)：已有报工但实际时间或资源核对不了时不固定任何安排，问题让草稿不能正式采用。"""
     try:
-        anchors = execution_anchors(conn, rows, live)
+        return execution_anchors(conn, rows, live), None
     except (AppError, ValueError, KeyError) as exc:
-        problem = anchor_issue(exc)
-        live["execution_anchors"] = ({}, problem)
+        return {}, anchor_issue(exc)
+
+
+def attach_execution_anchors(conn, rows, live):
+    anchors, problem = resolve_execution_anchors(conn, rows, live)
+    live["execution_anchors"] = (anchors, problem)
+    if problem is not None:
         return [problem]
-    live["execution_anchors"] = (anchors, None)
     for row in rows:
         anchor = anchors.get(row["original"]["operation"]["id"])
         if anchor is not None:

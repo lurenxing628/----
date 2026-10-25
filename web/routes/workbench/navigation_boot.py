@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import fields
 from typing import Any, Dict, NoReturn, Optional
@@ -17,6 +16,7 @@ from core.models.workbench_report import TOPICS, ReportScope
 from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.models.workbench_run_job import validate_run_ref
 from core.models.workbench_trial import create_input, reference
+from core.shared.strict_json import load_strict_json
 
 SUPPORTED_VIEWS = frozenset((
     "dashboard", "process", "batches", "run", "analysis", "gantt", "delay", "field", "fieldgantt",
@@ -39,16 +39,18 @@ def _object(value, allowed, required=()):
         _invalid("页面地址里的定位内容不完整或有不支持的项，页面没有打开，也没有丢掉任何条件。请从侧栏重新进入。")
 
 
-def _unique_object(pairs):
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            _invalid("页面地址里的定位内容有重复项，页面没有打开；系统没有替你挑一个继续。请从侧栏重新进入。")
-        result[key] = value
-    return result
+_UNREADABLE = "页面地址里的定位或范围不对，页面没有打开；系统没有恢复上次选择，也没有换记录或放宽范围。请从侧栏重新进入。"
 
 
-def _invalid_constant(_value):
+def _unreadable() -> NoReturn:
+    _invalid(_UNREADABLE)
+
+
+def _duplicate_key() -> NoReturn:
+    _invalid("页面地址里的定位内容有重复项，页面没有打开；系统没有替你挑一个继续。请从侧栏重新进入。")
+
+
+def _nonfinite_number() -> NoReturn:
     _invalid("页面地址里的数字不是有效数字，页面没有打开。请从侧栏重新进入。")
 
 
@@ -278,7 +280,7 @@ def read_navigation(view: str, args: Any) -> Optional[Dict[str, Any]]:
         raw = _query_value(view, args)
         if raw is None:
             return None
-        value = json.loads(raw, object_pairs_hook=_unique_object, parse_constant=_invalid_constant)
+        value = load_strict_json(raw, on_malformed=_unreadable, on_duplicate=_duplicate_key, on_nonfinite=_nonfinite_number)
         _object(value, ("version", "view", "context"), ("version", "view", "context"))
         if type(value["version"]) is not int or value["version"] != 1:
             _invalid("页面地址里的定位版本不支持，页面没有打开。请从侧栏重新进入。")
@@ -290,4 +292,4 @@ def read_navigation(view: str, args: Any) -> Optional[Dict[str, Any]]:
     except WorkbenchNavigationInvalid:
         raise
     except (ValueError, TypeError, AppError, RecursionError) as exc:
-        raise WorkbenchNavigationInvalid("页面地址里的定位或范围不对，页面没有打开；系统没有恢复上次选择，也没有换记录或放宽范围。请从侧栏重新进入。") from exc
+        raise WorkbenchNavigationInvalid(_UNREADABLE) from exc

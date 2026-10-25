@@ -1,8 +1,7 @@
 (function () {
   'use strict';
-  const A = window.RunCandidateAPI, { check, ref, time, envelope } = A;
+  const A = window.RunCandidateAPI, { check, ref, time, timeKey, envelope } = A;
   const queryKeys = ['selected_candidate_ref', 'reference_candidate_ref', 'comparison_mode', 'resource_view', 'range_start', 'range_end', 'snapshot_ref'];
-  const timeKey = value => value.slice(0, 19) + '.' + (value.split('.')[1] || '').padEnd(6, '0');
   function bindSnapshot(payload, query) {
     if (query.snapshot_ref) check(payload.meta.snapshot_ref === query.snapshot_ref, '比较资料已更新，请刷新后重试。');
   }
@@ -16,6 +15,7 @@
         && data.baseline.baseline_ref === data.scope.reference.baseline_ref && data.baseline.state === data.scope.reference_state,
       '比较基准的正式计划资料已变化，请刷新。');
   }
+  // 各 *Scope 只保留填了值的筛选（空串、null、undefined 都不进 q）；后端把未填的筛选回显为 null，比较时用 `?? null` 对齐。
   function scope(runRef, query = {}) {
     check(ref(runRef), '请从排产记录打开方案对比。');
     const value = { comparison_mode: 'candidates', resource_view: 'selected_batches' };
@@ -592,7 +592,7 @@
         const list = pointsByEvent.get(saved.event_index);
         if (list) list.push(saved); else pointsByEvent.set(saved.event_index, [saved]);
       });
-      check(data.items.every(value => point(value) && (pointsByEvent.get(value.event_index) || []).some(saved => sameSaved(saved, value)))
+      check(data.items.every(value => { const saved = pointsByEvent.get(value.event_index); return point(value) && saved !== undefined && saved.some(row => sameSaved(row, value)); })
         && new Set(data.items.map(value => value.event_index)).size === data.items.length, '本页优化进展与保存的记录不一致，请点“刷新优化过程”。');
     } else {
       const attemptsByIndex = data.attempts === undefined ? null : new Map(data.attempts.map(saved => [saved.saved_index, saved]));
@@ -623,7 +623,7 @@
     if (q.comparison_mode === 'candidates' && q.reference_candidate_ref)
       check(data.scope.reference && data.scope.reference.candidate_ref === q.reference_candidate_ref, '明细的比较基准已变化，请点“刷新影响明细”。');
     ['change_kind', 'sort', 'order'].forEach(key => check(data.filters[key] === q[key], '明细的筛选或排序已变化，请点“刷新影响明细”。'));
-    ['batch_ref', ...(section === 'operations' ? ['resource_ref'] : [])].forEach(key => check(data.filters[key] === (q[key] || null), '明细的批次或资源已变化，请点“刷新影响明细”。'));
+    ['batch_ref', ...(section === 'operations' ? ['resource_ref'] : [])].forEach(key => check(data.filters[key] === (q[key] ?? null), '明细的批次或资源已变化，请点“刷新影响明细”。'));
     if (section === 'batches') {
       check(data.summary && object(data.summary.operation_changes)
         && ['changed_operation_count', 'machine_change_count'].every(key => {
@@ -631,7 +631,7 @@
           return window.EffortProjectionContract.metric(metric) && metric.scope === 'full_admission' && metric.metric_version === 'decision-preparation-v4';
         }), '全范围工序安排变化资料不完整，请点“刷新影响明细”。');
       if (data.filters.delivery_filter !== undefined) check(data.filters.delivery_filter === q.delivery_filter, '交付问题筛选已变化，请点“刷新影响明细”。');
-      if (q.selected_batch_ref || data.filters.selected_batch_ref !== undefined) check(data.filters.selected_batch_ref === (q.selected_batch_ref || null)
+      if (q.selected_batch_ref || data.filters.selected_batch_ref !== undefined) check(data.filters.selected_batch_ref === (q.selected_batch_ref ?? null)
         && (q.selected_batch_ref ? data.selected_batch && data.selected_batch.batch_ref === q.selected_batch_ref : data.selected_batch === null),
       '所选批次与当前方案的归档资料不一致，请点“刷新影响明细”。');
     }
@@ -670,7 +670,7 @@
     '准备与切换明细的方案、范围或页码已变化，请点“刷新准备与切换明细”。');
     if (q.comparison_mode === 'candidates' && q.reference_candidate_ref) check(data.scope.reference && data.scope.reference.candidate_ref === q.reference_candidate_ref, '准备与切换明细的比较基准已变化，请点“刷新准备与切换明细”。');
     ['sort', 'order', ...(section === 'preparation' ? ['allocation_state', 'work_scope'] : ['event_side'])].forEach(key => check(data.filters[key] === q[key], '准备与切换明细的筛选或排序已变化，请点“刷新准备与切换明细”。'));
-    ['machine_ref', ...(section === 'preparation' ? ['batch_ref'] : [])].forEach(key => check(data.filters[key] === (q[key] || null), '准备与切换明细的批次或设备已变化，请点“刷新准备与切换明细”。'));
+    ['machine_ref', ...(section === 'preparation' ? ['batch_ref'] : [])].forEach(key => check(data.filters[key] === (q[key] ?? null), '准备与切换明细的批次或设备已变化，请点“刷新准备与切换明细”。'));
     bindScope(payload, data, q);
     check(data.filter_options && Array.isArray(data.filter_options.machines) && data.filter_options.machines.every(row => ref(row.ref) && row.kind === 'machine')
       && (section !== 'preparation' || Array.isArray(data.filter_options.batches) && data.filter_options.batches.every(row => ref(row.ref))), '准备与切换明细的批次或设备选项不完整，请点“刷新准备与切换明细”。');
@@ -798,13 +798,13 @@
     check(data.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref
       && data.scope.comparison_mode === q.comparison_mode && data.candidate && data.candidate.candidate_ref === q.selected_candidate_ref
       && data.metric_version === 'decision-resource-v4' && data.filters && data.filters.section === section && data.filters.resource_kind === q.resource_kind
-      && data.filters.resource_ref === (q.resource_ref || null) && Array.isArray(data.items) && data.page && data.page.number === q.page && data.page.size === q.size,
+      && data.filters.resource_ref === (q.resource_ref ?? null) && Array.isArray(data.items) && data.page && data.page.number === q.page && data.page.size === q.size,
     '资源明细的方案、设备人员范围或页码已变化，请点“刷新资源影响”。');
     if (q.comparison_mode === 'candidates' && q.reference_candidate_ref)
       check(data.scope.reference && data.scope.reference.candidate_ref === q.reference_candidate_ref, '资源明细的比较基准已变化，请点“刷新资源影响”。');
     bindScope(payload, data, q);
     check(data.filters.grain === q.grain && data.filters.pressure_threshold === q.pressure_threshold
-      && (section === 'resources' || ['bucket_start', 'bucket_end'].every(key => data.filters[key] === (q[key] || null))),
+      && (section === 'resources' || ['bucket_start', 'bucket_end'].every(key => data.filters[key] === (q[key] ?? null))),
     '资源时间粒度、关注线或所选时段已变化，请点“刷新资源影响”。');
     const cohort = data.scope.resource_refs;
     check(cohort && ['machine', 'operator'].every(kind => Array.isArray(cohort[kind]) && cohort[kind].every(ref) && new Set(cohort[kind]).size === cohort[kind].length), '参与比较的设备或人员资料不完整，请点“刷新资源影响”。');

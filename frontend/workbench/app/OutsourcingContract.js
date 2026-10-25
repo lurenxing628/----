@@ -102,10 +102,11 @@
   }
   function preview(v, input) {
     const d = envelope(v, null, true); target(d.target, true); facts(d.after, v.meta.as_of); boundary(d.execution, d.target);
-    check(equal(d.input, input) && d.outsourcing_ref === (input.outsourcing_ref || null) && d.can_confirm === true
+    // 新登记的 input 只有 target、没有 outsourcing_ref，后端回显 null。
+    check(equal(d.input, input) && d.outsourcing_ref === (input.outsourcing_ref ?? null) && d.can_confirm === true
       && object(d.write_context) && text(d.write_context.write_token) && d.write_context.capabilities.confirm === true);
     if (input.target) check(d.before === null && equal(target(d.target), input.target)); else facts(d.before);
-    check(equal(d.after, { ...(d.before || {}), ...Object.fromEntries(fields.filter(k => Object.prototype.hasOwnProperty.call(input, k)).map(k => [k, input[k]])) })); return v;
+    check(equal(d.after, { ...d.before, ...Object.fromEntries(fields.filter(k => Object.prototype.hasOwnProperty.call(input, k)).map(k => [k, input[k]])) })); return v;
   }
   function receipt(v, intent) {
     const d = v && v.data;

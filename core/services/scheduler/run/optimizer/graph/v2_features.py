@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.date_parsers import parse_date
 from core.algorithm_contracts.priority_constants import PRIORITY_WEIGHT, normalize_priority
+from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_contracts.value_domains import EXTERNAL, MERGED
 from core.algorithm_runtime.piece_input import operation_batch
 from core.errors import ValidationError
@@ -49,7 +50,7 @@ _LOGGER = logging.getLogger(__name__)
 def enrich_graph_ready_v2_metrics(
     metrics_by_op_id: Dict[int, Dict[str, Any]],
     *,
-    operations: List[Any],
+    operations: List[OpForScheduleAlgo],
     batches: Dict[str, Any],
     start_dt: datetime,
     calendar_service: Optional[Any] = None,
@@ -71,9 +72,8 @@ def enrich_graph_ready_v2_metrics(
     return out
 
 
-def _prepare_common_features(metrics_by_op_id, *, operations, batches, start_dt, seed_results, downtime_map):
-    op_by_id = {_positive_int(op.id, field="operation.id"): op for op in operations}
-    metrics = _normalize_metrics_by_op_id(metrics_by_op_id)
+def _prepare_common_features(metrics, *, operations, batches, start_dt, seed_results, downtime_map):
+    op_by_id = {op.id: op for op in operations}
     if set(metrics).difference(op_by_id):
         raise ValidationError("GraphReady v2 特征缺少对应工序。", field="graph_ready_v2_features")
     durations = _duration_by_op_id_with_zero_total_trace(op_by_id, batches=batches)
@@ -91,7 +91,7 @@ def _prepare_common_features(metrics_by_op_id, *, operations, batches, start_dt,
                 _NO_DUE_DEADLINE_HOURS if due is None else _deadline_hours(start_dt=start_dt, due_exclusive=due)
             )
             priority_weight_by_batch[batch_key] = PRIORITY_WEIGHT[normalize_priority(batch.priority)]
-    family_ids = sorted({op_by_id[op_id].op_type_id or "" for op_id in metrics})
+    family_ids = sorted({op_by_id[op_id].op_type_id for op_id in metrics})
     family_ranks = {type_id: index for index, type_id in enumerate(family_ids)}
     processing_ranks = _processing_time_ranks(durations)
     base_row_by_op_id: Dict[int, Dict[str, Any]] = {}
@@ -104,7 +104,7 @@ def _prepare_common_features(metrics_by_op_id, *, operations, batches, start_dt,
             {
                 "due_deadline_hours": float(due_hours_by_batch[batch_key]),
                 "weighted_processing_hours": float(durations[op_id] / priority_weight),
-                "changeover_family_rank": family_ranks[op.op_type_id or ""],
+                "changeover_family_rank": family_ranks[op.op_type_id],
                 "processing_time_rank": float(processing_ranks[op_id]),
             }
         )
@@ -161,7 +161,7 @@ def _enrich_feature_basis(*, batches, start_dt, calendar_service,
             due_exclusive=capacity_due_exclusive,
         )
         window_key = (
-            _operation_source(op),
+            op.source,
             op.machine_id,
             op.operator_id,
             op.op_type_id,
@@ -273,47 +273,31 @@ def _duration_by_op_id_with_zero_total_trace(
 
 def _operation_hours(op: Any, *, batches: Dict[str, Any]) -> float:
     batch = operation_batch(op, _batch_for_operation(op, batches=batches))
-    if _operation_source(op) == EXTERNAL:
+    if op.source == EXTERNAL:
         return float(_external_operation_hours(op))
     # 单一真相源：total=setup+unit*quantity 与 core/algorithm_runtime/internal_slot.validate_internal_hours
     # 同口径——quantity==0 合法（总量=setup）、总工时 0 合法，不复辟 quantity>0 / total>0 硬闸
     # （系统口径见 schedule_input_runtime_support._ensure_internal_runtime_hours 护栏注释与回归测试
-    # test_ensure_internal_runtime_hours_allows_zero_quantity）。v2 特征层仍保留逐字段存在性/有限性/
-    # 非负的 fail-loud 前置检查（比 legacy「缺失补 0」更严）：进入 optimizer 的工序/批次字段必须齐全，
-    # 缺字段是坏输入而非合法降级。total==0 的处理见 _duration_by_op_id_with_zero_total_trace。
+    # test_ensure_internal_runtime_hours_allows_zero_quantity）。缺失/非数字/非有限/负数在两处都按坏输入
+    # 报错（validate_internal_hours 对 None 同样报错，不补 0）；这里逐字段检查只为给出带字段名的
+    # graph_ready_v2_features 错误。total==0 的处理见 _duration_by_op_id_with_zero_total_trace。
     quantity = _non_negative_float(batch.quantity, field="batch.quantity")
     setup = _non_negative_float(op.setup_hours, field="operation.setup_hours")
     unit = _non_negative_float(op.unit_hours, field="operation.unit_hours")
     return float(setup + unit * quantity)
 
 
-def _external_operation_hours(op: Any) -> float:
-    if _is_merged_external(op):
+def _external_operation_hours(op: OpForScheduleAlgo) -> float:
+    # 排产输入构建保证合并外协组必带组身份。
+    if op.ext_merge_mode == MERGED:
         return _positive_float(op.ext_group_total_days, field="operation.ext_group_total_days") * 24.0
     return _positive_float(op.ext_days, field="operation.ext_days") * 24.0
 
 
-def _is_merged_external(op: Any) -> bool:
-    merge_mode = str(op.ext_merge_mode or "").strip().lower()
-    ext_group_id = str(op.ext_group_id or "").strip()
-    return merge_mode == MERGED and bool(ext_group_id)
-
-
-def _operation_source(op: Any) -> str:
-    return str(op.source or "internal").strip().lower()
-
-
-def _batch_for_operation(op: Any, *, batches: Dict[str, Any]) -> Any:
-    batch_id = _batch_id_for_operation(op)
-    if not batch_id:
-        raise ValidationError("GraphReady v2 特征要求工序必须有批次。", field="graph_ready_v2_features")
-    if batch_id not in batches:
+def _batch_for_operation(op: OpForScheduleAlgo, *, batches: Dict[str, Any]) -> Any:
+    if op.batch_id not in batches:
         raise ValidationError("GraphReady v2 特征找不到工序批次。", field="graph_ready_v2_features")
-    return batches[batch_id]
-
-
-def _batch_id_for_operation(op: Any) -> str:
-    return str(op.batch_id or "").strip()
+    return batches[op.batch_id]
 
 
 def _due_exclusive_datetime(batch: Any) -> Optional[datetime]:
@@ -354,7 +338,7 @@ def _deadline_budget_hours(
 ) -> float:
     if due_wall_hours <= 0.0:
         return float(due_wall_hours)
-    if _operation_source(op) == EXTERNAL:
+    if op.source == EXTERNAL:
         return float(due_wall_hours)
     if _uses_calendar_capacity_budget(calendar_service=calendar_service, capacity=capacity):
         return float(capacity["residual_capacity_window_hours"])
@@ -396,26 +380,6 @@ def _sacrifice_penalty(*, due_hours: float, remaining_hours: float, saveability:
 def _processing_time_ranks(duration_by_op_id: Dict[int, float]) -> Dict[int, int]:
     ordered = sorted(duration_by_op_id.items(), key=lambda item: (item[1], item[0]))
     return {op_id: index for index, (op_id, _hours) in enumerate(ordered)}
-
-
-def _normalize_metrics_by_op_id(metrics_by_op_id: Dict[int, Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
-    out: Dict[int, Dict[str, Any]] = {}
-    for raw_op_id, metric in metrics_by_op_id.items():
-        op_id = _positive_int(raw_op_id, field="node_metrics_by_op_id")
-        if op_id in out:
-            raise ValidationError("GraphReady v2 特征发现重复 node_metrics_by_op_id。", field="graph_ready_v2_features")
-        out[op_id] = metric
-    return out
-
-
-def _positive_int(value: Any, *, field: str) -> int:
-    try:
-        number = int(value)
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise ValidationError(f"{field} 必须是正整数。", field="graph_ready_v2_features") from exc
-    if number <= 0:
-        raise ValidationError(f"{field} 必须是正整数。", field="graph_ready_v2_features")
-    return number
 
 
 def _positive_float(value: Any, *, field: str) -> float:

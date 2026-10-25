@@ -84,7 +84,8 @@
     const wanted = input(query);
     if (wanted.snapshot_ref && wanted.snapshot_ref !== meta.snapshot_ref) throw failure(window.WorkbenchTerms.outcomes.stale, 'snapshot_stale');
     if (Object.keys(defaults).filter(key => !['page', 'column_filters'].includes(key)).some(key => data.scope[key] !== wanted[key])
-      || window.ResourceTableFilterModel.signature(data.scope.column_filters || {}) !== window.ResourceTableFilterModel.signature(wanted.column_filters)) throw failure('返回筛选范围不一致，未改选其他来源。', 'snapshot_stale');
+      // 后端在没有列筛选时省略 scope.column_filters（core/models/workbench_calibration.py scope()）。
+      || window.ResourceTableFilterModel.signature(data.scope.column_filters === undefined ? {} : data.scope.column_filters) !== window.ResourceTableFilterModel.signature(wanted.column_filters)) throw failure('返回筛选范围不一致，未改选其他来源。', 'snapshot_stale');
     if (!['total', 'suggested', 'insufficient_data', 'over_20_percent'].every(key => count(data.summary[key]))
       || data.summary.total !== data.summary.suggested + data.summary.insufficient_data) throw failure('校准汇总数量不一致。');
     if (detailRef) {

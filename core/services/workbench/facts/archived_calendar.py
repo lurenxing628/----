@@ -45,10 +45,14 @@ class _SavedCalendarEngine(SnapshotCalendarEngine):
                    for row in tables["WorkbenchShiftDayPeriods"] or []} if version is not None and version >= 34 else {}
         patterns = [dict(row, periods_json=periods.get((row["profile_id"], row["day_offset"])))
                     for row in tables["WorkbenchShiftPatternDays"] or []]
-        super().__init__({"global": tables["WorkCalendar"] or [], "personal": tables["OperatorCalendar"] or [],
+        legacy = version is not None and version < 34
+        # v34 之前的日历表没有 periods_json 列，与 CalendarFactsRepository 的 NULL AS periods_json 同口径显式补成 None。
+        calendars = {name: [dict(row, periods_json=None) for row in tables[name] or []] if legacy else tables[name] or []
+                     for name in ("WorkCalendar", "OperatorCalendar")}
+        super().__init__({"global": calendars["WorkCalendar"], "personal": calendars["OperatorCalendar"],
                           "profiles": selected, "patterns": patterns,
                           "defaults": tables["WorkbenchCalendarDefaults"] or [],
-                          "legacy_defaults": version is not None and version < 34})
+                          "legacy_defaults": legacy})
 
     def _missing(self, name, day, operator_id=None):
         self.missing_policies[(operator_id, day)] = name
@@ -193,10 +197,11 @@ class ArchivedCalendar:
         tables = {name: self.table(name) for name in (
             "WorkCalendar", "OperatorCalendar", "WorkbenchOperatorProfiles", "WorkbenchShiftProfiles",
             "WorkbenchShiftPatternDays", "WorkbenchShiftDayPeriods", "WorkbenchCalendarDefaults")}
-        # 坏日期等日历内容错误由引擎留到读取那天再报；这里只剩保存表结构损坏（缺列、类型不对）让整份引擎不可用。
+        # 坏日期等日历内容错误由引擎留到读取那天再报；这里只剩保存表结构损坏（缺列 KeyError、取值类型不对 TypeError）
+        # 让整份引擎不可用，下游逐日投影为 calendar_invalid、试调核对报 calendar_unproven。
         try:
             self.engine = _SavedCalendarEngine(tables, self.version)
-        except (ValueError, TypeError, KeyError, OverflowError):
+        except (KeyError, TypeError):
             self.engine = None
         self._global_days = {}
         self._shift_days = {}

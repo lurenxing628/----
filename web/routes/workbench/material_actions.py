@@ -84,10 +84,10 @@ def _confirm_body():
     body = json_body({"request_key", "write_token", "input"})
     validate_request_key(body["request_key"])
     g.workbench_request_key = body["request_key"]
-    opaque_ref(body["write_token"], "write_token")
+    opaque_ref(body["write_token"])
     if type(body["input"]) is not dict or set(body["input"]) != {"preview_ref"}:
         raise WorkbenchCommandRejected("invalid_input", "只能确认刚才预检过的那一批，物料没有改动。请点「重新预检」。", 400)
-    opaque_ref(body["input"]["preview_ref"], "preview_ref")
+    opaque_ref(body["input"]["preview_ref"])
     return body
 
 

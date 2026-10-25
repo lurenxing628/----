@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from core.services.scheduler.graph.types import OperationGraphEdge, OperationGraphNode
+
 from .schedule_input_contracts import ScheduleRunInput
 
 GRAPH_CYCLE_DISABLED_REASON = "schedule_graph_cycle"
@@ -14,17 +16,19 @@ def effective_graph_analysis_mode(mode: str) -> str:
     return mode
 
 
-def graph_input_scope(schedule_input: ScheduleRunInput, *, nodes: Optional[List[Any]] = None) -> Dict[str, Any]:
+def graph_input_scope(
+    schedule_input: ScheduleRunInput, *, nodes: Optional[List[OperationGraphNode]] = None,
+) -> Dict[str, Any]:
     if nodes is None:
-        frozen_node_count = len(schedule_input.frozen_op_ids or set())
+        frozen_node_count = len(schedule_input.frozen_op_ids)
     else:
-        frozen_node_count = sum(1 for node in nodes if bool(node.is_frozen))
+        frozen_node_count = sum(1 for node in nodes if node.is_frozen)
     return {
         "input_scope": _GRAPH_INPUT_SCOPE,
-        "total_algo_op_count": int(len(schedule_input.algo_ops or [])),
-        "reschedulable_unfrozen_op_count": int(len(schedule_input.algo_ops_to_schedule or [])),
-        "frozen_node_count": int(frozen_node_count),
-        "seed_result_count": int(len(schedule_input.seed_results or [])),
+        "total_algo_op_count": len(schedule_input.algo_ops),
+        "reschedulable_unfrozen_op_count": len(schedule_input.algo_ops_to_schedule),
+        "frozen_node_count": frozen_node_count,
+        "seed_result_count": len(schedule_input.seed_results),
     }
 
 
@@ -63,95 +67,44 @@ def graph_ready_public_fields(*, mode: str, is_dag: bool, graph_block_on_cycle: 
     }
 
 
-def node_op_id(node: Any) -> int:
-    raw = getattr(node, "raw", {}) or {}
-    value = raw.get("id") if isinstance(raw, dict) else None
-    if isinstance(value, bool):
-        value = None
-    try:
-        op_id = int(value or 0)
-    except (TypeError, ValueError):
-        op_id = 0
-    if op_id <= 0:
-        from core.services.scheduler.graph.input_adapter import GraphInputContractError
-
-        raise GraphInputContractError(f"graph_ready_context 节点缺少有效 op_id：{getattr(node, 'node_id', '-')}")
-    return op_id
-
-
-def positive_op_id_set(values: Any) -> Set[int]:
-    result: Set[int] = set()
-    for value in values or ():
-        if isinstance(value, bool):
-            continue
-        try:
-            op_id = int(value or 0)
-        except (TypeError, ValueError):
-            continue
-        if op_id > 0:
-            result.add(op_id)
-    return result
-
-
 def schedule_input_op_id_sets(schedule_input: ScheduleRunInput) -> Tuple[Set[int], Set[int], Set[int]]:
-    schedulable_op_ids = positive_op_id_set(getattr(op, "id", None) for op in schedule_input.algo_ops_to_schedule or [])
-    frozen_op_ids = positive_op_id_set(schedule_input.frozen_op_ids or ())
-    seed_op_ids = positive_op_id_set(
-        (item or {}).get("op_id") if isinstance(item, dict) else getattr(item, "op_id", None)
-        for item in schedule_input.seed_results or ()
-    )
-    return schedulable_op_ids, frozen_op_ids | seed_op_ids, seed_op_ids
+    schedulable_op_ids = {op.id for op in schedule_input.algo_ops_to_schedule}
+    seed_op_ids = {seed["op_id"] for seed in schedule_input.seed_results}
+    return schedulable_op_ids, schedule_input.frozen_op_ids | seed_op_ids, seed_op_ids
 
 
-def sort_key_by_op_id(nodes: List[Any], *, schedulable_op_ids: Set[int]) -> Dict[int, Tuple[int, int, int]]:
+def sort_key_by_op_id(nodes: List[OperationGraphNode], *, schedulable_op_ids: Set[int]) -> Dict[int, Tuple[int, int, int]]:
     batch_order: Dict[str, int] = {}
-    for node in sorted(nodes, key=lambda item: (str(item.batch_id), int(item.seq), str(item.op_code), str(item.node_id))):
-        batch_order.setdefault(str(node.batch_id), len(batch_order))
+    for node in sorted(nodes, key=lambda item: (item.batch_id, item.seq, item.op_code, item.node_id)):
+        batch_order.setdefault(node.batch_id, len(batch_order))
     sort_keys: Dict[int, Tuple[int, int, int]] = {}
     for node in nodes:
-        op_id = node_op_id(node)
+        op_id = node.raw["id"]
         if op_id in schedulable_op_ids:
-            sort_keys[op_id] = (int(batch_order[str(node.batch_id)]), int(node.seq), int(op_id))
+            sort_keys[op_id] = (batch_order[node.batch_id], node.seq, op_id)
     return sort_keys
 
 
-def build_predecessor_successor_maps(nodes: List[Any], edges: List[Any]) -> Tuple[Dict[int, Set[int]], Dict[int, Set[int]]]:
-    from core.services.scheduler.graph.input_adapter import GraphInputContractError
-
-    def _edge_node_id(edge: Any, attr: str, index: int) -> str:
-        if not hasattr(edge, attr):
-            raise GraphInputContractError(f"图 ready 队列边缺少字段 {attr}：edge_index={index}")
-        node_id = str(getattr(edge, attr) or "").strip()
-        if not node_id:
-            raise GraphInputContractError(f"图 ready 队列边字段 {attr} 不能为空：edge_index={index}")
-        return node_id
-
-    op_id_by_node_id = {str(node.node_id): node_op_id(node) for node in nodes}
+def build_predecessor_successor_maps(
+    nodes: List[OperationGraphNode], edges: List[OperationGraphEdge],
+) -> Tuple[Dict[int, Set[int]], Dict[int, Set[int]]]:
+    # 边由同一批节点构造（线性链或分件图），两端节点编号必在本次节点里。
+    op_id_by_node_id = {node.node_id: node.raw["id"] for node in nodes}
     predecessors: Dict[int, Set[int]] = {op_id: set() for op_id in op_id_by_node_id.values()}
     successors: Dict[int, Set[int]] = {op_id: set() for op_id in op_id_by_node_id.values()}
-    for index, edge in enumerate(edges):
-        from_node_id = _edge_node_id(edge, "from_node_id", index)
-        to_node_id = _edge_node_id(edge, "to_node_id", index)
-        if from_node_id not in op_id_by_node_id:
-            raise GraphInputContractError(
-                f"图 ready 队列边引用未知前置节点：from_node_id={from_node_id!r}，edge_index={index}"
-            )
-        if to_node_id not in op_id_by_node_id:
-            raise GraphInputContractError(
-                f"图 ready 队列边引用未知后置节点：to_node_id={to_node_id!r}，edge_index={index}"
-            )
-        from_op_id = op_id_by_node_id[from_node_id]
-        to_op_id = op_id_by_node_id[to_node_id]
-        predecessors.setdefault(to_op_id, set()).add(from_op_id)
-        successors.setdefault(from_op_id, set()).add(to_op_id)
+    for edge in edges:
+        from_op_id = op_id_by_node_id[edge.from_node_id]
+        to_op_id = op_id_by_node_id[edge.to_node_id]
+        predecessors[to_op_id].add(from_op_id)
+        successors[from_op_id].add(to_op_id)
     return predecessors, successors
 
 
 def build_graph_ready_context(
     schedule_input: ScheduleRunInput,
     *,
-    nodes: List[Any],
-    edges: List[Any],
+    nodes: List[OperationGraphNode],
+    edges: List[OperationGraphEdge],
     enabled: bool,
     score_context: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:

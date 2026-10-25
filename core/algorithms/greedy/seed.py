@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import fields
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from core.algorithm_contracts.schedule_point_evidence import PointSeedResult, point_seed_valid
-from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_contracts.schedule_point_evidence import PointSeedResult
+from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_contracts.value_domains import EXTERNAL
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.errors import ValidationError
@@ -46,11 +45,7 @@ def seed_external_group_key(result: ScheduleResult) -> Optional[Tuple[str, ...]]
     if not isinstance(result, _SeedScheduleResult) or result._external_group_identity is None:
         return None
     op_id, batch_id, group_id, piece = result._external_group_identity
-    if (
-        identity_int(result.op_id) != op_id
-        or str(result.batch_id or "").strip() != batch_id
-        or str(result.source or "").strip().lower() != EXTERNAL
-    ):
+    if identity_int(result.op_id) != op_id or result.batch_id != batch_id or result.source != EXTERNAL:
         raise ValidationError("冻结外协种子的组身份与工序不一致，系统已停止排产。", field="seed_results")
     key = batch_id, group_id
     return key if piece is None else key + (piece,)
@@ -83,7 +78,7 @@ def seed_result_for_output(result: ScheduleResult) -> ScheduleResult:
 def normalize_seed_results(
     *,
     seed_results: Optional[List[ScheduleResult]],
-    operations: List[Any],
+    operations: List[OpForScheduleAlgo],
     algo_stats: Any = None,
 ) -> Tuple[List[ScheduleResult], Set[int], List[str]]:
     warnings: List[str] = []
@@ -92,26 +87,22 @@ def normalize_seed_results(
         return [], seed_op_ids, warnings
 
     lookup = (_build_operation_lookup(operations)
-              if any(identity_int(getattr(result, "op_id", 0)) <= 0 for result in seed_results) else {})
+              if any(identity_int(result.op_id) <= 0 for result in seed_results) else {})
     counters = {
         "backfilled": 0,
         "dropped_invalid": 0,
-        "dropped_bad_time_type": 0,
-        "dropped_bad_time_order": 0,
-        "dropped_bad_time_incomparable": 0,
         "dropped_dup": 0,
     }
     dup_samples: List[str] = []
     normalized: List[ScheduleResult] = []
 
     for seed_result in seed_results:
-        original_oid = identity_int(getattr(seed_result, "op_id", 0))
-        result, oid, reason = _normalize_one_seed_result(seed_result, original_oid=original_oid, lookup=lookup)
-        if reason:
-            counters[reason] += 1
+        original_oid = identity_int(seed_result.op_id)
+        normalized_one = _normalize_one_seed_result(seed_result, original_oid=original_oid, lookup=lookup)
+        if normalized_one is None:
+            counters["dropped_invalid"] += 1
             continue
-        if result is None:
-            continue
+        result, oid = normalized_one
         if oid in seed_op_ids:
             counters["dropped_dup"] += 1
             if len(dup_samples) < 5:
@@ -127,20 +118,16 @@ def normalize_seed_results(
     return normalized, seed_op_ids, warnings
 
 
-def _build_operation_lookup(operations: List[Any]) -> Dict[str, Any]:
+def _build_operation_lookup(operations: List[OpForScheduleAlgo]) -> Dict[str, Any]:
     op_id_by_code: Dict[str, int] = {}
     by_batch_seq: Dict[Tuple[str, int], int] = {}
     duplicates: set = set()
     for op in operations:
-        oid = identity_int(getattr(op, "id", 0))
-        if oid <= 0:
-            continue
-        code = str(getattr(op, "op_code", "") or "").strip()
-        if code and code not in op_id_by_code:
-            op_id_by_code[code] = oid
-        key = _batch_seq_key(op)
-        if key is None:
-            continue
+        # 工序编号、工序代码、批次号、工序号都由排产输入构建给出规范非空值。
+        oid = op.id
+        if op.op_code not in op_id_by_code:
+            op_id_by_code[op.op_code] = oid
+        key = (op.batch_id, op.seq)
         prev = by_batch_seq.get(key)
         if prev is not None and prev != oid:
             duplicates.add(key)
@@ -152,58 +139,32 @@ def _build_operation_lookup(operations: List[Any]) -> Dict[str, Any]:
 
 
 def _normalize_one_seed_result(
-    seed_result: Any, *, original_oid: int, lookup: Dict[str, Any],
-) -> Tuple[Optional[ScheduleResult], int, Optional[str]]:
-    if not seed_result or getattr(seed_result, "start_time", None) is None or getattr(seed_result, "end_time", None) is None:
-        return None, 0, None
-    invalid_time_reason = _invalid_time_window_reason(seed_result)
-    if invalid_time_reason:
-        return None, 0, invalid_time_reason
-
-    if _invalid_identity_supplied(getattr(seed_result, "seq", 0)):
-        return None, 0, "dropped_invalid"
+    seed_result: ScheduleResult, *, original_oid: int, lookup: Dict[str, Any],
+) -> Optional[Tuple[ScheduleResult, int]]:
+    # 起止时间与工序编号/工序号的取值都已在唯一入口 coerce_seed_results 校验并拒绝（身份转成非负整数），
+    # 这里只按工序代码或批次号+工序号回填缺失的工序编号。
     if original_oid > 0:
-        return seed_result, original_oid, None
-    if _invalid_identity_supplied(getattr(seed_result, "op_id", 0)):
-        return None, 0, "dropped_invalid"
+        return seed_result, original_oid
     new_oid = _resolve_seed_op_id(seed_result, lookup=lookup)
     if new_oid <= 0:
-        return None, 0, "dropped_invalid"
-    return _backfill_seed_op_id(seed_result, new_oid), new_oid, None
+        return None
+    return _backfill_seed_op_id(seed_result, new_oid), new_oid
 
 
-def _invalid_time_window_reason(seed_result: Any) -> Optional[str]:
-    if not isinstance(getattr(seed_result, "start_time", None), datetime) or not isinstance(getattr(seed_result, "end_time", None), datetime):
-        return "dropped_bad_time_type"
-    try:
-        if seed_result.end_time > seed_result.start_time:
-            return None
-        if point_seed_valid(seed_result):
-            return None
-    except TypeError:
-        return "dropped_bad_time_incomparable"
-    return "dropped_bad_time_order"
-
-
-def _resolve_seed_op_id(seed_result: Any, *, lookup: Dict[str, Any]) -> int:
-    code = str(getattr(seed_result, "op_code", "") or "").strip()
+def _resolve_seed_op_id(seed_result: ScheduleResult, *, lookup: Dict[str, Any]) -> int:
+    # 旧种子回填：存储边界可能给出空串或带空白的工序代码/批次号，只按已有资料匹配。
+    code = seed_result.op_code.strip()
     if code:
-        return int(lookup["op_id_by_code"].get(code, 0) or 0)
-    key = _batch_seq_key(seed_result)
-    if key is None:
+        return lookup["op_id_by_code"].get(code, 0)
+    bid, seq = seed_result.batch_id.strip(), identity_int(seed_result.seq)
+    if not bid or seq <= 0:
         return 0
-    return int(lookup["op_id_by_batch_seq"].get(key, 0) or 0)
+    return lookup["op_id_by_batch_seq"].get((bid, seq), 0)
 
 
 def _backfill_seed_op_id(seed_result: ScheduleResult, op_id: int) -> ScheduleResult:
-    seed_result.op_id = int(op_id)
+    seed_result.op_id = op_id
     return seed_result
-
-
-def _batch_seq_key(obj: Any) -> Optional[Tuple[str, int]]:
-    bid = str(getattr(obj, "batch_id", "") or "").strip()
-    seq = identity_int(getattr(obj, "seq", 0))
-    return (bid, seq) if bid and seq > 0 else None
 
 
 def identity_int(value: Any) -> int:
@@ -222,32 +183,9 @@ def identity_int(value: Any) -> int:
     return int(text)
 
 
-def _invalid_identity_supplied(value: Any) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, bool):
-        return True
-    if isinstance(value, int):
-        return value < 0
-    if isinstance(value, float):
-        return value < 0 or not value.is_integer()
-    text = str(value).strip()
-    if not text:
-        return False
-    if text.startswith("-"):
-        return True
-    digits = text[1:] if text.startswith("+") else text
-    return not digits.isdecimal()
-
-
 def _record_seed_counters(algo_stats: Any, counters: Dict[str, int]) -> None:
-    bad_time_total = counters["dropped_bad_time_type"] + counters["dropped_bad_time_order"] + counters["dropped_bad_time_incomparable"]
     increment_counter(algo_stats, "seed_op_id_backfilled_count", counters["backfilled"])
     increment_counter(algo_stats, "seed_invalid_dropped_count", counters["dropped_invalid"])
-    increment_counter(algo_stats, "seed_bad_time_dropped_count", bad_time_total)
-    increment_counter(algo_stats, "seed_bad_time_type_dropped_count", counters["dropped_bad_time_type"])
-    increment_counter(algo_stats, "seed_bad_time_order_dropped_count", counters["dropped_bad_time_order"])
-    increment_counter(algo_stats, "seed_bad_time_incomparable_dropped_count", counters["dropped_bad_time_incomparable"])
     increment_counter(algo_stats, "seed_duplicate_dropped_count", counters["dropped_dup"])
 
 
@@ -257,12 +195,6 @@ def _seed_warnings(counters: Dict[str, int], dup_samples: List[str]) -> List[str
         warnings.append(f"沿用旧排产结果时发现 {counters['backfilled']} 条工序编号缺失或不合法的记录，已按工序代码、批次号和工序号补回工序编号，避免重复排产。")
     if counters["dropped_invalid"]:
         warnings.append(f"沿用旧排产结果时发现 {counters['dropped_invalid']} 条工序编号缺失或不合法且无法匹配的记录，系统已忽略这些记录，避免重复统计或重复排产。")
-    if counters["dropped_bad_time_type"]:
-        warnings.append(f"沿用旧排产结果时发现 {counters['dropped_bad_time_type']} 条开始时间或结束时间格式不正确的记录，系统已忽略这些记录，避免锁定近期排程或资源占用异常。")
-    if counters["dropped_bad_time_order"]:
-        warnings.append(f"沿用旧排产结果时发现 {counters['dropped_bad_time_order']} 条开始时间不早于结束时间的记录，系统已忽略这些记录，避免锁定近期排程或资源占用异常。")
-    if counters["dropped_bad_time_incomparable"]:
-        warnings.append(f"沿用旧排产结果时发现 {counters['dropped_bad_time_incomparable']} 条时间无法比较的记录，系统已忽略这些记录，避免锁定近期排程或资源占用异常。")
     if counters["dropped_dup"]:
         sample = ", ".join([x for x in dup_samples if x][:5])
         warnings.append(

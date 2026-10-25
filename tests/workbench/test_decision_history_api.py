@@ -16,6 +16,7 @@ from tests.workbench.decision_history_support import (
     BASE,
     api,
     clone_run,
+    compare_conditions,
     copy_case,
     exported_history_references,
     four_source_case,
@@ -44,7 +45,7 @@ def test_history_event_keeps_all_metrics_but_enriches_only_its_candidate(candida
     from core.services.workbench.facts.candidate_store import CandidateStore
     from core.services.workbench.history.reading import HistoryReader
     from core.services.workbench.run.decision import decision_overview
-    from core.services.workbench.run.decision_resources import DecisionResources
+    from core.services.workbench.run.decision_resource_engine import DecisionResources
     from core.services.workbench.run.decision_source import DecisionSource
     from tests.workbench.legacy_run_archive_support import install_complete_legacy_archive
 
@@ -157,23 +158,24 @@ def test_four_saved_sources_preserve_events_and_result_identity_on_two_timelines
 
 
 def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments_separate(history_case, monkeypatch):
+    from core.infrastructure.read_evidence import read_evidence_scope
     from core.infrastructure.snapshot_connection import ddl_columns
     from core.infrastructure.transaction import TransactionManager
     from core.models.workbench_command import canonical_json
     from core.services.workbench.facts.candidate_facts import GenerationFacts
+    from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
     from core.services.workbench.history import conditions as condition_module
     from core.services.workbench.history.catalog import read_history_catalog
     from core.services.workbench.history.conditions import (
         _compare,
         _materials,
         _Projection,
-        compare_history_conditions,
         compare_prepared_history_conditions,
     )
     from core.services.workbench.history.conditions_source import ConditionSource
-    from core.services.workbench.history.metrics import gate_history_metric
+    from core.services.workbench.history.metric_gate import gate_history_metric
     from core.services.workbench.history.projection import missing_packet
-    from core.services.workbench.history.reading import HistoryReader, read_history_source
+    from core.services.workbench.history.reading import HistoryReader
 
     case, refs = history_case, history_case.history_refs
     experiment, _ = clone_run(case, "2026-09-11T12:00:00", change_artifact=lambda value: value.update(time_budget_seconds=30))
@@ -255,10 +257,10 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
         assert len(before["covered_operation_refs"]) == len(after["covered_operation_refs"]) == 1
         objective = gate_history_metric(definition, before, after, production_state="equal", objective_state="different")
         assert objective["state"] == "different_objective" and objective["value"] is None
-        with TransactionManager(case.conn).transaction():
+        with TransactionManager(case.conn).transaction(), candidate_read_snapshot(case.conn), read_evidence_scope(case.conn):
             descriptors, _ = read_history_catalog(case.conn)
             descriptor = next(row for row in descriptors if row["entry_ref"] == "run:" + refs["run_ref"])
-            packet = read_history_source(case.conn, descriptor)
+            packet = HistoryReader(case.conn, catalog=descriptors).read(descriptor)
         window = {"start": "2026-09-09T08:00:00", "end": "2026-09-09T16:00:00"}
         for values in counts.values():
             values.clear()
@@ -302,7 +304,7 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
             hours = deepcopy(packet)
             operation = next(iter(hours["facts"].tables["BatchOperations"].values()))
             operation.update(source=source, setup_hours=None, unit_hours=None, ext_days=2)
-            compared = compare_history_conditions(hours, hours, window)
+            compared = compare_conditions(hours, hours, window)
             rows = [row for row in compared["conditions"]["rows"] if row["category"] == "requirements"
                     and row["field"] in ("setup_hours", "unit_hours")]
             assert len(rows) == 2 and all(row["state"] == expected_state for row in rows)
@@ -310,22 +312,22 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
                 assert all(row["before"]["state"] == "known" and row["before"]["value"] is None for row in rows)
                 operation.pop("setup_hours")
                 operation.pop("unit_hours")
-                missing = compare_history_conditions(hours, hours, window)
+                missing = compare_conditions(hours, hours, window)
                 assert all(row["state"] == "unknown" for row in missing["conditions"]["rows"]
                            if row["category"] == "requirements" and row["field"] in ("setup_hours", "unit_hours"))
         saved_selection = packet["receipt"].get("selection") or {}
         if saved_selection.get("selection_policy_version") == "business_objectives_v1":
             primary = saved_selection["primary_objective"]
-            saved_objective = compare_history_conditions(packet, packet, window)["objective"]["before"]
+            saved_objective = compare_conditions(packet, packet, window)["objective"]["before"]
             assert saved_objective["source"]["path"] == "receipt.selection"
             assert saved_objective["value"] == {"name": primary, "field_order": saved_selection["objective_field_order"][primary]}
         old_objective = deepcopy(packet)
         old_objective["receipt"].pop("selection", None)
         old_objective["candidate"]["artifact"]["summary"] = {}
-        objective = compare_history_conditions(packet, old_objective, window)["objective"]
+        objective = compare_conditions(packet, old_objective, window)["objective"]
         assert objective["state"] == "equal" and len(objective["after"]["value"]["field_order"]) == 6
         old_objective["receipt"]["summary"]["algo"].pop("best_score_schema", None)
-        assert compare_history_conditions(packet, old_objective, window)["objective"]["state"] == "unknown"
+        assert compare_conditions(packet, old_objective, window)["objective"]["state"] == "unknown"
         metadata = deepcopy(packet)
         facts = json.loads(metadata["capture"]["facts_text"])
         for kind, name, _table, ddl in facts["schema"]:
@@ -343,12 +345,12 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
         metadata["capture"]["facts_text"] = canonical_json(facts)
         metadata["facts"] = GenerationFacts(metadata["capture"])
         metadata.update(ref="7" * 48, entry_ref="run:" + "7" * 48)
-        compared = compare_history_conditions(packet, metadata, window)
+        compared = compare_conditions(packet, metadata, window)
         assert compared["conditions"]["state"] == "equal"
         assert compared["configurations"]["state"] == "different"
         missing_ledger = deepcopy(packet)
         missing_ledger["receipt"].pop("operation_effort", None)
-        assert compare_history_conditions(packet, missing_ledger, window)["conditions"]["state"] == "equal"
+        assert compare_conditions(packet, missing_ledger, window)["conditions"]["state"] == "equal"
         mapping = {packet["capture"]["input"]["batch_refs"][0]: "e" * 48,
                    packet["raw_tasks"][0]["operation_ref"]: "f" * 48}
 
@@ -362,7 +364,7 @@ def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments
         members: Dict[str, Any] = replace_members({key: value for key, value in deepcopy(packet).items() if key != "facts"})
         members["capture"]["facts_text"] = canonical_json(replace_members(json.loads(packet["capture"]["facts_text"])))
         members["facts"] = GenerationFacts(members["capture"])
-        compared = compare_history_conditions(packet, members, window)
+        compared = compare_conditions(packet, members, window)
         assert compared["conditions"]["state"] == "different"
         scope = [row for row in compared["conditions"]["rows"] if row["category"] == "scope"]
         for field in ("batch_member", "operation_member"):

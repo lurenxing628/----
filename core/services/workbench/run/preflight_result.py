@@ -15,8 +15,9 @@ def result_counts(batches, rows, no_route, unready):
     counts["missing_resource_tasks"] = sum(any(item["code"] in resource_codes for item in row["issues"]) for row in rows)
     counts["eligible_tasks"] = counts["ready_tasks"] + counts["auto_assign_required"]
     counts["actual_fact_tasks"] = sum(row["has_execution_facts"] for row in rows)
-    counts["held_tasks"] = sum(row.get("held") is not None for row in rows)
-    counts["hold_window_tasks"] = sum((row.get("held") or {}).get("basis") == "hold_window" for row in rows)
+    # 每行的 held 由排产检查逐行写入：None 表示不保留，否则是保留标记。
+    counts["held_tasks"] = sum(row["held"] is not None for row in rows)
+    counts["hold_window_tasks"] = sum(row["held"] is not None and row["held"]["basis"] == "hold_window" for row in rows)
     return counts
 
 

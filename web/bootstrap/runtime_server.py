@@ -62,15 +62,17 @@ def make_runtime_server(host, port, app, threaded=False, processes=1, request_ha
                         ssl_context=ssl_context, fd=fd)
 
 
-def create_runtime_server(app, host, port, *, server_factory=make_runtime_server):
+def create_runtime_server(app, host, port):
     transport = RuntimeHostStopTransport(app)
-    server = server_factory(host, int(port), transport, threaded=True, request_handler=WorkbenchRequestHandler)
+    # threaded=True always builds a ThreadedWSGIServer: werkzeug's own or the Windows exclusive-binding subclass.
+    server = cast(ThreadedWSGIServer, make_runtime_server(host, int(port), transport, threaded=True,
+                                                          request_handler=WorkbenchRequestHandler))
     transport.server = server
     server.daemon_threads = False
     return server
 
 
-def prepare_runtime_server(app, host, preferred_port, *, server_factory=make_runtime_server):
+def prepare_runtime_server(app, host, preferred_port):
     candidates = [port for port in candidate_ports(preferred_port) if port <= 65535]
     hosts = [host] if host == "127.0.0.1" else [host, "127.0.0.1"]
     endpoints = [(bind_host, port) for bind_host in hosts for port in candidates]
@@ -78,7 +80,7 @@ def prepare_runtime_server(app, host, preferred_port, *, server_factory=make_run
     last_error = None
     for bind_host, port in endpoints:
         try:
-            return create_runtime_server(app, bind_host, port, server_factory=server_factory)
+            return create_runtime_server(app, bind_host, port)
         except RuntimeBindError as exc:
             last_error = exc
             safe_log(app.logger, "warning", "Runtime bind failed: host=%s port=%s error=%s", bind_host, port, exc)

@@ -3,14 +3,16 @@ from __future__ import annotations
 
 from bisect import bisect_left, insort
 from datetime import datetime
-from types import SimpleNamespace
-from typing import Any, Dict, List, Mapping, MutableSequence, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, MutableSequence, Optional, Sequence, Tuple
 
 from core.algorithm_contracts.changeover_events import type_transition
+from core.algorithm_contracts.types import OpForScheduleAlgo
 
 from .owned_timeline import OwnedTypeEntries
 from .resource_demand import ResourceDemand
-from .static_attribute import static_attribute, static_class_attribute
+
+if TYPE_CHECKING:
+    from .run_state import ScheduleRunState
 
 TypeEntry = Tuple[datetime, datetime, int, str]
 
@@ -82,26 +84,8 @@ class MachineTypeState(Dict[str, str]):
             self.demand.block_batch(batch_id)
 
 
-def _plain_operation_type(op: Any) -> Optional[Tuple[int, str]]:
-    # Do not add dynamic field reads to callback/descriptor-bearing legacy inputs.
-    if type(op) is SimpleNamespace:
-        # The exact builtin has an immutable class and a native instance dict.
-        # Read both current values each time; identity/length is not a certificate.
-        fields = op.__dict__
-        op_id, op_type = fields.get("id"), fields.get("op_type_id")
-    else:
-        accessor = static_class_attribute(type(op), "__getattribute__")
-        if accessor is not object.__getattribute__ and accessor is not SimpleNamespace.__getattribute__:
-            return None
-        op_id = static_attribute(op, "id")
-        op_type = static_attribute(op, "op_type_id")
-    if type(op_id) is not int or op_id <= 0 or type(op_type) is not str:
-        return None
-    return op_id, op_type
-
-
 def slot_changeover_penalty(
-    state: Optional[Mapping[str, str]], *, op: Any, machine_id: str,
+    state: Optional[Mapping[str, str]], *, op: OpForScheduleAlgo, machine_id: str,
     start: datetime, end: datetime, legacy_penalty: int,
 ) -> int:
     if not isinstance(state, MachineTypeState):
@@ -110,13 +94,12 @@ def slot_changeover_penalty(
         return legacy_penalty
     if start == end or not state._entries.get(machine_id):
         return 0
-    identity = _plain_operation_type(op)
-    if identity is None:
-        return 0
-    return state.insertion_penalty(machine_id, start, end, identity[0], identity[1])
+    return state.insertion_penalty(machine_id, start, end, op.id, op.op_type_id)
 
 
-def prefer_resource_pair(state: Mapping[str, str], op: Any, candidate: Tuple[Any, ...], best: Tuple[Any, ...]) -> bool:
+def prefer_resource_pair(
+    state: Mapping[str, str], op: OpForScheduleAlgo, candidate: Tuple[Any, ...], best: Tuple[Any, ...],
+) -> bool:
     if candidate[:2] != best[:2] or not isinstance(state, MachineTypeState) or state.demand is None:
         return candidate < best
     pairs = ((candidate[-2], candidate[-1]), (best[-2], best[-1]))
@@ -128,7 +111,11 @@ def prefer_resource_pair(state: Mapping[str, str], op: Any, candidate: Tuple[Any
     return (penalties[0],) + candidate[2:] < (penalties[1],) + best[2:]
 
 
-def initialize_resource_quality(state: Any, operations: List[Any], resource_pool: Any, *, preparation: Any) -> None:
+def initialize_resource_quality(
+    state: ScheduleRunState, operations: Sequence[OpForScheduleAlgo], resource_pool: Optional[Mapping[str, Any]], *,
+    preparation: Any,
+) -> None:
+    # ``preparation`` is the greedy scheduler's NativeSchedulePreparation; the runtime layer must not import it.
     types = state.last_op_type_by_machine
     if isinstance(types, MachineTypeState) and resource_pool is not None:
         claims = (preparation.resource_claim_for(op) for op in operations)

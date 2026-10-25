@@ -11,7 +11,7 @@ from core.services.workbench.facts.decision_metrics import metric_definitions
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 
 from .catalog import read_history_catalog
-from .metrics import gate_history_metric
+from .metric_gate import gate_history_metric
 from .projection import (
     chronological_key,
     comparison_conclusion,

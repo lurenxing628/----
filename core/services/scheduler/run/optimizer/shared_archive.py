@@ -10,7 +10,6 @@ from typing import Any, Dict, FrozenSet, Iterable, Iterator, List, Mapping, Opti
 
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.algorithms.evaluation import ScheduleMetrics, objective_score
-from core.algorithms.evaluation_completion import OBJECTIVE_SCOPE_UNKNOWN
 from core.models.objective import normalize_objective_name, objective_metric_keys, target_objectives_for
 
 from .candidate_fingerprint import schedule_content_key
@@ -141,10 +140,6 @@ class SharedScheduleArchive:
     def starting_entries_by_objective(self) -> Dict[str, Tuple[int, ...]]:
         return dict(self._starts)
 
-    @property
-    def retained_entry_ids(self) -> Tuple[int, ...]:
-        return tuple(self._entries)
-
     def __contains__(self, entry_id: object) -> bool:
         return entry_id in self._entries
 
@@ -185,7 +180,7 @@ class SharedScheduleArchive:
         if not self._has_completed_payload(candidate):
             return ArchiveObservation(reason="candidate_payload_missing")
         completion = candidate["metrics"].completion
-        if completion is not None and completion.expected_operation_count != len(self.expected_operation_ids):
+        if completion.expected_operation_count != len(self.expected_operation_ids):
             return ArchiveObservation(reason="completion_scope_mismatch")
         key = schedule_content_key(candidate["results"])
         if not verified:
@@ -306,8 +301,7 @@ class SharedScheduleArchive:
         summary = candidate["summary"]
         completion = candidate["metrics"].completion
         if (
-            completion is not None
-            and completion.missing_operation_count == 0
+            completion.missing_operation_count == 0
             and completion.unexpected_result_count == 0
             and len(results) == len(self.expected_operation_ids)
             and summary.failed_ops == 0
@@ -329,8 +323,6 @@ class SharedScheduleArchive:
                     if isinstance(result.start_time, datetime) and isinstance(result.end_time, datetime)
                     and result.end_time >= result.start_time]
         operation_ids = frozenset(result.op_id for result in arranged)
-        if completion is None:
-            return ScheduleScoreScope(operation_ids, frozenset(), OBJECTIVE_SCOPE_UNKNOWN, False, False)
         complete_batches = (
             self.batch_ids
             if not completion.incomplete_batch_ids

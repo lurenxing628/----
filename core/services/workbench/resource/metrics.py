@@ -87,7 +87,7 @@ class WorkbenchResourceMetricsService:
     def identity_kinds(kind):
         return sorted(READ_FACTS[kind] & set(RESOURCE_KEYS))
 
-    def _records(self, kind):
+    def kind_records(self, kind):
         if kind not in self.records:
             self._load([kind])
             self.records[kind] = index_resource_rows(self.facts[kind], RESOURCE_KEYS[kind])
@@ -99,7 +99,7 @@ class WorkbenchResourceMetricsService:
                 self._load([kind + "_profiles"])
                 self.profiles[kind] = index_resource_rows(self.facts[kind + "_profiles"], kind + "_id")
             self.statuses[kind] = {code: public_resource_status(kind, row["status"], self.profiles.get(kind, {}).get(code))
-                                   for code, row in self._records(kind).items()}
+                                   for code, row in self.kind_records(kind).items()}
         return self.statuses[kind]
 
     def _validate_internal(self):
@@ -144,7 +144,7 @@ class WorkbenchResourceMetricsService:
             return
         self._load(_INTERNAL)
         for kind in ("op_type", "machine", "operator"):
-            self._records(kind)
+            self.kind_records(kind)
         self._validate_internal()
         machines = []
         capabilities = machine_type_index(self.records["machine"].values(), self.facts["machine_capabilities"])
@@ -167,8 +167,8 @@ class WorkbenchResourceMetricsService:
         if "external" in self._computed:
             return
         self._load(_EXTERNAL)
-        self._records("op_type")
-        self._records("supplier")
+        self.kind_records("op_type")
+        self.kind_records("supplier")
         self._statuses("supplier")
         self._validate_suppliers()
         for row in chain(self.records["supplier"].values(), self.facts["capabilities"]):
@@ -181,10 +181,10 @@ class WorkbenchResourceMetricsService:
         if "policies" not in self._computed:
             self.policies = index_resource_rows(self.facts["policies"], "op_type_id")
             self._computed.add("policies")
-        return self._records("op_type")
+        return self.kind_records("op_type")
 
     def availability(self, code):
-        if not supports_source(self._records("op_type")[code]["category"], "internal"):
+        if not supports_source(self.kind_records("op_type")[code]["category"], "internal"):
             return None
         if not self._ensure_capacity("internal"):
             return None
@@ -192,7 +192,7 @@ class WorkbenchResourceMetricsService:
                 "basis": AVAILABILITY_BASIS}
 
     def availability_issues(self, code):
-        if not supports_source(self._records("op_type")[code]["category"], "internal") or self._ensure_capacity("internal"):
+        if not supports_source(self.kind_records("op_type")[code]["category"], "internal") or self._ensure_capacity("internal"):
             return []
         return [{"code": "resource_availability_unavailable", "message": self._failed["internal"]}]
 
@@ -211,7 +211,7 @@ class WorkbenchResourceMetricsService:
 
     def metrics(self, kind, codes, *, scope="filtered"):
         selected = set(codes)
-        if not selected.issubset(self._records(kind)):
+        if not selected.issubset(self.kind_records(kind)):
             _invalid("统计范围和实际记录对不上")
         if kind == "op_type":
             counts = self._work_type_counts(selected)
@@ -246,7 +246,7 @@ class WorkbenchResourceMetricsService:
             self._load(["groups", "machine_group"])
             if not self.groups:
                 self.groups = index_resource_rows(self.facts["groups"], "machine_id")
-            groups = self._records("machine_group")
+            groups = self.kind_records("machine_group")
             for code in codes:
                 if code in self.groups:
                     _relation(self.groups[code]["group_id"], groups, "设备分组")
@@ -289,7 +289,7 @@ class WorkbenchResourceMetricsService:
 
     def _summary_group(self, kind, category=None):
         try:
-            records = self._records(kind)
+            records = self.kind_records(kind)
             codes = (records if category is None else
                      [code for code, row in records.items()
                       if supports_source(row["category"], category) or row["category"] not in OP_TYPE_CATEGORIES])

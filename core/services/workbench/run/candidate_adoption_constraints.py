@@ -3,7 +3,9 @@
 from collections import defaultdict
 from datetime import datetime
 
+from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
+from core.models.batch import Batch
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.services.scheduler.execution.execution_ledger_guard import fact_resource_segments
 from core.services.scheduler.run.schedule_execution_reservations import reserve_execution_machines
@@ -55,8 +57,8 @@ def adoption_downtimes(prepared, payload=None):
     return reserve_execution_machines(downtimes, prepared.execution_reservations)
 
 
-def calendar_duration_conflict(calendar, row, op, batch, machine_downtimes, *, quantity):
-    """按真实班次、效率、停机和工时从安排的开工时刻重算一遍；开完工对不上（或效率要兜底）即冲突。"""
+def calendar_duration_conflict(calendar, row, op: OpForScheduleAlgo, batch: Batch, machine_downtimes, *, quantity):
+    """按真实班次、效率、停机和工时从安排的开工时刻重算一遍；开完工对不上即冲突。"""
     if row.start_time == row.end_time:
         start, end = estimate_point_event(calendar, setup_hours=op.setup_hours, unit_hours=op.unit_hours,
             quantity=quantity, machine_id=row.machine_id, operator_id=row.operator_id,
@@ -68,8 +70,7 @@ def calendar_duration_conflict(calendar, row, op, batch, machine_downtimes, *, q
         prev_end=row.start_time, machine_timeline=(), operator_timeline=(), end_dt_exclusive=None,
         machine_downtimes=machine_downtimes,
         last_op_type_by_machine=None, abort_after=None, total_hours_base=total)
-    return (estimate.efficiency_fallback_used or estimate.start_time != row.start_time
-            or estimate.end_time != row.end_time)
+    return estimate.start_time != row.start_time or estimate.end_time != row.end_time
 
 
 def _internal(prepared, row, op, batch, downtime):

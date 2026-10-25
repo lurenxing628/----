@@ -311,7 +311,7 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
             return result
         finally:
             lock.release()
-        # Intentionally no lease.resume(): shutdown permanently closes this worker.
+        # The maintenance lease offers no resume: shutdown permanently closes this worker.
 
     def _confirm_host(self, lease):
         self.verify()

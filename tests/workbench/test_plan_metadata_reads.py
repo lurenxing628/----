@@ -102,6 +102,12 @@ def test_scenario_workspace_preserves_real_issues_from_direct_and_cached_headers
                     context.repo.scenario_page(page_size=20, after_scenario_id=None)
                 data, state = reader.workspace(scope, context=context)
                 raw = context.repo.get_scenario_context(scenario_id)
+                assert raw is not None
+                # 直读与目录分页缓存的方案头是同一种行，读方案模型的列一个不缺。
+                assert list(raw) == ["scenario_id", "source_draft_id", "base_version", "base_plan_role",
+                                     "base_source_table", "base_candidate_id", "base_candidate_key", "scenario_name",
+                                     "status", "validation_status", "issue_count", "issues_json", "row_count",
+                                     "published_version"]
                 assert raw["issues_json"] == issues
                 completion = state["projection_facts"]["delivery_risks"]["completion_record"]
                 assert completion["scenario"]["issues_json"] == issues

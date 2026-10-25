@@ -11,6 +11,7 @@ from .launcher_observability import launcher_log_warning
 
 _PROCESS_LOG_STATE_DIR = ""
 _PROCESS_LOG_RUNTIME_DIR = ""
+_POWERSHELL_TIMEOUT_S = 8.0
 
 
 def set_process_log_context(*, state_dir: str = "", runtime_dir: str = "") -> None:
@@ -93,7 +94,7 @@ def _pid_state(pid: int) -> Optional[bool]:
     return _posix_pid_state(pid_i)
 
 
-def run_powershell_text(script: str, timeout_s: float = 8.0) -> Tuple[Optional[int], str]:
+def run_powershell_text(script: str) -> Tuple[Optional[int], str]:
     if os.name != "nt":
         return None, ""
     try:
@@ -103,7 +104,7 @@ def run_powershell_text(script: str, timeout_s: float = 8.0) -> Tuple[Optional[i
             text=True,
             encoding="utf-8",
             errors="ignore",
-            timeout=max(float(timeout_s), 0.5),
+            timeout=_POWERSHELL_TIMEOUT_S,
             check=False,
     )
     except Exception as exc:
@@ -116,7 +117,7 @@ def run_powershell_text(script: str, timeout_s: float = 8.0) -> Tuple[Optional[i
     return int(result.returncode or 0), output
 
 
-def _run_powershell_bytes(script: str, timeout_s: float = 8.0) -> Tuple[Optional[int], bytes, bytes]:
+def _run_powershell_bytes(script: str) -> Tuple[Optional[int], bytes, bytes]:
     """运行 PowerShell 并返回 (rc, stdout 字节, stderr 字节)，不做任何文本解码。
 
     可能含非 ASCII（如中文安装路径）的输出必须走本通道：Win7 PowerShell 2.0
@@ -131,7 +132,7 @@ def _run_powershell_bytes(script: str, timeout_s: float = 8.0) -> Tuple[Optional
         result = subprocess.run(
             ["powershell", "-NoProfile", "-Command", script],
             capture_output=True,
-            timeout=max(float(timeout_s), 0.5),
+            timeout=_POWERSHELL_TIMEOUT_S,
             check=False,
         )
     except (OSError, subprocess.SubprocessError) as exc:
@@ -227,7 +228,7 @@ def _query_process_executable_path(pid: int) -> Optional[str]:
         "Write-Output ([Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($path)));"
         "exit 0"
     )
-    rc, stdout_bytes, stderr_bytes = _run_powershell_bytes(script, timeout_s=8.0)
+    rc, stdout_bytes, stderr_bytes = _run_powershell_bytes(script)
     if rc == 2:
         _log_warning(None, "进程路径为空，无法确认运行时身份：pid=%s", pid)
         return ""

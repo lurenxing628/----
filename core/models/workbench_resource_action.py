@@ -62,8 +62,8 @@ def check_resource_preview(original, current):
     return body
 
 
-def action_row(number, code=None, action=None):
-    return {"row": number, "business_code": code, "entity_ref": None, "action": action,
+def action_row(number, action=None):
+    return {"row": number, "business_code": None, "entity_ref": None, "action": action,
             "result": "rejected", "before": None, "after": None, "changes": {}, "errors": [],
             "requires_confirmation": False, "reference_count": 0, "expected": None, "input": None}
 

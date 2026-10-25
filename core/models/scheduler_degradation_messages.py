@@ -2,46 +2,25 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List
 
-DOWNTIME_LOAD_FAILED_MESSAGE = "停机区间加载失败，本次排产先不使用停机约束。"
-DOWNTIME_EXTEND_FAILED_MESSAGE = "停机区间扩展加载失败，部分自动安排设备可能还没有避开停机时间。"
 FREEZE_WINDOW_DEGRADED_MESSAGE = "冻结窗口资料不完整，本次排产未使用冻结窗口。"
-FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE = "冻结窗口资料不完整，本次只保留能确认的冻结工序。"
-RESOURCE_POOL_BUILD_FAILED_MESSAGE = "自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。"
 
 _PUBLIC_EVENT_MESSAGES = {
     "config_fallback": "配置里有填写不完整或不正确的内容，本次先按默认值生成摘要。",
-    "input_fallback": "排产输入里有填写不完整或不正确的数据，本次先按可确认的数据生成摘要。",
     "freeze_seed_unavailable": FREEZE_WINDOW_DEGRADED_MESSAGE,
-    "freeze_window_degraded": FREEZE_WINDOW_DEGRADED_MESSAGE,
-    "freeze_window_partially_applied": FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE,
-    "downtime_avoid_degraded": DOWNTIME_LOAD_FAILED_MESSAGE,
-    "resource_pool_degraded": RESOURCE_POOL_BUILD_FAILED_MESSAGE,
-    "summary_merge_failed": "排产完成了，但部分提示没有整理好。请到系统管理里的排产历史查看这次排产的详细提醒。",
     "invalid_due_date": "部分交期数据无法使用，本次已按可确认数据继续。",
     "invalid_choice": "部分选项填得不对，本次先按默认值处理。",
     "invalid_number": "部分数字填得不对，本次先按默认值处理。",
     "missing_required": "部分必填内容缺失，本次先按默认值处理。",
     "blank_required": "部分必填内容为空，本次先按默认值处理。",
     "number_below_minimum": "部分数字小于允许范围，本次先按默认值处理。",
-    "legacy_external_days_defaulted": "部分外协周期缺失或填写不对，本次先按 1 天计算。",
-    "template_missing": "组合合同模板资料不完整，本次未使用这项资料。",
-    "external_group_missing": "组合并外协组资料不完整，本次未使用这项资料。",
-    "merge_context_degraded": "组合并资料不完整，本次按可确认内容继续。",
     "ortools_warmstart_failed": "系统没能复用上一次的排产结果，本次已从头重新计算。结果仍然有效，但耗时可能更长。",
-    "optimizer_metrics_invalid": "优化指标记录异常，不能按这些指标判断结果。",
-    "fallback_count_parse_failed": "排产降级统计记录异常，部分降级原因无法完整展示。",
-    "summary_count_parse_failed": "排产摘要里的数量记录异常，不能按这些数量判断结果。",
     "graph_enhancement_degraded": "工序图报告已生成，但图增强排队因循环依赖关闭，本次退回普通排法。",
     "dispatch_failure_details": "部分工序没有形成有效排程，摘要已保留失败和跳过明细。",
-    "calendar_load_failed": "工作日历加载失败，当前不显示假期/停工背景标注。",
     "resource_load_capacity_failed": "部分日期的容量暂时算不了，相关负荷格按「利用率暂时算不了」显示。",
     "bad_time_row_skipped": "有些甘特记录的开始或结束时间写法不对，页面已先过滤。",
-    "critical_chain_unavailable": "关键工序关系暂时算不出来，所以甘特图不会显示关键工序的箭头和高亮框。排产结果本身仍可查看。",
     "plugin_bootstrap_db_unavailable": "扩展功能设置暂时读不到，当前按默认开关运行。",
-    "plugin_bootstrap_config_reader_failed": "扩展功能设置读取器初始化失败，当前按默认开关运行。",
     "plugin_bootstrap_config_read_failed": "扩展功能设置读取失败，当前按默认开关运行。",
     "plugin_bootstrap_load_failed": "插件加载失败，请联系维护人员检查系统运行记录。",
-    "plugin_bootstrap_status_snapshot_failed": "扩展功能状态读取失败，当前仅展示可用的状态。",
     "plugin_bootstrap_telemetry_failed": "扩展功能启动记录写入失败，请联系维护人员检查系统运行记录。",
 }
 
@@ -79,11 +58,7 @@ def public_degradation_events(events: Iterable[Any]) -> List[Dict[str, Any]]:
 
 
 __all__ = [
-    "DOWNTIME_EXTEND_FAILED_MESSAGE",
-    "DOWNTIME_LOAD_FAILED_MESSAGE",
     "FREEZE_WINDOW_DEGRADED_MESSAGE",
-    "FREEZE_WINDOW_PARTIALLY_APPLIED_MESSAGE",
-    "RESOURCE_POOL_BUILD_FAILED_MESSAGE",
     "public_degradation_events",
     "public_degradation_event_message",
 ]

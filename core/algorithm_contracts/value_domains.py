@@ -5,5 +5,7 @@ from __future__ import annotations
 
 INTERNAL = "internal"
 EXTERNAL = "external"
+# 工序来源的唯一值域：读取边界 operation_model、种子合同与写库合同都按它精确校验。
+OPERATION_SOURCES = frozenset({INTERNAL, EXTERNAL})
 
 MERGED = "merged"

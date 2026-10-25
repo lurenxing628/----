@@ -3,6 +3,7 @@
 from datetime import datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from flask import current_app, g, request
 from werkzeug.exceptions import HTTPException
@@ -80,8 +81,10 @@ def scheduling_preflight():
     except HTTPException as exc:
         response = failure("invalid_input", "提交的内容读不出来，排产检查没有执行。请刷新页面后重新点「开始排产检查」。", exc.code or 400)
     except Exception:
-        current_app.logger.exception("只读排产前检查失败")
-        response = failure("storage_failure", "排产检查没有完成，没有生成这次排产，也没有改动任何业务数据。请刷新重试；仍不行请联系维护人员，并告知下方编号。", 500, committed=False)
+        request_ref = uuid4().hex
+        current_app.logger.exception("只读排产前检查失败 request_ref=%s", request_ref)
+        response = failure("storage_failure", "排产检查没有完成，没有生成这次排产，也没有改动任何业务数据。请刷新重试；仍不行请联系维护人员，并告知下方编号。", 500,
+                           committed=False, request_ref=request_ref)
     response.headers["Cache-Control"] = "no-store"
     return response
 

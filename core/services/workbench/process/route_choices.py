@@ -3,6 +3,8 @@
 from bisect import bisect_left
 from typing import Any, Dict, cast
 
+from core.algorithm_contracts.value_domains import OPERATION_SOURCES
+
 from .projection import project_external_days, project_group
 
 _SUGGESTION_ISSUES = frozenset(("unknown_op_type", "supplier_missing", "multiple_supplier_candidates",
@@ -76,7 +78,7 @@ def _preview_retained(row, old, old_ref, context, discarded):
     # Cosmetic changes and repeated confirmation preserve intentional choices.
     supplier_refs = context["supplier_refs"]
     row["issues"] = [issue for issue in row["issues"] if issue["code"] not in _SUGGESTION_ISSUES]
-    row.update(op_type_ref=old_ref, source_suggestion=old["source"] if old["source"] in ("internal", "external") else None,
+    row.update(op_type_ref=old_ref, source_suggestion=old["source"] if old["source"] in OPERATION_SOURCES else None,
                supplier_ref=supplier_refs[old["supplier_id"]].ref if old["supplier_id"] in supplier_refs else None,
                supplier_label=context["suppliers"].get(old["supplier_id"]), external_days=old["ext_days"])
     row["basis"] = "保留原工序已选的实际工种“" + (context["types"].get(old["op_type_id"]) or "未选择") + "”、归属、供应商和工时；本次没有重新套用默认值。"

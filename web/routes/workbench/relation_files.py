@@ -96,7 +96,7 @@ def relation_export_preview(kind):
 def relation_export(kind):
     relation_kind(kind)
     fmt = download_args({"export_ref", "format"})
-    ref = opaque_ref(request.args["export_ref"], "export_ref")
+    ref = opaque_ref(request.args["export_ref"])
     binding, read_binding = resolve_context(EXPORT_SCOPE, ref, "snapshot_stale")
     if binding["kind"] != kind:
         raise WorkbenchCommandRejected("snapshot_stale", "这次导出的编号属于另一类记录，没有开始下载。请刷新页面后重新点「导出」。")

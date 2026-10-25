@@ -4,9 +4,9 @@ failed_ops（不被静默过滤）且失败即阻断同批后续工序，schedul
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 
 from core.algorithm_runtime.run_state import ScheduleRunState
+from tests._support.algo_operations import make_algo_op, make_batch
 
 
 @dataclass
@@ -38,72 +38,11 @@ def _build_case():
       - 第 1 道工序缺失 machine_id/operator_id -> _schedule_internal 返回 (None, blocked=False)
       - 第 2 道工序资源齐全，本可排；但一旦“失败即阻断批次”，应被阻断不再排
     """
-    batch = SimpleNamespace(
-        batch_id="B001",
-        priority="normal",
-        due_date=None,
-        ready_status="yes",
-        ready_date=None,
-        created_at=None,
-        quantity=1,
-    )
-    batches = {"B001": batch}
-
-    op_bad = SimpleNamespace(
-        id=999,
-        op_code="OP_BAD",
-        batch_id="B_BAD",
-        seq=1,
-        source="internal",
-        machine_id="M1",
-        operator_id="O1",
-        setup_hours=1.0,
-        unit_hours=0.0,
-        op_type_id=None,
-        op_type_name=None,
-        supplier_id=None,
-        ext_days=None,
-        ext_group_id=None,
-        ext_merge_mode=None,
-        ext_group_total_days=None,
-    )
-
-    op1 = SimpleNamespace(
-        id=1,
-        op_code="OP1",
-        batch_id="B001",
-        seq=1,
-        source="internal",
-        machine_id="",
-        operator_id="",
-        setup_hours=1.0,
-        unit_hours=0.0,
-        op_type_id=None,
-        op_type_name=None,
-        supplier_id=None,
-        ext_days=None,
-        ext_group_id=None,
-        ext_merge_mode=None,
-        ext_group_total_days=None,
-    )
-    op2 = SimpleNamespace(
-        id=2,
-        op_code="OP2",
-        batch_id="B001",
-        seq=2,
-        source="internal",
-        machine_id="M1",
-        operator_id="O1",
-        setup_hours=1.0,
-        unit_hours=0.0,
-        op_type_id=None,
-        op_type_name=None,
-        supplier_id=None,
-        ext_days=None,
-        ext_group_id=None,
-        ext_merge_mode=None,
-        ext_group_total_days=None,
-    )
+    batches = {"B001": make_batch(batch_id="B001")}
+    op_bad = make_algo_op(id=999, op_code="OP_BAD", batch_id="B_BAD", machine_id="M1", operator_id="O1",
+                          setup_hours=1.0, unit_hours=0.0)
+    op1 = make_algo_op(id=1, batch_id="B001", setup_hours=1.0, unit_hours=0.0)
+    op2 = make_algo_op(id=2, batch_id="B001", seq=2, machine_id="M1", operator_id="O1", setup_hours=1.0, unit_hours=0.0)
 
     operations = [op_bad, op1, op2]
     start_dt = datetime(2026, 1, 1, 8, 0, 0)
@@ -112,7 +51,7 @@ def _build_case():
 
 def _run(dispatch_mode: str):
 
-    from core.algorithms import GreedyScheduler
+    from core.algorithms.greedy.scheduler import GreedyScheduler
 
     operations, batches, start_dt = _build_case()
     sched = GreedyScheduler(calendar_service=_StubCalendarService())
@@ -148,28 +87,12 @@ def test_dispatch_blocking_consistency():
 
 
 def test_dispatch_sgs_missing_batch_records_structured_failure_detail() -> None:
-    from core.algorithms import GreedyScheduler
     from core.algorithms.greedy.dispatch.sgs import dispatch_sgs
     from core.algorithms.greedy.run_context import ScheduleRunContext
+    from core.algorithms.greedy.scheduler import GreedyScheduler
 
-    op_bad = SimpleNamespace(
-        id=999,
-        op_code="OP_BAD",
-        batch_id="B_BAD",
-        seq=1,
-        source="internal",
-        machine_id="M1",
-        operator_id="O1",
-        setup_hours=1.0,
-        unit_hours=0.0,
-        op_type_id=None,
-        op_type_name=None,
-        supplier_id=None,
-        ext_days=None,
-        ext_group_id=None,
-        ext_merge_mode=None,
-        ext_group_total_days=None,
-    )
+    op_bad = make_algo_op(id=999, op_code="OP_BAD", batch_id="B_BAD", machine_id="M1", operator_id="O1",
+                          setup_hours=1.0, unit_hours=0.0)
     state = ScheduleRunState(base_time=datetime(2026, 1, 1, 8, 0, 0))
     scheduler = GreedyScheduler(calendar_service=_StubCalendarService(), config_service={})
 
@@ -194,10 +117,10 @@ def test_dispatch_sgs_missing_batch_records_structured_failure_detail() -> None:
 
 
 def test_graph_blocked_ops_already_counted_by_batch_skip_do_not_duplicate_failure_details() -> None:
-    from core.algorithms.greedy.dispatch.sgs_graph import _record_graph_blocked_operations
+    from core.algorithms.greedy.dispatch.sgs_graph_failure import _record_graph_blocked_operations
 
-    failed_op = SimpleNamespace(id=1, op_code="OP1", batch_id="B001", seq=1)
-    blocked_op = SimpleNamespace(id=2, op_code="OP2", batch_id="B001", seq=2)
+    failed_op = make_algo_op(id=1, batch_id="B001")
+    blocked_op = make_algo_op(id=2, batch_id="B001", seq=2)
     graph_state = {
         "op_by_id": {
             1: ("B001", failed_op),
@@ -225,9 +148,9 @@ def test_dispatch_failures_record_structured_details_without_raw_error_duplicati
     """回归：missing_batch / dispatch 异常 / 图阻塞失败只写结构化 failure_details，不再往
     state.errors 塞原始中文串。旧行为会让原始串回落成 generic_scheduler_error（“请联系管理员”），
     与结构化具体文案并列形成双发并虚增 error_count。"""
-    from core.algorithms.greedy.dispatch.sgs_graph import _record_graph_blocked_operations
+    from core.algorithms.greedy.dispatch.sgs_graph_failure import _record_graph_blocked_operations
 
-    op = SimpleNamespace(id=1, op_code="OP1", batch_id="B001", seq=1)
+    op = make_algo_op(id=1, batch_id="B001")
     state = ScheduleRunState(base_time=datetime(2026, 1, 1, 8, 0, 0))
     state.record_missing_batch(op, "B001")
     state.record_dispatch_exception(op, "B001", dispatch_mode="sgs")
@@ -237,8 +160,8 @@ def test_dispatch_failures_record_structured_details_without_raw_error_duplicati
         "dispatch_operation_exception",
     ]
 
-    failed_op = SimpleNamespace(id=1, op_code="OP1", batch_id="B001", seq=1)
-    blocked_op = SimpleNamespace(id=2, op_code="OP2", batch_id="B001", seq=2)
+    failed_op = make_algo_op(id=1, batch_id="B001")
+    blocked_op = make_algo_op(id=2, batch_id="B001", seq=2)
     graph_state = {"op_by_id": {1: ("B001", failed_op), 2: ("B001", blocked_op)}}
     graph_state_run = ScheduleRunState(base_time=datetime(2026, 1, 1, 8, 0, 0))
     extra_failed = _record_graph_blocked_operations(
@@ -256,15 +179,15 @@ def test_dispatch_failures_record_structured_details_without_raw_error_duplicati
 def test_graph_blocked_public_error_keeps_operation_codes_through_size_guard_projections() -> None:
     """回归：图阻塞的公开错误带上 failed_op_code；体积裁剪逐级投影（含对自身输出再投影、最小摘要）
     后 op_code / op_id / failed_op_code 仍在，文案不坍塌成 “工序 -”“前序工序 -”。"""
-    from core.algorithms.greedy.dispatch.sgs_graph import _record_graph_blocked_operations
+    from core.algorithms.greedy.dispatch.sgs_graph_failure import _record_graph_blocked_operations
     from core.models.scheduler_public_errors import build_public_error_records
     from core.services.scheduler.summary.summary_size_guard_fields import (
         minimal_summary_for_size_guard,
         size_guard_public_error_detail,
     )
 
-    failed_op = SimpleNamespace(id=1, op_code="OP1", batch_id="B001", seq=1)
-    blocked_op = SimpleNamespace(id=2, op_code="OP2", batch_id="B001", seq=2)
+    failed_op = make_algo_op(id=1, batch_id="B001")
+    blocked_op = make_algo_op(id=2, batch_id="B001", seq=2)
     state = ScheduleRunState(base_time=datetime(2026, 1, 1, 8, 0, 0))
     _record_graph_blocked_operations(
         state,
@@ -297,16 +220,14 @@ def test_graph_skipped_operation_blocks_its_cross_batch_successors_once() -> Non
     B1 的 OP1 超窗失败，同批 OP2 被跳过；OP2 的前驱 OP10（B0）随后也超窗失败。
     旧实现只阻塞失败工序自己的图后继，OP2 留在图里，等 OP10 失败传播时再被记一次
     graph_blocked_after_failure，失败数超过总工序数。"""
-    from core.algorithms import GreedyScheduler
+    from core.algorithms.greedy.scheduler import GreedyScheduler
     from tests._support.busy_block_case import BASE, native_calendar
 
-    batches = {bid: SimpleNamespace(batch_id=bid, priority="normal", due_date=None, ready_status="yes",
-                                    ready_date=None, created_at=None, quantity=1) for bid in ("B0", "B1", "B2")}
+    batches = {bid: make_batch(batch_id=bid) for bid in ("B0", "B1", "B2")}
 
     def op(op_id, batch_id, seq, hours):
-        return SimpleNamespace(id=op_id, op_code=f"OP{op_id}", batch_id=batch_id, seq=seq, source="internal",
-                               machine_id="M1", operator_id="O1", setup_hours=0.0, unit_hours=hours,
-                               op_type_id="T1", op_type_name="TYPE1")
+        return make_algo_op(id=op_id, batch_id=batch_id, seq=seq, machine_id="M1", operator_id="O1",
+                            setup_hours=0.0, unit_hours=hours, op_type_name="TYPE1")
 
     context = {
         "enabled": True, "schedulable_op_ids": [10, 1, 2, 3], "fixed_op_ids": [], "score_enabled": True,

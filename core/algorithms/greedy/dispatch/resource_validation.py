@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple
 
 from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS,
     AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL,
-    AUTO_ASSIGN_REASON_MISSING_OP_TYPE_ID,
     AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
 )
 from core.models.scheduler_public_errors import public_safe_identifier, public_safe_label
+
+if TYPE_CHECKING:
+    from core.algorithm_contracts.types import OpForScheduleAlgo
+    from core.models.batch import Batch
 
 RESOURCE_REASON_FIXED = "fixed"
 RESOURCE_REASON_MANUAL_MISSING = "manual_missing"
@@ -17,8 +20,8 @@ RESOURCE_REASON_AUTO_ASSIGN_UNAVAILABLE = "auto_assign_unavailable"
 
 def internal_resource_validation_message(
     *,
-    batch: Any,
-    op: Any,
+    batch: Batch,
+    op: OpForScheduleAlgo,
     meta: Dict[str, Any],
     machine_id: str,
     operator_id: str,
@@ -49,16 +52,16 @@ def internal_resource_validation_message(
     return message, details
 
 
-def _operation_public_details(*, batch: Any, op: Any, meta: Dict[str, Any]) -> Dict[str, Any]:
+def _operation_public_details(*, batch: Batch, op: OpForScheduleAlgo, meta: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "op_id": meta["op_id"],
-        "batch_id": public_safe_identifier(getattr(op, "batch_id", None) or meta["batch_id"]) or "-",
-        "op_code": public_safe_identifier(getattr(op, "op_code", None)),
+        "batch_id": public_safe_identifier(op.batch_id) or "-",
+        "op_code": public_safe_identifier(op.op_code),
         "seq": meta["seq"],
-        "op_type_name": public_safe_label(getattr(op, "op_type_name", None)),
-        "part_no": public_safe_identifier(getattr(batch, "part_no", None) or getattr(op, "part_no", None)),
-        "part_name": public_safe_label(getattr(batch, "part_name", None) or getattr(op, "part_name", None)),
-        "piece_id": public_safe_identifier(getattr(op, "piece_id", None)),
+        "op_type_name": public_safe_label(op.op_type_name),
+        "part_no": public_safe_identifier(batch.part_no),
+        "part_name": public_safe_label(batch.part_name),
+        "piece_id": public_safe_identifier(op.piece_id),
     }
 
 
@@ -81,11 +84,6 @@ def _auto_assign_resource_message(
     auto_assign_reason: str,
 ) -> Tuple[str, str]:
     prefix = f"批次 {details['batch_id']} 的{operation_display}（{operation_context}）"
-    if auto_assign_reason == AUTO_ASSIGN_REASON_MISSING_OP_TYPE_ID:
-        return (
-            f"{prefix}缺少自动派工所需工种信息，请补齐工种或固定设备后再排产。",
-            "auto_assign_inputs_missing",
-        )
     if auto_assign_reason == AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL:
         return (
             f"{prefix}自动派工资料不完整，请检查设备工种和人员可操作设备后再排产。",
@@ -144,13 +142,12 @@ def _part_context(*, part_no: str, part_name: str, piece_id: str) -> str:
     return "，".join(parts)
 
 
-def _missing_internal_resource_fields(*, op: Any, machine_id: str, operator_id: str) -> List[str]:
-    original_machine_id = str(getattr(op, "machine_id", None) or "").strip()
-    original_operator_id = str(getattr(op, "operator_id", None) or "").strip()
+def _missing_internal_resource_fields(*, op: OpForScheduleAlgo, machine_id: str, operator_id: str) -> List[str]:
+    # None 与派生变体写入的空串都表示这道工序没有指定该资源。
     missing_fields: List[str] = []
-    if not original_machine_id:
+    if not op.machine_id:
         missing_fields.append("设备")
-    if not original_operator_id:
+    if not op.operator_id:
         missing_fields.append("人员")
     if missing_fields:
         return missing_fields

@@ -13,7 +13,7 @@ from openpyxl import load_workbook
 from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
 from core.services.scheduler.summary.optimizer_public_attempts import COMPARISON_METRIC_KEYS, project_attempts
 from core.services.scheduler.summary.optimizer_public_summary import project_public_algo_summary
-from core.services.workbench.facts.candidate_process import COUNT_KEYS, candidate_process
+from core.services.workbench.facts.candidate_process import COUNT_KEYS, candidate_process, index_saved_processes
 from core.services.workbench.run.decision_process import (
     normalize_process_filters,
     process_details,
@@ -46,8 +46,9 @@ def expect_error(client, path, query, status, code):
 
 def process_source(rows, selected=None):
     run_ref = "a" * 48
-    source = SimpleNamespace(run={"run_ref": run_ref}, rows=rows, selected_ref=selected, _process_projection=None,
-        saved_process={"version": "decision-process-v1", "candidates": [candidate_process(row, rows) for row in rows]},
+    saved = {"version": "decision-process-v1", "candidates": [candidate_process(row, rows) for row in rows]}
+    source = SimpleNamespace(run={"run_ref": run_ref}, rows=rows, selected_ref=selected,
+        saved_process=saved, candidate_processes=index_saved_processes(saved, rows),
         scope={"run_ref": run_ref, "selected_candidate_ref": selected,
                "comparison_mode": "candidates", "reference": {"kind": "candidate", "candidate_ref": None}},
         baseline={"kind": "candidate", "candidate_ref": None, "state": "selection_required"})

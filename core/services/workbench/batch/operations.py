@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_batch import object_fields
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
@@ -108,7 +109,7 @@ class WorkbenchBatchOperationService:
 
     def _changes(self, row, fields, internal):
         allowed = ("machine_ref", "operator_ref", "setup_hours", "unit_hours") if internal else ("supplier_ref", "external_days")
-        if row["source"] not in ("internal", "external") or set(fields) - set(allowed):
+        if row["source"] not in OPERATION_SOURCES or set(fields) - set(allowed):
             raise WorkbenchCommandRejected("invalid_input", "要改的项和这道工序的归属对不上：自制和外协能改的内容不一样。", 422)
         changes = {}
         for key, value in fields.items():

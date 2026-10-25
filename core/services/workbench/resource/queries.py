@@ -147,15 +147,15 @@ class WorkbenchResourceQueryService:
     def summary_metrics(self):
         return self._metrics_reader().summary_metrics()
 
-    def summary_projection(self, *, clock=None):
+    def summary_projection(self):
         if not self.conn.in_transaction:
             with TransactionManager(self.conn).transaction():
-                return self._summary_projection(clock=clock)
-        return self._summary_projection(clock=clock)
+                return self._summary_projection()
+        return self._summary_projection()
 
-    def _summary_projection(self, *, clock=None):
+    def _summary_projection(self):
         counts, metrics = self.summary(), self.summary_metrics()
-        calendar = resource_calendar_summary(self.conn, self.logger, clock=clock)
+        calendar = resource_calendar_summary(self.conn, self.logger)
         process = process_readiness(self.conn, counts["part"], self.logger)
         return {"counts": counts, "metrics": metrics, "calendar": calendar,
                 "readiness": resource_readiness(counts, metrics, calendar, process)}

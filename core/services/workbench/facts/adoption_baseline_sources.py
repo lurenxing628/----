@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Tuple, Union
 
+from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.infrastructure.read_evidence import verified_read
 from core.infrastructure.schema_probe import table_exists
 from core.models.content import same
@@ -228,7 +229,7 @@ def _adoption_operation_facts(evidence):
         op = operations.get(row["op_id"], {})
         gaps = []
         source = op.get("source")
-        if source not in ("internal", "external"):
+        if type(source) is not str or source not in OPERATION_SOURCES:
             gaps.append(gap("source", "not_recorded" if source is None else "invalid_stored_value"))
             source = None
         if "supplier_id" not in op:

@@ -22,6 +22,7 @@ from core.models.workbench_plan_reference import (
     WorkbenchPlanReferenceError,
     WorkbenchPlanReferenceIssue,
 )
+from core.shared.strict_parse import is_exact_positive_int
 
 from .base_repo import BaseRepository
 
@@ -41,10 +42,6 @@ def _fail(code: str) -> NoReturn:
     raise WorkbenchPlanReferenceError(code, messages[code])
 
 
-def _positive_int(value: Any) -> bool:
-    return type(value) is int and 0 < value <= (1 << 63) - 1
-
-
 def _catalog_failure(code: str, message: str, plan_ref: Optional[str] = None) -> WorkbenchPlanCatalogReference:
     return WorkbenchPlanCatalogReference(plan_ref, False, (WorkbenchPlanReferenceIssue(code, message),))
 
@@ -59,7 +56,7 @@ def _requested_task_ids(rows: Iterable[Mapping[str, Any]], target_version: int) 
     expected = {}
     for row in rows:
         row_id, op_id, version = row["schedule_id"], row["op_id"], row["version"]
-        if not all(_positive_int(value) for value in (row_id, op_id, version)) or version != target_version:
+        if not all(is_exact_positive_int(value) for value in (row_id, op_id, version)) or version != target_version:
             _fail("task_binding_invalid")
         if row_id in expected and expected[row_id] != op_id:
             _fail("task_binding_invalid")
@@ -69,7 +66,7 @@ def _requested_task_ids(rows: Iterable[Mapping[str, Any]], target_version: int) 
 
 def _locator(value) -> WorkbenchPlanLocator:
     version, role, scenario = value.version, value.plan_role, value.scenario_id
-    if not _positive_int(version) or role not in VALID_PLAN_ROLES:
+    if not is_exact_positive_int(version) or role not in VALID_PLAN_ROLES:
         _fail("plan_binding_invalid")
     if scenario is not None and (not isinstance(scenario, str) or not scenario or "\x00" in scenario):
         _fail("plan_binding_invalid")
@@ -94,7 +91,7 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
             raise RuntimeError("Plan binding facts require the caller's read transaction")
         previous = self._binding_facts
         if previous is not None:
-            self._check_schema()
+            self.read_revision()
             if history_reader is None and scenario_reader is None:
                 yield
                 return
@@ -112,7 +109,7 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
                 "history_reader": history_reader, "scenario_reader": scenario_reader}
             self._binding_facts = facts
             try:
-                self._check_schema()
+                self.read_revision()
                 yield
             finally:
                 self._binding_facts = previous
@@ -137,7 +134,11 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
             cached[version] = present
         return present
 
-    def _check_schema(self) -> int:
+    def read_revision(self) -> int:
+        """Validate the identity schema and return the clock of the eight identity source tables only.
+
+        NOT a clock of all workspace facts; inside read_bindings the first check is reused.
+        """
         if self._binding_facts is not None:
             self._binding_cache("history")
             if "revision" in self._binding_facts:
@@ -146,15 +147,11 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
         if issues:
             raise RuntimeError("Workbench plan identity schema unavailable: " + "; ".join(issues))
         revision = self.fetchvalue("SELECT revision FROM WorkbenchPlanIdentityClock WHERE singleton = 1")
-        if not _positive_int(revision):
+        if not is_exact_positive_int(revision):
             _fail("identity_missing")
         if self._binding_facts is not None:
             self._binding_facts["revision"] = revision
         return revision
-
-    def read_revision(self) -> int:
-        """Clock for the eight identity source tables only, NOT all workspace facts."""
-        return self._check_schema()
 
     def _source(self, kind: str, key: str):
         cached = self._binding_cache("sources")
@@ -275,8 +272,9 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
         if record["source_table"] != "adjustment_scenario_rows":
             _fail("plan_binding_invalid")
 
-    def _resolved_record(self, plan_ref: str):
-        self._check_schema()
+    def _resolved_record(self, plan_ref: object):
+        """Plan refs may come from requests or saved records, so their format is checked here."""
+        self.read_revision()
         if not isinstance(plan_ref, str) or _REF_PATTERN.fullmatch(plan_ref) is None:
             _fail("reference_not_found")
         cached = self._binding_cache("resolved")
@@ -299,12 +297,12 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
             cached[plan_ref] = locator, record
         return locator, record
 
-    def resolve_plan(self, plan_ref: str) -> WorkbenchPlanLocator:
+    def resolve_plan(self, plan_ref: object) -> WorkbenchPlanLocator:
         return self._resolved_record(plan_ref)[0]
 
     def get_plan_ref(self, locator) -> str:
         """Also accepts the existing private PlanCatalogLocator's three fields."""
-        self._check_schema()
+        self.read_revision()
         locator = _locator(locator)
         record = self._plan_record(locator)
         cached = self._binding_cache("resolved")
@@ -361,7 +359,7 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
         Only expected per-plan binding failures become issues. Missing schema,
         clock and storage errors still raise. Detail/task APIs remain strict.
         """
-        self._check_schema()
+        self.read_revision()
         invalid_context = None
         try:
             normalized = _locator(locator)
@@ -395,9 +393,9 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
         return WorkbenchPlanCatalogReference(plan_ref, True)
 
     def get_operation_refs(self, ids: Iterable[int]) -> Dict[int, str]:
-        self._check_schema()
+        self.read_revision()
         values = list(ids)
-        if any(not _positive_int(key) for key in values):
+        if any(not is_exact_positive_int(key) for key in values):
             _fail("task_binding_invalid")
         keys = list(dict.fromkeys(values))
         cached = self._binding_cache("operations")

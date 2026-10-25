@@ -455,7 +455,7 @@ def test_dashboard_analysis_reuses_streamed_pressure_without_retaining_calendar_
     from collections import Counter
 
     from core.models.workbench_dashboard import DashboardAnalysisQuery
-    from core.services.workbench.dashboard import analysis_projection, calendar_capture
+    from core.services.workbench.dashboard import calendar_capture
     from core.services.workbench.dashboard.service import WorkbenchDashboardService
     from tests.workbench.dashboard_support import NOW
 
@@ -484,21 +484,22 @@ def test_dashboard_analysis_reuses_streamed_pressure_without_retaining_calendar_
         return factory
 
     monkeypatch.setattr(calendar_capture, "calendar_from_sources", calendar_factory)
+    # Capture and analysis share one metrics object; the only index constructor is in calendar_capture.
     monkeypatch.setattr(calendar_capture, "ResourceTaskIndex", resource_task_index)
-    monkeypatch.setattr(analysis_projection, "ResourceTaskIndex", resource_task_index)
     reader = WorkbenchDashboardService(case.conn, clock=lambda: NOW)
     with reader.read_snapshot():
         sources = reader.load()
     facts = sources.facts.project()
+    metrics = facts.pressure_metrics
     captured = facts.snapshot_contents()
-    assert len(calls) == len(facts._resource_pressure_cache) == 2 and set(calls.values()) == {1}
-    assert len(indexes) == 1 and indexes[0] is facts._resource_pressure_index
+    assert len(calls) == len(metrics.summaries) == 2 and set(calls.values()) == {1}
+    assert len(indexes) == 1 and indexes[0] is metrics.index
     index = indexes[0]
     assert index.retain_statistics_values is False
     assert index._measurements == {}
     assert facts.raw["resource_pressure"]["calendar"]["resources"] is None
     assert facts.raw["resource_pressure"]["occupancy"] is None
-    assert "_resource_pressure_cache" not in facts.raw
+    assert set(facts.raw["resource_pressure"]) == {"context", "constraints", "unknown_source_operations", "calendar", "occupancy"}
 
     def no_geometry(value):
         if isinstance(value, dict):
@@ -509,20 +510,51 @@ def test_dashboard_analysis_reuses_streamed_pressure_without_retaining_calendar_
             for nested in value:
                 no_geometry(nested)
 
-    no_geometry(facts._resource_pressure_cache)
+    no_geometry(metrics.summaries)
     overview = reader.analysis(sources, DashboardAnalysisQuery("pressure", size=100))
     assert set(calls.values()) == {1}
-    missed = next(iter(facts._resource_pressure_cache))
-    facts._resource_pressure_cache.pop(missed)
+    # A resource the capture stream did not summarize is projected once on demand.
+    missed = next(iter(metrics.summaries))
+    monkeypatch.delitem(metrics.summaries, missed)
     repeated = reader.analysis(sources, DashboardAnalysisQuery("pressure", size=100))
-    assert repeated == overview and calls[missed[:2]] == 2
-    assert all(count == (2 if key == missed[:2] else 1) for key, count in calls.items())
+    assert repeated == overview and calls[missed] == 2
+    assert all(count == (2 if key == missed else 1) for key, count in calls.items())
     resource = next(row for row in overview["resources"] if row["resource_ref"] == missed[1])
     detailed = reader.analysis(sources, DashboardAnalysisQuery("resource_days", resource_ref=missed[1], size=100))
     assert detailed["resources"][0]["window_metrics"] == resource["window_metrics"]
-    assert detailed["resources"][0]["days"] and calls[missed[:2]] == 3
-    assert len(indexes) == 1 and indexes[0] is facts._resource_pressure_index
+    assert detailed["resources"][0]["days"] and calls[missed] == 3
+    assert len(indexes) == 1 and indexes[0] is metrics.index
     assert index.retain_statistics_values is False
     assert index._measurements == {}
-    no_geometry(facts._resource_pressure_cache)
+    no_geometry(metrics.summaries)
     assert facts.snapshot_contents() == captured
+
+
+@pytest.mark.parametrize("early_source", ["external", "internal"])
+def test_plan_without_resource_cohort_beyond_calendar_window_keeps_analysis_readable(dashboard_case, early_source):
+    from core.models.workbench_dashboard import DashboardAnalysisQuery
+    from core.services.workbench.dashboard.service import WorkbenchDashboardService
+    from tests.workbench.dashboard_support import NOW
+
+    case = dashboard_case
+    case.conn.execute("UPDATE BatchOperations SET source='external', op_type_id=NULL, op_type_name='Plating' WHERE id=?", (case.op,))
+    early = case.conn.execute("INSERT INTO BatchOperations(op_code,batch_id,seq,op_type_name,source,unit_hours,setup_hours) "
+                              "VALUES ('DOP0','DB1',2,'Plating',?,0,0)", (early_source,)).lastrowid
+    case.conn.execute("UPDATE Schedule SET machine_id=NULL, operator_id=NULL, start_time='2026-09-09T08:00:00', "
+                      "end_time='2026-09-11T08:00:00' WHERE version=1")
+    case.conn.execute("INSERT INTO Schedule(version,op_id,start_time,end_time) "
+                      "VALUES (1,?,'2010-01-04T08:00:00','2010-01-06T08:00:00')", (early,))
+    case.conn.commit()
+    reader = WorkbenchDashboardService(case.conn, clock=lambda: NOW)
+    with reader.read_snapshot():
+        sources = reader.load()
+    assert sources.facts.raw["resource_pressure"]["calendar"]["reason"] == "calendar_range_limit"
+    first = reader.analysis(sources, DashboardAnalysisQuery("overview"))
+    # The over-wide window only bounds per-resource calendar geometry. Without a resource
+    # cohort nothing is projected, yet an internal task missing both identities still counts.
+    assert first["state"] == "available" and first["resource_common"]["cohort"] == []
+    assert sources.facts.pressure_metrics._index is None
+    gaps = 1 if early_source == "internal" else 0
+    for kind in ("machine", "operator"):
+        assert first["resource_common"][kind]["unknown_workload_count"] == gaps
+    assert reader.analysis(sources, DashboardAnalysisQuery("overview")) == first

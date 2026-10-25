@@ -6,6 +6,8 @@ from core.errors import ValidationError
 
 from .week_range import WeekRange, resolve_week_range
 
+_MAX_EXPLICIT_DATE_DAYS = 62
+
 
 def _has_text(value: Optional[str]) -> bool:
     return bool(str(value or "").strip())
@@ -69,9 +71,8 @@ def resolve_schedule_result_week_range(
     offset_weeks: Any = 0,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    default_to_version_span: bool,
-    max_explicit_date_days: Optional[int] = None,
 ) -> Tuple[WeekRange, str]:
+    """Without an explicit range, show the version's own span; explicit dates are capped."""
     has_explicit_dates = _has_text(start_date) or _has_text(end_date)
     effective_offset_weeks = normalize_week_offset_for_explicit_range(
         start_date=start_date,
@@ -80,7 +81,7 @@ def resolve_schedule_result_week_range(
     )
     explicit_range = bool(has_explicit_dates or _has_text(week_start) or effective_offset_weeks != 0)
 
-    if default_to_version_span and not explicit_range and version is not None:
+    if not explicit_range and version is not None:
         version_span = get_plan_time_span_dates(
             plan_query_service,
             int(version),
@@ -102,8 +103,8 @@ def resolve_schedule_result_week_range(
         start_date=start_date,
         end_date=end_date,
     )
-    if max_explicit_date_days is not None and has_explicit_dates:
+    if has_explicit_dates:
         day_count = (wr.week_end_date - wr.week_start_date).days + 1
-        if day_count > int(max_explicit_date_days):
-            raise ValidationError(f"日期范围不能超过 {int(max_explicit_date_days)} 天", field="date_range")
+        if day_count > _MAX_EXPLICIT_DATE_DAYS:
+            raise ValidationError(f"日期范围不能超过 {_MAX_EXPLICIT_DATE_DAYS} 天", field="date_range")
     return wr, "request"

@@ -21,17 +21,6 @@ class _ResourceGroup(TypedDict):
     label: Any
 
 
-def compute_utilization(*, schedule_rows, start_dt, end_dt_excl, calendars, degradation_collector):
-    groups = group_utilization_rows(schedule_rows, start_dt, end_dt_excl, degradation_collector)
-    return utilization_from_groups(
-        groups,
-        start_dt=start_dt,
-        end_dt_excl=end_dt_excl,
-        calendars=calendars,
-        degradation_collector=degradation_collector,
-    )
-
-
 def utilization_from_groups(groups, *, start_dt, end_dt_excl, calendars, degradation_collector):
     result = {"machine": [], "operator": []}
     for (kind, key), item in groups.items():
@@ -89,19 +78,18 @@ def utilization_availability_note(row: Mapping[str, Any]) -> str:
     return ""
 
 
-def row_interval(row, start, end, collector=None):
+def row_interval(row, start, end, collector):
     """One internal row's positive occupancy clipped to [start, end); None when it occupies nothing there.
 
     Other sources, point events and rows outside the window occupy nothing, nor do rows whose
-    times are unreadable or reversed. Resource calendars are sized from exactly these rows;
-    only the utilization pass supplies its collector, so each bad row is reported once.
+    times are unreadable or reversed. Resource calendars and occupancy both come from the one
+    grouping pass over these rows, so each bad row is reported to ``collector`` exactly once.
     """
     if not is_internal_source(row.get("source")):
         return None
     low, high = parse_dt(row.get("start_time")), parse_dt(row.get("end_time"))
     if not low or not high or high < low:
-        if collector is not None:
-            record_report_bad_time_row(collector, scope="report.utilization.schedule")
+        record_report_bad_time_row(collector, scope="report.utilization.schedule")
         return None
     if low == high:
         return None

@@ -26,7 +26,7 @@ from core.models.workbench_operator_calendar import (
 from core.services.scheduler.calendar.service import CalendarService
 from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 
-from .calendars import effective_calendar_day, engine_read_row, is_working_row
+from .calendar_reading import effective_calendar_day, engine_read_row, is_working_row
 
 _PUBLIC_FIELDS = ("day_type", "shift_start", "shift_end", "shift_hours", "efficiency",
                   "allow_normal", "allow_urgent", "remark")
@@ -220,7 +220,7 @@ class WorkbenchOperatorCalendarService:
         return self._apply_day(action, payload, checked)
 
     def _apply_day(self, action, payload, before):
-        with self._calendar._admin.normalization_operation():
+        with self._calendar.normalization_operation():
             after = self._proposed(payload["fields"], before) if action == "upsert" else None
         return self._write(before, after)
 

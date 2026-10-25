@@ -10,7 +10,7 @@ from core.models.workbench_execution import ExecutionProjection
 from core.models.workbench_execution_input import MAX_OPERATIONS
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.workbench.facts import run_input_codec
-from core.services.workbench.facts.candidate_values import _pairs, stored_json
+from core.services.workbench.facts.candidate_values import stored_json
 from core.services.workbench.facts.run_input_codec import prepare_execution_projections, restore_execution_projections
 from tests.workbench.execution_ledger_support import ledger_case as ledger_fixture  # noqa: F401
 
@@ -20,16 +20,14 @@ def test_stored_json_preserves_types_and_rejects_nested_duplicates_and_nonfinite
     assert [type(item) for item in value["rows"]] == [type(None), bool, int, float, str]
     assert value["nested"] == {"name": "中文"}
     assert stored_json('[null,false,1,1.0]', list) == [None, False, 1, 1.0]
-    with pytest.raises(ValueError, match="^Duplicate stored JSON key$"):
-        _pairs([("name", 1), ("name", 2)])
     for invalid in (
         '{"a":1,"a":2}', '{"rows":[{"a":1,"a":2}]}', r'{"a":1,"\u0061":2}',
-        '{"value":NaN}', '{"value":Infinity}', '{"value":-Infinity}',
-        '[]', 'null', 'false', '1', '{', None,
+        '{"value":NaN}', '{"value":Infinity}', '{"value":-Infinity}', '{"value":1e999}', '{"rows":[-1e400]}',
+        '[]', 'null', 'false', '1', '{', None, b'{}',
     ):
         with pytest.raises(WorkbenchCommandRejected) as error:
             stored_json(invalid)
-        assert error.value.code == "candidate_artifact_invalid", invalid
+        assert (error.value.code, error.value.status) == ("candidate_artifact_invalid", 500), invalid
 
 
 def test_saved_execution_requires_exact_projection_and_report_fields(ledger_case):
@@ -37,7 +35,7 @@ def test_saved_execution_requires_exact_projection_and_report_fields(ledger_case
     case.install()
     task_ref = case.task(1, case.op_id)
     case.command("create", task_ref, case.values(2))
-    original = case.ledger.get_task(task_ref).to_dict()
+    original = case.task_projection(task_ref).to_dict()
     before = content_text(original)
     assert [row.to_dict() for row in restore_execution_projections([original])] == [original]
     assert content_text(original) == before
@@ -76,7 +74,7 @@ def test_prepared_execution_retains_all_fields_without_materializing_public_dtos
     created = case.command("create", task_ref, case.values(2))["data"]["rows"][0]
     case.command("correct", created["report_ref"], {"original_revision_ref": created["revision_ref"],
                  "completed_quantity": 3, "reason": "保留原修订链"})
-    original = case.ledger.get_task(task_ref).to_dict()
+    original = case.task_projection(task_ref).to_dict()
     before = content_text(original)
     calls = []
     for dto in (run_input_codec.ExecutionProjection, run_input_codec.ProductionReport):

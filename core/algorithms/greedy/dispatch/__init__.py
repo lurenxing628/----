@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 派工（dispatch）子模块：
 
@@ -8,13 +6,5 @@ from __future__ import annotations
 
 说明：
 - 该目录仅拆分“主循环/派工策略”，不改变 GreedyScheduler 对外 API。
+- 包本身不重导出任何名字，调用方从具体模块导入
 """
-
-from .batch_order import dispatch_batch_order
-from .sgs import dispatch_sgs
-
-__all__ = [
-    "dispatch_batch_order",
-    "dispatch_sgs",
-]
-

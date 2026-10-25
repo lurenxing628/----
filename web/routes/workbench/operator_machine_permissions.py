@@ -49,7 +49,7 @@ def operator_machine_confirm(ref):
     g.workbench_request_key = body["request_key"]
     if type(body["input"]) is not dict or set(body["input"]) != {"preview_ref"}:
         raise WorkbenchCommandRejected("invalid_input", "请选择刚才预检的设备关联。", 400)
-    preview_ref = opaque_ref(body["input"]["preview_ref"], "preview_ref")
+    preview_ref = opaque_ref(body["input"]["preview_ref"])
     outcome = WorkbenchCommandService(g.db, current_app.logger).execute(
         request_key=body["request_key"], action=OPERATION, context_ref=ref, normalized_input={"preview_ref": preview_ref},
         guard=lambda: _resolve(ref, preview_ref, body["write_token"]),

@@ -12,16 +12,19 @@ from __future__ import annotations
 import json
 import sys
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
-from core.algorithms import GreedyScheduler, ScheduleResult, SortStrategy, evaluation_completion
+from core.algorithm_contracts.sort_strategies import SortStrategy
+from core.algorithm_contracts.types import ScheduleResult
+from core.algorithms import evaluation_completion
 from core.algorithms.evaluation import compute_metrics, objective_score, prepare_evaluation_context
 from core.algorithms.evaluation_completion import UNKNOWN_OBJECTIVE_VALUE
+from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.models.objective import objective_metric_keys
 from core.services.scheduler.contracts.optimizer_public_safety import project_attempt_metrics, project_public_metrics
+from tests._support.algo_operations import make_algo_op, make_batch
 from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar as _ContinuousCalendar
 from tests._support.optimizer_graph_ready_benchmark import _default_config
 
@@ -30,7 +33,7 @@ START = datetime(2026, 1, 1, 8)
 
 
 def _op(op_id, bid):
-    return SimpleNamespace(id=op_id, batch_id=bid)
+    return make_algo_op(id=op_id, batch_id=bid)
 
 
 def _result(op_id, bid, *, hours):
@@ -39,7 +42,7 @@ def _result(op_id, bid, *, hours):
 
 
 def _batches(**priorities):
-    return {bid: SimpleNamespace(batch_id=bid, due_date="2026-01-01", priority=priority) for bid, priority in priorities.items()}
+    return {bid: make_batch(batch_id=bid, due_date="2026-01-01", priority=priority) for bid, priority in priorities.items()}
 
 
 def _failure(op_id, bid):
@@ -112,11 +115,11 @@ def test_missing_operations_without_evidence_stay_unknown(objective):
 
 def test_real_scheduler_window_failure_is_explained_and_scores_behind_failed_ops():
     operations = [
-        SimpleNamespace(id=op_id, batch_id="B1", op_code=f"OP{op_id}", seq=op_id, source="internal", setup_hours=hours,
-                        unit_hours=0.0, machine_id="M1", operator_id="O1", op_type_id="", op_type_name="cut")
+        make_algo_op(id=op_id, seq=op_id, setup_hours=hours, unit_hours=0.0, machine_id="M1", operator_id="O1",
+                     op_type_name="cut")
         for op_id, hours in ((1, 1.0), (2, 48.0))
     ]
-    batches = {"B1": SimpleNamespace(batch_id="B1", due_date="2026-01-01", priority="urgent", quantity=1)}
+    batches = {"B1": make_batch(due_date="2026-01-01", priority="urgent")}
     scheduler = GreedyScheduler(calendar_service=_ContinuousCalendar(), config_service=_default_config())
     results, summary, _strategy, _params = scheduler.schedule(
         operations=operations, batches=batches, strategy=SortStrategy.PRIORITY_FIRST,
@@ -148,7 +151,7 @@ def test_prepared_evaluation_keeps_completion_dynamic_and_prepares_static_facts_
             patch.object(evaluation_completion, "due_exclusive", wraps=evaluation_completion.due_exclusive) as due_limits, \
             patch.object(evaluation_completion, "_failure_batches", wraps=evaluation_completion._failure_batches) as failure_batches:
         prepared = prepare_evaluation_context(batches=batches, expected_operations=operations, seed_results=[seed])
-        metrics = [compute_metrics(results, batches, failure_details=details, prepared=prepared)
+        metrics = [compute_metrics(results, batches, expected_operations=operations, failure_details=details, prepared=prepared)
                    for results, details in scenarios]
         assert [item.to_dict() for item in metrics] == expected_metrics
         assert (expected_keys.call_count, priorities.call_count, due_states.call_count, due_limits.call_count) == (1, 3, 3, 3)

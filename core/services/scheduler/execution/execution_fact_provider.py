@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
 from core.models.operation_execution_event import (
     OperationExecutionEvent,
@@ -16,22 +16,6 @@ from data.repositories.operation_execution_state_builder import fold_operation_e
 
 from .execution_ledger_adapter import adapt_ledger_facts, ledger_read_snapshot
 from .operation_execution_scope_read import scopes_by_op_id_for_plan_rows
-
-
-def positive_op_ids(values: Sequence[int]) -> List[int]:
-    seen = set()
-    out: List[int] = []
-    for raw in values or ():
-        try:
-            op_id = int(raw)
-        except (TypeError, ValueError):
-            continue
-        if op_id <= 0 or op_id in seen:
-            continue
-        seen.add(op_id)
-        out.append(op_id)
-    # 固定工序集合顺序，使相同来源的快照内容不受调用方排列顺序影响。
-    return sorted(out)
 
 
 @dataclass(frozen=True)
@@ -132,10 +116,9 @@ class ExecutionFactProvider:
 
     def facts_by_op_id_for_plan_rows(
         self,
-        rows: Sequence[Any],
+        rows: Sequence[Mapping[str, Any]],
         plan_fields: Mapping[str, Any],
         *,
-        include_op_ids: Sequence[int] = (),
         execution_projections: Optional[Sequence[ExecutionProjection]] = None,
     ) -> Dict[int, ExecutionFact]:
         scopes_by_op_id = scopes_by_op_id_for_plan_rows(rows, plan_fields)
@@ -143,11 +126,7 @@ class ExecutionFactProvider:
             list(scopes_by_op_id.values()),
             execution_projections=execution_projections,
         )
-        out = {op_id: facts_by_scope[scope] for op_id, scope in scopes_by_op_id.items()}
-        missing = [op_id for op_id in positive_op_ids(include_op_ids) if op_id not in out]
-        if missing:
-            raise ValueError(f"现场执行事实缺少完整计划身份：op_id={missing[0]}")
-        return out
+        return {op_id: facts_by_scope[scope] for op_id, scope in scopes_by_op_id.items()}
 
 
 __all__ = ["ExecutionFact", "ExecutionFactProvider"]

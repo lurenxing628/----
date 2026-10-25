@@ -1,23 +1,24 @@
 """Process facets share the full process snapshot and retain other column rules."""
 
-import json
 import re
 
 from flask import current_app, g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_table_query import (
+    DUPLICATE_QUERY_MESSAGE,
     process_facet_scope,
     process_table_request,
-    unique_process_table_object,
     validate_process_facet_request,
 )
 from core.services.workbench import messages
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
+from core.shared.strict_json import load_strict_json
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
+from .request_json import rejecter
 
 
 def _positive(key, default):
@@ -32,10 +33,9 @@ def process_facets(column, selection=False):
     allowed = {"scope", "query", "page", "size", "snapshot_ref"}
     if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
         raise WorkbenchCommandRejected("invalid_input", "列筛选的查询条件有重复或不支持的项，筛选没有变化。请刷新页面后重新打开列筛选。", 400)
-    try:
-        scope = json.loads(request.args.get("scope", "{}"), object_pairs_hook=unique_process_table_object)
-    except json.JSONDecodeError as exc:
-        raise WorkbenchCommandRejected("invalid_input", "筛选内容读不出来，筛选没有变化。请点「清除筛选」后重新选择。", 400) from exc
+    scope = load_strict_json(request.args.get("scope", "{}"),
+                             on_malformed=rejecter("筛选内容读不出来，筛选没有变化。请点「清除筛选」后重新选择。"),
+                             on_duplicate=rejecter(DUPLICATE_QUERY_MESSAGE))
     query = process_table_request(scope)
     search, number, size = request.args.get("query", ""), _positive("page", 1), _positive("size", 100)
     validate_process_facet_request(column, search, number, size)

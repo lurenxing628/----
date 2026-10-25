@@ -15,7 +15,6 @@ from core.services.workbench.resource.queries import WorkbenchResourceQueryServi
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
-from .calendars_preview import calendar_now
 from .read_context import bind_read_snapshot
 from .resource_action_context import json_body, read_endpoint
 from .write_context import issue_write_context, validate_write_context
@@ -29,7 +28,7 @@ def _reader():
 
 
 def _service(operator_code):
-    return WorkbenchOperatorCalendarService(g.db, operator_code, current_app.logger, clock=calendar_now)
+    return WorkbenchOperatorCalendarService(g.db, operator_code, current_app.logger)
 
 
 def _operator_state(reader, ref):

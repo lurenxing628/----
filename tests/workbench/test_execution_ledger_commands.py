@@ -13,11 +13,11 @@ def test_correct_keeps_stable_number_and_every_original_value(ledger_case):
     case.install()
     task = case.task(1, case.op_id)
     saved = case.command("create", task, case.values(4, remark="original"))["data"]["rows"][0]
-    original = case.ledger.get_report(saved["report_ref"])
+    original = case.report_projection(saved["report_ref"])
     payload = {"completed_quantity": 6, "remark": "corrected", "original_revision_ref": original.revision_ref,
                "reason": "Checked counter", "declared_operator": "declared-foreman"}
     case.command("correct", original.report_ref, payload)
-    result = case.ledger.get_report(original.report_ref)
+    result = case.report_projection(original.report_ref)
     assert result.report_no == original.report_no and result.report_ref == original.report_ref
     assert result.completed_quantity == 6
     assert result.correction_history[0]["after"]["completed_quantity"] == 4

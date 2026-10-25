@@ -16,6 +16,8 @@ MAX_OPERATIONS = 10000
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 MAX_EXPORT_BYTES = 16 * 1024 * 1024
 TABLE_COLUMNS = ("part_no", "operation_label", "old_unit_hours", "suggested_unit_hours", "sample_count", "absolute_deviation_percent", "status")
+# The list and facet routes decode their JSON arguments strictly and share this duplicate-key text.
+DUPLICATE_FILTER_MESSAGE = "筛选条件里有重复的列，请重新选择。"
 
 
 def normalize_calibration_filters(value):
@@ -32,15 +34,6 @@ def normalize_calibration_filters(value):
             raise WorkbenchCommandRejected("invalid_input", "列筛选值必须是唯一的非空编号。", 400)
         result[column] = {"mode": rule["mode"], "values": sorted(values)}
     return {column: result[column] for column in sorted(result)}
-
-
-def unique_calibration_object(pairs):
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            raise WorkbenchCommandRejected("invalid_input", "筛选条件里有重复的列，请重新选择。", 400)
-        result[key] = value
-    return result
 
 
 def issue(code, message):

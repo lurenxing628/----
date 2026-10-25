@@ -71,7 +71,7 @@
       && text(v.receipt_ref) && /^[a-f0-9]{32}$/.test(v.receipt_ref) && typeof v.replayed === 'boolean' && Array.isArray(v.warnings) && !v.warnings.length
       && shape(d, ['scenario_ref', 'draft_ref', 'row_count', 'official_plan']) && d.scenario_ref === s.scenario_ref && d.draft_ref === s.draft_ref && d.row_count === s.task_count
       && shape(p, ['plan_ref', 'version', 'kind', 'is_current_official', 'display_name', 'baseline_ref', 'completeness', 'capabilities', 'blocked_reasons', 'source_scenario_ref', 'source_draft_ref'])
-      && ref(p.plan_ref) && ![s.scenario_ref, s.draft_ref, s.baseline.plan_ref].includes(p.plan_ref) && positive(p.version) && p.version > (s.baseline.version || 0)
+      && ref(p.plan_ref) && ![s.scenario_ref, s.draft_ref, s.baseline.plan_ref].includes(p.plan_ref) && positive(p.version) && p.version > (s.baseline.version === null ? 0 : s.baseline.version)
       && p.kind === 'official' && p.is_current_official === true && p.display_name === '正式计划 v' + p.version && p.completeness === 'complete'
       && p.source_scenario_ref === s.scenario_ref && p.source_draft_ref === s.draft_ref && p.baseline_ref === s.baseline.plan_ref
       && equal(p.capabilities, { view: true, edit_draft: false, adopt: false, report_actual: true }) && Array.isArray(p.blocked_reasons) && !p.blocked_reasons.length);

@@ -67,6 +67,25 @@ def test_saved_schema_defaults_keep_old_hours_and_modern_periods():
     assert project(modern)[MACHINE]["available_hours"] == 7
 
 
+def test_saved_v33_calendar_rows_without_periods_column_keep_their_single_shift():
+    legacy = archive(33)
+    del legacy["tables"]["WorkbenchCalendarDefaults"]
+    del legacy["tables"]["WorkbenchShiftDayPeriods"]
+    # v33 的日历表还没有 periods_json 列，真实归档行里根本没有这个键。
+    legacy["tables"]["WorkCalendar"] = [
+        {key: value for key, value in day("2026-10-12", "06:00", "10:00", hours=4).items() if key != "periods_json"}]
+    legacy["tables"]["OperatorCalendar"] = [
+        {key: value for key, value in day("2026-10-12", "09:00", "12:00", hours=3, operator="O1").items()
+         if key != "periods_json"}]
+    resources = project(legacy)
+    assert resources[MACHINE]["available_hours"] == 4
+    assert [(row["start"], row["end"]) for row in resources[MACHINE]["windows"]] == [
+        ("2026-10-12T06:00:00", "2026-10-12T10:00:00")]
+    assert resources[OPERATOR]["available_hours"] == 3
+    assert [(row["start"], row["end"], row["provenance"]) for row in resources[OPERATOR]["windows"]] == [
+        ("2026-10-12T09:00:00", "2026-10-12T12:00:00", "personal_calendar")]
+
+
 def test_night_tail_priority_overlay_and_downtime_use_exact_half_open_window():
     saved = archive()
     saved["tables"]["WorkCalendar"] = [day("2026-10-12", "22:00", "06:00", efficiency=0.5),
@@ -206,6 +225,21 @@ def test_broken_policy_days_keep_other_days_known_and_defaults_are_lazy():
             datetime(2026, 10, 16, 8, 0),
             datetime(2026, 10, 16, 16, 0),
         )
+
+
+@pytest.mark.parametrize("table,rows", [
+    ("WorkbenchOperatorProfiles", [{"shift_profile_id": "P1"}]),  # 缺列
+    ("WorkbenchShiftPatternDays", [{"profile_id": ["P1"], "day_offset": 0}]),  # 取值类型不对
+])
+def test_structurally_damaged_saved_calendar_table_makes_every_day_calendar_invalid(table, rows):
+    saved = archive()
+    saved["tables"][table] = rows
+    factory = ArchivedCalendar(saved)
+    assert factory.engine is None
+    projected = dict(factory.iter_resources(RESOURCES, "2026-10-12T00:00:00", "2026-10-13T00:00:00"))
+    for ref in (MACHINE, OPERATOR):
+        assert projected[ref]["state"] == "unavailable" and projected[ref]["available_hours"] is None
+        assert [item["code"] for item in projected[ref]["issues"]] == ["calendar_invalid"]
 
 
 def test_deleted_or_replaced_identity_stays_unknown_while_true_zero_stays_zero():

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from types import SimpleNamespace
 from typing import Any, Dict, List, Set, Tuple, cast
 
 from core.algorithm_contracts.schedule_point_evidence import SchedulePointEvidence
 from core.errors import AppError, ErrorCode
-from core.models import BatchOperation
+from core.models.batch_operation import BatchOperation
 from core.models.enums import SourceType
 from core.models.operation_execution_event import (
     EXECUTION_STATUS_COMPLETED,
@@ -23,6 +22,7 @@ from core.shared.local_datetime import parse_local_datetime as parse_dt
 
 from .schedule_execution_resource_facts import collect_resource_execution_facts
 from .schedule_input_seed_metadata import with_confirmed_merged_group_periods
+from .schedule_payload_contract import arrangement_row
 
 
 def _execution_conflict(message: str, *, reason: str, op_id: int) -> AppError:
@@ -127,7 +127,7 @@ def _build_execution_seed_result(
             unit_hours=op.unit_hours,
             quantity=fact.target_quantity,
         )
-        if not witness.matches(SimpleNamespace(**result)):
+        if not witness.matches(arrangement_row(result)):
             raise _execution_conflict(
                 "已完工的工序缺少有效完工时间，本次没有写入新排程。请先核对现场反馈记录。",
                 reason="missing_actual_end_time",

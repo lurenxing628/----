@@ -79,8 +79,6 @@ class WorkbenchRequestLifecycle:
             return ticket
 
     def release(self, ticket: RequestTicket) -> None:
-        if not isinstance(ticket, RequestTicket):
-            raise RuntimeError("Invalid request lifecycle ticket")
         with self._condition:
             if ticket.finished:
                 return
@@ -172,24 +170,6 @@ class MaintenanceOwner:
             self._validate()
             return result and ticket.connections_closed and not ticket.failures
 
-    def resume(self):
-        """Only the original request may explicitly reopen after verified work.
-
-        Never use this in a finally block: unresolved maintenance must stay shut.
-        A shutdown that raced with maintenance cannot be undone by this lease.
-        """
-        gate, ticket = self._gate, self._ticket
-        with gate._condition:
-            self._validate()
-            frame = current_frame()
-            if frame is None or frame.ticket is not ticket:
-                raise RuntimeError("Only the original maintenance request can resume admission")
-            if not self.drain():
-                raise RuntimeError("Maintenance has not drained all request connections")
-            gate._owner = None
-            gate._state = "accepting"
-            gate._condition.notify_all()
-
 
 class RequestFrame:
     """Typed request ownership and connection cleanup, without WSGI imports."""
@@ -200,7 +180,7 @@ class RequestFrame:
 
     def _active_ticket(self) -> RequestTicket:
         ticket = self.ticket
-        if not isinstance(ticket, RequestTicket) or ticket.finished:
+        if ticket is None or ticket.finished:
             raise RuntimeError("DB connection opened outside an admitted HTTP request")
         if ticket.app is not self.app or ticket not in self.gate._active:
             raise RuntimeError("Foreign request ticket cannot own this request frame")
@@ -232,11 +212,7 @@ class RequestFrame:
 
     def finish(self) -> None:
         ticket = self.ticket
-        if ticket is None:
-            return
-        if not isinstance(ticket, RequestTicket):
-            raise RuntimeError("Invalid request lifecycle ticket")
-        if ticket.finished:
+        if ticket is None or ticket.finished:
             return
         ticket = self._active_ticket()
         try:

@@ -1,17 +1,16 @@
 """Preserve exact common/split predecessors in original and saved trial work."""
 
-from types import SimpleNamespace
-
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_trial import issue
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
+from core.services.workbench.facts.stored_algo_inputs import stored_batch_operation
 
 
 def trial_piece_predecessors(rows, all_ops, operation_refs):
-    batches = {row["original"]["batch"]["batch_id"]: SimpleNamespace(**row["original"]["batch"]) for row in rows}
-    operations = [SimpleNamespace(**op) for op in all_ops.values() if op["batch_id"] in batches]
-    scope = build_piece_adoption_scope(operations, batches)
+    quantities = {row["original"]["batch"]["batch_id"]: row["original"]["batch"]["quantity"] for row in rows}
+    operations = [stored_batch_operation(op) for op in all_ops.values() if op["batch_id"] in quantities]
+    scope = build_piece_adoption_scope(operations, quantities)
     by_id = {}
     for work in scope.operations:
         if work.op_id not in operation_refs or any(key not in operation_refs for key in work.predecessor_op_ids):

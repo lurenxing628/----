@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Set, Tuple
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
-from core.models import OperatorMachine
+from core.models.operator_machine import OperatorMachine
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_relation_file import (
     EXPORT_LABELS,
@@ -379,9 +379,9 @@ class WorkbenchRelationFileService:
                 "is_primary": EXPORT_LABELS["is_primary"][normalize_yes_no_stored(link.get("is_primary"))],
             })
         if self.reader._snapshot_metrics is not None:
-            table_facts = self.reader._table_reader()
-            operators = table_facts.records("operator")
-            machines = table_facts.records("machine")
+            metrics = self.reader._table_reader().metrics
+            operators = metrics.kind_records("operator")
+            machines = metrics.kind_records("machine")
         else:
             operators = self.repo.raw_many("operator", (row["operator_code"] for row in rows))
             machines = self.repo.raw_many("machine", (row["machine_code"] for row in rows))

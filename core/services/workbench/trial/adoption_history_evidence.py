@@ -1,6 +1,5 @@
 """Keep receipts authoritative; audit fields use exact lineage and original intent."""
 
-import json
 import re
 from datetime import datetime
 from typing import NoReturn
@@ -10,6 +9,7 @@ from core.models.workbench_command import validate_request_key
 from core.models.workbench_trial import reference, reject
 from core.models.workbench_trial_codec import load_object, require_object
 from core.services.workbench.facts.trial_policy import load_scenario_record
+from core.shared.strict_json import load_strict_json
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
 from .adoption_history_policy import MAX_SCENARIO_BYTES, bound, load_receipt
@@ -20,19 +20,9 @@ def invalid() -> NoReturn:
 
 
 def json_object(raw):
-    def pairs(items):
-        result = {}
-        for key, value in items:
-            if key in result:
-                raise ValueError("Duplicate evidence key")
-            result[key] = value
-        return result
-    if type(raw) is not str:
-        raise ValueError("Evidence is not text")
-    value = json.loads(raw, object_pairs_hook=pairs, parse_constant=lambda _: invalid())
-    if type(value) is not dict:
-        raise ValueError("Evidence is not an object")
-    return value
+    # The row loaders (load_receipt, adoption_receipts, history_audit_row) already rejected non-text
+    # bodies. Audit readers treat this rejection (a ValueError) as unproven evidence.
+    return load_strict_json(raw, on_malformed=invalid, expected=dict)
 
 
 def scenario_evidence(conn, scenario_ref, repo):

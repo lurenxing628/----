@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
-from core.models import OperatorCalendar
+from core.models.calendar import OperatorCalendar
 
 from .base_repo import BaseRepository
 

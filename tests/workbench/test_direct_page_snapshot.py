@@ -319,3 +319,31 @@ def test_calibration_export_source_labels_are_shared_by_csv_and_xlsx(source, lab
     for format_name in ("csv", "xlsx"):
         values, = _export_values([row], "{}", format_name)
         assert len(values) == 22 and values[source_index] == label
+
+
+_CALIBRATION_DUPLICATE = "筛选条件里有重复的列，请重新选择。"
+
+
+@pytest.mark.parametrize("suffix,query,message", [
+    ("/facets/operation_label", {"scope": '{"query": "a", "query": "b"}'}, _CALIBRATION_DUPLICATE),
+    ("/facets/operation_label", {"scope": '{"query": NaN}'}, "列筛选内容读不出来，筛选没有变化。请点「清除筛选」后重新选择。"),
+    ("/facet-selection/status", {"scope": '{"column_filters": {"part_no": {"mode": "include", "values": [1e999]}}}'},
+     "列筛选内容读不出来，筛选没有变化。请点「清除筛选」后重新选择。"),
+    ("", {"column_filters": '{"status": {"mode": "include", "values": []}, "status": {"mode": "exclude", "values": []}}'},
+     _CALIBRATION_DUPLICATE),
+    ("", {"column_filters": '{"status": {"mode": "include", "values": [Infinity]}}'},
+     "列筛选内容读不出来，当前筛选没有变化。请点「清除筛选」后重新选择。"),
+    ("/export", {"column_filters": '{"status": -Infinity}', "snapshot_ref": "x"},
+     "列筛选内容读不出来，当前筛选没有变化。请点「清除筛选」后重新选择。"),
+    ("", {"column_filters": '{"status": '}, "列筛选内容读不出来，当前筛选没有变化。请点「清除筛选」后重新选择。"),
+])
+def test_calibration_query_json_rejects_duplicate_keys_and_nonfinite_numbers_with_route_texts(suffix, query, message):
+    app = Flask("calibration-strict-json")
+    app.config.update(TESTING=True, SECRET_KEY="temporary-calibration-strict-json")
+    bp = Blueprint("calibration_strict_json", __name__)
+    register_calibration_routes(bp)
+    app.register_blueprint(bp)
+    response = app.test_client().get("/api/workbench/v1/calibration" + suffix, query_string=query)
+    body = response.get_json()
+    assert response.status_code == 400 and body["ok"] is False and body["error"]["code"] == "invalid_input", body
+    assert body["error"]["message"] == message

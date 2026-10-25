@@ -95,7 +95,7 @@ class SnapshotCalendarEngine(CalendarEngine):
             else:
                 periods = default_periods_from_row(next(iter(self._default_rows), None))
             self._default_periods = periods
-            self._default_periods_json = encode_periods(periods, normalized=True)
+            self._default_periods_json = encode_periods(periods)
             _, self._default_period_hours = self._period_facts_for_json(self._default_periods_json, periods)
         return self._default_periods
 

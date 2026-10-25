@@ -2,10 +2,6 @@
   'use strict';
   const B = window.APSBatchContract, C = window.APSResourceContract, S = window.APSResourceSession;
   const { Button, Modal, ErrorBox } = window.ResourceControls, { Field } = window.BatchControls;
-  function isStale(command) {
-    const error = command && command.error, code = error && (error.code || error.error && error.error.code);
-    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
-  }
   function BatchOperationEditor({ adapter, entity, operation, source, command, onCommitted, onClose, disabled }) {
     const internal = operation.source === 'internal', merged = operation.external_group && operation.external_group.merge_mode === 'merged';
     const keys = internal ? ['machine_ref', 'operator_ref', 'setup_hours', 'unit_hours'] : ['supplier_ref'].concat(merged ? [] : ['external_days']);
@@ -53,7 +49,7 @@
     }
     function updateField(key, value) {
       setDraft(current => ({ ...current, [key]: value })); setError(null);
-      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     return <Modal title={'工序 ' + operation.sequence + ' · ' + operation.label} icon="wrench" guardOwner={guardOwner} locked={command.locked} onClose={onClose}
       footer={<><Button onClick={close} disabled={command.locked}>{done || merged ? '关闭' : '取消'}</Button>{!done && !merged && <Button form={form} type="submit" icon="check" className="btn primary"

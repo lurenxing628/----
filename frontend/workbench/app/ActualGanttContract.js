@@ -13,8 +13,9 @@
   function gapMinutes(start, end) {
     const seconds = (Date.parse(end.slice(0, 19) + 'Z') - Date.parse(start.slice(0, 19) + 'Z')) / 1000;
     const minutes = Math.floor(seconds / 60);
+    // 第 21 位起是 6 位微秒；没有小数秒时截出空串，Number('') 就是 0。
     const remainder = (seconds - minutes * 60) * 1000000
-      + Number(end.slice(20) || 0) - Number(start.slice(20) || 0);
+      + Number(end.slice(20)) - Number(start.slice(20));
     return minutes - (remainder < 0 ? 1 : 0);
   }
   const nullableTime = value => value === null || local(value);
@@ -77,7 +78,7 @@
   }
   function scopeMatches(value, query) {
     return object(value) && cohortKeys.every(key => {
-      const expected = key === 'source' ? query.source || 'production' : key === 'batch_ids' ? (query[key] || []).slice().sort() : query[key] == null ? null : query[key];
+      const expected = key === 'source' ? query.source || 'production' : key === 'batch_ids' ? (own(query, key) ? query[key].slice().sort() : []) : query[key] == null ? null : query[key];
       return JSON.stringify(value[key]) === JSON.stringify(expected);
     });
   }

@@ -79,7 +79,7 @@ def test_report_revision_change_rejects_preview_with_the_same_recommendation(rea
     before = service(case.conn).preview(case.template_ref, PREVIEW_INTENT)
     selected_reports = {ref for sample in before["samples"] for ref in sample["report_refs"]}
     unselected = next(row for row in extra_reports if row["report_ref"] not in selected_reports)
-    original = case.ledger.get_report(unselected["report_ref"])
+    original = case.report_projection(unselected["report_ref"])
     case.command("correct", original.report_ref,
                  {"remark": "Checked the original record", "original_revision_ref": original.revision_ref,
                   "reason": "Corrected the record note", "declared_operator": "Reviewer"})

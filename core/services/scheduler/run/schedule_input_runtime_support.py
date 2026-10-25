@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.algorithm_runtime.internal_slot import validate_internal_hours
 from core.errors import AppError, ErrorCode, ValidationError
-from core.models import BatchOperation
+from core.models.batch_operation import BatchOperation
 from core.models.enums import SourceType
 
 from .schedule_input_seed_metadata import (
@@ -57,9 +57,9 @@ def _ensure_internal_runtime_hours(batches: Dict[str, Any], algo_ops: List[Any])
         if batch is None:
             raise ValidationError(f"自制工序 {op.op_code or '-'} 找不到所属批次，无法计算总工时。", field="batch_id")
         # 单一真相源：直接复用算法层 internal_slot.validate_internal_hours 校验自制工时。
-        # 它把 setup/unit/quantity 的缺失/0 统一按 0 处理、只拦非有限数与负总工时（`< 0`），
-        # 与录入/导入/编辑/模型默认“缺失补 0、总工时 0 合法”的全系统口径一致（含 quantity==0：
-        # 总量=setup，算法层按瞬时排）。此处不再手搓第二套 quantity/工时校验，避免口径分叉
+        # 它要求 setup/unit/quantity 都是非负有限数字：缺失（None）等读不出的值报“工时字段不合法”，
+        # 负数和非有限数同样拦下；值为 0 合法，总工时 0 也合法（含 quantity==0：总量=setup，算法层按瞬时排）。
+        # 此处不再手搓第二套 quantity/工时校验，避免口径分叉
         # （quantity==0 曾被错误硬拦整批，详见 issue 2026-06-24-core-algorithm-deep-review-fixes 复修讨论）。
         try:
             validate_internal_hours(op, batch)
@@ -91,7 +91,6 @@ def _load_runtime_resource_inputs(
     downtime_map = load_machine_downtimes_fn(
         algo_ops=algo_ops,
         start_dt=start_dt_norm,
-        meta=downtime_meta,
     )
     resource_pool = build_resource_pool_fn(
         cfg=cfg,
@@ -152,7 +151,7 @@ def prepare_runtime_seeds(
         derived_group_op_ids=derived_group_ids,
     )
     _ensure_internal_runtime_hours(batches, algo_ops_to_schedule)
-    validate_fixed_operator_qualifications_fn(svc.conn, algo_ops_to_schedule, logger=svc.logger)
+    validate_fixed_operator_qualifications_fn(svc.conn, algo_ops_to_schedule)
     return frozen_op_ids, seed_results, algo_ops_to_schedule
 
 

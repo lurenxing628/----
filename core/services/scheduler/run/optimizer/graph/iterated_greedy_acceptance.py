@@ -22,7 +22,6 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
 
 _EXPLORATION_THRESHOLD = 100
-_MAX_POOL_SIZE = 8
 
 
 class ExponentialCooling:
@@ -126,9 +125,8 @@ def _entry_distance(left: PoolEntry, right: PoolEntry) -> int:
 
 class SolutionPool:
     def __init__(self, size: int) -> None:
-        if isinstance(size, bool) or not isinstance(size, int) or not 1 <= size <= _MAX_POOL_SIZE:
-            raise ValueError("pool size must be an integer between 1 and 8")
-        self.size = int(size)
+        # 容量来自 IteratedGreedyLimits.pool_size（固定常量 3），不是外部输入。
+        self.size = size
         self.entries: List[PoolEntry] = []
         self._sequence = 0
 

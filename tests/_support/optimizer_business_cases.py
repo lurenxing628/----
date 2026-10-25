@@ -7,15 +7,15 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, Dict, List
 
-from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.models.batch import Batch
 from core.models.batch_operation import BatchOperation
-from core.models.schedule_config_runtime import default_snapshot_values
-from core.services.common.build_outcome import BuildOutcome
+from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
 from core.services.scheduler.run.schedule_input_contracts import ScheduleRunInput
+from tests._support.algo_operations import make_algo_op
 from tests._support.optimizer_exact_oracle import (
     OBJECTIVES,
     ScheduledOperation,
@@ -31,6 +31,33 @@ RESULT_FIELDS = (
     "op_id", "op_code", "batch_id", "seq", "source", "machine_id", "operator_id",
     "op_type_name", "start_time", "end_time",
 )
+
+
+def _assigned(value):
+    """夹具用空串表示还没指定设备或人员；生产构造边界里这是 None。"""
+    return None if value == "" else value
+
+
+def algo_operation_from_fixture(operation: Dict[str, Any]) -> OpForScheduleAlgo:
+    """像排产输入构建那样产出完整的算法工序；外协组字段只有外协夹具才给。"""
+    return make_algo_op(**dict(operation, machine_id=_assigned(operation["machine_id"]),
+                               operator_id=_assigned(operation["operator_id"])))
+
+
+def batch_operation_from_fixture(operation: Dict[str, Any]) -> BatchOperation:
+    """像排产入口 run_input_rows.operation_model 那样直接构造工序；夹具描述的是算法工序。
+
+    算法工序用空串表示还没指定设备或人员，库里存 NULL；只有外协工序带 ext_days；
+    piece_id、supplier_id、status、created_at 按新建批次工序的库内取值写明。
+    """
+    return BatchOperation(
+        id=operation["id"], op_code=operation["op_code"], batch_id=operation["batch_id"], piece_id=None,
+        seq=operation["seq"], op_type_id=operation["op_type_id"], op_type_name=operation["op_type_name"],
+        source=operation["source"],
+        machine_id=_assigned(operation["machine_id"]), operator_id=_assigned(operation["operator_id"]),
+        supplier_id=None, setup_hours=operation["setup_hours"], unit_hours=operation["unit_hours"],
+        ext_days=operation.get("ext_days"), status="pending", created_at=None,
+    )
 
 
 def _calendar(hours):
@@ -135,8 +162,8 @@ def case_environment(data, objective, config=None):
                       time_budget_seconds=config["time_budget_seconds"], objective=objective, ortools_enabled="no",
                       auto_assign_enabled="no" if "tiny_case" in data else "yes",
                       freeze_window_enabled="no", freeze_window_days=0)
-        operations = [SimpleNamespace(**row) for row in data["operations"]]
-        batch_operations = [BatchOperation.from_row(row) for row in data["operations"]]
+        operations = [algo_operation_from_fixture(row) for row in data["operations"]]
+        batch_operations = [batch_operation_from_fixture(row) for row in data["operations"]]
         seeds: List[Dict[str, Any]] = [dict(row, start_time=datetime.fromisoformat(row["start_time"]),
                       end_time=datetime.fromisoformat(row["end_time"])) for row in data["seed_results"]]
         frozen_ids = {row["op_id"] for row in seeds}
@@ -149,11 +176,11 @@ def case_environment(data, objective, config=None):
             readiness_gate_enabled=data["readiness_gate_enabled"], frozen_op_ids=frozen_ids,
             normalized_batch_ids=[row["batch_id"] for row in data["batches"]], t0=0.0,
             operations=batch_operations,
-            missing_internal_resource_op_ids=set(), algo_input_outcome=BuildOutcome(operations),
+            missing_internal_resource_op_ids=set(),
             prev_version=0, execution_facts={}, execution_fixed_op_ids=set(), execution_completed_op_ids=set(),
             execution_seed_results=[], execution_snapshot_revision="fixture", execution_snapshot_op_ids=[],
             execution_snapshot_op_count=0, schedule_output_allowed_op_ids={row["id"] for row in data["operations"]},
-            payload_validation_operations=batch_operations, algo_warnings=[], freeze_meta={}, downtime_meta={},
+            payload_validation_operations=batch_operations, freeze_meta={}, downtime_meta={},
             resource_pool_meta={},
         )
     finally:

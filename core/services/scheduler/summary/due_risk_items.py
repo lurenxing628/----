@@ -138,17 +138,9 @@ def incomplete_batches_payload(
     return {"count": len(items), "items": items[:50]}
 
 
-def _record_invalid_due(
-    *,
-    batch_id: str,
-    due_text: str,
-    invalid_due_ids_sample: List[str],
-    invalid_due_raw_sample: List[str],
-) -> None:
+def _record_invalid_due(*, batch_id: str, invalid_due_ids_sample: List[str]) -> None:
     if len(invalid_due_ids_sample) < 10:
         invalid_due_ids_sample.append(str(batch_id))
-    if len(invalid_due_raw_sample) < 5:
-        invalid_due_raw_sample.append(f"{batch_id}={due_text!r}")
 
 
 def _build_overdue_items(
@@ -156,27 +148,20 @@ def _build_overdue_items(
     batches: Dict[str, Any],
     finish_by_batch: Dict[str, datetime],
     summary: Any,
-    append_summary_warning_fn: Callable[[Any, str], bool],
+    append_summary_warning_fn: Callable[[Any, str], None],
     incomplete_batch_ids: Optional[Set[str]] = None,
-    logger: Any = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     overdue_items: List[Dict[str, Any]] = []
     near_due_items: List[Dict[str, Any]] = []
     invalid_due_count = 0
     invalid_due_ids_sample: List[str] = []
-    invalid_due_raw_sample: List[str] = []
     excluded_incomplete = incomplete_batch_ids or set()
 
     for batch_id, batch in batches.items():
         due_exclusive, due_text, due_invalid = parse_due_exclusive_datetime(batch.due_date)
         if due_invalid:
             invalid_due_count += 1
-            _record_invalid_due(
-                batch_id=str(batch_id),
-                due_text=due_text,
-                invalid_due_ids_sample=invalid_due_ids_sample,
-                invalid_due_raw_sample=invalid_due_raw_sample,
-            )
+            _record_invalid_due(batch_id=str(batch_id), invalid_due_ids_sample=invalid_due_ids_sample)
             continue
         if due_exclusive is None:
             continue
@@ -207,13 +192,7 @@ def _build_overdue_items(
     if invalid_due_count > 0:
         sample_ids = "，".join(invalid_due_ids_sample)
         message = f"存在 {invalid_due_count} 个批次交期写法不对，已忽略超期与临期判断（示例批次：{sample_ids}）"
-        warning_appended = append_summary_warning_fn(summary, message)
-        if logger is not None:
-            raw_sample = "；".join(invalid_due_raw_sample)
-            detail = f"{message}；示例原始交期：{raw_sample}"
-            if not warning_appended:
-                detail += "；且 summary.warnings 追加失败"
-            logger.warning(detail)
+        append_summary_warning_fn(summary, message)
 
     return overdue_items, {
         "invalid_due_count": invalid_due_count,

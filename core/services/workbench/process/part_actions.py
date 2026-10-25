@@ -16,7 +16,7 @@ which rolls back all writes if any check or mutation fails.
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.transaction import TransactionManager
-from core.models import Part
+from core.models.part import Part
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_process_actions import (
@@ -72,13 +72,13 @@ class WorkbenchProcessPartActionService:
     def apply_create(self, part):
         """Persist the prepared initial fields, including an imported route state."""
         self._require_transaction()
-        check_part_action_storage(self.conn, self.contracts)
+        check_part_action_storage(self.contracts)
         return self.create_part(part)
 
     def preview_delete_normalized(self, refs, *, scope):
         request = {"refs": process_part_refs(refs), "scope": scope}
         with self.tx.transaction():
-            check_part_action_storage(self.conn, self.contracts)
+            check_part_action_storage(self.contracts)
             preview, _ = self._prepare_delete(request)
             return preview
 
@@ -130,7 +130,7 @@ class WorkbenchProcessPartActionService:
         self._require_transaction()
         try:
             request = {"refs": process_part_refs(refs), "scope": process_part_scope(scope)}
-            check_part_action_storage(self.conn, self.contracts)
+            check_part_action_storage(self.contracts)
             current, rows = self._prepare_delete(request)
         except (ValidationError, WorkbenchCommandRejected) as exc:
             if isinstance(exc, WorkbenchCommandRejected) and exc.status >= 500:

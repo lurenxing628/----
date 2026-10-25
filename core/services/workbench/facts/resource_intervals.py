@@ -38,6 +38,29 @@ def resource_cohort(task_pools, *, task_intervals=None):
     return [resources[key] for key in sorted(resources)]
 
 
+def occupying_tasks(tasks, low, high, *, task_intervals=None):
+    """Tasks occupying a resource inside [low, high); external work and point events never do, unknown times stay."""
+    for task in tasks:
+        interval = task_interval(task) if task_intervals is None else task_intervals[task["row_ref"]]
+        if task.get("source") == "external" or interval is not None and interval[0] == interval[1]:
+            continue
+        if interval is not None and not (interval[0] < high and interval[1] > low):
+            continue
+        yield task, interval
+
+
+def identity_issue(kind):
+    return {"code": "resource_identity_unknown", "message": "保存任务缺少永久资源身份，资源汇总保留覆盖缺口。",
+            "field": kind, "kind": kind}
+
+
+def resource_identity_issues(tasks, start, end, *, task_intervals=None):
+    """One window's missing resource identities, read from its tasks without building calendar geometry."""
+    return [identity_issue(kind)
+            for task, _ in occupying_tasks(tasks, instant(start), instant(end), task_intervals=task_intervals)
+            for kind in KINDS if task.get(kind) is None or task[kind].get("ref") is None]
+
+
 class _OverlapNode:
     """Balanced interval tree enumerates only rows intersecting a requested day."""
 
@@ -83,6 +106,10 @@ class ResourceIntervals:
             self._swept = segments(self.intervals)
         return self._swept
 
+    def adopt_sweep(self, swept):
+        """Keep the identical sweep a utilization measurement already made of these intervals."""
+        self._swept = swept
+
     def counts(self, start, end):
         if start == end:
             return 0, 0
@@ -100,7 +127,7 @@ class ResourceIntervals:
         return result
 
 
-def details(rows, unknown, start, end):
+def sweep_details(rows, unknown, start, end):
     """Sweep actual active rows; conflicts count distinct permanent operations."""
     events = defaultdict(list)
     for index, (low, high, task) in enumerate(rows):

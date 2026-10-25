@@ -20,11 +20,12 @@ from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_resu
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 from core.services.workbench.facts.run_input_rows import batch_model, operation_model
 from core.services.workbench.run.input_config import candidate_config, hold_window
-from core.services.workbench.run.input_external import execution_groups, prime_template_cache
+from core.services.workbench.run.input_external import execution_groups, verified_external_contexts
 from core.services.workbench.run.input_runtime import held_arrangements
 from core.services.workbench.run.jobs_facts import run_execution_projections
 from core.services.workbench.run.preflight_facts import PreflightFacts
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
+from tests._support.algo_operations import make_schedule_result
 from tests.workbench.run_candidate_adoption_support import snapshot
 from tests.workbench.run_candidate_support import candidate_case as candidate_case  # noqa: F401
 
@@ -72,7 +73,7 @@ def lower_input(case, *batch_ids):
         facts=production, external_groups=execution_groups(production, batches, operations))
     refs = WorkbenchPlanIdentityRepository(case.conn).get_operation_refs(op.id for op in operations if op.id is not None)
     projected = {item.operation_ref: item.to_dict() for item in case.projections(*ids)}
-    scope = build_piece_adoption_scope(operations, batches)
+    scope = build_piece_adoption_scope(operations, {key: batch.quantity for key, batch in batches.items()})
     dispositions = [{"op_id": work.op_id, "operation_ref": refs[work.op_id], "batch_id": work.batch_id,
                      "batch_ref": case.ref("batch", work.batch_id), "piece_id": work.piece_id,
                      "sequence": work.sequence, "predecessor_refs": [refs[key] for key in work.predecessor_op_ids],
@@ -80,21 +81,21 @@ def lower_input(case, *batch_ids):
                      "execution": projected[refs[work.op_id]]} for work in scope.operations]
     tables = {name: [dict(row) for row in case.conn.execute('SELECT * FROM "' + name + '"')]
               for name in ("BatchExternalContexts", "BatchOperations")}
-    prime_template_cache(svc, tables, batches, operations)
+    external_contexts = verified_external_contexts(tables, batches, operations)
     cfg = candidate_config(settings, snapshot=production.config_snapshot)
     # 正式计划里的锁定标记不再起作用：受保护的只有报工保护的工序，和本次不重排时段里保持原安排的工序。
-    held = held_arrangements(svc, facts=production, cfg=cfg, prev_version=version, start_dt=START, operations=operations,
+    held = held_arrangements(facts=production, cfg=cfg, prev_version=version, start_dt=START,
         reschedulable_operations=[op for op in operations if op.id not in fixed | completed],
         hold_window=hold_window(settings, snapshot=production.config_snapshot)[0])
     return SimpleNamespace(preflight_facts=production, latest_plan_rows=production.latest_plan_rows(version),
         execution_reservations=build_execution_resource_reservations(facts=facts,
             selected_op_ids={op.id for op in operations if op.id is not None}, capture=production.capture),
-        operation_sources=({op.id: op.source for op in operations}, []),
+        operation_sources={op.id: op.source for op in operations},
         normalized_batch_ids=ids, normalized_input=settings,
         operations=operations, batches=batches, dispositions=dispositions, piece_scope=scope,
         cal_svc=CalendarService(case.conn), prev_version=version, start_dt_norm=START, cfg=cfg,
         end_date_norm=datetime(2026, 9, 25).date(), readiness_gate_enabled=True, downtime_map={},
-        algo_ops=build_algo_operations(svc, operations, strict_mode=True),
+        algo_ops=build_algo_operations(operations, external_contexts=external_contexts),
         frozen_op_ids=held.frozen_op_ids, seed_results=actual + held.seed_results,
         execution_facts=facts, execution_fixed_op_ids=fixed, execution_completed_op_ids=completed,
         execution_seed_results=actual,
@@ -104,16 +105,17 @@ def lower_input(case, *batch_ids):
 
 def payload(prepared, results):
     return build_validated_schedule_payload(results, allowed_op_ids=prepared.schedule_output_allowed_op_ids,
-                                            operations=prepared.operations)
+                                            operations=prepared.operations,
+                                            operation_sources=prepared.operation_sources)
 
 
 def slot_payload(prepared, *, placements=None):
     """Real slot-engine results, never a claim of a completed production run."""
     placements = placements or {}
-    scope = build_piece_adoption_scope(prepared.operations, prepared.batches)
+    scope = build_piece_adoption_scope(prepared.operations, {key: batch.quantity for key, batch in prepared.batches.items()})
     work = {row.op_id: row for row in scope.operations}
-    result = {seed["op_id"]: SimpleNamespace(**seed) for seed in prepared.seed_results}
-    for op in sorted(prepared.operations, key=lambda item: (item.seq, item.id)):
+    result = {row.op_id: row for row in coerce_seed_results(prepared.seed_results, optimizer_algo_stats={})}
+    for op in sorted(prepared.algo_ops, key=lambda item: (item.seq, item.id)):
         if op.id in result:
             continue
         target = work[op.id]
@@ -127,14 +129,14 @@ def slot_payload(prepared, *, placements=None):
             machine_downtimes=prepared.downtime_map.get(op.machine_id, ()), end_dt_exclusive=None,
             last_op_type_by_machine=None, abort_after=None,
             total_hours_base=op.setup_hours + op.unit_hours * target.target_quantity)
-        assert not slot.efficiency_fallback_used
-        result[op.id] = SimpleNamespace(op_id=op.id, machine_id=op.machine_id, operator_id=op.operator_id,
-            start_time=slot.start_time, end_time=slot.end_time, source=op.source)
+        result[op.id] = make_schedule_result(op_id=op.id, op_code=op.op_code, batch_id=op.batch_id, seq=op.seq,
+            machine_id=op.machine_id, operator_id=op.operator_id, start_time=slot.start_time, end_time=slot.end_time,
+            source=op.source, op_type_name=op.op_type_name, op_type_id=op.op_type_id)
     return payload(prepared, list(result.values()))
 
 
 def greedy_payload(prepared):
-    scope = build_piece_adoption_scope(prepared.operations, prepared.batches)
+    scope = build_piece_adoption_scope(prepared.operations, {key: batch.quantity for key, batch in prepared.batches.items()})
     before = {row.op_id: set(row.predecessor_op_ids) for row in scope.operations}
     after = {key: {row for row, predecessors in before.items() if key in predecessors} for key in before}
     fixed = {row["op_id"] for row in prepared.seed_results}

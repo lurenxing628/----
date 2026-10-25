@@ -23,7 +23,7 @@
     if (!token(data.preview_ref) || data.operation !== kind + (mode === 'import' ? '.import' : '.bulk_delete')
         || data.commit_policy !== 'atomic' || typeof data.can_confirm !== 'boolean' || !C.object(data.summary)
         || !Array.isArray(data.rows) || !C.object(data.write_context) || !C.object(data.write_context.capabilities)
-        || !token(data.write_context.write_token) || !Number.isFinite(Date.parse(data.expires_at)))
+        || !Array.isArray(data.write_context.blocked_reasons) || !token(data.write_context.write_token) || !Number.isFinite(Date.parse(data.expires_at)))
       throw C.failure('预检结果不完整，本批没有提交。请重新预检。');
     if (!Object.keys(results).every(key => count(data.summary[key]))
         || Object.keys(results).reduce((sum, key) => sum + data.summary[key], 0) !== data.rows.length)
@@ -62,7 +62,7 @@
   function selection(request) {
     if (!Array.isArray(request.refs) || request.refs.some(ref => typeof ref !== 'string' || !/^[0-9a-f]{48}$/.test(ref))
         || new Set(request.refs).size !== request.refs.length) throw C.failure('缺少明确勾选的' + label + '，请重新勾选。');
-    return request.refs.slice();
+    return request.refs;
   }
   function listContext(request) {
     const input = request.scope || {}, scope = {};
@@ -94,9 +94,8 @@
     const data = result.data, context = data.write_context;
     if (!data.can_confirm || data.summary.rejected) return '存在未通过检查的行，请修正后重新预检。';
     if (context.capabilities[data.operation] !== true) {
-      const reasons = context.blocked_reasons || [];
-      const reason = reasons.find(item => item.action === data.operation);
-      return reason && reason.message || '系统不允许本次确认。';
+      const reason = context.blocked_reasons.find(item => item.action === data.operation);
+      return reason ? reason.message : '系统不允许本次确认。';
     }
     if (Date.now() >= Date.parse(data.expires_at)) return '预检结果已过期，请重新预检。';
     return '';

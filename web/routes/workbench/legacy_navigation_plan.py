@@ -79,8 +79,7 @@ def gantt_context(queries, plan, args):
         plan_query_service=queries, version=locator.version,
         plan_role=locator.plan_role, scenario_id=locator.scenario_id,
         week_start=args.get("week_start"), offset_weeks=args.get("offset_weeks", 0),
-        start_date=args.get("start_date"), end_date=args.get("end_date"),
-        default_to_version_span=True, max_explicit_date_days=62)
+        start_date=args.get("start_date"), end_date=args.get("end_date"))
     context = {"plan_ref": plan.plan_ref}
     if source != "version_span":
         context.update(range_start=wr.start_dt.isoformat(timespec="seconds"),

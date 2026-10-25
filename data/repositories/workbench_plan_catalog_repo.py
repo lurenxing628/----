@@ -24,7 +24,7 @@ from core.models.schedule_plan_role import (
     SOURCE_SCHEDULE,
 )
 
-from .schedule_plan_query_repo import SCENARIO_PLAN_ROWS_SQL, SchedulePlanQueryRepository
+from .schedule_plan_query_repo import SCENARIO_HEADER_COLUMNS_SQL, SCENARIO_PLAN_ROWS_SQL, SchedulePlanQueryRepository
 from .schedule_rows import ScheduleTimeSpanRow
 
 DEFAULT_PLAN_PAGE_SIZE = 20
@@ -102,9 +102,7 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
             "WHERE scenario_id COLLATE BINARY > ?", [after_scenario_id],
         )
         rows = self.fetchall(
-            "SELECT scenario_id, source_draft_id, base_version, base_plan_role, base_source_table, "
-            "base_candidate_id, base_candidate_key, scenario_name, status, validation_status, "
-            "issue_count, issues_json, row_count, published_version FROM ScheduleAdjustmentScenario "
+            "SELECT " + SCENARIO_HEADER_COLUMNS_SQL + " FROM ScheduleAdjustmentScenario "
             f"{where} ORDER BY scenario_id COLLATE BINARY ASC LIMIT ?",
             params + [page_size + 1],
         )

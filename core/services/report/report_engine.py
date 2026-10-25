@@ -34,7 +34,6 @@ class ReportEngine:
         return self.plan_query_service.list_plan_overdue_base_rows_for_resolution(
             version=resolution.version, source_table=resolution.source_table,
             candidate_id=resolution.candidate_id, scenario_id=resolution.scenario_id,
-            allow_points=True,
         )
 
     def _list_plan_rows_between(self, resolution, start_time, end_time):

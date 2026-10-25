@@ -6,6 +6,7 @@ and size limits are ruled on here before anything is projected.
 
 from contextlib import contextmanager
 
+from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.workbench_calibration import MAX_OPERATIONS, MAX_TEMPLATES, CalibrationTemplate
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution_input import public_ref
@@ -43,7 +44,7 @@ def read_templates(repo, query):
         if row["part_ref"] not in seen_part_refs:
             public_ref(row["part_ref"])
             seen_part_refs.add(row["part_ref"])
-        source = row["source"] if row["source"] in ("internal", "external") else "unknown"
+        source = row["source"] if row["source"] in OPERATION_SOURCES else "unknown"
         if query.source not in (None, source):
             continue
         if needle:

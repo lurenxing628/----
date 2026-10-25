@@ -415,3 +415,46 @@ def test_active_production_report_revision_blocks_resource_deletion_until_voided
     deleted = run_resource(conn, kind, "delete", {}, code=code)
     assert deleted["result"] == "committed"
     assert identity_for(conn, kind, code) is None
+
+
+_UNREADABLE_TABLE_QUERY = "查询条件读不出来，当前列表没有变化。请点「清除筛选」后重新选择。"
+
+
+@pytest.mark.parametrize("suffix", ("query", "facets"))
+@pytest.mark.parametrize("raw,message", [
+    ('{"query": "a", "query": "b"}', "查询条件里有重复项，当前列表没有变化。请刷新页面后重新选择。"),
+    ('{"query": "", "page": NaN}', _UNREADABLE_TABLE_QUERY),
+    ('{"query": "", "size": -Infinity}', _UNREADABLE_TABLE_QUERY),
+    ('{"query": "", "size": 1e999}', _UNREADABLE_TABLE_QUERY),
+    ('{"query": ', _UNREADABLE_TABLE_QUERY),
+    ('[]', "查询条件不完整，当前列表没有变化。请刷新页面后重新选择。"),
+], ids=("duplicate", "nan", "infinity", "overflow", "syntax", "not_object"))
+def test_table_query_body_rejects_duplicate_keys_and_non_finite_numbers(app_client, suffix, raw, message):
+    response = app_client.post(BASE + "machine/" + suffix, data=raw, content_type="application/json")
+    assert response.status_code == 400, response.get_data(as_text=True)
+    error = response.get_json()["error"]
+    assert (error["code"], error["message"]) == ("invalid_input", message)
+
+
+def test_unexpected_table_read_failure_logs_the_request_ref_shown_to_the_user(app_client, monkeypatch, caplog):
+    """包装成 500 拒绝的未预期错误：日志记下的编号就是用户看到的「下方编号」，原始异常留在日志链里。"""
+    import logging
+
+    from web.routes.workbench import resource_table_queries
+
+    def broken(query, token):
+        raise RuntimeError("table reader broke")
+
+    monkeypatch.setattr(resource_table_queries, "_resource_table_query", broken)
+    with caplog.at_level(logging.ERROR):
+        response = app_client.post(BASE + "machine/query", json={})
+    assert response.status_code == 500, response.get_data(as_text=True)
+    result = response.get_json()
+    error = result["error"]
+    assert result["committed"] is False
+    assert (error["code"], error["message"]) == (
+        "storage_failure", "列表没有读出来，数据没有任何改动。请刷新重试；仍不行请联系维护人员，并告知下方编号。")
+    record, = [item for item in caplog.records if item.getMessage().startswith("工作台请求失败")]
+    assert record.getMessage() == "工作台请求失败 code=storage_failure request_ref=" + error["request_ref"]
+    assert isinstance(record.exc_info[1], WorkbenchCommandRejected)
+    assert isinstance(record.exc_info[1].__cause__, RuntimeError)

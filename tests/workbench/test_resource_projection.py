@@ -5,10 +5,10 @@ import pytest
 from core.services.capacity import plan_calendar_intervals
 from core.services.capacity.plan_calendar_intervals import IntervalIndex, instant
 from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
-from core.services.workbench.facts import resource_intervals, resource_projection
+from core.services.workbench.facts import resource_calendar, resource_intervals, resource_projection
+from core.services.workbench.facts.resource_calendar import normalize_resource_calendar
 from core.services.workbench.facts.resource_projection import (
     ResourceTaskIndex,
-    normalize_resource_calendar,
     resource_cohort,
     resource_summary,
 )
@@ -57,7 +57,6 @@ def test_operation_segments_merge_before_independent_demand_and_conflict_sweep(m
         return original_union(values)
 
     with monkeypatch.context() as scoped:
-        scoped.setattr(resource_projection, "task_interval", unexpected_parse)
         scoped.setattr(resource_intervals, "task_interval", unexpected_parse)
         assert resource_cohort([rows], task_intervals=[parsed]) == [MACHINE, OPERATOR]
         index = ResourceTaskIndex(rows, start, end, task_intervals=parsed)
@@ -198,7 +197,7 @@ def test_normalized_interval_index_reuses_union_and_preserves_half_open_finish_b
 
 
 def test_partial_calendar_preserves_known_subtotals_and_does_not_label_unknown_day_outside():
-    from core.services.workbench.run.decision_resources import _period_summary
+    from core.services.workbench.run.decision_resource_engine import _period_summary
 
     start, midnight, end = at("23:00:00"), at("00:00:00", "2026-09-10"), at("02:00:00", "2026-09-10")
     rows = [task("a", "op:a", start, end), task("right", "op:right", end, at("03:00:00", "2026-09-10"))]
@@ -216,7 +215,7 @@ def test_partial_calendar_preserves_known_subtotals_and_does_not_label_unknown_d
     assert whole["zero_capacity_task"] is None
     measurement = index._measurement(MACHINE, saved)
     point = instant(midnight)
-    zero_days = measurement._days_in(point, point)
+    zero_days = measurement.calendar.days_in(point, point)
     assert zero_days == [day._replace(low=point, high=point) for day in measurement.days]
     assert [day.available for day in zero_days] == [True, False]
     zero = measurement.cell(point, point, zero_days)
@@ -225,9 +224,9 @@ def test_partial_calendar_preserves_known_subtotals_and_does_not_label_unknown_d
     zero_index = ResourceTaskIndex(rows, midnight, midnight)
     zero_index.window(MACHINE, measurement.calendar)
     assert zero_index.day_filter_summary(MACHINE, measurement.calendar) is None
-    assert measurement._days_in(instant(at("23:30:00")), point) == [
+    assert measurement.calendar.days_in(instant(at("23:30:00")), point) == [
         measurement.days[0]._replace(low=instant(at("23:30:00")))]
-    assert measurement._days_in(point, instant(at("01:00:00", "2026-09-10"))) == [
+    assert measurement.calendar.days_in(point, instant(at("01:00:00", "2026-09-10"))) == [
         measurement.days[1]._replace(high=instant(at("01:00:00", "2026-09-10")))]
     selected = index.days(MACHINE, saved, dates=["2026-09-10"], details=True)
     assert len(selected) == 1 and selected[0]["span_occupied_hours"] == 2
@@ -288,7 +287,7 @@ def test_known_zero_capacity_external_and_point_tasks_use_saved_assignments():
 
 
 def test_unknown_workload_and_absent_arrangements_keep_capacity_and_idle_semantics_independent():
-    from core.services.workbench.run.decision_resources import _period_summary
+    from core.services.workbench.run.decision_resource_engine import _period_summary
 
     start, end = at("08:00:00"), at("10:00:00")
     saved = calendar(day_calendar(start, end, [(start, end)]))
@@ -353,7 +352,7 @@ def test_unproven_formal_zero_interval_keeps_assigned_cohort_and_unknown_workloa
 
 def test_resource_grains_keep_actual_work_windows_weekly_weights_and_rest_span_evidence(monkeypatch):
     from core.services.workbench.facts.resource_pressure import pressure_from_index
-    from core.services.workbench.run.decision_resources import _period_summary
+    from core.services.workbench.run.decision_resource_engine import _period_summary
 
     monday, tuesday, wednesday = "2026-09-07", "2026-09-08", "2026-09-09"
     start, boundary, end = at("00:00:00", monday), at("00:00:00", tuesday), at("00:00:00", wednesday)
@@ -365,7 +364,7 @@ def test_resource_grains_keep_actual_work_windows_weekly_weights_and_rest_span_e
     index = ResourceTaskIndex(rows, start, end, pressure_threshold=0.95)
     calendar_reads, measurement_reads, value_reads = [], [], []
     prepared_reads = []
-    original_days = resource_projection._calendar_days
+    original_days = resource_calendar.calendar_days
     original_measurement = resource_projection._ResourceMeasurement.__init__
     original_values = resource_projection._ResourceMeasurement._values
 
@@ -387,7 +386,7 @@ def test_resource_grains_keep_actual_work_windows_weekly_weights_and_rest_span_e
                             tuple((day.date, day.low, day.high, day.available) for day in calendar_days), effective))
         return value
 
-    monkeypatch.setattr(resource_projection, "_calendar_days", record_days)
+    monkeypatch.setattr(resource_calendar, "calendar_days", record_days)
     monkeypatch.setattr(resource_projection._ResourceMeasurement, "__init__", record_measurement)
     monkeypatch.setattr(resource_projection._ResourceMeasurement, "_values", record_values)
     normalized = normalize_resource_calendar(saved, start, end)

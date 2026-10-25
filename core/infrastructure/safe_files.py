@@ -12,10 +12,6 @@ class UnsafeFixedFileError(OSError):
     """固定名运行文件不是普通文件时抛出，避免软链接借壳读写。"""
 
 
-def _path_text(path: Any) -> str:
-    return os.fspath(path)
-
-
 def _is_regular_mode(mode: int) -> bool:
     return stat.S_ISREG(int(mode))
 
@@ -51,7 +47,7 @@ def _guard_fixed_file_parent(path_s: str, *, ensure_parent: bool = False) -> Non
 
 
 def stat_regular_file(path: Any):
-    path_s = _path_text(path)
+    path_s = os.fspath(path)
     _guard_fixed_file_parent(path_s)
     st = os.lstat(path_s)
     if stat.S_ISLNK(st.st_mode):
@@ -97,7 +93,7 @@ def _raise_if_path_is_not_expected_regular_file(path_s: str, expected_stat: Any)
 
 
 def _open_safe_readonly_fd(path: Any) -> int:
-    path_s = _path_text(path)
+    path_s = os.fspath(path)
     expected_stat = stat_regular_file(path_s)
     fd = os.open(path_s, os.O_RDONLY | _O_NOFOLLOW)
     try:
@@ -113,19 +109,16 @@ def read_fixed_bytes(path: Any) -> bytes:
         return stream.read()
 
 
-def read_fixed_text(path: Any, *, encoding: str = "utf-8", errors: Optional[str] = None) -> str:
-    data = read_fixed_bytes(path)
-    return data.decode(encoding, errors=errors or "strict")
+def read_fixed_text(path: Any) -> str:
+    return read_fixed_bytes(path).decode("utf-8")
 
 
-def read_fixed_json(path: Any, *, encoding: str = "utf-8") -> Any:
-    return json.loads(read_fixed_text(path, encoding=encoding))
+def read_fixed_json(path: Any) -> Any:
+    return json.loads(read_fixed_text(path))
 
 
-def _raise_if_existing_path_unsafe(
-    path_s: str, *, ensure_parent: bool = False, replace_symlink: bool = False
-):
-    _guard_fixed_file_parent(path_s, ensure_parent=ensure_parent)
+def _raise_if_existing_path_unsafe(path_s: str, *, replace_symlink: bool = False):
+    _guard_fixed_file_parent(path_s, ensure_parent=True)
     try:
         st = os.lstat(path_s)
     except FileNotFoundError:
@@ -167,16 +160,8 @@ def _open_existing_fixed_file_for_write(path_s: str, expected_stat: Any, *, appe
         raise
 
 
-def _acquire_write_fd(
-    path_s: str,
-    *,
-    append: bool,
-    ensure_parent: bool,
-    replace_symlink: bool,
-) -> int:
-    expected_stat = _raise_if_existing_path_unsafe(
-        path_s, ensure_parent=ensure_parent, replace_symlink=replace_symlink
-    )
+def _acquire_write_fd(path_s: str, *, append: bool, replace_symlink: bool) -> int:
+    expected_stat = _raise_if_existing_path_unsafe(path_s, replace_symlink=replace_symlink)
     try:
         if expected_stat is None:
             return _open_new_fixed_file_for_write(path_s)
@@ -185,16 +170,8 @@ def _acquire_write_fd(
         raise UnsafeFixedFileError(f"固定文件在创建过程中被替换或占用：{path_s}") from exc
 
 
-def open_fixed_file_for_write(
-    path: Any,
-    *,
-    append: bool = False,
-    ensure_parent: bool = True,
-    replace_symlink: bool = False,
-):
-    fd = _acquire_write_fd(
-        _path_text(path), append=append, ensure_parent=ensure_parent, replace_symlink=replace_symlink
-    )
+def open_fixed_file_for_write(path: Any, *, append: bool, replace_symlink: bool):
+    fd = _acquire_write_fd(os.fspath(path), append=append, replace_symlink=replace_symlink)
     try:
         mode = "a" if append else "w"
         f = os.fdopen(fd, mode, encoding="utf-8")
@@ -205,16 +182,8 @@ def open_fixed_file_for_write(
             os.close(fd)
 
 
-def open_fixed_file_for_write_binary(
-    path: Any,
-    *,
-    append: bool = False,
-    ensure_parent: bool = True,
-    replace_symlink: bool = False,
-):
-    fd = _acquire_write_fd(
-        _path_text(path), append=append, ensure_parent=ensure_parent, replace_symlink=replace_symlink
-    )
+def open_fixed_file_for_write_binary(path: Any, *, append: bool):
+    fd = _acquire_write_fd(os.fspath(path), append=append, replace_symlink=False)
     try:
         mode = "ab" if append else "wb"
         f = os.fdopen(fd, mode)
@@ -225,68 +194,30 @@ def open_fixed_file_for_write_binary(
             os.close(fd)
 
 
-def write_fixed_text(
-    path: Any,
-    text: Any,
-    *,
-    append: bool = False,
-    ensure_parent: bool = True,
-    replace_symlink: bool = False,
-) -> None:
+def write_fixed_text(path: Any, text: str, *, append: bool = False, replace_symlink: bool = False) -> None:
     # 固定运行文件统一以 UTF-8 落盘（open_fixed_file_for_write 内部固定 UTF-8）。
-    path_s = _path_text(path)
-    data = str(text)
-    with open_fixed_file_for_write(
-        path_s,
-        append=append,
-        ensure_parent=ensure_parent,
-        replace_symlink=replace_symlink,
-    ) as f:
+    with open_fixed_file_for_write(path, append=append, replace_symlink=replace_symlink) as f:
+        f.write(text)
+
+
+def write_fixed_bytes(path: Any, data: bytes) -> None:
+    with open_fixed_file_for_write_binary(path, append=False) as f:
         f.write(data)
 
 
-def write_fixed_bytes(
-    path: Any,
-    data: Any,
-    *,
-    append: bool = False,
-    ensure_parent: bool = True,
-    replace_symlink: bool = False,
-) -> None:
-    path_s = _path_text(path)
-    payload = bytes(data)
-    with open_fixed_file_for_write_binary(
-        path_s,
-        append=append,
-        ensure_parent=ensure_parent,
-        replace_symlink=replace_symlink,
-    ) as f:
-        f.write(payload)
+def write_fixed_json(path: Any, payload: Any) -> None:
+    text = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    write_fixed_text(path, text)
 
 
-def write_fixed_json(
-    path: Any,
-    payload: Any,
-    *,
-    ensure_ascii: bool = False,
-    indent: Optional[int] = 2,
-    sort_keys: bool = True,
-    ensure_parent: bool = True,
-    replace_symlink: bool = False,
-) -> None:
-    text = json.dumps(payload, ensure_ascii=ensure_ascii, indent=indent, sort_keys=sort_keys) + "\n"
-    write_fixed_text(path, text, ensure_parent=ensure_parent, replace_symlink=replace_symlink)
-
-
-def guard_fixed_file_open_target(path: Any, *, ensure_parent: bool = True) -> Optional[os.stat_result]:
+def guard_fixed_file_open_target(path: Any) -> Optional[os.stat_result]:
     """打开或替换固定名文件前检查槽位，返回已有普通文件的状态；缺失时返回 None。"""
-    path_s = _path_text(path)
-    return _raise_if_existing_path_unsafe(path_s, ensure_parent=ensure_parent)
+    return _raise_if_existing_path_unsafe(os.fspath(path))
 
 
-def create_fixed_file_exclusive(path: Any, *, ensure_parent: bool = True) -> int:
-    path_s = _path_text(path)
-    _guard_fixed_file_parent(path_s, ensure_parent=ensure_parent)
+def create_fixed_file_exclusive(path: Any) -> int:
+    path_s = os.fspath(path)
+    _guard_fixed_file_parent(path_s, ensure_parent=True)
     fd = os.open(path_s, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_NOFOLLOW, 0o600)
     try:
         _fd_regular_stat(fd, path_s)
@@ -313,7 +244,7 @@ def open_fixed_file_for_read_binary(path: Any):
 
 
 def remove_fixed_file(path: Any, *, missing_ok: bool = True, allow_symlink: bool = False) -> bool:
-    path_s = _path_text(path)
+    path_s = os.fspath(path)
     _guard_fixed_file_parent(path_s)
     try:
         st = os.lstat(path_s)

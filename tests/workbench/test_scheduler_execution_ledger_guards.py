@@ -367,7 +367,7 @@ def test_segmented_completion_runs_and_adopts_with_full_scope_then_protects_reso
     assert (new_task["start_time"], new_task["end_time"]) == ("2026-09-09T09:00:00", "2026-09-09T09:45:00")
     adopted = service(case.conn).adopt(ref, preview(case, ref), "segments-full-adoption", INTENT)
     assert adopted["result"] == "committed"
-    projection = case.ledger.get_task(case.task(adopted["data"]["official_plan"]["version"], case.op_id))
+    projection = case.task_projection(case.task(adopted["data"]["official_plan"]["version"], case.op_id))
     changed_reports = list(projection.reports)
     last = next(index for index, report in enumerate(changed_reports) if report.report_ref == reports[-1]["report_ref"])
     changed_reports[last] = replace(changed_reports[last], actual_operator_ref=case.ref("operator", "O2"))

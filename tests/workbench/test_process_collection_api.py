@@ -3,15 +3,64 @@
 import pytest
 
 from tests.workbench.process_collection_api_support import (
+    COLLECTION,
+    LIST,
+    TABLE,
     browser_contract,
     collection_api_fixture,
     conditions,
     enforce_readonly,
+    rejected,
     seed_table_rows,
     success,
 )
 
 _fixture = collection_api_fixture
+_DUPLICATE_QUERY = "查询条件里有重复的项，请重新选择。"
+_FACET_UNREADABLE = "筛选内容读不出来，筛选没有变化。请点「清除筛选」后重新选择。"
+_LIST_UNREADABLE = "排序或筛选内容读不出来，当前筛选没有变化。请点「清除筛选」后重新选择。"
+
+
+@pytest.mark.parametrize("raw,message", [
+    ('{"refs": [], "refs": [], "scope": {}, "snapshot_ref": "x"}', "删除预检没有执行：提交的内容有重复项。请刷新页面后重新提交。"),
+    *[('{"refs": [], "scope": {}, "snapshot_ref": "x", "page_size": ' + literal + "}",
+       "删除预检没有执行：提交的内容格式不正确。请刷新页面后重新提交。") for literal in ("NaN", "Infinity", "-Infinity", "1e999")],
+    ('{"refs": [], "scope": {}', "删除预检没有执行：提交的内容格式不正确。请刷新页面后重新提交。"),
+])
+def test_process_body_rejects_duplicate_keys_and_nonfinite_numbers_with_route_texts(collection_api, raw, message):
+    response = collection_api.client.post(COLLECTION + "bulk-preview", data=raw, content_type="application/json")
+    assert rejected(response, "invalid_input", 400)["error"]["message"] == message
+
+
+@pytest.mark.parametrize("request_options,code,status,message", [
+    ({"query_string": {"x": "1"}, "data": "{}", "content_type": "application/json"}, "invalid_input", 400,
+     "删除预检没有执行：提交的内容格式不正确，也不能在网址上附加条件。请刷新页面后重新提交。"),
+    ({"data": "{}", "content_type": "text/plain"}, "invalid_input", 400,
+     "删除预检没有执行：提交的内容格式不正确，也不能在网址上附加条件。请刷新页面后重新提交。"),
+    ({"data": "[]", "content_type": "application/json"}, "invalid_input", 400,
+     "删除预检没有执行：提交的内容不完整。请刷新页面后重新提交。"),
+    ({"data": " " * (4 * 1024 * 1024 + 1), "content_type": "application/json"}, "capacity_exceeded", 413,
+     "删除预检没有执行：一次提交的内容太多，系统没有截断处理。请缩小范围后重新提交。"),
+])
+def test_process_body_transport_size_and_shape_keep_route_texts(collection_api, request_options, code, status, message):
+    response = collection_api.client.post(COLLECTION + "bulk-preview", **request_options)
+    assert rejected(response, code, status)["error"]["message"] == message
+
+
+@pytest.mark.parametrize("path,query,message", [
+    (TABLE + "facets/label", {"scope": '{"query": "a", "query": "b"}'}, _DUPLICATE_QUERY),
+    (TABLE + "facets/label", {"scope": '{"query": "a", "page": NaN}'}, _FACET_UNREADABLE),
+    (TABLE + "facet-selection/label", {"scope": '{"stage": "ready", "size": 1e999}'}, _FACET_UNREADABLE),
+    (TABLE + "facets/label", {"scope": '{"query": '}, _FACET_UNREADABLE),
+    (LIST, {"column_filters": '{"label": {"mode": "include", "mode": "exclude", "values": []}}'}, _DUPLICATE_QUERY),
+    (LIST, {"column_filters": '{"label": {"mode": "include", "values": [Infinity]}}'}, _LIST_UNREADABLE),
+    (LIST, {"sort": '[{"field": "label", "field": "stage", "direction": "asc"}]'}, _DUPLICATE_QUERY),
+    (LIST, {"sort": '[{"field": "label", "direction": -Infinity}]'}, _LIST_UNREADABLE),
+    (LIST, {"column_filters": "{"}, _LIST_UNREADABLE),
+])
+def test_process_query_json_rejects_duplicate_keys_and_nonfinite_numbers_with_route_texts(collection_api, path, query, message):
+    response = collection_api.client.get(path, query_string=query)
+    assert rejected(response, "invalid_input", 400)["error"]["message"] == message
 
 
 @pytest.mark.parametrize("advanced", [True])

@@ -1,17 +1,18 @@
 """Shared archive input builders for scheduling and saved-process tests."""
 
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 
+from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.models.objective import target_objectives_for
 from core.services.scheduler.run.optimizer.shared_archive import SharedScheduleArchive
+from tests._support.algo_operations import make_algo_op, make_batch
 
 START = datetime(2026, 10, 13, 20)
-OPERATIONS = tuple(SimpleNamespace(id=index, batch_id=f"B{index}") for index in (1, 2, 3))
+OPERATIONS = tuple(make_algo_op(id=index, batch_id=f"B{index}") for index in (1, 2, 3))
 BATCHES = {
-    f"B{index}": SimpleNamespace(batch_id=f"B{index}", due_date="2026-10-13", priority=priority)
+    f"B{index}": make_batch(batch_id=f"B{index}", due_date="2026-10-13", priority=priority)
     for index, priority in ((1, "critical"), (2, "normal"), (3, "urgent"))
 }
 
@@ -46,7 +47,7 @@ def _candidate(results, *, objective="min_tardiness", failures=(), fixed_seed=()
         "score": (float(missing),) + objective_score(objective, metrics),
         "objective": objective, "order": ["B1", "B2", "B3"],
         "params": {"tie_breaker": ["B1", "B2"]}, "algo_stats": {"visited": [1]},
-        "dispatch_mode": "sgs", "dispatch_rule": "cr", "seed_results": seeds,
+        "dispatch_mode": "sgs", "dispatch_rule": "cr", "strategy": SortStrategy.PRIORITY_FIRST, "seed_results": seeds,
     }
 
 

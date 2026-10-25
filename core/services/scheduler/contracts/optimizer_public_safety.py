@@ -4,7 +4,6 @@ import math
 from typing import Any, Dict, List
 
 from core.models.public_identifier_redaction import contains_internal_identifier
-from core.models.scheduler_degradation_messages import public_degradation_events
 
 COMPARISON_METRIC_KEYS = (
     "failed_ops",
@@ -143,19 +142,12 @@ def safe_counter_dict(value: Any) -> Dict[str, int]:
     return out
 
 
-def project_degradation_event_list(events: Any) -> List[Dict[str, Any]]:
-    if not isinstance(events, list):
-        return []
-    return public_degradation_events(events)
-
-
 __all__ = [
     "COMPARISON_METRIC_KEYS",
     "PUBLIC_ATTEMPT_METRIC_KEYS",
     "PUBLIC_SCORE_SCHEMA_KEYS",
     "project_attempt_metrics",
     "project_attempt_score",
-    "project_degradation_event_list",
     "project_public_metrics",
     "safe_attempt_text",
     "safe_counter_dict",

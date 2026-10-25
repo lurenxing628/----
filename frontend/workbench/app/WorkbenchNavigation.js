@@ -40,7 +40,7 @@
       && new URL(boot.help_url, location.origin).origin === location.origin);
   }
   function historyView(page) {
-    const context = page.context || {};
+    const context = page.context;
     return ['analysis', 'gantt', 'delay'].includes(page.view) && context.source === 'run_history'
       && !own(context, 'run_ref') && !own(context, 'candidate_ref');
   }
@@ -91,7 +91,7 @@
   }
   function auxiliary(state) {
     const result = {};
-    Object.keys(state || {}).forEach(key => { if (!['workbench', 'workbenchPages'].includes(key)) result[key] = state[key]; });
+    Object.keys(state).forEach(key => { if (!['workbench', 'workbenchPages'].includes(key)) result[key] = state[key]; });
     return result;
   }
   // Inner panes (plan catalog, gantt board, inspector, projection tables) scroll inside .main-content and are
@@ -129,9 +129,9 @@
     check(context === undefined || object(context));
     const saved = { ...current, context: context === undefined ? current.context : context,
       scroll: captured === undefined ? captureScroll() : normalizedScroll(captured) };
-    const state = history.state || {};
+    const state = history.state === null ? {} : history.state;
     check(!own(state, 'workbenchPages') || object(state.workbenchPages));
-    const pages = state.workbenchPages || {};
+    const pages = own(state, 'workbenchPages') ? state.workbenchPages : {};
     const nextPages = { ...pages, [page.view]: { ...saved, auxiliary: auxiliary(state) } };
     history.replaceState({ ...state, workbench: saved, workbenchPages: nextPages }, '', location.href);
     return nextPages;
@@ -144,7 +144,7 @@
     // Resuming restores the target's own view state wholesale (scope, topic, table, selection, scroll):
     // every tab keeps its own range and the supplied context only seeds a first visit. Mixing the
     // current tab's scope / topic into the target's saved table produced unreadable combinations.
-    const context = resume ? saved.context : supplied || {};
+    const context = resume ? saved.context : supplied === undefined ? {} : supplied;
     const scroll = object(context.scroll) ? context.scroll : resume ? saved.scroll : {};
     const next = { view: target, context, key: page.key + 1, scroll };
     const extra = resume && object(saved.auxiliary) ? saved.auxiliary : {};
@@ -157,7 +157,8 @@
     history.replaceState({ ...history.state, workbench: { ...current, context } }, '', location.href);
   }
   function restore(page, done) {
-    const scroll = page.scroll || {}, started = performance.now();
+    // 初次进入的页面还没记过滚动位置（read() 不带 scroll）。
+    const scroll = page.scroll === undefined ? {} : page.scroll, started = performance.now();
     let frame = 0, stopped = false;
     function cancel() {
       if (stopped) return;
@@ -199,7 +200,6 @@
   // silently drops the excess writes. One trailing write per `delay` keeps the remembered position fresh, and flush()
   // writes once more before the page is hidden.
   function scrollMemory(save, delay = 200) {
-    if (typeof save !== 'function' || !Number.isFinite(delay) || delay < 0) throw new TypeError('scroll_memory_invalid');
     let timer = 0;
     function cancel() { if (timer) { clearTimeout(timer); timer = 0; } }
     function schedule() { if (!timer) timer = setTimeout(() => { timer = 0; save(); }, delay); }

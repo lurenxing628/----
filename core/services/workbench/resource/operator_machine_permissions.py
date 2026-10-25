@@ -2,7 +2,7 @@
 
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
-from core.models import OperatorMachine
+from core.models.operator_machine import OperatorMachine
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_resource_action import ResourceActionPreview, check_resource_preview, resource_refs
 from core.services.personnel.operator_machine_normalizers import normalize_yes_no_stored

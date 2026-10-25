@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 from core.infrastructure.database import get_connection
 from core.infrastructure.logging import OperationLogger, safe_log
 from core.models.scheduler_degradation_messages import public_degradation_events
-from core.plugins import PluginManager
+from core.plugins.manager import PluginManager
 from core.plugins.registry import PluginRegistry
 from core.shared.degradation import DegradationCollector, degradation_events_to_dicts
 from data.repositories import SystemConfigRepository

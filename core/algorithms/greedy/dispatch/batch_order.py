@@ -1,21 +1,24 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from core.algorithm_contracts.ordering import normalize_text_id
-from core.algorithm_contracts.value_domains import EXTERNAL, INTERNAL
+from core.algorithm_contracts.value_domains import EXTERNAL
 from core.algorithm_runtime.dispatch_context import DispatchContextContractError
 from core.algorithm_runtime.piece_input import operation_batch
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.errors import ValidationError
 
+if TYPE_CHECKING:
+    from core.algorithm_contracts.types import OpForScheduleAlgo
+    from core.models.batch import Batch
+
 
 def dispatch_batch_order(
     context: Any,
     *,
-    sorted_ops: List[Any],
-    batches: Dict[str, Any],
+    sorted_ops: List[OpForScheduleAlgo],
+    batches: Dict[str, Batch],
     base_time: datetime,
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
@@ -45,8 +48,8 @@ def _dispatch_one(
     ctx: Any,
     *,
     state: ScheduleRunState,
-    op: Any,
-    batches: Dict[str, Any],
+    op: OpForScheduleAlgo,
+    batches: Dict[str, Batch],
     base_time: datetime,
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
@@ -54,9 +57,8 @@ def _dispatch_one(
     resource_pool: Optional[Dict[str, Any]],
     strict_mode: bool,
 ) -> None:
-    batch_id = ""
+    batch_id = op.batch_id
     try:
-        batch_id = normalize_text_id(getattr(op, "batch_id", ""))
         if not _validate_batch(op=op, batch_id=batch_id, batches=batches, state=state):
             return
         errors_before = len(state.errors)
@@ -87,7 +89,7 @@ def _dispatch_one(
         _record_dispatch_exception(ctx, op=op, batch_id=batch_id, state=state)
 
 
-def _validate_batch(*, op: Any, batch_id: str, batches: Dict[str, Any], state: ScheduleRunState) -> bool:
+def _validate_batch(*, op: OpForScheduleAlgo, batch_id: str, batches: Dict[str, Batch], state: ScheduleRunState) -> bool:
     if batch_id not in batches:
         state.record_missing_batch(op, batch_id)
         return False
@@ -100,8 +102,8 @@ def _validate_batch(*, op: Any, batch_id: str, batches: Dict[str, Any], state: S
 def schedule_op(
     ctx: Any,
     *,
-    op: Any,
-    batch: Any,
+    op: OpForScheduleAlgo,
+    batch: Batch,
     state: ScheduleRunState,
     base_time: datetime,
     end_dt_exclusive: Optional[datetime],
@@ -110,7 +112,7 @@ def schedule_op(
     resource_pool: Optional[Dict[str, Any]],
     strict_mode: bool,
 ):
-    if (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() == EXTERNAL:
+    if op.source == EXTERNAL:
         return ctx.schedule_external(
             op=op,
             batch_progress=state.batch_progress,
@@ -118,7 +120,6 @@ def schedule_op(
             base_time=base_time,
             errors=state.errors,
             end_dt_exclusive=end_dt_exclusive,
-            strict_mode=strict_mode,
         )
     return ctx.schedule_internal(
         op=op,
@@ -139,6 +140,6 @@ def schedule_op(
     )
 
 
-def _record_dispatch_exception(ctx: Any, *, op: Any, batch_id: str, state: ScheduleRunState) -> None:
+def _record_dispatch_exception(ctx: Any, *, op: OpForScheduleAlgo, batch_id: str, state: ScheduleRunState) -> None:
     state.record_dispatch_exception(op, batch_id, dispatch_mode="batch_order")
     ctx.log_exception(f"工序 {op.op_code} 排产异常")

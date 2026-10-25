@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.errors import ValidationError
-from core.models import OperatorCalendar, WorkCalendar
+from core.models.calendar import OperatorCalendar, WorkCalendar
 from core.models.calendar_periods import (
     encode_periods,
     normalize_periods,
@@ -47,7 +47,7 @@ class CalendarAdmin:
         self._normalization_defaults: Optional[Dict[str, Any]] = None
 
     @contextmanager
-    def normalization_operation(self, default_periods=None):
+    def normalization_operation(self, default_periods):
         """Keep only the defaults actually consumed by this one domain operation."""
         if self._normalization_defaults is not None:
             yield
@@ -71,8 +71,7 @@ class CalendarAdmin:
         if values is None:
             return read_default_periods(self.conn)
         if "periods" not in values:
-            reader = values["period_reader"]
-            values["periods"] = reader() if reader is not None else read_default_periods(self.conn)
+            values["periods"] = values["period_reader"]()
         return values["periods"]
 
     def _get_holiday_default_efficiency(self) -> float:
@@ -203,7 +202,7 @@ class CalendarAdmin:
             "allow_normal": an,
             "allow_urgent": au,
             "remark": rmk,
-            "periods_json": encode_periods(periods, normalized=True),
+            "periods_json": encode_periods(periods),
         }
 
     def _build_work_calendar(

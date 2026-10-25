@@ -1,5 +1,6 @@
 """Read-only dashboard comparisons from one immutable decision source."""
 
+from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_run_analysis import operation_change
 from core.models.workbench_run_baseline import RunBaselineComparison, baseline_reason, elapsed_hours
@@ -129,7 +130,7 @@ def _projection(source, scope):
         source.resource_cohort["resources"], calendar_archive=source.calendar_archive,
         task_intervals=new_intervals, reference_task_intervals=old_intervals)
     resource_common.update(batch_refs=refs, resource_view="selected_batches", run_ref=source.run["run_ref"])
-    missing_resources = sum(row["source"] not in ("internal", "external") or
+    missing_resources = sum(row["source"] not in OPERATION_SOURCES or
                             row["source"] == "internal" and (not row["machine"] or row["machine"]["ref"] is None)
                             for row in before + after)
     time_scope = {"range_start": start, "range_end": end, "interval": "half_open_overlap",

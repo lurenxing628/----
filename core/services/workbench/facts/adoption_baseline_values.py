@@ -1,10 +1,9 @@
 """Bounded, lossless evidence reads; no connection converter or metadata repair."""
 
-import json
-import math
 from typing import NoReturn
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.strict_json import load_strict_json
 from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
 
 REASONS = {
@@ -34,33 +33,19 @@ def require(condition, gap):
         fail(gap=gap)
 
 
+def _evidence_too_large() -> NoReturn:
+    raise WorkbenchCommandRejected("query_too_large", "完整采用凭据超过 64 MB 上限。请缩小查询范围后重试。", 413)
+
+
 def stored(text):
+    # A BLOB in the TEXT column is its own storage gap, not unreadable JSON.
     if type(text) is not str:
         fail(gap="json_storage_type")
-    if len(text.encode("utf-8")) > 64 * 1024 * 1024:
-        raise WorkbenchCommandRejected("query_too_large", "完整采用凭据超过 64 MB 上限。请缩小查询范围后重试。", 413)
-
-    def pairs(items):
-        result = {}
-        for key, value in items:
-            require(key not in result, "duplicate_json_key")
-            result[key] = value
-        return result
-
-    def finite_float(raw):
-        value = float(raw)
-        require(math.isfinite(value), "nonfinite_json_number")
-        return value
-
-    def constant(_raw):
-        fail(gap="nonfinite_json_number")
-
-    try:
-        value = json.loads(text, object_pairs_hook=pairs, parse_float=finite_float, parse_constant=constant)
-    except (ValueError, RecursionError) as exc:
-        raise AdoptionBaselineUnavailable("adoption_snapshot_invalid", "invalid_stored_json") from exc
-    require(type(value) is dict, "json_object")
-    return value
+    return load_strict_json(text, on_malformed=lambda: fail(gap="invalid_stored_json"),
+                            on_duplicate=lambda: fail(gap="duplicate_json_key"),
+                            on_nonfinite=lambda: fail(gap="nonfinite_json_number"),
+                            expected=dict, on_unexpected=lambda: fail(gap="json_object"),
+                            limit=(64 * 1024 * 1024, _evidence_too_large))
 
 
 def raw_table_rows(rows, table):

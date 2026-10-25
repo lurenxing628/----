@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
 from math import isfinite
 from typing import Any, Dict, List
 
@@ -41,11 +40,12 @@ def build_shared_process(search: Any, *, runtime_ms: int, stop_reason: str,
             scopes[scope_ref] = score_scope_payload(scope)
         return scope_refs[scope]
 
-    # Actual event order establishes the first occurrence of each scope. Copy
-    # the other fields without materializing its full members for every event.
+    # Actual event order establishes the first occurrence of each scope; the other fields are
+    # referenced as they are, without materializing full scope members for every event. The
+    # record is built once after the search stops and nothing mutates the search facts afterwards.
     events = []
     for row in search.events:
-        event = {key: deepcopy(value) for key, value in row.items() if key not in ("score_scope", "evaluations")}
+        event = {key: value for key, value in row.items() if key not in ("score_scope", "evaluations")}
         if "score_scope" in row:
             scope = row["score_scope"]
             event["scope_ref"] = scope_reference(scope)
@@ -108,7 +108,7 @@ def build_shared_process(search: Any, *, runtime_ms: int, stop_reason: str,
             })
         sampled, sampling = sample_elapsed_points(points, elapsed_ms=runtime_ms, limit=200)
         targets[objective] = {
-            **deepcopy(budget_stats["objectives"][objective]),
+            **budget_stats["objectives"][objective],
             "archive_improvement_count": improvement_counts[objective],
             "first_improvement_elapsed_ms": improvements[0] if improvements else None,
             "last_improvement_elapsed_ms": improvements[-1] if improvements else None,
@@ -118,8 +118,8 @@ def build_shared_process(search: Any, *, runtime_ms: int, stop_reason: str,
         "version": UNIFIED_PROCESS_VERSION, "clock": "shared_monotonic", "elapsed_ms": runtime_ms,
         "stop_reason": stop_reason, "primary_objective": search.archive.primary_objective,
         "target_objectives": list(search.archive.target_objectives), "counts": dict(decode_stats),
-        "budget": budget_stats, "events": events, "actions": deepcopy(search.actions),
-        "bridges": deepcopy(search.bridges), "targets": targets, "scopes": scopes,
+        "budget": budget_stats, "events": events, "actions": search.actions,
+        "bridges": search.bridges, "targets": targets, "scopes": scopes,
     }
 
 

@@ -5,8 +5,8 @@ import csv
 import re
 from tempfile import SpooledTemporaryFile
 
+from core.models.workbench_action_values import FileDownload
 from core.models.workbench_relation_file import (
-    RelationFileDownload,
     file_columns,
     public_columns,
     relation_kind,
@@ -70,7 +70,7 @@ def _csv(kind, rows, filename):
             writer.writerow(["'" + value for value in values])
         text.flush()
         buffer.seek(0)
-        return RelationFileDownload(filename + ".csv", "text/csv; charset=utf-8", buffer.read(), count)
+        return FileDownload(filename + ".csv", "text/csv; charset=utf-8", buffer.read(), count)
 
 
 def _headers(kind, ws, template, descriptor):
@@ -118,7 +118,7 @@ def _xlsx(kind, rows, filename, template, descriptor):
         with SpooledTemporaryFile(max_size=4 * 1024 * 1024, mode="w+b") as buffer:
             wb.save(buffer)
             buffer.seek(0)
-            return RelationFileDownload(
+            return FileDownload(
                 filename + ".xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 buffer.read(), count)

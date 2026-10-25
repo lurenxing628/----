@@ -5,8 +5,9 @@ from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Set
 
 from core.algorithm_contracts.operation_effort import OperationEffort
-from core.models import Batch, BatchOperation
-from core.services.common.build_outcome import BuildOutcome
+from core.algorithm_contracts.types import OpForScheduleAlgo
+from core.models.batch import Batch
+from core.models.batch_operation import BatchOperation
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact
 
 
@@ -23,8 +24,7 @@ class ScheduleRunInput:
     batches: Dict[str, Batch]
     operations: List[BatchOperation]
     missing_internal_resource_op_ids: Set[int]
-    algo_input_outcome: BuildOutcome[List[Any]]
-    algo_ops: List[Any]
+    algo_ops: List[OpForScheduleAlgo]
     prev_version: int
     frozen_op_ids: Set[int]
     seed_results: List[Dict[str, Any]]
@@ -37,9 +37,8 @@ class ScheduleRunInput:
     execution_snapshot_op_count: int
     schedule_output_allowed_op_ids: Set[int]
     payload_validation_operations: List[BatchOperation]
-    algo_warnings: List[str]
     freeze_meta: Dict[str, Any]
-    algo_ops_to_schedule: List[Any]
+    algo_ops_to_schedule: List[OpForScheduleAlgo]
     downtime_meta: Dict[str, Any]
     resource_pool_meta: Dict[str, Any]
     downtime_map: Dict[str, Any]

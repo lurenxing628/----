@@ -203,3 +203,21 @@ def test_material_display_diagnosis_does_not_make_later_stage_release_eager():
     status, problems = availability.readiness_state(batch, date.today().isoformat())
     assert status is None and [problem["code"] for problem in problems] == ["material_unknown"]
     assert availability.operation_release(batch, {"seq": 1}, "stage") == "1900-01-01"
+
+
+_OVERVIEW_FORMAT = "资料总览的查询条件格式不对，请刷新页面后重试。"
+
+
+@pytest.mark.parametrize("scope,message", [
+    ('{"domain": "material", "domain": "part", "view": "entities"}', _OVERVIEW_FORMAT),
+    *[('{"domain": "material", "view": "entities", "size": ' + literal + "}", _OVERVIEW_FORMAT)
+      for literal in ("NaN", "Infinity", "-Infinity", "1e999")],
+    ('{"domain": "material", "view": "entities"', _OVERVIEW_FORMAT),
+    # 65536 is counted in UTF-8 bytes: 30000 Chinese characters stay under the old character count.
+    (json.dumps({"view": "entities", "query": "料" * 30000}, ensure_ascii=False), "主数据筛选范围过长。"),
+])
+def test_overview_scope_rejects_duplicate_keys_nonfinite_numbers_and_oversized_utf8(overview_client, scope, message):
+    response = overview_client.get(BASE, query_string={"scope": scope})
+    body = response.get_json()
+    assert response.status_code == 400 and body["ok"] is False and body["error"]["code"] == "invalid_input", body
+    assert body["error"]["message"] == message

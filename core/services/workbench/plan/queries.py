@@ -161,10 +161,9 @@ class WorkbenchPlanQueryService:
         with context.read_scope():
             return self._workspace(scope, context=context)
 
-    def execution_workspace(self, scope, *, context=None):
+    def execution_workspace(self, scope):
         """Read complete scoped plan tasks without unrelated comparison/dashboard DTOs."""
-        context = context if context is not None else PlanReadContext(
-            self.conn, self.logger, references=self.references, entities=self.entities)
+        context = PlanReadContext(self.conn, self.logger, references=self.references, entities=self.entities)
         with context.read_scope():
             _, entry, span = context.selected(scope.plan_ref)
             rows = context.scoped_rows(entry, scope)

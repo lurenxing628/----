@@ -1,6 +1,5 @@
 """Batch first-sheet files, using common contexts and the existing command bus."""
 
-import json
 from io import BytesIO
 
 from flask import current_app, g, request, send_file
@@ -13,12 +12,14 @@ from core.services.workbench.batch.file_codec import write_batch_file
 from core.services.workbench.batch.files import WorkbenchBatchFileService
 from core.services.workbench.batch.queries import WorkbenchBatchQueryService
 from core.services.workbench.commands import WorkbenchCommandService
+from core.shared.strict_json import load_strict_json
 from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint, read_endpoint
 from .batch_context import command_body, json_body, load_preview, retry_message, save_preview
 from .read_budget import batch_read_snapshot
 from .read_context import bind_read_snapshot
+from .request_json import rejecter
 from .write_context import preview_write_context, validate_preview_confirmation
 
 
@@ -43,10 +44,13 @@ def batch_import_preview():
         raise WorkbenchCommandRejected("invalid_input", "请先选择一个批次 XLSX 文件，再点「开始预检」。", 400)
     if set(request.form) != {"mode", "scope", "snapshot_ref"} or any(len(request.form.getlist(key)) != 1 for key in request.form):
         raise WorkbenchCommandRejected("invalid_input", "没有选好导入方式，或本页数据已过期，文件还没有导入。请刷新页面后重新选择文件。", 400)
+    scope_invalid = rejecter("文件导入范围不对，文件还没有导入。请刷新页面后重新点「开始预检」。")
+    values = load_strict_json(request.form["scope"], on_malformed=scope_invalid)
     try:
-        scope = batch_scope(json.loads(request.form["scope"]))
-    except ValueError as exc:
-        raise WorkbenchCommandRejected("invalid_input", "文件导入范围不对，文件还没有导入。请刷新页面后重新点「开始预检」。", 400) from exc
+        scope = batch_scope(values)
+    except WorkbenchCommandRejected:
+        # 范围内容不合格与读不出来报同一句，保持现有界面提示。
+        scope_invalid()
     upload = request.files["file"]
     if not upload.filename or not upload.filename.lower().endswith(".xlsx") or not request.form["snapshot_ref"]:
         raise WorkbenchCommandRejected("invalid_input", "批次文件必须是 XLSX，并且要在当前页面数据下导入；文件还没有导入。请刷新页面后重新选择文件。", 400)

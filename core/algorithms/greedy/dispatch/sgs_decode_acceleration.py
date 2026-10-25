@@ -36,9 +36,10 @@ class DecodeAcceleration:
     def __init__(self, request, graph, pruning, hours, context, *, resume):
         self.plan = plan_decode_checkpoints(request, graph_state=graph, resume=resume)
         self.frontier = make_priority_queue(graph, pruning)
-        self.tail = getattr(request, "tail_reuse", None)
-        self.check = getattr(request, "check_budget", None)
-        self.dispatch_guard = getattr(context, "checkpoint_dispatch_guard", None)
+        # A decode without a checkpoint request has neither a tail to reuse nor a budget to check.
+        self.tail = request.tail_reuse if request is not None else None
+        self.check = request.check_budget if request is not None else None
+        self.dispatch_guard = context.checkpoint_dispatch_guard
         # Tail reuse compares run state only; the auto-assign demand window is not part of it, so
         # the suffix is only proved for decodes where every operation names its resources.
         self.tail_eligible = (self.tail is not None and pruning is not None and pruning.supported

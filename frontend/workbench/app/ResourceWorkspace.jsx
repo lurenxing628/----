@@ -3,7 +3,6 @@
   const C = window.APSResourceContract, S = window.APSResourceSession;
   const { Button, Icon, ErrorBox, Issues, Modal } = window.ResourceControls;
   const Forms = window.ResourceForms, Tables = window.ResourceTables;
-  const emptyAdapter = {};
   const readScopeKeys = ['query', 'status', 'page', 'size', 'sort', 'direction', 'category', 'column_filters'];
   function readColumns(config) {
     const fields = config.kind === 'op_type' ? config.category === 'internal' ? ['available_machines', 'available_operators', 'remark']
@@ -19,7 +18,7 @@
         || typeof scope.sort !== 'string' || !readColumns(config).includes(scope.sort)
         || !['asc', 'desc'].includes(scope.direction) || typeof view.sort_active !== 'boolean') throw C.failure('上次浏览位置的范围、排序或分页不正确。');
     if (config.category ? scope.category !== config.category || C.own(scope, 'status') : C.own(scope, 'category')
-        || !['', ...(C.statuses[config.kind] || []).map(row => row[0])].includes(scope.status)) throw C.failure('上次浏览位置与当前资料不一致。');
+        || !['', ...C.statuses[config.kind].map(row => row[0])].includes(scope.status)) throw C.failure('上次浏览位置与当前资料不一致。');
     const selected = view.selected_refs;
     if (!Array.isArray(selected) || selected.some(value => typeof value !== 'string' || !/^[0-9a-f]{48}$/.test(value)) || new Set(selected).size !== selected.length)
       throw C.failure('上次勾选的记录编号不正确。');
@@ -32,7 +31,7 @@
       const checked = navigation({ source: 'production', ...view.detail });
       if (checked.error || !checked.context || ['part', 'calendar'].includes(checked.context.kind)) throw C.failure('上次打开的详情对不上，已取消定位。');
     }
-    const migration = window.ResourceTableFilterModel.restore(scope.column_filters || {}), restored = JSON.parse(JSON.stringify(view));
+    const migration = window.ResourceTableFilterModel.restore(scope.column_filters === undefined ? {} : scope.column_filters), restored = JSON.parse(JSON.stringify(view));
     restored.scope.column_filters = migration.filters;
     return { view: restored, notice: migration.notice };
   }
@@ -64,12 +63,11 @@
     } catch (error) { return { context: null, error }; }
   }
   function navigationDialog(context) {
-    return { kind: context.kind, action: 'view', ref: context.entity_ref, category: context.category, navigation: true };
+    return { kind: context.kind, action: 'view', ref: context.entity_ref, category: context.category, navigation: true, history: [] };
   }
   const scopeFor = node => ({ query: '', ...(C.nodes[node] && C.nodes[node].kind !== 'op_type' ? { status: '' } : {}), page: 1, size: 20, sort: 'business_code', direction: 'asc',
     ...(C.nodes[node] && C.nodes[node].category ? { category: C.nodes[node].category } : {}) });
   async function readList(adapter, kind, scope, signal) {
-    if (typeof adapter.list !== 'function') throw C.failure('dependency not wired: adapter.list');
     const result = C.query(await adapter.list(kind, scope, signal), 'list');
     if (result.data.page.number !== scope.page || result.data.page.size !== scope.size)
       throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
@@ -87,7 +85,7 @@
     const [search, setSearch] = React.useState(scope.query);
     React.useEffect(() => setSearch(scope.query), [scope.query, config.kind]);
     // 附属资料的文件入口只在挂靠它的那类资料上出现，有几种、叫什么由适配器给，页面不写死。
-    const attached = typeof adapter.attachedFiles === 'function' ? adapter.attachedFiles(config.kind) : [];
+    const attached = adapter.attachedFiles(config.kind);
     const actions = [['openImport', 'file-input', '导入'], ['openExport', 'file-output', '导出'],
       ...attached.flatMap(item => [['openRelationImport', 'file-input', '导入' + item.label, item.family],
         ['openRelationExport', 'file-output', '导出' + item.label, item.family]]),
@@ -100,28 +98,17 @@
       <Button icon="refresh-cw" aria-label="刷新列表" onClick={onRefresh} disabled={disabled} busy={loading} />
       {selected.length > 0 && <Button icon="x" aria-label="清除所有选择" onClick={onClearSelection} disabled={disabled}>清除选择</Button>}
       <span className="tb-spacer" /><div className="wb-actions">
-      {actions.map(([name, icon, label, family]) => <Button key={name + ':' + (family || '')} icon={icon} transfer={/Import$/.test(name) ? 'import' : /Export$/.test(name) ? 'export' : undefined}
-        disabled={disabled || loading} reasonDisplay="tooltip" reason={typeof adapter[name] !== 'function' || typeof adapter.supports === 'function' && !adapter.supports(name, config.kind) ? label + '尚未开通。' : !ready ? '请先读取当前列表。' : name === 'openBulk' && !selected.length ? '请先勾选记录。' : ''}
+      {actions.map(([name, icon, label, family]) => <Button key={family === undefined ? name : name + ':' + family} icon={icon} transfer={/Import$/.test(name) ? 'import' : /Export$/.test(name) ? 'export' : undefined}
+        disabled={disabled || loading} reasonDisplay="tooltip" reason={!adapter.supports(name, config.kind) ? label + '尚未开通。' : !ready ? '请先读取当前列表。' : name === 'openBulk' && !selected.length ? '请先勾选记录。' : ''}
         onClick={() => onExternal(name, family ? { family } : {})}>{label}</Button>)}
       <Button icon="plus" className="btn primary wb-action wb-primary" reason={createReason} disabled={disabled} onClick={onCreate}>新增{config.label}</Button></div>
     </form>;
   }
-  function Calendar({ adapter, disabled, onExternal }) {
-    const [month, setMonth] = React.useState(() => {
-      const date = new Date(); return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
-    });
-    return <div className="cal-wrap"><div className="cal-panel"><div className="cal-top" style={{ flexWrap: 'wrap' }}>
-      <label className="field"><span>月份</span><input type="month" value={month} disabled={disabled} onChange={event => setMonth(event.target.value)} /></label>
-      <Button icon="calendar-days" disabled={disabled || !month} reason={typeof adapter.openCalendar !== 'function' ? '工作日历维护尚未开通，不能修改。' : ''}
-        onClick={() => onExternal('openCalendar', { month })}>维护工作日历</Button></div><p className="muted" role="status">{typeof adapter.openCalendar === 'function' ? '工作日历在维护向导里读取和修改。' : '工作日历明细尚未开通。'}</p></div>
-      <aside className="cal-panel cal-side"><h3>默认规则</h3><p>默认规则还没读取。请点「维护工作日历」查看每天工时、效率和周末安排。</p></aside></div>;
-  }
-  function ResourceWorkspace({ adapter = emptyAdapter, onNavigate, initialNode = 'material', initialContext, renderPart, renderCalendar, externalRevision = 0, onNavigationReady, rememberEnabled = true }) {
-    adapter = adapter && typeof adapter === 'object' ? adapter : emptyAdapter;
+  function ResourceWorkspace({ adapter, onNavigate, initialNode = 'material', initialContext, renderPart, renderCalendar, externalRevision = 0, onNavigationReady, rememberEnabled = true }) {
     const [target] = React.useState(() => navigation(initialContext));
     const command = S.useCommand(adapter);
     const [deferred, setDeferred] = React.useState(() => !!target.context && command.phase !== 'idle');
-    const [navigationError, setNavigationError] = React.useState(target.error || null);
+    const [navigationError, setNavigationError] = React.useState(target.error === undefined ? null : target.error);
     const startNode = target.node || initialNode;
     const readView = target.context && !['part', 'calendar'].includes(target.context.kind) && target.context.read_view;
     const [node, setNode] = React.useState(startNode), [request, setRequest] = React.useState(() => ({
@@ -151,7 +138,6 @@
       if (list.result) lastScope.current = { request, scope: effectiveScope };
     }, [request, effectiveScope, list.result]);
     const detail = S.useQuery(async signal => {
-      if (typeof adapter.detail !== 'function') throw C.failure('dependency not wired: adapter.detail');
       const result = C.query(await adapter.detail(dialog.kind, dialog.ref, signal), 'entity');
       if (result.data.ref !== dialog.ref) throw C.failure('读到的详情与所选记录不一致，请刷新后重试。');
       if (dialog.navigation && (result.meta.source !== 'production' || C.own(result.data, 'kind') && result.data.kind !== dialog.kind
@@ -177,9 +163,9 @@
     function filter(patch) { if (!blocked) setRequestScope({ ...effectiveScope, ...patch, page: 1, snapshot_ref: undefined }); }
     function columnFilter(key, rule) {
       if (blocked) return;
-      const column_filters = { ...(effectiveScope.column_filters || {}) };
+      const column_filters = { ...effectiveScope.column_filters };
       if (rule === null || rule.mode === 'exclude' && !rule.values.length) delete column_filters[key];
-      else column_filters[key] = { mode: rule.mode, values: rule.values.slice() };
+      else column_filters[key] = rule;
       setRequestScope({ ...effectiveScope, column_filters, page: 1, snapshot_ref: undefined });
     }
     function sortColumn(sort, direction) {
@@ -196,11 +182,11 @@
       if (!command.reset()) return;
       setRefreshState({}); setContextError(null); setEditContext(null); setContextReview(null);
       setDialog({ kind: related ? related.kind : config.kind, action, ref, category: related ? related.category : config.category,
-        history: related && dialog ? (dialog.history || []).concat({ ...dialog, action: 'view', history: undefined }) : [],
+        history: related && dialog ? dialog.history.concat({ ...dialog, action: 'view', history: undefined }) : [],
         createContext: related ? null : data && data.create_context, source: related ? null : list.result && list.result.meta.source });
     }
     function back() {
-      if (blocked || !dialog || !dialog.history || !dialog.history.length || !command.reset()) return;
+      if (blocked || !dialog || !dialog.history.length || !command.reset()) return;
       const history = dialog.history.slice();
       setDialog({ ...history.pop(), history }); setContextError(null); setEditContext(null); setContextReview(null);
     }
@@ -237,7 +223,6 @@
       if (intent.action === 'delete') setSelected(current => current.filter(ref => ref !== intent.ref));
       setRefreshState({ loading: true }); counts.summary.reload();
       try {
-        if (typeof adapter.list !== 'function') throw C.failure('dependency not wired: adapter.list');
         const intentNode = Object.keys(C.nodes).find(key => C.nodes[key].kind === intent.kind && (!C.nodes[key].category || C.nodes[key].category === intent.category));
         const sameView = config && config.kind === intent.kind && (intent.kind !== 'op_type' || config.category === intent.category);
         const readScope = { ...(sameView ? effectiveScope : scopeFor(intentNode)), snapshot_ref: undefined };
@@ -254,7 +239,6 @@
           const ref = C.resultRef(command.result, intent.ref);
           if (typeof ref !== 'string' || !ref) throw C.failure('保存结果里没有记录编号，暂时读不到详情。请点「刷新」后核对。');
           if (intent.ref && ref !== intent.ref) throw C.failure('保存结果对应的记录和上次提交的不一致，请点「查询结果」核对。');
-          if (typeof adapter.detail !== 'function') throw C.failure('dependency not wired: adapter.detail');
           fresh = C.query(await adapter.detail(intent.kind, ref, new AbortController().signal), 'entity');
           if (fresh.data.ref !== ref) throw C.failure('保存后的详情和结果编号对不上，请点「刷新」后核对。');
         }
@@ -263,20 +247,20 @@
     }
     React.useEffect(() => { if (command.phase === 'done') readAfterCommand(); }, [command.phase, command.result && command.result.receipt_ref]);
     async function openExternal(name, extra = {}) {
-      if (blocked || typeof adapter[name] !== 'function') return;
+      if (blocked) return;
       setExternal({ busy: true, error: null });
       let callbackCalled = false;
       const onCommitted = result => {
         callbackCalled = true;
         if (C.receipt(result) !== 'terminal') { setExternal({ busy: false, error: C.failure('向导没有返回完成结果。请点「查询结果」，不要重复提交。') }); return; }
-        if (result.data && Number.isInteger(result.data.deleted_count) && Array.isArray(result.data.rows)) {
+        if (Number.isInteger(result.data.deleted_count) && Array.isArray(result.data.rows)) {
           const removed = new Set(result.data.rows.map(row => row.entity_ref));
           setSelected(current => current.filter(ref => !removed.has(ref)));
         }
         refresh(); setExternal({ busy: false, error: null, result, action: name === 'openBulk' ? 'delete' : /Import$/.test(name) ? 'import' : 'save' });
       };
       try {
-        const result = await adapter[name](config.kind, { refs: selected.slice(), scope: { ...effectiveScope, source: list.result && list.result.meta.source }, ...extra, onCommitted }, new AbortController().signal);
+        const result = await adapter[name](config.kind, { refs: selected, scope: { ...effectiveScope, source: list.result && list.result.meta.source }, ...extra, onCommitted }, new AbortController().signal);
         if (callbackCalled) return;
         if (result && ['opened', 'cancelled'].includes(result.state)) { setExternal({ busy: false, error: null }); return; }
         if (C.receipt(result) === 'terminal') { onCommitted(result); return; }
@@ -293,11 +277,11 @@
         {target.notice && <p role="status">{target.notice}</p>}
         {deferred && <div role="status"><p>上次操作还没处理完，暂时没有跳转到指定记录。刚才的提交没有被覆盖。</p><Button icon="arrow-right" onClick={continueNavigation}>继续跳转</Button></div>}
         {!config ? <ErrorBox error={C.failure('未知的基础资料入口，请在上方产能链里选一项。')} /> : <>
-          {!(node === 'calendar' && renderCalendar) && <><div className="crumb"><span>产能链</span><span className="sep">/</span><span>{({ input: '输入', internal: '自制链', external: '外协链', global: '全局' })[config.chain]}</span><span className="sep">/</span><span className="cur">{config.label}</span></div>
+          {node !== 'calendar' && <><div className="crumb"><span>产能链</span><span className="sep">/</span><span>{({ input: '输入', internal: '自制链', external: '外协链', global: '全局' })[config.chain]}</span><span className="sep">/</span><span className="cur">{config.label}</span></div>
           <div className="chead wb-page-heading"><h2>{config.label}{node === 'material' ? ' · 基础资料' : ''}</h2></div></>}
           <ErrorBox error={external.error} />{external.busy && <p role="status">正在打开维护向导…</p>}
           {external.result && <Forms.Feedback command={{ phase: 'done', result: external.result }} action={external.action} />}
-          {node === 'process' ? typeof renderPart === 'function' ? renderPart({ adapter, onNavigate, onRefresh: refresh, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'part' ? target.context : undefined }) : <p role="status" className="muted">工艺工作区尚未开通。</p> : node === 'calendar' ? typeof renderCalendar === 'function' ? renderCalendar({ onCommitted: refresh, externalRevision, summaryState: counts.summary, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'calendar' ? target.context : undefined }) : <Calendar adapter={adapter} disabled={blocked} onExternal={openExternal} /> : <>
+          {node === 'process' ? renderPart({ adapter, onNavigate, onRefresh: refresh, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'part' ? target.context : undefined }) : node === 'calendar' ? renderCalendar({ onCommitted: refresh, externalRevision, summaryState: counts.summary, rememberEnabled: rememberEnabled && !navigationError && !deferred, initialContext: !deferred && target.context && target.context.kind === 'calendar' ? target.context : undefined }) : <>
             <window.ResourceMetrics node={node} data={data} />
             {selected.length > 0 && <p className="muted" aria-live="polite">已选择 <b data-resource-selection-count>{selected.length}</b> 条{entityRefs && selected.some(ref => !entityRefs.has(ref)) && <> · <span>含非当前页记录</span></>}</p>}
             <Toolbar config={config} scope={effectiveScope} onFilter={filter} loading={list.loading} disabled={blocked} onRefresh={refresh} onCreate={() => open('create')}
@@ -312,7 +296,7 @@
         </>}
       </section>
       {dialog && (dialog.action === 'view' || !editorReady) && <Forms.Detail key={dialog.kind + ':' + dialog.ref} adapter={adapter} kind={dialog.kind} result={detail.result} busy={detail.loading} error={detail.error} onRetry={detail.reload} onClose={close}
-        onRelated={(kind, ref, category) => open('view', ref, { kind, category })} onBack={dialog.history && dialog.history.length ? back : null}
+        onRelated={(kind, ref, category) => open('view', ref, { kind, category })} onBack={dialog.history.length ? back : null}
         onEdit={() => edit('update')} onAdjustStock={() => edit('update', true)} onMachinePermissions={() => edit('machine_permissions')}
         onDowntimes={() => edit('downtimes')} onOperatorCalendar={() => edit('operator_calendar')} onDelete={() => edit('delete')} />}
       {editorReady && dialog.action === 'machine_permissions' && <window.OperatorMachinePermissions adapter={adapter} entity={editorEntity} source={detail.result.meta.source}

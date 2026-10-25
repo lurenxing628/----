@@ -15,7 +15,6 @@ from web.runtime_host import runtime_identity
 
 from .factory import (
     create_app_core,
-    prepare_runtime_server,
     resolve_startup_debug_flag,
     serve_runtime_app,
     should_own_runtime_resources,
@@ -37,6 +36,7 @@ from .launcher_paths import (
 from .launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
 from .launcher_stop import stop_runtime_from_dir
 from .paths import runtime_base_dir
+from .runtime_server import prepare_runtime_server
 from .workbench_request_lifecycle import WorkbenchRequestHandler
 from .workbench_run_lifecycle import install_run_lifecycle, release_runtime_after_jobs, stop_run_runtime
 from .workbench_system_restore_recovery import RECOVERY

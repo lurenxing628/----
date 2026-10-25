@@ -294,16 +294,6 @@ class WorkbenchRunRuntime:
                 self._publish(False, self._reason if not self._ready else "runtime_worker_stopped")
                 self._condition.notify_all()
 
-    def wait_idle(self, timeout=None):
-        deadline = None if timeout is None else time.monotonic() + timeout
-        with self._condition:
-            while self._pending:
-                remaining = None if deadline is None else deadline - time.monotonic()
-                if remaining is not None and remaining <= 0:
-                    return False
-                self._condition.wait(remaining)
-            return True
-
     def shutdown(self, wait=True, timeout=None):
         """Stop admission, finish an executing worker; True permits lock release.
 

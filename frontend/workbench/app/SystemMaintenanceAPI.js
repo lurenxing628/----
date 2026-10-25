@@ -144,7 +144,7 @@
   }
   function parameters(input) {
     const params = new URLSearchParams();
-    Object.entries(input || {}).forEach(([key, value]) => { if (value !== '' && value !== undefined && value !== null) params.set(key, value); });
+    Object.entries(input).forEach(([key, value]) => { if (value !== '' && value !== undefined && value !== null) params.set(key, value); });
     return params.toString() ? '?' + params : '';
   }
   function recordSelection(selection, kind) {
@@ -161,7 +161,7 @@
     const migrationNotice = '原记录编号已更新，已清除上次的记录选择，请重新选择。';
     check(object(value) && Object.keys(value).every(key => ['filters', 'page', 'snapshot_ref', 'selection', 'migration_notice'].includes(key))
       && (value.migration_notice === undefined || value.migration_notice === migrationNotice), '上次的筛选和翻页状态无法恢复。请刷新后重新筛选。');
-    const filters = { query: '', type: '', status: '', level: '', file: '', start: '', end: '', ...(value.filters || {}) };
+    const filters = { query: '', type: '', status: '', level: '', file: '', start: '', end: '', ...value.filters };
     check((value.filters === undefined || object(value.filters)) && Object.keys(filters).every(key => ['query', 'type', 'status', 'level', 'file', 'start', 'end'].includes(key)
       && text(filters[key]) && filters[key].length <= 200), '上次的筛选条件无法恢复。请刷新后重新筛选。');
     const page = value.page === undefined ? 1 : value.page, snapshot = value.snapshot_ref === undefined ? '' : value.snapshot_ref;
@@ -213,15 +213,15 @@
           const error = new Error(message); error.code = problem.code; error.status = problem.status; throw error;
         }
       },
+      // input 是页面按当前筛选组装的查询对象（配置页传 {}），不会缺省。
       async read(kind, input, signal) {
         check(['backups', 'logs', 'config'].includes(kind));
         const value = await request('/' + kind + parameters(input), { signal });
         if (kind === 'config') config(envelope(value, false)); else {
           collection(value, kind);
-          const query = input || {};
-          check(value.data.page.number === (query.page === undefined ? 1 : query.page)
-            && value.data.page.size === (query.page_size === undefined ? 10 : query.page_size)
-            && (!query.snapshot_ref || value.meta.snapshot_ref === query.snapshot_ref), '读到的维护记录和刚才的筛选不一致，页面没有改动。请刷新后重试。');
+          check(value.data.page.number === (input.page === undefined ? 1 : input.page)
+            && value.data.page.size === (input.page_size === undefined ? 10 : input.page_size)
+            && (!input.snapshot_ref || value.meta.snapshot_ref === input.snapshot_ref), '读到的维护记录和刚才的筛选不一致，页面没有改动。请刷新后重试。');
         }
         return value;
       },

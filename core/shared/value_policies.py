@@ -18,27 +18,6 @@ class FieldPolicy:
 
 _FIELD_POLICIES = (
     FieldPolicy(
-        field="ext_days",
-        value_kind=VALUE_FLOAT,
-        strict_reason_code="invalid_number",
-        compat_reason_code="legacy_external_days_defaulted",
-        blank_reason_code="blank_required",
-    ),
-    FieldPolicy(
-        field="setup_hours",
-        value_kind=VALUE_FLOAT,
-        strict_reason_code="invalid_number",
-        compat_reason_code="invalid_number",
-        blank_reason_code="blank_required",
-    ),
-    FieldPolicy(
-        field="unit_hours",
-        value_kind=VALUE_FLOAT,
-        strict_reason_code="invalid_number",
-        compat_reason_code="invalid_number",
-        blank_reason_code="blank_required",
-    ),
-    FieldPolicy(
         field="priority_weight",
         value_kind=VALUE_FLOAT,
         strict_reason_code="invalid_number",

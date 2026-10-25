@@ -8,18 +8,5 @@ Phase 7（目标：M3）范围：
 说明：
 - V1 不引入并发/资源锁（仅做版本化落库与留痕）
 - 用户可见信息尽量中文（错误提示/日志/报告）
+- 包本身不重导出任何名字，调用方从具体模块导入
 """
-
-from core.algorithm_contracts.sort_strategies import SortStrategy, StrategyFactory
-from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
-
-from .greedy import GreedyScheduler
-
-__all__ = [
-    "SortStrategy",
-    "StrategyFactory",
-    "GreedyScheduler",
-    "ScheduleResult",
-    "ScheduleSummary",
-]
-

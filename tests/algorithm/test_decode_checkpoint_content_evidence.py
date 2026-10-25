@@ -9,8 +9,8 @@ from unittest.mock import patch
 
 import pytest
 
+from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
-from core.algorithms import SortStrategy
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.algorithms.greedy import schedule_preparation as native_preparation
 from core.algorithms.greedy.dispatch.sgs_checkpoint import DecodeCheckpointRequest, decode_output_contents
@@ -22,7 +22,7 @@ from core.services.scheduler.calendar.checkpoint_certificate import calendar_che
 from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.run.optimizer.graph import iterated_greedy as ig_module
 from core.services.scheduler.run.optimizer.graph.iterated_greedy_checkpoints import CheckpointStore
-from core.services.scheduler.run.optimizer.graph_ready_profiles import resolve_weight_grid_profiles_and_summary
+from core.services.scheduler.run.optimizer.graph_ready_profiles import resolve_v2_profiles
 from core.services.scheduler.run.optimizer.shared_archive import SharedScheduleArchive
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget
 from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession, decode_and_metrics
@@ -229,7 +229,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
     from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar
 
     search = object.__new__(ig_module._IteratedGreedySearch)
-    profile = resolve_weight_grid_profiles_and_summary(max_weight_profiles=1)[0][0]
+    profile = next(p for p in resolve_v2_profiles(seed=0, objective_name="min_overdue") if p.slug == "balanced")
     search.profile = ig_module.ig_decode_profile(profile)
     search.parent = SimpleNamespace(batch_order=("B1",), order=(1,), inherited=(), prepared=None)
     search.scores, search.pending_outputs, search.decoded_entries = {}, OrderedDict(), OrderedDict()
@@ -326,7 +326,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
     from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
     from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
     from core.services.scheduler.run.optimizer.search_state import OptimizerSearchState
-    from core.services.scheduler.run.schedule_shared_optimizer import _GoalView, _SharedSearch
+    from core.services.scheduler.run.schedule_shared_search import GoalView, SharedSearch
 
     def native_search(calendar, *, clock=perf_counter, after_schedule=None):
         case = _saturated_case(batch_count=2, ops_per_batch=2)
@@ -351,18 +351,22 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
                                         (op.id for op in operations), batches)
         budget = SharedSearchBudget(clock=clock, started_at=started, deadline=started + 10,
                                     target_objectives=archive.target_objectives, configured_seconds=10)
-        owner = _SharedSearch(archive=archive, clock=clock, started_at=started, budget=budget)
-        def schedule(decoder, **kwargs):
-            try:
-                return decoder.schedule(**kwargs)
-            finally:
-                if after_schedule is not None:
-                    after_schedule(kwargs)
+        owner = SharedSearch(archive=archive, clock=clock, started_at=started, budget=budget)
+        if after_schedule is not None:
+            native_decode = scheduler.schedule_prepared
+
+            def observed_decode(prepared_inputs, **changes):
+                try:
+                    return native_decode(prepared_inputs, **changes)
+                finally:
+                    after_schedule(changes)
+
+            monkeypatch.setattr(scheduler, "schedule_prepared", observed_decode)
 
         session = SharedDecodeSession(archive=archive, budget=budget, scheduler=scheduler, operations=operations,
                                       batches=batches, seed_results=case["seed_results"],
                                       downtime_map=case["machine_downtimes"], resource_pool=None,
-                                      graph_ready_context=context, schedule_fn=schedule if after_schedule is not None else None,
+                                      graph_ready_context=context,
                                       start_dt=case["start_dt"], clock=clock, started_at=started, deadline=started + 10,
                                       event_sink=owner.record_event)
         owner.decode_session = session
@@ -371,7 +375,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
             started_at=started, candidate_clock=clock,
             candidate_observer=lambda **kw: owner.observe("min_overdue", **kw),
             candidate_acceptance_observer=lambda **kw: owner.accept("min_overdue", **kw))
-        view = _GoalView("min_overdue", OptimizerSearchState(), report)
+        view = GoalView("min_overdue", OptimizerSearchState(), report)
         owner.views["min_overdue"] = view
         decode_profile = ig_module.ig_decode_profile(profile)
 
@@ -391,7 +395,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         source = view.candidate
         parent = _parent_from_candidate(source, operations=operations, graph_context=context, resource_pool=None)
         limits = IteratedGreedyLimits(due_date_seed=False, checkpoint_count=3, max_decodes=20)
-        pool = EliteRepairPool(limits=EliteRepairLimits(enabled=False), objective_name="min_overdue",
+        pool = EliteRepairPool(limits=EliteRepairLimits(), objective_name="min_overdue",
                                 operations=operations, metrics_by_op_id=metrics, start_dt=case["start_dt"], seed=0,
                                 best=source, report_state=report, graph_context=context, decode_session=session)
         search = ig_module._IteratedGreedySearch(
@@ -414,11 +418,13 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         resume = native.checkpoints.best_for(reference.checkpoints, base_order=reference.order,
                                               trial_order=trial_order)
         assert resume is not None and resume.prefix_length == 1
-        before_entries, before_new = owner.archive.retained_entry_ids, session.new_decisions
+        known_entries, before_new = (source_entry, reference.candidate["_shared_entry_id"]), session.new_decisions
+        assert all(entry_id in owner.archive for entry_id in known_entries)
         trial = native._decode(trial_order, resume=resume)
         assert trial is not None and not trial["decode_receipt"]["verified"]
         assert trial["decode_receipt"]["execution_kind"] == "trial_decode"
-        assert owner.archive.retained_entry_ids == before_entries and session.new_decisions == before_new
+        assert trial["_shared_entry_id"] not in owner.archive and session.new_decisions == before_new
+        assert all(entry_id in owner.archive for entry_id in known_entries)
         assert type(trial["_shared_entry_id"]) is int and not trial["decode_receipt"].get("observation_bound")
         assert native.report["unverified_trial_decodes"] == 1
         native._remember_output(trial_order, trial)
@@ -467,7 +473,9 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         assert order not in native.scores and order not in native.decoded_entries
         assert session.actual_decoder_calls == scheduler._decode_invocations == 2
         assert session.failed_decoder_calls == session.skipped_requests == 1
-        assert session.new_decisions == 1 and len(owner.archive.retained_entry_ids) == 1
+        source_id = native.best["_shared_entry_id"]
+        assert session.new_decisions == 1 and source_id in owner.archive
+        assert set(owner.archive.best_by_objective.values()) == {source_id}
 
 
 def test_calendar_content_cache_does_not_reuse_rolled_back_transaction(schema_conn):

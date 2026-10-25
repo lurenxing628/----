@@ -85,7 +85,7 @@ class EliteRepairPool:
         """Record the decoded output and maybe adopt it as an elite; returns its fingerprint against earlier outputs."""
         fingerprint = self.fingerprint(candidate)
         self.seen_outputs.add(fingerprint.output_key)
-        if self.limits.enabled and profile.formula_version.startswith("graph_ready_v2"):
+        if profile.formula_version.startswith("graph_ready_v2"):
             self._observe_elite(candidate, profile, fingerprint)
         return fingerprint
 
@@ -196,7 +196,7 @@ class EliteRepairRun:
         self.accounting = RepairWorkAccounting()
 
     def available(self) -> bool:
-        if not self.pool.limits.enabled or self.report["repair_stop_reason"] in ("time_budget", "estimated_decode_cost"):
+        if self.report["repair_stop_reason"] in ("time_budget", "estimated_decode_cost"):
             return False
         if self.exhausted:
             return (self.clock() < self.repair_deadline
@@ -257,9 +257,7 @@ class EliteRepairRun:
                 else:
                     report["repair_stop_reason"] = "rotation_ended"
         self.accounting.finish(self.pool)
-        if not self.pool.limits.enabled:
-            report["repair_status"] = "not_run"
-        elif self._tasks is None:
+        if self._tasks is None:
             if self.pool.elites:
                 # Elites existed, but the rotation never reached this stage before the deadline or the cap.
                 report["repair_stop_reason"] = "time_budget" if self.clock() >= self.deadline else "rotation_ended"

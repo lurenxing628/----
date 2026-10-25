@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Iterable, Optional, Tuple
+from typing import Any, Dict, Iterable, Optional, Tuple
 
-from ._helpers import RowLike, get, parse_int
+from ._helpers import RowLike, parse_int
 from .operation_execution_scope import (
     OperationExecutionScope,
     operation_execution_scope_from_event,
@@ -113,7 +113,7 @@ def normalize_operation_execution_event_values(
     return event_type_text, status_text, normalize_operation_event_time(event_time)
 
 
-def _event_identity(event: OperationExecutionEvent) -> str:
+def _event_identity(event: OperationExecutionEventSequenceEntry) -> str:
     if event.id not in (None, ""):
         return f"id={event.id}"
     return f"type={event.event_type!r}"
@@ -156,7 +156,7 @@ def _next_execution_status(current_status: str, event_type: str) -> str:
     return REPORTED_STATUS_BY_EXECUTION_EVENT_TYPE[event_type]
 
 
-def validate_operation_execution_event_sequence(events: Iterable[OperationExecutionEvent]) -> None:
+def validate_operation_execution_event_sequence(events: Iterable[OperationExecutionEventSequenceEntry]) -> None:
     current_status = EXECUTION_STATUS_NOT_STARTED
     previous_event_time: Optional[str] = None
     previous_event_id = 0
@@ -193,8 +193,82 @@ def validate_operation_execution_event_sequence(events: Iterable[OperationExecut
         previous_event_id = _event_id_for_revision(event)
 
 
+OPERATION_EXECUTION_EVENT_SEQUENCE_COLUMNS = (
+    "id",
+    "schedule_version",
+    "schedule_id",
+    "op_id",
+    "batch_id",
+    "source_table",
+    "effective_plan_role",
+    "scenario_id",
+    "event_type",
+    "reported_status",
+    "event_time",
+    "previous_state_revision",
+)
+OPERATION_EXECUTION_EVENT_COLUMNS = OPERATION_EXECUTION_EVENT_SEQUENCE_COLUMNS[:-1] + (
+    "actual_machine_id",
+    "actual_operator_id",
+    "quantity_done",
+    "quantity_scrapped",
+    "reason_code",
+    "reason_detail",
+    "severity",
+    "impact_minutes",
+    "affected_machine_id",
+    "affected_operator_id",
+    "handling_status",
+    "suggest_reschedule",
+    "remark",
+    "created_by",
+    "idempotency_key",
+    "request_fingerprint",
+    "previous_state_revision",
+    "created_at",
+)
+
+
+def _sequence_values(row: RowLike) -> Dict[str, Any]:
+    event_type, reported_status, event_time = normalize_operation_execution_event_values(
+        event_type=row["event_type"],
+        reported_status=row["reported_status"],
+        event_time=row["event_time"],
+    )
+    scope = OperationExecutionScope.from_values(
+        schedule_version=row["schedule_version"],
+        schedule_id=row["schedule_id"],
+        op_id=row["op_id"],
+        batch_id=row["batch_id"],
+        source_table=row["source_table"],
+        effective_plan_role=row["effective_plan_role"],
+        scenario_id=row["scenario_id"],
+    )
+    source_table, effective_plan_role, scenario_id = validate_current_official_execution_scope(
+        source_table=scope.source_table,
+        effective_plan_role=scope.effective_plan_role,
+        scenario_id=scope.scenario_id,
+    )
+    return {
+        "id": parse_int(row["id"], default=None),
+        "schedule_version": scope.schedule_version,
+        "schedule_id": scope.schedule_id,
+        "op_id": scope.op_id,
+        "batch_id": scope.batch_id,
+        "source_table": source_table,
+        "effective_plan_role": effective_plan_role,
+        "scenario_id": scenario_id,
+        "event_type": event_type,
+        "reported_status": reported_status,
+        "event_time": event_time,
+        "previous_state_revision": str(row["previous_state_revision"] or ""),
+    }
+
+
 @dataclass(frozen=True)
-class OperationExecutionEvent:
+class OperationExecutionEventSequenceEntry:
+    """顺序校验只需要的 12 列：归属、事件类型与状态、时间和前一状态版本。"""
+
     id: Optional[int]
     schedule_version: int
     schedule_id: int
@@ -205,7 +279,16 @@ class OperationExecutionEvent:
     event_time: str
     source_table: str
     effective_plan_role: str
-    scenario_id: Optional[str] = None
+    scenario_id: Optional[str]
+    previous_state_revision: str
+
+    @classmethod
+    def from_row(cls, row: RowLike) -> OperationExecutionEventSequenceEntry:
+        return cls(**_sequence_values(row))
+
+
+@dataclass(frozen=True)
+class OperationExecutionEvent(OperationExecutionEventSequenceEntry):
     actual_machine_id: Optional[str] = None
     actual_operator_id: Optional[str] = None
     quantity_done: Optional[int] = None
@@ -222,61 +305,31 @@ class OperationExecutionEvent:
     created_by: Optional[str] = None
     idempotency_key: Optional[str] = None
     request_fingerprint: Optional[str] = None
-    previous_state_revision: str = ""
     created_at: Optional[str] = None
 
     @classmethod
     def from_row(cls, row: RowLike) -> OperationExecutionEvent:
-        event_type, reported_status, event_time = normalize_operation_execution_event_values(
-            event_type=get(row, "event_type"),
-            reported_status=get(row, "reported_status"),
-            event_time=get(row, "event_time"),
-        )
-        scope = OperationExecutionScope.from_values(
-            schedule_version=get(row, "schedule_version"),
-            schedule_id=get(row, "schedule_id"),
-            op_id=get(row, "op_id"),
-            batch_id=get(row, "batch_id"),
-            source_table=get(row, "source_table"),
-            effective_plan_role=get(row, "effective_plan_role"),
-            scenario_id=get(row, "scenario_id"),
-        )
-        source_table, effective_plan_role, scenario_id = validate_current_official_execution_scope(
-            source_table=scope.source_table,
-            effective_plan_role=scope.effective_plan_role,
-            scenario_id=scope.scenario_id,
-        )
         return cls(
-            id=parse_int(get(row, "id"), default=None),
-            schedule_version=scope.schedule_version,
-            schedule_id=scope.schedule_id,
-            op_id=scope.op_id,
-            batch_id=scope.batch_id,
-            source_table=source_table,
-            effective_plan_role=effective_plan_role,
-            scenario_id=scenario_id,
-            event_type=event_type,
-            reported_status=reported_status,
-            event_time=event_time,
-            actual_machine_id=_text_or_none(get(row, "actual_machine_id")),
-            actual_operator_id=_text_or_none(get(row, "actual_operator_id")),
-            quantity_done=_optional_non_negative_int_field(get(row, "quantity_done"), "quantity_done"),
-            quantity_scrapped=_optional_non_negative_int_field(get(row, "quantity_scrapped"), "quantity_scrapped"),
-            reason_code=_text_or_none(get(row, "reason_code")),
-            reason_detail=_text_or_none(get(row, "reason_detail")),
-            severity=_text_or_none(get(row, "severity")),
-            impact_minutes=_optional_non_negative_int_field(get(row, "impact_minutes"), "impact_minutes"),
-            affected_machine_id=_text_or_none(get(row, "affected_machine_id")),
-            affected_operator_id=_text_or_none(get(row, "affected_operator_id")),
-            handling_status=_text_or_none(get(row, "handling_status")),
-            suggest_reschedule=_suggest_reschedule_field(get(row, "suggest_reschedule")),
-            remark=_text_or_none(get(row, "remark")),
-            created_by=_text_or_none(get(row, "created_by")),
-            idempotency_key=_text_or_none(get(row, "idempotency_key")),
-            request_fingerprint=_text_or_none(get(row, "request_fingerprint")),
-            previous_state_revision=str(get(row, "previous_state_revision") or ""),
-            created_at=_text_or_none(get(row, "created_at")),
+            **_sequence_values(row),
+            actual_machine_id=_text_or_none(row["actual_machine_id"]),
+            actual_operator_id=_text_or_none(row["actual_operator_id"]),
+            quantity_done=_optional_non_negative_int_field(row["quantity_done"], "quantity_done"),
+            quantity_scrapped=_optional_non_negative_int_field(row["quantity_scrapped"], "quantity_scrapped"),
+            reason_code=_text_or_none(row["reason_code"]),
+            reason_detail=_text_or_none(row["reason_detail"]),
+            severity=_text_or_none(row["severity"]),
+            impact_minutes=_optional_non_negative_int_field(row["impact_minutes"], "impact_minutes"),
+            affected_machine_id=_text_or_none(row["affected_machine_id"]),
+            affected_operator_id=_text_or_none(row["affected_operator_id"]),
+            handling_status=_text_or_none(row["handling_status"]),
+            suggest_reschedule=_suggest_reschedule_field(row["suggest_reschedule"]),
+            remark=_text_or_none(row["remark"]),
+            created_by=_text_or_none(row["created_by"]),
+            idempotency_key=_text_or_none(row["idempotency_key"]),
+            request_fingerprint=_text_or_none(row["request_fingerprint"]),
+            created_at=_text_or_none(row["created_at"]),
         )
+
 
 __all__ = [
     "EXECUTION_EVENT_EXCEPTION",
@@ -289,7 +342,10 @@ __all__ = [
     "EXECUTION_STATUS_NOT_STARTED",
     "EXECUTION_STATUS_PAUSED",
     "EXECUTION_STATUS_PROCESSING",
+    "OPERATION_EXECUTION_EVENT_COLUMNS",
+    "OPERATION_EXECUTION_EVENT_SEQUENCE_COLUMNS",
     "OperationExecutionEvent",
+    "OperationExecutionEventSequenceEntry",
     "ALLOWED_EXECUTION_EVENTS_BY_STATUS",
     "REPORTED_STATUS_BY_EXECUTION_EVENT_TYPE",
     "VALID_EXECUTION_EVENT_TYPES",

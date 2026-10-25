@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import traceback
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
+from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_runtime.algo_stats import increment_counter
-from core.algorithms import SortStrategy
 
 from .attempt_records import append_rejected_reason_attempt, attempt_decision_evidence, candidate_tag
 
@@ -65,9 +64,7 @@ def _record_ortools_optional_failure(
     strategy: SortStrategy,
     dispatch_mode: str,
     dispatch_rule: str,
-    optimizer_algo_stats: Optional[Dict[str, Any]],
-    scheduler: Any,
-    logger: Any,
+    optimizer_algo_stats: Dict[str, Any],
     exc: Exception,
 ) -> None:
     append_rejected_reason_attempt(
@@ -79,14 +76,7 @@ def _record_ortools_optional_failure(
         reason="optional_warmstart_failed",
         message=str(exc),
     )
-    increment_counter(optimizer_algo_stats if isinstance(optimizer_algo_stats, dict) else scheduler, "ortools_warmstart_failed_count")
-    if not logger:
-        return
-    try:
-        logger.warning(f"OR-Tools 预热失败（已忽略）：{exc}", exc_info=True)
-    except TypeError:
-        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__, limit=10))
-        logger.warning(f"OR-Tools 预热失败（已忽略）：{exc}\n{tb}")
+    increment_counter(optimizer_algo_stats, "ortools_warmstart_failed_count")
 
 
 def _record_ortools_candidate(

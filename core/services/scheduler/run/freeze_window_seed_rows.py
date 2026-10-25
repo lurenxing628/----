@@ -1,9 +1,9 @@
 """Validate and materialize frozen prefixes without changing their identities."""
 
-from types import SimpleNamespace
 from typing import Any, Dict, List, Set
 
 from core.algorithm_contracts.schedule_point_evidence import SchedulePointEvidence
+from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
 from core.shared.local_datetime import parse_local_datetime as parse_dt
 
@@ -18,19 +18,17 @@ def cache_seed_for_prefix(*, prefix, schedule_map, op_by_id, seed_tmp, point_val
             return int(oid)
         seed = {"row": row, "start_time": start, "end_time": end}
         if start == end:
-            source = (op_by_id[int(oid)].source or INTERNAL).strip()
-            parsed = SimpleNamespace(**dict(row, source=source, start_time=start, end_time=end))
+            op = op_by_id[int(oid)]
+            # 见证按存储行原样的编号与资源比对；工序号只作展示，见证不读它。
+            parsed = ScheduleResult(op_id=row["op_id"], op_code=op.op_code, batch_id=op.batch_id, seq=op.seq,
+                                    machine_id=row["machine_id"], operator_id=row["operator_id"],
+                                    start_time=start, end_time=end, source=(op.source or INTERNAL).strip())
             evidence = point_validator(parsed)
             if type(evidence) is not SchedulePointEvidence or not evidence.matches(parsed):
                 return int(oid)
             seed["point_evidence"] = evidence
         seed_tmp[int(oid)] = seed
     return 0
-
-
-def discard_seed_cache(prefix, seed_tmp):
-    for oid in prefix:
-        seed_tmp.pop(int(oid), None)
 
 
 def build_seed_results(frozen_op_ids: Set[int], *, op_by_id: Dict[int, Any],

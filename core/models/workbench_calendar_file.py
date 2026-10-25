@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional, Tuple
 
 from core.errors import ValidationError
 from core.models.calendar_period_columns import PERIOD_CLOCKS, PERIOD_COLUMNS, PERIOD_DAYS, period_column_label
-from core.models.workbench_action_values import FileDownload
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_resource_action import ResourceActionPreview
 from core.models.workbench_table_descriptor import (
@@ -225,9 +224,6 @@ def table_descriptor(kind: str) -> Dict[str, Any]:
         "byte_limit": DEFAULT_IMPORT_BYTE_LIMIT,
         "modes": UPSERT_ONLY,
     }
-
-
-CalendarFileDownload = FileDownload
 
 
 #: 预检响应里的那段提示，和说明表的通用规则同一份来源。

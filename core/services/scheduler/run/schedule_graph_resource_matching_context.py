@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from .schedule_graph_dispatch_context import build_predecessor_successor_maps, node_op_id, schedule_input_op_id_sets
+from .schedule_graph_dispatch_context import build_predecessor_successor_maps, schedule_input_op_id_sets
 from .schedule_input_contracts import ScheduleRunInput
 
 GRAPH_RESOURCE_NOT_DAG_REASON = "graph_not_dag"
@@ -29,7 +29,7 @@ def build_first_wave_ready_nodes(
         for op_id in schedulable_op_ids
         if predecessor_map.get(op_id, set()).issubset(fixed_op_ids)
     }
-    return [node for node in nodes if node_op_id(node) in ready_op_ids]
+    return [node for node in nodes if node.raw["id"] in ready_op_ids]
 
 
 def _resource_matching_status_projection(*, status: str, reason: str) -> Dict[str, Any]:

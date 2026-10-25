@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from .sample_data import sample_blueprint
+from .sample_exercise import exercise_sample
 from .sample_http import BASE, SampleClient, SampleProgress
 
 _KINDS = (("op_types", "op_type"), ("machine_groups", "machine_group"),
@@ -150,15 +151,11 @@ class SampleInjector:
         return self.progress.report
 
 
-def inject_sample(base_url, output=None, batch_count=100, operation_count=50, exercise=False):
+def inject_sample(base_url, output=None, batch_count=100, operation_count=50):
     client = SampleClient(base_url)
     progress = SampleProgress(output, client)
     blueprint = sample_blueprint(batch_count, operation_count)
-    result = SampleInjector(client, progress, blueprint).inject()
-    if exercise:
-        from .sample_exercise import exercise_sample
-        return exercise_sample(base_url, result, output=output)
-    return result
+    return SampleInjector(client, progress, blueprint).inject()
 
 
 def main(runtime_dir):
@@ -181,7 +178,7 @@ def main(runtime_dir):
     if health.get("app") != "aps" or health.get("pid") != contract["pid"]:
         raise RuntimeError("样例后台与本目录启动记录对不上，没有注入任何资料。")
     try:
-        inject_sample(base_url, report_path, exercise=True)
+        exercise_sample(base_url, inject_sample(base_url, report_path), output=report_path)
     except FileExistsError as exc:
         raise RuntimeError("已有样例准备记录，不会重复注入。请查看 sample-acceptance.json 或用 Start.cmd 打开已有样例。") from exc
     return 0

@@ -2,6 +2,7 @@
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator
+from core.services.scheduler.run.schedule_payload_contract import ValidatedScheduleRow
 from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable
 from core.services.workbench.facts.zero_duration import PointEventError
 from core.services.workbench.facts.zero_duration_evidence import CandidatePointReader, trial_point_evidence
@@ -36,7 +37,6 @@ def official_point_work(conn, version, *, evidence=None, context=None):
 
 def annotate_plan_points(conn, rows, *, source_table, context=None, intervals=None):
     from datetime import datetime
-    from types import SimpleNamespace
 
     from data.repositories.schedule_time_sql import parse_dt_for_sql
 
@@ -52,7 +52,7 @@ def annotate_plan_points(conn, rows, *, source_table, context=None, intervals=No
             if version not in versions:
                 versions[version] = context.point_work(version) if context is not None else official_point_work(conn, version)
             work = versions[version].get(original["op_id"])
-            check = SimpleNamespace(op_id=original["op_id"], source="internal", machine_id=original["machine_id"],
+            check = ValidatedScheduleRow(op_id=original["op_id"], source="internal", machine_id=original["machine_id"],
                 operator_id=original["operator_id"], start_time=datetime.fromisoformat(low), end_time=datetime.fromisoformat(high))
             if work is None or not work["witness"].matches(check):
                 raise WorkbenchCommandRejected("point_evidence_unproven", "零工时工序和原采用记录对不上。请刷新后重试。")

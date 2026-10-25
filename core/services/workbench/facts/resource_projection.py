@@ -7,50 +7,30 @@ calendar time or zero capacity. All arithmetic keeps its original precision.
 
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
-from datetime import date, datetime, time, timedelta
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple
+from datetime import timedelta
+from typing import Any, Dict, NamedTuple, Optional
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.capacity.plan_calendar_intervals import IntervalIndex, hours, instant, intersection, union
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES
 from core.services.capacity.resource_utilization_metrics import ResourceUtilizationMetrics
 
-from .resource_intervals import KINDS, ResourceIntervals, details, resource_cohort, task_interval
+from .resource_calendar import normalize_resource_calendar
+from .resource_intervals import (
+    KINDS,
+    ResourceIntervals,
+    identity_issue,
+    occupying_tasks,
+    resource_cohort,
+    sweep_details,
+)
 from .resource_summary import resource_summary
 
 RESOURCE_METRIC_VERSION = "decision-resource-v4"
-__all__ = ["ResourceTaskIndex", "normalize_resource_calendar", "resource_cohort", "resource_summary", "resource_period_bounds", "RESOURCE_METRIC_VERSION"]
+__all__ = ["ResourceTaskIndex", "resource_cohort", "resource_summary", "RESOURCE_METRIC_VERSION"]
 
 _INSIDE_FIELDS = ("occupied_hours", "summed_load_hours", "outside_calendar_hours", "overlap_hours")
 _SPAN_FIELDS = ("span_occupied_hours", "span_summed_hours", "span_overlap_hours", "overlap_span_hours")
-
-
-def _days(low, high):
-    if low == high:
-        yield low, high
-    while low < high:
-        boundary = high if low.date() == date.max else datetime.combine(low.date() + timedelta(days=1), time.min)
-        end = min(high, boundary)
-        yield low, end
-        low = end
-
-
-def resource_period_bounds(start, end, grain="day"):
-    """Clip natural hours, days or Monday-based weeks to the selected window."""
-    low, high = instant(start), instant(end)
-    if grain == "day" or low == high:
-        yield from _days(low, high)
-        return
-    while low < high:
-        if grain == "hour":
-            step = low.replace(minute=0, second=0, microsecond=0) - low + timedelta(hours=1)
-        elif grain == "week":
-            step = datetime.combine(low.date(), time.min) - low + timedelta(days=7 - low.weekday())
-        else:
-            raise ValueError("Expected hour, day or week resource grain")
-        stop = low + min(high - low, step)
-        yield low, stop
-        low = stop
 
 
 def _issue(code, message, field=None):
@@ -69,67 +49,6 @@ def _issues(values):
             result.append(value)
             seen.add(key)
     return result
-
-
-def _calendar_days(calendar, low, high) -> List[Dict[str, Any]]:
-    if calendar is not None and "days" in calendar:
-        return calendar["days"]
-    # Legacy/current snapshot adapters supply the same explicit full-window
-    # calendar projection. Its capacity state applies to each clipped day.
-    available = calendar is not None and calendar["state"] == "available"
-    windows = calendar["windows"] if available else None
-    issues = calendar.get("issues", []) if calendar is not None else [
-        _issue("calendar_unavailable", "保存的资源班表缺项，容量未知。")]
-    return [{"date": start.date().isoformat(), "start": start.isoformat(), "end": end.isoformat(),
-             "state": "available" if available else "unavailable", "windows": windows, "issues": issues}
-            for start, end in _days(low, high)]
-
-
-class _CalendarDay(NamedTuple):
-    date: str
-    low: datetime
-    high: datetime
-    available: bool
-    windows: List[Tuple[datetime, datetime]]
-    shifts: List[Tuple[datetime, datetime, str]]
-    issues: List[Dict[str, Any]]
-
-
-class _ResourceCalendar:
-    """One resource's calendar geometry, shared by all compared task indexes."""
-
-    def __init__(self, calendar, low, high, *, parse_time=None):
-        parse_time = instant if parse_time is None else parse_time
-        self.days = []
-        for row in _calendar_days(calendar, low, high):
-            first, last = parse_time(row["start"]), parse_time(row["end"])
-            available = row["state"] == "available"
-            shifts = []
-            for window in row["windows"] if available else []:
-                if window["allow_normal"] or window["allow_urgent"]:
-                    start, end = parse_time(window["start"]), parse_time(window["end"])
-                    shifts.append((start, end, window.get("policy_date") or start.date().isoformat()))
-            self.days.append(_CalendarDay(row["date"], first, last, available,
-                union((start, end) for start, end, _ in shifts), shifts, row.get("issues", [])))
-        self.days.sort(key=lambda day: (day.low, day.high))
-        bounds = iter(_days(low, high))
-        self.natural_day_window = low < high and all(
-            next(bounds, None) == (day.low, day.high) and day.date == day.low.date().isoformat()
-            for day in self.days) and next(bounds, None) is None
-        self.starts = [day.low for day in self.days]
-        self.ends = [day.high for day in self.days]
-        self.period_bounds = {}
-        self.known_days = [day for day in self.days if day.available]
-        self.windows = union(value for day in self.known_days for value in day.windows)
-        self.known_coverage = union((day.low, day.high) for day in self.known_days)
-
-
-def normalize_resource_calendar(calendar, start, end, *, parse_time=None):
-    """Normalize the common saved calendar once; raw legacy callers use this too."""
-    if isinstance(calendar, _ResourceCalendar):
-        return calendar
-    parse_time = instant if parse_time is None else parse_time
-    return _ResourceCalendar(calendar, parse_time(start), parse_time(end), parse_time=parse_time)
 
 
 class _ResourceValues(NamedTuple):
@@ -294,17 +213,9 @@ class _ResourceMeasurement:
             task_count = bisect_left(self.intervals.starts, high) - bisect_right(self.intervals.ends, low)
         return task_count > 0 or not self.work_complete
 
-    def _days_in(self, low, high):
-        if low == high:
-            first, last = bisect_left(self.calendar.ends, low), bisect_right(self.calendar.starts, high)
-        else:
-            first, last = bisect_right(self.calendar.ends, low), bisect_left(self.calendar.starts, high)
-        return [day if low <= day.low and day.high <= high else day._replace(low=max(low, day.low), high=min(high, day.high))
-                for day in self.days[first:last]]
-
     def window(self, low=None, high=None):
         low, high = self.low if low is None else low, self.high if high is None else high
-        days = self._days_in(low, high)
+        days = self.calendar.days_in(low, high)
         result = self.cell(low, high, days, whole=low == self.low and high == self.high)
         result.update(self.window_statistics(low, high, days))
         return result
@@ -414,11 +325,11 @@ class _ResourceMeasurement:
 
     def details(self, low, high, days):
         rows = self.intervals.overlapping(low, high)
-        natural = _details(rows, self.intervals.unknown, low, high)
+        natural = sweep_details(rows, self.intervals.unknown, low, high)
         windows = union(value for day in days if day.available for value in day.windows)
         clipped = [(first, last, task) for start, end, task in rows
                    for first, last in intersection([(max(start, low), min(end, high))], windows)]
-        working = _details(clipped, self.intervals.unknown, low, high)
+        working = sweep_details(clipped, self.intervals.unknown, low, high)
         complete = all(day.available for day in days)
         known_calendar = any(day.available for day in days)
         tasks, reservations = [], []
@@ -457,16 +368,11 @@ class ResourceTaskIndex:
         self.identity_issues = []
         self._unknown_issues = defaultdict(list)
         rows, unknown = defaultdict(list), defaultdict(list)
-        for task in tasks:
-            interval = task_interval(task) if task_intervals is None else task_intervals[task["row_ref"]]
-            if task.get("source") == "external" or interval is not None and interval[0] == interval[1]:
-                continue
-            if interval is not None and not (interval[0] < self.high and interval[1] > self.low):
-                continue
+        for task, interval in occupying_tasks(tasks, self.low, self.high, task_intervals=task_intervals):
             for kind in KINDS:
                 value = task.get(kind)
                 if value is None or value.get("ref") is None:
-                    self.identity_issues.append({**_issue("resource_identity_unknown", "保存任务缺少永久资源身份，资源汇总保留覆盖缺口。", kind), "kind": kind})
+                    self.identity_issues.append(identity_issue(kind))
                     continue
                 key = (kind, value["ref"])
                 if interval is None or task.get("operation_ref") is None:
@@ -496,6 +402,10 @@ class ResourceTaskIndex:
         self._measurements[key] = calendar, measurement
         return measurement
 
+    def release(self, resource):
+        """Drop one resource's calendar measurement once the caller keeps its compact summary."""
+        self._measurements.pop((resource["kind"], resource["ref"]))
+
     def window(self, resource, calendar, *, start=None, end=None):
         return self._measurement(resource, calendar).window(instant(start) if start is not None else None,
                                                             instant(end) if end is not None else None)
@@ -509,7 +419,7 @@ class ResourceTaskIndex:
         key = (resource["kind"], resource["ref"])
         intervals = self._resources.get(key, self._empty)
         if self._last_sweep is not None and self._last_sweep[0] == key:
-            intervals._swept = self._last_sweep[1]
+            intervals.adopt_sweep(self._last_sweep[1])
         return [{"start": low.isoformat(), "end": high.isoformat(), "concurrent_operations": count}
                 for low, high, count in intervals.swept] if self.work_available else []
 
@@ -528,26 +438,7 @@ class ResourceTaskIndex:
             high = min(high, measurement.days[-1].high)
         if low > high:
             return []
-        key = grain, low, high
-        if key in measurement.calendar.period_bounds:
-            return measurement.calendar.period_bounds[key]
-        bounds = []
-        if grain == "shift":
-            groups = defaultdict(list)
-            for day in measurement._days_in(low, high):
-                for start, end, policy_date in day.shifts:
-                    first, last = max(low, day.low, start), min(high, day.high, end)
-                    if first < last:
-                        groups[policy_date].append((first, last))
-                if not day.available or not intersection(day.windows, [(day.low, day.high)]):
-                    bounds.append((day.low, day.high, day.date, "rest" if day.available else "unknown"))
-            bounds.extend((first, last, policy_date, None)
-                          for policy_date, values in groups.items() for first, last in union(values))
-            bounds.sort(key=lambda row: (row[0], row[1]))
-        else:
-            bounds = [(first, last, first.date().isoformat(), None) for first, last in resource_period_bounds(low, high, grain)]
-        measurement.calendar.period_bounds[key] = bounds
-        return bounds
+        return measurement.calendar.periods_between(grain, low, high)
 
     @staticmethod
     def _period_identity(first, last, group, placeholder, grain):
@@ -558,7 +449,7 @@ class ResourceTaskIndex:
     def period_facts(self, resource, calendar, *, grain="day", start=None, end=None):
         measurement = self._measurement(resource, calendar)
         return [{**self._period_identity(first, last, group, placeholder, grain),
-                 **measurement.period_statistics(first, last, measurement._days_in(first, last), grain, group,
+                 **measurement.period_statistics(first, last, measurement.calendar.days_in(first, last), grain, group,
                     whole=grain == "week" and first == self.low and last == self.high)}
                 for first, last, group, placeholder in self._period_bounds(measurement, grain, start, end)]
 
@@ -569,7 +460,7 @@ class ResourceTaskIndex:
             identity = self._period_identity(first, last, group, placeholder, grain)
             if group_keys is not None and identity["group_key"] not in group_keys:
                 continue
-            days = measurement._days_in(first, last)
+            days = measurement.calendar.days_in(first, last)
             whole = grain == "week" and first == self.low and last == self.high
             cell = measurement.cell(first, last, days, whole=whole)
             cell.update(measurement.period_statistics(first, last, days, grain, group, whole=whole), **identity)
@@ -580,8 +471,3 @@ class ResourceTaskIndex:
                              "reservation_overlap_basis": "reservation_span_overlap"})
             result.append(cell)
         return result
-
-
-# The public ``details`` query option describes the DTO; the imported sweep keeps
-# its separate function identity so the option cannot shadow the implementation.
-_details = details

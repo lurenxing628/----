@@ -139,7 +139,7 @@ const ref=h.reference(100),task={task_ref:ref,plan_ref:ref,operation_ref:ref,
   piece_id:null,quantity:1,batch_quantity:1,quantity_basis:'run_admission',quantity_reason:null,batch_id:'B1',operation_label:'精加工',
   execution:{operation_ref:ref,comparison_task_ref:ref,execution_state:'unreported',data_quality:'complete',target_quantity:1,
     known_completed_quantity:0,remaining_quantity:1,records_complete:true,quantity_complete:false,unknown_record_count:0,
-    data_gaps:[],reports:[],legacy_facts:[],write_context:{},completion_basis:null}};
+    data_gaps:[],reports:[],legacy_facts:[],write_context:{write_token:null,capabilities:{},blocked_reasons:[]},completion_basis:null}};
 const response={ok:true,schema_version:1,meta:{source:'production',time_basis:'factory_local',snapshot_ref:ref,as_of:'2026-10-12T08:00:00'},data:{task}};
 const query=h.runtime.APSResourceSession.useQuery;
 try {

@@ -116,7 +116,7 @@ def _apply_default(conn: sqlite3.Connection, *, table: str, field: str, default:
     return int(getattr(cur, "rowcount", 0) or 0)
 
 
-def _sanitize_field(
+def sanitize_field(
     conn: sqlite3.Connection,
     *,
     table: str,

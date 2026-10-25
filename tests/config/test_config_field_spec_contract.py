@@ -8,7 +8,7 @@ import pytest
 
 from core.errors import ValidationError
 from core.infrastructure.database import ensure_schema, get_connection
-from core.models.schedule_config_runtime import ensure_schedule_config_snapshot
+from core.models.schedule_config_runtime_coercion import ensure_schedule_config_snapshot
 from core.models.schedule_config_runtime_fields import RETIRED_CONFIG_FIELDS, list_runtime_config_fields
 from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.config.config_field_spec import list_config_fields
@@ -18,6 +18,12 @@ from tests._support.paths import REPO_ROOT
 from web.bootstrap.schedule_config import bootstrap_schedule_config
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
+
+
+def _stored_snapshot(conn):
+    """Build the snapshot from stored ScheduleConfig rows, as the run preflight reads them."""
+    rows = [dict(row) for row in conn.execute("SELECT config_key, config_value FROM ScheduleConfig ORDER BY rowid")]
+    return build_schedule_config_snapshot(rows=rows)
 
 
 @pytest.fixture()
@@ -33,8 +39,8 @@ def config_store(tmp_path):
 
 
 def test_config_snapshot_includes_hidden_fields_and_ignores_retired_fields(config_store) -> None:
-    _conn, repo, _database = config_store
-    snap = build_schedule_config_snapshot(repo)
+    conn, repo, _database = config_store
+    snap = _stored_snapshot(conn)
     assert snap.auto_assign_persist == "yes"
     assert snap.to_dict()["auto_assign_persist"] == "yes"
     assert snap.graph_analysis_mode == "on"
@@ -55,7 +61,7 @@ def test_config_snapshot_includes_hidden_fields_and_ignores_retired_fields(confi
 
 def test_legacy_preset_keeps_budget_and_saved_rows_during_reads_and_restart(config_store) -> None:
     conn, repo, database = config_store
-    payload = dict(build_schedule_config_snapshot(repo).to_dict(), time_budget_seconds=47)
+    payload = dict(_stored_snapshot(conn).to_dict(), time_budget_seconds=47)
     payload.update({key: "Retired malformed value" for key in RETIRED_CONFIG_FIELDS})
     original_json = json.dumps(payload)
     legacy_key = "preset.legacy-explicit-budget"
@@ -69,7 +75,7 @@ def test_legacy_preset_keeps_budget_and_saved_rows_during_reads_and_restart(conf
     conn.commit()
     rows_before = [tuple(row) for row in conn.execute("SELECT * FROM ScheduleConfig ORDER BY config_key")]
     bootstrap_schedule_config(str(database))
-    assert build_schedule_config_snapshot(repo).time_budget_seconds == 75
+    assert _stored_snapshot(conn).time_budget_seconds == 75
     adapted = ensure_schedule_config_snapshot(json.loads(repo.get_value(legacy_key)), strict_mode=True)
     assert adapted.time_budget_seconds == 47 and not set(RETIRED_CONFIG_FIELDS) & set(adapted.to_dict())
     assert repo.get_value(legacy_key) == original_json
@@ -137,7 +143,7 @@ def test_demo_configuration_uses_registered_fields_and_one_batch_write(config_st
     monkeypatch.setattr(ConfigRepository, "set_batch", record_batch_write)
     _configure(database, values)
     assert len(writes) == 1 and {key for key, _value, _description in writes[0]} == set(values)
-    snapshot = build_schedule_config_snapshot(repo)
+    snapshot = _stored_snapshot(conn)
     assert snapshot.time_budget_seconds == values["time_budget_seconds"]
     assert snapshot.algo_mode == values["algo_mode"]
 

@@ -1,18 +1,17 @@
 """Snapshot-local indexes for immutable identities, locks, frozen arrangements and execution facts."""
 
 from datetime import date, datetime, time
-from types import SimpleNamespace
 
 from core.errors import ValidationError
 from core.models.workbench_trial import issue
-from core.services.scheduler.repository_bundle import build_schedule_repository_bundle
+from core.services.workbench.facts.stored_algo_inputs import stored_batch_operation
 from core.services.workbench.run.input_config import candidate_config, hold_window, window_label
 from core.services.workbench.run.input_runtime import HeldArrangements, held_arrangements
 
 from .materials import hold_settings
 
 
-def prepare_frozen_arrangements(conn, admission, rows, live, *, settings):
+def prepare_frozen_arrangements(admission, rows, live, *, settings):
     """正式采用时按来源排产的不重排时段原样保留的完整冻结输入。
 
     与试调采用复核同一口径：同一份排产输入（冻结从来源排产的起日起算）、同一份正式计划、
@@ -20,7 +19,7 @@ def prepare_frozen_arrangements(conn, admission, rows, live, *, settings):
     """
     version = live["baseline"]["version"]
     if version is None:
-        return HeldArrangements(set(), [], [], {})
+        return HeldArrangements(set(), [], {})
     anchor = hold_settings(admission, settings)
     facts = live["preflight_facts"]
     try:
@@ -28,15 +27,15 @@ def prepare_frozen_arrangements(conn, admission, rows, live, *, settings):
         cfg = candidate_config(settings, snapshot=config)
     except ValidationError:
         # 排产参数本身读不出来时，正式采用会直接拦下并说明是哪项参数；这里不替它判冻结。
-        return HeldArrangements(set(), [], [], {})
+        return HeldArrangements(set(), [], {})
     tables = live["facts"]["tables"]
     batch_ids = {row["original"]["batch"]["batch_id"] for row in rows}
-    operations = [SimpleNamespace(**op) for op in tables["BatchOperations"] if op["batch_id"] in batch_ids]
+    operations = [stored_batch_operation(op) for op in tables["BatchOperations"] if op["batch_id"] in batch_ids]
     moving = _rescheduled_ids(rows, live)
     return held_arrangements(
-        build_schedule_repository_bundle(conn), facts=facts, cfg=cfg, prev_version=version,
+        facts=facts, cfg=cfg, prev_version=version,
         start_dt=datetime.combine(date.fromisoformat(anchor["start_date"]), time.min),
-        operations=operations, reschedulable_operations=[op for op in operations if op.id in moving],
+        reschedulable_operations=[op for op in operations if op.id in moving],
         hold_window=hold_window(anchor, snapshot=config)[0])
 
 

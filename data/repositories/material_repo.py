@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from typing import Any, Dict
 
-from core.models import Material
+from core.models.material import Material
 
 from .base_repo import BaseRepository
 

@@ -1,5 +1,6 @@
 """Source diagnostics shared by confirmations, reads and batch replacement."""
 
+from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.resource_capabilities import supports_source
 
 SOURCE_MESSAGES = {
@@ -80,11 +81,11 @@ class TemplateSourceFacts:
 
     def issues(self, op, *, type_name, category):
         source, issues = op["source"], []
-        if source not in ("internal", "external"):
+        if source not in OPERATION_SOURCES:
             issues.append("source_missing")
         if type_name is None:
             issues.append("type_missing")
-        elif source in ("internal", "external") and not supports_source(category, source):
+        elif source in OPERATION_SOURCES and not supports_source(category, source):
             issues.append("type_source_mismatch")
         if source == "internal" and (op["supplier_id"] is not None or op["ext_group_id"] is not None):
             issues.append("internal_external_binding")

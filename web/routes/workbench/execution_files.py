@@ -1,6 +1,5 @@
 """Retained original bytes and read-only preflight; one atomic ledger command."""
 
-import json
 from io import BytesIO
 
 from flask import g, request, send_file
@@ -13,10 +12,12 @@ from core.services.workbench.execution.field_report_files import FieldReportFile
 from core.services.workbench.execution.field_report_files_codec import BYTE_LIMIT, MIME, decode_reports, encode_issues
 from core.services.workbench.execution.field_workspace import FieldWorkspaceService
 from core.services.workbench.execution.field_workspace_scope import normalize_scope
+from core.shared.strict_json import load_strict_json
 from web.api_responses import json_response, query_success
 from web.routes.workbench.api_responses import api_endpoint
 from web.routes.workbench.read_budget import PLAN_READ_SLOTS
 from web.routes.workbench.read_context import bind_read_snapshot, fact_value
+from web.routes.workbench.request_json import rejecter
 from web.routes.workbench.resource_action_context import read_endpoint, resolve_context, retain_context
 from web.routes.workbench.write_context import preview_write_context, validate_preview_confirmation
 
@@ -33,12 +34,8 @@ def field_file_preview():
     if request.args or request.mimetype != 'multipart/form-data' or set(request.files) != {'file'} or set(request.form) != {'scope', 'snapshot_ref'} or len(request.files.getlist('file')) != 1 or any(len(request.form.getlist(key)) != 1 for key in request.form):
         raise WorkbenchCommandRejected('invalid_input', '请先选择一个文件，并确认本页数据没有过期；报工还没有写入。请刷新页面后点「开始预检」。', 400)
     content = request.files['file'].read(BYTE_LIMIT + 1)
-    try:
-        scope = normalize_scope(json.loads(request.form['scope']))
-    except (ValueError, TypeError) as exc:
-        if isinstance(exc, WorkbenchCommandRejected):
-            raise
-        raise WorkbenchCommandRejected('invalid_input', '文件导入范围读不出来，报工还没有写入。请刷新页面后重新点「开始预检」。', 400) from exc
+    scope = normalize_scope(load_strict_json(request.form['scope'], on_malformed=rejecter(
+        '文件导入范围读不出来，报工还没有写入。请刷新页面后重新点「开始预检」。')))
     token = request.form['snapshot_ref']
     if not token:
         raise WorkbenchCommandRejected('snapshot_required', messages.STALE, 400)

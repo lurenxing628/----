@@ -21,42 +21,10 @@ def _reason_code_for_failure(policy: FieldPolicy, *, raw_value: Any) -> str:
     return str(policy.compat_reason_code or policy.strict_reason_code)
 
 
-def _unit_for_field(field: str) -> str:
-    if field == "ext_days":
-        return " 天"
-    if field in {"setup_hours", "unit_hours"}:
-        return " 小时"
-    if field in {"ortools_time_limit_seconds", "time_budget_seconds"}:
-        return " 秒"
-    return ""
-
-
-def _compat_message(code: str, *, field: str, field_label: str, fallback: Union[float, int]) -> str:
-    fallback_text = str(fallback)
-    fallback_with_unit = f"{fallback_text}{_unit_for_field(field)}"
-    if field in {"setup_hours", "unit_hours"}:
-        return f"{field_label}没有填或填得不对，本次先按 {fallback_with_unit} 继续排，请到批次工序或零件工序工时里补正。"
-    if field == "ext_days":
-        return f"{field_label}没有填或填得不对，本次先按 {fallback_with_unit} 继续排，请到批次工序或供应商/工艺资料里补正。"
-    if field in {
-        "priority_weight",
-        "due_weight",
-        "ready_weight",
-        "graph_critical_weight",
-        "graph_impact_weight",
-        "holiday_default_efficiency",
-        "freeze_window_days",
-        "ortools_time_limit_seconds",
-        "time_budget_seconds",
-    }:
-        return f"{field_label}填得不对，本次先按默认值 {fallback_with_unit} 继续，请到高级设置里重新保存。"
-    prefixes = {
-        "blank_required": f"{field_label}为空",
-        "invalid_number": f"{field_label}数值无效",
-        "freeze_seed_unavailable": f"{field_label}配置无效",
-    }
-    prefix = prefixes.get(code, f"{field_label}历史值无效")
-    return f"{prefix}，本次先按 {fallback_text} 处理，请检查后保存。"
+def _compat_message(*, field: str, field_label: str, fallback: Union[float, int]) -> str:
+    # 字段策略表只登记了高级设置里的数值配置，回退文案统一指回高级设置。
+    unit = " 秒" if field in {"ortools_time_limit_seconds", "time_budget_seconds"} else ""
+    return f"{field_label}填得不对，本次先按默认值 {fallback}{unit} 继续，请到高级设置里重新保存。"
 
 
 def recover_compat_number(
@@ -81,7 +49,7 @@ def recover_compat_number(
         code=code,
         scope=scope,
         field=field,
-        message=_compat_message(code, field=field, field_label=label, fallback=compat_value),
+        message=_compat_message(field=field, field_label=label, fallback=compat_value),
         sample=repr(value),
     )
     return compat_value

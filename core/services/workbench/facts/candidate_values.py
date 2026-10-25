@@ -1,37 +1,21 @@
 """Strict stored-value parsing and small public projections."""
 
-import json
 import math
 from typing import Any, NoReturn, Type
 
 from core.models.workbench_run_candidate import reject
+from core.shared.strict_json import load_strict_json
 
 
 def corrupt() -> NoReturn:
     reject("candidate_artifact_invalid", "这次排产保存的结果缺失或不一致，请到「排产记录」核对；仍有问题请联系维护人员。", 500)
 
 
-def _pairs(pairs):
-    result = dict(pairs)
-    if len(result) != len(pairs):
-        raise ValueError("Duplicate stored JSON key")
-    return result
-
-
-def _constant(value):
-    raise ValueError("Nonfinite stored JSON value")
-
-
 def stored_json(value, expected: Type[Any] = dict) -> Any:
+    # Stored documents are TEXT; a BLOB is as corrupt as unreadable JSON.
     if type(value) is not str:
         corrupt()
-    try:
-        data = json.loads(value, object_pairs_hook=_pairs, parse_constant=_constant)
-    except (ValueError, TypeError, RecursionError):
-        corrupt()
-    if type(data) is not expected:
-        corrupt()
-    return data
+    return load_strict_json(value, on_malformed=corrupt, expected=expected)
 
 
 def gap(field, code="not_recorded"):

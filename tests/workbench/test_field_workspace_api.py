@@ -133,7 +133,7 @@ def test_legacy_supplement_keeps_known_facts_through_correction(ledger_case):
     case.conn.execute("BEGIN")
     WorkbenchExecutionReportRepository(case.conn).append(damaged, request_key=request_key)
     case.conn.commit()
-    assert case.ledger.get_task(task["task_ref"]).known_completed_quantity == 10
+    assert case.task_projection(task["task_ref"]).known_completed_quantity == 10
     record = api.task()["execution"]["reports"][0]
     success(api.client.post(BASE + "/reports/" + record["report_ref"] + "/correct", json=api.body(
         record["write_context"], {"original_revision_ref": record["revision_ref"], "reason": "恢复已确认的原实际",
@@ -209,3 +209,13 @@ def test_report_and_task_contexts_locate_shared_operation_facts_once(field_api, 
     assert first.write_context['write_token'] == reopened.write_context['write_token']
     assert [row.write_context['write_token'] for row in first.reports] == [row.write_context['write_token'] for row in reopened.reports]
     record_property('shared_facts_equalities', SharedFacts.equalities)
+
+
+def test_file_preview_scope_rejects_duplicate_keys_and_non_finite_numbers(field_api):
+    for raw in ('{"query": "a", "query": "b"}', '{"query": NaN}', '{"query": Infinity}', '{"query": 1e999}', '{"query": '):
+        response = field_api.client.post(BASE + '/files/preview', data={
+            'file': (BytesIO(b'never parsed'), 'field.xlsx'), 'scope': raw, 'snapshot_ref': 'x'})
+        assert response.status_code == 400, response.get_data(as_text=True)
+        error = response.get_json()['error']
+        assert (error['code'], error['message']) == (
+            'invalid_input', '文件导入范围读不出来，报工还没有写入。请刷新页面后重新点「开始预检」。'), raw

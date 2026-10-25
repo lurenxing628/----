@@ -3,6 +3,7 @@
 import math
 import re
 
+from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.template_source import SOURCE_MESSAGES, external_group_issues
 
@@ -91,7 +92,7 @@ def project_operation(row, confirmation, source_facts, group):
     issues = []
     if type(row["seq"]) is not int or row["seq"] <= 0:
         issues.append(issue("sequence_invalid", "原工序号不合法，当前按原值展示；未自动改号。"))
-    source = row["source"] if row["source"] in ("internal", "external") else None
+    source = row["source"] if row["source"] in OPERATION_SOURCES else None
     source_codes = {"source_missing": "source_unknown", "type_missing": "op_type_unbound",
                     "type_source_mismatch": "source_category_mismatch"}
     for code in source_facts.issues(row, type_name=row["op_type_label"], category=row["op_type_category"]):

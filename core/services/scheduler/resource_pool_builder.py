@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, List
+from typing import List, Set
 
-from core.models import Machine
-from core.models.enums import MachineStatus, OperatorStatus, SourceType, YesNo
+from core.algorithm_contracts.types import OpForScheduleAlgo
+from core.algorithm_contracts.value_domains import INTERNAL
+from core.models.enums import MachineStatus, OperatorStatus, YesNo
+from core.models.machine import Machine
 from core.models.resource_capabilities import machine_types
 from core.services.common.normalization_matrix import skill_level_rank
 from core.services.personnel.operator_machine_normalizers import normalize_yes_no_stored
 from core.services.personnel.operator_qualification import (
-    OperatorQualificationError,
     OperatorQualificationService,
     require_machine_authorization,
 )
@@ -62,13 +63,13 @@ class CapturedResourceFacts:
         """Use the same authorization predicate as the editing/planning qualification service."""
         return (operator_id, machine_id) in self._authorized_pairs
 
-    def validate_fixed(self, conn, operations, logger=None):
+    def validate_fixed(self, conn, operations):
         selected = [op for op in operations if str(op.source or "").strip().lower() == "internal"
                     and op.operator_id]
         if not selected:
             return
         qualifications = self.qualifications_for(op.operator_id for op in selected)
-        service = OperatorQualificationService(conn, logger=logger)
+        service = OperatorQualificationService(conn)
         checked_pairs, checked_work_types = set(), set()
         for op in selected:
             pair = op.operator_id, op.machine_id
@@ -82,13 +83,9 @@ class CapturedResourceFacts:
                 checked_work_types.add(work_type)
 
 
-def _op_type_ids_for_ops(algo_ops: List[Any]) -> set:
-    return {
-        str(o.op_type_id or "").strip()
-        for o in algo_ops
-        if (o.source or "").strip().lower() == SourceType.INTERNAL.value
-        and str(o.op_type_id or "").strip()
-    }
+def _op_type_ids_for_ops(algo_ops: List[OpForScheduleAlgo]) -> Set[str]:
+    # 排产输入构建已把来源与工种编号规范成非空、无首尾空格的值。
+    return {o.op_type_id for o in algo_ops if o.source == INTERNAL}
 
 
 def _machines_by_op_type(machines, *, op_type_ids):
@@ -116,12 +113,12 @@ def _build_operator_machine_maps(rows):
     return ordered, machines_by_operator, pair_rank
 
 
-def _consumed_resource_links(resource_facts, algo_ops, machines_by_op_type, active_machines):
+def _consumed_resource_links(resource_facts, algo_ops: List[OpForScheduleAlgo], machines_by_op_type, active_machines):
     """A fixed pair consumes only itself; free fields consume their real candidate set."""
     open_types, fixed_machines, fixed_pairs = set(), set(), set()
     operators_by_type = defaultdict(set)
     for op in algo_ops:
-        if str(op.source or "").strip().lower() != "internal":
+        if op.source != INTERNAL:
             continue
         mid, oid = op.machine_id, op.operator_id
         op_type = op.op_type_id
@@ -148,53 +145,41 @@ def _consumed_resource_links(resource_facts, algo_ops, machines_by_op_type, acti
 
 
 def _machine_ids_for_downtime_load(algo_ops):
-    return sorted({str(op.machine_id) for op in algo_ops
-                   if (op.source or "").strip().lower() == SourceType.INTERNAL.value
-                   and str(op.machine_id or "").strip()})
+    return sorted({op.machine_id for op in algo_ops if op.source == INTERNAL and op.machine_id is not None})
 
 
-def load_machine_downtimes(*, algo_ops, start_dt, downtimes, meta=None):
+def load_machine_downtimes(*, algo_ops, start_dt, downtimes):
     """Select relevant intervals from the capture's already checked, grouped downtime."""
-    if meta is not None:
-        meta["downtime_load_ok"] = True
     return {mid: [(start, end) for start, end in downtimes.get(mid, ()) if end > start_dt]
             for mid in _machine_ids_for_downtime_load(algo_ops)}
 
 
-def build_resource_pool(*, cfg, algo_ops, resource_facts, meta=None):
+def build_resource_pool(*, cfg, algo_ops: List[OpForScheduleAlgo], resource_facts, meta=None):
     """Build automatic assignment inputs from this operation's captured resources."""
     if meta is not None:
-        meta.update(resource_pool_attempted=False, resource_pool_build_ok=None)
+        meta["resource_pool_attempted"] = False
     if to_yes_no(cfg.auto_assign_enabled, default=YesNo.NO.value) != YesNo.YES.value:
         return None
     if meta is not None:
         meta["resource_pool_attempted"] = True
-    try:
-        op_type_ids = _op_type_ids_for_ops(algo_ops)
-        machines_by_op_type = _machines_by_op_type(resource_facts.machines, op_type_ids=op_type_ids)
-        relevant_machines = {mid for mids in machines_by_op_type.values() for mid in mids}
-        relevant_machines.update(str(op.machine_id) for op in algo_ops
-                                 if str(op.source or "").strip().lower() == "internal"
-                                 and str(op.machine_id or "").strip())
-        machines = [machine for machine in resource_facts.machines if machine.machine_id in relevant_machines]
-        active_machines = {machine.machine_id for machine in machines}
-        rows = _consumed_resource_links(resource_facts, algo_ops, machines_by_op_type, active_machines)
-        consumed_ops = {row["operator_id"] for row in rows}
-        qualifications = resource_facts.qualifications_for(consumed_ops)
-        rows = OperatorQualificationService.eligible_links(rows, machines, algo_ops, qualifications=qualifications)
-        operators_by_machine, machines_by_operator, pair_rank = _build_operator_machine_maps(rows)
-        pool = {"machines_by_op_type": machines_by_op_type, "operators_by_machine": operators_by_machine,
-                "machines_by_operator": machines_by_operator, "pair_rank": pair_rank}
-        if any(len(machine_types(machine)) > 1 for machine in machines):
-            pool["operator_skills"] = {oid: sorted(skills) if skills is not None else None
-                                       for oid, skills in qualifications.items()}
-        if meta is not None:
-            meta["resource_pool_build_ok"] = True
-        return pool
-    except OperatorQualificationError:
-        if meta is not None:
-            meta["resource_pool_build_ok"] = False
-        raise
+    op_type_ids = _op_type_ids_for_ops(algo_ops)
+    machines_by_op_type = _machines_by_op_type(resource_facts.machines, op_type_ids=op_type_ids)
+    relevant_machines = {mid for mids in machines_by_op_type.values() for mid in mids}
+    relevant_machines.update(op.machine_id for op in algo_ops
+                             if op.source == INTERNAL and op.machine_id is not None)
+    machines = [machine for machine in resource_facts.machines if machine.machine_id in relevant_machines]
+    active_machines = {machine.machine_id for machine in machines}
+    rows = _consumed_resource_links(resource_facts, algo_ops, machines_by_op_type, active_machines)
+    consumed_ops = {row["operator_id"] for row in rows}
+    qualifications = resource_facts.qualifications_for(consumed_ops)
+    rows = OperatorQualificationService.eligible_links(rows, machines, algo_ops, qualifications=qualifications)
+    operators_by_machine, machines_by_operator, pair_rank = _build_operator_machine_maps(rows)
+    pool = {"machines_by_op_type": machines_by_op_type, "operators_by_machine": operators_by_machine,
+            "machines_by_operator": machines_by_operator, "pair_rank": pair_rank}
+    if any(len(machine_types(machine)) > 1 for machine in machines):
+        pool["operator_skills"] = {oid: sorted(skills) if skills is not None else None
+                                   for oid, skills in qualifications.items()}
+    return pool
 
 
 def extend_downtime_map_for_resource_pool(*, cfg, resource_pool, downtime_map, start_dt, downtimes, meta=None):
@@ -202,7 +187,7 @@ def extend_downtime_map_for_resource_pool(*, cfg, resource_pool, downtime_map, s
     if to_yes_no(cfg.auto_assign_enabled, default=YesNo.NO.value) != YesNo.YES.value or not resource_pool:
         return downtime_map
     if meta is not None:
-        meta.update(downtime_extend_attempted=True, downtime_extend_ok=True)
+        meta["downtime_extend_attempted"] = True
     for mid in resource_pool["operators_by_machine"]:
         if mid not in downtime_map:
             downtime_map[mid] = [(start, end) for start, end in downtimes.get(mid, ()) if end > start_dt]

@@ -1,13 +1,13 @@
 """Verify saved scenario lineage; source draft supplies only immutable raw work."""
 
 from datetime import datetime
-from types import SimpleNamespace
 from typing import NoReturn
 
 from core.infrastructure.read_evidence import verified_read
 from core.models.content import same
 from core.models.workbench_trial import MAX_TRIAL_TASKS, reference
 from core.models.workbench_trial_adoption import TrialAdoptionBlocked
+from core.services.scheduler.run.schedule_payload_contract import ValidatedScheduleRow
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_trial_repo import WorkbenchTrialRepository
 
@@ -129,9 +129,9 @@ def _require_links(tasks, rows):
 
 
 def schedule_rows(rows):
-    return [SimpleNamespace(op_id=row["original"]["operation"]["id"],
+    """归档场景的安排，按候选采用同一种排程行交给写库前守卫。"""
+    return [ValidatedScheduleRow(op_id=row["original"]["operation"]["id"],
                 source=row["original"]["operation"]["source"],
                 machine_id=row["current"]["machine_id"], operator_id=row["current"]["operator_id"],
                 start_time=datetime.fromisoformat(row["current"]["start"]),
-                end_time=datetime.fromisoformat(row["current"]["end"]),
-                operation_effort=row["current"].get("operation_effort")) for row in rows]
+                end_time=datetime.fromisoformat(row["current"]["end"])) for row in rows]

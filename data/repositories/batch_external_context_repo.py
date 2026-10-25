@@ -11,9 +11,6 @@ class BatchExternalContextRepository(BaseRepository):
     def available(self):
         return self.fetchone("SELECT 1 FROM sqlite_master WHERE type='table' AND name='BatchExternalContexts'") is not None
 
-    def get(self, operation_id):
-        return self.fetchone("SELECT * FROM BatchExternalContexts WHERE operation_id=?", (operation_id,))
-
     def for_operations(self, operation_ids):
         ids = sorted(set(operation_ids))
         if not ids:
@@ -29,13 +26,6 @@ class BatchExternalContextRepository(BaseRepository):
             rows.extend(self.fetchall("SELECT * FROM BatchExternalContexts WHERE operation_id IN ("
                                       + ",".join("?" for _ in group) + ") ORDER BY operation_id", group))
         return rows
-
-    def group_members(self, batch_id, group_ref, piece_id):
-        return self.fetchall("""SELECT c.*,o.seq AS current_sequence,o.source AS current_source,
-            o.supplier_id AS current_supplier_id FROM BatchExternalContexts c
-            JOIN BatchOperations o ON o.id=c.operation_id
-            WHERE o.batch_id=? AND c.group_ref=? AND o.piece_id IS ? ORDER BY o.seq,o.id""",
-            (batch_id, group_ref, piece_id))
 
     def mark_template_copy(self, operation_id):
         return self.execute("UPDATE BatchExternalContexts SET origin='template_copy' WHERE operation_id=?", (operation_id,)).rowcount

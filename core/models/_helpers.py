@@ -8,17 +8,6 @@ from typing import Any, Dict, Optional, Union
 RowLike = Union[sqlite3.Row, Dict[str, Any]]
 
 
-def get(row: Optional[RowLike], key: str, default: Any = None) -> Any:
-    if row is None:
-        return default
-    if isinstance(row, dict):
-        return row.get(key, default)
-    try:
-        return row[key]
-    except (KeyError, IndexError):
-        return default
-
-
 def parse_int(value: Any, default: Optional[int] = None) -> Optional[int]:
     """
     折中安全的 int 解析：
@@ -58,55 +47,37 @@ def parse_int(value: Any, default: Optional[int] = None) -> Optional[int]:
         return default
 
 
-def parse_float(value: Any, default: Optional[float] = None) -> Optional[float]:
+def parse_float(value: Any) -> Optional[float]:
     """
     折中安全的 float 解析：
     - 支持 '1'/'1.5'/1/1.5
-    - 非法值（如 'N/A'）回落 default/None，不抛异常
+    - 非法值（如 'N/A'）返回 None，不抛异常
     """
     if value is None:
-        return default
+        return None
     if isinstance(value, bool):
-        return default
+        return None
     try:
         if isinstance(value, (bytes, bytearray)):
             value = value.decode("utf-8", errors="ignore")
         if isinstance(value, str):
             s = value.strip()
             if s == "":
-                return default
+                return None
             f = float(s)
         else:
             f = float(value)
         if not math.isfinite(f):
-            return default
+            return None
         return f
     except (UnicodeDecodeError, TypeError, ValueError, OverflowError):
-        return default
-
-
-def parse_int_or_default(value: Any, default: int, *, field: str) -> int:
-    if value is None or (isinstance(value, str) and not value.strip()):
-        return int(default)
-    parsed = parse_int(value, default=None)
-    if parsed is None:
-        raise ValueError(f"{field} 必须是整数，当前值无法读取：{value!r}")
-    return parsed
+        return None
 
 
 def parse_float_or_default(value: Any, default: float, *, field: str) -> float:
     if value is None or (isinstance(value, str) and not value.strip()):
         return float(default)
-    parsed = parse_float(value, default=None)
-    if parsed is None:
-        raise ValueError(f"{field} 必须是数字，当前值无法读取：{value!r}")
-    return parsed
-
-
-def parse_optional_float(value: Any, *, field: str) -> Optional[float]:
-    if value is None or (isinstance(value, str) and not value.strip()):
-        return None
-    parsed = parse_float(value, default=None)
+    parsed = parse_float(value)
     if parsed is None:
         raise ValueError(f"{field} 必须是数字，当前值无法读取：{value!r}")
     return parsed

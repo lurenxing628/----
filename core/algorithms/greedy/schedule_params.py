@@ -88,15 +88,15 @@ def _require_strategy_params_dict(strategy_params: Optional[Dict[str, Any]]) -> 
 
 
 def _config_default_for(key: str) -> Any:
-    from core.models.schedule_config_runtime import default_for
+    from core.models.schedule_config_runtime_fields import default_for
 
     return default_for(key)
 
 
-def _build_runtime_snapshot(config: Any, *, strict_mode: bool) -> Any:
+def _build_runtime_snapshot(config: Any, *, strict_mode: bool) -> ScheduleConfigSnapshot:
     if isinstance(config, ScheduleConfigSnapshot):
         return config
-    from core.models.schedule_config_runtime import ensure_schedule_config_snapshot
+    from core.models.schedule_config_runtime_coercion import ensure_schedule_config_snapshot
 
     return ensure_schedule_config_snapshot(
         config,
@@ -106,7 +106,8 @@ def _build_runtime_snapshot(config: Any, *, strict_mode: bool) -> Any:
 
 
 def _validate_runtime_field(config: Any, field: str) -> None:
-    from core.models.schedule_config_runtime import MISSING_POLICY_ERROR, coerce_runtime_config_field
+    from core.models.schedule_config_runtime_coercion import coerce_runtime_config_field
+    from core.models.schedule_config_runtime_fields import MISSING_POLICY_ERROR
 
     coerce_runtime_config_field(
         config,
@@ -119,11 +120,9 @@ def _validate_runtime_field(config: Any, field: str) -> None:
 
 
 def _validate_runtime_weight_triplet(config: Any) -> Tuple[float, float, float]:
-    from core.models.schedule_config_runtime import (
-        MISSING_POLICY_ERROR,
-        coerce_runtime_config_field,
-        normalize_weight_triplet,
-    )
+    from core.models.schedule_config_runtime_coercion import coerce_runtime_config_field
+    from core.models.schedule_config_runtime_fields import MISSING_POLICY_ERROR
+    from core.models.schedule_config_runtime_weights import normalize_weight_triplet
 
     values = {
         field: coerce_runtime_config_field(
@@ -388,10 +387,8 @@ def resolve_schedule_params(
                     "构建运行期配置快照失败，请检查排产参数配置。",
                     field="config_snapshot",
                 ) from exc
-            for event in getattr(runtime_snapshot, "degradation_events", ()) or ():
-                if isinstance(event, dict):
-                    event_field = str(event.get("field") or "").strip()
-                    events_by_field.setdefault(event_field, []).append(event)
+            for event in runtime_snapshot.degradation_events:
+                events_by_field.setdefault(event["field"], []).append(event)
         return runtime_snapshot
 
     def _record_snapshot_degradations(field: str, *, counter_key: str) -> None:

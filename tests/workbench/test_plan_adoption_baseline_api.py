@@ -106,3 +106,23 @@ def test_formal_supplier_identity_and_baseline_resource_names_follow_their_adopt
     assert directory[case.ref("supplier", "XS2")]["label"] == "Second supplier"
     assert case.ref("supplier", "XS3") not in directory
     assert run_probe(tmp_path, [old, current])["checks"] == 2
+
+
+@pytest.mark.parametrize("raw,gap", [
+    ('{"source":"a","source":"b"}', "duplicate_json_key"), ('{"row_count":NaN}', "nonfinite_json_number"),
+    ('{"row_count":-Infinity}', "nonfinite_json_number"), ('{"row_count":1e999}', "nonfinite_json_number"),
+    ('{', "invalid_stored_json"), ('[]', "json_object"), (b'{}', "json_storage_type"),
+])
+def test_stored_adoption_evidence_names_each_unreadable_json_gap(raw, gap):
+    with pytest.raises(values.AdoptionBaselineUnavailable) as error:
+        values.stored(raw)
+    assert (error.value.code, error.value.gap) == ("adoption_snapshot_invalid", gap)
+
+
+def test_stored_adoption_evidence_over_64_mb_is_a_query_too_large_rejection():
+    from core.models.workbench_command import WorkbenchCommandRejected
+
+    with pytest.raises(WorkbenchCommandRejected) as error:
+        values.stored("x" * (64 * 1024 * 1024 + 1))
+    assert (error.value.code, error.value.status, str(error.value)) == (
+        "query_too_large", 413, "完整采用凭据超过 64 MB 上限。请缩小查询范围后重试。")

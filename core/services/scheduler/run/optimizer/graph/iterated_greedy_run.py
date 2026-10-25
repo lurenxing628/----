@@ -44,7 +44,7 @@ class IteratedGreedyRun:
         self.strict_mode = strict_mode
         self.report = new_iterated_greedy_report(limits, objective_name=objective_name)
         self.search: Optional[_IteratedGreedySearch] = None
-        self.stopped = not limits.enabled
+        self.stopped = False
         self.started_at: Optional[float] = None
         self.last_task_end: Optional[float] = None
         self.task_seconds = 0.0
@@ -141,7 +141,7 @@ class IteratedGreedyRun:
             if report["stop_reason"] is None:
                 report["stop_reason"] = "time_budget" if self.clock() >= self.deadline else "rotation_ended"
             self.search._finish_report()
-        elif self.limits.enabled and report["status"] == "not_run":
+        elif report["status"] == "not_run":
             if self.clock() >= self.deadline:
                 report["status"], report["stop_reason"] = "skipped_by_budget", "time_budget"
             elif self.state.best is None:

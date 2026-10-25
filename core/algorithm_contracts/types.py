@@ -8,6 +8,32 @@ from .value_domains import INTERNAL
 
 
 @dataclass
+class OpForScheduleAlgo:
+    """算法输入工序：排产输入构建一次生成规范值，算法与优化器直接读字段。"""
+
+    id: int
+    op_code: str
+    batch_id: str
+    piece_id: Optional[str]
+    seq: int
+    op_type_id: str
+    op_type_name: str
+    source: str
+    machine_id: Optional[str]
+    operator_id: Optional[str]
+    supplier_id: Optional[str]
+    setup_hours: float
+    unit_hours: float
+    ext_days: Optional[float]
+    # 外部组信息（来自 PartOperations + ExternalGroups）
+    ext_group_id: Optional[str]
+    ext_merge_mode: Optional[str]
+    ext_group_total_days: Optional[float]
+
+    material_ready_date: Optional[str] = None
+
+
+@dataclass
 class ScheduleResult:
     """单道工序排程结果（供落库与追溯使用）。"""
 

@@ -1,7 +1,7 @@
 """Strict CSV/XLSX decoding; blank cells omit, escaped nulls remain explicit."""
 
-import json
 import re
+from typing import NoReturn
 
 from core.errors import ValidationError
 from core.models.workbench_resource_file import (
@@ -17,6 +17,7 @@ from core.models.workbench_resource_file import (
 )
 from core.models.workbench_table_descriptor import extra_sheet_notice
 from core.services.workbench.facts.file_source import source_rows
+from core.shared.strict_json import load_strict_json
 
 from .file_lists import decode_code_list
 
@@ -75,23 +76,14 @@ def _decode_field(value, field):
     return value
 
 
-def _unique_pairs(pairs):
-    value = {}
-    for key, item in pairs:
-        if key in value:
-            raise ValueError("duplicate JSON key")
-        value[key] = item
-    return value
-
-
 def _decode_json(value, field):
+    def malformed() -> NoReturn:
+        raise ValidationError("这个格子里的 JSON 写得不对或者有重复的键，没有导入。多个编号请按 [\"A\",\"B\"] 这样填，不要只用逗号隔开。", field=field)
+
+    # XLSX cells may hold numbers or dates; only text cells can carry JSON.
     if type(value) is not str:
         raise ValidationError("这个格子要填 JSON 文本，没有导入。多个编号请按 [\"A\",\"B\"] 这样填。", field=field)
-    try:
-        value = json.loads(value, object_pairs_hook=_unique_pairs,
-                           parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite")))
-    except (ValueError, TypeError) as exc:
-        raise ValidationError("这个格子里的 JSON 写得不对或者有重复的键，没有导入。多个编号请按 [\"A\",\"B\"] 这样填，不要只用逗号隔开。", field=field) from exc
+    value = load_strict_json(value, on_malformed=malformed)
     if field in MULTI_CODES:
         if type(value) is not list or any(type(code) is not str for code in value):
             raise ValidationError("这个格子要填一组用引号括起来的编号，没有导入。请按 [\"A\",\"B\"] 这样填。", field=field)

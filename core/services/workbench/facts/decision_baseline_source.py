@@ -198,9 +198,9 @@ def _decision_baseline_source_resolver(conn, *, candidate_provider):
 
     def resolve(*, plan_ref, version, history):
         key = ("decision_baseline_source", plan_ref, version, history.get("version"), history.get("result_summary"))
-        return verified_read(conn, key, lambda: load(plan_ref=plan_ref, version=version, history=history))
+        return verified_read(conn, key, lambda: load(version=version, history=history))
 
-    def load(*, plan_ref, version, history):
+    def load(*, version, history):
         parsed = parse_result_summary_payload(history.get("result_summary"))
         audit = parsed.payload
         if parsed.parse_failed:

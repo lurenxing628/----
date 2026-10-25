@@ -1,5 +1,6 @@
 """Route checks retain the current workflow's zero/unknown and merged-group rules."""
 
+from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.services.process.template_source import SOURCE_MESSAGES, TemplateSourceFacts
 
 from .overview_graph import number, text
@@ -106,7 +107,7 @@ def _operation(graph, route, op, ref, groups, state, sources):
     def issue(rule, title, evidence, stage="source"):
         graph.issue(route, rule, title, prefix + "；" + evidence, stage=stage, operation_ref=ref)
     graph.field(route, prefix + "归属", {"internal": "自制", "external": "外协"}.get(source, source),
-                "PartOperations.source", valid=source in ("internal", "external"))
+                "PartOperations.source", valid=source in OPERATION_SOURCES)
     graph.related(route, "opType", op["op_type_id"], "工序使用工种", "PartOperations.op_type_id", "使用它的路线", required=True, operation_ref=ref, stage="source")
     if sources is None:
         graph.unknown(route, prefix + "归属诊断", "PartOperations / ExternalGroups / Suppliers / WorkbenchSupplierProfiles")

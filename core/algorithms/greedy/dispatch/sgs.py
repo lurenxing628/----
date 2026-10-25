@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 from core.algorithm_contracts.dispatch_rules import (
     DispatchRule,
@@ -28,12 +28,10 @@ from .sgs_graph import (
     _collect_candidates,
     _ensure_graph_ready_complete,
     _prepare_graph_ready_state,
-    graph_op_id,
 )
 from .sgs_priority_frontier import score_next_ready
 from .sgs_priority_pruning import GraphPriorityPruning
 from .sgs_scoring import (
-    _positive_op_id,
     _score_external_candidate,
     native_scoring_unchanged,
     with_graph_priority_key,
@@ -41,6 +39,12 @@ from .sgs_scoring import (
 from .sgs_scoring import (
     _score_internal_candidate as _score_internal_candidate_impl,
 )
+
+if TYPE_CHECKING:
+    from core.algorithm_contracts.types import OpForScheduleAlgo
+    from core.models.batch import Batch
+
+ScoredCandidate = Tuple[Tuple[float, ...], str, "OpForScheduleAlgo"]
 
 _NATIVE_DISPATCH_SELECTED = _dispatch_selected
 
@@ -53,7 +57,7 @@ def _score_internal_candidate(**kwargs: Any) -> Tuple[float, ...]:
     )
 
 
-def _pick_best_candidate(scored_candidates: List[Tuple[Tuple[float, ...], str, Any]]) -> Tuple[str, Any]:
+def _pick_best_candidate(scored_candidates: List[ScoredCandidate]) -> Tuple[str, OpForScheduleAlgo]:
     if not scored_candidates:
         raise RuntimeError("SGS 评分阶段未产生任何候选")
     _best_key, best_batch_id, best_op = min(scored_candidates, key=lambda item: item[0])
@@ -63,8 +67,8 @@ def _pick_best_candidate(scored_candidates: List[Tuple[Tuple[float, ...], str, A
 def dispatch_sgs(
     context: Any,
     *,
-    sorted_ops: List[Any],
-    batches: Dict[str, Any],
+    sorted_ops: List[OpForScheduleAlgo],
+    batches: Dict[str, Batch],
     batch_order: Dict[str, int],
     dispatch_rule: Union[DispatchRule, DispatchRuleSpec],
     end_dt_exclusive: Optional[datetime],
@@ -112,11 +116,13 @@ def dispatch_sgs(
     return state.scheduled_count, state.failed_count
 
 
-def _group_sgs_ops(*, sorted_ops: List[Any], batches: Dict[str, Any], state: ScheduleRunState) -> Dict[str, List[Any]]:
+def _group_sgs_ops(
+    *, sorted_ops: List[OpForScheduleAlgo], batches: Dict[str, Batch], state: ScheduleRunState,
+) -> Dict[str, List[OpForScheduleAlgo]]:
     """Group the operation_sort_key order supplied by the native scheduler."""
-    grouped: Dict[str, List[Any]] = {}
+    grouped: Dict[str, List[OpForScheduleAlgo]] = {}
     for op in sorted_ops:
-        batch_id = str(getattr(op, "batch_id", "") or "").strip()
+        batch_id = op.batch_id
         if batch_id not in batches:
             state.record_missing_batch(op, batch_id)
             continue
@@ -127,32 +133,34 @@ def _group_sgs_ops(*, sorted_ops: List[Any], batches: Dict[str, Any], state: Sch
 def _average_proc_hours(
     ctx: Any,
     *,
-    ops_by_batch: Dict[str, List[Any]],
-    batches: Dict[str, Any],
+    ops_by_batch: Dict[str, List[OpForScheduleAlgo]],
+    batches: Dict[str, Batch],
     strict_mode: bool,
 ) -> Tuple[float, Dict[int, float]]:
     samples: List[float] = []
     preparation = ctx.native_preparation
     total_hours_by_op_id: Dict[int, float] = preparation.total_hours_by_op_id if preparation is not None else {}
+    # _group_sgs_ops only keeps batches that exist, so every grouped batch id resolves.
     for batch_id, operations in ops_by_batch.items():
-        batch = batches.get(batch_id)
+        batch = batches[batch_id]
         for op in operations:
-            if batch and (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() == INTERNAL:
-                op_id = _positive_op_id(getattr(op, "id", 0))
-                cached = total_hours_by_op_id.get(op_id) if op_id is not None else None
+            if op.source == INTERNAL:
+                cached = total_hours_by_op_id.get(op.id)
                 if cached is not None:
                     samples.append(cached)
                 else:
                     sample = _append_proc_sample(ctx, samples, op=op, batch=batch, strict_mode=strict_mode)
-                    if sample is not None and op_id is not None:
-                        total_hours_by_op_id[op_id] = sample
+                    if sample is not None:
+                        total_hours_by_op_id[op.id] = sample
     if samples:
         return sum(samples) / len(samples), total_hours_by_op_id
     ctx.increment("dispatch_key_avg_proc_hours_fallback_count")
     return 1.0, total_hours_by_op_id
 
 
-def _append_proc_sample(ctx: Any, samples: List[float], *, op: Any, batch: Any, strict_mode: bool) -> Optional[float]:
+def _append_proc_sample(
+    ctx: Any, samples: List[float], *, op: OpForScheduleAlgo, batch: Batch, strict_mode: bool,
+) -> Optional[float]:
     try:
         sample = validate_internal_hours_for_mode(op, resolve_operation_batch(ctx, op, batch), strict_mode=strict_mode)
     except ValueError:
@@ -166,10 +174,10 @@ def _append_proc_sample(ctx: Any, samples: List[float], *, op: Any, batch: Any, 
 def _run_sgs_loop(
     ctx: Any,
     state: ScheduleRunState,
-    ops_by_batch: Dict[str, List[Any]],
+    ops_by_batch: Dict[str, List[OpForScheduleAlgo]],
     batch_ids: List[str],
     next_idx: Dict[str, int],
-    batches: Dict[str, Any],
+    batches: Dict[str, Batch],
     batch_order: Dict[str, int],
     dispatch_rule: DispatchRuleSpec,
     end_dt_exclusive: Optional[datetime],
@@ -246,7 +254,7 @@ def _run_sgs_loop(
                 graph_state=graph_state,
             )
             position += 1
-            if acceleration.record(graph_op_id(op), position, state=state, next_idx=next_idx, graph=graph_state,
+            if acceleration.record(op.id, position, state=state, next_idx=next_idx, graph=graph_state,
                                    native_dispatch=_dispatch_selected is _NATIVE_DISPATCH_SELECTED):
                 _complete_reused_tail(graph_state, ops_by_batch=ops_by_batch, blocked_batches=state.blocked_batches)
                 return
@@ -254,7 +262,7 @@ def _run_sgs_loop(
                 score_cache.forget(op)
 
 
-def _complete_reused_tail(graph_state: Optional[Dict[str, Any]], *, ops_by_batch: Dict[str, List[Any]],
+def _complete_reused_tail(graph_state: Optional[Dict[str, Any]], *, ops_by_batch: Dict[str, List[OpForScheduleAlgo]],
                           blocked_batches: set) -> None:
     """A reused tail only exists in graph-mode decoding, so a missing graph state means the guard chain broke."""
     if graph_state is None:
@@ -279,8 +287,8 @@ def _prepare_scoring_round(ctx, priority_pruning):
 def _score_candidates(
     ctx: Any,
     state: ScheduleRunState,
-    candidates: List[Tuple[str, Any]],
-    batches: Dict[str, Any],
+    candidates: List[Tuple[str, OpForScheduleAlgo]],
+    batches: Dict[str, Batch],
     batch_order: Dict[str, int],
     dispatch_rule: DispatchRuleSpec,
     end_dt_exclusive: Optional[datetime],
@@ -293,7 +301,7 @@ def _score_candidates(
     graph_state: Optional[Dict[str, Any]],
     *,
     priority_pruning: Optional[GraphPriorityPruning] = None,
-) -> List[Tuple[Tuple[float, ...], str, Any]]:
+) -> List[ScoredCandidate]:
     cache, priority_pruning = _prepare_scoring_round(ctx, priority_pruning)
     candidates, remainder = (priority_pruning.partition(candidates, graph_state)
                              if priority_pruning is not None else (candidates, []))
@@ -334,7 +342,7 @@ def _score_candidates(
     return scored
 
 
-def resolve_operation_batch(ctx: Any, op: Any, batch: Any) -> Any:
+def resolve_operation_batch(ctx: Any, op: OpForScheduleAlgo, batch: Batch) -> Batch:
     preparation = ctx.native_preparation
     return preparation.operation_batch(op, batch) if preparation is not None else operation_batch(op, batch)
 
@@ -342,8 +350,8 @@ def resolve_operation_batch(ctx: Any, op: Any, batch: Any) -> Any:
 def _score_candidate(
     ctx: Any,
     state: ScheduleRunState,
-    op: Any,
-    batch: Any,
+    op: OpForScheduleAlgo,
+    batch: Batch,
     batch_id: str,
     batch_order: Dict[str, int],
     dispatch_rule: DispatchRuleSpec,
@@ -360,7 +368,7 @@ def _score_candidate(
     state = operation_dispatch_state(state, graph_state, op, batch)
     batch = resolve_operation_batch(ctx, op, batch)
     def score() -> Tuple[float, ...]:
-        if (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() == EXTERNAL:
+        if op.source == EXTERNAL:
             return _score_external_candidate(
                 ctx=ctx,
                 state=state,
@@ -395,7 +403,7 @@ def _score_candidate(
     base_key = score()
     if graph_state is None or not graph_state["score_enabled"]:
         return base_key
-    op_id = graph_op_id(op)
+    op_id = op.id
     graph_key = graph_state["graph_priority_key_by_op_id"].get(op_id)
     if graph_key is None:
         raise ValidationError(f"图评分上下文缺少待排工序 {op_id} 的评分 key。", field="graph_ready_context")

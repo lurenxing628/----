@@ -3,7 +3,6 @@
 from typing import Any, Dict, Optional, Tuple
 
 from core.errors import ValidationError
-from core.models.workbench_action_values import FileDownload
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_table_descriptor import (
     DEFAULT_IMPORT_BYTE_LIMIT,
@@ -148,9 +147,6 @@ def table_descriptor(kind: str) -> Dict[str, Any]:
         "byte_limit": DEFAULT_IMPORT_BYTE_LIMIT,
         "modes": UPSERT_ONLY,
     }
-
-
-RelationFileDownload = FileDownload
 
 
 #: 预检响应里的那段提示，和说明表的通用规则同一份来源。

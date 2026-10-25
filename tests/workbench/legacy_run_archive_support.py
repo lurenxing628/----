@@ -11,8 +11,8 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
-from core.algorithms import GreedyScheduler
 from core.algorithms.evaluation import compute_metrics
+from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.models.objective import best_score_schema
 from core.services.scheduler.run.schedule_candidate_plan import CandidateComparisonOutcome
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison

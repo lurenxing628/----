@@ -262,3 +262,13 @@ def candidate_process(row, rows):
         "progress": {"mode": "curve" if evidence and available and points else "discrete" if points else "none", "points": points,
             "source_candidate_ref": source_ref, "sampling": sampling, "coverage": coverage},
         "stages": _stages(evidence, report), "attempts": attempts}
+
+
+def index_saved_processes(saved, rows):
+    """Saved per-candidate processes keyed by candidate ref; a stored archive must cover exactly these rows."""
+    if saved is None or saved.get("version") != PROCESS_VERSION:
+        corrupt()
+    projected = {row["candidate"]["candidate_ref"]: row for row in saved["candidates"]}
+    if len(projected) != len(saved["candidates"]) or set(projected) != {row["candidate_ref"] for row in rows}:
+        corrupt()
+    return projected

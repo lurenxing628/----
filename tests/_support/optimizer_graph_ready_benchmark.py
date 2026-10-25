@@ -4,12 +4,15 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.algorithm_runtime.checkpoint_calendar import register_stateless_checkpoint_calendar
-from core.algorithms import GreedyScheduler
-from core.models.schedule_config_runtime import default_snapshot_values
+from core.algorithm_contracts.types import OpForScheduleAlgo
+from core.algorithm_runtime.checkpoint_calendar import register_checkpoint_calendar
+from core.algorithms.greedy.scheduler import GreedyScheduler
+from core.models.batch import Batch
+from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.services.scheduler.graph.metrics import build_node_metrics
 from core.services.scheduler.graph.precedence_builder import build_precedence_graph
 from core.services.scheduler.graph.types import OperationGraphNode
+from tests._support.algo_operations import make_algo_op, make_batch
 
 GRAPH_READY_FLEXIBLE_MACHINE_CASE_SLUG = "graph-ready-flexible-machine-bottleneck-metric"
 GRAPH_READY_FLEXIBLE_MACHINE_CASE_GROUP = "graph_ready_metric"
@@ -48,8 +51,8 @@ class ContinuousCalendar:
     ) -> datetime:
         return dt + timedelta(hours=float(hours))
 
-    def get_efficiency(self, dt: datetime, machine_id: Any = None, operator_id: Any = None) -> float:
-        return 1.0
+    def add_effective_hours(self, dt: datetime, hours: float, priority: Any = None, operator_id: Any = None) -> datetime:
+        return self.add_working_hours(dt, hours)  # constant efficiency 1.0
 
     def add_calendar_days(self, dt: datetime, days: float, machine_id: Any = None, operator_id: Any = None) -> datetime:
         return dt + timedelta(days=float(days))
@@ -75,10 +78,11 @@ class ContinuousCalendar:
         return (end - start).total_seconds() / 3600.0
 
 
-register_stateless_checkpoint_calendar(ContinuousCalendar)
+# A continuous calendar is checkpoint-reusable only while its class and empty instance state are intact.
+register_checkpoint_calendar(ContinuousCalendar, lambda calendar: () if not vars(calendar) else None)
 
 
-def graph_ready_benchmark_operations() -> List[Any]:
+def graph_ready_benchmark_operations() -> List[OpForScheduleAlgo]:
     return [
         _operation(1, "B_LONG", hours=12.0),
         _operation(2, "B_MED", hours=8.0),
@@ -87,16 +91,9 @@ def graph_ready_benchmark_operations() -> List[Any]:
     ]
 
 
-def graph_ready_benchmark_batches() -> Dict[str, Any]:
+def graph_ready_benchmark_batches() -> Dict[str, Batch]:
     return {
-        batch_id: SimpleNamespace(
-            batch_id=batch_id,
-            priority="normal",
-            due_date="2026-01-01",
-            ready_status="yes",
-            ready_date=None,
-            quantity=1,
-        )
+        batch_id: make_batch(batch_id=batch_id, part_no=batch_id, due_date="2026-01-01")
         for batch_id in BASE_BATCH_ORDER
     }
 
@@ -212,19 +209,10 @@ def run_graph_ready_flexible_machine_metric_case() -> Dict[str, Any]:
     return row
 
 
-def _operation(op_id: int, batch_id: str, *, hours: float) -> Any:
-    return SimpleNamespace(
-        id=int(op_id),
-        op_code=f"OP-{batch_id}",
-        batch_id=str(batch_id),
-        seq=10,
-        source="internal",
-        machine_id="MC-BENCH",
-        operator_id="OP-BENCH",
-        setup_hours=float(hours),
-        unit_hours=0.0,
-        op_type_id="OT-BENCH",
-        op_type_name="BENCH",
+def _operation(op_id: int, batch_id: str, *, hours: float) -> OpForScheduleAlgo:
+    return make_algo_op(
+        id=op_id, op_code=f"OP-{batch_id}", batch_id=batch_id, seq=10, machine_id="MC-BENCH",
+        operator_id="OP-BENCH", setup_hours=hours, unit_hours=0.0, op_type_id="OT-BENCH", op_type_name="BENCH",
     )
 
 
@@ -269,10 +257,6 @@ def _default_config() -> Any:
         }
     )
     return SimpleNamespace(**values)
-
-
-def _schedule_with_scheduler(scheduler: GreedyScheduler, **kwargs: Any) -> Any:
-    return scheduler.schedule(**kwargs)
 
 
 def _flexible_machine_metric_row_passes(row: Dict[str, Any]) -> bool:

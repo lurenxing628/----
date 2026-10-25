@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Tuple
+from typing import Any, Sequence, Tuple
 
 from core.errors import ValidationError
 
@@ -123,39 +123,19 @@ def _simulated_annealing_decision(
     return AcceptanceDecision(accepted=random_draw <= probability)
 
 
-def _failed_ops_worse(candidate_score: Any, reference_score: Any) -> bool:
-    candidate = _score_tuple(candidate_score)
-    reference = _score_tuple(reference_score)
-    if not candidate or not reference:
-        return False
-    return candidate[0] > reference[0]
+# 候选分数都是本进程解码算出的 (失败工序数,) + 目标分量 元组，非空且全是有限数字。
+def _failed_ops_worse(candidate_score: Sequence[float], reference_score: Sequence[float]) -> bool:
+    return candidate_score[0] > reference_score[0]
 
 
-def _score_delta(candidate_score: Any, reference_score: Any, *, start_index: int = 0) -> float:
-    candidate = _score_tuple(candidate_score)
-    reference = _score_tuple(reference_score)
-    if not candidate or not reference:
-        return 0.0
-    index = max(int(start_index), 0)
-    candidate = candidate[index:]
-    reference = reference[index:]
+def _score_delta(candidate_score: Sequence[float], reference_score: Sequence[float], *, start_index: int = 0) -> float:
+    candidate = candidate_score[start_index:]
+    reference = reference_score[start_index:]
     for cand_value, ref_value in zip(candidate, reference):
         delta = cand_value - ref_value
         if delta:
             return float(delta)
     return float(len(candidate) - len(reference))
-
-
-def _score_tuple(score: Any) -> Tuple[float, ...]:
-    if not isinstance(score, (list, tuple)):
-        return ()
-    out = []
-    for item in score:
-        try:
-            out.append(float(item))
-        except (TypeError, ValueError, OverflowError):
-            return ()
-    return tuple(out)
 
 
 def _progress(*, iteration: int, max_iterations: int) -> float:

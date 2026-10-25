@@ -78,7 +78,7 @@
       && d.delta_basis === 'candidate_minus_admission_baseline' && d.duration_basis === 'elapsed_wall_clock_hours_not_effective_processing'
       && equal(d.capabilities, { view: true, adopt: false, edit_draft: false, report_actual: false, export: false })
       && Array.isArray(d.data_gaps) && d.data_gaps.every(reason));
-    check(equal(d.time_scope, { range_start: q.range_start || null, range_end: q.range_end || null, interval: 'half_open_overlap',
+    check(equal(d.time_scope, { range_start: workspace.time_scope.range_start, range_end: workspace.time_scope.range_end, interval: 'half_open_overlap',
       membership: 'either_side_overlap', counterpart_policy: 'retain_complete_counterpart', time_basis: 'factory_local',
       unplanned_policy: 'included_without_time_interval', unknown_or_zero_interval_policy: 'included_without_time_interval' }));
     if (!q.range_start && !q.batch_ref) check(d.operation_count === d.full_operation_count);

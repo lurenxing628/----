@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 
 from core.models.content import content_text
 
-from .execution_fact_provider import ExecutionFact, positive_op_ids
+from .execution_fact_provider import ExecutionFact
 
 EXECUTION_SNAPSHOT_PREFIX = "execution-snapshot:content-v2:"
 RESOURCE_SNAPSHOT_PREFIX = "execution-snapshot:resources-v2:"
@@ -43,15 +43,13 @@ def _validate_fact_identity(fact: ExecutionFact) -> None:
 
 
 def build_execution_snapshot(
-    facts_by_op_id: Dict[int, ExecutionFact], op_ids: Sequence[int], *,
+    facts_by_op_id: Dict[int, ExecutionFact], *,
     plan_rows: Optional[Dict[int, Dict[str, Any]]] = None,
 ) -> ExecutionSnapshot:
-    ids = positive_op_ids(op_ids)
+    # 工序集合就是事实字典的键；固定顺序，使相同来源的快照内容不受字典插入顺序影响。
+    ids = sorted(facts_by_op_id)
     for op_id in ids:
-        fact = facts_by_op_id.get(op_id)
-        if fact is None:
-            raise ValueError(f"缺少工序 {op_id} 的现场状态快照。")
-        _validate_fact_identity(fact)
+        _validate_fact_identity(facts_by_op_id[op_id])
     names = [field.name for field in fields(ExecutionFact)]
     payload = {"op_ids": ids, "fact_fields": names,
                "facts": [[getattr(facts_by_op_id[op_id], name) for name in names] for op_id in ids]}
@@ -71,5 +69,4 @@ def build_execution_snapshot(
 __all__ = [
     "ExecutionSnapshot",
     "build_execution_snapshot",
-    "positive_op_ids",
 ]

@@ -65,9 +65,6 @@
     async function check() {
       if (store.running || !store.state.intent) return;
       const intent = store.state.intent;
-      if (typeof adapter.lookup !== 'function') {
-        publish(store, { ...store.state, phase: 'pending', error: C.failure('dependency not wired: adapter.lookup') }); return;
-      }
       store.running = true; publish(store, { ...store.state, phase: 'checking', error: null });
       try {
         const result = await adapter.lookup(intent.request_key, new AbortController().signal);
@@ -79,9 +76,6 @@
     }
     async function submit(kind, action, ref, context, input, listCategory) {
       if (store.running || ['sending', 'pending', 'checking', 'done'].includes(store.state.phase)) return;
-      if (typeof adapter.command !== 'function') {
-        publish(store, { phase: 'rejected', error: C.failure('dependency not wired: adapter.command') }); return;
-      }
       let intent;
       try {
         // category keeps the source list; the entity's category belongs to input.fields.
@@ -117,7 +111,12 @@
       publish(store, { phase: 'idle' });
       return true;
     }
-    return { ...state, locked, submit, check, reset };
+    // 用户改了输入就清掉拒绝态。过期拒绝默认保留，等用户刷新资料；重新预检、换文件本身会产出新的写入依据，传 includeStale 一并清掉。
+    function clearRejection({ includeStale = false } = {}) {
+      if (store.state.phase !== 'rejected' || !includeStale && C.stale(store.state.error)) return false;
+      return reset();
+    }
+    return { ...state, locked, stale: state.phase === 'rejected' && C.stale(state.error), submit, check, reset, clearRejection };
   }
   const nonnegative = value => Number.isFinite(value) && value >= 0;
   const object = C.object;
@@ -146,7 +145,6 @@
   }
   function useSummary(adapter, revision, enabled = true) {
     return useQuery(async signal => {
-      if (typeof adapter.summary !== 'function') throw C.failure('dependency not wired: adapter.summary');
       const result = C.query(await adapter.summary(signal), 'summary'), data = { ...result.data };
       if (!calendarSummary(data.calendar)) { data.calendar = null; data.calendar_error = '读到的班表汇总不完整，请刷新后重试。'; }
       if (!readinessSummary(data.readiness)) { data.readiness = null; data.readiness_error = '读到的就绪度数据不完整，请刷新后重试。'; }

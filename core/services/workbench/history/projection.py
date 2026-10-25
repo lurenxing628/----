@@ -5,7 +5,8 @@ from datetime import datetime
 from core.models.workbench_command import WorkbenchCommandRejected
 
 from .conditions import compare_prepared_history_conditions
-from .metrics import gate_history_metric, project_history_metrics
+from .metric_gate import gate_history_metric
+from .metrics import project_history_metrics
 
 _WINDOW_FIELDS = ("mode", "start", "end", "days", "anchor", "time_basis", "boundary", "state", "cohort")
 _QUANTITY_FIELDS = ("value", "state", "known_subtotal", "known_count", "unknown_count", "total_count", "covered_batch_refs")

@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .schedule_graph_dispatch_context import (
     GRAPH_CYCLE_DISABLED_REASON,
-    node_op_id,
     schedule_input_op_id_sets,
 )
 from .schedule_input_contracts import ScheduleRunInput
@@ -212,7 +211,7 @@ def node_metrics_by_op_id(
 
     result: Dict[int, Dict[str, Any]] = {}
     for node in nodes:
-        op_id = node_op_id(node)
+        op_id = node.raw["id"]
         if op_id not in allowed_op_ids:
             continue
         if op_id in result:
@@ -236,7 +235,7 @@ def ordered_schedulable_op_ids(
 ) -> List[int]:
     if not schedulable_op_ids or (limit is not None and limit <= 0):
         return []
-    op_id_by_node_id = {str(node.node_id): node_op_id(node) for node in nodes}
+    op_id_by_node_id = {str(node.node_id): node.raw["id"] for node in nodes}
     ordered_op_ids: List[int] = []
     for node_id in topological_order:
         op_id = op_id_by_node_id.get(node_id)

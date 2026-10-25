@@ -3,11 +3,11 @@
 from core.models.workbench_run_candidate import local_time
 from core.services.workbench.facts.archived_calendar import ArchivedCalendar
 from core.services.workbench.facts.changeovers import changeover_projection
+from core.services.workbench.facts.resource_calendar import normalize_resource_calendar
 from core.services.workbench.facts.resource_pressure import pressure_from_index
 from core.services.workbench.facts.resource_projection import (
     RESOURCE_METRIC_VERSION,
     ResourceTaskIndex,
-    normalize_resource_calendar,
     resource_summary,
 )
 

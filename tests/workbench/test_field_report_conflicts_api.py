@@ -29,8 +29,9 @@ def test_correction_preserves_both_downstream_official_arrangements_and_quantity
     conflicts = body['error']['conflicts']
     assert len(conflicts) == 2
     assert {item['code'] for item in conflicts} == {'downstream_requires_completion'}
-    assert {item['operation_ref'] for item in conflicts} == {
-        case.ledger.task_header(case.task(2, op))['operation_ref'] for op in downstream}
+    downstream_tasks = [case.task(2, op) for op in downstream]
+    headers = case.ledger.repo.task_headers(downstream_tasks)
+    assert {item['operation_ref'] for item in conflicts} == {headers[task]['operation_ref'] for task in downstream_tasks}
     assert {item['operation_label'] for item in conflicts} == {'2 Turning', '3 Turning'}
     for item in conflicts:
         op = next(op for op in downstream if case.task(2, op) == item['plan']['task_ref'])

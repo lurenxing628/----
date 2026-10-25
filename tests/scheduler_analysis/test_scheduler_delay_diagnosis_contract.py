@@ -300,7 +300,6 @@ def test_overdue_allow_points_recognizes_zero_duration_point_event_batches(tmp_p
             source_table=resolution.source_table,
             candidate_id=resolution.candidate_id,
             scenario_id=resolution.scenario_id,
-            allow_points=True,
         )
         by_batch = {row["batch_id"]: row for row in rows}
         assert by_batch["B_PURE_POINT"]["finish_time"] == "2026-05-04 12:00:00"

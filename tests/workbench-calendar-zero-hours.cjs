@@ -58,7 +58,7 @@ const date = '2026-10-05', defaults = [{ start: '08:30', end: '11:50', day_offse
 const blank = { date, day: 5, weekday: 0, is_weekend: false, is_today: false, explicit: false, calendar_ref: null, default_periods: defaults,
   day_type: null, shift_start: null, shift_end: null, shift_hours: null, efficiency: null, allow_normal: null, allow_urgent: null, remark: null };
 monthData = { days: [blank], cells: [blank], stats: { configured: 0, work_days: 0 }, write_context: writeContext, previous_month: null, next_month: null };
-const command = { locked: false, phase: 'idle', error: null, result: null, reset: () => true, submit() {} };
+const command = { locked: false, phase: 'idle', error: null, result: null, reset: () => true, clearRejection: () => false, submit() {} };
 const props = { adapter: { query() {} }, entity: { ref: 'a'.repeat(48), business_code: 'OP-1' }, source: 'production', command, onClose() {},
   refreshState: {}, onRefresh() {}, Feedback: 'Feedback' };
 slots = [];

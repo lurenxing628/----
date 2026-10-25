@@ -10,7 +10,7 @@ import csv
 import os
 from tempfile import SpooledTemporaryFile
 
-from core.models.workbench_resource_file import ResourceFileDownload
+from core.models.workbench_action_values import FileDownload
 from core.services.workbench.facts.file_writer import _value, check_capacity
 from core.services.workbench.facts.process_file_xml import preserve_carriage_returns
 from core.services.workbench.facts.table_cells import number_text
@@ -72,7 +72,7 @@ def write_plan_export(data, snapshot, fmt):
 
 def _download(content, fmt, count):
     mime = "text/csv; charset=utf-8" if fmt == "csv" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    return ResourceFileDownload("计划范围导出." + fmt, mime, content, count)
+    return FileDownload("计划范围导出." + fmt, mime, content, count)
 
 
 def _csv(data, snapshot):

@@ -4,12 +4,15 @@ import heapq
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Tuple, cast
+from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Tuple
 
 from core.algorithm_contracts.changeover_events import type_transition
+from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
+from core.algorithm_contracts.value_domains import INTERNAL
 from core.algorithms.greedy.auto_assign import qualified_resource_pairs
 from core.errors import ValidationError
 
+from ..shared_decode import resource_pair
 from .candidate_payload import decoded_batch_order
 from .repair_neighbors import repair_priority_context
 
@@ -80,17 +83,16 @@ def prepare_repair_parent(
     """Prepare the decoded parent's static facts once; basis-specific signals remain separate."""
     by_id = _operations_by_id(operations)
     mutable = frozenset(by_id)
-    mutable_batches = frozenset(str(op.batch_id) for op in operations)
+    mutable_batches = frozenset(op.batch_id for op in operations)
     rows = _decoded_rows(candidate, by_id)
-    current = {op_id: _fixed_resources(row) for op_id, row in rows.items()}
+    current = {op_id: resource_pair(row) for op_id, row in rows.items()}
     inherited = _inherited_resource_rows(current, by_id)
     pool_maps = _pool_maps(resource_pool) if resource_moves and resource_pairs_for is None else None
     timelines_by_resource = resource_timeline_groups(candidate["results"])
     timelines = list(timelines_by_resource.values())
     batch_ends = {}
     for row in candidate["results"]:
-        batch = str(row.batch_id)
-        batch_ends[batch] = max(batch_ends.get(batch, row.end_time), row.end_time)
+        batch_ends[row.batch_id] = max(batch_ends.get(row.batch_id, row.end_time), row.end_time)
     changeovers = _batch_changeovers(timelines_by_resource, mutable_batches)
     predecessors, order = {}, ()
     if graph_context is not None and mutable and set(rows) == mutable:
@@ -132,14 +134,13 @@ def decoded_topological_order(rows: Dict[int, Any], predecessors: Dict[int, set]
     return tuple(order)
 
 
-def resource_timeline_groups(results: List[Any]) -> Dict[Tuple[str, str], List[Any]]:
-    timelines: Dict[Tuple[str, str], List[Any]] = defaultdict(list)
+def resource_timeline_groups(results: List[ScheduleResult]) -> Dict[Tuple[str, str], List[ScheduleResult]]:
+    timelines: Dict[Tuple[str, str], List[ScheduleResult]] = defaultdict(list)
     for row in results:
-        for field in ("machine_id", "operator_id"):
-            resource = str(getattr(row, field, "") or "")
-            if resource:
+        for field, resource in (("machine_id", row.machine_id), ("operator_id", row.operator_id)):
+            if resource is not None:
                 timelines[(field, resource)].append(row)
-    return {key: sorted(rows, key=lambda row: (row.start_time, row.end_time, int(row.op_id)))
+    return {key: sorted(rows, key=lambda row: (row.start_time, row.end_time, row.op_id))
             for key, rows in sorted(timelines.items())}
 
 
@@ -156,21 +157,18 @@ def _batch_changeovers(timelines: Dict[Tuple[str, str], List[Any]], batches: Fro
                 previous.op_type_id, row.op_type_id, previous.op_id, row.op_id,
             ) == 1:
                 for changed in (previous, row):
-                    batch = str(changed.batch_id)
-                    if batch in batches:
-                        counts[batch] = counts.get(batch, 0.0) + 1.0
+                    if changed.batch_id in batches:
+                        counts[changed.batch_id] = counts.get(changed.batch_id, 0.0) + 1.0
             previous = row
     return counts
 
 
 def repair_decision_inputs(
-    context: Dict[str, Any], operations: List[Any], decision: RepairDecision,
+    context: Dict[str, Any], operations: List[OpForScheduleAlgo], decision: RepairDecision,
     resource_pool: Optional[Dict[str, Any]], *, prepared_parent: Optional[RepairParentPreparation] = None,
 ) -> Tuple[Dict[str, Any], Dict[int, Tuple[str, str]]]:
     """Admit raw decisions once; generated decisions consume their prepared parent's facts."""
     if prepared_parent is None:
-        if not isinstance(decision, RepairDecision):
-            _invalid("decision")
         by_id = _operations_by_id(operations)
         if set(by_id).intersection(context.get("fixed_op_ids", ())):
             _invalid("fixed_op_ids", reason="graph_ready_repair_scope_mismatch")
@@ -185,12 +183,12 @@ def repair_decision_inputs(
         by_id = prepared_parent.operations_by_id
         if decision.operation_order:
             out["graph_priority_key_by_op_id"] = {
-                op_id: (float(rank), ranks[str(by_id[op_id].batch_id)])
+                op_id: (float(rank), ranks[by_id[op_id].batch_id])
                 for rank, op_id in enumerate(decision.operation_order)
             }
             return out, overrides
         out["graph_priority_key_by_op_id"] = {
-            op_id: (ranks[str(op.batch_id)],) for op_id, op in by_id.items()
+            op_id: (ranks[op.batch_id],) for op_id, op in by_id.items()
         }
         return out, overrides
     if decision.operation_order:
@@ -203,29 +201,15 @@ def repair_decision_inputs(
 
 
 def iter_resource_decisions(
-    candidate: Dict[str, Any], operations: List[Any], resource_pool: Optional[Dict[str, Any]],
-    batch_order: Tuple[str, ...], operation_order: Tuple[int, ...] = (), *, max_decisions: int = 8,
-    prepared_parent: Optional[RepairParentPreparation] = None,
+    *, operations: List[Any], resource_pool: Optional[Dict[str, Any]], batch_order: Tuple[str, ...],
+    operation_order: Tuple[int, ...], prepared_parent: RepairParentPreparation, max_decisions: int = 8,
 ) -> Iterator[RepairDecision]:
-    """Yield bounded one-operation moves, preserving previously accepted overrides."""
-    if isinstance(max_decisions, bool) or not isinstance(max_decisions, int) or max_decisions <= 0:
-        _invalid("max_decisions")
-    if prepared_parent is None:
-        by_id = _operations_by_id(operations)
-        current = _current_resources(candidate, by_id)
-        prior, prepared_pool = _decoded_resource_facts(current, by_id, resource_pool, resource_moves=True)
-        base = RepairDecision(tuple(batch_order), tuple(operation_order), prior)
-        repair_priority_context({}, operations=operations, order=list(base.batch_order))
-        if base.operation_order and set(base.operation_order) != set(by_id):
-            _invalid("operation_order", reason="graph_ready_repair_scope_mismatch")
-        batch_order_tuple, op_order_tuple = base.batch_order, base.operation_order
-    else:
-        current = prepared_parent.current_resources
-        prior, prepared_pool = prepared_parent.inherited_resources, prepared_parent.pool_maps
-        batch_order_tuple, op_order_tuple = tuple(batch_order), tuple(operation_order)
-    inherited = {op_id: (machine, operator) for op_id, machine, operator in prior}
-    resource_pairs_for = prepared_parent.resource_pairs_for if prepared_parent is not None else None
-    pool = prepared_pool
+    """Yield bounded one-operation moves from a prepared decoded parent, preserving its accepted overrides."""
+    current = prepared_parent.current_resources
+    batch_order_tuple, op_order_tuple = tuple(batch_order), tuple(operation_order)
+    inherited = {op_id: (machine, operator) for op_id, machine, operator in prepared_parent.inherited_resources}
+    resource_pairs_for = prepared_parent.resource_pairs_for
+    pool = prepared_parent.pool_maps
     if pool is None and resource_pairs_for is None:
         pool = _pool_maps(resource_pool)
     generated = 0
@@ -243,20 +227,14 @@ def iter_resource_decisions(
             overrides = dict(inherited)
             overrides[op.id] = pair
             rows = tuple((op_id, values[0], values[1]) for op_id, values in sorted(overrides.items()))
-            yield (
-                RepairDecision._unvalidated(batch_order_tuple, op_order_tuple, rows)
-                if prepared_parent is not None
-                else RepairDecision(batch_order_tuple, op_order_tuple, rows)
-            )
+            yield RepairDecision._unvalidated(batch_order_tuple, op_order_tuple, rows)
             generated += 1
             if generated >= max_decisions:
                 return
 
 
-def _operations_by_id(operations: List[Any]) -> Dict[int, Any]:
-    ids = [getattr(op, "id", None) for op in operations]
-    _unique_ids(ids, field="operations")
-    return dict(zip(cast(List[int], ids), operations))
+def _operations_by_id(operations: List[OpForScheduleAlgo]) -> Dict[int, OpForScheduleAlgo]:
+    return {op.id: op for op in operations}
 
 
 def _unique_ids(values: Any, *, field: str) -> None:
@@ -266,30 +244,6 @@ def _unique_ids(values: Any, *, field: str) -> None:
         _invalid(field)
 
 
-def decoded_resource_overrides(
-    candidate: Dict[str, Any], operations: List[Any], resource_pool: Optional[Dict[str, Any]],
-) -> Tuple[Tuple[int, str, str], ...]:
-    """Inherit actual mutable resource selections, independently of the parent's decision record."""
-    by_id = _operations_by_id(operations)
-    current = _current_resources(candidate, by_id)
-    return _decoded_resource_facts(current, by_id, resource_pool)[0]
-
-
-def _decoded_resource_facts(
-    current: Dict[int, Tuple[str, str]], by_id: Dict[int, Any], resource_pool: Optional[Dict[str, Any]],
-    *, resource_moves: bool = False,
-) -> Tuple[Tuple[Tuple[int, str, str], ...], Optional[Dict[str, Any]]]:
-    for op_id, (machine, operator) in current.items():
-        fixed_machine, fixed_operator = _fixed_resources(by_id[op_id])
-        if ((fixed_machine and machine and machine != fixed_machine)
-                or (fixed_operator and operator and operator != fixed_operator)):
-            _invalid("resource_overrides", reason="graph_ready_repair_fixed_resource")
-    overrides = _inherited_resource_rows(current, by_id)
-    pool = _pool_maps(resource_pool) if overrides or resource_moves else None
-    _validated_overrides(overrides, by_id, resource_pool, prepared_pool=pool)
-    return overrides, pool
-
-
 def _inherited_resource_rows(current, by_id):
     return tuple((op_id, machine, operator) for op_id, (machine, operator) in sorted(current.items())
                  if _can_change_resources(by_id[op_id]) and machine and operator)
@@ -297,17 +251,16 @@ def _inherited_resource_rows(current, by_id):
 
 def _validated_overrides(
     rows: Tuple[Tuple[int, str, str], ...], by_id: Dict[int, Any], resource_pool: Optional[Dict[str, Any]],
-    *, prepared_pool: Optional[Dict[str, Any]] = None,
 ) -> Dict[int, Tuple[str, str]]:
     if not rows:
         return {}
-    pool = prepared_pool if prepared_pool is not None else _pool_maps(resource_pool)
+    pool = _pool_maps(resource_pool)
     out = {}
     for op_id, machine_id, operator_id in rows:
         if op_id not in by_id:
             _invalid("resource_overrides", reason="graph_ready_repair_scope_mismatch")
         op = by_id[op_id]
-        fixed_machine, fixed_operator = _fixed_resources(op)
+        fixed_machine, fixed_operator = resource_pair(op)
         if (not _can_change_resources(op) or (fixed_machine and machine_id != fixed_machine)
                 or (fixed_operator and operator_id != fixed_operator)):
             _invalid("resource_overrides", reason="graph_ready_repair_fixed_resource")
@@ -333,23 +286,14 @@ def _pool_maps(resource_pool: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     return out
 
 
-def _fixed_resources(op: Any) -> Tuple[str, str]:
-    return str(getattr(op, "machine_id", None) or "").strip(), str(getattr(op, "operator_id", None) or "").strip()
+def _can_change_resources(op: OpForScheduleAlgo) -> bool:
+    return op.source == INTERNAL and not all(resource_pair(op))
 
 
-def _can_change_resources(op: Any) -> bool:
-    machine, operator = _fixed_resources(op)
-    return str(getattr(op, "source", "") or "").strip().lower() == "internal" and not (machine and operator)
-
-
-def _current_resources(candidate: Dict[str, Any], by_id: Dict[int, Any]) -> Dict[int, Tuple[str, str]]:
-    return {op_id: _fixed_resources(result) for op_id, result in _decoded_rows(candidate, by_id).items()}
-
-
-def _decoded_rows(candidate: Dict[str, Any], by_id: Dict[int, Any]) -> Dict[int, Any]:
+def _decoded_rows(candidate: Dict[str, Any], by_id: Dict[int, OpForScheduleAlgo]) -> Dict[int, Any]:
     out = {}
     for result in candidate["results"]:
-        op_id = getattr(result, "op_id", None)
+        op_id = result.op_id
         if op_id not in by_id:
             continue  # Fixed seed results are outside the mutable decision scope.
         if op_id in out:

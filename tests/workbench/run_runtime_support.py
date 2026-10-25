@@ -1,6 +1,7 @@
 """BN fixtures use real disk SQLite, launcher locks, Flask and engine inputs."""
 
 import threading
+import time
 from contextlib import contextmanager
 
 import pytest
@@ -15,6 +16,16 @@ from web.routes.workbench.preflight import register_preflight_routes
 from web.routes.workbench.scheduling_jobs import register_scheduling_job_routes
 
 BASE = "/api/workbench/v1/scheduling"
+
+
+def wait_runtime_idle(runtime, timeout):
+    """等已受理的排产全部派发完：只读运行时公开的 status；生产停机走 shutdown，不等空闲。"""
+    deadline = time.monotonic() + timeout
+    while runtime.status["pending"]:
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.02)
+    return True
 
 
 @pytest.fixture(name="owned_case")

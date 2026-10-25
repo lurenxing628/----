@@ -94,8 +94,9 @@
   }
   function reason(ctx, action, source) {
     if (source !== 'production') return '当前不是可写生产资料。';
-    if (!ctx || ctx.capabilities['batch.' + action] !== true) return (ctx && ctx.blocked_reasons.find(row => row.action === 'batch.' + action) || {}).message || '当前资料不允许此操作。';
-    return '';
+    if (ctx && ctx.capabilities['batch.' + action] === true) return '';
+    const blocked = ctx && ctx.blocked_reasons.find(row => row.action === 'batch.' + action);
+    return blocked ? blocked.message : '当前资料不允许此操作。';
   }
   function readyStatus(entity) { return Object.prototype.hasOwnProperty.call(entity, 'display_ready_status') ? entity.display_ready_status : entity.fields.ready_status; }
   function label(key, value) {
@@ -117,7 +118,7 @@
         next = Number(next);
       } else if (key.endsWith('_date')) {
         next = next === '' ? null : next;
-      } else if (key === 'remark') next = next.trim() || null;
+      } else if (key === 'remark') { next = next.trim(); if (next === '') next = null; }
       patch[key] = next;
     }
     if (original) return { fields: patch };

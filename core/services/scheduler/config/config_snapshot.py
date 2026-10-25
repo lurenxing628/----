@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, Mapping
 
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot, snapshot_from_values
@@ -17,25 +17,10 @@ from .config_field_spec import (
 )
 
 
-def build_schedule_config_snapshot(
-    repo: Any = None,
-    *,
-    rows: Optional[Iterable[Any]] = None,
-) -> ScheduleConfigSnapshot:
+def build_schedule_config_snapshot(*, rows: Iterable[Mapping[str, Any]]) -> ScheduleConfigSnapshot:
     collector = DegradationCollector()
     default_map = default_snapshot_values()
-    if rows is None:
-        if repo is None:
-            raise ValueError("build_schedule_config_snapshot requires repo or rows")
-        source_rows = repo.list_all()
-    else:
-        source_rows = rows
-    by_key = {
-        str(row["config_key"] if isinstance(row, dict) else row.config_key): (
-            row["config_value"] if isinstance(row, dict) else row.config_value
-        )
-        for row in source_rows
-    }
+    by_key = {row["config_key"]: row["config_value"] for row in rows}
 
     values: Dict[str, Any] = {}
     for spec in list_config_fields():

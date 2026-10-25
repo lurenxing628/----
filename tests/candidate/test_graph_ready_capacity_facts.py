@@ -1,11 +1,11 @@
 """Fixed resource blocking is shared while operation calendar windows stay dynamic."""
 
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 
 from core.services.scheduler.run.optimizer.graph import v2_capacity
 from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
 from core.services.scheduler.run.optimizer.graph_ready_feature_basis import BASELINE_ORDERING_FIELD
+from tests._support.algo_operations import make_algo_op, make_batch, make_schedule_result
 
 
 def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windows(monkeypatch):
@@ -21,13 +21,16 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
             calls.append((low, high, priority, operator_id))
             return (high - low).total_seconds() / 3600 * (0.5 if priority == "urgent" else 1)
 
-    operations = [SimpleNamespace(id=number, batch_id=batch, seq=1, source="internal", setup_hours=0, unit_hours=2,
-                                  machine_id="M1", operator_id="O1", op_type_id="OT1", op_type_name="work")
+    operations = [make_algo_op(id=number, batch_id=batch, seq=1, source="internal", setup_hours=0.0, unit_hours=2.0,
+                               machine_id="M1", operator_id="O1", op_type_id="OT1", op_type_name="work")
                   for number, batch in ((1, "B1"), (2, "B2"))]
-    batches = {"B1": SimpleNamespace(quantity=1, priority="normal", due_date="2026-10-14", ready_date=None),
-               "B2": SimpleNamespace(quantity=1, priority="urgent", due_date="2026-10-15", ready_date="2026-10-15")}
-    seeds = [SimpleNamespace(op_id=91, source="internal", machine_id="M1", operator_id="O2", start_time=at(1), end_time=at(3)),
-             SimpleNamespace(op_id=92, source="internal", machine_id="M2", operator_id="O1", start_time=at(2), end_time=at(4))]
+    batches = {"B1": make_batch(batch_id="B1", quantity=1, priority="normal", due_date="2026-10-14", ready_date=None),
+               "B2": make_batch(batch_id="B2", quantity=1, priority="urgent", due_date="2026-10-15",
+                                ready_date="2026-10-15")}
+    seeds = [make_schedule_result(op_id=91, batch_id="B0", source="internal", machine_id="M1", operator_id="O2",
+                                  start_time=at(1), end_time=at(3)),
+             make_schedule_result(op_id=92, batch_id="B0", source="internal", machine_id="M2", operator_id="O1",
+                                  start_time=at(2), end_time=at(4))]
     downtime = {"M1": [(at(4), at(5)), (start, start), (None, start)]}
     pool = {"machines_by_op_type": {"OT1": ["M1"]}, "operators_by_machine": {"M1": ["O1"]},
             "operator_skills": {"O1": ["OT1"]}}
@@ -79,10 +82,10 @@ def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windo
 def test_graph_resource_preparation_is_shared_by_full_and_per_operation_inputs(monkeypatch):
     from core.services.scheduler.graph import input_adapter
 
-    rows = [dict(id=op_id, batch_id="B1", op_code="OP" + str(op_id), seq=op_id, source="internal",
-                 setup_hours=0, unit_hours=1, op_type_id="T2" if op_id == 4 else "T1",
-                 machine_id="M2" if op_id == 3 else None, operator_id=None) for op_id in range(1, 6)]
-    batches = {"B1": {"quantity": 2}}
+    rows = [make_algo_op(id=op_id, batch_id="B1", op_code="OP" + str(op_id), seq=op_id, source="internal",
+                         setup_hours=0.0, unit_hours=1.0, op_type_id="T2" if op_id == 4 else "T1",
+                         machine_id="M2" if op_id == 3 else None, operator_id=None) for op_id in range(1, 6)]
+    batches = {"B1": make_batch(quantity=2)}
     pool = {"machines_by_op_type": {"T1": ["M1", "M2"], "T2": ["M1"]},
             "operators_by_machine": {"M1": ["O1"], "M2": ["O2"]},
             "operator_skills": {"O1": ["T1"], "O2": ["T1"]}}
@@ -133,10 +136,10 @@ def test_multi_segment_seed_result_blocks_each_resource_only_during_its_segment(
         downtime_map={},
         seed_results_by_resource_id=v2_capacity.seed_results_by_resource_id([seed]),
     )
-    batch = SimpleNamespace(quantity=1, priority="normal", due_date="2026-10-14", ready_date=None)
+    batch = make_batch(batch_id="B1", quantity=1, priority="normal", due_date="2026-10-14", ready_date=None)
     for machine_id, operator_id in (("M1", "O1"), ("M2", "O2")):
-        op = SimpleNamespace(
-            id=1, batch_id="B1", seq=1, source="internal", setup_hours=0, unit_hours=2,
+        op = make_algo_op(
+            id=1, batch_id="B1", seq=1, source="internal", setup_hours=0.0, unit_hours=2.0,
             machine_id=machine_id, operator_id=operator_id, op_type_id="OT1", op_type_name="work",
         )
         cap = v2_capacity.residual_capacity_for_operation(

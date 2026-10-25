@@ -5,7 +5,6 @@ from typing import Any, Dict, Tuple, cast
 from core.services.scheduler.contracts.graph_public_summary import project_public_graph_analysis
 from core.services.scheduler.contracts.optimizer_public_safety import (
     project_attempt_score,
-    project_degradation_event_list,
     project_public_metrics,
     safe_attempt_text,
     safe_counter_dict,
@@ -21,10 +20,7 @@ from .optimizer_public_algo_fields import (
     project_downtime_avoid,
     project_freeze_window,
     project_improvement_trace,
-    project_input_contract,
-    project_metrics_state,
     project_resource_pool,
-    project_warning_pipeline,
 )
 from .optimizer_public_attempts import project_attempts
 from .optimizer_public_candidates import project_best_score_schema, project_candidate_comparison
@@ -43,21 +39,12 @@ _PUBLIC_ALGO_KEYS = {
     "attempts",
     "improvement_trace",
     "downtime_avoid",
-    "input_contract",
-    "merge_context_degraded",
-    "merge_context_events",
     "freeze_window",
     "resource_pool",
-    "metrics_state",
-    "metrics_degraded",
-    "metrics_degradation_reasons",
     "fallback_counts",
     "param_fallbacks",
-    "fallback_count_parse_failed",
-    "fallback_count_parse_errors",
     "graph_analysis",
     "candidate_comparison",
-    "warning_pipeline",
     "search_report",
 }
 
@@ -164,26 +151,16 @@ def _project_algo_context_fields(public_algo: Dict[str, Any]) -> None:
     _replace_projected_or_drop(public_algo, "downtime_avoid", project_downtime_avoid)
     _replace_projected_or_drop(public_algo, "freeze_window", project_freeze_window)
     _replace_projected_or_drop(public_algo, "resource_pool", project_resource_pool)
-    _replace_projected_or_drop(public_algo, "warning_pipeline", project_warning_pipeline)
-    _replace_projected_or_drop(public_algo, "metrics_state", project_metrics_state)
 
 
 def _project_auxiliary_fields(public_algo: Dict[str, Any]) -> None:
-    _replace_with_text_list_or_drop(public_algo, "metrics_degradation_reasons")
     _replace_projected_or_drop(public_algo, "fallback_counts", safe_counter_dict)
     _replace_projected_or_drop(public_algo, "param_fallbacks", safe_counter_dict)
-    _replace_with_text_list_or_drop(public_algo, "fallback_count_parse_errors")
-
-    for key in ("merge_context_degraded", "metrics_degraded", "fallback_count_parse_failed"):
-        if key in public_algo:
-            public_algo[key] = bool(public_algo.get(key))
 
 
 def _project_nested_summary_fields(public_algo: Dict[str, Any]) -> None:
     _replace_projected_or_drop(public_algo, "graph_analysis", project_public_graph_analysis)
     _replace_projected_or_drop(public_algo, "candidate_comparison", project_candidate_comparison)
-    _replace_projected(public_algo, "input_contract", project_input_contract)
-    _replace_projected(public_algo, "merge_context_events", project_degradation_event_list)
 
 
 def _replace_with_text_or_drop(data: Dict[str, Any], key: str) -> None:
@@ -210,11 +187,6 @@ def _replace_projected_or_drop(data: Dict[str, Any], key: str, projector) -> Non
         data[key] = projected
     else:
         data.pop(key, None)
-
-
-def _replace_projected(data: Dict[str, Any], key: str, projector) -> None:
-    if key in data:
-        data[key] = projector(data.get(key))
 
 
 def _optimizer_diagnostics(diagnostic_attempts: Any, *, search_report_diagnostics: Any = None) -> Dict[str, Any]:

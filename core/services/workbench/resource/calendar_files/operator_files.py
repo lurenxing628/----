@@ -14,6 +14,7 @@ from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.calendar import OperatorCalendar
 from core.models.calendar_period_columns import export_period_columns, parse_period_columns
+from core.models.workbench_action_values import FileDownload
 from core.models.workbench_calendar_file import (
     CLOCK_FIELDS,
     CODE_FIELDS,
@@ -25,7 +26,6 @@ from core.models.workbench_calendar_file import (
     READONLY,
     REQUIRED,
     UI_FIELDS,
-    CalendarFileDownload,
     CalendarFilePreview,
     file_columns,
     import_request,
@@ -77,9 +77,6 @@ class WorkbenchOperatorCalendarFileService:
     def _reader(self):
         return WorkbenchResourceQueryService(self.conn, "operator", self.logger)
 
-    def _normalization_operation(self):
-        return self._domain_calendar._admin.normalization_operation()
-
     # ---------- 导入 ----------
 
     def _prepare_source(self, content, *, file_format, mode):
@@ -96,7 +93,7 @@ class WorkbenchOperatorCalendarFileService:
 
     def _preview_import(self, prepared: PreparedImportSource, request: Dict[str, Any]):
         source, notices = prepared.parsed()
-        with self._normalization_operation():
+        with self._domain_calendar.normalization_operation():
             rows = self._build_rows(source)
             calendars = {row["row"]: row.pop("calendar") for row in rows if "calendar" in row}
             return replace(CalendarFilePreview.build(self.kind + ".import", request, rows, notices, source=prepared),
@@ -403,6 +400,6 @@ class WorkbenchOperatorCalendarFileService:
             arguments["selected_refs"] = selected_refs
         return arguments, len(rows)
 
-    def export(self, file_format, *, rows) -> CalendarFileDownload:
+    def export(self, file_format, *, rows) -> FileDownload:
         check_capacity(len(rows), file_format)
         return write_calendar_file(self.kind, rows, file_format)

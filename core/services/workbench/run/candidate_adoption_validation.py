@@ -67,8 +67,7 @@ def validate_adoption(conn, candidate_ref):
             facts = PreflightFacts(conn, capture=current_capture)
             with facts.snapshot(fingerprint=False):
                 baseline, projections = check_admission_current(conn, capture, current_capture=current_capture)
-                prepared = prepare_candidate_run_input(conn, capture["input"], projections, capture_fingerprint=False,
-                                                       facts=facts, baseline=baseline,
+                prepared = prepare_candidate_run_input(conn, capture["input"], projections, facts=facts, baseline=baseline,
                                                        validated_projections={row.operation_ref: row for row in projections},
                                                        for_adoption=True)
                 if not same({row["operation_ref"]: row for row in prepared.dispositions}, scope):
@@ -106,7 +105,7 @@ def _require_official_scope(latest, scheduled_ids):
 
 def validate_adoption_payload(conn, prepared, payload):
     if any(op.piece_id is not None for op in prepared.operations):
-        validate_piece_adoption(conn, prepared=prepared, payload=payload, candidate_validated=True)
+        validate_piece_adoption(conn, prepared=prepared, payload=payload)
         return
     validate_adoption_constraints(prepared, payload)
     validate_execution_guard_before_persist(prepared, validated_schedule_payload=payload)

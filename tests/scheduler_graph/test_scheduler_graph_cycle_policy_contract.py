@@ -11,18 +11,20 @@ from typing import Any, Dict, List, Tuple
 
 import pytest
 
-from core.algorithms import GreedyScheduler, ScheduleResult, ScheduleSummary, SortStrategy
+from core.algorithm_contracts.sort_strategies import SortStrategy
+from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
+from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.errors import ValidationError
 from core.models.batch import Batch
-from core.models.batch_operation import BatchOperation
-from core.models.schedule_config_runtime import ScheduleConfigSnapshot
-from core.services.common.build_outcome import BuildOutcome
+from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
+from core.services.scheduler.run import schedule_candidate_runner
 from core.services.scheduler.run.optimizer.runtime import _default_runtime
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
 from core.services.scheduler.run.schedule_graph_report import prepare_schedule_graph_for_dispatch
 from core.services.scheduler.run.schedule_input_contracts import ScheduleRunInput
 from core.services.scheduler.run.schedule_orchestrator import orchestrate_schedule_run
 from core.services.scheduler.run.schedule_shared_optimizer import optimize_shared_schedule
+from tests._support.algo_operations import make_algo_op, make_batch_operation
 
 
 def _make_dt(hours: int) -> datetime:
@@ -46,27 +48,14 @@ class _HistoryRepo:
 
 class _Svc:
     def __init__(self) -> None:
-        self.logger = None
         self.tx_manager = _TxManager()
         self.history_repo = _HistoryRepo()
 
 
-def _algo_op(op_id: int = 1, seq: int = 10) -> SimpleNamespace:
-    return SimpleNamespace(
-        id=op_id,
-        op_code=f"OP-B001-{seq:03d}",
-        batch_id="B001",
-        seq=seq,
-        source="internal",
-        setup_hours=0,
-        unit_hours=1,
-        op_type_name="车削",
-    )
-
-
 def _schedule_input(mode: str, *, block_on_cycle: str) -> ScheduleRunInput:
-    algo_ops = [_algo_op()]
-    operations = [BatchOperation(id=1, op_code="OP-B001-010", batch_id="B001", source="internal")]
+    operation = dict(id=1, op_code="OP-B001-010", batch_id="B001", seq=10, op_type_name="车削")
+    algo_ops = [make_algo_op(**operation)]
+    operations = [make_batch_operation(**operation)]
     return ScheduleRunInput(
         cfg=ScheduleConfigSnapshot(
             sort_strategy="priority_first",
@@ -107,17 +96,15 @@ def _schedule_input(mode: str, *, block_on_cycle: str) -> ScheduleRunInput:
         operations=operations,
         schedule_output_allowed_op_ids={1},
         payload_validation_operations=operations,
-        operation_sources=None,
+        operation_sources={op.id: op.source for op in operations},
         execution_snapshot_revision="rev-0",
         execution_snapshot_op_ids=[1],
         execution_snapshot_op_count=1,
         run_time_budget_seconds=None,
         normalized_batch_ids=["B001"],
         freeze_meta={"loaded": True},
-        algo_input_outcome=BuildOutcome([]),
-        downtime_meta={"load_ok": True},
-        resource_pool_meta={"build_ok": True},
-        algo_warnings=[],
+        downtime_meta={},
+        resource_pool_meta={},
         frozen_op_ids=set(),
         t0=0.0,
         optimizer_seed_version=6,
@@ -205,25 +192,27 @@ def _run_orchestrator_with_decoder(schedule_input: Any, svc: _Svc, *, decode_fn:
         return preparation
 
     class ContractScheduler(GreedyScheduler):
-        def schedule(self, **kwargs):
+        def schedule_prepared(self, prepared_inputs, **changes):
             assert preparation is not None
+            params = changes["params"]
+            dispatch = {"dispatch_mode": params.dispatch_mode_key, "dispatch_rule": params.dispatch_rule_spec.token}
             results, summary, used_strategy, used_params = decode_fn(
-                **kwargs, graph_dispatch_mode_override=preparation.graph_dispatch_mode_override
+                graph_ready_context=changes["graph_ready_context"], **dispatch,
+                graph_dispatch_mode_override=preparation.graph_dispatch_mode_override,
             )
-            params = dict(used_params, dispatch_mode=kwargs["dispatch_mode"], dispatch_rule=kwargs["dispatch_rule"])
-            return results, summary, used_strategy, params
+            return results, summary, used_strategy, dict(used_params, **dispatch)
 
-    compare = partial(run_candidate_comparison, prepare_graph_fn=prepare_graph,
-        optimize_shared_schedule_fn=partial(optimize_shared_schedule,
-            _runtime=replace(_default_runtime(), scheduler_factory=ContractScheduler)))
-    return orchestrate_schedule_run(
-        schedule_input=schedule_input,
-        version=7,
-        logger=svc.logger,
-        strict_mode=True,
-        candidate_comparison_fn=compare,
-        build_result_summary_fn=_summary_from_ctx,
-    )
+    compare = partial(run_candidate_comparison, prepare_graph_fn=prepare_graph)
+    with pytest.MonkeyPatch.context() as runner_patch:
+        runner_patch.setattr(schedule_candidate_runner, "optimize_shared_schedule", partial(
+            optimize_shared_schedule, _runtime=replace(_default_runtime(), scheduler_factory=ContractScheduler)))
+        return orchestrate_schedule_run(
+            schedule_input=schedule_input,
+            version=7,
+            strict_mode=True,
+            candidate_comparison_fn=compare,
+            build_result_summary_fn=_summary_from_ctx,
+        )
 
 
 @pytest.fixture()
@@ -535,12 +524,12 @@ def test_piece_sequences_chain_and_duplicate_check_stay_within_each_piece() -> N
     from core.services.scheduler.graph.precedence_builder import build_linear_edges_by_batch, build_precedence_graph
     from core.services.scheduler.graph.validators import collect_graph_warnings
 
-    def _row(op_id: int, piece_id: Any, seq: int) -> Dict[str, Any]:
-        return {"id": op_id, "batch_id": "B001", "piece_id": piece_id, "op_code": f"OP{op_id}", "seq": seq,
-                "source": "internal", "setup_hours": 0, "unit_hours": 1}
+    def _row(op_id: int, piece_id: Any, seq: int) -> Any:
+        return make_algo_op(id=op_id, batch_id="B001", piece_id=piece_id, op_code=f"OP{op_id}", seq=seq,
+                            source="internal", setup_hours=0.0, unit_hours=1.0)
 
     rows = [_row(1, "P1", 10), _row(2, "P2", 10), _row(3, "P1", 20), _row(4, "P2", 20), _row(5, "P2", 20)]
-    nodes = build_operation_nodes_from_rows(rows, batches={"B001": {"quantity": 1}})
+    nodes = build_operation_nodes_from_rows(rows, batches={"B001": Batch(batch_id="B001", part_no="P001", quantity=1)})
     assert [node.piece_id for node in nodes] == ["P1", "P2", "P1", "P2", "P2"]
 
     edges = build_linear_edges_by_batch(nodes)

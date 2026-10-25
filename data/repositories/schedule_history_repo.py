@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, cast
 
 from core.errors import AppError, ErrorCode
-from core.models import ScheduleHistory
+from core.models.schedule_history import ScheduleHistory
 
 from .base_repo import BaseRepository, strict_non_negative_int
 

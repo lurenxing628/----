@@ -132,13 +132,11 @@ class DispatchInputs:
     time_left_hours: Optional[float] = None
 
 
-def _safe_positive(value: Any) -> float:
-    # proc_hours <=0（或无法解析）时不能使用极小值兜底，否则 ATC 会出现极端值（错误地把不可估算候选排到最前）。
+def _safe_positive(value: float) -> float:
+    # proc_hours <=0 时不能使用极小值兜底，否则 ATC 会出现极端值（错误地把不可估算候选排到最前）。
     # 同时过滤非有限值（NaN/Inf），避免出现 -0.0 / inf 传播导致的错误优先级。
-    try:
-        number = float(value)
-    except (TypeError, ValueError, OverflowError):
-        return 0.0
+    # 两项工时都是评分层算好的浮点数。
+    number = float(value)
     if (not math.isfinite(number)) or number <= 0:
         return 0.0
     return number

@@ -6,7 +6,7 @@ from core.models.workbench_trial_codec import load
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.trial_origin import delivery_origin, operation_contexts
 from core.services.workbench.facts.trial_policy import load_draft, load_scenario
-from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario, schedule_rows
+from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 from core.services.workbench.trial.effort import operation_types
 from core.services.workbench.trial.preparation import apply_preparation, preparation_projection, trial_changeovers
 from core.services.workbench.trial.projection import unplanned_operations
@@ -63,7 +63,7 @@ return {shipped_contract:true, preparation_panel:true, csv_exports:true};
                                    adjusted["write_context"]["write_token"], "trial-effort-save-01")["data"]
     reread, _, rows = load_saved_scenario(case.conn, saved["scenario_ref"])
     assert reread["operation_effort"] == saved["operation_effort"] == adjusted["operation_effort"]
-    assert schedule_rows(rows)[0].operation_effort == effort
+    assert rows[0]["current"]["operation_effort"] == effort
 
 
 def test_runtime_metadata_does_not_make_a_trial_geometry_change(trial_case):

@@ -1,17 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List, Literal, Optional, Union, overload
+from typing import List, Mapping, Optional
 
+from core.algorithm_contracts.types import OpForScheduleAlgo
+from core.algorithm_contracts.value_domains import INTERNAL, MERGED
 from core.errors import ValidationError
-from core.models.enums import MergeMode, SourceType
-from core.services.common.build_outcome import BuildOutcome
-from core.services.scheduler.contracts.schedule_input_op import OpForScheduleAlgo
-from core.shared.degradation import DegradationCollector
-from core.shared.field_parse import parse_field_float
+from core.models.batch_operation import BatchOperation
 from core.shared.strict_parse import parse_required_float
 
-from .schedule_template_lookup import verified_external_context_for_op
+from .schedule_template_lookup import FrozenExternalContext
 
 
 @dataclass
@@ -25,41 +23,18 @@ class _ExternalMergeContext:
 _EMPTY_EXTERNAL_CONTEXT = _ExternalMergeContext()
 
 
-def _build_scope(op: Any) -> str:
-    op_id = getattr(op, "id", None)
-    if op_id not in (None, ""):
-        return f"schedule_input.op[{op_id}]"
-    batch_id = str(getattr(op, "batch_id", "") or "").strip() or "?"
-    seq = int(getattr(op, "seq", 0) or 0)
-    return f"schedule_input.batch[{batch_id}].seq[{seq}]"
+def _external_days(raw_value: Optional[float]) -> float:
+    try:
+        return parse_required_float(raw_value, field="外协周期", min_value=0.0, min_inclusive=False)
+    except ValidationError as exc:
+        raise ValidationError(exc.message, field="ext_days") from exc
 
 
-def _build_external_merge_context(
-    svc,
-    op: Any,
-    *,
-    strict_mode: bool,
-    scope: str,
-    collector: DegradationCollector,
-) -> _ExternalMergeContext:
-    facts = verified_external_context_for_op(svc, op)
+def _build_external_merge_context(facts: FrozenExternalContext, op: BatchOperation) -> _ExternalMergeContext:
     merge_mode = facts.row["merge_mode"]
-    # require_context already proved a merged total is a finite positive native number.
-    total_days = float(facts.row["total_days"]) if merge_mode == MergeMode.MERGED.value else None
-
-    ext_days: Optional[float] = None
-    if merge_mode != MergeMode.MERGED.value:
-        ext_days = parse_field_float(
-            getattr(op, "ext_days", None),
-            field="ext_days",
-            field_label="外协周期",
-            strict_mode=bool(strict_mode),
-            scope=scope,
-            fallback=1.0,
-            collector=collector,
-            min_value=0.0,
-            min_inclusive=False,
-        )
+    # The preparation-time context_problem check already proved a merged total is a finite positive native number.
+    total_days = float(facts.row["total_days"]) if merge_mode == MERGED else None
+    ext_days = None if merge_mode == MERGED else _external_days(op.ext_days)
 
     return _ExternalMergeContext(
         ext_days=ext_days,
@@ -70,38 +45,39 @@ def _build_external_merge_context(
 
 
 def _internal_work_hour(
-    raw_value: Any,
+    raw_value: Optional[float],
     *,
     field: str,
     field_label: str,
 ) -> float:
     try:
-        return float(parse_required_float(raw_value, field=field_label, min_value=0.0))
+        return parse_required_float(raw_value, field=field_label, min_value=0.0)
     except ValidationError as exc:
         raise ValidationError(f"自制工序的{field_label}必须是大于等于 0 的数字。", field=field) from exc
 
 
 def _make_algo_operation(
-    op: Any,
+    op: BatchOperation,
     *,
     setup_hours: float,
     unit_hours: float,
     external_context: _ExternalMergeContext,
 ) -> OpForScheduleAlgo:
+    # operation_model 已在读取边界把编号、文本与来源校验成规范值，这里原样搬运。
     return OpForScheduleAlgo(
-        id=int(getattr(op, "id", 0) or 0),
-        op_code=str(getattr(op, "op_code", "") or ""),
-        batch_id=str(getattr(op, "batch_id", "") or ""),
-        piece_id=getattr(op, "piece_id", None),
-        seq=int(getattr(op, "seq", 0) or 0),
-        op_type_id=getattr(op, "op_type_id", None),
-        op_type_name=getattr(op, "op_type_name", None),
-        source=str(getattr(op, "source", "") or ""),
-        machine_id=getattr(op, "machine_id", None),
-        operator_id=getattr(op, "operator_id", None),
-        supplier_id=getattr(op, "supplier_id", None),
-        setup_hours=float(setup_hours),
-        unit_hours=float(unit_hours),
+        id=op.id,
+        op_code=op.op_code,
+        batch_id=op.batch_id,
+        piece_id=op.piece_id,
+        seq=op.seq,
+        op_type_id=op.op_type_id,
+        op_type_name=op.op_type_name,
+        source=op.source,
+        machine_id=op.machine_id,
+        operator_id=op.operator_id,
+        supplier_id=op.supplier_id,
+        setup_hours=setup_hours,
+        unit_hours=unit_hours,
         ext_days=external_context.ext_days,
         ext_group_id=external_context.ext_group_id,
         ext_merge_mode=external_context.ext_merge_mode,
@@ -109,93 +85,38 @@ def _make_algo_operation(
     )
 
 
-def _build_algo_operations_outcome(
-    svc,
-    reschedulable_operations: List[Any],
+def build_algo_operations(
+    reschedulable_operations: List[BatchOperation],
     *,
-    strict_mode: bool = False,
-) -> BuildOutcome[List[OpForScheduleAlgo]]:
+    external_contexts: Mapping[int, FrozenExternalContext],
+) -> List[OpForScheduleAlgo]:
     """
     把已收口的可重排工序（BatchOperation）转换为算法输入。
 
     约定：
     - 可重排范围由工作台输入准备的处置记录统一确定；
-    - 本层只消费调用方传入的 `reschedulable_operations`，不再自行扩散状态语义。
+    - 本层只消费调用方传入的 `reschedulable_operations`，不再自行扩散状态语义；
+    - 来源只会是 internal/external：读取边界 operation_model 已按算法值域校验过，本层不再归一化；
+    - 外协工序的冻结周期记录由输入准备阶段一次核对后经 `external_contexts` 传入，本层不回库；
+    - 工时与外协周期只有严格口径：填得不对抛 ValidationError，不按默认值兜底。
     """
-    cache = getattr(svc, "_aps_schedule_input_cache", None)
-    if isinstance(cache, dict) and not cache.get("external_contexts_bound"):
-        cache.pop("external_members", None)
-    collector = DegradationCollector()
     algo_ops: List[OpForScheduleAlgo] = []
     for op in reschedulable_operations:
-        source_key = str(getattr(op, "source", "") or "").strip().lower()
-
-        if source_key == SourceType.INTERNAL.value:
-            setup_hours = _internal_work_hour(
-                getattr(op, "setup_hours", None),
-                field="setup_hours",
-                field_label="换型时间",
-            )
-            unit_hours = _internal_work_hour(
-                getattr(op, "unit_hours", None),
-                field="unit_hours",
-                field_label="单件工时",
-            )
+        if op.source == INTERNAL:
+            setup_hours = _internal_work_hour(op.setup_hours, field="setup_hours", field_label="换型时间")
+            unit_hours = _internal_work_hour(op.unit_hours, field="unit_hours", field_label="单件工时")
             external_context = _EMPTY_EXTERNAL_CONTEXT
-        elif source_key == SourceType.EXTERNAL.value:
+        else:
             # External work uses its calendar cycle and has no internal workload.
             # Keep the raw template's NULL hours intact; these are algorithm fields.
             setup_hours = unit_hours = 0.0
-            external_context = _build_external_merge_context(
-                svc,
-                op,
-                strict_mode=bool(strict_mode),
-                scope=_build_scope(op),
-                collector=collector,
-            )
-        else:
-            raise ValidationError("工序的内制或外协来源不明确。", field="source")
+            external_context = _build_external_merge_context(external_contexts[op.id], op)
         algo_ops.append(
             _make_algo_operation(
                 op,
-                setup_hours=float(setup_hours),
-                unit_hours=float(unit_hours),
+                setup_hours=setup_hours,
+                unit_hours=unit_hours,
                 external_context=external_context,
             )
         )
-    return BuildOutcome.from_collector(algo_ops, collector)
-
-
-@overload
-def build_algo_operations(
-    svc,
-    reschedulable_operations: List[Any],
-    *,
-    strict_mode: bool = False,
-    return_outcome: Literal[True],
-) -> BuildOutcome[List[OpForScheduleAlgo]]:
-    ...
-
-
-@overload
-def build_algo_operations(
-    svc,
-    reschedulable_operations: List[Any],
-    *,
-    strict_mode: bool = False,
-    return_outcome: Literal[False] = False,
-) -> List[OpForScheduleAlgo]:
-    ...
-
-
-def build_algo_operations(
-    svc,
-    reschedulable_operations: List[Any],
-    *,
-    strict_mode: bool = False,
-    return_outcome: bool = False,
-) -> Union[BuildOutcome[List[OpForScheduleAlgo]], List[OpForScheduleAlgo]]:
-    outcome = _build_algo_operations_outcome(svc, reschedulable_operations, strict_mode=bool(strict_mode))
-    if return_outcome:
-        return outcome
-    return outcome.value
+    return algo_ops

@@ -1,19 +1,20 @@
 """Exclusive calibration GET endpoints; the main integrator owns registration."""
 
-import json
 from typing import Any, Dict
 
 from flask import g, request, send_file
 
-from core.models.workbench_calibration import MAX_RESPONSE_BYTES, CalibrationQuery, unique_calibration_object
+from core.models.workbench_calibration import DUPLICATE_FILTER_MESSAGE, MAX_RESPONSE_BYTES, CalibrationQuery
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench import messages
 from core.services.workbench.calibration.export import export_calibration
 from core.services.workbench.calibration.service import WorkbenchCalibrationService
+from core.shared.strict_json import load_strict_json
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot, current_snapshot_time, page_integer, resolve_read_snapshot
+from .request_json import rejecter
 
 
 def _arguments(*, export, detail):
@@ -25,10 +26,9 @@ def _arguments(*, export, detail):
     fields: Dict[str, Any] = {key: value for key, value in request.args.items() if key not in ("snapshot_ref", "format", "page", "size")}
     fields.update(number=page_integer(request.args.get("page", "1"), max_digits=7), size=page_integer(request.args.get("size", "20"), max_digits=7))
     if "column_filters" in fields:
-        try:
-            fields["column_filters"] = json.loads(fields["column_filters"], object_pairs_hook=unique_calibration_object)
-        except json.JSONDecodeError as exc:
-            raise WorkbenchCommandRejected("invalid_input", "列筛选内容读不出来，当前筛选没有变化。请点「清除筛选」后重新选择。", 400) from exc
+        fields["column_filters"] = load_strict_json(
+            fields["column_filters"], on_malformed=rejecter("列筛选内容读不出来，当前筛选没有变化。请点「清除筛选」后重新选择。"),
+            on_duplicate=rejecter(DUPLICATE_FILTER_MESSAGE))
     query = CalibrationQuery(**fields)
     token = request.args.get("snapshot_ref")
     if (export or detail) and not token:

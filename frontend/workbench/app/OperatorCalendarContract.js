@@ -50,10 +50,10 @@
     return {
       periods: value.periods == null ? null : value.periods.map(row => ({ ...row })),
       type: value.day_type === 'holiday' ? 'rest' : 'work',
-      shiftStart: value.shift_start || '08:00',
-      shiftEnd: value.shift_end || '',
+      shiftStart: value.shift_start,
+      shiftEnd: value.shift_end === null ? '' : value.shift_end,
       eff: String(Number((value.efficiency * 100).toPrecision(15))),
-      allowNormal: value.allow_normal, allowUrgent: value.allow_urgent, note: value.remark || ''
+      allowNormal: value.allow_normal, allowUrgent: value.allow_urgent, note: value.remark === null ? '' : value.remark
     };
   }
   // 只有从休息改回上班才可能补默认时段，已经是上班时再点「上班」什么都不改。草稿里还有逐段时段，
@@ -93,7 +93,7 @@
       fields.periods = window.APSWorkPeriods.clone(periods);
     }
     const note = String(draft.note == null ? '' : draft.note).trim();
-    fields.note = note || null;
+    fields.note = note === '' ? null : note;
     if (original && original.explicit && draft.eff === draftOf(original).eff) delete fields.eff;
     return fields;
   }

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from core.errors import ValidationError
-from core.shared.strict_parse import parse_optional_date, parse_optional_datetime, parse_required_int
+from core.models.batch import Batch
+from core.shared.strict_parse import parse_optional_date, parse_optional_datetime
 
 from .date_parsers import parse_date, parse_datetime
 from .sort_strategies import BatchForSort, SortStrategy
+from .types import OpForScheduleAlgo
 
 
 def normalize_text_id(value: Any) -> str:
@@ -19,15 +21,15 @@ def normalize_text_id(value: Any) -> str:
         raise ValidationError("文本标识无法转换为字符串", field="id") from exc
 
 
-def resolve_batch_sort_batch_id(batch_key: Any, batch: Any) -> str:
+def resolve_batch_sort_batch_id(batch_key: str, batch: Batch) -> str:
     normalized_key = normalize_text_id(batch_key)
     if normalized_key:
         return normalized_key
-    return normalize_text_id(getattr(batch, "batch_id", None))
+    return batch.batch_id
 
 
-def build_normalized_batches_map(batches: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    normalized: Dict[str, Any] = {}
+def build_normalized_batches_map(batches: Optional[Mapping[str, Batch]]) -> Dict[str, Batch]:
+    normalized: Dict[str, Batch] = {}
     for raw_key, batch in (batches or {}).items():
         batch_id = resolve_batch_sort_batch_id(raw_key, batch)
         if not batch_id:
@@ -38,7 +40,9 @@ def build_normalized_batches_map(batches: Optional[Dict[str, Any]]) -> Dict[str,
     return normalized
 
 
-def normalize_batch_order_override(batch_order_override: Optional[List[Any]], batches: Dict[str, Any]) -> List[str]:
+def normalize_batch_order_override(
+    batch_order_override: Optional[Sequence[str]], batches: Mapping[str, Batch],
+) -> List[str]:
     if not batch_order_override:
         return []
     seen = set()
@@ -71,7 +75,7 @@ def _parse_created_at_for_sort(value: Any, *, strict_mode: bool, strategy: SortS
 
 
 def build_batch_sort_inputs(
-    batches: Dict[str, Any],
+    batches: Mapping[str, Batch],
     *,
     strict_mode: bool,
     strategy: SortStrategy,
@@ -85,26 +89,18 @@ def build_batch_sort_inputs(
         batch_for_sort.append(
             BatchForSort(
                 batch_id=batch_id,
-                priority=str(getattr(batch, "priority", "") or "normal"),
-                due_date=_parse_due_date_for_sort(getattr(batch, "due_date", None), strict_mode=bool(strict_mode)),
+                priority=batch.priority,
+                due_date=_parse_due_date_for_sort(batch.due_date, strict_mode=strict_mode),
                 ready_date=(
-                    parse_ready_date_for_sort(getattr(batch, "ready_date", None), strict_mode=bool(strict_mode))
-                    if bool(readiness_gate_enabled)
+                    parse_ready_date_for_sort(batch.ready_date, strict_mode=strict_mode)
+                    if readiness_gate_enabled
                     else None
                 ),
-                created_at=_parse_created_at_for_sort(
-                    getattr(batch, "created_at", None), strict_mode=bool(strict_mode), strategy=strategy
-                ),
+                created_at=_parse_created_at_for_sort(batch.created_at, strict_mode=strict_mode, strategy=strategy),
             )
         )
     return batch_for_sort
 
 
-def operation_sort_key(op: Any, batch_order: Dict[str, int]) -> Tuple[int, str, int, int]:
-    batch_id = normalize_text_id(getattr(op, "batch_id", ""))
-    return (
-        int(batch_order.get(batch_id, 999999)),
-        batch_id,
-        parse_required_int(getattr(op, "seq", 0), field="seq"),
-        parse_required_int(getattr(op, "id", 0), field="id"),
-    )
+def operation_sort_key(op: OpForScheduleAlgo, batch_order: Mapping[str, int]) -> Tuple[int, str, int, int]:
+    return batch_order.get(op.batch_id, 999999), op.batch_id, op.seq, op.id

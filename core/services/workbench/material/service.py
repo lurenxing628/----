@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict, Optional
 
 from core.errors import AppError, BusinessError, ErrorCode
-from core.models import Material
+from core.models.material import Material
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_material import normalize_material_input

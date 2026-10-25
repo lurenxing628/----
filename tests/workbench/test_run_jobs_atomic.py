@@ -380,3 +380,49 @@ def test_worker_shares_capture_inside_compute_and_recaptures_only_for_persistenc
     assert completed["state"] == "complete"
     assert len(captures) == 2 and captures[0] is not case.conn and captures[1] is case.conn
     assert tables and set(tables.values()) == {1}
+
+
+_RUN_KEY = "run-request-00000001"
+_RUN_TARGET = "/api/workbench/v1/scheduling/requests/" + _RUN_KEY
+_RUN_READ_FAILED = "排产记录没有读出来。请刷新重试；仍不行请联系维护人员，并告知下方编号。"
+
+
+@pytest.mark.parametrize("method,path,failure,log_prefix,message,committed,request_key", [
+    ("GET", "/runs/" + "a" * 32, RuntimeError("run service broke"), "排产运行接口失败",
+     _RUN_READ_FAILED, False, None),
+    ("POST", "/runs", RuntimeError("run service broke"), "排产运行接口失败",
+     _RUN_READ_FAILED, "unknown", _RUN_KEY),
+    ("POST", "/runs", WorkbenchCommandUncertain(_RUN_KEY), "排产受理结果待核实",
+     "这次提交结果不确定，可能已经生效。请刷新后核对，不要重复提交。", "unknown", _RUN_KEY),
+], ids=["read-unexpected", "accept-unexpected", "accept-uncertain"])
+def test_run_api_500_logs_the_request_ref_shown_to_the_user(monkeypatch, caplog, method, path, failure, log_prefix,
+                                                             message, committed, request_key):
+    """排产运行接口包装成 500 的错误：日志记下的编号就是用户看到的「下方编号」，原始异常留在日志里。"""
+    import logging
+    from types import SimpleNamespace
+
+    from flask import Blueprint, Flask
+
+    from web.routes.workbench import scheduling_jobs
+
+    def broken(*_args, **_kwargs):
+        raise failure
+
+    monkeypatch.setattr(scheduling_jobs, "_service", lambda: SimpleNamespace(get=broken, accept=broken))
+    app = Flask(__name__)
+    bp = Blueprint("run_api_failures", __name__)
+    scheduling_jobs.register_scheduling_job_routes(bp)
+    app.register_blueprint(bp)
+    body = {"input_ref": "input", "write_token": "token", "request_key": _RUN_KEY} if method == "POST" else None
+    with caplog.at_level(logging.ERROR):
+        response = app.test_client().open("/api/workbench/v1/scheduling" + path, method=method, json=body)
+    assert response.status_code == 500, response.get_data(as_text=True)
+    assert response.headers["Cache-Control"] == "no-store"
+    result = response.get_json()
+    error = result["error"]
+    assert result["committed"] == committed
+    assert (error["code"], error["message"]) == ("storage_failure", message)
+    assert (error.get("request_key"), error.get("result_target")) == (request_key, request_key and _RUN_TARGET)
+    record, = [item for item in caplog.records if item.getMessage().startswith(log_prefix)]
+    assert record.getMessage() == log_prefix + " request_ref=" + error["request_ref"]
+    assert record.exc_info[1] is failure

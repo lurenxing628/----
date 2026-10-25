@@ -86,22 +86,16 @@ def build_future_schema_version_error(db_version: int, *, supported_version: int
     )
 
 
-def build_current_schema_contract_error(
-    db_version: int,
-    *,
-    supported_version: int = CURRENT_SCHEMA_VERSION,
-    issues: Optional[List[str]] = None,
-) -> MigrationContractError:
+def build_current_schema_contract_error(db_version: int, *, issues: List[str]) -> MigrationContractError:
     current = int(db_version)
-    supported = int(supported_version)
-    visible_issues = _prioritized_contract_issues(issues or [])
+    visible_issues = _prioritized_contract_issues(issues)
     issue_lines = [f"结构问题：{item}" for item in visible_issues]
-    if issues and len(issues) > len(visible_issues):
+    if len(issues) > len(visible_issues):
         issue_lines.append(f"其余结构问题 {len(issues) - len(visible_issues)} 项略。")
     return MigrationContractError(
         " ".join(
             [
-                f"检测到数据库 SchemaVersion={current} 等于当前程序支持版本 {supported}，但表结构不满足当前契约。",
+                f"检测到数据库 SchemaVersion={current} 等于当前程序支持版本 {CURRENT_SCHEMA_VERSION}，但表结构不满足当前契约。",
                 "为避免陈旧结构静默冒充当前版本，已阻断启动/迁移。",
                 *issue_lines,
                 "请恢复完整备份，或先使用能正确迁移该数据库的程序版本修复结构后再重试。",

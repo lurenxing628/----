@@ -5,10 +5,6 @@
   const toRows = entity => entity.materials.requirements.map(row => ({ ...row, operation_ref: row.operation_ref || null, arrivals: row.arrivals || [],
     required_quantity: row.required_quantity == null ? '' : String(row.required_quantity),
     available_quantity: row.available_quantity == null ? '' : String(row.available_quantity) }));
-  function isStale(command) {
-    const error = command && command.error, code = error && (error.code || error.error && error.error.code);
-    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
-  }
   function BatchMaterialEditor({ adapter, entity: initial, command, onCommitted, onClose, disabled }) {
     const [entity, setEntity] = React.useState(initial), [rows, setRows] = React.useState(() => toRows(initial));
     const [removed, setRemoved] = React.useState([]), [error, setError] = React.useState(null), [review, setReview] = React.useState(null);
@@ -27,7 +23,7 @@
     async function close() { if (!command.locked && await window.WorkbenchGuards.confirmLeave({ owner })) onClose(); }
     function clearError() {
       setError(null);
-      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     function add() {
       const item = data && data.entities.find(row => row.ref === selected);

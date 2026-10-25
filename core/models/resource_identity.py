@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
 
@@ -17,39 +16,10 @@ def _clean_repeated_id_prefix(rid: str, name: str) -> str:
     return name
 
 
-@dataclass(frozen=True)
-class ResourceIdentity:
-    id: str = ""
-    name: str = ""
-    display_label: str = ""
-    identity_label: str = ""
-    label: str = ""
-
-
-def build_resource_identity(
-    resource_id: Any = None,
-    resource_name: Any = None,
-    *,
-    display_label: Any = None,
-    identity_label: Any = None,
-) -> ResourceIdentity:
+def resource_display_label(resource_id: Any, resource_name: Any) -> str:
+    """Name first (without a repeated id prefix), else the id; empty when both are missing."""
     rid = _text(resource_id)
-    name = _clean_repeated_id_prefix(rid, _text(resource_name))
-    display = _text(display_label) or name or rid
-    identity = _text(identity_label)
-    if not identity:
-        if rid and name and name != rid:
-            identity = f"{rid} {name}"
-        else:
-            identity = display
-    label = identity
-    return ResourceIdentity(
-        id=rid,
-        name=name,
-        display_label=display,
-        identity_label=identity,
-        label=label,
-    )
+    return _clean_repeated_id_prefix(rid, _text(resource_name)) or rid
 
 
-__all__ = ["ResourceIdentity", "build_resource_identity"]
+__all__ = ["resource_display_label"]

@@ -8,7 +8,7 @@ import pytest
 from core.models.objective import best_score_schema
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION, build_shared_process
-from core.services.scheduler.run.schedule_shared_optimizer import _SharedSearch
+from core.services.scheduler.run.schedule_shared_search import SharedSearch
 from core.services.workbench.facts.candidate_process import candidate_process
 from core.services.workbench.facts.unified_process import project_unified_process
 from core.services.workbench.run.decision_process import (
@@ -226,7 +226,7 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
     # Actual arrangements and metric computation feed the collector; finding an initial best is not improvement.
     worse = _candidate([_result(1, 5), _result(2, 7), _result(3, 9)], objective="min_overdue")
     better = _candidate([_result(1, 0), _result(3, 1), _result(2, 2)], objective="min_overdue")
-    shared = _SharedSearch(archive=_archive("min_overdue"), clock=lambda: 0, started_at=0)
+    shared = SharedSearch(archive=_archive("min_overdue"), clock=lambda: 0, started_at=0)
     shared.phase = "initial_construct"
     _observe_decoded(shared, "min_overdue", candidate=deepcopy(worse), origin="real_arrangement", verified=True, elapsed_ms=10)
     initial = build_shared_process(shared, runtime_ms=100, stop_reason="completed", decode_stats={}, budget_stats=process["budget"])
@@ -248,7 +248,7 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
         assert target["points"][-1]["elapsed_ms"] == 100 and target["points"][-1]["flags"] == ["final"]
 
     # The same real collector at the last bucket boundary loses its 999ms point while keeping the saved time.
-    sampled = _SharedSearch(archive=_archive("min_overdue"), clock=lambda: 0, started_at=0)
+    sampled = SharedSearch(archive=_archive("min_overdue"), clock=lambda: 0, started_at=0)
     _observe_decoded(sampled, "min_overdue", candidate=deepcopy(worse), origin="real_arrangement", verified=True, elapsed_ms=10)
     _observe_decoded(sampled, "min_overdue", candidate=deepcopy(better), origin="real_arrangement", verified=True, elapsed_ms=999)
     sampled_process = build_shared_process(sampled, runtime_ms=1000, stop_reason="completed", decode_stats={}, budget_stats=process["budget"])
@@ -260,7 +260,7 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
         assert target["points"][-1]["flags"] == ["final"]
 
     # Only strict changes within the same known partial scope count; new and unknown scopes initialize separately.
-    partial = _SharedSearch(archive=_archive("min_overdue"), clock=lambda: 0, started_at=0)
+    partial = SharedSearch(archive=_archive("min_overdue"), clock=lambda: 0, started_at=0)
     _observe_decoded(partial, "min_overdue", candidate=_candidate([_result(1, 5), _result(2, 7)], failures=(_failure(3),)),
                     origin="known_partial", verified=True, elapsed_ms=10)
     _observe_decoded(partial, "min_overdue", candidate=_candidate([_result(1, 0), _result(2, 2)], failures=(_failure(3),)),

@@ -9,7 +9,6 @@ from .summary_size_guard_fields import (
     SUMMARY_SIZE_LIMIT_BYTES,
     guarded_items,
     minimal_summary_for_size_guard,
-    positive_int,
     size_guard_missing_resource_item,
     size_guard_public_error_detail,
     summary_size_bytes,
@@ -25,7 +24,8 @@ class _SizeGuardState:
 
 
 def _remember_warning_summary(result_summary_obj: Dict[str, Any], warnings: List[Any], *, limit: int) -> None:
-    warning_count = max(positive_int(result_summary_obj.get("warning_count")), len(warnings))
+    # warning_count 只由本函数在上一档裁剪时写入；首档还没有这个键。
+    warning_count = max(result_summary_obj.get("warning_count", 0), len(warnings))
     if warning_count <= 0:
         return
     result_summary_obj["warning_count"] = int(warning_count)

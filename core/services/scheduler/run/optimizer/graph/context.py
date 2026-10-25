@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, NoReturn, Optional, cast
 
+from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_runtime.graph_cycle import kahn_unreachable_op_ids
 from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.graph_ready_profiles import (
@@ -14,7 +15,7 @@ from core.shared.strict_parse import parse_required_int
 def validate_graph_ready_context(
     graph_ready_context: Any,
     *,
-    algo_ops_to_schedule: List[Any],
+    algo_ops_to_schedule: List[OpForScheduleAlgo],
     seed_sr_list: Optional[List[Any]] = None,
 ) -> set:
     if not isinstance(graph_ready_context, dict) or not graph_ready_context.get("enabled"):
@@ -90,10 +91,10 @@ def reason_from_validation(exc: ValidationError) -> str:
     return "graph_ready_candidate_rejected"
 
 
-def _validate_schedulable_ids(schedulable_ids: set, fixed_ids: set, *, algo_ops_to_schedule: List[Any]) -> None:
+def _validate_schedulable_ids(schedulable_ids: set, fixed_ids: set, *, algo_ops_to_schedule: List[OpForScheduleAlgo]) -> None:
     if schedulable_ids.intersection(fixed_ids):
         _raise("图 ready 候选的待排工序和固定工序有重叠。", "graph_ready_schedulable_fixed_overlap")
-    expected_ids = {_positive_op_id(getattr(op, "id", None), field="id") for op in algo_ops_to_schedule or ()}
+    expected_ids = {op.id for op in algo_ops_to_schedule}
     if schedulable_ids != expected_ids:
         _raise("图 ready 候选的待排工序和本次输入不一致。", "graph_ready_schedulable_mismatch")
 
@@ -104,10 +105,9 @@ def _validate_fixed_sources(graph_ready_context: Dict[str, Any], *, fixed_ids: s
         return
     if not isinstance(sources, dict):
         _raise("图 ready 候选固定工序来源必须是映射。", "graph_ready_bad_fixed_sources")
-    source_ids = {_positive_op_id(raw_id, field="fixed_op_sources_by_op_id") for raw_id in sources}
-    if source_ids != fixed_ids:
+    if set(sources) != fixed_ids:
         _raise("图 ready 候选固定工序来源和固定工序集合不一致。", "graph_ready_fixed_source_mismatch")
-    seed_ids = {_positive_op_id(getattr(item, "op_id", None), field="seed_results") for item in seed_sr_list or ()}
+    seed_ids = {item.op_id for item in seed_sr_list or ()}
     for op_id in seed_ids:
         if op_id not in fixed_ids:
             _raise("图 ready 候选没有把种子工序标为固定。", "graph_ready_seed_fixed_mismatch")
@@ -179,8 +179,7 @@ def _priority_key_tuple(value: Any) -> tuple:
 
 
 def _validate_exact_key_set(value: Dict[Any, Any], *, schedulable_ids: set, reason: str) -> None:
-    actual_ids = {_positive_op_id(raw_id, field="graph_ready_context") for raw_id in value}
-    if actual_ids != schedulable_ids:
+    if set(value) != schedulable_ids:
         _raise("图 ready 候选 key 集合必须和待排工序完全一致。", reason)
 
 
@@ -188,7 +187,7 @@ def _op_id_set(value: Any, *, field: str) -> set:
     if value is None or isinstance(value, (str, bytes)):
         _raise(f"图 ready 候选字段 {field} 必须是 op_id 集合。", _missing_reason(field))
     try:
-        ids = [_positive_op_id(item, field=field) for item in value]
+        ids = list(value)
     except TypeError as exc:
         raise ValidationError(f"图 ready 候选字段 {field} 必须是 op_id 集合。", field="graph_ready_context", details={"reason": _missing_reason(field)}) from exc
     unique = set(ids)
@@ -201,12 +200,11 @@ def _link_map(value: Any, *, field: str) -> Dict[int, set]:
     if not isinstance(value, dict):
         _raise(f"图 ready 候选字段 {field} 必须是映射。", _missing_reason(field))
     out: Dict[int, set] = {}
-    for raw_op_id, raw_links in value.items():
-        op_id = _positive_op_id(raw_op_id, field=field)
+    for op_id, raw_links in value.items():
         if raw_links is None or isinstance(raw_links, (str, bytes)):
             _raise(f"图 ready 候选字段 {field} 的值必须是 op_id 集合。", _missing_reason(field))
         try:
-            out[op_id] = {_positive_op_id(item, field=field) for item in raw_links}
+            out[op_id] = set(raw_links)
         except TypeError as exc:
             raise ValidationError(f"图 ready 候选字段 {field} 的值必须是 op_id 集合。", field="graph_ready_context", details={"reason": _missing_reason(field)}) from exc
     return out
@@ -219,10 +217,6 @@ def _validate_link_scope(link_map: Dict[int, set], *, known_ids: set, reason: st
         for linked_id in linked_ids:
             if linked_id not in known_ids:
                 _raise("图 ready 候选包含范围外工序关系。", reason)
-
-
-def _positive_op_id(value: Any, *, field: str) -> int:
-    return parse_required_int(value, field=field, min_value=1)
 
 
 def _missing_reason(field: str) -> str:

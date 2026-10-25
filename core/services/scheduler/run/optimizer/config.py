@@ -3,14 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_runtime.algo_stats import increment_counter
-from core.algorithms import SortStrategy
 from core.errors import ValidationError
 from core.models.enums import YesNo
-from core.models.schedule_config_runtime import ensure_schedule_config_snapshot
+from core.models.schedule_config_runtime_coercion import ensure_schedule_config_snapshot
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 from core.services.scheduler.config.config_field_spec import choices_for
-from core.shared.boolean_normalize import to_yes_no
 from core.shared.strict_parse import parse_required_float, parse_required_int
 
 _FIELD_LABELS = {
@@ -29,7 +28,8 @@ _FIELD_LABELS = {
 @dataclass(frozen=True)
 class OptimizerConfig:
     strategy_enum: SortStrategy
-    strategy_params: Optional[Dict[str, Any]]
+    # 只有加权策略带参数；其余策略为空字典。
+    strategy_params: Dict[str, Any]
     algo_mode: str
     objective_name: str
     time_budget_seconds: int
@@ -40,7 +40,7 @@ class OptimizerConfig:
     valid_dispatch_rules: Tuple[str, ...]
 
     def strategy_keys(self) -> List[str]:
-        current_key = str(self.strategy_enum.value)
+        current_key = self.strategy_enum.value
         if self.algo_mode != "improve":
             return [current_key]
         return [current_key] + [item for item in self.valid_strategies if item != current_key]
@@ -105,23 +105,18 @@ def effective_choice_values(field: str, *, cfg_svc: Any, allowlist_attr: Optiona
 
 
 def record_optimizer_cfg_degradations(
-    snapshot: Any,
+    snapshot: ScheduleConfigSnapshot,
     optimizer_algo_stats: Dict[str, Any],
     *,
     mapping: Dict[str, str],
 ) -> None:
-    degradation_events = getattr(snapshot, "degradation_events", ()) or ()
-    degraded_fields = {
-        str((event or {}).get("field") or "").strip()
-        for event in degradation_events
-        if isinstance(event, dict)
-    }
+    degraded_fields = {event["field"] for event in snapshot.degradation_events}
     for config_field, counter_key in mapping.items():
         if config_field in degraded_fields:
             increment_counter(optimizer_algo_stats, counter_key, bucket="param_fallbacks")
 
 
-def ensure_optimizer_config_snapshot(cfg: Any, *, strict_mode: bool) -> Any:
+def ensure_optimizer_config_snapshot(cfg: Any, *, strict_mode: bool) -> ScheduleConfigSnapshot:
     if isinstance(cfg, ScheduleConfigSnapshot):
         return cfg
     return ensure_schedule_config_snapshot(
@@ -131,25 +126,25 @@ def ensure_optimizer_config_snapshot(cfg: Any, *, strict_mode: bool) -> Any:
     )
 
 
-def weighted_strategy_params(snapshot: Any) -> Dict[str, Any]:
+def weighted_strategy_params(snapshot: ScheduleConfigSnapshot) -> Dict[str, Any]:
     return {
         "priority_weight": require_float(snapshot.priority_weight, field="priority_weight", min_value=0.0),
         "due_weight": require_float(snapshot.due_weight, field="due_weight", min_value=0.0),
     }
 
 
-def is_ortools_enabled(snapshot: Any) -> bool:
-    return to_yes_no(getattr(snapshot, "ortools_enabled", YesNo.NO.value), default=YesNo.NO.value) == YesNo.YES.value
+def is_ortools_enabled(snapshot: ScheduleConfigSnapshot) -> bool:
+    return snapshot.ortools_enabled == YesNo.YES.value
 
 
-def ortools_time_limit_seconds(snapshot: Any) -> int:
+def ortools_time_limit_seconds(snapshot: ScheduleConfigSnapshot) -> int:
     return require_int(snapshot.ortools_time_limit_seconds, field="ortools_time_limit_seconds", min_value=1)
 
 
 def resolve_optimizer_config(
     *,
     cfg_svc: Any,
-    snapshot: Any,
+    snapshot: ScheduleConfigSnapshot,
     optimizer_algo_stats: Dict[str, Any],
 ) -> OptimizerConfig:
     valid_strategies = effective_choice_values("sort_strategy", cfg_svc=cfg_svc, allowlist_attr="VALID_STRATEGIES")
@@ -169,9 +164,7 @@ def resolve_optimizer_config(
             },
         )
 
-    strategy_params: Optional[Dict[str, Any]] = None
-    if strategy_enum == SortStrategy.WEIGHTED:
-        strategy_params = weighted_strategy_params(snapshot)
+    strategy_params = weighted_strategy_params(snapshot) if strategy_enum == SortStrategy.WEIGHTED else {}
 
     return OptimizerConfig(
         strategy_enum=strategy_enum,

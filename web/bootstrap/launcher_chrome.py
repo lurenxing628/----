@@ -104,7 +104,7 @@ def _list_aps_chrome_pids(profile_dir: str) -> Optional[List[int]]:
         return []
     if not target_profile:
         return []
-    rc, output = run_powershell_text(_chrome_pid_query_script(target_profile), 8.0)
+    rc, output = run_powershell_text(_chrome_pid_query_script(target_profile))
     if rc is None or rc != 0:
         return None
     return _parse_chrome_pid_output(output)

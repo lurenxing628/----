@@ -350,3 +350,18 @@ def test_actual_export_skips_chain_and_keeps_workspace_snapshot_and_deviations(l
     assert response.status_code == 200, response.get_json()
     assert response.headers["X-Workbench-Snapshot-Ref"] == listed["meta"]["snapshot_ref"]
     assert response.headers["X-Workbench-Operation-Count"] == "3"
+
+
+@pytest.mark.parametrize("raw", ('[{"id":"B1","id":"B2"}]', '[NaN]', '[1e999]', '["B1"'))
+def test_execution_batch_arguments_reject_duplicate_keys_and_nonfinite_numbers_as_unreadable_json(raw):
+    from core.services.workbench.execution.actual_gantt_scope import ActualGanttScope
+    from core.services.workbench.execution.field_workspace_scope import normalize_scope
+
+    with pytest.raises(WorkbenchCommandRejected) as actual:
+        ActualGanttScope.parse({'plan_ref': 'a' * 48, 'batch_ids': raw})
+    assert (actual.value.code, actual.value.status, str(actual.value)) == ('invalid_input', 400, '批次范围必须是 JSON 数组。')
+    with pytest.raises(WorkbenchCommandRejected) as field:
+        normalize_scope({'batch_ids': raw})
+    assert (field.value.code, field.value.status, str(field.value)) == ('invalid_input', 400, '批次范围无效。')
+    # The file-preview form scope arrives already decoded, so its list is checked as is.
+    assert normalize_scope({'batch_ids': ['B2', 'B1', 'B2']}) == {'batch_ids': ['B1', 'B2']}

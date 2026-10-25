@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.resource_capabilities import supplier_capability_rows, supports_source
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.template_hours import ProcessTemplateHours
@@ -114,7 +115,7 @@ def _merged_hours_groups(payload, active, groups):
 
 def _hours_fields(row, old, merged_keys):
     expected = {"ref", "setup_hours", "unit_hours"} if old["source"] == "internal" else {"ref", "external_days"}
-    if old["source"] not in ("internal", "external") or set(row) != expected:
+    if old["source"] not in OPERATION_SOURCES or set(row) != expected:
         raise WorkbenchCommandRejected("hours_source_mismatch", "填的工时项要和这道工序已确认的归属对上。", 422)
     if old["source"] == "external" and old["ext_group_id"] in merged_keys:
         # The effective value is the group total. Preserve the member's prior value

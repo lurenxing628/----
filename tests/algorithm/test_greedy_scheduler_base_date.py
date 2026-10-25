@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import sys
 from datetime import date, datetime
-from types import SimpleNamespace
 
 from tests._support.paths import REPO_ROOT_STR as REPO_ROOT
 
@@ -15,6 +14,7 @@ if REPO_ROOT not in sys.path:
 import core.algorithms.greedy.scheduler as greedy_scheduler_module
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithms.greedy.scheduler import GreedyScheduler
+from tests._support.algo_operations import make_algo_op, make_batch
 
 
 class _DummyCalendar:
@@ -71,26 +71,11 @@ def test_greedy_scheduler_weighted_order_uses_start_dt_base_date(monkeypatch):
     start_dt = datetime(2032, 1, 4, 8, 0, 0)
 
     batches = {
-        "A_late": SimpleNamespace(
-            priority="normal",
-            due_date=date(2032, 1, 6),
-            ready_status="yes",
-            ready_date=None,
-            created_at=None,
-        ),
-        "B_early": SimpleNamespace(
-            priority="normal",
-            due_date=date(2032, 1, 5),
-            ready_status="yes",
-            ready_date=None,
-            created_at=None,
-        ),
+        "A_late": make_batch(batch_id="A_late", due_date=date(2032, 1, 6)),
+        "B_early": make_batch(batch_id="B_early", due_date=date(2032, 1, 5)),
     }
 
-    operations = [
-        SimpleNamespace(id=1, batch_id="A_late", seq=1),
-        SimpleNamespace(id=2, batch_id="B_early", seq=1),
-    ]
+    operations = [make_algo_op(id=1, batch_id="A_late"), make_algo_op(id=2, batch_id="B_early")]
 
     scheduler.schedule(
         operations=operations,

@@ -1464,7 +1464,7 @@ async function unifiedGenerationContracts() {
   const raw = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/unified_generation_http.json'), 'utf8'));
   const local = { ...window }, savedRun = raw.candidate_catalog.run_ref, savedCandidate = raw.candidate_workspace.candidate.candidate_ref;
   const names = ['resource-contract.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'RunGenerationContract.js', 'PointContract.js',
-    'DeliveryProjectionContract.js', 'EffortProjectionContract.js', 'GanttGraph.js', 'RunCandidateAPI.js', 'RunJobAPI.js',
+    'DeliveryProjectionContract.js', 'EffortProjectionContract.js', 'GanttGraph.js', 'RunCandidateAPI.js', 'RunJobAPI.js', 'RunAdoptionAPI.js',
     'PlanContract.js', 'RunCandidateControls.jsx', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx'];
   const outputs = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
     sources: names.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;

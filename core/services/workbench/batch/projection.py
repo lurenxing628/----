@@ -3,6 +3,7 @@
 import math
 from datetime import date, datetime
 
+from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.workbench_batch import FIELDS, MAX_INTEGER, PRIORITIES, READY, STATUSES
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.material.stage_availability import MaterialAvailability
@@ -176,7 +177,7 @@ class BatchProjection:
                 "setup_hours": numbers["setup_hours"], "unit_hours": numbers["unit_hours"],
                 "external_days": numbers["ext_days"], **{kind + "_ref": item["ref"] if item else None for kind, item in resources.items()},
                 "resources": resources, "external_group": group, "external_context_notice": origin_notice(context), "issues": issues,
-                "editable": not protected and row["status"] == "pending" and row["source"] in ("internal", "external")}
+                "editable": not protected and row["status"] == "pending" and row["source"] in OPERATION_SOURCES}
 
     def entity(self, row):
         return self._entity(row, include_operations=True)

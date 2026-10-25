@@ -7,15 +7,6 @@ from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLim
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES, MAX_POLICY_CELLS
 from core.services.capacity.plan_calendar_windows import project_resource_calendars, unavailable
 
-from .utilization import row_interval
-
-
-def resource_calendars(conn, rows, start, end):
-    # 只为窗口内真有正时长占用的内部安排投影日历，与占用率计算同一判定；
-    # 点事件、坏时间和窗口外记录不占日历单元格预算。
-    ids = _internal_resource_ids([row for row in rows if row_interval(row, start, end) is not None])
-    return resource_calendars_for_ids(conn, ids, start, end)
-
 
 def resource_ids_from_groups(groups):
     return {"machine": sorted(key for kind, key in groups if kind == "machine"),
@@ -35,18 +26,6 @@ def resource_calendars_for_ids(conn, ids, start, end):
     except ProjectionLimit as exc:
         return _unavailable(ids, str(exc))
     return _project_resources(ids, reader.rows, first, last, start, end)
-
-
-def _internal_resource_ids(rows):
-    """Sorted machine and operator ids referenced by rows already admitted as internal occupancy."""
-    ids = {"machine": set(), "operator": set()}
-    for row in rows:
-        for kind, keys in ids.items():
-            value = row.get(kind + "_id")
-            if value is not None and str(value).strip():
-                keys.add(str(value))
-    return {kind: sorted(keys) for kind, keys in ids.items()}
-
 
 
 def _projection_dates(start, end):

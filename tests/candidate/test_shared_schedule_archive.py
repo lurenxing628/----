@@ -25,7 +25,7 @@ FIELD_ORDERS = {
 
 def _observe(archive, candidate, elapsed, *, phase="baseline", direction="min_tardiness"):
     observed = archive.register_decode(candidate, verified=True, elapsed_ms=elapsed)
-    if observed.entry_id in archive.retained_entry_ids:
+    if observed.entry_id in archive:
         archive.finish_observation(observed, candidate, origin={"phase": phase, "direction": direction})
     return observed
 
@@ -120,7 +120,7 @@ def test_content_identity_owns_mutable_payload_and_retains_live_references():
     with pytest.raises(ValueError):
         archive.set_starting_entries("min_tardiness", [ids[1], ids[2], ids[3], first.entry_id])
     protected = {first.entry_id, *ids}
-    assert protected <= set(archive.retained_entry_ids)
+    assert all(entry_id in archive for entry_id in protected)
 
     displaced_candidates = []
     displaced_ids = []
@@ -130,8 +130,9 @@ def test_content_identity_owns_mutable_payload_and_retains_live_references():
         observed = _observe(archive, displaced, 100 + index)
         displaced_candidates.append(displaced)
         displaced_ids.append(observed.entry_id)
-    assert len(archive.retained_entry_ids) == 5
-    assert protected == set(archive.retained_entry_ids)
+    observed_ids = protected | set(displaced_ids)
+    assert len(protected) == archive.retention_limit == 5
+    assert {entry_id for entry_id in observed_ids if entry_id in archive} == protected
     for entry_id in displaced_ids:
         with pytest.raises(KeyError):
             archive.materialize(entry_id)
@@ -140,7 +141,7 @@ def test_content_identity_owns_mutable_payload_and_retains_live_references():
     assert revisited.entry_id == displaced_ids[0] and revisited.restored
     assert archive.entry(revisited.entry_id).first_found_elapsed_ms == 101
     assert archive.materialize(revisited.entry_id)["results"] == displaced_candidates[0]["results"]
-    assert len(archive.retained_entry_ids) <= 5
+    assert sum(entry_id in archive for entry_id in observed_ids) <= archive.retention_limit
     assert archive.best_by_objective == {objective: first.entry_id for objective in target_objectives_for("min_tardiness")}
 
 
@@ -260,11 +261,11 @@ def test_partial_groups_use_real_completion_scope_and_reject_unvalidated_trials(
     assert archive.best_by_objective == {}
 
     complete = _candidate([_result(1, 7), _result(2, 9), _result(3, 11)])
-    before = archive.retained_entry_ids
+    retained = (first.entry_id, better.entry_id, other.entry_id, unknown_result.entry_id, not_complete.entry_id)
     for _ in range(3):
         rejected = archive.register_decode(complete, verified=False, elapsed_ms=50)
-        assert rejected.entry_id not in before and rejected.reason and not rejected.reused and not rejected.restored
-        assert archive.retained_entry_ids == before
+        assert rejected.entry_id not in retained and rejected.reason and not rejected.reused and not rejected.restored
+        assert rejected.entry_id not in archive and all(entry_id in archive for entry_id in retained)
         assert archive.best_by_objective == {}
     valid = _observe(archive, complete, 60)
     assert valid.initialized_objectives == targets and valid.improved_objectives == ()
@@ -289,7 +290,8 @@ def test_partial_groups_use_real_completion_scope_and_reject_unvalidated_trials(
     improved_low = _candidate([_result(1, 0)], failures=(_failure(2), _failure(3)))
     displaced = _observe(bounded, improved_low, 120)
     assert displaced.improved_objectives == targets
-    assert set(bounded.retained_entry_ids) == {*high_scopes, low.entry_id}
+    bounded_ids = (*high_scopes, low.entry_id, displaced.entry_id)
+    assert {entry_id for entry_id in bounded_ids if entry_id in bounded} == {*high_scopes, low.entry_id}
     with pytest.raises(KeyError):
         bounded.materialize(displaced.entry_id)
     reselected = bounded.partial_groups[low_scope]
@@ -303,15 +305,17 @@ def test_partial_groups_use_real_completion_scope_and_reject_unvalidated_trials(
     next_observed = _observe(bounded, next_low, 130)
     assert low_scope not in bounded.partial_groups
     assert (frozenset({2}), frozenset({"B2"})) in bounded.partial_groups
-    assert set(bounded.retained_entry_ids) == {*high_scopes, next_observed.entry_id}
+    bounded_ids += (next_observed.entry_id,)
+    assert {entry_id for entry_id in bounded_ids if entry_id in bounded} == {*high_scopes, next_observed.entry_id}
     with pytest.raises(KeyError):
         bounded.materialize(low.entry_id)
 
     completed = _observe(bounded, complete, 140)
     assert bounded.best_by_objective == {objective: completed.entry_id for objective in targets}
-    assert len(bounded.retained_entry_ids) == 4
+    bounded_ids += (completed.entry_id,)
+    assert sum(entry_id in bounded for entry_id in bounded_ids) == bounded.retention_limit == 4
     assert bounded.current_by_objective["min_tardiness"] == high_scopes[0]
-    assert high_scopes[0] in bounded.retained_entry_ids and completed.entry_id in bounded.retained_entry_ids
+    assert high_scopes[0] in bounded and completed.entry_id in bounded
     assert (frozenset({1, 3}), frozenset({"B1", "B3"})) not in bounded.partial_groups
     assert bounded.improvement_counts == {objective: 0 for objective in targets}
 
@@ -330,7 +334,9 @@ def test_partial_groups_use_real_completion_scope_and_reject_unvalidated_trials(
         observed = _observe(unknown_bounded, partial, 210 + index)
         explained_high_ids.append(observed.entry_id)
     lower_coverage = _observe(unknown_bounded, improved_low, 220)
-    assert set(unknown_bounded.retained_entry_ids) == {unknown_high_result.entry_id, *explained_high_ids}
+    unknown_ids = (unknown_high_result.entry_id, *explained_high_ids, lower_coverage.entry_id)
+    assert {entry_id for entry_id in unknown_ids if entry_id in unknown_bounded} == {
+        unknown_high_result.entry_id, *explained_high_ids}
     assert unknown_bounded.materialize(unknown_high_result.entry_id)["results"] == unknown_high["results"]
     assert unknown_bounded.partial_groups[unknown_high_scope].entry_ids == (unknown_high_result.entry_id,)
     assert unknown_bounded.partial_groups[unknown_high_scope].best_by_objective == {}
@@ -449,7 +455,7 @@ def test_decode_registration_owns_one_payload_and_trials_keep_only_temporary_num
         trial = archive.register_decode(unknown, verified=False, elapsed_ms=30)
         retry = archive.register_decode(unknown, verified=False, elapsed_ms=40)
         assert trial.entry_id != retry.entry_id
-        assert trial.entry_id not in archive.retained_entry_ids
+        assert trial.entry_id not in archive
         assert archive._identities == before
         assert archive.best_by_objective == dict.fromkeys(archive.target_objectives, observed.entry_id)
 

@@ -163,9 +163,12 @@ def test_closed_partial_piece_publication_keeps_adoption_and_protection_boundari
                            prepared_payload=payload(prepared, [row for row in rows if row.op_id != ids["item-A", 20]]))
     assert caught.value.code == "candidate_predecessor_missing"
     reject([row for row in rows if row.op_id != common], "piece_protected_seed_missing")
-    reject([replace(row, start_time=row.start_time + timedelta(days=30),
+    late = [replace(row, start_time=row.start_time + timedelta(days=30),
                     end_time=row.end_time + timedelta(days=30)) if row.op_id == ids["item-A", 30] else row
-            for row in rows], "piece_outside_window")
+            for row in rows]
+    with pytest.raises(CandidateRunInputError) as caught:
+        validate_candidate(prepared, late, [], prepared_payload=payload(prepared, late))
+    assert caught.value.code == "candidate_outside_window"
     reject([replace(row, operator_id="O2") if row.op_id == ids["item-A", 20] else row
             for row in rows], "piece_resource_invalid")
     first = next(row for row in rows if row.op_id == ids["item-A", 20])

@@ -69,7 +69,7 @@ class WorkbenchResourceStateRepository(BaseRepository):
             [(profile_id, day["day_offset"], int(day["is_rest"]), day["shift_start"], day["shift_end"]) for day in days],
         )
         period_rows = [
-            (profile_id, day["day_offset"], encode_periods(day["periods"], normalized=True))
+            (profile_id, day["day_offset"], encode_periods(day["periods"]))
             for day in days if day["periods"] is not None
         ]
         if period_rows:

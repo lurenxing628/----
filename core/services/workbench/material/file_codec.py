@@ -21,6 +21,7 @@ import re
 from tempfile import SpooledTemporaryFile
 
 from core.errors import ValidationError
+from core.models.workbench_action_values import FileDownload
 from core.models.workbench_material_file import (
     COLUMNS,
     HEADER_FIELDS,
@@ -28,7 +29,6 @@ from core.models.workbench_material_file import (
     IMPORT_ROW_LIMIT,
     STATUS_LABELS,
     STATUS_VALUES,
-    MaterialFileDownload,
     table_descriptor,
 )
 from core.models.workbench_table_descriptor import cell_notes, extra_sheet_notice
@@ -198,7 +198,7 @@ def _write_csv(rows, filename):
         text.flush()
         buffer.seek(0)
         content = buffer.read()
-    return MaterialFileDownload(filename + ".csv", "text/csv; charset=utf-8", content, count)
+    return FileDownload(filename + ".csv", "text/csv; charset=utf-8", content, count)
 
 
 def _xlsx_headers(ws, template, descriptor):
@@ -254,7 +254,7 @@ def _write_xlsx(rows, filename, template, descriptor):
             wb.save(buffer)
             buffer.seek(0)
             content = buffer.read()
-        return MaterialFileDownload(filename + ".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        return FileDownload(filename + ".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                     content, count)
     finally:
         # Pinned openpyxl 3.0.10 Workbook.close() alone leaves an aborted sheet's temp XML behind.

@@ -7,7 +7,7 @@ from typing import Any, Dict
 
 from core.errors import ValidationError
 
-from .acceptance import validate_acceptance_name
+from .acceptance import ACCEPTANCE_IMPROVE_ONLY
 
 PROFILE_BASELINE = "baseline"
 PROFILE_VNS_SA = "vns_sa"
@@ -67,13 +67,11 @@ def build_candidate_profile(
     time_budget_seconds: int,
     ortools_enabled: bool,
     graph_sgs_required: bool,
-    acceptance: str = "improve_only",
 ) -> CandidateProfile:
     """解析并校验搜索 profile 合同。"""
     profile = _profile_for_algo_mode(algo_mode)
     if graph_sgs_required and profile == PROFILE_VNS_SA:
         profile = PROFILE_GRAPH_READY
-    acceptance_value = validate_acceptance_name(acceptance)
 
     configured_budget = int(time_budget_seconds)
     if configured_budget < 1:
@@ -86,7 +84,7 @@ def build_candidate_profile(
         else {}
     )
     return CandidateProfile(
-        acceptance=acceptance_value,
+        acceptance=ACCEPTANCE_IMPROVE_ONLY,
         candidate_construction=candidate_construction,
         ortools_warmstart_enabled=bool(ortools_enabled) and enabled,
     )

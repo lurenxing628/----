@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-from ._helpers import RowLike, get
+from ._helpers import RowLike
 from .enums import MachineStatus
 
 
@@ -23,20 +23,20 @@ class Machine:
 
     @classmethod
     def from_row(cls, row: RowLike) -> Machine:
-        op_type_id = get(row, "op_type_id")
-        category = get(row, "category")
-        team_id = get(row, "team_id")
+        op_type_id = row["op_type_id"]
+        category = row["category"]
+        team_id = row["team_id"]
         return cls(
-            machine_id=str(get(row, "machine_id") or ""),
-            name=str(get(row, "name") or ""),
+            machine_id=str(row["machine_id"] or ""),
+            name=str(row["name"] or ""),
             op_type_id=str(op_type_id) if op_type_id is not None and op_type_id != "" else None,
             category=str(category) if category is not None and category != "" else None,
             status=(
-                str(get(row, "status") or MachineStatus.ACTIVE.value).strip().lower() or MachineStatus.ACTIVE.value
+                str(row["status"] or MachineStatus.ACTIVE.value).strip().lower() or MachineStatus.ACTIVE.value
             ),
-            remark=get(row, "remark"),
+            remark=row["remark"],
             team_id=str(team_id) if team_id is not None and team_id != "" else None,
-            created_at=get(row, "created_at"),
-            updated_at=get(row, "updated_at"),
-            op_type_ids=tuple(get(row, "op_type_ids") or ()),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            op_type_ids=tuple(row["op_type_ids"]),
         )

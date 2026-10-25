@@ -3,8 +3,8 @@
 Friday 08:00. A (6 h, due Monday) can run on M1 at once and finishes Friday 14:00: 82 wall-clock hours
 but only 10 working hours before its due date expires. B (4 h, due Tuesday) waits for M2, which is down
 until Monday, and finishes Monday 12:00: 36 wall-clock hours but 12 working hours of slack. Working-hour
-slack picks A first; wall-clock slack picks B first. A calendar without work windows keeps the continuous
-protocol, which the second test pins down. Pick order is read from the result list, which SGS appends in
+slack picks A first; wall-clock slack picks B first. A round-the-clock calendar measures wall-clock
+hours, which the second test pins down. Pick order is read from the result list, which SGS appends in
 dispatch order. Working hours are counted only up to the run's planning horizon (or a year past
 the estimate without one); a far due date such as 2099-12-31 continues in wall-clock hours, so the
 calendar never walks towards it and a due date past the century guard is still a legal input.
@@ -13,15 +13,16 @@ calendar never walks towards it and a due date past the century guard is still a
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from types import SimpleNamespace
 
 import pytest
 
 from core.algorithm_contracts.date_parsers import due_exclusive
-from core.algorithms import GreedyScheduler, SortStrategy
+from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithms.greedy.dispatch.sgs_due_span import FAR_DUE_LOOKAHEAD, due_span_inputs, working_hour_span
+from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.services.scheduler.calendar.working_hours import WorkingHoursPrefix
-from tests._support.optimizer_graph_ready_benchmark import _default_config
+from tests._support.algo_operations import make_algo_op, make_batch
+from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar, _default_config
 
 START = datetime(2026, 1, 9, 8, 0)  # Friday
 MONDAY_08 = datetime(2026, 1, 12, 8, 0)
@@ -29,7 +30,7 @@ FRIDAY_14 = START + timedelta(hours=6)
 
 
 class _WeekdayCalendar:
-    """08:00-16:00 Monday to Friday; the continuous stub below inherits everything but the working-hour span."""
+    """08:00-16:00 Monday to Friday at constant efficiency 1.0."""
 
     def _window(self, day):
         if day.weekday() >= 5:
@@ -60,8 +61,8 @@ class _WeekdayCalendar:
             cur = self.adjust_to_working_time(window_end)
         return cur
 
-    def get_efficiency(self, dt, machine_id=None, operator_id=None):
-        return 1.0
+    def add_effective_hours(self, start, hours, priority=None, operator_id=None):
+        return self.add_working_hours(start, hours)
 
     def add_calendar_days(self, dt, days, machine_id=None, operator_id=None):
         return dt + timedelta(days=float(days))
@@ -79,10 +80,6 @@ class _WeekdayCalendar:
                     total += (clip_hi - clip_lo).total_seconds() / 3600.0
             day += timedelta(days=1)
         return sign * total
-
-
-class _WeekdayCalendarWithoutSpan(_WeekdayCalendar):
-    working_hours_between = None  # type: ignore[assignment]
 
 
 class _WalkRecordingCalendar(_WeekdayCalendar):
@@ -103,14 +100,14 @@ class _WalkRecordingCalendar(_WeekdayCalendar):
 
 def _case():
     batches = {
-        "A": SimpleNamespace(batch_id="A", priority="normal", due_date="2026-01-12", quantity=1.0),
-        "B": SimpleNamespace(batch_id="B", priority="normal", due_date="2026-01-13", quantity=1.0),
+        "A": make_batch(batch_id="A", due_date="2026-01-12", quantity=1.0),
+        "B": make_batch(batch_id="B", due_date="2026-01-13", quantity=1.0),
     }
     operations = [
-        SimpleNamespace(id=1, op_code="A1", batch_id="A", seq=1, source="internal", machine_id="M1", operator_id="O1",
-                        setup_hours=6.0, unit_hours=0.0, op_type_id="", op_type_name="cut"),
-        SimpleNamespace(id=2, op_code="B1", batch_id="B", seq=1, source="internal", machine_id="M2", operator_id="O2",
-                        setup_hours=4.0, unit_hours=0.0, op_type_id="", op_type_name="cut"),
+        make_algo_op(id=1, op_code="A1", batch_id="A", machine_id="M1", operator_id="O1", setup_hours=6.0,
+                     unit_hours=0.0, op_type_name="cut"),
+        make_algo_op(id=2, op_code="B1", batch_id="B", machine_id="M2", operator_id="O2", setup_hours=4.0,
+                     unit_hours=0.0, op_type_name="cut"),
     ]
     return operations, batches
 
@@ -136,8 +133,8 @@ def test_working_hour_slack_dispatches_the_batch_that_is_tight_before_the_weeken
 
 
 @pytest.mark.parametrize("rule", ["slack", "cr"])
-def test_a_calendar_without_work_windows_keeps_the_wall_clock_order(rule):
-    assert _pick_order(_WeekdayCalendarWithoutSpan(), rule) == [2, 1]
+def test_a_round_the_clock_calendar_keeps_the_wall_clock_order(rule):
+    assert _pick_order(ContinuousCalendar(), rule) == [2, 1]
 
 
 def test_due_span_inputs_use_the_calendar_and_keep_the_no_due_sentinel_continuous():
@@ -148,7 +145,7 @@ def test_due_span_inputs_use_the_calendar_and_keep_the_no_due_sentinel_continuou
     slack, time_left = due_span_inputs(calendar, due_date=None, est_start=START, est_end=FRIDAY_14, priority="normal",
                                        operator_id="", horizon=None)
     assert slack > 1e6 and time_left == slack + 6.0
-    assert working_hour_span(_WeekdayCalendarWithoutSpan(), START, FRIDAY_14, priority=None, operator_id="",
+    assert working_hour_span(ContinuousCalendar(), START, FRIDAY_14, priority=None, operator_id="",
                              horizon=MONDAY_08) == 6.0
 
 

@@ -4,27 +4,18 @@ import math
 from typing import Any, Optional, Tuple
 
 from core.algorithm_contracts.operation_effort import OperationEffort
+from core.algorithm_contracts.types import OpForScheduleAlgo
+from core.models.batch import Batch
 from core.models.enums import MergeMode, OperationQuantityBasis, OperationSetupState, SourceType
 
 from .piece_input import operation_batch
-from .static_attribute import static_attribute
-
-_MISSING = object()
-
-
-def _read_legacy_field(obj: Any, field: str) -> Any:
-    if static_attribute(obj, field, _MISSING) is _MISSING:
-        return _MISSING
-    return getattr(obj, field)
 
 
 def _coerce_hours_value(raw_value: Any, *, field: str) -> float:
-    if raw_value is _MISSING:
-        return 0.0
     if isinstance(raw_value, bool):
         raise ValueError(f"工时字段不能是布尔值：{field}={raw_value!r}")
     try:
-        number = float(raw_value or 0)
+        number = float(raw_value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"工时字段不合法：{field}={raw_value!r}") from exc
     if not math.isfinite(number) or number < 0:
@@ -32,10 +23,9 @@ def _coerce_hours_value(raw_value: Any, *, field: str) -> float:
     return number
 
 
-def internal_requirement_parts(op: Any, batch: Any) -> Tuple[float, float, float, float]:
+def internal_requirement_parts(op: OpForScheduleAlgo, batch: Batch) -> Tuple[float, float, float, float]:
     """Consume the dispatcher's already operation-local quantity unchanged."""
-    setup_raw, unit_raw = _read_legacy_field(op, "setup_hours"), _read_legacy_field(op, "unit_hours")
-    quantity_raw = _read_legacy_field(batch, "quantity")
+    setup_raw, unit_raw, quantity_raw = op.setup_hours, op.unit_hours, batch.quantity
     setup = _coerce_hours_value(setup_raw, field="setup_hours")
     unit = _coerce_hours_value(unit_raw, field="unit_hours")
     quantity = _coerce_hours_value(quantity_raw, field="quantity")
@@ -47,33 +37,33 @@ def internal_requirement_parts(op: Any, batch: Any) -> Tuple[float, float, float
     return setup, processing, required, quantity
 
 
+def _quantity_basis(op: OpForScheduleAlgo) -> str:
+    return OperationQuantityBasis.BATCH.value if op.piece_id is None else OperationQuantityBasis.PIECE.value
+
+
 def internal_operation_effort(
-    op: Any, batch: Any, *, remaining_quantity: Optional[int] = None,
+    op: OpForScheduleAlgo, batch: Batch, *, remaining_quantity: Optional[int] = None,
 ) -> OperationEffort:
     """Apply the same piece quantity rule used by the actual dispatcher."""
     setup, processing, required, quantity = internal_requirement_parts(op, operation_batch(op, batch))
-    piece = getattr(op, "piece_id", None)
     return OperationEffort(
-        op_id=getattr(op, "id", None), batch_id=getattr(op, "batch_id", None), piece_id=piece,
+        op_id=op.id, batch_id=op.batch_id, piece_id=op.piece_id,
         source=SourceType.INTERNAL.value, target_quantity=int(quantity) if quantity.is_integer() else quantity,
         remaining_quantity=remaining_quantity,
         setup_standard_hours=setup, processing_standard_hours=processing, required_standard_hours=required,
-        setup_state=OperationSetupState.PENDING.value,
-        quantity_basis=OperationQuantityBasis.PIECE.value if piece is not None else OperationQuantityBasis.BATCH.value,
+        setup_state=OperationSetupState.PENDING.value, quantity_basis=_quantity_basis(op),
     )
 
 
-def external_operation_effort(op: Any, batch: Any, *, remaining_quantity: Optional[int] = None) -> OperationEffort:
+def external_operation_effort(op: OpForScheduleAlgo, batch: Batch, *, remaining_quantity: Optional[int] = None) -> OperationEffort:
     """External calendar cycles remain separate from internal standard hours."""
-    local = operation_batch(op, batch)
-    mode = getattr(op, "ext_merge_mode", None)
-    cycle = getattr(op, "ext_group_total_days", None) if mode == MergeMode.MERGED.value else getattr(op, "ext_days", None)
-    piece = getattr(op, "piece_id", None)
+    mode = op.ext_merge_mode
     return OperationEffort(
-        op_id=getattr(op, "id", None), batch_id=getattr(op, "batch_id", None), piece_id=piece,
-        source=SourceType.EXTERNAL.value, target_quantity=getattr(local, "quantity", None), remaining_quantity=remaining_quantity,
+        op_id=op.id, batch_id=op.batch_id, piece_id=op.piece_id,
+        source=SourceType.EXTERNAL.value, target_quantity=operation_batch(op, batch).quantity,
+        remaining_quantity=remaining_quantity,
         setup_standard_hours=0.0, processing_standard_hours=0.0, required_standard_hours=0.0,
-        setup_state=OperationSetupState.EXTERNAL.value,
-        quantity_basis=OperationQuantityBasis.PIECE.value if piece is not None else OperationQuantityBasis.BATCH.value,
-        external_cycle_days=cycle, external_group_id=getattr(op, "ext_group_id", None), external_merge_mode=mode,
+        setup_state=OperationSetupState.EXTERNAL.value, quantity_basis=_quantity_basis(op),
+        external_cycle_days=op.ext_group_total_days if mode == MergeMode.MERGED.value else op.ext_days,
+        external_group_id=op.ext_group_id, external_merge_mode=mode,
     )

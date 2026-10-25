@@ -9,10 +9,6 @@ from core.errors import AppError, ErrorCode
 Params = Union[Sequence[Any], Dict[str, Any]]
 
 
-def _row_to_dict(row: Union[sqlite3.Row, Dict[str, Any]]) -> Dict[str, Any]:
-    return dict(row)
-
-
 def strict_non_negative_int(value: Any, *, field: str) -> int:
     if value is None or isinstance(value, bool) or isinstance(value, float):
         raise ValueError(f"invalid {field}: {value!r}")
@@ -62,15 +58,15 @@ class BaseRepository:
     def fetchone(self, sql: str, params: Optional[Params] = None) -> Optional[Dict[str, Any]]:
         cur = self.execute(sql, params)
         row = cur.fetchone()
-        return _row_to_dict(row) if row else None
+        return dict(row) if row else None
 
     def fetchall(self, sql: str, params: Optional[Params] = None) -> List[Dict[str, Any]]:
-        return [_row_to_dict(r) for r in self.execute(sql, params).fetchall()]
+        return [dict(r) for r in self.execute(sql, params).fetchall()]
 
     def iter_rows(self, sql: str, params: Optional[Params] = None) -> Iterator[Dict[str, Any]]:
         """逐行流式读取：语句在调用时立即执行（错误立即翻译），行只在迭代时物化，整表读取不再一次装进内存。"""
         cur = self.execute(sql, params)
-        return (_row_to_dict(row) for row in cur)
+        return (dict(row) for row in cur)
 
     def fetchvalue(self, sql: str, params: Optional[Params] = None, default: Any = None) -> Any:
         cur = self.execute(sql, params)

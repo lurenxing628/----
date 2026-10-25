@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Sequence, Tuple
 
 from core.models.operation_execution_event import (
+    OPERATION_EXECUTION_EVENT_COLUMNS,
     OperationExecutionEvent,
     validate_operation_execution_event_sequence,
 )
@@ -13,40 +14,7 @@ from core.models.operation_execution_scope import (
 
 from .base_repo import BaseRepository
 
-_EVENT_COLUMNS = (
-    "id",
-    "schedule_version",
-    "schedule_id",
-    "op_id",
-    "batch_id",
-    "source_table",
-    "effective_plan_role",
-    "scenario_id",
-    "event_type",
-    "reported_status",
-    "event_time",
-    "actual_machine_id",
-    "actual_operator_id",
-    "quantity_done",
-    "quantity_scrapped",
-    "reason_code",
-    "reason_detail",
-    "severity",
-    "impact_minutes",
-    "affected_machine_id",
-    "affected_operator_id",
-    "handling_status",
-    "suggest_reschedule",
-    "remark",
-    "created_by",
-    "idempotency_key",
-    "request_fingerprint",
-    "previous_state_revision",
-    "created_at",
-)
-
-
-_EVENT_COLUMNS_SQL = ", ".join(_EVENT_COLUMNS)
+_EVENT_COLUMNS_SQL = ", ".join(OPERATION_EXECUTION_EVENT_COLUMNS)
 
 
 def _scope_where(scope: OperationExecutionScope) -> Tuple[str, Tuple[Any, ...]]:

@@ -26,20 +26,14 @@
           {item.error && item.error.message ? '；' + item.error.message : ''}</li>)}</ul> : <p role="alert">结果里没有逐项明细，请在维护向导里核对。没有当成全部成功。</p>)}
     </>;
   }
-  function LegacyFacts({ entity }) {
+  // 人员详情投影（core/services/workbench/resource/projection.py::_operator）总带 machine_permissions 列表；新增人员时还没有实体。
+  function MachinePermissionFacts({ entity }) {
     if (!entity) return <div className="field full"><span className="fhint">请在人员详情中设置可操作设备。</span></div>;
     const permissions = entity.relationships.machine_permissions;
-    if (Array.isArray(permissions)) return <div className="field full"><label>可操作设备</label>
+    return <div className="field full"><label>可操作设备</label>
       {permissions.length ? <div className="chipline">{permissions.map(item => <span className="chip" key={item.machine_ref} style={{ whiteSpace: 'normal' }}>
         {item.business_code} · {item.label}{item.is_primary === 'yes' ? '（主操）' : ''}</span>)}</div> : <span className="fhint">尚未设置可操作设备。</span>}
       <span className="fhint">在人员详情中点「编辑可操作设备」维护设备关联。</span></div>;
-    const facts = entity.relationships.legacy_machine_authorizations;
-    return <div className="field full"><label>既有设备授权（只读）</label>
-      {Array.isArray(facts) ? facts.length ? <div className="chipline">{facts.map((item, index) => <span className="chip" key={item.ref || index} style={{ whiteSpace: 'normal' }}>
-        {item.label || '设备名称未填写'}{item.status && item.status !== 'active' ? '（历史授权）' : ''}</span>)}</div> : <span className="fhint">无既有设备授权。</span> :
-        Number.isSafeInteger(entity.relationships.machine_authorization_count) ? <span className="fhint">已登记 {entity.relationships.machine_authorization_count} 项设备授权，明细未读取。</span> :
-          C.own(entity.relationships, 'machine_refs') ? <Relation entity={entity} field="machine_refs" /> : <span className="fhint">设备授权尚未读取。</span>}
-      <span className="fhint">技能登记不改变既有设备授权。</span></div>;
   }
   function Remark({ kind, entity }) {
     return C.own(entity.fields, 'remark') ? <dl className="wb-resource-remark"><dt>{C.fieldLabels(kind, entity.fields.category).remark}</dt>
@@ -77,7 +71,7 @@
     const opCategory = draft.fields.category;
     const adjustingStock = stockOnly && kind === 'material' && action === 'update';
     const done = command.phase === 'done', disabled = command.locked || done || catalogBusy || contextBusy;
-    const reason = typeof adapter.command !== 'function' ? '保存功能尚未开通。' : C.blocked(writeContext, kind, action, source);
+    const reason = C.blocked(writeContext, kind, action, source);
     // Deleting basic data takes the checkbox confirmation used for backup deletion; the unchecked state is the button's own reason, not a bare sentence.
     const confirmReason = action === 'delete' && !deleteChecked ? '请先勾选已核对要删除的资料及其关联关系。' : '';
     const currentError = error || command.error;
@@ -90,7 +84,7 @@
       ...(kind === 'op_type' ? ['fields.remark', 'fields.category',
         ...(['external', 'both'].includes(opCategory) ? ['fields.default_merge_mode'] : [])] : []),
       ...(kind === 'supplier' ? ['fields.default_days'] : []), ...(C.statuses[kind] ? ['fields.status'] : []),
-      ...(C.relations[kind] || []).flatMap(field => [field.key, 'relationships.' + field.key])];
+      ...C.relations[kind].flatMap(field => [field.key, 'relationships.' + field.key])];
     async function close(detail) {
       if (command.locked || catalogBusy || contextBusy) return;
       if (!(detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner) && !await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) return;
@@ -98,8 +92,7 @@
     }
     function change(section, key, value) {
       setDraft(current => section ? { ...current, [section]: { ...current[section], [key]: value } } : { ...current, [key]: value }); setError(null);
-      const code = command.error && (command.error.code || command.error.error && command.error.error.code);
-      if (command.phase === 'rejected' && !['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code) && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     async function submit(event) {
       event.preventDefault(); if (disabled || reason || confirmReason) return;
@@ -158,26 +151,26 @@
             {['external', 'both'].includes(opCategory) && <Field label="默认周期规则" path="fields.default_merge_mode" error={currentError} hint="用于新增外协段的默认选择；已有外协段的周期规则保持不变。"><select name="default_merge_mode" value={draft.fields.default_merge_mode} disabled={disabled} onChange={event => change('fields', 'default_merge_mode', event.target.value)}>
               <option value="">未填写</option><option value="separate">分别设置</option><option value="merged">合并设置</option>
               {!['', 'separate', 'merged'].includes(draft.fields.default_merge_mode) && <option value={draft.fields.default_merge_mode}>原周期规则未识别（保持原值）</option>}</select></Field>}</>}
-          {(C.relations[kind] || []).map(field => <Choice key={field.key} adapter={adapter} field={field} value={draft.relationships[field.key]} original={entity}
+          {C.relations[kind].map(field => <Choice key={field.key} adapter={adapter} field={field} value={draft.relationships[field.key]} original={entity}
             disabled={disabled} error={currentError} onChange={value => change('relationships', field.key, value)} onCatalog={catalog} catalogBusy={catalogBusy} />)}
           {kind === 'supplier' && text('default_days', '默认周期（天）', { number: true, required: true })}
           {C.statuses[kind] && stateField()}
           {entity && entity.fields.inactive_reason === 'unknown' && <div className="field full"><span className="fhint">当前停用原因未知，没有当成请假或待复核。</span></div>}
           {entity && C.own(entity.fields, 'legacy_status') && <div className="field full"><label>原始状态（只读）</label><span className="fhint">{entity.fields.legacy_status === 'inactive' ? '原停用状态，原因未登记' : '原状态：' + String(entity.fields.legacy_status)}</span></div>}
           {(kind === 'material' || kind === 'op_type') && text('remark', kind === 'op_type' && opCategory === 'internal' ? '产能备注' : '备注', { full: true, multiline: true })}
-          {kind === 'operator' && <LegacyFacts entity={entity} />}
+          {kind === 'operator' && <MachinePermissionFacts entity={entity} />}
         </div>}
-        <Issues issues={entity && entity.issues || []} />
+        {entity && <Issues issues={entity.issues} />}
         <ErrorBox error={error} excludePaths={fieldPaths} /><Feedback command={command} action={action} excludePaths={error ? [] : fieldPaths} /><ErrorBox error={contextError} />
         {!done && !command.locked && onReloadContext && <Button icon="refresh-cw" busy={contextBusy} disabled={catalogBusy} onClick={onReloadContext}>{window.WorkbenchTerms.refresh_latest}</Button>}
         {contextReview && !done && <div className="wb-resource-review" role="status">
           <p>最新资料已刷新。已修改的内容保留，未修改的项已更新；下方显示当前已保存的资料。</p>
           {contextReview.data.ref ? <><div className="wb-resource-review-identity"><strong>{contextReview.data.business_code} · {contextReview.data.label}</strong>{kind !== 'op_type' && <Status kind={kind} entity={contextReview.data} />}</div>
             <CurrentFields kind={kind} entity={contextReview.data} />
-            {(C.relations[kind] || []).map(field => <p key={field.key}>{field.label}：<Relation entity={contextReview.data} field={field.key} /></p>)}</> : <p>当前资料总数：{contextReview.data.page.total}</p>}
+            {C.relations[kind].map(field => <p key={field.key}>{field.label}：<Relation entity={contextReview.data} field={field.key} /></p>)}</> : <p>当前资料总数：{contextReview.data.page.total}</p>}
           </div>}
         {done && <><p role="status">{refreshState.loading ? '正在刷新列表和详情…' : refreshState.done ? '已刷新到最新数据。' : '最新数据还没确认。请点「刷新保存结果」。'}</p><ErrorBox error={refreshState.error} />
-          <Issues issues={refreshState.detail && refreshState.detail.data.issues || []} />
+          {refreshState.detail && <Issues issues={refreshState.detail.data.issues} />}
           {refreshState.error && <Button icon="refresh-cw" onClick={onRefresh}>刷新保存结果</Button>}</>}
       </form></Modal>;
   }
@@ -185,19 +178,17 @@
     const entity = result && result.data;
     return <Modal title={C.resourceName(kind, entity && entity.fields.category) + '详情'} icon={icons[kind]} onClose={onClose} footer={<>{onBack && <Button icon="chevron-left" onClick={onBack}>返回上一条详情</Button>}<Button onClick={onClose}>关闭</Button>
       {entity && <><Button icon="trash-2" className="btn danger" reason={C.blocked(entity.write_context, kind, 'delete', result.meta.source)} onClick={onDelete}>删除</Button>
-        {kind === 'material' && <Button icon="square-pen" reason={C.blocked(entity.write_context, kind, 'update', result.meta.source) || (typeof onAdjustStock !== 'function' ? '调整库存尚未开通。' : '')} onClick={onAdjustStock}>调整库存</Button>}
+        {kind === 'material' && <Button icon="square-pen" reason={C.blocked(entity.write_context, kind, 'update', result.meta.source)} onClick={onAdjustStock}>调整库存</Button>}
         <Button icon="square-pen" className="btn primary" reason={C.blocked(entity.write_context, kind, 'update', result.meta.source)} onClick={onEdit}>编辑</Button></>}</>}>
       <div className="modal-b scroll wb-resource-detail">{busy && <p role="status">正在读取详情…</p>}<ErrorBox error={error} />{error && <Button onClick={onRetry}>刷新</Button>}
         {entity && <><div className="wb-resource-identity"><div><div className="wb-resource-code">{entity.business_code}</div><h3>{entity.label}</h3></div>{kind !== 'op_type' && <Status kind={kind} entity={entity} />}</div>
-          <CurrentFields kind={kind} entity={entity} includeRemark={false} />{(kind === 'op_type' || (C.relations[kind] || []).length > 0) && <div className="wb-resource-links fgrid">
+          <CurrentFields kind={kind} entity={entity} includeRemark={false} />{(kind === 'op_type' || C.relations[kind].length > 0) && <div className="wb-resource-links fgrid">
             {kind === 'op_type' && <div className="field"><label>排产方式</label><span>{entity.fields.category === 'internal' ? '工时（换型＋单件）' : entity.fields.category === 'external' ? '周期（天）' : entity.fields.category === 'both' ? '按每道工序选择自制工时或外协周期' : '未明确'}</span></div>}
-            {(C.relations[kind] || []).map(field => <div className="field" key={field.key}><label>{field.label}</label><Relation entity={entity} field={field.key}
+            {C.relations[kind].map(field => <div className="field" key={field.key}><label>{field.label}</label><Relation entity={entity} field={field.key}
               onOpen={!field.catalog && onRelated ? ref => onRelated(field.kind, ref, field.category) : undefined} /></div>)}
-            {kind === 'operator' && <LegacyFacts entity={entity} />}</div>}<Remark kind={kind} entity={entity} /><Issues issues={entity.issues} />
-          {kind === 'operator' && <Button icon="machine" reason={C.blocked(entity.write_context, kind, 'update', result.meta.source)
-            || (typeof onMachinePermissions !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : '')} onClick={onMachinePermissions}>编辑可操作设备</Button>}
-          {kind === 'operator' && <Button icon="calendar-days" reason={C.blocked(entity.write_context, kind, 'update', result.meta.source)
-            || (typeof onOperatorCalendar !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : '')} onClick={onOperatorCalendar}>编辑{window.WorkbenchTerms.personal_calendar}</Button>}
+            {kind === 'operator' && <MachinePermissionFacts entity={entity} />}</div>}<Remark kind={kind} entity={entity} /><Issues issues={entity.issues} />
+          {kind === 'operator' && <Button icon="machine" reason={C.blocked(entity.write_context, kind, 'update', result.meta.source)} onClick={onMachinePermissions}>编辑可操作设备</Button>}
+          {kind === 'operator' && <Button icon="calendar-days" reason={C.blocked(entity.write_context, kind, 'update', result.meta.source)} onClick={onOperatorCalendar}>编辑{window.WorkbenchTerms.personal_calendar}</Button>}
           {kind === 'machine' && <Button icon="wrench" disabled={busy} onClick={onDowntimes}>维护停机计划</Button>}
           {kind === 'op_type' && ['internal', 'external', 'both'].includes(entity.fields.category) && <window.ResourceDetailRelations key={entity.ref + ':' + result.meta.snapshot_ref} adapter={adapter} entity={entity} onOpen={onRelated} />}
           <Issues issues={result.warnings} /><p className="wb-resource-read-time">{window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(result.meta.as_of))}</p></>}</div></Modal>;

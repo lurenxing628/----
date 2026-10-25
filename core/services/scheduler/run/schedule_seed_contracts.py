@@ -1,20 +1,20 @@
 from __future__ import annotations
 
 from datetime import datetime
-from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.schedule_point_evidence import PointSeedResult, SchedulePointEvidence
-from core.algorithm_contracts.value_domains import INTERNAL
+from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.algorithm_runtime.algo_stats import increment_counter
-from core.algorithms import ScheduleResult
 from core.algorithms.greedy.seed import (
-    _invalid_identity_supplied,
     identity_int,
     with_seed_external_group_metadata,
     with_seed_resource_segments,
 )
 from core.errors import ValidationError
+
+from .schedule_payload_contract import arrangement_row
 
 
 def _raise_invalid_seed_results_error(*, invalid_seed_count: int, invalid_seed_samples: List[Dict[str, Any]]) -> None:
@@ -53,12 +53,30 @@ def _coerce_seed_time_range(item: Dict[str, Any], *, idx: int) -> Tuple[Any, Any
         valid_time_range = start_time < end_time
         evidence = item.get("_point_evidence")
         if start_time == end_time and type(evidence) is SchedulePointEvidence:
-            valid_time_range = evidence.matches(SimpleNamespace(**item))
+            valid_time_range = evidence.matches(arrangement_row(item))
     except Exception as exc:
         raise TypeError(f"第 {idx + 1} 条已有排产记录的时间区间不正确。") from exc
     if not valid_time_range:
         raise TypeError(f"第 {idx + 1} 条已有排产记录的开始时间必须早于结束时间。")
     return start_time, end_time
+
+
+def _invalid_identity_supplied(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return True
+    if isinstance(value, int):
+        return value < 0
+    if isinstance(value, float):
+        return value < 0 or not value.is_integer()
+    text = str(value).strip()
+    if not text:
+        return False
+    if text.startswith("-"):
+        return True
+    digits = text[1:] if text.startswith("+") else text
+    return not digits.isdecimal()
 
 
 def _coerce_optional_seed_identity(value: Any, *, idx: int, field: str) -> int:
@@ -72,6 +90,14 @@ def _coerce_optional_seed_identity(value: Any, *, idx: int, field: str) -> int:
 
 def _optional_seed_text(item: Dict[str, Any], field: str) -> Optional[str]:
     return str(item.get(field) or "") or None
+
+
+def _seed_source(item: Dict[str, Any], *, idx: int) -> str:
+    # 种子来源与工序来源同一值域：缺失或不规范都按无效种子停止排产，不再静默当作自制。
+    source = item.get("source")
+    if type(source) is not str or source not in OPERATION_SOURCES:
+        raise TypeError(f"第 {idx + 1} 条已有排产记录的工序来源不正确。")
+    return source
 
 
 def coerce_seed_result_item(item: Any, *, idx: int) -> ScheduleResult:
@@ -89,7 +115,7 @@ def coerce_seed_result_item(item: Any, *, idx: int) -> ScheduleResult:
         operator_id=_optional_seed_text(item, "operator_id"),
         start_time=start_time,
         end_time=end_time,
-        source=str(item.get("source") or INTERNAL),
+        source=_seed_source(item, idx=idx),
         op_type_name=_optional_seed_text(item, "op_type_name"),
         seed_source=_optional_seed_text(item, "seed_source"),
         state_revision=_optional_seed_text(item, "state_revision"),

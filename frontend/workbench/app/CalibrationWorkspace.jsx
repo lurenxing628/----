@@ -19,7 +19,7 @@
     const bound = { ...input, snapshot_ref: result ? result.meta.snapshot_ref : input.snapshot_ref };
     const detail = useRead(async signal => A.validate(await api.detail(selected, bound, signal), bound, selected),
       selected + ':' + JSON.stringify(bound) + ':' + revision, api, !!(selected && result && data.capabilities.view === true && !stale));
-    const isStale = failure => failure && failure.error && ['snapshot_stale', 'calibration_source_changed'].includes(failure.error.code);
+    const isStale = failure => window.APSResourceContract.stale(failure, ['calibration_source_changed']);
     window.WorkbenchPageContext.useSnapshot(data ? {
       scope: Object.fromEntries(Object.entries(input).filter(([key]) => !['page', 'size', 'sort', 'direction', 'snapshot_ref'].includes(key))),
       table: { page: input.page, size: input.size, sort: input.sort, direction: input.direction },

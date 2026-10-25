@@ -13,12 +13,15 @@ they never write times for mutable operations, and the adopted candidate is stil
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, FrozenSet, Iterable, List, NoReturn, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, FrozenSet, Iterable, List, NoReturn, Optional, Sequence, Tuple
 
-from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
+from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult, ScheduleSummary
 from core.algorithm_runtime.checkpoint_inputs import input_record, input_value
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.errors import ValidationError
+
+if TYPE_CHECKING:
+    from core.models.batch import Batch
 
 CHECKPOINT_FIELD = "decode_checkpoint"
 _PROGRESS_SETS = ("completed_or_fixed_op_ids", "blocked_op_ids", "ready_op_ids")
@@ -205,8 +208,9 @@ def resume_graph_progress(checkpoint: DecodeCheckpoint, *, graph_state: Optional
     return checkpoint.position
 
 
-def decode_input_signature(*, operations: Sequence[Any], batches: Dict[str, Any], batch_order: Dict[str, int],
-                           params: Any, machine_downtimes: Any, resource_pool: Any, seed_results: Any,
+def decode_input_signature(*, operations: Sequence[OpForScheduleAlgo], batches: Dict[str, Batch],
+                           batch_order: Dict[str, int], params: Any, machine_downtimes: Any, resource_pool: Any,
+                           seed_results: Optional[Sequence[ScheduleResult]],
                            graph_ready_context: Any, readiness_gate_enabled: bool, strict_mode: bool,
                            calendar_signature: Any, warnings: Sequence[str] = (),
                            prepared_calendar_signature: Optional[Tuple[Any, ...]] = None,
@@ -242,13 +246,13 @@ def decode_input_signature(*, operations: Sequence[Any], batches: Dict[str, Any]
     return tuple(parts)
 
 
-def seed_signature(result: Any) -> Any:
+def seed_signature(result: ScheduleResult) -> Any:
     from core.algorithm_contracts.schedule_point_evidence import point_seed_valid
 
     from ..seed import seed_external_group_key, seed_resource_segments
-    fields = tuple(getattr(result, name, None) for name in (
-        "op_id", "op_code", "batch_id", "seq", "machine_id", "operator_id", "start_time", "end_time",
-        "source", "op_type_name", "op_type_id", "seed_source", "state_revision"))
+    fields = (result.op_id, result.op_code, result.batch_id, result.seq, result.machine_id, result.operator_id,
+              result.start_time, result.end_time, result.source, result.op_type_name, result.op_type_id,
+              result.seed_source, result.state_revision)
     return input_value(
         (fields, seed_external_group_key(result), point_seed_valid(result), seed_resource_segments(result)),
         field="seed_results",

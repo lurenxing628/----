@@ -31,14 +31,6 @@ def _guard_text(value: Any, *, max_chars: int) -> str:
     return text[:max_chars]
 
 
-def positive_int(value: Any) -> int:
-    try:
-        number = int(value or 0)
-    except Exception:
-        return 0
-    return number if number > 0 else 0
-
-
 def size_guard_dict(raw: Any, *, max_items: int = 20, max_value_chars: int = 120) -> Dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
@@ -100,11 +92,12 @@ def _copy_guarded_text_fields(raw: Dict[str, Any], out: Dict[str, Any], fields: 
             out[key] = text
 
 
-def _copy_guarded_int_fields(raw: Dict[str, Any], out: Dict[str, Any], fields: Tuple[str, ...]) -> None:
+def _copy_present_int_fields(raw: Dict[str, Any], out: Dict[str, Any], fields: Tuple[str, ...]) -> None:
+    # 这些计数/编号都由本次排产在进程内写入：make_public_error 只在有正整数时写 op_id/seq，
+    # 缺资源样本的 seq 与降级事件的 count 恒为正整数，这里按原值保留。
     for key in fields:
-        number = positive_int(raw.get(key))
-        if number > 0:
-            out[key] = number
+        if key in raw:
+            out[key] = raw[key]
 
 
 def _guard_missing_fields(value: Any) -> List[str]:
@@ -124,7 +117,7 @@ def size_guard_public_error_detail(raw: Any) -> Dict[str, Any]:
     message = public_error_message_from_detail(raw)
     if message:
         out["message"] = message
-    _copy_guarded_int_fields(raw, out, ("op_id", "seq"))
+    _copy_present_int_fields(raw, out, ("op_id", "seq"))
     batch_id = public_safe_identifier(raw.get("batch_id"))
     if batch_id:
         out["batch_id"] = batch_id
@@ -135,9 +128,6 @@ def size_guard_public_error_detail(raw: Any) -> Dict[str, Any]:
     failed_op_code = public_safe_identifier(raw.get("failed_op_code"))
     if failed_op_code:
         out["failed_op_code"] = failed_op_code
-    fields = _guard_missing_fields(raw.get("missing_fields"))
-    if fields:
-        out["missing_fields"] = fields
     return out
 
 
@@ -145,7 +135,7 @@ def size_guard_missing_resource_item(raw: Any) -> Dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
     out: Dict[str, Any] = {}
-    _copy_guarded_int_fields(raw, out, ("seq",))
+    _copy_present_int_fields(raw, out, ("seq",))
     batch_id = public_safe_identifier(raw.get("batch_id"))
     if batch_id:
         out["batch_id"] = batch_id
@@ -172,12 +162,6 @@ def _copy_minimal_error_fields(minimal: Dict[str, Any], result_summary_obj: Dict
             result_summary_obj.get("failure_detail_count"),
             max_chars=40,
         )
-    if result_summary_obj.get("summary_count_parse_failed") is not None:
-        minimal["summary_count_parse_failed"] = bool(result_summary_obj.get("summary_count_parse_failed"))
-    if isinstance(result_summary_obj.get("summary_count_parse_errors"), list):
-        minimal["summary_count_parse_errors"] = [
-            str(item)[:200] for item in list(result_summary_obj.get("summary_count_parse_errors") or [])[:10]
-        ]
     if isinstance(result_summary_obj.get("public_error_details"), list):
         minimal["public_error_details"] = guarded_items(
             result_summary_obj.get("public_error_details"),
@@ -211,7 +195,7 @@ def _size_guard_degradation_event(raw: Any) -> Dict[str, Any]:
         return {}
     out: Dict[str, Any] = {}
     _copy_guarded_text_fields(raw, out, ("code", "scope", "field", "message", "sample"), max_chars=160)
-    _copy_guarded_int_fields(raw, out, ("count",))
+    _copy_present_int_fields(raw, out, ("count",))
     return out
 
 
@@ -246,9 +230,9 @@ def warning_sample(warnings: Any, *, limit: int = 10) -> List[str]:
 
 
 def _copy_minimal_warning_fields(minimal: Dict[str, Any], result_summary_obj: Dict[str, Any]) -> None:
-    warning_count = positive_int(result_summary_obj.get("warning_count"))
-    if warning_count > 0:
-        minimal["warning_count"] = int(warning_count)
+    # warning_count 只由 summary_size_guard._remember_warning_summary 在有告警时写入正整数。
+    if "warning_count" in result_summary_obj:
+        minimal["warning_count"] = result_summary_obj["warning_count"]
     sample = warning_sample(result_summary_obj.get("warnings_sample"))
     if sample:
         minimal["warnings_sample"] = sample
@@ -355,7 +339,6 @@ __all__ = [
     "SUMMARY_SIZE_LIMIT_BYTES",
     "guarded_items",
     "minimal_summary_for_size_guard",
-    "positive_int",
     "size_guard_missing_resource_item",
     "size_guard_public_error_detail",
     "summary_size_bytes",

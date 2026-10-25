@@ -401,3 +401,13 @@ def test_new_machine_with_legacy_work_type_and_cleared_list_is_a_row_error(clien
     assert data["can_confirm"] is False
     error, = data["rows"][0]["errors"]
     assert error["field"] == "op_type_codes" and r"\N" in error["message"]
+
+
+@pytest.mark.parametrize("cell", ('[{"code":"A","code":"B"}]', '[NaN]', '[1e999]', '["A"'))
+def test_resource_file_json_cell_rejects_duplicate_keys_and_nonfinite_numbers_as_one_row_error(cell):
+    from core.services.workbench.facts.file_codec import read_resource_file
+
+    rows, _ = read_resource_file("machine", file_bytes([("M-JSON", cell)], "csv", ("business_code", "op_type_codes")), "csv")
+    assert rows == [{"row": 2, "values": {"business_code": "M-JSON"}, "errors": [{
+        "row": 2, "field": "op_type_codes", "code": "invalid_input",
+        "message": "这个格子里的 JSON 写得不对或者有重复的键，没有导入。多个编号请按 [\"A\",\"B\"] 这样填，不要只用逗号隔开。"}]}]

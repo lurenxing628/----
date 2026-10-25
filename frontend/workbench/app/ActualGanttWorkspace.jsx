@@ -29,7 +29,8 @@
     return value;
   }
   function initial(context) {
-    const input = { ...(context.scope || {}) }, scope = {};
+    const input = { ...context.scope }, scope = {};
+    const taskRef = context.task_ref !== undefined ? context.task_ref : context.entity_ref;
     for (const key of ['source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids'])
       if (context[key] !== undefined && input[key] === undefined) input[key] = context[key];
     const allowed = ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids', 'query', 'focus', 'as_of', 'snapshot_ref', 'kind', 'baseline_ref'];
@@ -38,14 +39,14 @@
     if (input.query !== undefined && (typeof input.query !== 'string' || input.query.length > 200)) issue = '来源搜索条件无效。';
     if (context.return_to && !['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(context.return_to.view)) issue = '返回页面未登记。';
     if (context.report_ref !== undefined && !C.ref(context.report_ref)) issue = '来源报工编号无效，请从现场记录重新打开。';
-    if (context.report_ref !== undefined && !C.ref(context.task_ref || context.entity_ref)) issue = '报工关联的任务资料缺失，请刷新后重选。';
+    if (context.report_ref !== undefined && !C.ref(taskRef)) issue = '报工关联的任务资料缺失，请刷新后重选。';
     for (const key of ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids'])
       if (input[key] !== undefined && input[key] !== null && input[key] !== '') scope[key] = input[key];
     if (context.plan_ref) scope.plan_ref = context.plan_ref;
     let persisted = null;
     try { persisted = savedView(context.actual_view); } catch (failure) { issue = failure.message; }
     return { scope, issue, persisted, query: typeof input.query === 'string' ? input.query : typeof context.query === 'string' ? context.query : '',
-      selected: context.task_ref || context.entity_ref || null, report: context.report_ref || null };
+      selected: taskRef === undefined ? null : taskRef, report: context.report_ref === undefined ? null : context.report_ref };
   }
   function Content({ onNavigate, initialContext = {}, adapter: supplied }) {
     const seed = React.useMemo(() => initial(initialContext), []), key = JSON.stringify(initialContext), saved = sessions.get(key);
@@ -71,7 +72,7 @@
     }, [view.details]);
     function collapseDetails() {
       patch({ details: false });
-      const button = typeof document !== 'undefined' && typeof document.querySelector === 'function' ? document.querySelector('[aria-controls="actual-gantt-detail"]') : null;
+      const button = document.querySelector('[aria-controls="actual-gantt-detail"]');
       if (button) button.focus();
     }
     React.useEffect(() => {
@@ -240,7 +241,7 @@
       const returnContext = { plan_ref: scope.plan_ref, task_ref: view.selected, scope: { ...scope, query: view.query } };
       const destinationScope = { ...scope, query: view.query };
       // Actual uses [] for all batches; Field represents that scope by omission.
-      if (viewName === 'field' && Array.isArray(destinationScope.batch_ids) && destinationScope.batch_ids.length === 0)
+      if (viewName === 'field' && destinationScope.batch_ids !== undefined && destinationScope.batch_ids.length === 0)
         delete destinationScope.batch_ids;
       const task = selected && selected.task;
       let locator;
@@ -250,14 +251,14 @@
         locator = targetTask ? { task_ref: targetTask.task_ref, operation_ref: targetTask.operation_ref } : {};
       } else locator = { task_ref: view.selected, operation_ref: task ? task.operation_ref : undefined };
       if (snapshotPosition) remember(JSON.stringify(returnContext), { scope, view, zoom, position: snapshotPosition });
-      if (typeof onNavigate === 'function') onNavigate(viewName, { plan_ref: scope.plan_ref, ...locator,
+      onNavigate(viewName, { plan_ref: scope.plan_ref, ...locator,
         scope: destinationScope, return_to: { view: 'fieldgantt', context: returnContext } });
     }
     return <div className="plana fg-page fg-live" data-actual-gantt>
       <div className="fg-heading"><div><h2 className="wb-page-title">现场实际甘特</h2><span className="fg-muted wb-page-context">{data ? data.plan.display_name + ' · ' + window.WorkbenchTerms.data_as_of(M.time(result.meta.as_of)) : loading ? '正在读取计划与现场记录' : '计划与现场记录'}</span></div>
         <div className="wb-actions"><Button icon="refresh-cw" aria-label="刷新实际甘特" busy={loading} onClick={reload} />
           {onNavigate && <><Button icon="chart-gantt" onClick={() => navigate('gantt')}>计划甘特</Button><Button icon="arrow-right" onClick={() => navigate('field')}>现场记录</Button></>}
-          {onNavigate && initialContext.return_to && <Button icon="chevron-left" onClick={() => { const target = initialContext.return_to; if (['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(target.view)) onNavigate(target.view, target.context || {}); }}>返回</Button>}</div></div>
+          {onNavigate && initialContext.return_to && <Button icon="chevron-left" onClick={() => { const target = initialContext.return_to; if (['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(target.view)) onNavigate(target.view, target.context); }}>返回</Button>}</div></div>
       <ErrorBox error={error} />
       {scope.plan_ref && <Range scope={scope} resources={data ? data.resources : null} onApply={apply} busy={loading} />}
       {!data && <window.WorkbenchControls.EmptyState kind={loading ? 'loading' : error ? 'error' : 'empty'} title={loading ? '正在读取计划与现场记录…' : error ? '现场实际甘特未读取成功' : '暂无现场实际甘特数据'}
@@ -291,7 +292,7 @@
           <div className="wb-gantt-detail-body">{selected ? <>
             <details className="wb-gantt-detail-section" open><summary>执行与完工偏差</summary><div className="wb-gantt-detail-section-body fg-detail-facts">
               {M.describe(selected, model.labels, report).map((line, i) => <p key={i}>{line}</p>)}
-              {selected.execution && <><label className="fg-report-selector">逐次报工 <select aria-label="选择报工详情" value={view.report || ''} onChange={e => patch({ report: e.target.value || null })}><option value="">整道工序</option>{selected.execution.reports.map(r => <option key={r.report_ref} value={r.report_ref}>{r.report_no}</option>)}</select></label>
+              {selected.execution && <><label className="fg-report-selector">逐次报工 <select aria-label="选择报工详情" value={view.report === null ? '' : view.report} onChange={e => patch({ report: e.target.value === '' ? null : e.target.value })}><option value="">整道工序</option>{selected.execution.reports.map(r => <option key={r.report_ref} value={r.report_ref}>{r.report_no}</option>)}</select></label>
                 <Button icon="search" disabled={!report || !report.actual_start} onClick={() => locate()}>定位本次报工</Button>
                 {selected.execution.remaining_plan && <p>剩余安排：{M.time(selected.execution.remaining_plan.start)} 至 {M.time(selected.execution.remaining_plan.end)}</p>}
                 {selected.execution.reports.filter(row => selected.execution.data_gaps.some(gap => gap.report_ref === row.report_ref)).map(row => <Button key={row.report_ref} icon="search"
@@ -314,6 +315,7 @@
           <p>计划完工日期：{scope.plan_finish_date_from || '不限'} 至 {scope.plan_finish_date_to || '不限'}；数据截至 {M.time(result.meta.as_of)}。数据变化时下载会要求刷新。</p><ErrorBox error={exportError} /></div></Modal>}
     </div>;
   }
-  function ActualGanttWorkspace(props) { return <Content key={JSON.stringify(props.initialContext || {})} {...props} />; }
+  // 侧栏直接进入时 main.jsx 不带定位上下文（initialContext 为 undefined）。
+  function ActualGanttWorkspace({ initialContext = {}, ...props }) { return <Content key={JSON.stringify(initialContext)} {...props} initialContext={initialContext} />; }
   window.ActualGanttWorkspace = ActualGanttWorkspace;
 })();

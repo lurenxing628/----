@@ -7,6 +7,8 @@
   const scopeLabels = { full_admission: '本次选中的全部批次和工序', full_candidate: '整份候选安排', completed_batches_only: '工序已排齐的批次', saved_algorithm_batches: '计算时比较的批次', candidate_search: '本次候选搜索', saved_schedule_resources: '计算时保存的时间范围和资源', fixed_resource_window: '当前时间范围和设备、人员', fixed_changeover_window: '当前时间范围内的设备工序顺序' };
   const metricSources = { archived_delivery: '保存的交付计算', saved_algorithm: '计算时保存的统计', candidate_comparison: '保存的安排对照', archived_resource_calendar: '排产时的班表', runtime_operation_effort: '排产时保存的工时需求', archived_changeover_events: '设备工种切换记录', admission: '本次选中的工序', candidate_tasks: '保存的候选安排' };
   const countText = value => value === null || value === undefined ? '资料未记录' : M.number(value);
+  // RunDecisionAPI.scope 只保留非空的范围键；未设置范围时输入框显示为空。
+  const rangeDraft = value => ({ start: value.range_start === undefined ? '' : value.range_start, end: value.range_end === undefined ? '' : value.range_end });
   const comparisonTabs = [['delivery', '交期与未排'], ['differences', '方案差异'], ['resources', '资源占用'], ['process', '计算过程'], ['preparation', '准备与切换']];
   const secondaryTabs = [['metrics', '全部指标'], ['completion', '工序安排']];
   const tabAliases = { overview: 'delivery', batches: 'delivery', operations: 'differences' };
@@ -185,24 +187,25 @@
     </div>)}</div>;
   }
   function Workspace({ adapter, initialContext = {}, onNavigate, renderAdoption, renderTrial, navigation, runHistoryReturn, headerTitle = '方案对比', runStatus, runTiming }) {
-    const [runRef, setRunRef] = React.useState(initialContext.run_ref || null), [query, setQuery] = React.useState(() => {
+    const [runRef, setRunRef] = React.useState(initialContext.run_ref === undefined ? null : initialContext.run_ref), [query, setQuery] = React.useState(() => {
       const value = { comparison_mode: initialContext.comparison_mode === 'admission_official' ? 'admission_official' : 'candidates', resource_view: initialContext.resource_view === 'full_candidate' ? 'full_candidate' : 'selected_batches' }; ['range_start', 'range_end', ...(value.comparison_mode === 'candidates' ? ['reference_candidate_ref'] : [])].forEach(key => { if (initialContext[key]) value[key] = initialContext[key]; });
       if (initialContext.candidate_ref) value.selected_candidate_ref = initialContext.candidate_ref; return value;
     });
-    const [revision, refresh] = React.useReducer(value => value + 1, 0), [rangeOpen, setRangeOpen] = React.useState(false), [range, setRange] = React.useState({ start: query.range_start || '', end: query.range_end || '' });
+    const [revision, refresh] = React.useReducer(value => value + 1, 0), [rangeOpen, setRangeOpen] = React.useState(false), [range, setRange] = React.useState(() => rangeDraft(query));
     const [rangeError, setRangeError] = React.useState(null), [historyOpen, setHistoryOpen] = React.useState(false);
     const [sourceOpen, setSourceOpen] = React.useState(false), [fullPaused, setFullPaused] = React.useState(false);
     const workspaceRef = React.useRef(null), rangeReturnFocus = React.useRef(null), referenceChoice = React.useRef(null);
     const metricView = initialContext.metric_view === 'all' ? 'all' : 'common';
+    const initialDetails = initialContext.detail_queries === undefined ? {} : initialContext.detail_queries;
     const [tab, updateTab] = React.useState(() => { const requested = tabAliases[initialContext.comparison_tab] || initialContext.comparison_tab;
-      const leaves = initialContext.detail_queries || {}, legacyOverview = !initialContext.comparison_tab || initialContext.comparison_tab === 'overview';
+      const leaves = initialDetails, legacyOverview = !initialContext.comparison_tab || initialContext.comparison_tab === 'overview';
       if (legacyOverview && leaves.process && leaves.process.open) return 'process';
       if (legacyOverview && leaves['completion-batches'] && leaves['completion-batches'].open) return 'completion';
       return [...comparisonTabs, ...secondaryTabs, ['changeovers']].some(row => row[0] === requested) ? requested : 'delivery'; });
     const [visitedPanels, setVisitedPanels] = React.useState(() => [tab]);
     function setTab(value) { updateTab(value); setVisitedPanels(current => current.includes(value) ? current : [...current, value]); }
-    const [selectedBatchRef, setSelectedBatchRef] = React.useState(initialContext.selected_batch_ref || initialContext.batch_ref || null);
-    const [detailQueries, setDetailQueries] = React.useState(() => { const initial = initialContext.detail_queries || {}, resources = { ...(initialContext.resource_kind ? { resource_kind: initialContext.resource_kind } : {}), ...(initialContext.resource_ref ? { resource_ref: initialContext.resource_ref } : {}), ...initial.resources };
+    const [selectedBatchRef, setSelectedBatchRef] = React.useState(initialContext.selected_batch_ref !== undefined ? initialContext.selected_batch_ref : initialContext.batch_ref !== undefined ? initialContext.batch_ref : null);
+    const [detailQueries, setDetailQueries] = React.useState(() => { const initial = initialDetails, resources = { ...(initialContext.resource_kind ? { resource_kind: initialContext.resource_kind } : {}), ...(initialContext.resource_ref ? { resource_ref: initialContext.resource_ref } : {}), ...initial.resources };
       const machine = initialContext.resource_kind === 'machine' && initialContext.resource_ref ? { machine_ref: initialContext.resource_ref } : {};
       const legacyBatches = initial.batches, legacyOperations = initial.operations, differences = legacyOperations ? { size: legacyOperations.size, batch_ref: legacyOperations.batch_ref, change_kind: 'changed', sort: 'current_priority', order: 'asc', delivery_filter: 'all' } : null;
       const leaves = { ...initial };
@@ -210,10 +213,12 @@
         leaves[section] = { ...leaves[section] }; if (leaves[section][field] && leaves[section][field] !== initialContext.candidate_ref) { leaves[section].page = 1; delete leaves[section].snapshot_ref; } delete leaves[section][field];
       }
       return { ...leaves, ...(legacyBatches && !initial.delivery ? { delivery: { ...legacyBatches, delivery_filter: 'all' } } : {}), ...(differences && !initial.differences ? { differences } : {}), ...(legacyOperations && !initial['difference-chain'] ? { 'difference-chain': legacyOperations } : {}), ...(Object.keys(resources).length ? { resources } : {}), ...(Object.keys(machine).length ? { preparation: { ...machine, ...initial.preparation }, changeovers: { ...machine, ...initial.changeovers } } : {}) }; });
+    // 各明细分区的查询条件按需出现；还没打开过的分区按空条件读取。
+    const leafQuery = key => detailQueries[key] === undefined ? {} : detailQueries[key];
     const lookup = window.APSResourceSession.useQuery(signal => adapter.identity(initialContext.candidate_ref, signal), [adapter, initialContext.candidate_ref], !runRef && A.ref(initialContext.candidate_ref));
     React.useEffect(() => { if (lookup.result) setRunRef(lookup.result.data.run_ref); }, [lookup.result]);
     const read = window.APSResourceSession.useQuery(signal => tab === 'resources'
-      ? adapter.resourceWorkspace(runRef, query, detailQueries.resources || {}, signal) : adapter.decisionSummary(runRef, query, signal),
+      ? adapter.resourceWorkspace(runRef, query, leafQuery('resources'), signal) : adapter.decisionSummary(runRef, query, signal),
     [adapter, runRef, query, revision], A.ref(runRef));
     const result = read.result, data = result && result.data, selected = data && data.candidates.find(row => row.candidate_ref === data.scope.selected_candidate_ref);
     const fullQuery = data && { comparison_mode: data.scope.comparison_mode, resource_view: data.scope.resource_view,
@@ -275,7 +280,7 @@
     }
     function detailQuery(section, value) { setDetailQueries(queries => ({ ...queries, [section]: value })); }
     function chainQuery(section, value) { setDetailQueries(queries => ({ ...queries, [section === 'differences' ? 'difference-chain' : 'delivery-chain']: value })); }
-    const completionQuery = detailQueries['completion-batches'] || {};
+    const completionQuery = leafQuery('completion-batches');
     function completionQueryChange(value) { setDetailQueries(queries => ({ ...queries, 'completion-batches': { ...value, open: true } })); }
     function openCompletion(candidate, filter) { choose(candidate); setDetailQueries(queries => {
       const next = { ...queries['completion-batches'], open: true }; delete next.completion_candidate_ref;
@@ -292,7 +297,7 @@
       const value = window.RunDecisionAPI.scope(runRef, { ...query, ...nextRange });
       const root = workspaceRef.current, entry = root && root.ownerDocument.activeElement;
       if (entry && entry.matches('[data-resource-range-entry]')) rangeReturnFocus.current = { tab, entry };
-      setQuery(value); setRange({ start: value.range_start || '', end: value.range_end || '' }); setRangeError(null);
+      setQuery(value); setRange(rangeDraft(value)); setRangeError(null);
       setFullPaused(false);
       setDetailQueries(values => { const next = freshDetailQueries(values), resource = next.resources;
         if (resource) { const start = M.instant(value.range_start), end = M.instant(value.range_end), focus = resource.heatmap_focus;
@@ -341,9 +346,9 @@
             {panel === 'metrics' ? <><FullReadStatus read={fullRead} paused={fullPaused} onCancel={() => setFullPaused(true)} onReload={reload} />{fullData && <Details data={fullData} selectedRef={data.scope.selected_candidate_ref} />}</>
               : panel === 'process' ? <window.RunDecisionProcess.Pane adapter={adapter} result={result} query={processQuery} onQuery={processQueryChange} onSelectCandidate={choose} enabled={tab === panel} />
               : panel === 'completion' ? selected ? <window.RunDecisionCompletion.Pane adapter={adapter} result={result} query={completionQuery} onQuery={completionQueryChange} onSupport={onNavigate && support} enabled={tab === panel} /> : <p className="rc-empty">选择当前方案查看工序安排。</p>
-              : selected && selected.persisted_status === 'completed' ? panel === 'resources' ? <window.RunDecisionResources.Pane adapter={adapter} result={result} query={detailQueries[panel] || {}} onQuery={value => detailQuery(panel, value)} onView={resourceView} onRange={changeRange} onDrill={onNavigate && drill} enabled={tab === panel} />
-                : ['preparation', 'changeovers'].includes(panel) ? <window.RunDecisionPreparation.Pane adapter={adapter} result={result} section={panel} query={detailQueries[panel] || {}} onQuery={value => detailQuery(panel, value)} onDrill={onNavigate && drill} enabled={tab === panel} />
-                  : <window.RunDecisionDetails.Pane adapter={adapter} result={result} section={panel === 'differences' ? 'differences' : 'delivery'} query={detailQueries[panel] || {}} onQuery={value => detailQuery(panel, value)} selectedBatchRef={selectedBatchRef} onSelectBatch={selectBatch} chainQuery={detailQueries[panel === 'differences' ? 'difference-chain' : 'delivery-chain'] || {}} onChainQuery={value => chainQuery(panel, value)} onDrill={onNavigate && drill} onChooseReference={() => { const target = referenceChoice.current && referenceChoice.current.querySelector('select'); if (target) target.focus(); }} enabled={tab === panel} />
+              : selected && selected.persisted_status === 'completed' ? panel === 'resources' ? <window.RunDecisionResources.Pane adapter={adapter} result={result} query={leafQuery(panel)} onQuery={value => detailQuery(panel, value)} onView={resourceView} onRange={changeRange} onDrill={onNavigate && drill} enabled={tab === panel} />
+                : ['preparation', 'changeovers'].includes(panel) ? <window.RunDecisionPreparation.Pane adapter={adapter} result={result} section={panel} query={leafQuery(panel)} onQuery={value => detailQuery(panel, value)} onDrill={onNavigate && drill} enabled={tab === panel} />
+                  : <window.RunDecisionDetails.Pane adapter={adapter} result={result} section={panel === 'differences' ? 'differences' : 'delivery'} query={leafQuery(panel)} onQuery={value => detailQuery(panel, value)} selectedBatchRef={selectedBatchRef} onSelectBatch={selectBatch} chainQuery={leafQuery(panel === 'differences' ? 'difference-chain' : 'delivery-chain')} onChainQuery={value => chainQuery(panel, value)} onDrill={onNavigate && drill} onChooseReference={() => { const target = referenceChoice.current && referenceChoice.current.querySelector('select'); if (target) target.focus(); }} enabled={tab === panel} />
                 : <div className="rc-empty"><p>{selected ? (selected.label || '当前候选') + '：' + window.WorkbenchTerms.candidate_statuses[selected.persisted_status] : '请选择候选查看明细。'}</p>{selected && selected.source && selected.source.reason && <p>{selected.source.reason.message}</p>}</div>}
           </div>)}
         </div></section>

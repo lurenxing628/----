@@ -7,11 +7,9 @@ from core.models.scheduler_public_errors import infer_legacy_public_code, legacy
 AUTO_ASSIGN_RESOURCE_ERROR_PREFIXES = (
     "自动派工没有找到可用的设备和人员组合：工序 ",
     "自动派工资料不完整，本次无法自动补齐设备和人员：工序 ",
-    "自制工序缺少自动派工所需工种信息，无法自动分配：工序 ",
 )
 AUTO_ASSIGN_INVALID_HOURS_PREFIX = "工时不合法：工序 "
 AUTO_ASSIGN_RESOURCE_ERROR_CODES = {
-    "auto_assign_inputs_missing",
     "auto_assign_resource_pool_incomplete",
     "auto_assign_no_resource_combination",
 }

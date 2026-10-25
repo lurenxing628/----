@@ -105,7 +105,6 @@ _WORKBENCH_TESTS = (
     'tests/workbench/test_plan_migration_integration.py',
     'tests/workbench/test_plan_metadata_reads.py',
     'tests/workbench/test_plan_query_api.py',
-    'tests/workbench/test_plan_task_identity_contract.py',
     'tests/workbench/test_point_downstream_api.py',
     'tests/workbench/test_preflight_api.py',
     'tests/workbench/test_process_collection_api.py',

@@ -1,13 +1,12 @@
 """Verify directory claims and expose only admission-time public summaries and failure reasons."""
 
-import json
-import math
 import re
 from typing import Optional
 
 from core.errors import AppError
 from core.models.workbench_preflight import stored_hold_window_valid
 from core.models.workbench_run_history import STATES, TERMINAL_STATES, inconsistent, local_date, local_datetime
+from core.shared.strict_json import load_strict_json
 
 COMPUTATION_FAILED = "本次候选计算失败。请联系维护人员，再重新做排产检查。"
 # 旧版本把真实原因只记在诊断里，给用户的都是这一句。
@@ -49,36 +48,11 @@ def failure_message(code, message):
     return COMPUTATION_FAILED
 
 
-def _pairs(pairs):
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            inconsistent()
-        result[key] = value
-    return result
-
-
-def _constant(value):
-    inconsistent()
-
-
-def _float(value):
-    result = float(value)
-    if not math.isfinite(result):
-        inconsistent()
-    return result
-
-
 def stored_json(value):
+    # Stored documents are TEXT; a BLOB is as inconsistent as unreadable JSON.
     if type(value) is not str:
         inconsistent()
-    try:
-        result = json.loads(value, object_pairs_hook=_pairs, parse_constant=_constant, parse_float=_float)
-    except (ValueError, TypeError, RecursionError):
-        inconsistent()
-    if type(result) is not dict:
-        inconsistent()
-    return result
+    return load_strict_json(value, on_malformed=inconsistent, expected=dict)
 
 
 def _ref(value):

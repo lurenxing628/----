@@ -77,7 +77,7 @@ def test_evidence_limit_still_uses_the_complete_utf8_document(ready_adoption_cas
 
 def test_calibration_reads_report_heads_and_complete_history_together(ready_adoption_case):
     case = ready_adoption_case
-    original = case.ledger.get_report(case.reports[0]["report_ref"])
+    original = case.report_projection(case.reports[0]["report_ref"])
     case.command("correct", original.report_ref,
                  {"remark": "Checked the complete history", "original_revision_ref": original.revision_ref,
                   "reason": "Verified the production record", "declared_operator": "Reviewer"})

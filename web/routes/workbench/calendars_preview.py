@@ -20,16 +20,12 @@ _MAX_PREVIEWS = 32
 _MAX_RETAINED_DAYS = MAX_CALENDAR_RANGE_DAYS * 2
 
 
-def calendar_now() -> datetime:
-    return datetime.now()
-
-
 def _store() -> Dict[str, CalendarRangePreview]:
     return current_app.extensions.setdefault(_EXTENSION, {})
 
 
 def retain_preview(preview: CalendarRangePreview) -> None:
-    now = calendar_now().isoformat(timespec="seconds")
+    now = datetime.now().isoformat(timespec="seconds")
     with _LOCK:
         store = _store()
         for ref in list(store):
@@ -49,7 +45,7 @@ def resolve_preview(ref: str) -> CalendarRangePreview:
         preview = _store().get(ref)
         if preview is None:
             raise WorkbenchCommandRejected("snapshot_stale", "预览变更已过期，日历没有修改。请重新点「预览变更」。")
-        if preview.expires_at <= calendar_now().isoformat(timespec="seconds"):
+        if preview.expires_at <= datetime.now().isoformat(timespec="seconds"):
             del _store()[ref]
             raise WorkbenchCommandRejected("stale_write", "预览变更已过期，日历没有修改。请重新点「预览变更」。")
         return preview

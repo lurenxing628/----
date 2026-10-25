@@ -4,7 +4,8 @@
   const copy = value => JSON.parse(JSON.stringify(value));
   const states = ['all', 'queued', 'running', 'complete', 'partial', 'failed', 'interrupted', 'committed', 'success', 'unknown', 'available', 'current', 'historical', 'unavailable'];
   const queryKeys = ['timeline', 'date_from', 'date_to', 'metric_keys', 'comparison', 'reference_run_ref', 'selected_entry_ref', 'range_start', 'range_end', 'resource_window_days', 'state', 'sort', 'order', 'page', 'size', 'condition_page', 'condition_size', 'snapshot_ref'];
-  const defaultMetrics = ['overdue_count', 'total_tardiness_hours', 'makespan_hours', 'elapsed_seconds'];
+  // 默认指标列表直接放进每份默认查询，冻结后谁也不能原地改它；切换指标一律生成新数组。
+  const defaultMetrics = Object.freeze(['overdue_count', 'total_tardiness_hours', 'makespan_hours', 'elapsed_seconds']);
   const sourceLabels = { run: '排产运行', candidate_adoption: '候选方案采用', trial_adoption: '试调方案采用', legacy_official: '旧正式计划' };
   const sourceLabel = value => sourceLabels[typeof value === 'string' ? value : value.source_kind];
   const windowMetric = definition => ['fixed_resource_window', 'fixed_changeover_window'].includes(definition.scope);
@@ -87,7 +88,7 @@
   }
   function scope(value = {}) {
     check(object(value) && Object.keys(value).every(key => queryKeys.includes(key)), '历史筛选含不支持的项，请重新选择。');
-    const q = { timeline: 'run', date_from: null, date_to: null, metric_keys: defaultMetrics.slice(), comparison: 'observed', reference_run_ref: null, selected_entry_ref: null,
+    const q = { timeline: 'run', date_from: null, date_to: null, metric_keys: defaultMetrics, comparison: 'observed', reference_run_ref: null, selected_entry_ref: null,
       range_start: null, range_end: null, resource_window_days: 7, state: 'all', sort: 'occurred_at', order: 'desc', page: 1, size: 20, condition_page: 1, condition_size: 20, snapshot_ref: null, ...value };
     q.metric_keys = typeof q.metric_keys === 'string' ? q.metric_keys.split(',') : q.metric_keys;
     check(['run', 'official'].includes(q.timeline) && ['observed', 'same_conditions'].includes(q.comparison) && states.includes(q.state) && q.sort === 'occurred_at' && ['asc', 'desc'].includes(q.order), '请选择有效的时间线、阅读方式、状态和排序。');
@@ -120,14 +121,14 @@
   }
   function context(value = {}) {
     check(object(value) && Object.keys(value).every(key => ['query', 'selected_entry_ref', 'reference_entry_ref', 'metric_key', 'detail_queries'].includes(key)), '历史页面的返回条件无效，请从排产记录重新打开。');
-    const query = scope(value.query || {}), selected = value.selected_entry_ref === undefined ? query.selected_entry_ref : value.selected_entry_ref;
+    const query = scope(value.query), selected = value.selected_entry_ref === undefined ? query.selected_entry_ref : value.selected_entry_ref;
     const reference = value.reference_entry_ref === undefined ? query.reference_run_ref && 'run:' + query.reference_run_ref : value.reference_entry_ref;
     check(selected === null || entryRef(selected), '选中历史条目的编号无效。');
     check(reference === null || typeof reference === 'string' && /^run:[a-f0-9]{48}$/.test(reference), '历史对照的基准运行无效。');
     check(selected === query.selected_entry_ref && reference === (query.reference_run_ref && 'run:' + query.reference_run_ref), '历史选择与查询条件不一致，请重新打开历史。');
     const metric = value.metric_key || query.metric_keys[0]; check(query.metric_keys.includes(metric), '趋势指标不在当前指标列表中。');
     check(value.detail_queries === undefined || object(value.detail_queries), '条件明细的返回位置无效。');
-    return { query, selected_entry_ref: selected, reference_entry_ref: reference, metric_key: metric, detail_queries: copy(value.detail_queries || {}) };
+    return { query, selected_entry_ref: selected, reference_entry_ref: reference, metric_key: metric, detail_queries: value.detail_queries === undefined ? {} : copy(value.detail_queries) };
   }
   function serialized(query) {
     return new URLSearchParams(Object.fromEntries(Object.entries(query).filter(([, value]) => value !== null && value !== undefined).map(([key, value]) => [key, key === 'metric_keys' ? value.join(',') : value])));

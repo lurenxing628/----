@@ -380,12 +380,12 @@ def _workflow_inputs_from_tables(tables, identities, *, conn):
                 "records": records}}
 
 
-def load_workflow_snapshot(conn, *, tables=None, identities=None) -> dict:
+def load_workflow_snapshot(conn, *, tables=None) -> dict:
     """Capture stored inputs; callers own the encompassing read transaction."""
     _require_transaction(conn)
     _schema(conn)
     if tables is not None:
-        return _workflow_inputs_from_tables(tables, identities, conn=conn)
+        return _workflow_inputs_from_tables(tables, None, conn=conn)
     repo = WorkbenchProcessWorkflowRepository(conn)
     return {"parts": repo.parts_with_refs(), "stored": repo.stored_workflows(), "facts": _read_facts(conn)}
 
@@ -421,7 +421,7 @@ def start_workflow(conn, part_no, *, contracts=None) -> dict:
     return _view(stored, _facts(part, _load_facts(conn, part_no, stored=stored), stored))
 
 
-def _save_operations(conn, part_ref, stage, per_op, records, states, stamp, person):
+def _save_operations(conn, part_ref, stage, per_op, records, states, stamp):
     repo = WorkbenchProcessWorkflowRepository(conn)
     for ref, values in per_op.items():
         old = records.get((ref, stage))
@@ -429,16 +429,15 @@ def _save_operations(conn, part_ref, stage, per_op, records, states, stamp, pers
             continue
         if old is None:
             repo.insert_confirmation(part_ref=part_ref, operation_ref=ref, stage=stage, content_json=values[stage],
-                                     confirmed_at=stamp, confirmed_by=person)
+                                     confirmed_at=stamp)
         else:
             repo.update_confirmation(part_ref=part_ref, operation_ref=ref, stage=stage, content_json=values[stage],
-                                     confirmed_at=stamp, confirmed_by=person)
+                                     confirmed_at=stamp)
         records[(ref, stage)] = {"signature": old.get("signature") if old else None, "content_json": values[stage],
-                                "confirmed_at": stamp, "confirmed_by": person}
+                                "confirmed_at": stamp, "confirmed_by": None}
 
 
-def record_confirmation(conn, part_no, stage, confirmed_by=None, *, contracts=None, cross_part_by_group=None,
-                        old_operations=()) -> dict:
+def record_confirmation(conn, part_no, stage, *, contracts=None, cross_part_by_group=None, old_operations=()) -> dict:
     """Confirm facts already written by the domain owner, atomically in its transaction.
 
     cross_part_by_group 是多零件命令共用的跨件分组索引；换掉路线时 old_operations 传该零件换路线前的工序，
@@ -447,8 +446,6 @@ def record_confirmation(conn, part_no, stage, confirmed_by=None, *, contracts=No
     _require_transaction(conn)
     if stage not in _STAGES:
         raise ValidationError("工艺确认阶段无效。", field="stage")
-    if confirmed_by is not None and (not isinstance(confirmed_by, str) or not confirmed_by.strip()):
-        raise ValidationError("确认人必须是真实非空名称，未知时请传 null。", field="confirmed_by")
     part, stored = _part(conn, part_no, contracts)
     facts = _facts(
         part,
@@ -474,11 +471,10 @@ def record_confirmation(conn, part_no, stage, confirmed_by=None, *, contracts=No
     if stage == "route":
         repo.delete_confirmations_outside_active_route(part["ref"], part_no)
     else:
-        _save_operations(conn, part["ref"], stage, per_op, records, op_states, stamp, confirmed_by)
+        _save_operations(conn, part["ref"], stage, per_op, records, op_states, stamp)
     if _confirmation(stored, content, stage + "_")["state"] != "confirmed":
-        repo.set_stage_confirmation(part_ref=part["ref"], stage=stage, content_json=content,
-                                    confirmed_at=stamp, confirmed_by=confirmed_by)
+        repo.set_stage_confirmation(part_ref=part["ref"], stage=stage, content_json=content, confirmed_at=stamp)
         stored = dict(stored, **{stage + "_content_json": content, stage + "_confirmed_at": stamp,
-                                 stage + "_confirmed_by": confirmed_by})
+                                 stage + "_confirmed_by": None})
     # 路线确认不改工序确认记录和来源资料，沿用上面算好的工序状态；来源、工时确认刚写了记录，要重算。
     return _view(stored, facts, operation_states=op_states if stage == "route" else None)

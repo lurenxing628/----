@@ -16,13 +16,10 @@ class DecisionChangeovers:
         key = self.source.computation_key(key)
         return self.source.baseline["state"] == "available" if key == "reference" else self.source.result_available(key)
 
-    def tasks(self, key):
-        return self.source.analysis_tasks(key)
-
     def projection(self, key):
         key = self.source.computation_key(key)
         if key not in self._projections:
-            self._projections[key] = changeover_projection(self.tasks(key), start=self.source.scope["range_start"],
+            self._projections[key] = changeover_projection(self.source.analysis_tasks(key), start=self.source.scope["range_start"],
                 end=self.source.scope["range_end"], work_available=self.available(key), next_operation_refs=self.source.operation_refs,
                 task_intervals=self.source.task_intervals(key))
         return self._projections[key]
@@ -32,7 +29,7 @@ class DecisionChangeovers:
         if key not in self._metrics:
             projected = self.projection(key)
             reason = {"code": "changeover_sequence_incomplete", "message": "部分实际设备序列缺少工种身份、时间或存在重叠，切换统计保留已知小计。"} if projected["state"] != "complete" else None
-            arrangements = subject_arrangements(self.tasks(key), self.source.operation_refs,
+            arrangements = subject_arrangements(self.source.analysis_tasks(key), self.source.operation_refs,
                 task_intervals=self.source.task_intervals(key))
             covered = sorted({task["operation_ref"] for task in arrangements})
             values = {}
@@ -48,7 +45,7 @@ class DecisionChangeovers:
 
     def _events(self, key, side):
         source = self.source
-        lookup = {task["row_ref"]: task for task in self.tasks(key)}
+        lookup = {task["row_ref"]: task for task in self.source.analysis_tasks(key)}
         intervals = self.source.task_intervals(key)
         range_start = local_time(source.scope["range_start"])
         result = []

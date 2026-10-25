@@ -18,7 +18,7 @@ from core.services.workbench.facts.candidate_facts import GenerationFacts, archi
 from core.services.workbench.facts.candidate_projection import candidate_summary, dispositions, validate_manifest
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import validate_saved_tasks
-from core.services.workbench.facts.decision_baseline import _same_arrangements
+from core.services.workbench.facts.decision_baseline import same_saved_arrangements
 from core.services.workbench.facts.decision_baseline_source import decision_baseline_source_resolver
 from core.services.workbench.facts.delivery_completeness import deferred_operation_evidence
 from core.services.workbench.facts.preflight_checks import stored_date
@@ -152,7 +152,7 @@ def _formal_effort_source(conn, ref, version, record, rows):
     history = {"version": version, "result_summary": record["summary"], "result_status": record["result_status"]}
     source = decision_baseline_source_resolver(conn)(plan_ref=ref, version=version, history=history)
     evidence = source.get("evidence")
-    if evidence is not None and not _same_arrangements(rows, evidence.get("arranged")):
+    if evidence is not None and not same_saved_arrangements(rows, evidence["arranged"]):
         return {"operation_effort": None, "operation_effort_issues": [
             {"code": "adoption_plan_drift", "message": "正式安排与原采用来源不同，准备需求分解未知。"}]}
     return {"operation_effort": source.get("operation_effort"), "operation_types": source.get("operation_types"),

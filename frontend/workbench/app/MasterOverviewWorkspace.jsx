@@ -4,7 +4,7 @@
   const { Table, Tabs, Pager } = window.MasterOverviewTable;
   const { useState, useEffect, useMemo, useRef } = React;
   function readContext(context) {
-    const empty = { scope: C.scope({}), page: 1, selected: null, section: 'issues', detailPage: 1 };
+    const empty = { scope: C.scope({}), page: 1, selected: null, section: 'issues', detailPage: 1, notice: '' };
     if (context == null) return empty;
     if (!C.canonical(context) || typeof context !== 'object' || Array.isArray(context)
         || Object.keys(context).some(key => !['domain', 'entity_ref', 'read_view'].includes(key))) C.fail('跳转到基础资料的条件不支持，页面没有跳转。请刷新后重试。');
@@ -38,9 +38,10 @@
     const count = key => <MetricValue pending={!metrics && pending} error={!metrics && error} kind="count">{metrics ? metrics[key] : '未读取'}</MetricValue>;
     return <Tabs label="清单类型" value={scope.view} onChange={onChange} values={[["issues", "待维护项", count('issues')], ["entities", "资料清单", count('entities')]]} />;
   }
-  function MasterOverviewWorkspace({ onNavigate, initialContext }) {
+  // 侧栏直接进入时 main.jsx 不带定位上下文（initialContext 为 undefined），按“无定位”处理。
+  function MasterOverviewWorkspace({ onNavigate, initialContext = null }) {
     const api = useMemo(() => window.APSMasterOverviewAPI.create(), []);
-    const contextKey = C.canonical(initialContext || null);
+    const contextKey = C.canonical(initialContext);
     const initial = useMemo(() => { try { return readContext(initialContext); } catch (error) { return { ...readContext(null), error }; } }, [contextKey]);
     const contextSeen = useRef(contextKey);
     const [request, setRequest] = useState(() => ({ scope: initial.scope, page: initial.page, initial: initial.initial, restore: initial }));
@@ -50,7 +51,7 @@
     const { selected, section, page: detailPage } = detailRequest;
     const [detail, setDetail] = useState(null), [completedDetail, setCompletedDetail] = useState(null), [detailLoading, setDetailLoading] = useState(false), [detailError, setDetailError] = useState(null);
     const [search, setSearch] = useState(initial.scope.query), [column, setColumn] = useState(null), [columnText, setColumnText] = useState('');
-    const [message, setMessage] = useState(initial.notice || ''), [actionError, setActionError] = useState(null), [exporting, setExporting] = useState(false), [stale, setStale] = useState(false);
+    const [message, setMessage] = useState(initial.notice), [actionError, setActionError] = useState(null), [exporting, setExporting] = useState(false), [stale, setStale] = useState(false);
     const opener = useRef(null), listRef = useRef(null), listHeight = useRef(0), exportController = useRef(null), alive = useRef(true);
     const domainsId = React.useId();
     const detailFocus = useRef(!!(initial.initial || initial.selected));
@@ -79,11 +80,11 @@
       contextSeen.current = contextKey;
       detailFocus.current = !!(initial.initial || initial.selected); opener.current = null;
       setRequest({ scope: initial.scope, page: initial.page, initial: initial.initial, restore: initial }); setSearch(initial.scope.query); setColumn(null);
-      setMessage(initial.notice || '');
+      setMessage(initial.notice);
     }, [contextKey, initial]);
     useEffect(() => {
       const controller = new AbortController(); let active = true;
-      setLoading(true); setError(null); setStale(false); setActionError(null); setMessage(request.restore && request.restore.notice || '');
+      setLoading(true); setError(null); setStale(false); setActionError(null); setMessage(request.restore === undefined ? '' : request.restore.notice);
       if (!request.keep) { setResult(null); setDetailRequest({ selected: null, section: 'issues', page: 1, captured: null }); setDetail(null); setCompletedDetail(null); }
       if (exportController.current) exportController.current.abort();
       async function read() {
@@ -142,7 +143,7 @@
     function closeDetail() { detailFocus.current = false; setDetailRequest({ selected: null, section, page: detailPage, captured: null }); const target = opener.current && opener.current.isConnected ? opener.current : listRef.current; opener.current = target; if (target) target.focus(); }
     function locate(target) { if (result) { detailFocus.current = true; setSearch(''); setColumn(null); setRequest({ scope: data.scope, token: result.meta.snapshot_ref, locate: target, page: 1 }); } }
     async function navigate(target) {
-      try { C.target(target); if (target.unavailable_reason) C.fail(target.unavailable_reason); if (typeof onNavigate !== 'function') C.fail('dependency not wired: props.onNavigate'); await onNavigate(target.view, target.context); }
+      try { C.target(target); if (target.unavailable_reason) C.fail(target.unavailable_reason); await onNavigate(target.view, target.context); }
       catch (failure) { setActionError(failure); }
     }
     async function exportRows() {
@@ -161,7 +162,7 @@
         <span role="status">{pending ? summary ? ' · 正在更新统计' : ' · 正在读取资料' : readError ? summary ? ' · 更新失败，显示上次读取结果' : ' · 读取失败' : ''}</span></p></div>
         <div className="mo-actions"><Button reasonDisplay="inline" className="btn mo-icon" icon="refresh-cw" aria-label="刷新资料" onClick={refresh} />
           <Button reasonDisplay="inline" transfer="export" disabled={!data || pending || exporting} onClick={exportRows}>导出筛选结果</Button>
-          <Button reasonDisplay="inline" className="btn primary" reason={typeof onNavigate !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={async () => { try { await onNavigate('process', { source: 'production' }); } catch (failure) { setActionError(failure); } }}>维护基础资料</Button></div></header>
+          <Button reasonDisplay="inline" className="btn primary" onClick={async () => { try { await onNavigate('process', { source: 'production' }); } catch (failure) { setActionError(failure); } }}>维护基础资料</Button></div></header>
       <Statistics overview={overview} pending={pending} error={readError} scope={scope} domainsId={domainsId} onDomain={domain => filter({ domain })} />
       {overview && overview.gaps.length > 0 && <details className="mo-gaps" open><summary>原始数据缺口 {overview.gaps.length} 项</summary><ul>{overview.gaps.map((gap, index) => <li key={index}>{gap.message}</li>)}</ul></details>}
       <ErrorBox error={readError || actionError} />{message && <div className="mo-message" role="status">{message}</div>}
@@ -180,13 +181,13 @@
         <label>{C.columns[scope.view].find(row => row[0] === column)[1]}<input aria-label="列包含文字" autoFocus value={columnText} maxLength={1000} onChange={event => setColumnText(event.target.value)} /></label>
         <Button reasonDisplay="inline" type="submit" icon="search">应用列筛选</Button><Button reasonDisplay="inline" icon="x" aria-label="关闭列筛选" onClick={() => setColumn(null)} /></form>}
       {Object.keys(scope.column_filters).length > 0 && <p className="mo-muted">已启用 {Object.keys(scope.column_filters).length} 项列筛选</p>}</section>
-      <div className={selected ? 'mo-workspace wb-detail-layout' : 'mo-workspace'}><div className="mo-list" ref={listRef} tabIndex={-1} style={pending && listHeight.current ? { minHeight: listHeight.current } : undefined}><Table data={data || empty} selected={selected} onSelect={select} onMaintain={navigate} onClear={clearFilters} onRetry={refresh} navigation={typeof onNavigate === 'function'} loading={pending} error={readError}
-        onFilter={key => { setColumn(key); setColumnText(scope.column_filters[key] || ''); }} />
+      <div className={selected ? 'mo-workspace wb-detail-layout' : 'mo-workspace'}><div className="mo-list" ref={listRef} tabIndex={-1} style={pending && listHeight.current ? { minHeight: listHeight.current } : undefined}><Table data={data || empty} selected={selected} onSelect={select} onMaintain={navigate} onClear={clearFilters} onRetry={refresh} navigation loading={pending} error={readError}
+        onFilter={key => { setColumn(key); setColumnText(scope.column_filters[key] === undefined ? '' : scope.column_filters[key]); }} />
         {data && <Pager page={data.page} disabled={pending} onSize={size => filter({ size })} onPage={page => setRequest({ scope: data.scope, page, token: result.meta.snapshot_ref })} />}</div>
         <window.MasterOverviewDetail result={currentDetail} selected={selected} section={section}
           onSection={value => { if (value !== section || detailPage !== 1) setDetailRequest({ selected, section: value, page: 1, captured: null }); }}
           onPage={page => { if (page !== detailPage) setDetailRequest({ selected, section, page, captured: null }); }} onLocate={locate} onMaintain={navigate}
-          onBack={closeDetail} navigation={typeof onNavigate === 'function'} loading={detailPending} error={currentDetailError} triggerRef={opener} autoFocus={detailFocus.current} /></div>
+          onBack={closeDetail} navigation loading={detailPending} error={currentDetailError} triggerRef={opener} autoFocus={detailFocus.current} /></div>
     </section>;
   }
   window.MasterOverviewWorkspace = MasterOverviewWorkspace;

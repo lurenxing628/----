@@ -29,10 +29,6 @@
     const prefix = monthKey(target.year, target.month);
     return { start_date: prefix + '-01', end_date: prefix + '-' + monthDays(target.year, target.month) };
   }
-  function isStale(command) {
-    const error = command && command.error, code = error && (error.code || error.error && error.error.code);
-    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
-  }
   function DayEditor({ day, draft, setDraft, disabled, error, onSave, onClear, saveReason, clearReason, clearing, onClearing }) {
     const rest = draft.type === 'rest';
     // 上班但工作时段全部移除：能保存，但排产按 0 工时不排这个人，与全局日历同一句提醒。
@@ -168,11 +164,11 @@
     }
     function updateDraft(next) {
       setDraft(next); setError(null);
-      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     function updateRange(next) {
       setRange(next); setPreview(null); setError(null);
-      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     async function toggleMode() {
       const abandonDraft = dirty;
@@ -267,7 +263,7 @@
             })}</div>}
           {editorData && mode === 'day' && current && draft && <DayEditor day={current} draft={draft} setDraft={updateDraft}
             disabled={disabled} error={shownError} onSave={save} onClear={clearDay} saveReason={saveReason} clearReason={clearReason}
-            clearing={clearing && (current.explicit || done)} onClearing={value => { setClearing(value); setError(null); if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset(); }} />}
+            clearing={clearing && (current.explicit || done)} onClearing={value => { setClearing(value); setError(null); command.clearRejection(); }} />}
           {editorData && mode === 'day' && !current && <p role="status">点一天开始维护。</p>}
           {editorData && mode === 'range' && <RangeClear range={range} setRange={updateRange} disabled={disabled} error={shownError}
             preview={preview} onPreview={previewRange} onConfirm={confirmRange} reason={rangeReason} busy={busy} />}

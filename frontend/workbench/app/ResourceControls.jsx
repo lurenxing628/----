@@ -58,7 +58,7 @@
       {inlineReason && <span id={reasonId} className="wb-reason" role="status">{reason}</span>}
       {hiddenReason && <span id={reasonId} className="wb-visually-hidden">{reason}</span>}</span>;
   }
-  const fieldPath = path => String(path || '').replace(/^input\./, '');
+  const fieldPath = path => path.replace(/^input\./, '');
   function uniqueFieldErrors(error, errors) {
     const seen = new Set();
     return (errors || C.fieldErrors(error)).filter(row => {
@@ -77,7 +77,8 @@
   }
   function Field({ label, path, error, errors, required, full, hint, children }) {
     const generated = React.useId(), child = React.Children.only(children), id = child.props.id || generated;
-    const target = fieldPath(path);
+    // 没有 path 的字段不认领任何字段级错误。
+    const target = path === undefined ? null : fieldPath(path);
     const messages = uniqueFieldErrors(error, errors).filter(row => fieldPath(row.path) === target).map(row => row.message);
     const describedBy = [child.props['aria-describedby'], hint && id + '-hint', messages.length && id + '-error'].filter(Boolean).join(' ');
     return <div className={'field wb-field' + (full ? ' full' : '') + (messages.length ? ' err' : '')} data-field-path={path}>
@@ -89,9 +90,9 @@
       {messages.length > 0 && <span id={id + '-error'} className="wb-field-error">{messages.join(' ')}</span>}</div>;
   }
   function focusFirstInvalid(form) {
-    if (!form || typeof form.querySelectorAll !== 'function') return false;
+    if (!form) return false;
     const element = Array.from(form.querySelectorAll('[aria-invalid="true"]')).find(node => {
-      if (node.disabled || typeof node.focus !== 'function' || node.closest('[hidden],[inert],[aria-hidden="true"]')) return false;
+      if (node.disabled || node.closest('[hidden],[inert],[aria-hidden="true"]')) return false;
       for (let parent = node.parentElement; parent && form.contains(parent); parent = parent.parentElement) {
         if (parent.tagName === 'DETAILS') parent.open = true;
       }
@@ -137,7 +138,7 @@
     return !!(node && node.isConnected && node.getClientRects().length && !node.closest('[hidden],[inert],[aria-hidden="true"]') &&
       !['hidden', 'collapse'].includes(getComputedStyle(node).visibility));
   }
-  function modalFocusable(node) { return modalVisible(node) && node.matches(modalSelector) && !node.matches(':disabled') && typeof node.focus === 'function'; }
+  function modalFocusable(node) { return modalVisible(node) && node.matches(modalSelector) && !node.matches(':disabled'); }
   function topModal() { return modalStack.slice().reverse().find(entry => !entry.suspended && modalVisible(entry.root)); }
   function modalItems(entry) { return Array.from(entry.root.querySelectorAll(modalSelector)).filter(node => node.tabIndex >= 0 && modalFocusable(node)); }
   function focusModal(entry, preferred) {
@@ -241,7 +242,7 @@
       syncModalFocus();
     });
     React.useLayoutEffect(() => {
-      entry.current.parent = parent || modalStack.slice().reverse().find(item => item.root.contains(entry.current.origin[0] || null)) || null;
+      entry.current.parent = parent || modalStack.slice().reverse().find(item => item.root.contains(entry.current.origin[0]));
       return mountModal(entry.current);
     }, []);
     const canClose = () => topModal() === entry.current && !entry.current.locked;
@@ -262,16 +263,14 @@
     if (!entity) return [];
     const objects = { op_type_ref: 'op_type', group_ref: 'group', shift_profile_ref: 'shift_profile', skill_refs: 'skills', op_type_refs: 'op_types' };
     const related = entity.relationships[objects[key]], refs = entity.relationships[key];
-    if (Array.isArray(related) && Array.isArray(refs)) return refs.map(ref => ({ ref, label: (related.find(item => item.ref === ref) || {}).label }));
-    if (C.object(related) && related.ref === refs) return [{ ref: refs, label: related.label }];
-    const map = { op_type_ref: 'op_type_label', group_ref: 'group_label', shift_profile_ref: 'shift_profile_label', skill_refs: 'skill_labels', op_type_refs: 'op_type_labels', machine_refs: 'machine_labels' };
-    const labels = entity.relationships[map[key]];
-    if (Array.isArray(refs)) return refs.map((ref, index) => ({ ref, label: Array.isArray(labels) ? labels[index] : C.object(labels) ? labels[ref] : null }));
-    return refs ? [{ ref: refs, label: typeof labels === 'string' ? labels : null }] : [];
+    // 后端投影的多值关系同时给编号表和对象表（编号表由对象表导出），单值关系给对象或 null。
+    if (Array.isArray(refs)) return refs.map(ref => ({ ref, label: related.find(item => item.ref === ref).label }));
+    if (C.object(related)) return [{ ref: refs, label: related.label }];
+    return refs ? [{ ref: refs, label: null }] : [];
   }
   function Relation({ entity, field, onOpen }) {
     const items = relationLabels(entity, field);
-    return items.length ? <span className="chipline">{items.map(item => onOpen ? <Button key={item.ref} className="mini wb-chip-link" icon="arrow-right" onClick={() => onOpen(item.ref)}>{item.label || '名称未填写'}</Button> : <span className="chip wb-chip-wrap" key={item.ref}>{item.label || '名称未填写'}</span>)}</span> : <span className="muted">{entity.relationships[field] === null || Array.isArray(entity.relationships[field]) ? '未选' : '未读取'}</span>;
+    return items.length ? <span className="chipline">{items.map(item => onOpen ? <Button key={item.ref} className="mini wb-chip-link" icon="arrow-right" onClick={() => onOpen(item.ref)}>{item.label || '名称未填写'}</Button> : <span className="chip wb-chip-wrap" key={item.ref}>{item.label || '名称未填写'}</span>)}</span> : <span className="muted">未选</span>;
   }
   function Choice({ adapter, field, value, original, onChange, disabled, onCatalog, catalogBusy, error }) {
     const [search, setSearch] = React.useState(''), [query, setQuery] = React.useState('');
@@ -282,7 +281,6 @@
     const invalid = errors.length > 0, describedBy = invalid ? id + '-error' : undefined;
     const S = window.APSResourceSession;
     const request = S.useQuery(async signal => {
-      if (typeof adapter.choices !== 'function') throw C.failure('dependency not wired: adapter.choices');
       const scope = { query, page, size: 50 };
       if (field.category) scope.category = field.category;
       if (snapshot) scope.snapshot_ref = snapshot;
@@ -336,7 +334,7 @@
       <ErrorBox error={request.error} />
       {request.error && <Button disabled={disabled} onClick={() => { if (page === 1 && snapshot === undefined) request.reload(); else { setPage(1); setSnapshot(undefined); } }}>刷新选项</Button>}
       {response && <Pager page={response.data.page} unit="项" label={field.label} disabled={disabled} onPage={changePage} />}
-      {field.catalog && <Button icon="plus" busy={catalogBusy} disabled={disabled} reason={typeof adapter.openCatalog !== 'function' ? '维护' + field.label + '尚未开通。' : ''} onClick={() => onCatalog(field, request.reload)}>维护{field.label}</Button>}
+      {field.catalog && <Button icon="plus" busy={catalogBusy} disabled={disabled} onClick={() => onCatalog(field, request.reload)}>维护{field.label}</Button>}
     </div>;
   }
   // 列表基础件（EmptyState / Pager）和按钮、错误框放在同一层：Choice 用 Pager 翻页，Pager 又用 Button 画按钮，

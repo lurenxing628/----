@@ -9,17 +9,18 @@ from typing import Dict, List, Set
 import pytest
 
 from core.algorithm_contracts.operation_effort import OperationEffort
+from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleSummary
-from core.algorithms import GreedyScheduler, SortStrategy
 from core.algorithms.evaluation import ScheduleMetrics, objective_score
 from core.algorithms.evaluation_completion import BatchCompletion
+from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.errors import ValidationError
 from core.models.objective import target_objectives_for
-from core.models.schedule_config_runtime import default_snapshot_values
+from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.models.schedule_config_runtime_snapshot import snapshot_from_values
 from core.models.workbench_run_compute import CandidateRunComputation
 from core.services.scheduler.contracts.optimizer_public_search_report import project_search_report
-from core.services.scheduler.run import schedule_optimizer_steps
+from core.services.scheduler.run import schedule_optimizer_steps, schedule_shared_optimizer
 from core.services.scheduler.run.optimizer.candidate_fingerprint import CandidateFingerprint
 from core.services.scheduler.run.optimizer.graph.candidates import evaluate_graph_ready_candidate
 from core.services.scheduler.run.optimizer.graph.iterated_greedy import _IteratedGreedySearch
@@ -30,7 +31,7 @@ from core.services.scheduler.run.optimizer.graph.iterated_greedy_contract import
 from core.services.scheduler.run.optimizer.graph.iterated_greedy_moves import _parent_from_candidate
 from core.services.scheduler.run.optimizer.graph.reporting import append_graph_trace
 from core.services.scheduler.run.optimizer.graph.stages import _candidate_should_replace_best
-from core.services.scheduler.run.optimizer.graph_ready_profiles import resolve_weight_grid_profiles_and_summary
+from core.services.scheduler.run.optimizer.graph_ready_profiles import resolve_v2_profiles
 from core.services.scheduler.run.optimizer.grasp_ig_candidates import _append_trace
 from core.services.scheduler.run.optimizer.local_search_round import _record_improvement
 from core.services.scheduler.run.optimizer.neighborhood_moves import NeighborhoodMove
@@ -44,7 +45,7 @@ from core.services.scheduler.run.optimizer.shared_process import build_shared_pr
 from core.services.scheduler.run.optimizer.step_report_hooks import _append_multi_start_trace, _append_ortools_trace
 from core.services.scheduler.run.schedule_candidate_plan import CandidateComparisonOutcome, CandidatePlan
 from core.services.scheduler.run.schedule_payload_contract import ValidatedSchedulePayload
-from core.services.scheduler.run.schedule_shared_optimizer import _GoalView, _SharedSearch, _WarmStartStage
+from core.services.scheduler.run.schedule_shared_search import GoalView, SharedSearch
 from core.services.workbench.run.result_preparation import _prepare_result_artifacts
 from tests._support.optimizer_graph_ready_benchmark import (
     START_DT,
@@ -113,7 +114,7 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
     archive = SharedScheduleArchive("min_overdue", targets, (op.id for op in operations), batches)
     budget = SharedSearchBudget(clock=clock, started_at=started_at, deadline=deadline,
                                 target_objectives=targets, configured_seconds=10)
-    shared = _SharedSearch(archive=archive, clock=clock, started_at=started_at, budget=budget)
+    shared = SharedSearch(archive=archive, clock=clock, started_at=started_at, budget=budget)
     seed_results, downtime_map = [], {}
     session = SharedDecodeSession(
         archive=archive, budget=budget, scheduler=scheduler, operations=operations, batches=batches,
@@ -156,9 +157,9 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
         strict_mode=True, start_dt=START_DT, end_date=None, dispatch_mode_cfg="batch_order",
         dispatch_rule_cfg="slack", resource_pool=None, objective_name="min_overdue", optimizer_algo_stats=optimizer_stats,
         readiness_gate_enabled=False, graph_ready_context=None, decode_session=session,
-        scheduler=scheduler, algo_ops_to_schedule=operations, batches=batches,
+        algo_ops_to_schedule=operations, batches=batches,
         algo_mode="improve", cfg=cfg, strategy_enum=SortStrategy.FIFO,
-        deadline=deadline, best=best, t_begin=started_at, logger=None, clock=clock,
+        deadline=deadline, best=best, t_begin=started_at, clock=clock,
         attempts=optional_attempts, improvement_trace=[], search_report_state=optional_report,
     ) is best
     assert scheduler._decode_invocations == 1
@@ -182,9 +183,9 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
             strict_mode=True, start_dt=START_DT, end_date=None, dispatch_mode_cfg="batch_order",
             dispatch_rule_cfg="slack", resource_pool=None, objective_name="min_overdue", optimizer_algo_stats=optimizer_stats,
             readiness_gate_enabled=False, graph_ready_context=None, decode_session=session,
-            scheduler=scheduler, algo_ops_to_schedule=operations, batches=batches,
+            algo_ops_to_schedule=operations, batches=batches,
             algo_mode="improve", cfg=cfg, strategy_enum=SortStrategy.FIFO,
-            deadline=deadline, best=best, t_begin=started_at, logger=None, clock=clock,
+            deadline=deadline, best=best, t_begin=started_at, clock=clock,
             attempts=attempts, improvement_trace=[], search_report_state=report,
         )
     assert raised.value is observer_failure
@@ -206,7 +207,7 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
     shared_report = OptimizationSearchReportState(
         objective_name="min_overdue", started_at=started_at, candidate_clock=clock,
     )
-    view = _GoalView("min_overdue", OptimizerSearchState(), shared_report)
+    view = GoalView("min_overdue", OptimizerSearchState(), shared_report)
     shared.views[view.objective] = view
     for remaining, reason, solver_finishes in ((1.03, "estimated_decode_cost", False),
                                                (0.5, "time_budget", False), (5.0, "time_budget", True)):
@@ -224,13 +225,13 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
                 strict_mode=True, start_dt=START_DT, end_date=None, dispatch_mode_cfg="batch_order",
                 dispatch_rule_cfg="slack", resource_pool=None, objective_name="min_overdue", optimizer_algo_stats=optimizer_stats,
                 readiness_gate_enabled=False, graph_ready_context=None, decode_session=session,
-                scheduler=scheduler, algo_ops_to_schedule=operations, batches=batches,
+                algo_ops_to_schedule=operations, batches=batches,
                 algo_mode="improve", cfg=cfg, strategy_enum=SortStrategy.FIFO,
-                deadline=deadline, best=shared_best, t_begin=started_at, logger=None, clock=clock,
+                deadline=deadline, best=shared_best, t_begin=started_at, clock=clock,
                 attempts=shared_attempts, improvement_trace=[], search_report_state=shared_report,
             )
 
-        stage = _WarmStartStage(run=run_shared_warmstart, clock=clock, deadline=deadline)
+        stage = schedule_shared_optimizer._WarmStartStage(run=run_shared_warmstart, clock=clock, deadline=deadline)
         shared.run_action(view, stage)
         assert len(solver_calls) == before_solver + int(solver_finishes)
         assert scheduler._decode_invocations == before_scheduler
@@ -249,7 +250,7 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
 
 def test_all_trace_producers_preserve_improvement_after_two_hundred_points():
     candidate = _candidate(0.0)
-    profile = resolve_weight_grid_profiles_and_summary(max_weight_profiles=1)[0][0]
+    profile = next(p for p in resolve_v2_profiles(seed=0, objective_name="min_overdue") if p.slug == "balanced")
     move = NeighborhoodMove(neighborhood_name="tardy_window", batch_order=("B1", "B2"))
     report = OptimizationSearchReportState(objective_name="min_tardiness", started_at=0.0)
     def clock():
@@ -361,11 +362,6 @@ def test_equal_elapsed_buckets_retain_late_best_and_all_three_milestones():
     assert {point["event_index"] for point in points} == {1, 211, 322} | set(bucket_ends.values())
     assert [point["elapsed_ms"] for point in points] == sorted(point["elapsed_ms"] for point in points)
     assert raw_points == original
-    points[-1]["score"][1] = -999.0
-    points[-1]["flags"].append("changed-output")
-    assert raw_points == original
-    raw_points[-1]["score"][1] = -888.0
-    assert points[-1]["score"][1] == -999.0 and original[-1]["score"][1] == 80.0
 
     immediate = [{"elapsed_ms": 0, "flags": ["first_valid", "first_expected_complete", "final"]}]
     merged, zero_sampling = sample_elapsed_points(immediate, elapsed_ms=0)
@@ -381,7 +377,7 @@ def test_adoption_is_separate_from_strict_improvement_and_revisited_stages_do_no
     recorded_clock = _Clock()
     reporter = OptimizationSearchReportState(
         objective_name="min_tardiness", started_at=0.0, candidate_clock=recorded_clock)
-    profile = resolve_weight_grid_profiles_and_summary(max_weight_profiles=1)[0][0]
+    profile = next(p for p in resolve_v2_profiles(seed=0, objective_name="min_overdue") if p.slug == "balanced")
     attempts = []
     incumbent = _candidate(20.0)
     incumbent["runtime_ms"] = 20
@@ -425,7 +421,7 @@ def test_unknown_and_unverified_results_do_not_claim_valid_or_complete_milestone
     archive = _archive()
     budget = SharedSearchBudget(clock=clock, started_at=0.0, deadline=2.0,
                                 target_objectives=archive.target_objectives, configured_seconds=2)
-    search = _SharedSearch(archive=archive, clock=clock, started_at=0.0, budget=budget)
+    search = SharedSearch(archive=archive, clock=clock, started_at=0.0, budget=budget)
     search.phase = "graph_ig"
     unknown = archive_candidate([_result(1, 0), _result(2, 2)])
     clock.value = 0.1
@@ -433,7 +429,7 @@ def test_unknown_and_unverified_results_do_not_claim_valid_or_complete_milestone
     trial = archive_candidate([_result(1, 0), _result(2, 2), _result(3, 4)])
     clock.value = 0.2
     _observe_decoded(search, "min_tardiness", candidate=trial, origin="graph_ig", verified=False, elapsed_ms=200)
-    assert trial["_shared_entry_id"] not in archive.retained_entry_ids
+    assert trial["_shared_entry_id"] not in archive
     before_verified = build_shared_process(search, runtime_ms=200, stop_reason="completed", decode_stats={},
                                            budget_stats=budget.summary(finished_at=0.2))
     pending_points = before_verified["targets"]["min_tardiness"]["points"]
@@ -476,7 +472,7 @@ def test_unknown_and_unverified_results_do_not_claim_valid_or_complete_milestone
         objective_name="min_tardiness", started_at=0.0, candidate_clock=clock)
     limits = IteratedGreedyLimits()
     report = new_iterated_greedy_report(limits, objective_name="min_tardiness")
-    profile = resolve_weight_grid_profiles_and_summary(max_weight_profiles=1)[0][0]
+    profile = next(p for p in resolve_v2_profiles(seed=0, objective_name="min_overdue") if p.slug == "balanced")
     cfg_values = default_snapshot_values()
     cfg_values.update(auto_assign_enabled="no")
     scheduler = GreedyScheduler(calendar_service=ContinuousCalendar(), config_service=snapshot_from_values(cfg_values))
@@ -631,4 +627,4 @@ def test_report_uses_archive_identity_and_evaluation_without_scanning_schedule_r
     previous = set(report.candidate_fingerprints)
     report.mark_candidate_evaluated(trial_rows, origin="checkpoint_trial", remember_fingerprint=False)
     assert report.candidate_fingerprints == previous
-    assert trial_rows["_shared_entry_id"] not in archive.retained_entry_ids
+    assert trial_rows["_shared_entry_id"] not in archive

@@ -127,7 +127,8 @@ def test_retained_sql_readers_parse_each_row_endpoint_once(tmp_path, monkeypatch
         assert len(calls) == 6
         calls.clear()
         overdue = repo.list_overdue_base_rows(**common)
-        assert overdue[0]["finish_time"] == "2026-10-15 09:00:00" and overdue[0]["invalid_time_count"] == 2
+        # 逾期统计把零工时点事件算作合法安排，只有写坏的那一行无效。
+        assert overdue[0]["finish_time"] == "2026-10-15 09:00:00" and overdue[0]["invalid_time_count"] == 1
         assert len(calls) == 6
     finally:
         conn.close()

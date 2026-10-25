@@ -5,15 +5,8 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import DashboardAnalysisQuery, page
 from core.services.capacity.plan_calendar_intervals import instant, wire
 from core.services.workbench import messages
-from core.services.workbench.facts.resource_pressure import legacy_day, pressure_from_index, pressure_summary
-from core.services.workbench.facts.resource_projection import (
-    RESOURCE_METRIC_VERSION,
-    ResourceTaskIndex,
-    resource_cohort,
-    resource_summary,
-)
-
-from .calendar_capture import resource_pressure_tasks
+from core.services.workbench.facts.resource_pressure import pressure_summary
+from core.services.workbench.facts.resource_projection import RESOURCE_METRIC_VERSION, resource_summary
 
 
 def _time(value):
@@ -68,55 +61,16 @@ def _tasks(facts, *, selected_refs=None, slice_range=None):
 
 
 def _resources(facts, scope, query):
-    cohort = facts._resource_pressure_cohort
-    normalized = None
-    if cohort is None:
-        normalized = resource_pressure_tasks(facts)
-        cohort = resource_cohort([normalized], task_intervals=[facts._resource_pressure_intervals])
-    start, end = scope["range_start"], scope["range_end"]
-    cache = facts._resource_pressure_cache
-    needed = [resource for resource in cohort if (resource["kind"], resource["ref"], start, end) not in cache
-              or query.section == "resource_days" and query.resource_ref == resource["ref"]]
-    projected = {}
-    identity_issues = facts._resource_pressure_identity_issues
-    if needed:
-        index = None
-        if facts._resource_pressure_index is not None and facts._resource_pressure_window == (start, end):
-            index = facts._resource_pressure_index
-        if index is None:
-            if normalized is None:
-                normalized = resource_pressure_tasks(facts)
-            index = ResourceTaskIndex(normalized, start, end, source="current_transaction_snapshot",
-                                      task_intervals=facts._resource_pressure_intervals)
-        identity_issues = index.identity_issues
-        factory = facts.calendar_factory
-        specs = [dict(row, saved_id=factory.bindings.get((row["kind"], row["ref"]))) for row in needed] if factory else []
-        calendars = factory.iter_resources(specs, start, end) if factory else ((row["ref"], None) for row in needed)
-        previous_retain = index.retain_statistics_values
-        index.retain_statistics_values = (query.section == "resource_days")
-        for resource, (_, calendar) in zip(needed, calendars):
-            key = resource["kind"], resource["ref"]
-            cache_key = key + (start, end)
-            if cache_key not in cache:
-                cache[cache_key] = pressure_from_index(index, resource, calendar, include_days=False)
-            values = cache[cache_key]
-            if query.section == "resource_days" and query.resource_ref == resource["ref"]:
-                values = dict(values, days=[legacy_day(day) for day in index.days(resource, calendar)])
-            projected[key] = values
-            index._measurements.pop(key)
-        index.retain_statistics_values = previous_retain
-    result = []
-    for resource in cohort:
-        key = resource["kind"], resource["ref"]
-        values = projected[key] if key in projected else cache[key + (start, end)]
-        result.append({"resource_ref": resource["ref"], "label": resource["label"], "kind": resource["kind"],
-                       **values, "task_refs": [], "issues": values["window_metrics"]["issues"]})
+    metrics = facts.pressure_metrics
+    result = [{"resource_ref": resource["ref"], "label": resource["label"], "kind": resource["kind"],
+               **values, "task_refs": [], "issues": values["window_metrics"]["issues"]}
+              for resource, values in metrics.resource_values(query.resource_ref)]
     windows = [row["window_metrics"] for row in result]
     common = {"metric_version": RESOURCE_METRIC_VERSION, "source": "current_transaction_snapshot",
-              "start": start, "end": end, "time_basis": "factory_local", "cohort_basis": "current_official_plan",
-              "cohort": cohort,
+              "start": scope["range_start"], "end": scope["range_end"], "time_basis": "factory_local",
+              "cohort_basis": "current_official_plan", "cohort": metrics.cohort,
               **{kind: resource_summary(windows, kind=kind,
-                                        identity_issues=identity_issues) for kind in ("machine", "operator")}}
+                                        identity_issues=metrics.identity_issues) for kind in ("machine", "operator")}}
     return result, common
 
 

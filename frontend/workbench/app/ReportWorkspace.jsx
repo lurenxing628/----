@@ -1,18 +1,18 @@
 (function () {
   'use strict';
   let pendingViewFocus = null;
-  function Workspace({ adapter, mode = 'reports', initialContext = {}, onNav, onOpenOperation }) {
+  function Workspace({ adapter, mode = 'reports', initialContext = {}, onNav }) {
     const { Scope, Tabs, Sort, Page, Button, ErrorBox, useRead } = window.ReportControls;
     const { Table, Metrics } = window.ReportTable;
     const api = React.useMemo(() => adapter || window.ReportAPI.create(), [adapter]);
     const initialTopic = mode === 'review' ? 'delivery' : window.ReportAPI.topics.includes(initialContext.topic) ? initialContext.topic : 'delivery';
-    const [scope, setScope] = React.useState(() => window.ReportAPI.scope(initialContext.scope || {}));
+    const [scope, setScope] = React.useState(() => window.ReportAPI.scope(initialContext.scope));
     const [state, setState] = React.useState(() => window.ReportAPI.table(initialContext.table, initialTopic));
-    const [revision, refresh] = React.useReducer(value => value + 1, 0), [selected, setSelected] = React.useState(initialContext.selected || null),
+    const [revision, refresh] = React.useReducer(value => value + 1, 0), [selected, setSelected] = React.useState(initialContext.selected === undefined ? null : initialContext.selected),
       [notice, setNotice] = React.useState(''), [error, setError] = React.useState(null), [downloading, setDownloading] = React.useState(false), [format, setFormat] = React.useState('csv'),
       [catalog, setCatalog] = React.useState(!!initialContext.catalogOpen), [chartsOpen, setChartsOpen] = React.useState(!!initialContext.chartsOpen);
     const root = React.useRef(null), restored = React.useRef(false);
-    const [scroll, setScroll] = React.useState(initialContext.scroll || {});
+    const [scroll, setScroll] = React.useState(initialContext.scroll === undefined ? {} : initialContext.scroll);
     const [resourceView, setResourceView] = React.useState(initialContext.resourceView || { kind: 'machine', page: 1 });
     const [detailView, setDetailView] = React.useState(initialContext.detailView || { page: 1, size: 10 });
     const [lastChoices, setLastChoices] = React.useState({});
@@ -110,13 +110,13 @@
 
       <header className="rw-header"><div><h2 className="wb-page-title">{title}</h2><p className="wb-page-context">{data ? data.plan.display_name + ' · 当前正式计划与报工记录' : '当前正式计划'}{response && <span className="rw-asof">{window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(response.meta.as_of))}</span>}</p></div>
         <div className="rw-actions">{initialContext.returnTo && initialContext.returnTo.view === 'calib' && <Button icon="arrow-left"
-          disabled={typeof onNav !== 'function'} onClick={() => go('calib')}>返回工时校准</Button>}
+          onClick={() => go('calib')}>返回工时校准</Button>}
           {initialContext.returnTo && ['reports', 'review'].includes(initialContext.returnTo.view) && <Button icon="arrow-left"
-            disabled={typeof onNav !== 'function'} onClick={() => go(initialContext.returnTo.view)}>返回来源</Button>}
+            onClick={() => go(initialContext.returnTo.view)}>返回来源</Button>}
           <Button icon="refresh-cw" aria-label="刷新报表" busy={request.busy} onClick={reload} /></div></header>
       <div className="rw-query wb-surface"><div className="wb-view-tabs" role="tablist" aria-label="统计分析视图">
         {[['reports', '报表中心'], ['review', '执行复盘']].map(([target, label], index) => <button type="button" key={target} role="tab" id={'analytics-view-' + target}
-          aria-selected={mode === target} aria-controls="analytics-view-panel" tabIndex={mode === target ? 0 : -1} disabled={!data || typeof onNav !== 'function'}
+          aria-selected={mode === target} aria-controls="analytics-view-panel" tabIndex={mode === target ? 0 : -1} disabled={!data}
           onClick={() => target !== mode && go(target, true)} onKeyDown={event => {
             if (event.altKey || event.ctrlKey || event.metaKey) return;
             if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -126,7 +126,7 @@
       </div>
       <Scope value={scope} onChange={changeScope} choices={lastChoices} busy={request.busy} /></div>
       <div id="analytics-view-panel" role="tabpanel" aria-labelledby={'analytics-view-' + mode}>
-      {data && review && <window.ReviewCharts data={data} expanded resourceView={resourceView} onResourceView={setResourceView} onDrill={typeof onNav === 'function' ? drill : undefined} />}
+      {data && review && <window.ReviewCharts data={data} expanded resourceView={resourceView} onResourceView={setResourceView} onDrill={drill} />}
       <div className="rw-results wb-surface">
       {!review && <Tabs topic={state.topic} onChange={changeTopic} />}
       <ErrorBox error={request.error || error} />{request.error && <Button icon="refresh-cw" onClick={reload}>刷新报表数据</Button>}
@@ -142,11 +142,11 @@
         <div className={'rw-result-content' + (selected ? ' wb-detail-layout' : '')}><div className="rw-list-pane">
         <Table data={data} onDetail={ref => { setSelected(ref); setDetailView({ page: 1, size: 10 }); }} busy={request.busy} primary /><Page page={data.page} onChange={changePage} busy={request.busy} /></div>
         {selected && <window.ReportDetail api={api} operationRef={selected} input={{ ...window.ReportAPI.scope(data.scope), ...window.ReportAPI.table(state, data.topic), snapshot_ref: response.meta.snapshot_ref }} onClose={() => setSelected(null)}
-          initialView={detailView} onView={setDetailView} onOpenOperation={onOpenOperation || (typeof onNav === 'function' ? navigateOperation : undefined)} />}</div>
+          initialView={detailView} onView={setDetailView} onOpenOperation={navigateOperation} />}</div>
       </div>}
       </div>
       {data && <>
-        {!review && <window.ReviewCharts data={data} open={chartsOpen} onChange={setChartsOpen} resourceView={resourceView} onResourceView={setResourceView} onDrill={typeof onNav === 'function' ? drill : undefined} />}
+        {!review && <window.ReviewCharts data={data} open={chartsOpen} onChange={setChartsOpen} resourceView={resourceView} onResourceView={setResourceView} onDrill={drill} />}
         <div className="rw-support"><details className="rw-limitations"><summary>统计说明与待补资料</summary><ul>{data.data_gaps.map(text => <li key={text}>{text}</li>)}</ul></details>
         <details className="rw-catalog" open={catalog} onToggle={event => setCatalog(event.currentTarget.open)}><summary>其他报表</summary>
           {catalog && <window.ReportCatalog api={api} scope={data.scope} snapshot={response.meta.snapshot_ref} />}</details></div>
@@ -154,23 +154,24 @@
       </div>
     </section>;
   }
-  function GuardedWorkspace(props) {
+  // 侧栏直接进入时 main.jsx 不带定位上下文（initialContext 为 undefined）。
+  function GuardedWorkspace({ initialContext = {}, ...props }) {
     try {
-      window.ReportAPI.scope(props.initialContext && props.initialContext.scope || {});
-      const context = props.initialContext || {}, topic = props.mode === 'review' ? 'delivery' : context.topic || 'delivery';
+      window.ReportAPI.scope(initialContext.scope);
+      const topic = props.mode === 'review' || initialContext.topic === undefined ? 'delivery' : initialContext.topic;
       if (!window.ReportAPI.topics.includes(topic)) throw window.APSResourceContract.failure('原报表专题无效，未改用默认专题。');
-      window.ReportAPI.table(context.table, topic);
-      if (context.selected !== undefined && context.selected !== null && !/^[0-9a-f]{48}$/.test(context.selected))
+      window.ReportAPI.table(initialContext.table, topic);
+      if (initialContext.selected !== undefined && initialContext.selected !== null && !/^[0-9a-f]{48}$/.test(initialContext.selected))
         throw window.APSResourceContract.failure('原工序编号无效，没有改选其他工序。');
-      const value = props.initialContext && props.initialContext.resourceView;
+      const value = initialContext.resourceView;
       if (value !== undefined && (!value || !['machine', 'operator'].includes(value.kind) || !Number.isSafeInteger(value.page) || value.page < 1))
         throw window.APSResourceContract.failure('资源工时查看状态无效，未改选其他资源。');
-      const detail = props.initialContext && props.initialContext.detailView;
+      const detail = initialContext.detailView;
       if (detail !== undefined && (!detail || !Number.isSafeInteger(detail.page) || detail.page < 1 || ![10, 20, 50].includes(detail.size)))
         throw window.APSResourceContract.failure('报表记录详情分页无效，未改选其他记录。');
     }
     catch (error) { return <section className="rw-workbench"><h2 className="wb-page-title">{props.mode === 'review' ? '执行复盘' : '报表中心'}</h2><window.ResourceControls.ErrorBox error={error} /></section>; }
-    return <Workspace {...props} />;
+    return <Workspace {...props} initialContext={initialContext} />;
   }
   window.ReportWorkspace = GuardedWorkspace;
 })();

@@ -6,6 +6,7 @@ import math
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, NoReturn, Optional, Set, Tuple
 
+from core.algorithm_contracts.value_domains import EXTERNAL, MERGED
 from core.algorithm_runtime.piece_input import external_group_key
 from core.errors import ValidationError
 from core.shared.strict_parse import parse_optional_date
@@ -134,9 +135,8 @@ def _remaining_burdens(work, links, ordered):
 
 
 def _work_bucket(op: Any, op_id: int) -> Tuple[str, ...]:
-    if (str(op.source or "").lower() == "external"
-            and str(op.ext_merge_mode or "").lower() == "merged"
-            and op.ext_group_id):
+    # 排产输入构建保证合并外协组必带组身份。
+    if op.source == EXTERNAL and op.ext_merge_mode == MERGED:
         return ("external",) + external_group_key(op)
     return ("operation", str(op_id))
 
@@ -162,7 +162,7 @@ def _topological_order(links):
 
 
 def _gross_finish(op: Any, batch: Any, start: datetime, hours: float, calendar: Optional[Any]) -> datetime:
-    if str(op.source or "internal").lower() == "external" or calendar is None:
+    if op.source == EXTERNAL or calendar is None:
         return start + timedelta(hours=hours)
     finish = calendar.add_working_hours(
         start, hours, priority=batch.priority,

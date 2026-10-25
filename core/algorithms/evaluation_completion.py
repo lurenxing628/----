@@ -9,6 +9,8 @@ from typing import Any, Dict, FrozenSet, Iterable, Optional, Set, Tuple
 
 from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
 from core.algorithm_contracts.priority_constants import PRIORITY_WEIGHT, normalize_priority
+from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
+from core.models.batch import Batch
 
 OperationKey = Tuple[str, int]
 # This is an ordering sentinel, never a datetime or an estimated metric. Every
@@ -32,7 +34,7 @@ class PreparedBatchDue:
 class PreparedEvaluationContext:
     """Static facts owned by one evaluation input set; results stay dynamic."""
 
-    expected_keys: Optional[FrozenSet[OperationKey]]
+    expected_keys: FrozenSet[OperationKey]
     expected_by_batch: Dict[str, FrozenSet[OperationKey]]
     batch_by_op_id: Dict[int, str]
     batch_ids: FrozenSet[str]
@@ -42,29 +44,21 @@ class PreparedEvaluationContext:
 
 def prepare_evaluation_context(
     *,
-    batches: Dict[str, Any],
-    expected_operations: Optional[Iterable[Any]] = None,
-    seed_results: Optional[Iterable[Any]] = None,
+    batches: Dict[str, Batch],
+    expected_operations: Iterable[OpForScheduleAlgo],
+    seed_results: Optional[Iterable[ScheduleResult]] = None,
 ) -> PreparedEvaluationContext:
-    expected: Optional[FrozenSet[OperationKey]]
-    if expected_operations is None:
-        if seed_results is not None:
-            raise ValueError("Completion evidence requires expected_operations.")
-        expected, expected_by_batch, batch_by_op_id = None, {}, {}
-    else:
-        keys, expected_by_batch, batch_by_op_id = _prepare_expected_keys(expected_operations, seed_results or ())
-        expected = frozenset(keys)
+    keys, expected_by_batch, batch_by_op_id = _prepare_expected_keys(expected_operations, seed_results or ())
     priority_weights: Dict[str, float] = {}
     due_batches = []
     for bid0, batch in batches.items():
         bid = str(bid0 or "").strip()
         if not bid:
             continue
-        priority = normalize_priority(getattr(batch, "priority", None), default="normal")
+        priority = normalize_priority(batch.priority, default="normal")
         weight = float(PRIORITY_WEIGHT.get(priority, 1.0))
         priority_weights[bid] = weight
-        due_raw = getattr(batch, "due_date", None)
-        due_datetime, due_text, due_invalid = parse_due_exclusive_datetime(due_raw)
+        due_datetime, due_text, due_invalid = parse_due_exclusive_datetime(batch.due_date)
         # Due projection keeps each source row and its order, even when raw keys
         # normalize to one ID. Completion weights retain the last such source.
         due_batches.append(PreparedBatchDue(
@@ -72,7 +66,7 @@ def prepare_evaluation_context(
             due_exclusive=due_datetime, due_text=due_text,
         ))
     return PreparedEvaluationContext(
-        expected_keys=expected, expected_by_batch=expected_by_batch, batch_by_op_id=batch_by_op_id,
+        expected_keys=frozenset(keys), expected_by_batch=expected_by_batch, batch_by_op_id=batch_by_op_id,
         batch_ids=frozenset(priority_weights.keys() | expected_by_batch.keys()),
         priority_weights=priority_weights, due_batches=tuple(due_batches),
     )
@@ -169,40 +163,28 @@ class BatchCompletion:
 
 
 def collect_batch_completion(
-    results: Iterable[Any],
-    batches: Dict[str, Any],
+    results: Iterable[ScheduleResult],
     *,
-    expected_operations: Optional[Iterable[Any]] = None,
-    seed_results: Optional[Iterable[Any]] = None,
+    prepared: PreparedEvaluationContext,
     failure_details: Optional[Iterable[Dict[str, Any]]] = None,
-    prepared: Optional[PreparedEvaluationContext] = None,
-) -> Optional[BatchCompletion]:
-    context = prepared if prepared is not None else prepare_evaluation_context(
-        batches=batches, expected_operations=expected_operations, seed_results=seed_results,
-    )
-    expected = context.expected_keys
-    if expected is None:
-        if seed_results is not None or failure_details is not None:
-            raise ValueError("Completion evidence requires expected_operations.")
-        # The historical two-argument metrics API has no operation universe.
-        # Production candidate scoring must supply the explicit expected set.
-        return None
-    scheduled = {_operation_key(item, result=True) for item in results if _has_time_range(item)}
+) -> BatchCompletion:
+    expected = prepared.expected_keys
+    scheduled = {_result_key(item) for item in results if _has_time_range(item)}
     failed = list(failure_details or ())
-    failure_batches = _failure_batches(failed, context.batch_by_op_id) if failed else set()
+    failure_batches = _failure_batches(failed, prepared.batch_by_op_id) if failed else set()
     unexpected = scheduled - expected
     missing_operation_count = len(expected - scheduled)
     if (
         missing_operation_count == 0
         and not unexpected
         and not failure_batches
-        and len(context.expected_by_batch) == len(context.batch_ids)
+        and len(prepared.expected_by_batch) == len(prepared.batch_ids)
     ):
         return BatchCompletion(
             expected_operation_count=len(expected),
             missing_operation_count=0,
             unexpected_result_count=0,
-            complete_batch_count=len(context.batch_ids),
+            complete_batch_count=len(prepared.batch_ids),
             incomplete_batch_ids=(),
             partial_batch_ids=(),
             failure_detail_count=0,
@@ -210,15 +192,15 @@ def collect_batch_completion(
             explained=False,
             incomplete_work_weight=0.0,
         )
-    batch_ids = set(context.batch_ids)
+    batch_ids = set(prepared.batch_ids)
     batch_ids.update(key[0] for key in scheduled)
     batch_ids.update(failure_batches)
     if missing_operation_count == 0:
-        incomplete = {bid for bid in batch_ids if not context.expected_by_batch.get(bid)}
+        incomplete = {bid for bid in batch_ids if not prepared.expected_by_batch.get(bid)}
         incomplete.update(key[0] for key in unexpected)
         incomplete |= failure_batches
     else:
-        incomplete = _incomplete_batch_ids(batch_ids, context.expected_by_batch, scheduled, unexpected) | failure_batches
+        incomplete = _incomplete_batch_ids(batch_ids, prepared.expected_by_batch, scheduled, unexpected) | failure_batches
     return BatchCompletion(
         expected_operation_count=len(expected),
         missing_operation_count=missing_operation_count,
@@ -229,7 +211,7 @@ def collect_batch_completion(
         failure_detail_count=len(failed),
         failure_batch_ids=tuple(sorted(failure_batches)),
         explained=bool(incomplete) and not unexpected and incomplete <= failure_batches,
-        incomplete_work_weight=_priority_weight_sum(context.priority_weights, incomplete),
+        incomplete_work_weight=_priority_weight_sum(prepared.priority_weights, incomplete),
     )
 
 
@@ -250,10 +232,11 @@ def _incomplete_batch_ids(
 
 
 def _prepare_expected_keys(
-    operations: Iterable[Any], seeds: Iterable[Any],
+    operations: Iterable[OpForScheduleAlgo], seeds: Iterable[ScheduleResult],
 ) -> Tuple[Set[OperationKey], Dict[str, FrozenSet[OperationKey]], Dict[int, str]]:
-    keys = {_operation_key(item, result=False) for item in operations}
-    keys.update(_operation_key(item, result=True) for item in seeds)
+    # 待排工序的批次号与正整数编号由排产输入构建保证。
+    keys = {(op.batch_id, op.id) for op in operations}
+    keys.update(_result_key(item) for item in seeds)
     batch_by_op_id: Dict[int, str] = {}
     expected_by_batch: Dict[str, Set[OperationKey]] = {}
     for bid, op_id in keys:
@@ -264,22 +247,17 @@ def _prepare_expected_keys(
     return keys, {bid: frozenset(batch_keys) for bid, batch_keys in expected_by_batch.items()}, batch_by_op_id
 
 
-def _operation_key(item: Any, *, result: bool) -> OperationKey:
-    bid = str(getattr(item, "batch_id", "") or "").strip()
-    raw_id = getattr(item, "op_id", None) if result else getattr(item, "id", getattr(item, "op_id", None))
-    if isinstance(raw_id, bool) or not isinstance(raw_id, (int, str)):
-        raise ValueError("Completion evidence requires a positive operation ID.")
-    op_id = int(raw_id)
-    if not bid or op_id <= 0:
+def _result_key(result: ScheduleResult) -> OperationKey:
+    # 旧种子在存储边界可能缺批次号或工序编号（空串 / 0），不能作为完成证据。
+    if not result.batch_id or result.op_id <= 0:
         raise ValueError("Completion evidence requires a batch and positive operation ID.")
-    return bid, op_id
+    return result.batch_id, result.op_id
 
 
-def _has_time_range(item: Any) -> bool:
-    start = getattr(item, "start_time", None)
-    end = getattr(item, "end_time", None)
+def _has_time_range(result: ScheduleResult) -> bool:
+    start, end = result.start_time, result.end_time
     # Zero-duration operations are legal and still satisfy their expected ID.
-    return isinstance(start, datetime) and isinstance(end, datetime) and end >= start
+    return start is not None and end is not None and end >= start
 
 
 def _failure_batches(details: Iterable[Dict[str, Any]], batch_by_op_id: Dict[int, str]) -> Set[str]:

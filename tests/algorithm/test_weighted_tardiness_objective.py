@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 from core.algorithms.evaluation import ScheduleMetrics, objective_score
-from core.models.schedule_config_runtime import ensure_schedule_config_snapshot
+from core.algorithms.evaluation_completion import BatchCompletion
+from core.models.schedule_config_runtime_coercion import ensure_schedule_config_snapshot
 from core.models.schedule_config_runtime_fields import default_snapshot_values
+
+COMPLETE = BatchCompletion(expected_operation_count=1, missing_operation_count=0, unexpected_result_count=0,
+                           complete_batch_count=1, incomplete_batch_ids=(), partial_batch_ids=(),
+                           failure_detail_count=0, failure_batch_ids=())
 
 
 def test_weighted_tardiness_objective_contract() -> None:
@@ -13,6 +18,7 @@ def test_weighted_tardiness_objective_contract() -> None:
         total_tardiness_hours=10.0,
         makespan_hours=100.0,
         changeover_count=1,
+        completion=COMPLETE,
         weighted_tardiness_hours=30.0,
     )
     metrics_b = ScheduleMetrics(
@@ -20,6 +26,7 @@ def test_weighted_tardiness_objective_contract() -> None:
         total_tardiness_hours=20.0,
         makespan_hours=100.0,
         changeover_count=1,
+        completion=COMPLETE,
         weighted_tardiness_hours=20.0,
     )
 

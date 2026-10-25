@@ -36,12 +36,12 @@ def resource_directory(rows, resources, *, tasks=None, baseline=None, archived=(
     return [directory[key] for key in sorted(directory)]
 
 
-def workspace_projections(conn, *, entry, scope, rows, resources, plan_span, logger, context, captured_calendar=None):
+def workspace_projections(conn, *, entry, scope, rows, resources, plan_span, logger, context):
     baseline, baseline_facts = build_plan_baseline(conn, entry=entry, scope=scope, selected_rows=rows, context=context)
-    selected = context.calendar_selection(entry, scope, resources, plan_span) if context is not None else None
-    arguments = dict(entry=entry, scope=scope, rows=rows, resources=resources, plan_span=plan_span, context=context, selected=selected)
-    calendar, calendar_facts = project_plan_calendar(conn, captured_calendar=captured_calendar, **arguments)
-    occupancy, occupancy_facts = project_plan_occupancy(conn, calendar_facts=calendar_facts, **arguments)
+    selected = context.calendar_selection(entry, scope, resources, plan_span)
+    calendar, calendar_facts = project_plan_calendar(conn, scope=scope, resources=resources, selected=selected)
+    occupancy, occupancy_facts = project_plan_occupancy(
+        scope=scope, resources=resources, calendar_facts=calendar_facts, selected=selected)
     delivery, delivery_facts = read_plan_delivery(conn, scope=scope, identity=entry.plan_identity, logger=logger, context=context)
     state = delivery["summary"]["state"]
     delivery = dict(delivery, state="available" if state == "complete" else state)

@@ -94,13 +94,6 @@ class ExecutionLedgerReader:
             reject("工序关联资料缺失，请刷新重选；仍无法打开时请联系维护人员。", "entity_not_found", 404)
         return result
 
-    def task_header(self, task_ref):
-        public_ref(task_ref)
-        row = self.repo.task_headers([task_ref]).get(task_ref)
-        if row is None or row["operation_ref"] is None:
-            reject("任务不存在或报工关联资料缺失，请刷新重选。", "entity_not_found", 404)
-        return row
-
     def task_map(self, operation_refs, plan_ref, *, cohort=False):
         if plan_ref is None:
             return {}

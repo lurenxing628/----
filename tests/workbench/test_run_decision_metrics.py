@@ -22,7 +22,7 @@ from core.services.workbench.run.decision_impact import (
     operation_delta,
 )
 from core.services.workbench.run.decision_queries import read_decision_details
-from core.services.workbench.run.decision_resources import DecisionResources
+from core.services.workbench.run.decision_resource_engine import DecisionResources
 from core.services.workbench.run.decision_source import DecisionSource
 from core.services.workbench.run.decision_workspace import _reference_workspace
 from core.services.workbench.run.worker import WorkbenchRunWorker

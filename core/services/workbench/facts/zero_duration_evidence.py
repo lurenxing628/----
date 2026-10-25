@@ -1,9 +1,9 @@
 """Validate frozen work witnesses; never infer points from a bare equal interval."""
 
 from datetime import datetime
-from types import SimpleNamespace
 
 from core.algorithm_contracts.schedule_point_evidence import SchedulePointEvidence
+from core.services.scheduler.run.schedule_payload_contract import ValidatedScheduleRow
 
 from .candidate_projection import scheduled_ids, uses_task_rows
 from .zero_duration import PointEventError, internal_duration_hours, point_event_dto, point_work_quantity
@@ -20,9 +20,11 @@ def work_point_evidence(operation, batch, execution, payload, *, operation_ref):
         raise PointEventError("point_duration_nonzero", "这道工序有实际工时，不是零工时工序。")
     start, end = (datetime.fromisoformat(payload[key]) for key in ("start_time", "end_time"))
     point_event_dto(start, end)
-    witness = SchedulePointEvidence(operation["id"], payload.get("machine_id"), payload.get("operator_id"),
-                                    start, setup, unit, quantity)
-    if not witness.matches(SimpleNamespace(**dict(payload, start_time=start, end_time=end))):
+    machine_id, operator_id = payload.get("machine_id"), payload.get("operator_id")
+    witness = SchedulePointEvidence(operation["id"], machine_id, operator_id, start, setup, unit, quantity)
+    row = ValidatedScheduleRow(op_id=payload.get("op_id"), machine_id=machine_id, operator_id=operator_id,
+                               start_time=start, end_time=end, source=payload.get("source"))
+    if not witness.matches(row):
         raise PointEventError("point_evidence_invalid", "零工时工序的安排与核对依据不一致。")
     return witness
 

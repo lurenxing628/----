@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import math
-import time
-from copy import deepcopy
 from dataclasses import replace
+from time import monotonic
 from typing import Any, Callable, Optional
 
 from core.errors import ValidationError
-from core.models.schedule_config_runtime import ensure_schedule_config_snapshot
+from core.models.schedule_config_runtime_coercion import ensure_schedule_config_snapshot
 
 from .optimizer.search_budget import SearchBudget, SearchBudgetExhausted
 from .optimizer.shared_process import numeric_score, score_scope_payload
@@ -40,21 +39,18 @@ def _public_budget(total_budget: float) -> Optional[float]:
 
 def run_candidate_comparison(
     *, schedule_input: ScheduleRunInput,
-    optimize_shared_schedule_fn: Optional[Callable[..., Any]] = None,
     prepare_graph_fn: Optional[Callable[[Any], Any]] = None,
-    clock: Optional[Callable[[], float]] = None,
     run_time_budget_seconds: Optional[float] = None,
-    strict_mode: bool = False, logger: Any = None,
+    strict_mode: bool = False,
 ) -> CandidateComparisonOutcome:
     """Publish the actual business representatives from one shared search archive."""
-    now = clock or time.monotonic
     cfg = ensure_schedule_config_snapshot(schedule_input.cfg, strict_mode=strict_mode)
     total_budget = _resolve_total_budget(run_time_budget_seconds, cfg=cfg)
     if math.isfinite(total_budget) and total_budget.is_integer() and total_budget >= 1:
         cfg = replace(cfg, time_budget_seconds=int(total_budget))
-    started = now()
+    started = monotonic()
     deadline = started + total_budget
-    budget = SearchBudget(clock=now, started_at=started, deadline=deadline,
+    budget = SearchBudget(clock=monotonic, started_at=started, deadline=deadline,
                           assigned_seconds=total_budget)
     prepare_graph = prepare_graph_fn or prepare_schedule_graph_for_dispatch
     preparation = None
@@ -64,13 +60,13 @@ def run_candidate_comparison(
         preparation = prepare_graph(replace(schedule_input, cfg=cfg))
         return preparation
 
-    shared = (optimize_shared_schedule_fn or optimize_shared_schedule)(
+    shared = optimize_shared_schedule(
         calendar_service=schedule_input.cal_svc, cfg_svc=schedule_input.cfg_svc, cfg=cfg,
         algo_ops_to_schedule=schedule_input.algo_ops_to_schedule, batches=schedule_input.batches,
         start_dt=schedule_input.start_dt_norm, end_date=schedule_input.end_date_norm,
         downtime_map=schedule_input.downtime_map, seed_results=schedule_input.seed_results,
         resource_pool=schedule_input.resource_pool, version=schedule_input.optimizer_seed_version,
-        logger=logger, readiness_gate_enabled=schedule_input.readiness_gate_enabled,
+        readiness_gate_enabled=schedule_input.readiness_gate_enabled,
         strict_mode=strict_mode, graph_prepare=graph_prepare, search_budget=budget,
     )
     primary = shared.archive.primary_objective
@@ -124,7 +120,8 @@ def _business_representative(shared, entry, *, sequence, primary, targets, cfg, 
     labels = {"min_overdue": "交期优先", "min_tardiness": "拖期更轻", "min_changeover": "切换更少",
               "min_weighted_tardiness": "加权拖期更轻"}
     params = candidate["params"]
-    origin = deepcopy(entry.evidence_origin)
+    # 只在本处补一个键：浅拷一层，不改归档里的来源记录。
+    origin = dict(entry.evidence_origin)
     profile = params.get("graph_ready_profile")
     if profile is not None:
         origin["graph_ready_profile"] = profile

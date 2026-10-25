@@ -6,7 +6,7 @@ mapping, errors: [{row, field, code, message}]}. File/header/limit failures rais
 ValidationError with details.row. All duplicate-key occurrences are diagnosed.
 Never partially apply this list: the caller must reject a batch with any errors.
 
-encode_process_file(kind, rows, fmt) -> ProcessFileDownload. Rows is a one-pass
+encode_process_file(kind, rows, fmt) -> FileDownload. Rows is a one-pass
 iterable of canonical mappings, not decoded row envelopes; [] emits headers only.
 No import cap applies to exports. Missing keys and empty strings emit blanks;
 None emits \\N. Literal leading backslashes are doubled. CSV prefixes every

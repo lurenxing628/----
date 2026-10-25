@@ -13,6 +13,7 @@ from tests.workbench.piece_chain_support import piece_layout
 from tests.workbench.run_candidate_adoption_support import INTENT, assert_retained
 from tests.workbench.run_candidate_support import stored_candidate_artifact
 from tests.workbench.run_jobs_support import JobCase
+from tests.workbench.run_runtime_support import wait_runtime_idle
 from tests.workbench.trial_support import snapshot
 from web.bootstrap.launcher_runtime_lock import acquire_runtime_lock, release_runtime_lock
 from web.bootstrap.workbench_run_runtime import WorkbenchRunRuntime, install_workbench_run_runtime
@@ -57,7 +58,7 @@ def layout(case, *, mixed=True):
 def managed_run(case, *, key="r1a-managed-run-0001", settings=None):
     accepted = case.accept(key=key, settings=settings)
     case.runtime(accepted["run_ref"])
-    assert case.runtime.wait_idle(timeout=30), case.runtime.status
+    assert wait_runtime_idle(case.runtime, 30), case.runtime.status
     result = WorkbenchRunService(case.conn).get(accepted["run_ref"])
     return result
 

@@ -1,7 +1,6 @@
 """Complete cohorts and remaining requirements use shared delivery/work facts."""
 
 from copy import deepcopy
-from types import SimpleNamespace
 
 import pytest
 
@@ -14,6 +13,7 @@ from core.services.workbench.facts.completion_scope import (
 )
 from core.services.workbench.facts.delivery_projection import delivery_summary, project_delivery_batch, task_intervals
 from core.services.workbench.facts.preparation_projection import project_operation_effort
+from tests._support.algo_operations import make_algo_op, make_batch
 
 
 def batch_item(ref, *, arranged=(1,), expected=(1,), deferred=(), finish="2026-10-13T12:00:00", due="2026-10-13"):
@@ -25,8 +25,8 @@ def batch_item(ref, *, arranged=(1,), expected=(1,), deferred=(), finish="2026-1
 
 
 def work_item(ref, batch_ref, *, arranged=False, allocation="unplanned", runtime=True, sequence=1):
-    operation = SimpleNamespace(id=sequence, batch_id=batch_ref, piece_id=None, setup_hours=2, unit_hours=0.5)
-    effort = internal_operation_effort(operation, SimpleNamespace(quantity=10)).to_dict() if runtime else None
+    operation = make_algo_op(id=sequence, batch_id=batch_ref, setup_hours=2, unit_hours=0.5)
+    effort = internal_operation_effort(operation, make_batch(batch_id=batch_ref, quantity=10)).to_dict() if runtime else None
     standard = {"basis": "archived_operation_standard", "setup_standard_hours": 2, "unit_standard_hours": 0.5,
                 "target_quantity": 10, "remaining_quantity": 10, "standard_total_hours": 7,
                 "state": "complete", "reason": None}

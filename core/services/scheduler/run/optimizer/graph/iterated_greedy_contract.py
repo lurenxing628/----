@@ -2,9 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
-from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.graph_ready_feature_basis import SUCCESSOR_WORKLOAD_BASIS
 from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN,
@@ -43,7 +42,6 @@ def ig_decode_profile(profile: GraphReadyWeightProfile) -> GraphReadyWeightProfi
 
 @dataclass(frozen=True)
 class IteratedGreedyLimits:
-    enabled: bool = True
     # Initial destroy size; each generator adapts it between 1 and max_destruction_size.
     destruction_size: int = 3
     max_destruction_size: int = 6
@@ -63,57 +61,11 @@ class IteratedGreedyLimits:
     temperature_ratio_end: float = 0.01
 
 
-_ALLOWED_KEYS = frozenset({
-    "enabled", "destruction_size", "max_destruction_size", "insertion_window", "max_iterations", "max_decodes",
-    "time_budget_ms", "generators", "checkpoint_count", "pool_size", "stagnation_iterations",
-    "temperature_ratio_start", "temperature_ratio_end", "due_date_seed",
-})
-
-
-def resolve_iterated_greedy_limits(construction: Optional[Dict[str, Any]], *, enabled: bool) -> IteratedGreedyLimits:
-    optimization = (construction or {}).get("graph_ready_optimization", {})
-    if not isinstance(optimization, dict):
-        _invalid("graph_ready_optimization")
-    raw = optimization.get("iterated_greedy", {})
-    if not isinstance(raw, dict):
-        _invalid("iterated_greedy")
-    if set(raw).difference(_ALLOWED_KEYS):
-        _invalid("iterated_greedy")
-    active = raw.get("enabled", enabled)
-    if not isinstance(active, bool):
-        _invalid("enabled")
-    due_date_seed = raw.get("due_date_seed", True)
-    if not isinstance(due_date_seed, bool):
-        _invalid("due_date_seed")
-    time_budget = raw.get("time_budget_ms")
-    if time_budget is not None:
-        _positive_int(time_budget, "time_budget_ms")
-    max_size = min(_positive_int(raw.get("max_destruction_size", 6), "max_destruction_size"), 12)
-    size = min(_positive_int(raw.get("destruction_size", 3), "destruction_size"), max_size)
-    start_ratio = _unit_fraction(raw.get("temperature_ratio_start", 1.0), "temperature_ratio_start", high=1.0)
-    end_ratio = _unit_fraction(raw.get("temperature_ratio_end", 0.01), "temperature_ratio_end", high=start_ratio)
-    return IteratedGreedyLimits(
-        enabled=active and enabled,
-        destruction_size=size,
-        max_destruction_size=max_size,
-        insertion_window=min(_positive_int(raw.get("insertion_window", 6), "insertion_window"), 32),
-        max_iterations=min(_positive_int(raw.get("max_iterations", 200), "max_iterations"), 10000),
-        max_decodes=min(_positive_int(raw.get("max_decodes", 400), "max_decodes"), 100000),
-        generators=_generators(raw.get("generators", IG_GENERATORS)),
-        checkpoint_count=min(_non_negative_int(raw.get("checkpoint_count", 8), "checkpoint_count"), 64),
-        pool_size=min(_positive_int(raw.get("pool_size", 3), "pool_size"), 8),
-        due_date_seed=due_date_seed,
-        stagnation_iterations=min(_positive_int(raw.get("stagnation_iterations", 10), "stagnation_iterations"), 1000),
-        temperature_ratio_start=start_ratio,
-        temperature_ratio_end=end_ratio,
-    )
-
-
 def new_iterated_greedy_report(limits: IteratedGreedyLimits, *, objective_name: str) -> Dict[str, Any]:
     return {
         "schema_version": 4, "phase": IG_PHASE, "algorithm": IG_ALGORITHM,
         "partial_evaluation": IG_PARTIAL_EVALUATION, "objective_name": objective_name,
-        "enabled": limits.enabled, "status": "not_run", "stop_reason": None,
+        "enabled": True, "status": "not_run", "stop_reason": None,
         "destruction_size": limits.destruction_size, "max_destruction_size": limits.max_destruction_size,
         "insertion_window": limits.insertion_window,
         "max_iterations": limits.max_iterations, "max_decodes": limits.max_decodes,
@@ -146,43 +98,3 @@ def new_iterated_greedy_report(limits: IteratedGreedyLimits, *, objective_name: 
                  "restart_captures_failed": 0, "start_captures_failed": 0,
                  "entries": 0, "initial_entries": 0, "selection_policy": "best_ranked_random_with_stagnation_restart"},
     }
-
-
-def _generators(value: Any) -> Tuple[str, ...]:
-    if isinstance(value, str) or not isinstance(value, (list, tuple)) or not value:
-        _invalid("generators")
-    names = []
-    for item in value:
-        if not isinstance(item, str) or item not in IG_GENERATORS or item in names:
-            _invalid("generators")
-        names.append(item)
-    return tuple(names)
-
-
-def _positive_int(value: Any, field: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        _invalid(field)
-    return int(value)
-
-
-def _non_negative_int(value: Any, field: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        _invalid(field)
-    return int(value)
-
-
-def _unit_fraction(value: Any, field: str, *, high: float) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        _invalid(field)
-    number = float(value)
-    if not 0.0 < number <= high:
-        _invalid(field)
-    return number
-
-
-def _invalid(field: str) -> None:
-    raise ValidationError(
-        "GraphReady 迭代贪心配置无效：" + field,
-        field="graph_ready_iterated_greedy",
-        details={"reason": "graph_ready_bad_iterated_greedy_config"},
-    )

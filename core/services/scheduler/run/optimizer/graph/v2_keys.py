@@ -63,7 +63,7 @@ def v2_formula_specs(formula: str) -> Tuple[Tuple[bool, str], ...]:
     return _FORMULA_SPECS[formula]
 
 
-def _v2_priority_key_for_metric(
+def v2_priority_key_for_metric(
     metric: Dict[str, Any],
     *,
     profile: GraphReadyWeightProfile,
@@ -75,12 +75,12 @@ def _v2_priority_key_for_metric(
     for neg, key in specs:
         val = metric.get(key)
         if type(val) is not float or not (0.0 <= val < _INF):
-            val = _required_non_negative_metric(_required_finite_metric(metric, key), key)
+            val = required_non_negative_metric(required_finite_metric(metric, key), key)
         result.append(-val if neg else val)
     return tuple(result)
 
 
-def _required_finite_metric(metric: Dict[str, Any], field: str) -> float:
+def required_finite_metric(metric: Dict[str, Any], field: str) -> float:
     if field not in metric:
         raise ValidationError(
             f"GraphReady v2 图指标缺少 {field}。",
@@ -93,7 +93,7 @@ def _required_finite_metric(metric: Dict[str, Any], field: str) -> float:
         raise ValidationError(exc.message, field="graph_ready_v2_features", details=exc.details) from exc
 
 
-def _required_non_negative_metric(value: float, field: str) -> float:
+def required_non_negative_metric(value: float, field: str) -> float:
     if value < 0.0:
         raise ValidationError(
             f"GraphReady v2 图指标 {field} 必须是非负数。",
@@ -103,8 +103,8 @@ def _required_non_negative_metric(value: float, field: str) -> float:
     return value
 
 
-def _required_positive_metric(metric: Dict[str, Any], field: str) -> float:
-    number = _required_non_negative_metric(_required_finite_metric(metric, field), field)
+def required_positive_metric(metric: Dict[str, Any], field: str) -> float:
+    number = required_non_negative_metric(required_finite_metric(metric, field), field)
     if number <= 0.0:
         raise ValidationError(
             f"GraphReady v2 图指标 {field} 必须大于 0。",
@@ -115,10 +115,10 @@ def _required_positive_metric(metric: Dict[str, Any], field: str) -> float:
 
 
 __all__ = [
-    "_required_finite_metric",
-    "_required_non_negative_metric",
-    "_required_positive_metric",
-    "_v2_priority_key_for_metric",
+    "required_finite_metric",
+    "required_non_negative_metric",
+    "required_positive_metric",
     "v2_formula_specs",
+    "v2_priority_key_for_metric",
     "validate_v2_formula",
 ]

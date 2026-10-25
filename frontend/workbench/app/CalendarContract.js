@@ -67,7 +67,7 @@
   }
   function preview(raw) {
     const result = envelope(raw), data = result.data;
-    if (!/^[0-9a-f]{32}$/.test(data.preview_ref || '') || !Array.isArray(data.days) || !Array.isArray(data.dates)
+    if (typeof data.preview_ref !== 'string' || !/^[0-9a-f]{32}$/.test(data.preview_ref) || !Array.isArray(data.days) || !Array.isArray(data.dates)
         || !C.object(data.counts) || data.counts.selected !== data.days.length || data.dates.length !== data.days.length
         || !C.object(data.request) || !isDate(data.request.start_date) || !isDate(data.request.end_date) || data.request.start_date > data.request.end_date
         || !['all', 'weekday', 'weekend'].includes(data.request.scope) || !['upsert', 'delete'].includes(data.request.operation)
@@ -84,7 +84,8 @@
     // legacyShift：原记录是没有逐段时段的旧单班工作日，休息改回工作日时恢复原班次，不填默认时段。
     return { ...value.fields, defaultPeriods: value.default_periods, legacyShift: value.fields.type === 'work' && value.fields.periods == null,
       periods: value.fields.periods == null ? null : value.fields.periods.map(row => ({ ...row })), shiftStart: value.stored && value.stored.shift_start || value.effective.window_start.slice(11, 16),
-      shiftEnd: value.stored && value.stored.shift_end || '', hours: displayNumber(value.fields.hours), eff: displayNumber(value.fields.eff), note: value.fields.note || '' };
+      shiftEnd: value.stored === null || value.stored.shift_end === null ? '' : value.stored.shift_end,
+      hours: displayNumber(value.fields.hours), eff: displayNumber(value.fields.eff), note: value.fields.note === null ? '' : value.fields.note };
   }
   // 切换「这一天是否排产」。休息改回工作日时：草稿里还留着逐段时段，或原记录是旧单班工作日（periods 为 null），
   // 就原样恢复原班次起点和工时；原本是休息日、没单独设置或时段被清空时，才填默认工作时间。
@@ -102,11 +103,11 @@
     return result;
   }
   function input(value, original) {
-    const converted = { type: value.type, note: value.note.trim() || null };
+    const note = value.note.trim(), converted = { type: value.type, note: note === '' ? null : note };
     if (value.type === 'work') Object.assign(converted, { hours: number(value.hours, 'hours'), eff: number(value.eff, 'eff'),
       allowNormal: value.allowNormal, allowUrgent: value.allowUrgent });
     if (value.type === 'work' && value.shiftStart) converted.shiftStart = value.shiftStart;
-    if (value.type === 'work' && value.shiftEnd !== undefined) converted.shiftEnd = value.shiftEnd || null;
+    if (value.type === 'work' && value.shiftEnd !== undefined) converted.shiftEnd = value.shiftEnd === '' ? null : value.shiftEnd;
     if (Array.isArray(value.periods)) {
       const periods = value.type === 'rest' ? [] : value.periods, issue = window.APSWorkPeriods.validate(periods);
       if (issue) throw C.failure(issue, [{ path: 'fields.periods', message: issue }]);
@@ -121,15 +122,11 @@
     keys.forEach(key => {
       // 有逐段时段时工时由时段算出：时段没改就不比较、不提交工时，免得换算末位差异被当成改了工时。
       if (key === 'hours' && C.own(converted, 'periods') && JSON.stringify(converted.periods) === JSON.stringify(original.fields.periods)) return;
-      const before = ['shiftStart', 'shiftEnd'].includes(key) ? baseDraft[key] || null
+      const before = ['shiftStart', 'shiftEnd'].includes(key) ? (baseDraft[key] === '' ? null : baseDraft[key])
         : (['hours', 'eff'].includes(key) ? Number(displayNumber(original.fields[key])) : original.fields[key]);
       if (C.own(converted, key) && JSON.stringify(converted[key]) !== JSON.stringify(before)) output[key] = converted[key];
     });
     return output;
-  }
-  function stale(command) {
-    const error = command.error;
-    return command.phase === 'rejected' && ['stale_write', 'snapshot_stale'].includes(error && (error.code || error.error && error.error.code));
   }
   // 月历格子里的工时带单位显示，数字格式和单位统一走 WorkbenchFormat，不在这里手拼“小时”。
   const hoursText = value => window.APSWorkPeriods.duration(value);
@@ -144,5 +141,5 @@
     }
     return { tone, text };
   }
-  window.APSCalendarContract = { path, month, preview, monthDays, monthKey, isDate, draft, switchType, input, stale, tag, displayNumber };
+  window.APSCalendarContract = { path, month, preview, monthDays, monthKey, isDate, draft, switchType, input, tag, displayNumber };
 })();

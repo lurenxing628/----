@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from core.models import SystemJobState
+from core.models.system_job_state import SystemJobState
 
 from .base_repo import BaseRepository
 

@@ -7,10 +7,16 @@ from typing import Any, Optional
 from core.errors import ValidationError
 
 _DATETIME_FORMAT_HINT = "YYYY-MM-DD / YYYY-MM-DD HH:MM / YYYY-MM-DD HH:MM:SS"
+_INT64_MAX = (1 << 63) - 1
 
 
 def is_blank_input(value: Any) -> bool:
     return value is None or (isinstance(value, str) and value.strip() == "")
+
+
+def is_exact_positive_int(value: Any) -> bool:
+    """Stored SQLite INTEGER / JSON integer identity: an exact int (no bool, text or float) in 1..2**63-1."""
+    return type(value) is int and 0 < value <= _INT64_MAX
 
 
 def _raise_blank_required(field: str) -> None:

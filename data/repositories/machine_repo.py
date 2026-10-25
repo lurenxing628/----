@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from core.models import Machine
+from core.models.machine import Machine
 
 from .base_repo import BaseRepository
 

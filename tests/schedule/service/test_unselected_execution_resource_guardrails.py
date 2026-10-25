@@ -80,8 +80,7 @@ def test_execution_snapshot_covers_actual_protection_and_original_reservation_co
             "projection": {"reports": [{"completed_quantity": 1}], "data_gaps": []},
             "resources": {"original-machine": {"kind": "machine", "available": True, "business_code": "M1"}}},
     )
-    original = build_execution_snapshot({10: fact}, [10]).revision
-    assert build_execution_snapshot({10: fact}, [10, 10]).revision == original
+    original = build_execution_snapshot({10: fact}).revision
     for changed in (
         replace(fact, actual_start_time=start_time + timedelta(seconds=1)),
         replace(fact, actual_machine_id="M2"),
@@ -94,7 +93,7 @@ def test_execution_snapshot_covers_actual_protection_and_original_reservation_co
         replace(fact, execution_protection_content=dict(fact.execution_protection_content,
             resources={"original-machine": {"kind": "machine", "available": 1, "business_code": "M1"}})),
     ):
-        assert build_execution_snapshot({10: changed}, [10]).revision != original
+        assert build_execution_snapshot({10: changed}).revision != original
     arrangement = {"schedule_id": 100, "version": 1, "op_id": 10,
                    "start_time": "2026-09-08 08:00:00", "end_time": "2026-09-08 09:00:00",
                    "machine_id": "M1", "operator_id": "O1", "total_hours": 1.0}

@@ -18,8 +18,8 @@ are monkeypatched, so instrumented runs still observe every estimate they hook.
 from __future__ import annotations
 
 from functools import partial
-from types import GetSetDescriptorType, MemberDescriptorType
-from typing import Any, Callable, Dict, NamedTuple, Optional, Tuple
+from types import GetSetDescriptorType, MemberDescriptorType, MethodType
+from typing import TYPE_CHECKING, Any, Callable, Dict, NamedTuple, Optional, Tuple
 
 from core.algorithm_contracts.value_domains import INTERNAL
 from core.algorithm_runtime.auto_assign_contract import AutoAssignAttempt
@@ -28,6 +28,10 @@ from core.algorithm_runtime.internal_slot import refresh_changeover_penalty
 from core.algorithm_runtime.resource_quality import MachineTypeState
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_shared_slot import SharedSlotEstimateCache
+
+if TYPE_CHECKING:
+    from core.algorithm_contracts.types import OpForScheduleAlgo
+    from core.models.batch import Batch
 
 _FIXED = "fixed"
 _AUTO = "auto"
@@ -40,9 +44,6 @@ _RECORD_FIELDS = (
     "setup_hours", "unit_hours", "quantity", "priority", "due_date", "ready_date", "material_ready_date", "ready_status", "created_at",
     "ext_merge_mode", "ext_group_id", "ext_group_total_days", "ext_days",
 )
-_AUTO_ASSIGN_CALLBACKS = (
-    ("auto_assign_attempt_callback", "_auto_assign_internal_resources_attempt"),
-)
 Witness = Tuple[Any, ...]
 EligibleResources = Optional[Tuple[Tuple[str, ...], Tuple[str, ...]]]
 
@@ -54,14 +55,13 @@ class AutoAssignProbeContract(NamedTuple):
 
 
 def native_auto_assign_context(ctx: Any, scheduler: Any, native_type: type) -> bool:
-    """Both auto-assign callbacks are the untouched methods of ``native_type`` bound to ``scheduler``."""
-    for field, name in _AUTO_ASSIGN_CALLBACKS:
-        callback = getattr(ctx, field, None)
-        if getattr(callback, "__self__", None) is not scheduler:
-            return False
-        if getattr(callback, "__func__", None) is not vars(native_type).get(name):
-            return False
-    return True
+    """The auto-assign callback is ``native_type``'s untouched probe method bound to ``scheduler``.
+
+    A patched probe (plain function, mock or another method) is not a bound native method, so the cache stays off.
+    """
+    callback = ctx.auto_assign_attempt_callback
+    return (type(callback) is MethodType and callback.__self__ is scheduler
+            and callback.__func__ is vars(native_type).get("_auto_assign_internal_resources_attempt"))
 
 
 def make_sgs_score_cache_factory(ctx: Any, scheduler: Any, native_type: type, *,
@@ -211,7 +211,7 @@ class SgsScoreCache:
                 or not self._plain(op) or not self._plain(batch)):
             return compute()
         return self._shared_slots.resolve(
-            state=self.state, calendar=self.timing_calendar(calendar), op=op, priority=getattr(batch, "priority", None),
+            state=self.state, calendar=self.timing_calendar(calendar), op=op, priority=batch.priority,
             machine_id=machine_id, operator_id=operator_id, prev_end=prev_end, total_hours=total_hours,
             end_dt_exclusive=end_dt_exclusive, machine_downtimes=machine_downtimes, compute=compute,
             read_scan=lambda: self._last_scan, note_scan=self.note_scan)
@@ -232,15 +232,15 @@ class SgsScoreCache:
         self._occupation_seq += 1
         self._occupations.setdefault((id(timeline), resource_id), []).append((self._occupation_seq, start, end))
 
-    def forget(self, op: Any) -> None:
+    def forget(self, op: OpForScheduleAlgo) -> None:
         """A dispatched operation never becomes a candidate again."""
         identity = id(op)
         self._entries.pop(identity, None)
         self._pairs.pop(identity, None)
 
     def pair_estimate(
-        self, *, op: Any, machine_id: str, operator_id: str, prev_end: Any, machine_timeline: Any, operator_timeline: Any,
-        compute: Callable[[], Any],
+        self, *, op: OpForScheduleAlgo, machine_id: str, operator_id: str, prev_end: Any, machine_timeline: Any,
+        operator_timeline: Any, compute: Callable[[], Any],
     ) -> Any:
         """Abort-free slot estimate of one probe pair, reused while the pair's cells are unchanged.
 
@@ -276,7 +276,7 @@ class SgsScoreCache:
         return estimate
 
     def _revalidated(
-        self, entry: _PairEntry, witness: Witness, op: Any, machine_id: str, operator_id: str, machine_timeline: Any,
+        self, entry: _PairEntry, witness: Witness, op: OpForScheduleAlgo, machine_id: str, operator_id: str, machine_timeline: Any,
         operator_timeline: Any,
     ) -> Any:
         """The memoized estimate brought up to date without a new scan, or None when a new scan is required.
@@ -374,7 +374,7 @@ class SgsScoreCache:
             return None
         return estimate, total_hours_base
 
-    def selected_resources(self, op: Any) -> Optional[Tuple[str, str]]:
+    def selected_resources(self, op: OpForScheduleAlgo) -> Optional[Tuple[str, str]]:
         """Auto-assign pair the scoring probe chose for ``op``, valid only within the same round."""
         entry = self._entries.get(id(op))
         if self._suspended or entry is None or entry.round != self.round or entry.witness[0] != _AUTO:
@@ -382,7 +382,8 @@ class SgsScoreCache:
         return entry.resources
 
     def resolve(
-        self, op: Any, batch: Any, batch_id: str, graph_state: Optional[Dict[str, Any]], score: Callable[[], Tuple[float, ...]],
+        self, op: OpForScheduleAlgo, batch: Batch, batch_id: str, graph_state: Optional[Dict[str, Any]],
+        score: Callable[[], Tuple[float, ...]],
     ) -> Tuple[float, ...]:
         """Reuse the previous key while every cell the candidate reads is unchanged; otherwise score and remember."""
         witness = self._witness(op, batch, batch_id, graph_state)
@@ -423,10 +424,10 @@ class SgsScoreCache:
     def _plain(self, record: Any) -> bool:
         return self._plain_classes.get(type(record), False)
 
-    def _classify(self, op: Any, batch: Any, machine_id: str, operator_id: str) -> Any:
+    def _classify(self, op: OpForScheduleAlgo, batch: Batch, machine_id: str, operator_id: str) -> Any:
         if not self._plain(op) or not self._plain(batch):
             return False
-        if str(getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() != INTERNAL:
+        if op.source != INTERNAL:
             return False
         if machine_id and operator_id:
             return None
@@ -435,9 +436,12 @@ class SgsScoreCache:
         eligible = self.eligible_resources(op)
         return False if eligible is None else eligible
 
-    def _witness(self, op: Any, batch: Any, batch_id: str, graph_state: Optional[Dict[str, Any]]) -> Optional[Witness]:
-        machine_id = str(getattr(op, "machine_id", None) or "").strip()
-        operator_id = str(getattr(op, "operator_id", None) or "").strip()
+    def _witness(
+        self, op: OpForScheduleAlgo, batch: Batch, batch_id: str, graph_state: Optional[Dict[str, Any]],
+    ) -> Optional[Witness]:
+        # None (not specified) and the empty string an optimizer resource variant may carry both mean unassigned.
+        machine_id = op.machine_id or ""
+        operator_id = op.operator_id or ""
         memo_key = (id(op), machine_id, operator_id)
         eligible = self._eligible.get(memo_key, _UNCLASSIFIED)
         if eligible is _UNCLASSIFIED:

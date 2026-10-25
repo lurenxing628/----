@@ -2,24 +2,24 @@
 
 from dataclasses import replace
 from datetime import datetime
-from types import SimpleNamespace
 
 from core.algorithm_runtime.internal_slot import estimate_internal_slot
 from core.algorithm_runtime.operation_effort import external_operation_effort, internal_operation_effort
-from core.errors import ValidationError
 from core.models.workbench_trial import reject
 from core.services.workbench.facts.archived_calendar import ArchivedCalendar
 from core.services.workbench.facts.preflight_checks import number
+from core.services.workbench.facts.stored_algo_inputs import stored_batch, stored_operation
 from core.services.workbench.facts.zero_duration import PointEventError, estimate_point_event
 from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
 
 
 def calendar_engine(tables):
-    """Reuse the same snapshot policy rules for live edit estimation and capacity."""
-    factory = ArchivedCalendar({"tables": tables}, metadata_basis="current_transaction_snapshot")
-    if factory.engine is None:
-        raise ValidationError("班表数据无效，请核对日历资料。", field="calendar")
-    return factory.engine
+    """Reuse the same snapshot policy rules for live edit estimation and capacity.
+
+    ``None`` means the captured calendar tables are structurally damaged; damaged
+    calendar content stays inside the engine until a policy reads that day.
+    """
+    return ArchivedCalendar({"tables": tables}, metadata_basis="current_transaction_snapshot").engine
 
 
 def original_duration(original, *, effort=None):
@@ -46,20 +46,13 @@ def original_duration(original, *, effort=None):
             "unit_hours": op["unit_hours"], "quantity": quantity, "total_hours": total}
 
 
-
 def new_slot_effort(original):
     """The same operation-local standard requirement the real trial slot consumes."""
     op, batch, execution = original["operation"], original["batch"], original["execution"]
-    operation = SimpleNamespace(**op)
-    model = SimpleNamespace(**batch)
     remaining = execution.get("remaining_quantity") if execution else None
     if op["source"] == "external":
-        group = original.get("external_group")
-        if group is not None:
-            operation.ext_merge_mode = group["merge_mode"]
-            operation.ext_group_id = group["group_id"]
-            operation.ext_group_total_days = group["total_days"]
-        result = external_operation_effort(operation, model, remaining_quantity=remaining)
+        result = external_operation_effort(stored_operation(op, original.get("external_group")), stored_batch(batch),
+                                           remaining_quantity=remaining)
         if not number(result.external_cycle_days, positive=True):
             reject("external_duration_unknown", "原外协周期缺失或无效，不能推测完工时间。", 422)
         return replace(result, execution_target_quantity=execution.get("target_quantity") if execution else None,
@@ -69,7 +62,7 @@ def new_slot_effort(original):
     if not number(op["setup_hours"]) or not number(op["unit_hours"]):
         reject("hours_missing", "原准备工时或单件工时缺失。", 422)
     _original_target(op, batch, execution)
-    result = internal_operation_effort(operation, model, remaining_quantity=remaining)
+    result = internal_operation_effort(stored_operation(op), stored_batch(batch), remaining_quantity=remaining)
     return replace(result, execution_target_quantity=execution.get("target_quantity") if execution else None,
                    execution_quantity_basis=execution.get("target_basis", "unknown") if execution else "unknown")
 
@@ -99,14 +92,12 @@ def estimate(engine, original, arrangement, *, effort=None):
                 priority=original["batch"]["priority"], start=start)
         except PointEventError as exc:
             reject(exc.code, str(exc), 422)
-    batch = SimpleNamespace(**original["batch"])
-    slot = estimate_internal_slot(calendar=engine, op=SimpleNamespace(**original["operation"]), batch=batch,
+    slot = estimate_internal_slot(calendar=engine, op=stored_operation(original["operation"]),
+        batch=stored_batch(original["batch"]),
         machine_id=arrangement["machine_id"], operator_id=arrangement["operator_id"], base_time=start,
         prev_end=start, machine_timeline=(), operator_timeline=(), machine_downtimes=(),
         end_dt_exclusive=None, last_op_type_by_machine=None, abort_after=None,
         total_hours_base=duration["total_hours"])
-    if slot.efficiency_fallback_used:
-        reject("calendar_efficiency_unknown", "班表效率缺失，请核对工作日历。", 422)
     if slot.end_time <= slot.start_time:
         reject("duration_precision_unsupported", "这道工序有实际工时，但计算结果没有形成正时长，不能按零工时工序保存。", 422)
     return slot.start_time, slot.end_time

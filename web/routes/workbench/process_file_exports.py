@@ -49,7 +49,7 @@ def process_file_export_preview(kind):
     if not required <= set(body) or set(body) - required - {"refs", "target_ref"}:
         raise WorkbenchCommandRejected("invalid_input", "导出范围不完整或有多余项，没有开始下载。请刷新页面后重新点「导出」。", 400)
     check_format(body["format"])
-    token = opaque_ref(body["snapshot_ref"], "snapshot_ref")
+    token = opaque_ref(body["snapshot_ref"])
     scope, query_scope = _query_scope(body)
     reader = WorkbenchProcessQueryService(g.db, current_app.logger, part_ref=body.get("target_ref"))
     with reader.read_snapshot() as state:
@@ -77,7 +77,7 @@ def _args(required):
 def process_file_export(kind):
     file_columns(kind)
     _args({"export_ref"})
-    saved, read_binding = resolve_context(EXPORT_SCOPE, opaque_ref(request.args["export_ref"], "export_ref"), "snapshot_stale")
+    saved, read_binding = resolve_context(EXPORT_SCOPE, opaque_ref(request.args["export_ref"]), "snapshot_stale")
     if saved["kind"] != kind:
         raise WorkbenchCommandRejected("snapshot_stale", "预检结果属于另一类工艺文件，没有开始下载；系统没有替你换内容。请点「重新预检」。")
     body = saved["body"]

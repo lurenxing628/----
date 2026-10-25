@@ -2,14 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, NamedTuple, Optional, Tuple
 
 from core.algorithm_contracts.operator_eligibility import qualified_operators
+from core.algorithm_contracts.ordering import normalize_text_id
+from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS,
     AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL,
-    AUTO_ASSIGN_REASON_MISSING_OP_TYPE_ID,
     AUTO_ASSIGN_REASON_NO_FEASIBLE_PAIR,
     AUTO_ASSIGN_REASON_NO_MACHINE_CANDIDATE,
     AUTO_ASSIGN_REASON_NO_OPERATOR_CANDIDATE,
@@ -22,7 +23,11 @@ from core.algorithm_runtime.resource_quality import prefer_resource_pair
 from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_handoff
 from core.algorithm_runtime.slot_overlap_reuse import SlotOverlapReuse, overlap_reuse_for
 from core.errors import ValidationError
+from core.models.batch import Batch
 from core.shared.strict_parse import parse_required_int
+
+if TYPE_CHECKING:
+    from .schedule_preparation import NativeSchedulePreparation
 
 
 @dataclass(frozen=True)
@@ -69,12 +74,9 @@ class ResourceCandidates:
         return self._eligible_resources
 
 
-def prepare_resource_candidates(op: Any, resource_pool: Any) -> ResourceCandidates:
+def prepare_resource_candidates(op: OpForScheduleAlgo, resource_pool: Any) -> ResourceCandidates:
     fixed_machine, fixed_operator, op_type_id = fixed_resource_inputs(op)
     pool, counters = _coerce_resource_pool(resource_pool), []
-    if not fixed_machine and not op_type_id:
-        return ResourceCandidates((), fixed_operator, op_type_id, pool, AUTO_ASSIGN_REASON_MISSING_OP_TYPE_ID,
-                                  ("auto_assign_missing_op_type_id_count",))
     choice = _resolve_machine_candidates(fixed_machine=fixed_machine, fixed_operator=fixed_operator,
                                         op_type_id=op_type_id, pool=pool, count=counters.append)
     return ResourceCandidates(tuple(choice.values), fixed_operator, op_type_id, pool, choice.reason, tuple(counters))
@@ -91,8 +93,8 @@ def auto_assign_internal_resources_attempt(
     *,
     calendar: Any = None,
     algo_stats: Any = None,
-    op: Any,
-    batch: Any,
+    op: OpForScheduleAlgo,
+    batch: Batch,
     batch_progress: Dict[str, datetime],
     machine_timeline: Dict[str, List[Tuple[datetime, datetime]]],
     operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],
@@ -104,8 +106,8 @@ def auto_assign_internal_resources_attempt(
     machine_busy_hours: Dict[str, float],
     operator_busy_hours: Dict[str, float],
     probe_only: bool = False,
-    resource_preparation: Any,
-    total_hours_by_op_id: Any = None,
+    resource_preparation: NativeSchedulePreparation,
+    total_hours_by_op_id: Optional[Dict[int, float]] = None,
 ) -> AutoAssignAttempt:
     count = (lambda key: None) if probe_only else (lambda key: increment_counter(algo_stats, key))
     candidates = resource_preparation.resource_candidates_for(op)
@@ -117,8 +119,7 @@ def auto_assign_internal_resources_attempt(
         pool = candidates.pool
     else:
         pool = _coerce_resource_pool(resource_pool)
-    total_hours_base = (total_hours_by_op_id.get(getattr(op, "id", None))
-                        if total_hours_by_op_id is not None else None)
+    total_hours_base = total_hours_by_op_id.get(op.id) if total_hours_by_op_id is not None else None
     if total_hours_base is None:
         total_hours_base = _validated_total_hours(op, batch, count=count)
     if total_hours_base is None:
@@ -126,7 +127,7 @@ def auto_assign_internal_resources_attempt(
 
     machine_candidates = _sort_machine_candidates(
         candidates.machines,
-        current_type=str(getattr(op, "op_type_name", None) or "").strip(),
+        current_type=op.op_type_name,
         last_op_type_by_machine=last_op_type_by_machine,
         machine_busy_hours=machine_busy_hours,
     )
@@ -151,17 +152,14 @@ def auto_assign_internal_resources_attempt(
     )
 
 
-def qualified_resource_pairs(op: Any, resource_pool: Any) -> Tuple[Tuple[str, str], ...]:
+def qualified_resource_pairs(op: OpForScheduleAlgo, resource_pool: Any) -> Tuple[Tuple[str, str], ...]:
     """The shared machine, authorization and skill rule used by assignment and repair."""
     return prepare_resource_candidates(op, resource_pool).pairs
 
 
-def fixed_resource_inputs(op: Any) -> Tuple[str, str, str]:
-    return (
-        str(getattr(op, "machine_id", None) or "").strip(),
-        str(getattr(op, "operator_id", None) or "").strip(),
-        str(getattr(op, "op_type_id", None) or "").strip(),
-    )
+def fixed_resource_inputs(op: OpForScheduleAlgo) -> Tuple[str, str, str]:
+    # 未固定资源在原始输入里是 None，优化器派生的资源变体里是 ""，两者同义。
+    return normalize_text_id(op.machine_id), normalize_text_id(op.operator_id), op.op_type_id
 
 
 def _coerce_resource_pool(resource_pool: Dict[str, Any]) -> Dict[str, Any]:
@@ -193,7 +191,7 @@ def _resolve_machine_candidates(
         candidates = [fixed_machine]
     elif fixed_operator:
         candidates = _machines_for_fixed_operator(fixed_operator, pool=pool)
-    elif op_type_id and op_type_id in pool["machines_by_op_type"]:
+    elif op_type_id in pool["machines_by_op_type"]:
         candidates = [str(x) for x in (pool["machines_by_op_type"].get(op_type_id) or []) if str(x).strip()]
         if not candidates:
             count("auto_assign_missing_machine_pool_count")
@@ -224,12 +222,10 @@ def _machines_for_fixed_operator(fixed_operator: str, *, pool: Dict[str, Any]) -
 
 
 def _needs_op_type_machine_filter(*, fixed_machine: str, op_type_id: str, pool: Dict[str, Any]) -> bool:
-    return bool(op_type_id and (not fixed_machine or op_type_id in pool["machines_by_op_type"]))
+    return not fixed_machine or op_type_id in pool["machines_by_op_type"]
 
 
 def _filter_machines_by_op_type(candidates: List[str], *, op_type_id: str, pool: Dict[str, Any], count: Any) -> Optional[List[str]]:
-    if not op_type_id:
-        return candidates
     allowed = {str(x).strip() for x in (pool["machines_by_op_type"].get(op_type_id) or []) if str(x).strip()}
     if not allowed:
         count("auto_assign_missing_machine_pool_count")
@@ -237,7 +233,7 @@ def _filter_machines_by_op_type(candidates: List[str], *, op_type_id: str, pool:
     return [mid for mid in candidates if mid in allowed]
 
 
-def _validated_total_hours(op: Any, batch: Any, *, count: Any) -> Optional[float]:
+def _validated_total_hours(op: OpForScheduleAlgo, batch: Batch, *, count: Any) -> Optional[float]:
     try:
         return validate_internal_hours(op, batch)
     except ValueError:
@@ -265,8 +261,8 @@ def _sort_machine_candidates(
 def _choose_best_pair(
     *,
     calendar: Any,
-    op: Any,
-    batch: Any,
+    op: OpForScheduleAlgo,
+    batch: Batch,
     batch_progress: Dict[str, datetime],
     machine_timeline: Dict[str, List[Tuple[datetime, datetime]]],
     operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],
@@ -288,7 +284,7 @@ def _choose_best_pair(
     tie_seen = False
     window_blocked_pairs = 0
     non_window_infeasible_pairs = 0
-    prev_end = batch_progress.get(str(getattr(op, "batch_id", "") or "").strip(), base_time)
+    prev_end = batch_progress.get(op.batch_id, base_time)
     handoff = current_sgs_handoff()
     overlap_reuse = overlap_reuse_for(machine_timeline)
     for machine_id in machine_candidates:
@@ -364,7 +360,7 @@ def _pair_failure_attempt(
     return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_NO_FEASIBLE_PAIR, pair_tie_occurred=False)
 
 
-def _operator_candidates_for_machine(machine_id: str, *, fixed_operator: str, pool: Dict[str, Any], op_type_id="") -> List[str]:
+def _operator_candidates_for_machine(machine_id: str, *, fixed_operator: str, pool: Dict[str, Any], op_type_id: str) -> List[str]:
     qualified = [str(x) for x in (pool["operators_by_machine"].get(machine_id) or []) if str(x).strip()]
     qualified = qualified_operators(pool, qualified, op_type_id)
     if not fixed_operator:
@@ -385,8 +381,8 @@ def _sort_operator_candidates(
 def _pair_score(
     *,
     calendar: Any,
-    op: Any,
-    batch: Any,
+    op: OpForScheduleAlgo,
+    batch: Batch,
     machine_id: str,
     operator_id: str,
     base_time: datetime,

@@ -10,13 +10,16 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import url2pathname
 
+import pytest
 from flask import Blueprint
 
 from core.infrastructure.transaction import TransactionManager
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_history import RunHistoryScope
 from core.models.workbench_run_job import new_run_ref
 from core.services.workbench.facts.decision_read_model import build_failure_read_models
 from core.services.workbench.facts.decision_read_models import decode_model
+from core.services.workbench.facts.run_history_projection import stored_json
 from core.services.workbench.run.history import WorkbenchRunHistoryQueryService
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
@@ -177,3 +180,12 @@ conn.close()
     assert {row["run_ref"] for row in actual["data"]["runs"]} == set(refs)
     assert {row["state"] for row in actual["data"]["runs"]} == {"complete", "partial", "failed", "interrupted"}
     assert dump(case.conn) == before
+
+
+@pytest.mark.parametrize("raw", ['{"start_date":"2026-09-01","start_date":"2026-09-02"}', '{"x":NaN}', '{"x":1e999}',
+                                 '{', '[]', None, b'{}'])
+def test_stored_run_documents_reject_duplicate_keys_nonfinite_numbers_and_non_objects(raw):
+    with pytest.raises(WorkbenchCommandRejected) as error:
+        stored_json(raw)
+    assert (error.value.code, error.value.status, str(error.value)) == (
+        "run_result_inconsistent", 500, "排产记录、提交结果和候选方案的条数对不上，这里不返回结果。请刷新重试；仍不行请联系维护人员。")

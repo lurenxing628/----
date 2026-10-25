@@ -5,7 +5,6 @@ from heapq import heappop, heappush
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.services.common.plan_task_identity import public_task_id as _public_task_id
-from core.services.scheduler._sched_utils import _safe_int
 from core.shared.local_datetime import format_local_datetime as _fmt_dt
 from core.shared.local_datetime import parse_local_datetime
 
@@ -38,20 +37,15 @@ def _minutes_between(a: Optional[datetime], b: Optional[datetime]) -> Optional[i
     return (b - a) // timedelta(minutes=1)
 
 
-def _dropped_count(value: Any) -> int:
-    return max(0, _safe_int(value, default=0))
-
-
 def _empty_result(*, dropped_count: int = 0) -> Dict[str, Any]:
-    dropped = _dropped_count(dropped_count)
     return {
         "ids": [],
         "edges": [],
         "makespan_end": None,
         "edge_type_stats": {"process": 0, "machine": 0, "operator": 0, "unknown": 0},
         "edge_count": 0,
-        "dropped_count": dropped,
-        "critical_chain_partial": dropped > 0,
+        "dropped_count": dropped_count,
+        "critical_chain_partial": dropped_count > 0,
         "available": True,
         "reason": "",
         "reason_code": "",
@@ -87,7 +81,9 @@ def _build_nodes(
             "end": et,
             "batch_id": _identity_text(r.get("batch_id")),
             "piece_id": _identity_text(r.get("piece_id")),
-            "seq": _safe_int(r.get("seq"), default=0),
+            # 工序号只在按批次分组的 rows 路径使用，上游 plan.projection._sequence 已校验为正整数；
+            # 依赖路径（gantt_graph）的行不带 seq。
+            "seq": r.get("seq"),
             "machine_id": _identity_text(r.get("machine_id")),
             "operator_id": _identity_text(r.get("operator_id")),
             "label": _public_task_label(r),
@@ -106,7 +102,7 @@ def _build_process_prev(nodes: Dict[str, Dict[str, Any]]) -> Dict[str, List[str]
 
     proc_prev: Dict[str, List[str]] = {}
     for _, items in proc_groups.items():
-        items.sort(key=lambda x: (int(x.get("seq") or 0), x.get("start"), str(x.get("id") or "")))
+        items.sort(key=lambda x: (x["seq"], x.get("start"), str(x.get("id") or "")))
         prev: Optional[Dict[str, Any]] = None
         for n in items:
             if prev:

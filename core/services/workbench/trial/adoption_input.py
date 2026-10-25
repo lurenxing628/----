@@ -15,5 +15,5 @@ def prepare_trial_adoption_input(conn, settings, projections, live, *, capture, 
         raise RuntimeError("Trial input requires this transaction's own production capture")
     # Adoption validates in this caller-owned read transaction; it does not
     # hand this prepared input to an independent calculation.
-    return _prepare_facts(conn, settings, facts, "", projections, None, live["baseline"],
+    return _prepare_facts(conn, settings, facts, projections, None, live["baseline"],
                           validated_projections, for_adoption=True, held=held)

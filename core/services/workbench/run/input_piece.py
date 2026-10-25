@@ -10,7 +10,7 @@ def input_piece_scope(operations, batches):
     if not any(op.piece_id is not None for op in operations):
         return None
     try:
-        scope = build_piece_adoption_scope(operations, batches)
+        scope = build_piece_adoption_scope(operations, {batch_id: batch.quantity for batch_id, batch in batches.items()})
     except PieceAdoptionBlocked as exc:
         fail(exc.code, str(exc), batch_id=exc.batch_id)
     return scope

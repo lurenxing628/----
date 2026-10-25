@@ -47,7 +47,7 @@ def assert_frontend_run_queries(preview, run, lookup, *, input_ref, run_ref):
     script = r"""
 const fs = require('node:fs'), vm = require('node:vm'), assert = require('node:assert/strict');
 const input = JSON.parse(fs.readFileSync(0, 'utf8')), window = {}, context = vm.createContext({window});
-for (const name of ['WorkbenchTerms.js', 'RunGenerationContract.js', 'RunJobAPI.js']) {
+for (const name of ['WorkbenchTerms.js', 'RunGenerationContract.js', 'RunJobAPI.js', 'RunAdoptionAPI.js']) {
   vm.runInContext(fs.readFileSync('frontend/workbench/app/' + name, 'utf8'), context, {filename: name});
 }
 window.RunJobAPI.preview(input.preview, input.input_ref);

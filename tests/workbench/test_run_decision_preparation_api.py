@@ -71,7 +71,7 @@ def test_real_worker_saves_one_requirement_used_by_all_candidates_and_workspaces
     query = dict(WINDOW, selected_candidate_ref=refs[0], reference_candidate_ref=refs[0])
     with CandidateStore(case.conn).snapshot():
         source = DecisionSource(CandidateStore(case.conn), run_ref, **query)
-        for method in (source.preparation.groups, source.preparation.rows, source.preparation.summary,
+        for method in (source.analysis_groups, source.preparation.rows, source.preparation.summary,
                        source.changeovers.projection, source.changeovers.metrics):
             assert method("reference") is method(refs[0])
     overview = decision(client, run_ref, **query)["data"]

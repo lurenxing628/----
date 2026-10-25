@@ -162,11 +162,9 @@ def pick_resource_pair(pool: Dict[str, Any]) -> Optional[Tuple[str, str, int]]:
         if len(operators) < 2:
             continue
         for operator_id in reversed(operators):
-            rank_value = pair_rank.get((operator_id, machine_id), 9999)
-            try:
-                rank = int(rank_value)
-            except (TypeError, ValueError, OverflowError):
-                rank = 9999
+            # 排名都是 build_resource_pool 算出的整数（邻域降级覆盖为 -1）；没有排名的人机对
+            # 与自动派工 auto_assign._pair_rank 同口径按 9999。
+            rank = pair_rank.get((operator_id, machine_id), 9999)
             if rank > -1:
                 return operator_id, machine_id, rank
     return None

@@ -125,7 +125,7 @@ class PreflightFacts:
                 self.config_error = exc
             self._configuration_ready = True
         if self.config_error is not None:
-            raise self.config_error
+            raise self.config_error.with_traceback(None)
         return self.config_snapshot
 
     def official_source(self, version):

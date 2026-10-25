@@ -11,10 +11,6 @@ from data.repositories.config_repo import ConfigRepository
 from data.repositories.workbench_resource_summary_repo import WorkbenchResourceSummaryRepository
 
 
-def factory_now():
-    return datetime.now()
-
-
 def _holiday_efficiency(conn, logger):
     key = "holiday_default_efficiency"
     raw_value = ConfigRepository(conn, logger=logger).get_value(key)
@@ -111,10 +107,8 @@ def _week_stats(days):
     return result
 
 
-def resource_calendar_summary(conn, logger=None, *, clock=None):
-    now = (clock or factory_now)()
-    if not isinstance(now, datetime) or now.tzinfo is not None:
-        raise ValueError("汇总时钟必须使用无时区的工厂本地时间。")
+def resource_calendar_summary(conn, logger=None):
+    now = datetime.now()
     today = now.date()
     first = today - timedelta(days=today.weekday())
     last = first + timedelta(days=6)

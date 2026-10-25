@@ -7,8 +7,8 @@ import sys
 from tempfile import SpooledTemporaryFile
 
 from core.models.calendar_period_columns import PERIOD_COLUMNS
+from core.models.workbench_action_values import FileDownload
 from core.models.workbench_calendar_file import (
-    CalendarFileDownload,
     file_columns,
     public_columns,
     table_descriptor,
@@ -86,7 +86,7 @@ def _csv(kind, rows, filename):
                              for field, value in zip(columns, values)])
         text.flush()
         buffer.seek(0)
-        return CalendarFileDownload(filename + ".csv", "text/csv; charset=utf-8", buffer.read(), count)
+        return FileDownload(filename + ".csv", "text/csv; charset=utf-8", buffer.read(), count)
 
 
 def _headers(kind, ws, template, descriptor):
@@ -134,7 +134,7 @@ def _xlsx(kind, rows, filename, template, descriptor):
         with SpooledTemporaryFile(max_size=4 * 1024 * 1024, mode="w+b") as buffer:
             wb.save(buffer)
             buffer.seek(0)
-            return CalendarFileDownload(
+            return FileDownload(
                 filename + ".xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 buffer.read(), count)

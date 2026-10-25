@@ -6,7 +6,7 @@ import pytest
 from flask import Blueprint, Flask, g
 
 from core.infrastructure.transaction import TransactionManager
-from core.models import OperatorMachine
+from core.models.operator_machine import OperatorMachine
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.personnel.operator_machine_service import OperatorMachineService
 from core.services.workbench.facts.table_cells import text_cell

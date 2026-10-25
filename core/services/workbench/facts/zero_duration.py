@@ -1,10 +1,9 @@
 """Exact internal point events; no payload, persistence or adoption bypass."""
 
 from datetime import datetime
-from types import SimpleNamespace
 
 from core.algorithm_contracts.schedule_point_evidence import SchedulePointEvidence
-from core.algorithm_runtime.internal_slot import estimate_internal_slot
+from core.algorithm_runtime.internal_slot import estimate_point_slot
 from core.models.workbench_preflight import public_ref
 
 from .preflight_checks import number
@@ -82,16 +81,10 @@ def estimate_point_event(calendar, *, setup_hours, unit_hours, quantity, machine
         raise PointEventError("resource_required", "零工时工序也要选好设备和人员，虽然它不占设备人员时间。")
     if priority not in ("normal", "urgent", "critical"):
         raise PointEventError("priority_unknown", "零工时工序所在批次的优先级读不到，不能核对。")
-    slot = estimate_internal_slot(calendar=calendar,
-        op=SimpleNamespace(setup_hours=setup_hours, unit_hours=unit_hours),
-        batch=SimpleNamespace(quantity=quantity, priority=priority), machine_id=machine_id,
-        operator_id=operator_id, base_time=start, prev_end=start, machine_timeline=(),
-        operator_timeline=(), machine_downtimes=(), end_dt_exclusive=None,
-        last_op_type_by_machine=None, abort_after=None, total_hours_base=0)
-    if slot.efficiency_fallback_used:
-        raise PointEventError("calendar_efficiency_unknown", "零工时工序对应的班表效率读不到，这里不会改用默认效率。")
-    point_event_dto(slot.start_time, slot.end_time)
-    return slot.start_time, slot.end_time
+    slot_start, slot_end = estimate_point_slot(calendar=calendar, priority=priority, machine_id=machine_id,
+                                               operator_id=operator_id, start=start)
+    point_event_dto(slot_start, slot_end)
+    return slot_start, slot_end
 
 
 def candidate_point_validator(schedule_input):

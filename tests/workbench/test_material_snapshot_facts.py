@@ -86,7 +86,7 @@ def test_snapshot_reuses_raw_requirements_and_projected_rows_preserving_sqlite_s
     assert reader._snapshot is None
 
 
-def test_ordinary_page_defers_unshown_bad_stock_and_capture_is_lazy_and_restored(mem_conn):
+def test_ordinary_page_defers_unshown_bad_stock_and_nested_snapshot_is_restored(mem_conn):
     _seed(mem_conn, [("A", "shown", None, 1, "active"), ("Z", "unshown", None, -1, "active")])
     reader = WorkbenchMaterialQueryService(mem_conn)
     scope = MaterialPageRequest(size=1)
@@ -95,10 +95,8 @@ def test_ordinary_page_defers_unshown_bad_stock_and_capture_is_lazy_and_restored
         assert records[0].entity["business_code"] == "A" and page["total"] == 2
         assert reader.toolbar_metrics(scope)["total"] == 2
         outer = reader._snapshot
-        statements = []
-        mem_conn.set_trace_callback(statements.append)
-        with reader.read_snapshot(capture_fingerprint=False) as lazy:
-            assert lazy is None and not any(sql.lstrip().upper().startswith("SELECT") for sql in statements)
+        with reader.read_snapshot() as inner:
+            assert inner == fingerprint and reader._snapshot is not outer
             bounded, _ = reader.page(MaterialPageRequest(query="shown", size=1))
             assert bounded[0].entity["business_code"] == "A"
         assert reader._snapshot is outer and reader.state_fingerprint() is fingerprint

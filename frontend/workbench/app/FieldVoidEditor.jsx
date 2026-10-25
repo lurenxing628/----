@@ -1,10 +1,6 @@
 (function () {
   'use strict';
   const C = window.FieldContract, { Button, ErrorBox, Feedback, Issues } = window.FieldControls;
-  function isStale(command) {
-    const error = command && command.error, code = error && (error.code || error.error && error.error.code);
-    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
-  }
   function FieldVoidEditor({ task, record, adapter, command, retained, onDraft, onClose, onDone }) {
     const [draft, setDraft] = React.useState(() => retained ? retained.draft : { reason: '', declared_operator: '' });
     const [baseline] = React.useState(() => retained ? retained.baseline : { report_ref: record.report_ref, revision_ref: record.revision_ref });
@@ -22,7 +18,7 @@
     const input = () => ({ original_revision_ref: baseline.revision_ref, reason: draft.reason.trim(), declared_operator: draft.declared_operator.trim() });
     function change(key, value) {
       setDraft(current => ({ ...current, [key]: value })); setPreview(null); setError(null);
-      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     async function inspect() {
       if (locked || !form.current.reportValidity()) return;
@@ -34,7 +30,7 @@
           || !Array.isArray(value.warnings) || !value.warnings.every(item => item && typeof item.message === 'string' && item.message))
           throw window.APSResourceContract.failure('撤销预检与原报工不一致，请刷新后重试。');
         // A fresh preview supersedes the last rejected confirmation.
-        setPreview(value); if (command.phase === 'rejected') command.reset();
+        setPreview(value); command.clearRejection({ includeStale: true });
       } catch (failure) { if (!controller.signal.aborted) setError(failure); }
       finally { if (!controller.signal.aborted) setReading(false); }
     }

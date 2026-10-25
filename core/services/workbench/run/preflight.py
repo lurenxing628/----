@@ -2,7 +2,6 @@
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, Optional, cast
 
 from core.errors import AppError, ValidationError
@@ -13,6 +12,7 @@ from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 from core.services.workbench.facts.preflight_checks import stored_date
 from core.services.workbench.facts.preflight_dependencies import link_predecessors
 from core.services.workbench.facts.run_input_rows import OPERATION_STATES, mutable_classification
+from core.services.workbench.facts.stored_algo_inputs import stored_batch_operation
 
 from .input_config import hold_window, run_options
 from .input_external import external_resource_issues, preflight_external_cycles
@@ -95,8 +95,8 @@ def batch_dependencies(batch, operations, rows):
         link_predecessors(rows)
         return []
     try:
-        scope = build_piece_adoption_scope([SimpleNamespace(**op) for op in operations],
-            {batch["batch_id"]: SimpleNamespace(quantity=batch["quantity"])})
+        scope = build_piece_adoption_scope([stored_batch_operation(op) for op in operations],
+            {batch["batch_id"]: batch["quantity"]})
     except PieceAdoptionBlocked as exc:
         problem = issue(exc.code, str(exc), batch_ref=batch["ref"])
         for row in rows:
@@ -195,7 +195,7 @@ class PreflightService:
         # 与排产计算查不重排时段的范围一致：这次要重排的工序，加上合并外协组按实际周期派生保留的成员。
         held_ids = {row["op_id"] for row in rows if row["status"] in ("eligible", "auto_assign_required")} | set(cycles)
         held, notes, marks, held_obj = held_arrangement_reasons(
-            self.facts, svc, checks, settings, version, batches, operations,
+            self.facts, checks, settings, version, batches, operations,
             held_ids, cycles, projections, hold_window_bounds=hold_window_bounds,
         )
         return reasons + held, notes, marks, held_obj

@@ -87,12 +87,13 @@
         || d.affected_groups.some(group => group.part_ref !== request.target_ref))) throw C.failure('文件包含其他零件，不能从当前详情提交。');
     return result;
   }
+  // groupRefs 是页面里勾选的外协组编号数组（React 状态，只整体替换不原地改）。
   function confirmInput(data, groupRefs, zero) {
-    const groupSet = Array.isArray(groupRefs) ? new Set(groupRefs) : null;
-    if (!groupSet || groupSet.size !== groupRefs.length || groupRefs.length !== data.affected_groups.length
+    const groupSet = new Set(groupRefs);
+    if (groupSet.size !== groupRefs.length || groupRefs.length !== data.affected_groups.length
         || data.affected_groups.some(group => !groupSet.has(group.ref))) throw C.failure('请逐项核对并勾选全部受影响的外协组，未自动解除任何组。');
     if (typeof zero !== 'boolean' || data.zero_review_required && !zero) throw C.failure('单件工时为 0，排产只计算换型工时。请按 0 导入。');
-    return { preview_ref: data.preview_ref, discard_group_refs: groupRefs.slice(), confirm_zero_unit_hours: zero };
+    return { preview_ref: data.preview_ref, discard_group_refs: groupRefs, confirm_zero_unit_hours: zero };
   }
   function exportBody(request, selection, format) {
     if (!['all', 'filtered', 'explicit'].includes(selection) || !['csv', 'xlsx'].includes(format)) throw C.failure('请先选择导出范围和文件格式。');
@@ -107,7 +108,7 @@
     const result = envelope(raw), d = result.data;
     if (!A.token(d.export_ref) || d.selection !== body.selection || d.kind !== kind(requestedKind) || !count(d.row_count) || !count(d.part_count)
         || !Number.isFinite(Date.parse(d.expires_at)) || d.format !== body.format || !columns(d.columns) || !C.object(d.scope)
-        || d.target_ref !== (body.target_ref || null) || body.target_ref && Object.keys(d.scope).length !== 0
+        || d.target_ref !== (body.target_ref ?? null) || body.target_ref && Object.keys(d.scope).length !== 0
         || body.selection === 'filtered' && window.ResourceTableFilterModel.signature(A.scope(d.scope)) !== window.ResourceTableFilterModel.signature(A.scope(body.scope))
         || body.selection === 'explicit' && d.part_count !== body.refs.length
         || requestedKind === 'route' && d.row_count !== d.part_count)

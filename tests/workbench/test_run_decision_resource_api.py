@@ -9,7 +9,7 @@ from openpyxl import load_workbook
 
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.services.scheduler.calendar.service import CalendarService
-from core.services.workbench.facts import resource_projection
+from core.services.workbench.facts import resource_calendar, resource_projection
 from core.services.workbench.facts.candidate_baseline import AdmissionBaseline
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.resource_projection import ResourceTaskIndex
@@ -111,7 +111,7 @@ def test_candidate_switch_keeps_unused_resources_and_archived_capacity(candidate
         assert row_by_ref(switched, case.ref(kind, used))["after"]["occupied_hours"] == 0
         assert row_by_ref(switched, case.ref(kind, unused))["after"]["occupied_hours"] == 0.75
     window_reads, calendar_reads = [], []
-    original_window, original_calendar = ResourceTaskIndex.window, resource_projection._ResourceCalendar.__init__
+    original_window, original_calendar = ResourceTaskIndex.window, resource_calendar.ResourceCalendar.__init__
 
     def record_window(index, resource, calendar, **values):
         window_reads.append(resource["ref"])
@@ -126,7 +126,7 @@ def test_candidate_switch_keeps_unused_resources_and_archived_capacity(candidate
 
     with monkeypatch.context() as scoped:
         scoped.setattr(ResourceTaskIndex, "window", record_window)
-        scoped.setattr(resource_projection._ResourceCalendar, "__init__", record_calendar)
+        scoped.setattr(resource_calendar.ResourceCalendar, "__init__", record_calendar)
         scoped.setattr(AdmissionBaseline, "_execution", unexpected_execution)
         overview = decision(client, run_ref, **query)["data"]
     cohort_refs = {case.ref(kind, code) for kind, codes in (("machine", ("M1", "M2")), ("operator", ("O1", "O2"))) for code in codes}
@@ -145,7 +145,7 @@ def test_candidate_switch_keeps_unused_resources_and_archived_capacity(candidate
         engine = source.resources
         with monkeypatch.context() as scoped:
             scoped.setattr(ResourceTaskIndex, "window", record_window)
-            scoped.setattr(resource_projection._ResourceCalendar, "__init__", record_calendar)
+            scoped.setattr(resource_calendar.ResourceCalendar, "__init__", record_calendar)
             engine.prepare_keys([])
             assert window_reads == calendar_reads == [] and engine.indexes == engine.tasks == {}
             engine.prepare_keys([refs[-1], "reference", refs[0]])
@@ -502,8 +502,8 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
     import json
     from collections import Counter
 
-    from core.services.workbench.run import decision_resources as resource_runtime
-    from core.services.workbench.run.decision_resources import DecisionResources
+    from core.services.workbench.run import decision_resource_engine as resource_runtime
+    from core.services.workbench.run.decision_resource_engine import DecisionResources
 
     case = candidate_case
     batch_codes = ["B1"]
@@ -523,7 +523,7 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
     parsed_calendar_times, day_facts_calls, day_statistics_calls = [], [], []
     single_windows, bulk_windows = [], []
     measurements = []
-    original_calendar = resource_projection._ResourceCalendar.__init__
+    original_calendar = resource_calendar.ResourceCalendar.__init__
     original_measurement = resource_projection._ResourceMeasurement.__init__
     original_values = resource_projection._ResourceMeasurement._values
     original_cell = resource_projection._ResourceMeasurement.cell
@@ -580,7 +580,7 @@ def test_resource_paging_heatmap_snapshot_and_full_filtered_exports(candidate_ca
         return original_drill(engine, key, resource, **kwargs)
 
     with monkeypatch.context() as scoped:
-        scoped.setattr(resource_projection._ResourceCalendar, "__init__", record_calendar)
+        scoped.setattr(resource_calendar.ResourceCalendar, "__init__", record_calendar)
         scoped.setattr(resource_projection._ResourceMeasurement, "__init__", record_measurement)
         scoped.setattr(resource_projection._ResourceMeasurement, "_values", record_values)
         scoped.setattr(resource_projection._ResourceMeasurement, "cell", record_cell)

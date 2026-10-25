@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from core.models import OpType
+from core.models.op_type import OpType
 
 from .base_repo import BaseRepository
 

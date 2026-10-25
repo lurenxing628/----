@@ -5,11 +5,11 @@ from contextlib import ExitStack, contextmanager
 from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from core.algorithm_runtime import internal_slot
 from core.services.scheduler.calendar.service import CalendarService
+from tests._support.algo_operations import make_algo_op, make_batch
 
 BASE = datetime(2026, 9, 8, 8)
 SCHEMA = (Path(__file__).resolve().parents[2] / "schema.sql").read_text(encoding="utf-8")
@@ -67,14 +67,8 @@ def native_calendar(rows=(), operator_rows=(), calendar_type=CalendarService):
 
 def slot_case(hours=0.25, *, machine=(), operator=(), downtime=(), priority="normal", **overrides):
     case = dict(
-        op=SimpleNamespace(
-            id=1, op_code="OP1", batch_id="B1", seq=1, source="internal",
-            machine_id="M1", operator_id="O1", setup_hours=hours, unit_hours=0.0, op_type_name="TURN",
-        ),
-        batch=SimpleNamespace(
-            batch_id="B1", quantity=1, priority=priority, due_date=None,
-            ready_status="yes", ready_date=None, created_at=None,
-        ),
+        op=make_algo_op(machine_id="M1", operator_id="O1", setup_hours=hours, unit_hours=0.0, op_type_name="TURN"),
+        batch=make_batch(priority=priority),
         machine_id="M1", operator_id="O1", base_time=BASE, prev_end=BASE,
         machine_timeline=list(machine), operator_timeline=list(operator), machine_downtimes=list(downtime),
         end_dt_exclusive=None, abort_after=None, last_op_type_by_machine={"M1": "MILL"},

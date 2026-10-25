@@ -7,7 +7,7 @@
     React.useEffect(() => () => { active.current = false; if (controller.current) controller.current.abort(); }, []);
     const locked = busy || command.locked || command.phase === 'done';
     async function run(action) {
-      if (action === 'preview' && command.phase === 'rejected' && typeof command.reset === 'function') command.reset();
+      if (action === 'preview') command.clearRejection({ includeStale: true });
       setError(null); setBusy(true); controller.current = new AbortController();
       try {
         if (action === 'preview') {
@@ -28,7 +28,7 @@
       <div className="modal-b"><div className="field-toolbar" style={{ padding: '0 0 14px' }}><Button transfer="template" disabled={locked} onClick={() => run('template')}>下载模板</Button><Button transfer="export" disabled={locked} onClick={() => run('export')}>导出当前范围</Button></div>
         <div className="field-note">XLSX · 13 列 · 任务编号、工序范围、单件编号已预填，不可修改 · 兼容旧 10 列</div>
         <div className="field-upload"><Button icon="folder-open" disabled={locked} onClick={() => input.current.click()}>选择文件</Button><span>{file ? file.name : '尚未选择文件'}</span>
-          <input ref={input} hidden type="file" accept=".xlsx" aria-label="报工 XLSX 文件" disabled={locked} onChange={event => { setFile(event.target.files[0] || null); setPreview(null); setError(null); if (command.phase === 'rejected' && typeof command.reset === 'function') command.reset(); }} /></div>
+          <input ref={input} hidden type="file" accept=".xlsx" aria-label="报工 XLSX 文件" disabled={locked} onChange={event => { setFile(event.target.files[0] || null); setPreview(null); setError(null); command.clearRejection({ includeStale: true }); }} /></div>
         {busy && <p role="status">正在核对文件和现场记录…</p>}
         {preview && <><div className="field-files-summary">{[['total', '行数'], ['changed', '变更'], ['unchanged', '重复'], ['blank', '空白'], ['rejected', '问题']].map(([key, label]) => <span key={key}>{label} <b>{preview.summary[key] || 0}</b></span>)}</div>
           {command.phase !== 'done' && command.phase !== 'rejected' && <p role="status">{preview.can_confirm ? '预检通过，尚未写入报工。' : preview.summary.rejected ? '预检未通过，未写入任何报工。' : '没有可导入的实际记录，未写入报工。'}</p>}

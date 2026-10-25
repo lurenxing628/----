@@ -1,9 +1,8 @@
 """Read-only JSON table queries, with independent list and facet snapshots."""
 
-import json
 from functools import wraps
 
-from flask import current_app, g, request
+from flask import current_app, g
 from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError
@@ -18,6 +17,7 @@ from web.api_responses import query_success
 from .api_responses import read_endpoint
 from .materials import _entity_with_context
 from .read_context import bind_read_snapshot
+from .request_json import read_json_body
 from .resources import _with_context
 from .write_context import issue_write_context
 
@@ -25,32 +25,13 @@ MAX_TABLE_BODY_BYTES = 32 * 1024 * 1024
 _SCOPE_FIELDS = {"query", "status", "category", "page", "size", "sort", "direction", "snapshot_ref", "column_filters"}
 
 
-def _unique_object(pairs):
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            raise WorkbenchCommandRejected("invalid_input", "查询条件里有重复项，当前列表没有变化。请刷新页面后重新选择。", 400)
-        result[key] = value
-    return result
-
-
 def _body():
-    if request.args or not request.is_json:
-        raise WorkbenchCommandRejected("invalid_input", "查询条件格式不正确，当前列表没有变化。请刷新页面后重新选择。", 400)
-    if request.content_length is not None and request.content_length > MAX_TABLE_BODY_BYTES:
-        raise WorkbenchCommandRejected("capacity_exceeded", "一次提交的查询条件超过 32 MB，当前列表没有变化。请缩小筛选范围后重试。", 413)
-    raw = request.stream.read(MAX_TABLE_BODY_BYTES + 1)
-    if len(raw) > MAX_TABLE_BODY_BYTES:
-        raise WorkbenchCommandRejected("capacity_exceeded", "一次提交的查询条件超过 32 MB，当前列表没有变化。请缩小筛选范围后重试。", 413)
-    try:
-        body = json.loads(raw, object_pairs_hook=_unique_object)
-    except WorkbenchCommandRejected:
-        raise
-    except (ValueError, UnicodeError) as exc:
-        raise WorkbenchCommandRejected("invalid_input", "查询条件读不出来，当前列表没有变化。请点「清除筛选」后重新选择。", 400) from exc
-    if type(body) is not dict:
-        raise WorkbenchCommandRejected("invalid_input", "查询条件不完整，当前列表没有变化。请刷新页面后重新选择。", 400)
-    return body
+    return read_json_body(
+        transport="查询条件格式不正确，当前列表没有变化。请刷新页面后重新选择。",
+        malformed="查询条件读不出来，当前列表没有变化。请点「清除筛选」后重新选择。",
+        incomplete="查询条件不完整，当前列表没有变化。请刷新页面后重新选择。",
+        duplicate="查询条件里有重复项，当前列表没有变化。请刷新页面后重新选择。",
+        limit=(MAX_TABLE_BODY_BYTES, "一次提交的查询条件超过 32 MB，当前列表没有变化。请缩小筛选范围后重试。"))
 
 
 def _scope(kind, value):

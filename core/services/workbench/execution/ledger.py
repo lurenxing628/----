@@ -56,30 +56,6 @@ class ExecutionLedgerService(ExecutionLedgerReader):
         return [attach_context(row, self.context_factory,
                                self.fact_snapshot(facts, row.operation_ref)) for row in projections]
 
-    def get_task(self, task_ref, *, comparison_task_ref=None):
-        with self.read_snapshot():
-            task = self.task_header(task_ref)
-            comparison = self.task_header(comparison_task_ref) if comparison_task_ref else task
-            if any(not row["row_active"] or not row["plan_active"] for row in (task, comparison)):
-                reject("这条任务安排已经删除了，系统不会换成编号相同的新安排。请刷新后重新选择。", "entity_not_found", 404)
-            if comparison["operation_ref"] != task["operation_ref"]:
-                reject("用来比对的安排不是同一道工序的。请刷新后重新选择。", "constraint_conflict", 409)
-            projection = self.project_operations([task["operation_ref"]], comparison_plan_ref=comparison["plan_ref"])[0]
-            if projection.comparison_task_ref != comparison["task_ref"]:
-                reject("用来比对的任务已经变了，系统不会自动换成别的安排。请刷新后重试。", "constraint_conflict", 409)
-            return projection
-
-    def get_report(self, report_ref):
-        with self.read_snapshot():
-            row = self.report_header(report_ref=report_ref)
-            if row is None:
-                reject("报工不存在，旧单号不会改指其他记录。", "entity_not_found", 404)
-            projection = self.project_operations([row["operation_ref"]])[0]
-            report = next((report for report in projection.reports if report.report_ref == row["report_ref"]), None)
-            if report is None:
-                reject("报工不存在，旧单号不会改指其他记录。", "entity_not_found", 404)
-            return report
-
     def workspace_projection(self, plan_ref, tasks):
         with self.read_snapshot():
             refs = [task["operation_ref"] for task in tasks]

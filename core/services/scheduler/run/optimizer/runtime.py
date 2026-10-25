@@ -5,14 +5,14 @@ import time
 from dataclasses import dataclass, replace
 from typing import Any, Callable, Optional
 
-from core.algorithms import GreedyScheduler
+from core.algorithms.greedy.scheduler import GreedyScheduler
 
 from .search_budget import SearchBudget
 
 
 @dataclass(frozen=True)
 class OptimizerRuntime:
-    scheduler_factory: Callable[..., Any]
+    scheduler_factory: Callable[..., GreedyScheduler]
     clock: Callable[[], float]
     rng_factory: Callable[[int], Any]
     run_ortools_warmstart: Callable[..., Optional[dict]]

@@ -8,7 +8,7 @@ import sqlite3
 import pytest
 
 from core.infrastructure.transaction import TransactionManager
-from core.models import Material
+from core.models.material import Material
 from data.repositories.material_repo import MaterialRepository
 
 

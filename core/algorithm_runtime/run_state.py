@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.ordering import normalize_text_id
-from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
 
 from .owned_timeline import OwnedTimeline, clone_timeline
@@ -87,7 +87,7 @@ class ScheduleRunState:
         self.seed_count += 1
         self.advance_batch(normalize_text_id(result.batch_id), result.end_time)
         self._record_internal_usage(result, seed_mode=True, segments=segments)
-        if (result.source or "").strip().lower() == INTERNAL:
+        if result.source == INTERNAL:
             self._record_missing_seed_resources(result)
 
     def record_dispatch_success(self, result: ScheduleResult) -> None:
@@ -103,17 +103,17 @@ class ScheduleRunState:
         *,
         block: bool,
         remaining_failed: int = 0,
-        failed_op: Optional[Any] = None,
-        skipped_ops: Optional[List[Any]] = None,
+        failed_op: Optional[OpForScheduleAlgo] = None,
+        skipped_ops: Optional[List[OpForScheduleAlgo]] = None,
         error_message: str = "",
     ) -> None:
-        self.failed_count += 1 + max(int(remaining_failed or 0), 0)
+        self.failed_count += 1 + max(remaining_failed, 0)
         if failed_op is not None:
             detail = self._failure_detail(
                 "dispatch_operation_failed",
                 failed_op,
                 batch_id=batch_id,
-                extra={"error_message": str(error_message)} if error_message else None,
+                extra={"error_message": error_message} if error_message else None,
             )
             self.failure_details.append(detail)
             self._retire_resource_demand(detail["op_id"])
@@ -133,7 +133,7 @@ class ScheduleRunState:
             if isinstance(self.last_op_type_by_machine, MachineTypeState):
                 self.last_op_type_by_machine.block_batch(batch_id)
 
-    def record_missing_batch(self, op: Any, batch_id: str) -> None:
+    def record_missing_batch(self, op: OpForScheduleAlgo, batch_id: str) -> None:
         self.failed_count += 1
         # 失败的用户可见文案统一由结构化 failure_details + _structured_failure_message 单点渲染。
         # 不再往 state.errors 塞原始中文串：它不匹配任何 legacy 反解模式，会回落成
@@ -142,9 +142,8 @@ class ScheduleRunState:
         self.failure_details.append(detail)
         self._retire_resource_demand(detail["op_id"], blocked_batch=batch_id)
 
-    def record_skipped_after_batch_failure(self, op: Any, batch_id: str, *, count_failure: bool = True) -> None:
-        if count_failure:
-            self.failed_count += 1
+    def record_skipped_after_batch_failure(self, op: OpForScheduleAlgo, batch_id: str) -> None:
+        self.failed_count += 1
         detail = self._failure_detail(
             "skipped_after_batch_failure", op, batch_id=batch_id,
             failed_source=self.batch_failure_sources.get(batch_id),
@@ -152,7 +151,9 @@ class ScheduleRunState:
         self.failure_details.append(detail)
         self._retire_resource_demand(detail["op_id"])
 
-    def record_graph_fixed_order_conflict(self, op: Any, batch_id: str, *, fixed_successor_op_ids: List[int]) -> None:
+    def record_graph_fixed_order_conflict(
+        self, op: OpForScheduleAlgo, batch_id: str, *, fixed_successor_op_ids: List[int],
+    ) -> None:
         # 审计 A02：后道工序已报工（PROCESSING/PAUSED 进固定集）但前道排产失败，
         # 报工顺序与工艺顺序不一致。只补结构化明细留痕、不重复计数——失败工序
         # 自身已由 record_dispatch_failure / record_dispatch_exception 计 1。
@@ -161,11 +162,13 @@ class ScheduleRunState:
                 "graph_fixed_successor_order_conflict",
                 op,
                 batch_id=batch_id,
-                extra={"fixed_successor_op_ids": [int(item) for item in (fixed_successor_op_ids or ())[:20]]},
+                extra={"fixed_successor_op_ids": fixed_successor_op_ids[:20]},
             )
         )
 
-    def record_graph_blocked_after_failure(self, op: Any, batch_id: str, *, failed_op: Any) -> None:
+    def record_graph_blocked_after_failure(
+        self, op: OpForScheduleAlgo, batch_id: str, *, failed_op: OpForScheduleAlgo,
+    ) -> None:
         detail = self._failure_detail(
             "graph_blocked_after_failure", op, batch_id=batch_id,
             failed_source=self._op_identity(failed_op),
@@ -173,14 +176,14 @@ class ScheduleRunState:
         self.failure_details.append(detail)
         self._retire_resource_demand(detail["op_id"])
 
-    def record_dispatch_exception(self, op: Any, batch_id: str, *, dispatch_mode: str) -> None:
+    def record_dispatch_exception(self, op: OpForScheduleAlgo, batch_id: str, *, dispatch_mode: str) -> None:
         self.failed_count += 1
         # 同 record_missing_batch：只写结构化明细，渲染交给 _structured_failure_message，避免双发。
         detail = self._failure_detail(
             "dispatch_operation_exception",
             op,
             batch_id=batch_id,
-            extra={"dispatch_mode": str(dispatch_mode or "").strip()},
+            extra={"dispatch_mode": dispatch_mode},
         )
         self.failure_details.append(detail)
         self._retire_resource_demand(detail["op_id"], blocked_batch=batch_id)
@@ -211,7 +214,7 @@ class ScheduleRunState:
         return warnings
 
     def _record_internal_usage(self, result: ScheduleResult, *, seed_mode: bool, segments: Any = None) -> None:
-        if (result.source or "").strip().lower() != INTERNAL:
+        if result.source != INTERNAL:
             return
         if not isinstance(result.start_time, datetime) or not isinstance(result.end_time, datetime):
             return
@@ -241,7 +244,8 @@ class ScheduleRunState:
             )
 
     def _record_missing_seed_resources(self, result: ScheduleResult) -> None:
-        op_id = normalize_text_id(getattr(result, "op_id", "") or "?") or "?"
+        # normalize_seed_results keeps only seeds with a positive operation id.
+        op_id = str(result.op_id)
         if not normalize_text_id(result.machine_id):
             self.missing_seed_machine_count += 1
             if len(self.missing_seed_machine_samples) < 5:
@@ -254,14 +258,14 @@ class ScheduleRunState:
     def _failure_detail(
         self,
         code: str,
-        op: Any,
+        op: OpForScheduleAlgo,
         *,
         batch_id: str,
         failed_source: Optional[Dict[str, Any]] = None,
         extra: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         detail = self._op_identity(op)
-        detail.update({"code": str(code), "batch_id": normalize_text_id(batch_id) or detail.get("batch_id")})
+        detail.update({"code": code, "batch_id": batch_id})
         if failed_source:
             detail["failed_op_id"] = failed_source.get("op_id")
             detail["failed_op_code"] = failed_source.get("op_code")
@@ -270,10 +274,5 @@ class ScheduleRunState:
         return detail
 
     @staticmethod
-    def _op_identity(op: Any) -> Dict[str, Any]:
-        return {
-            "op_id": int(op.id),
-            "op_code": normalize_text_id(str(op.op_code or "")),
-            "batch_id": normalize_text_id(str(op.batch_id or "")),
-            "seq": int(op.seq),
-        }
+    def _op_identity(op: OpForScheduleAlgo) -> Dict[str, Any]:
+        return {"op_id": op.id, "op_code": op.op_code, "batch_id": op.batch_id, "seq": op.seq}

@@ -4,7 +4,8 @@ import math
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Iterable, Optional, Tuple
 
-from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
+from core.algorithms.evaluation import ScheduleMetrics
 from core.errors import ValidationError
 from core.models.objective import objective_metric_keys
 
@@ -20,7 +21,7 @@ class CandidateFingerprint:
                      seen_output_fingerprints: Iterable[Tuple[Any, ...]]) -> CandidateFingerprint:
         same_as_parent = bool(parent_fingerprint is not None and self.output_key == parent_fingerprint.output_key)
         return replace(self, same_as_parent=same_as_parent,
-                       same_as_seen=self.output_key in (seen_output_fingerprints or ()),
+                       same_as_seen=self.output_key in seen_output_fingerprints,
                        fingerprint_changed=not same_as_parent)
 
 
@@ -61,7 +62,7 @@ def build_candidate_fingerprint(
     return CandidateFingerprint(
         output_key=output_key,
         same_as_parent=same_as_parent,
-        same_as_seen=output_key in (seen_output_fingerprints or ()),
+        same_as_seen=output_key in seen_output_fingerprints,
         fingerprint_changed=not same_as_parent,
     )
 
@@ -82,44 +83,25 @@ def _validate_candidate(candidate: Dict[str, Any]) -> None:
 
 
 def _evaluation_key(candidate: Dict[str, Any], *, objective_name: str) -> Tuple[Any, ...]:
-    raw_metrics = candidate.get("metrics")
-    metrics = _objective_metric_signature(raw_metrics, objective_name=objective_name)
-    summary = candidate.get("summary")
-    completion = getattr(raw_metrics, "completion", None)
-    completion_summary = (None if completion is None else (
+    metrics: ScheduleMetrics = candidate["metrics"]
+    metric_signature = _objective_metric_signature(metrics, objective_name=objective_name)
+    summary: ScheduleSummary = candidate["summary"]
+    completion = metrics.completion
+    completion_summary = (
         completion.expected_operation_count, completion.missing_operation_count,
         completion.unexpected_result_count, completion.complete_batch_count,
         completion.objective_scope, completion.components_known,
-    ))
+    )
     entry_id = candidate.get("_shared_entry_id")
     if type(entry_id) is not int:
         raise ValidationError("候选结果须先取得共享档案身份。", field="candidate_fingerprint")
-    return (entry_id, str(objective_name),
-            (bool(getattr(summary, "success", False)),
-             _non_negative_int(getattr(summary, "total_ops", 0)),
-             _non_negative_int(getattr(summary, "scheduled_ops", 0)),
-             _non_negative_int(getattr(summary, "failed_ops", 0))),
-            completion_summary, tuple(metrics.items()), _score_tuple(candidate.get("score")))
+    return (entry_id, objective_name,
+            (summary.success, summary.total_ops, summary.scheduled_ops, summary.failed_ops),
+            completion_summary, tuple(metric_signature.items()), _score_tuple(candidate.get("score")))
 
 
-def _objective_metric_signature(metrics: Any, *, objective_name: str) -> Dict[str, Any]:
-    out: Dict[str, Any] = {}
-    for key in objective_metric_keys(objective_name):
-        if hasattr(metrics, key):
-            out[str(key)] = _finite_float(getattr(metrics, key), field_name=str(key))
-    return out
-
-
-def _non_negative_int(value: Any) -> int:
-    if isinstance(value, bool):
-        raise ValidationError("候选结果整数值须使用数字。", field="candidate_fingerprint")
-    try:
-        number = int(value or 0)
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise ValidationError(f"候选内容字段必须是非负整数：{value!r}", field="candidate_fingerprint") from exc
-    if number < 0:
-        raise ValidationError(f"候选内容字段必须是非负整数：{value!r}", field="candidate_fingerprint")
-    return number
+def _objective_metric_signature(metrics: ScheduleMetrics, *, objective_name: str) -> Dict[str, Any]:
+    return {key: _finite_float(getattr(metrics, key), field_name=key) for key in objective_metric_keys(objective_name)}
 
 
 def _finite_float(value: Any, *, field_name: str) -> float:

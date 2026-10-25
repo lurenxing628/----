@@ -10,6 +10,7 @@ from core.services.scheduler.execution.execution_snapshot import (
     ExecutionSnapshot,
     build_execution_snapshot,
 )
+from core.services.scheduler.repository_bundle import ScheduleRepositoryBundle
 
 
 def execution_conflict(reason: str) -> AppError:
@@ -36,21 +37,20 @@ def _validate_event_plan_identities(capture) -> None:
 def resource_execution_snapshot(
     facts: Dict[int, ExecutionFact], plan_rows: Dict[int, Dict[str, Any]],
 ) -> ExecutionSnapshot:
-    return build_execution_snapshot(facts, sorted(facts), plan_rows=plan_rows)
+    return build_execution_snapshot(facts, plan_rows=plan_rows)
 
 
 def collect_resource_execution_facts(
-    svc: Any, *, prev_version: int,
+    svc: ScheduleRepositoryBundle, *, prev_version: int,
     execution_projections: Optional[Sequence[ExecutionProjection]] = None,
     capture, ledger=None,
 ) -> Tuple[Dict[int, ExecutionFact], Dict[int, Dict[str, Any]], ExecutionSnapshot]:
     try:
         _validate_event_plan_identities(capture)
         plan_rows = capture.latest_plan_rows(prev_version)
-        facts = ExecutionFactProvider(svc.conn, logger=getattr(svc, "logger", None), capture=capture, ledger=ledger).facts_by_op_id_for_plan_rows(
+        facts = ExecutionFactProvider(svc.conn, capture=capture, ledger=ledger).facts_by_op_id_for_plan_rows(
             list(plan_rows.values()),
             {"source_table": SOURCE_SCHEDULE, "effective_plan_role": ROLE_ADOPTED, "scenario_id": None},
-            include_op_ids=sorted(plan_rows),
             execution_projections=execution_projections,
         )
         snapshot = resource_execution_snapshot(facts, plan_rows)

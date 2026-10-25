@@ -78,10 +78,12 @@ def test_projection_reads_reject_missing_rows_unknown_versions_and_duplicate_jso
 
     for row in (None, {"projection_version": "future-version", "summary_json": "{}"},
                 {"projection_version": "decision-read-v1", "summary_json": None},
-                {"projection_version": "decision-read-v1", "summary_json": '{"label":"a","label":"b"}'}):
+                {"projection_version": "decision-read-v1", "summary_json": '{"label":"a","label":"b"}'},
+                {"projection_version": "decision-read-v1", "summary_json": '{"label":NaN}'},
+                {"projection_version": "decision-read-v1", "summary_json": '{"label":1e999}'}):
         with pytest.raises(WorkbenchCommandRejected) as failure:
             decode_model(row, ("summary",))
-        assert failure.value.code == "candidate_artifact_invalid"
+        assert (failure.value.code, failure.value.status) == ("candidate_artifact_invalid", 500)
     result = decode_model({"projection_version": "decision-read-v1", "delivery_detail_json": "[]", "process_json": None},
                           ("delivery_detail", "process"))
     assert result == {"delivery_detail": [], "process": None}

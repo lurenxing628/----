@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from core.algorithm_runtime.dispatch_context import DispatchContextContractError
 from core.algorithm_runtime.piece_input import operation_dispatch_state
@@ -10,17 +10,22 @@ from core.algorithm_runtime.run_state import ScheduleRunState
 from core.errors import ValidationError
 
 from .batch_order import schedule_op
-from .sgs_graph import apply_graph_failure_bookkeeping, graph_op_id, mark_graph_operation_completed
+from .sgs_graph import mark_graph_operation_completed
+from .sgs_graph_failure import apply_graph_failure_bookkeeping
+
+if TYPE_CHECKING:
+    from core.algorithm_contracts.types import OpForScheduleAlgo
+    from core.models.batch import Batch
 
 
 def _dispatch_selected(
     ctx: Any,
     state: ScheduleRunState,
-    op: Any,
+    op: OpForScheduleAlgo,
     batch_id: str,
-    batches: Dict[str, Any],
+    batches: Dict[str, Batch],
     next_idx: Dict[str, int],
-    ops_by_batch: Dict[str, List[Any]],
+    ops_by_batch: Dict[str, List[OpForScheduleAlgo]],
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     auto_assign_enabled: bool,
@@ -49,10 +54,9 @@ def _dispatch_selected(
             state.record_dispatch_success(result)
             next_idx[batch_id] += 1
             if graph_state is not None:
-                op_id = graph_op_id(op)
                 if "end_time_by_op_id" in graph_state:
-                    graph_state["end_time_by_op_id"][op_id] = result.end_time
-                mark_graph_operation_completed(graph_state, op_id)
+                    graph_state["end_time_by_op_id"][op.id] = result.end_time
+                mark_graph_operation_completed(graph_state, op.id)
         else:
             extra_failed_count = 0
             if graph_state is None:
@@ -64,7 +68,7 @@ def _dispatch_selected(
                     state,
                     graph_state=graph_state,
                     batch_id=batch_id,
-                    failed_op_id=graph_op_id(op),
+                    failed_op_id=op.id,
                     ops_by_batch=ops_by_batch,
                 )
             state.record_dispatch_failure(
@@ -87,7 +91,7 @@ def _dispatch_selected(
                 state,
                 graph_state=graph_state,
                 batch_id=batch_id,
-                failed_op_id=graph_op_id(op),
+                failed_op_id=op.id,
                 ops_by_batch=ops_by_batch,
             )
         for skipped_op in skipped_ops:
@@ -97,5 +101,7 @@ def _dispatch_selected(
         state.blocked_batches.add(batch_id)
 
 
-def _remaining_ops_after(batch_id: str, next_idx: Dict[str, int], ops_by_batch: Dict[str, List[Any]]) -> List[Any]:
+def _remaining_ops_after(
+    batch_id: str, next_idx: Dict[str, int], ops_by_batch: Dict[str, List[OpForScheduleAlgo]],
+) -> List[OpForScheduleAlgo]:
     return ops_by_batch[batch_id][next_idx[batch_id] + 1 :]

@@ -40,6 +40,6 @@ def parse_local_datetime(value: Any) -> Optional[datetime]:
 
 def format_local_datetime(value: datetime) -> str:
     """Preserve old whole-second strings and all six digits when needed."""
-    if not isinstance(value, datetime) or value.tzinfo is not None:
+    if value.tzinfo is not None:
         raise ValueError("Expected factory-local datetime")
     return value.isoformat(sep=" ")

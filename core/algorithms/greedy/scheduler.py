@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.algorithm_contracts.ordering import (
     build_batch_sort_inputs,
@@ -17,20 +17,21 @@ from core.algorithm_contracts.ordering import (
     operation_sort_key,
 )
 from core.algorithm_contracts.sort_strategies import SortStrategy, StrategyFactory
-from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
-from core.algorithm_runtime.algo_stats import ensure_algo_stats, increment_counter, make_algo_stats
+from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult, ScheduleSummary
+from core.algorithm_runtime.algo_stats import increment_counter, make_algo_stats
 from core.algorithm_runtime.checkpoint_calendar import checkpoint_calendar_signature
 from core.algorithm_runtime.native_snapshot import make_class_guard
 from core.algorithm_runtime.resource_quality import initialize_resource_quality
 from core.algorithm_runtime.run_state import ScheduleRunState
-from core.errors import ValidationError
+from core.algorithms.greedy.dispatch.batch_order import dispatch_batch_order
+from core.algorithms.greedy.dispatch.sgs import dispatch_sgs
+from core.models.batch import Batch
 
 from . import internal_operation
 from .auto_assign import (
     auto_assign_internal_resources_attempt,
     native_auto_assign_unchanged,
 )
-from .dispatch import dispatch_batch_order, dispatch_sgs
 from .dispatch.route import dispatch_run
 from .dispatch.sgs_checkpoint import DecodeCheckpoint, DecodeCheckpointRequest, decode_input_signature
 from .dispatch.sgs_decode_acceleration import dispatch_certificate, pristine_functions
@@ -44,29 +45,31 @@ from .external_groups import schedule_external
 from .internal_operation import schedule_internal_operation
 from .run_context import ScheduleRunContext
 from .run_state_setup import prepare_run_state, replay_resumed_demand, resume_run_state
-from .schedule_params import resolve_schedule_params
+from .schedule_params import ScheduleParams, resolve_schedule_params
 from .schedule_preparation import NativeSchedulePreparation
-from .seed import identity_int, normalize_seed_results
+from .seed import normalize_seed_results
 
 __all__ = ["GreedyScheduler"]
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class GreedyScheduler:
     """贪心排产算法（可由服务层注入日历与配置）。"""
 
-    def __init__(self, calendar_service, config_service=None, logger: Optional[logging.Logger] = None):
+    def __init__(self, calendar_service, config_service=None):
         self.calendar = calendar_service
         self.config = config_service
-        self.logger = logger or logging.getLogger(__name__)
-        self._last_algo_stats = make_algo_stats()
+        # 本次解码的降级统计由调度器自己持有；每次解码开头重建，优化器与测试读取这里。
+        self.last_algo_stats = make_algo_stats()
         self._decode_invocations = 0
         self._last_sgs_score_cache_stats = sgs_score_cache_stats(None)
         self._active_preparation: Optional[NativeSchedulePreparation] = None
 
     def schedule(
         self,
-        operations: List[Any],
-        batches: Dict[str, Any],
+        operations: List[OpForScheduleAlgo],
+        batches: Dict[str, Batch],
         strategy: Optional[SortStrategy] = None,
         strategy_params: Optional[Dict[str, Any]] = None,
         start_dt: Any = None,
@@ -87,7 +90,7 @@ class GreedyScheduler:
         params = resolve_schedule_params(
             config=self.config, strategy=strategy, strategy_params=strategy_params, start_dt=start_dt, end_date=end_date,
             dispatch_mode=dispatch_mode, dispatch_rule=dispatch_rule, resource_pool=resource_pool,
-            strict_mode=strict_mode, algo_stats=self._last_algo_stats,
+            strict_mode=strict_mode, algo_stats=self.last_algo_stats,
         )
         preparation = prepare_native_schedule_inputs(
             machine_downtimes, scheduler=self, operations=operations, batches=batches,
@@ -114,15 +117,15 @@ class GreedyScheduler:
         return self._decode_prepared(prepared_inputs, **changes)
 
     def _decode_prepared(
-        self, prepared_inputs: NativeSchedulePreparation, *, params: Any, batch_order: Dict[str, int],
-        operations: Any = None, resource_pool: Any = None, graph_ready_context: Any = None,
+        self, prepared_inputs: NativeSchedulePreparation, *, params: ScheduleParams, batch_order: Dict[str, int],
+        operations: Optional[List[OpForScheduleAlgo]] = None, resource_pool: Any = None, graph_ready_context: Any = None,
         readiness_gate_enabled: bool = False, strict_mode: bool = False, graph_enabled: bool = True,
         decode_resume: Optional[DecodeCheckpoint] = None,
         decode_checkpoints: Optional[DecodeCheckpointRequest] = None,
     ) -> Tuple[List[ScheduleResult], ScheduleSummary, SortStrategy, Dict[str, Any]]:
         """Decode already prepared run facts; candidate arguments only supply changes."""
         t0 = self._decode_started_at
-        algo_stats = ensure_algo_stats(self)
+        algo_stats = self.last_algo_stats
         self._active_preparation = prepared_inputs
         algo_stats["param_fallbacks"].update(params.param_fallbacks)
         for bucket, values in prepared_inputs.algo_stats.items():
@@ -192,42 +195,40 @@ class GreedyScheduler:
         )
         self._last_sgs_score_cache_stats = sgs_score_cache_stats(ctx.sgs_score_cache)
         summary = _build_summary(state=state, warnings=warnings, sorted_ops=sorted_ops, duration=(datetime.now() - t0).total_seconds())
-        self.logger.info(f"排产结束：成功={summary.scheduled_ops}/{summary.total_ops} 失败={summary.failed_ops} 耗时={summary.duration_seconds:.2f}s")
+        _LOGGER.info(f"排产结束：成功={summary.scheduled_ops}/{summary.total_ops} 失败={summary.failed_ops} 耗时={summary.duration_seconds:.2f}s")
         return state.results, summary, params.strategy, params.used_params
 
     def _reset_algo_stats(self) -> None:
-        self._last_algo_stats = make_algo_stats()
+        self.last_algo_stats = make_algo_stats()
 
-    def _log_start(self, *, batches: Dict[str, Any], sorted_ops: List[Any], params: Any) -> None:
+    def _log_start(self, *, batches: Dict[str, Batch], sorted_ops: List[OpForScheduleAlgo], params: ScheduleParams) -> None:
         sorter = StrategyFactory.create(params.strategy, **params.used_params)
         extra = f" 派工=sgs({params.dispatch_rule_spec.token})" if params.dispatch_mode_key == "sgs" else ""
-        self.logger.info(f"排产开始：批次数={len(batches)} 工序数={len(sorted_ops)} 策略={sorter.get_name()}{extra}")
+        _LOGGER.info(f"排产开始：批次数={len(batches)} 工序数={len(sorted_ops)} 策略={sorter.get_name()}{extra}")
 
     def _schedule_external(
         self,
-        op: Any,
+        op: OpForScheduleAlgo,
         batch_progress: Dict[str, datetime],
         external_group_cache: Dict[Tuple[str, ...], Tuple[datetime, datetime]],
         base_time: datetime,
         errors: List[str],
         end_dt_exclusive: Optional[datetime],
-        strict_mode: bool = False,
     ) -> Tuple[Optional[ScheduleResult], bool]:
         return schedule_external(
-            self,
+            calendar=self.calendar,
             op=op,
             batch_progress=batch_progress,
             external_group_cache=external_group_cache,
             base_time=base_time,
             errors=errors,
             end_dt_exclusive=end_dt_exclusive,
-            strict_mode=strict_mode,
         )
 
     def _schedule_internal(
         self,
-        op: Any,
-        batch: Any,
+        op: OpForScheduleAlgo,
+        batch: Batch,
         batch_progress: Dict[str, datetime],
         machine_timeline: Dict[str, List[Tuple[datetime, datetime]]],
         operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],
@@ -245,7 +246,7 @@ class GreedyScheduler:
     ) -> Tuple[Optional[ScheduleResult], bool]:
         return schedule_internal_operation(
             calendar=self.calendar,
-            algo_stats=self._last_algo_stats,
+            algo_stats=self.last_algo_stats,
             auto_assign_resources=self._auto_assign_internal_resources_attempt,
             op=op,
             batch=batch,
@@ -268,8 +269,8 @@ class GreedyScheduler:
     def _auto_assign_internal_resources_attempt(
         self,
         *,
-        op: Any,
-        batch: Any,
+        op: OpForScheduleAlgo,
+        batch: Batch,
         batch_progress: Dict[str, datetime],
         machine_timeline: Dict[str, List[Tuple[datetime, datetime]]],
         operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],
@@ -282,9 +283,11 @@ class GreedyScheduler:
         operator_busy_hours: Dict[str, float],
         probe_only: bool = False,
     ):
+        preparation = self._active_preparation
+        assert preparation is not None, "自动派工只在已准备好的解码内调用"
         return auto_assign_internal_resources_attempt(
             calendar=self.calendar,
-            algo_stats=self._last_algo_stats,
+            algo_stats=self.last_algo_stats,
             op=op,
             batch=batch,
             batch_progress=batch_progress,
@@ -298,8 +301,8 @@ class GreedyScheduler:
             machine_busy_hours=machine_busy_hours,
             operator_busy_hours=operator_busy_hours,
             probe_only=probe_only,
-            resource_preparation=self._active_preparation,
-            total_hours_by_op_id=self._active_preparation.total_hours_by_op_id if self._active_preparation is not None else None,
+            resource_preparation=preparation,
+            total_hours_by_op_id=preparation.total_hours_by_op_id,
         )
 
 
@@ -314,8 +317,8 @@ def _normalize_machine_downtimes(machine_downtimes: Optional[Dict[str, List[Tupl
 
 
 def prepare_native_schedule_inputs(
-    machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]], *, scheduler: Any,
-    operations: Any, batches: Any, seed_results: Any = None,
+    machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]], *, scheduler: GreedyScheduler,
+    operations: List[OpForScheduleAlgo], batches: Dict[str, Batch], seed_results: Optional[List[ScheduleResult]] = None,
     resource_pool: Any = None, graph_ready_context: Any = None,
 ) -> NativeSchedulePreparation:
     from .dispatch.sgs_graph import (
@@ -344,7 +347,7 @@ def prepare_native_schedule_inputs(
 
     seed_applications, external_seed_cache = [], {}
     for seed in normalized_seeds or ():
-        occupies = str(seed.source or "").strip().lower() == INTERNAL and not point_seed_valid(seed)
+        occupies = seed.source == INTERNAL and not point_seed_valid(seed)
         seed_applications.append((seed_result_for_output(seed), normalize_text_id(seed.machine_id) if occupies else "",
                                   normalize_text_id(seed.operator_id) if occupies else "",
                                   seed_resource_segments(seed) if occupies else None))
@@ -390,8 +393,8 @@ def prepare_native_schedule_inputs(
 
 
 def build_batch_order(
-    batches: Dict[str, Any],
-    params: Any,
+    batches: Dict[str, Batch],
+    params: ScheduleParams,
     *,
     batch_order_override: Optional[List[str]],
     readiness_gate_enabled: bool,
@@ -414,7 +417,7 @@ def build_batch_order(
     return {batch_id: index for index, batch_id in enumerate(override_order)}
 
 
-def _normalize_seed_inputs(seed_results: Optional[List[ScheduleResult]], operations: List[Any], *, warnings: List[str], algo_stats: Dict[str, Any]) -> Tuple[Optional[List[ScheduleResult]], set]:
+def _normalize_seed_inputs(seed_results: Optional[List[ScheduleResult]], operations: List[OpForScheduleAlgo], *, warnings: List[str], algo_stats: Dict[str, Any]) -> Tuple[Optional[List[ScheduleResult]], Set[int]]:
     if not seed_results:
         return seed_results, set()
     normalized_seed, seed_op_ids, seed_warnings = normalize_seed_results(seed_results=seed_results, operations=operations, algo_stats=algo_stats)
@@ -422,27 +425,12 @@ def _normalize_seed_inputs(seed_results: Optional[List[ScheduleResult]], operati
     return normalized_seed, seed_op_ids
 
 
-def _drop_seeded_operations(operations: List[Any], seed_op_ids: set) -> Tuple[List[Any], int]:
-    filtered = []
-    dropped = 0
-    for op in operations:
-        op_id = _operation_op_id(op)
-        if op_id and op_id in seed_op_ids:
-            dropped += 1
-            continue
-        filtered.append(op)
-    return filtered, dropped
+def _drop_seeded_operations(operations: List[OpForScheduleAlgo], seed_op_ids: Set[int]) -> Tuple[List[OpForScheduleAlgo], int]:
+    filtered = [op for op in operations if op.id not in seed_op_ids]
+    return filtered, len(operations) - len(filtered)
 
 
-def _operation_op_id(op: Any) -> int:
-    raw_id = getattr(op, "id", 0)
-    op_id = identity_int(raw_id)
-    if op_id <= 0:
-        raise ValidationError(f"待排工序编号不合法：{raw_id!r}", field="operations")
-    return op_id
-
-
-def _build_summary(*, state: ScheduleRunState, warnings: List[str], sorted_ops: List[Any], duration: float) -> ScheduleSummary:
+def _build_summary(*, state: ScheduleRunState, warnings: List[str], sorted_ops: List[OpForScheduleAlgo], duration: float) -> ScheduleSummary:
     total_ops = len(sorted_ops) + state.seed_count
     return ScheduleSummary(
         success=(state.failed_count == 0),

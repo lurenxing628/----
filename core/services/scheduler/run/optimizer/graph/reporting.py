@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
-from core.algorithms import SortStrategy
+from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.services.scheduler.run.optimizer.attempt_records import (
     append_rejected_reason_attempt,
     attempt_decision_evidence,
@@ -24,12 +24,12 @@ def append_graph_attempt(
     attempts.append(
         {
             "tag": _tag(candidate, profile),
-            "strategy": _strategy_value(candidate.get("strategy")),
+            "strategy": candidate["strategy"].value,
             "dispatch_mode": "sgs",
             "dispatch_rule": candidate["dispatch_rule"],
             "used_params": dict(candidate["params"]),
             "score": list(candidate["score"]),
-            "failed_ops": int(candidate["summary"].failed_ops),
+            "failed_ops": candidate["summary"].failed_ops,
             "metrics": metrics.to_dict(),
             "candidate_status": "evaluated",
             "candidate_origin": profile.candidate_origin,
@@ -54,7 +54,7 @@ def append_graph_trace(
         {
             "elapsed_ms": int((clock() - t_begin) * 1000),
             "tag": _tag(candidate, profile),
-            "strategy": _strategy_value(candidate.get("strategy")),
+            "strategy": candidate["strategy"].value,
             "dispatch_mode": "sgs",
             "dispatch_rule": candidate["dispatch_rule"],
             "score": list(candidate["score"]),
@@ -70,42 +70,32 @@ def record_rejected_attempt(
     dispatch_rule: str,
     reason: str,
     message: str,
-    profile_slug: str = "",
+    profile_slug: str,
 ) -> None:
     append_rejected_reason_attempt(
         attempts=attempts,
-        tag=f"graph_ready:{profile_slug or 'profile'}|sgs:{dispatch_rule}",
-        strategy=str(getattr(strategy, "value", strategy) or ""),
+        tag=f"graph_ready:{profile_slug}|sgs:{dispatch_rule}",
+        strategy=strategy.value,
         dispatch_mode="sgs",
-        dispatch_rule=str(dispatch_rule or ""),
-        reason=str(reason or "graph_ready_candidate_rejected"),
-        message=str(message or ""),
+        dispatch_rule=dispatch_rule,
+        reason=reason,
+        message=message,
     )
 
 
-def public_params(params: Any) -> Dict[str, Any]:
-    if not isinstance(params, dict):
-        return {}
+def public_params(params: Dict[str, Any]) -> Dict[str, Any]:
     out = dict(params)
+    # The weighted strategy rebuilds its parameters, so only other strategies carry the profile.
     profile = out.get("graph_ready_profile")
-    if isinstance(profile, dict):
+    if profile is not None:
         out["graph_ready_profile"] = _public_profile(profile)
     return out
 
 
 def _public_profile(profile: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "schema_version": int(profile.get("schema_version") or 1),
-        "candidate_origin": str(profile.get("candidate_origin") or ""),
-        "weight_profile_slug": str(profile.get("weight_profile_slug") or ""),
-        "candidate_policy": str(profile.get("candidate_policy") or ""),
-        "max_weight_profiles": int(profile.get("max_weight_profiles") or 0),
-    }
+    return {key: profile[key] for key in (
+        "schema_version", "candidate_origin", "weight_profile_slug", "candidate_policy", "max_weight_profiles")}
 
 
 def _tag(candidate: Dict[str, Any], profile: GraphReadyWeightProfile) -> str:
-    return f"graph_ready:{profile.slug}|sgs:{candidate.get('dispatch_rule')}"
-
-
-def _strategy_value(strategy: Any) -> str:
-    return str(getattr(strategy, "value", strategy) or "")
+    return f"graph_ready:{profile.slug}|sgs:{candidate['dispatch_rule']}"

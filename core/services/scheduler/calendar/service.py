@@ -27,6 +27,10 @@ class CalendarService:
         self._admin = CalendarAdmin(conn, logger=logger)
         self._engine = CalendarEngine(conn, logger=logger, capture=capture)
 
+    def normalization_operation(self):
+        """One calendar-row normalization operation; workday defaults come from this service's engine."""
+        return self._admin.normalization_operation(self._engine.default_periods)
+
     def policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:
         return self._engine.policy_for_datetime(dt, operator_id=operator_id)
 
@@ -58,7 +62,7 @@ class CalendarService:
     ) -> datetime:
         return self._engine.add_effective_hours(start, hours, priority=priority, machine_id=machine_id, operator_id=operator_id)
 
-    def add_calendar_days(self, start: datetime, days: float, machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> datetime:
+    def add_calendar_days(self, start: datetime, days: Optional[float], machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> datetime:
         return self._engine.add_calendar_days(start, days, machine_id=machine_id, operator_id=operator_id)
 
     def working_hours_between(

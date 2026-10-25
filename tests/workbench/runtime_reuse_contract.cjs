@@ -369,7 +369,7 @@ async function main() {
   }
 
   {
-  const fileHooks = hooks(), command = { phase: 'idle', locked: false }, preview = { can_confirm: true, preview_ref: 'preview', write_context: {}, rows: [], summary: { total: 3, changed: 3 } };
+  const fileHooks = hooks(), command = { phase: 'idle', locked: false, clearRejection: () => false }, preview = { can_confirm: true, preview_ref: 'preview', write_context: {}, rows: [], summary: { total: 3, changed: 3 } };
   const fileWindow = { FieldContract: { query: value => value, blocked: () => '' }, FieldControls: { Button: 'button', Modal: 'modal', ErrorBox: 'error', Feedback: 'feedback' } };
   const fileContext = vm.createContext({ window: fileWindow, React: fileHooks.React, AbortController }); load(fileContext, 'FieldFiles.jsx');
   const fileProps = { adapter: { previewFile: async () => ({ data: preview }) }, command, scope: {}, snapshot: 'snapshot' };
@@ -534,7 +534,7 @@ async function main() {
     for (const name of ['resource-contract.js', 'resource-session.js', 'ResourceForms.jsx', 'ResourceWorkspace.jsx']) load(context, name);
     localWindow.APSResourceSession.useCounts = () => ({ summary: { reload() {} } });
     const ref = '3'.repeat(48), supplierRef = '4'.repeat(48), requests = [], details = [], saved = [], writes = [];
-    const writeContext = { write_token: 'op-type-token', capabilities: { 'op_type.create': true, 'op_type.update': true, 'op_type.delete': true } };
+    const writeContext = { write_token: 'op-type-token', capabilities: { 'op_type.create': true, 'op_type.update': true, 'op_type.delete': true }, blocked_reasons: [] };
     const makeEntity = (kind, fields = {}) => ({ ref: kind === 'supplier' ? supplierRef : ref, business_code: kind === 'supplier' ? 'SUPPLIER' : 'F01-BOTH',
       label: kind === 'supplier' ? '供应商' : '两用工种', status: kind === 'supplier' ? 'active' : null, fields, relationships: {}, issues: [], write_context: writeContext });
     let entity = existing ? makeEntity('op_type', { category: 'both', default_merge_mode: 'separate', remark: '原备注' }) : null;
@@ -640,6 +640,20 @@ async function main() {
     assert.strictEqual(dropped.error, rejection); assert.deepEqual(cleared, ['failed', 'failed', 'cleared', 'cleared']);
     assert.equal(dropped.reset(), true); assert.deepEqual(cleared, ['failed', 'failed', 'cleared', 'cleared']); assert.deepEqual(lookups, []);
     clearedHooks.unmount();
+
+    // Editing input clears an ordinary rejection; a stale one waits for refreshed data unless a fresh preview replaces the write basis.
+    const staleRejection = { ok: false, committed: false, error: { code: 'stale_write', message: '本页数据已过期。' } };
+    for (const [response, stale] of [[rejection, false], [staleRejection, true]]) {
+      const editHooks = hooks(), editAdapter = { ...commandAdapter, async command() { return response; } }; commandContext.React = editHooks.React;
+      const useEdited = () => editHooks.render(() => commandWindow.APSResourceSession.useCommand(editAdapter));
+      useEdited(); editHooks.flush();
+      assert.equal(useEdited().clearRejection(), false, 'An idle command has no rejection to clear');
+      await useEdited().submit('machine', 'create', null, { write_token: 'token' }, { label: '设备' });
+      assert.equal(useEdited().phase, 'rejected'); assert.equal(useEdited().stale, stale);
+      assert.equal(useEdited().clearRejection(), !stale); assert.equal(useEdited().phase, stale ? 'rejected' : 'idle');
+      if (stale) { assert.equal(useEdited().clearRejection({ includeStale: true }), true); assert.equal(useEdited().phase, 'idle'); }
+      editHooks.unmount();
+    }
   }
 
   const modelContext = vm.createContext({ window: { WorkbenchFormat: {}, FieldContract: { quantityReasons: {}, states: {} } } });
@@ -1324,7 +1338,7 @@ async function main() {
   const field = fieldContext.window.FieldDraftModel, contract = fieldContext.window.FieldContract;
   const legacy = { legacy_fact_ref: 'selected-finish', event_type: 'finish', recorded_against_task_ref: 'selected-plan', event_time: '2026-09-09  10:00', quantity_done: 10 };
   const legacyTask = { task_ref: 'current-task', operation_ref: 'current-operation', plan_ref: 'current-plan', execution: {
-    first_actual_start: '2026-09-01T00:00:00', known_completed_quantity: 10, target_quantity: 10, remaining_quantity: 0, unknown_record_count: 0, data_gaps: [], legacy_facts: [
+    write_context: { write_token: null, capabilities: {}, blocked_reasons: [] }, first_actual_start: '2026-09-01T00:00:00', known_completed_quantity: 10, target_quantity: 10, remaining_quantity: 0, unknown_record_count: 0, data_gaps: [], legacy_facts: [
       { legacy_fact_ref: 'other-start', event_type: 'start', recorded_against_task_ref: 'other-plan', event_time: '2026-09-01 00:00:00', actual_machine_ref: 'other-machine', actual_operator_ref: 'other-operator' },
       { legacy_fact_ref: 'selected-start', event_type: 'start', recorded_against_task_ref: 'selected-plan', event_time: '2026-09-08  08:00', actual_machine_ref: 'original-machine', actual_operator_ref: 'original-operator' },
       legacy
@@ -1422,7 +1436,7 @@ async function main() {
   const prepareLegacyValues = field.legacyValues;
   field.legacyValues = (...args) => { legacyPreparations++; return prepareLegacyValues(...args); };
   legacyTask.execution.legacy_facts.filter = function (...args) { legacyScopeScans++; return Array.prototype.filter.apply(this, args); };
-  const editorProps = { task: legacyTask, record: null, legacy, action: 'create', adapter: {}, command: { phase: 'editing', locked: false } };
+  const editorProps = { task: legacyTask, record: null, legacy, action: 'create', adapter: {}, command: { phase: 'editing', locked: false, clearRejection: () => false } };
   const renderLegacyEditor = () => fieldHooks.render(() => fieldContext.window.FieldEditor(editorProps));
   const editorTree = renderLegacyEditor(), editorFields = find(editorTree, fieldContext.window.FieldEditorFields);
   find(editorTree, 'form').ref.current = { scrollIntoView() {}, querySelector: () => ({ focus() { editableFocuses++; } }) };

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable, List, Optional, Tuple
-
-from core.models import ScheduleConfig
+from typing import Iterable, Optional, Tuple
 
 from .base_repo import BaseRepository
 
@@ -17,12 +15,6 @@ class ConfigRepository(BaseRepository):
             default=None,
         )
         return str(val) if val is not None else None
-
-    def list_all(self) -> List[ScheduleConfig]:
-        rows = self.fetchall(
-            "SELECT id, config_key, config_value, description, updated_at FROM ScheduleConfig ORDER BY config_key"
-        )
-        return [ScheduleConfig.from_row(r) for r in rows]
 
     def count_all(self) -> int:
         return int(self.fetchvalue("SELECT COUNT(1) FROM ScheduleConfig"))

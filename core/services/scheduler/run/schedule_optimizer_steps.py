@@ -4,10 +4,9 @@ import time
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
-from core.algorithms import SortStrategy
+from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithms.evaluation import objective_score
 from core.errors import ValidationError
-from core.services.scheduler.contracts.scheduler_like import SchedulerLike
 
 from .optimizer.config import (
     ensure_optimizer_config_snapshot,
@@ -35,7 +34,6 @@ def _solve_ortools_order(
     algo_ops_to_schedule: List[Any],
     batches: Dict[str, Any],
     start_dt: datetime,
-    logger: Any,
     order_time_budget_seconds: Optional[float] = None,
 ) -> Optional[List[str]]:
     from core.algorithms.ortools_bottleneck import try_solve_bottleneck_batch_order
@@ -56,7 +54,6 @@ def _solve_ortools_order(
         batches=batches,
         start_dt=start_dt,
         time_limit_seconds=tl,
-        logger=logger,
     )
 
 
@@ -150,7 +147,6 @@ def run_ortools_warmstart(
     strategy_enum: SortStrategy,
     objective_name: str,
     deadline: float,
-    scheduler: SchedulerLike,
     algo_ops_to_schedule: List[Any],
     batches: Dict[str, Any],
     start_dt: datetime,
@@ -162,8 +158,7 @@ def run_ortools_warmstart(
     improvement_trace: List[Dict[str, Any]],
     best: Optional[Dict[str, Any]],
     t_begin: float,
-    logger: Any,
-    optimizer_algo_stats: Optional[Dict[str, Any]] = None,
+    optimizer_algo_stats: Dict[str, Any],
     readiness_gate_enabled: bool = False,
     graph_ready_context: Optional[Any] = None,
     strict_mode: bool = False,
@@ -200,7 +195,6 @@ def run_ortools_warmstart(
             algo_ops_to_schedule=algo_ops_to_schedule,
             batches=batches,
             start_dt=start_dt,
-            logger=logger,
             order_time_budget_seconds=order_time_budget_seconds,
         )
     except ValidationError as e:
@@ -212,8 +206,6 @@ def run_ortools_warmstart(
             dispatch_mode=dispatch_mode_cfg,
             dispatch_rule=dispatch_rule_cfg,
             optimizer_algo_stats=optimizer_algo_stats,
-            scheduler=scheduler,
-            logger=logger,
             exc=e,
         )
         return best
@@ -227,8 +219,6 @@ def run_ortools_warmstart(
             dispatch_mode=dispatch_mode_cfg,
             dispatch_rule=dispatch_rule_cfg,
             optimizer_algo_stats=optimizer_algo_stats,
-            scheduler=scheduler,
-            logger=logger,
             exc=e,
         )
         return best
@@ -270,8 +260,6 @@ def run_ortools_warmstart(
             dispatch_mode=dispatch_mode_cfg,
             dispatch_rule=dispatch_rule_cfg,
             optimizer_algo_stats=optimizer_algo_stats,
-            scheduler=scheduler,
-            logger=logger,
             exc=e,
         )
         return best

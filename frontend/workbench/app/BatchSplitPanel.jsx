@@ -49,13 +49,13 @@
     return <section id="pf-material-split" className="pf-split-panel" aria-label="检查物料可做数量">
       <h3>检查物料可做数量</h3>
       <div className="toolbar"><Field label="本次先做数量（可留空）"><input inputMode="numeric" aria-label="本次先做数量" value={quantity} disabled={disabled || busy || command.locked}
-        onChange={e => { setQuantity(e.target.value); setPreview(null); setError(null); if (command.phase === 'rejected' && typeof command.reset === 'function') command.reset(); }} /></Field>
+        onChange={e => { setQuantity(e.target.value); setPreview(null); setError(null); command.clearRejection({ includeStale: true }); }} /></Field>
         <Button busy={busy} disabled={disabled || command.locked || refs.length !== 1} onClick={inspect}>查看可做数量</Button></div>
       <p>按排产开始日期 {day} 前的到料计算；数量留空时，查看物料最多够做多少件。查看数量不会修改批次。</p>
       {refs.length !== 1 && <p>请先选择一个要拆分的待排批次。</p>}
       <ErrorBox error={error} /><window.ResourceForms.Feedback command={command} />
-      {preview && ReactDOM.createPortal(<div className="plana"><Modal title="确认拆成两批" icon="box" guardOwner={owner} locked={command.locked} onClose={() => { if (!command.locked) { setPreview(null); if (command.phase === 'rejected' && typeof command.reset === 'function') command.reset(); } }}
-        footer={<><Button disabled={command.locked} onClick={() => { setPreview(null); if (command.phase === 'rejected' && typeof command.reset === 'function') command.reset(); }}>取消</Button><Button className="btn primary" disabled={disabled || command.locked}
+      {preview && ReactDOM.createPortal(<div className="plana"><Modal title="确认拆成两批" icon="box" guardOwner={owner} locked={command.locked} onClose={() => { if (!command.locked) { setPreview(null); command.clearRejection({ includeStale: true }); } }}
+        footer={<><Button disabled={command.locked} onClick={() => { setPreview(null); command.clearRejection({ includeStale: true }); }}>取消</Button><Button className="btn primary" disabled={disabled || command.locked}
           onClick={() => command.submit('batch', 'split_confirm', preview.entity_ref, preview.write_context, { preview_ref: preview.preview_ref })}>确认拆批并选择子批</Button></>}>
         <div className="modal-b"><p>{preview.source_code} 原有 {preview.original_quantity} 件：{preview.child_code} 先做 {preview.quantity} 件，原批保留 {preview.remaining_quantity} 件。</p>
           <div className="wb-table-frame"><table className="tbl wb-table" aria-label="拆分物料分配"><thead><tr><th>物料</th><th>子批需求</th><th>剩余需求</th><th>子批到料</th><th>剩余到料</th></tr></thead><tbody>

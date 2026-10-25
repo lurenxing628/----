@@ -200,7 +200,7 @@ def _result_text(detail: Dict[str, Any]) -> Dict[str, Any]:
     return values
 
 
-def _result_values(raw: str) -> Dict[str, Any]:
+def _result_values(raw: object) -> Dict[str, Any]:
     if not isinstance(raw, str) or len(raw) > _DETAIL_LIMIT:
         raise ValueError("Task result is not text or exceeds the metadata limit")
     detail = json.loads(raw)

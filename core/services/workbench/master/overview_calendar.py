@@ -1,10 +1,10 @@
 """Inspect stored global dates only, without filling defaults or extending a range."""
 
 import re
-from datetime import date
 
 from core.errors import ValidationError
 from core.models.calendar_periods import decode_periods, period_hours
+from core.services.workbench.facts.preflight_checks import stored_date
 
 from .overview_facts import plain
 from .overview_graph import number, text
@@ -23,11 +23,7 @@ def add_calendar(graph):
     for row in graph.facts.rows("WorkCalendar"):
         day = plain(row["date"])
         entity = graph.add("calendar", row["date"], day, "全局工作日历")
-        valid = False
-        try:
-            valid = isinstance(day, str) and date.fromisoformat(day).isoformat() == day
-        except (ValueError, TypeError):
-            pass
+        valid = stored_date(day) is not None
         graph.field(entity, "日期", day, "WorkCalendar.date", valid=valid)
         if not valid:
             graph.issue(entity, "calendar.date", "日历日期无效", "资料里记的日期是「" + text(day) + "」，不是年-月-日格式。")

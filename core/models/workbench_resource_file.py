@@ -2,7 +2,6 @@
 
 
 from core.errors import ValidationError
-from core.models.workbench_action_values import FileDownload
 from core.models.workbench_resource_action import action_kind, resource_scope
 from core.models.workbench_table_descriptor import (
     DEFAULT_IMPORT_BYTE_LIMIT,
@@ -90,7 +89,7 @@ _VALUE_HINTS = {
     "group_code": "设备组编号；要清除请填 \\N（大写）",
     "skill_codes": "多个工种编号用顿号分开，例如 OT1、OT2；留空保持，填清除表示移除全部技能",
     "shift_profile_code": "班次编号；要清除请填 \\N（大写）",
-    # 新增供应商时域层强制要大于 0 的默认周期（core/shared/value_policies.py 的 WRITE_REQUIRED），
+    # 新增供应商时域层强制要大于 0 的默认周期（core/models/workbench_supplier.py 的 create 校验），
     # 但这一列对已有供应商留空表示保持原样，所以列本身不是必填，必填只发生在新增那一行。
     "default_days": "默认周期天数，填大于 0 的数字；新增供应商必须填，已有的留空保持原样",
     "op_type_codes": "多个工种编号用顿号分开，例如 OT1、OT2；留空保持，填清除表示移除全部承接工种",
@@ -237,9 +236,6 @@ def import_request(kind, content, file_format, mode, scope):
     if kind == "op_type" and scope["category"] not in ("internal", "external"):
         raise ValidationError("工种导入必须明确自制或外协归属。", field="category")
     return {"format": file_format, "mode": mode, "scope": scope}
-
-
-ResourceFileDownload = FileDownload
 
 
 #: 预检响应里的那段提示，和说明表的通用规则同一份来源。四类资源各有自己的列，规则也各是一份。

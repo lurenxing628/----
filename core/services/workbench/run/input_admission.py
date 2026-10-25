@@ -13,7 +13,7 @@ def candidate_admission_issues(conn, *, prepared):
     settings = prepared.settings
     try:
         if prepared.config_error is not None:
-            raise prepared.config_error
+            raise prepared.config_error.with_traceback(None)
         prepared.execution_projections = run_execution_projections(
             conn,
             settings,
@@ -26,7 +26,6 @@ def candidate_admission_issues(conn, *, prepared):
             conn,
             settings,
             prepared.execution_projections,
-            capture_fingerprint=False,
             facts=prepared.preflight_facts,
             config_snapshot=prepared.config_snapshot,
             baseline=prepared.baseline,

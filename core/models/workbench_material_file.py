@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import Any, Dict
 
 from core.errors import ValidationError
-from core.models.workbench_action_values import AtomicActionPreview, FileDownload
+from core.models.workbench_action_values import AtomicActionPreview
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_material_query import MaterialPageRequest
 from core.models.workbench_table_descriptor import DEFAULT_IMPORT_BYTE_LIMIT, UPSERT_ONLY
@@ -142,15 +142,12 @@ def check_preview(original: MaterialPreview, current: MaterialPreview):
         raise WorkbenchCommandRejected("constraint_conflict", "预检里有不通过的行，这一批没有写入任何数据。请改好后重新预检。")
 
 
-def preview_row(number, *, code=None, action=None, normalized=None, expected=None):
-    return {"row": number, "business_code": code, "action": action, "input": normalized,
-            "expected": expected, "result": "rejected", "changes": {}, "errors": [],
+def preview_row(number, *, action=None, normalized=None):
+    return {"row": number, "business_code": None, "action": action, "input": normalized,
+            "expected": None, "result": "rejected", "changes": {}, "errors": [],
             "requires_confirmation": False}
 
 
 def reject_row(row, message, *, field="business_code", code="invalid_input"):
     row["result"] = "rejected"
     row["errors"].append({"row": row["row"], "field": field, "code": code, "message": message})
-
-
-MaterialFileDownload = FileDownload

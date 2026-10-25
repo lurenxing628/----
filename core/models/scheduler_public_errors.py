@@ -63,7 +63,6 @@ _PATH_LIKE_RE = re.compile(
 LEGACY_PUBLIC_PATTERNS: Tuple[Pattern[str], ...] = (
     re.compile(rf"^自制工序未补全设备或人员，无法排产：工序 (?P<op>{_PUBLIC_ID_PATTERN})$"),
     re.compile(rf"^自制工序未补全设备或人员，而且系统自动分配失败：工序 (?P<op>{_PUBLIC_ID_PATTERN})$"),
-    re.compile(rf"^自制工序缺少自动派工所需工种信息，无法自动分配：工序 (?P<op>{_PUBLIC_ID_PATTERN})$"),
     re.compile(rf"^自动派工资料不完整，本次无法自动补齐设备和人员：工序 (?P<op>{_PUBLIC_ID_PATTERN})$"),
     re.compile(
         rf"^自动派工没有找到可用的设备和人员组合：工序 (?P<op>{_PUBLIC_ID_PATTERN})。"
@@ -74,7 +73,6 @@ LEGACY_PUBLIC_PATTERNS: Tuple[Pattern[str], ...] = (
         r"请检查排产截止日期设置或减少排产量后再排产。$"
     ),
     re.compile(_SGS_INTERNAL_RESOURCE_CONTEXT_PATTERN + _SGS_MISSING_RESOURCE_SUFFIX_PATTERN + "$"),
-    re.compile(_SGS_INTERNAL_RESOURCE_CONTEXT_PATTERN + r"缺少自动派工所需工种信息，请补齐工种或固定设备后再排产。$"),
     re.compile(_SGS_INTERNAL_RESOURCE_CONTEXT_PATTERN + r"自动派工资料不完整，请检查设备工种和人员可操作设备后再排产。$"),
     re.compile(_SGS_INTERNAL_RESOURCE_CONTEXT_PATTERN + r"工时不合法，请修正工时后再排产。$"),
     re.compile(
@@ -90,33 +88,24 @@ LEGACY_PUBLIC_PATTERNS: Tuple[Pattern[str], ...] = (
         rf"(?P<op>{_PUBLIC_ID_PATTERN})（批次 (?P<batch>{_PUBLIC_ID_PATTERN})）"
         rf"预计完工 {_DATE_PATTERN} {_TIME_PATTERN} 超出窗口$"
     ),
-    re.compile(
-        rf"^外部组合并周期未设置或不合法：批次 (?P<batch>{_PUBLIC_ID_PATTERN}) 组 (?P<group>{_PUBLIC_ID_PATTERN})"
-        r"(?: total_days=[^\r\n]{1,120})?$"
-    ),
 )
 
 _LEGACY_OPERATION_ERROR_PREFIXES: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("工时不合法：工序 ", (" 工时字段不合法：", " 工时总量不合法：")),
-    ("外协周期不合法：工序 ", (" ext_days=",)),
 )
 # 这些前缀表也是 legacy 中文错误串到公开错误码的反解桥;改中文模板时必须同步这里,
 # 否则 infer_legacy_public_code 会静默退回 scheduler_error,用户可见错误会丢失具体归类。
 _LEGACY_CODE_PREFIXES: Tuple[Tuple[str, str], ...] = (
     ("自制工序未补全设备或人员", "missing_internal_resource"),
-    ("自制工序缺少自动派工所需工种信息", "auto_assign_inputs_missing"),
     ("自动派工资料不完整", "auto_assign_resource_pool_incomplete"),
     ("自动派工没有找到可用的设备和人员组合", "auto_assign_no_resource_combination"),
     ("排产截止日期内无法完成：工序 ", "auto_assign_window_blocked"),
     ("排产窗口截止到 ", "schedule_window_exceeded"),
     ("工时不合法：工序 ", "invalid_internal_work_hours"),
-    ("外协周期不合法：工序 ", "invalid_external_days"),
-    ("外部组合并周期未设置或不合法：", "invalid_external_group_days"),
 )
 # 这些后缀表专门反解 scheduler_generate_schedule 的资源校验中文尾巴;
 # 改 internal_operation/resource_validation 模板时不要只改产出方。
 _SGS_AUTO_ASSIGN_SUFFIX_CODES: Tuple[Tuple[str, str], ...] = (
-    ("缺少自动派工所需工种信息，请补齐工种或固定设备后再排产。", "auto_assign_inputs_missing"),
     ("自动派工资料不完整，请检查设备工种和人员可操作设备后再排产。", "auto_assign_resource_pool_incomplete"),
     ("工时不合法，请修正工时后再排产。", "invalid_internal_work_hours"),
     (
@@ -156,11 +145,6 @@ def _clean_text(value: Any) -> str:
     return text
 
 
-def _clean_short_text(value: Any, *, max_chars: int = 120) -> str:
-    text = _clean_text(value)
-    return text[:max_chars]
-
-
 def _contains_sensitive_marker(text: str) -> bool:
     lower_text = str(text or "").lower()
     if any(marker in lower_text for marker in _SENSITIVE_ERROR_MARKERS):
@@ -187,24 +171,14 @@ def public_safe_label(value: Any, *, max_chars: int = 80) -> str:
     return full_text[:max_chars]
 
 
-def _positive_int(value: Any) -> int:
-    try:
-        number = int(value or 0)
-    except Exception:
-        return 0
-    return number if number > 0 else 0
-
-
 def make_public_error(
     *,
     code: str,
     message: str,
-    severity: str = "error",
     batch_id: Any = None,
-    op_id: Any = None,
+    op_id: Optional[int] = None,
     op_code: Any = None,
-    seq: Any = None,
-    missing_fields: Optional[List[str]] = None,
+    seq: Optional[int] = None,
     failed_op_code: Any = None,
 ) -> Dict[str, Any]:
     full_message = _clean_text(message)
@@ -213,8 +187,8 @@ def make_public_error(
         clean_message = GENERIC_PUBLIC_ERROR_MESSAGE
     item: Dict[str, Any] = {
         "schema_version": PUBLIC_ERROR_SCHEMA_VERSION,
-        "code": _clean_short_text(code, max_chars=80) or "scheduler_error",
-        "severity": _clean_short_text(severity, max_chars=20) or "error",
+        "code": code,
+        "severity": "error",
         "message": clean_message,
     }
 
@@ -228,17 +202,12 @@ def make_public_error(
     if safe_failed_op_code:
         item["failed_op_code"] = safe_failed_op_code
 
-    op_id_number = _positive_int(op_id)
-    if op_id_number > 0:
-        item["op_id"] = op_id_number
-    seq_number = _positive_int(seq)
-    if seq_number > 0:
-        item["seq"] = seq_number
-
-    if missing_fields:
-        fields = [str(v).strip() for v in missing_fields if str(v).strip() in {"设备", "人员"}]
-        if fields:
-            item["missing_fields"] = fields[:2]
+    # 结构化失败明细的 op_id/seq 由 ScheduleRunState._op_identity 取自已校验的工序（正整数）；
+    # 旧中文错误串路径不带工序身份，传 None。
+    if op_id is not None:
+        item["op_id"] = op_id
+    if seq is not None:
+        item["seq"] = seq
     return item
 
 
@@ -253,12 +222,7 @@ def legacy_public_error_message(raw: Any) -> str:
     legacy_operation_message = _legacy_operation_error_message(text)
     if legacy_operation_message:
         return legacy_operation_message
-    for pattern in LEGACY_PUBLIC_PATTERNS:
-        match = pattern.fullmatch(text)
-        if not match:
-            continue
-        if text.startswith("外部组合并周期未设置或不合法："):
-            return f"外部组合并周期未设置或不合法：批次 {match.group('batch')} 组 {match.group('group')}"
+    if any(pattern.fullmatch(text) for pattern in LEGACY_PUBLIC_PATTERNS):
         return text
     return ""
 

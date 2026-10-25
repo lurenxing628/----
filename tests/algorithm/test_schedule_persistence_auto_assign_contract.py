@@ -5,16 +5,18 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, Dict, Iterable, List, Optional, Set
 
 import pytest
 
+from core.algorithm_contracts.types import ScheduleResult
 from core.errors import ValidationError
 from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema
+from core.models.batch_operation import BatchOperation
 from core.services.scheduler.run.schedule_payload_contract import (
     build_validated_schedule_payload,
 )
+from tests._support.algo_operations import make_batch_operation, make_schedule_result
 from tests._support.migration_schema_helpers import load_legacy_migration_schema
 from tests._support.paths import REPO_ROOT
 
@@ -36,8 +38,8 @@ def _result(
     source: str = "internal",
     start_offset: int = 0,
     end_offset: int = 1,
-) -> SimpleNamespace:
-    return SimpleNamespace(
+) -> ScheduleResult:
+    return make_schedule_result(
         op_id=op_id,
         op_code=f"B001_{op_id:02d}",
         batch_id="B001",
@@ -51,8 +53,8 @@ def _result(
     )
 
 
-def _result_with_raw_op_id(raw_op_id: Any) -> SimpleNamespace:
-    return SimpleNamespace(
+def _result_with_raw_op_id(raw_op_id: Any) -> ScheduleResult:
+    return make_schedule_result(
         op_id=raw_op_id,
         op_code="B001_DIRTY",
         batch_id="B001",
@@ -66,9 +68,27 @@ def _result_with_raw_op_id(raw_op_id: Any) -> SimpleNamespace:
     )
 
 
+def _operations(sources: Dict[int, str]) -> List[BatchOperation]:
+    return [
+        make_batch_operation(id=op_id, op_code=f"B001_{op_id:02d}", batch_id="B001", seq=op_id, source=source)
+        for op_id, source in sorted(sources.items())
+    ]
+
+
+def _build_payload(results: List[Any], *, allowed_op_ids: Set[int], operations: List[BatchOperation]):
+    # 与生产 workbench/run/input 同口径：工序来源表由本次全部工序派生。
+    return build_validated_schedule_payload(
+        results,
+        allowed_op_ids=allowed_op_ids,
+        operations=operations,
+        operation_sources={op.id: op.source for op in operations},
+    )
+
+
 def _assert_validation_reason(results: List[Any], *, allowed_op_ids: Set[int], reason: str) -> Dict[str, Any]:
+    operations = _operations({op_id: "internal" for op_id in allowed_op_ids})
     with pytest.raises(ValidationError) as exc_info:
-        build_validated_schedule_payload(results, allowed_op_ids=allowed_op_ids)
+        _build_payload(results, allowed_op_ids=allowed_op_ids, operations=operations)
     details = dict(getattr(exc_info.value, "details", {}) or {})
     assert details.get("reason") == reason, details
     return details
@@ -123,7 +143,7 @@ def test_schedule_payload_rejects_duplicate_op_id_before_persistence() -> None:
         (_result(2, source="internal", machine_id=None, operator_id="OP_A"), "internal 工序必须有设备和人员"),
         (_result(2, source="internal", machine_id="MC_A", operator_id=None), "internal 工序必须有设备和人员"),
         (
-            SimpleNamespace(
+            make_schedule_result(
                 op_id=2,
                 op_code="B001_02",
                 batch_id="B001",
@@ -168,37 +188,14 @@ def test_schedule_payload_rejects_dirty_result_op_id_without_escaping_validation
 def test_schedule_payload_rejects_result_source_that_disagrees_with_operation_source() -> None:
     valid = _result(1, machine_id="MC_A", operator_id="OP_A", source="internal")
     wrong_source = _result(2, machine_id="MC_A", operator_id="OP_A", source="external")
-    operations = [
-        SimpleNamespace(id=1, source="internal"),
-        SimpleNamespace(id=2, source="internal"),
-    ]
+    operations = _operations({1: "internal", 2: "internal"})
 
     with pytest.raises(ValidationError) as exc_info:
-        build_validated_schedule_payload(
-            [valid, wrong_source],
-            allowed_op_ids={1, 2},
-            operations=operations,
-        )
+        _build_payload([valid, wrong_source], allowed_op_ids={1, 2}, operations=operations)
 
     details = dict(getattr(exc_info.value, "details", {}) or {})
     assert details.get("reason") == "invalid_schedule_rows", details
     assert "source 与原工序不一致" in "\n".join(details.get("validation_errors") or []), details
-
-
-def test_schedule_payload_rejects_dirty_operation_source_instead_of_trusting_result_source() -> None:
-    result = _result(1, machine_id="MC_A", operator_id="OP_A", source="internal")
-    operations = [SimpleNamespace(id=1, source="legacy")]
-
-    with pytest.raises(ValidationError) as exc_info:
-        build_validated_schedule_payload(
-            [result],
-            allowed_op_ids={1},
-            operations=operations,
-        )
-
-    details = dict(getattr(exc_info.value, "details", {}) or {})
-    assert details.get("reason") == "invalid_schedule_rows", details
-    assert "source 必须是 internal 或 external" in "\n".join(details.get("validation_errors") or []), details
 
 
 def _seed_common(conn: sqlite3.Connection, rows: Iterable[tuple]) -> None:

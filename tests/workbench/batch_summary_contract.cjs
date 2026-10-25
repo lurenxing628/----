@@ -99,7 +99,7 @@ async function calendarRefreshContracts() {
   for (const action of ['calendar_upsert', 'calendar_delete', 'calendar_range_clear']) {
     const env = calendarEnvironment(), w = env.window, requests = [], submissions = [];
     let parentRetries = 0;
-    const command = { phase: 'idle', locked: false, reset: () => true, submit: (...args) => submissions.push(args) };
+    const command = { phase: 'idle', locked: false, reset: () => true, clearRejection: () => false, submit: (...args) => submissions.push(args) };
     const props = { entity: { ref: batchRef, business_code: 'OP-1' }, source: 'production', command,
       onClose() {}, onRefresh: () => { parentRetries++; }, refreshState: {}, Feedback: 'feedback', adapter: {
         query(path, month, signal) {

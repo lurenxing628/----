@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 
+from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_commands import process_ref
@@ -71,7 +72,7 @@ class HoursFilePreview:
         confirmation = state["operations"].get(operation["ref"], {}).get("source", {})
         return (state["workflow"]["route"]["state"] == "confirmed"
                 and confirmation.get("state") == "confirmed"
-                and operation["source"] in ("internal", "external"))
+                and operation["source"] in OPERATION_SOURCES)
 
     def source_ready(self, operation):
         if not self._is_source_ready(operation):

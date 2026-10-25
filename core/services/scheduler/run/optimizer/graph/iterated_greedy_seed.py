@@ -12,7 +12,10 @@ import math
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import chain, combinations
-from typing import Any, Callable, Dict, FrozenSet, Iterator, Optional, Tuple
+from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Tuple
+
+from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
+from core.algorithm_contracts.value_domains import INTERNAL
 
 _MAX_PROBES = 2048
 
@@ -91,13 +94,11 @@ def build_due_date_seed(*, parent: Any, candidate: Dict[str, Any], metrics: Dict
 
 
 def _check_scope(parent: Any, candidate: Dict[str, Any], graph: Dict[str, Any]) -> Tuple[int, ...]:
-    if parent is None or not isinstance(candidate, dict) or not isinstance(graph, dict):
-        raise _NotApplicable("missing_parent_candidate_or_graph")
     order = tuple(parent.order)
     if not order or any(type(op_id) is not int for op_id in order) or len(set(order)) != len(order):
         raise _NotApplicable("invalid_parent_order")
-    summary = candidate.get("summary")
-    if not getattr(summary, "success", False) or getattr(summary, "failed_ops", None) != 0:
+    summary: ScheduleSummary = candidate["summary"]
+    if not summary.success or summary.failed_ops != 0:
         raise _NotApplicable("candidate_not_successful")
     _check_graph(parent, graph)
     return order
@@ -121,21 +122,20 @@ def _check_graph(parent: Any, graph: Dict[str, Any]) -> None:
 
 def _observed_jobs(order: Tuple[int, ...], candidate: Dict[str, Any], metrics: Dict[int, Dict[str, Any]],
                    start_dt: datetime, budget: _Budget) -> Tuple[Dict[int, _Job], float]:
-    rows = candidate.get("results")
-    if not isinstance(rows, (list, tuple)) or len(rows) != len(order):
+    rows: List[ScheduleResult] = candidate["results"]
+    if len(rows) != len(order):
         raise _NotApplicable("result_scope_mismatch")
     expected = set(order)
     jobs: Dict[int, _Job] = {}
     batches, resources, starts = set(), set(), []
     for row in rows:
         budget.check()
-        op_id = getattr(row, "op_id", None)
-        if type(op_id) is not int or op_id not in expected or op_id in jobs:
+        op_id = row.op_id
+        if op_id not in expected or op_id in jobs:
             raise _NotApplicable("result_scope_mismatch")
-        batch = getattr(row, "batch_id", None)
-        if not isinstance(batch, str) or not batch.strip() or batch in batches:
+        if row.batch_id in batches:
             raise _NotApplicable("not_one_operation_per_batch")
-        batches.add(batch)
+        batches.add(row.batch_id)
         resources.add(_resource_pair(row))
         processing = _observed_duration(row)
         starts.append(row.start_time)
@@ -145,27 +145,24 @@ def _observed_jobs(order: Tuple[int, ...], candidate: Dict[str, Any], metrics: D
     return jobs, _start_offset(starts, start_dt)
 
 
-def _due_deadline(metrics: Any, op_id: int) -> float:
-    metric = metrics.get(op_id) if isinstance(metrics, dict) else None
-    due = metric.get("due_deadline_hours") if isinstance(metric, dict) else None
-    if due is None or not _finite_number(due):
+def _due_deadline(metrics: Dict[int, Dict[str, Any]], op_id: int) -> float:
+    due = metrics[op_id]["due_deadline_hours"]
+    if not _finite_number(due):
         raise _NotApplicable("missing_or_nonfinite_due_deadline_hours")
     return float(due)
 
 
-def _resource_pair(row: Any) -> Tuple[str, str]:
-    if getattr(row, "source", None) != "internal":
+def _resource_pair(row: ScheduleResult) -> Tuple[str, str]:
+    if row.source != INTERNAL:
         raise _NotApplicable("non_internal_result")
-    machine_id, operator_id = getattr(row, "machine_id", None), getattr(row, "operator_id", None)
-    if (not isinstance(machine_id, str) or not machine_id.strip()
-            or not isinstance(operator_id, str) or not operator_id.strip()):
+    if row.machine_id is None or row.operator_id is None:
         raise _NotApplicable("missing_resource_pair")
-    return machine_id, operator_id
+    return row.machine_id, row.operator_id
 
 
-def _observed_duration(row: Any) -> float:
-    start, end = getattr(row, "start_time", None), getattr(row, "end_time", None)
-    if not isinstance(start, datetime) or not isinstance(end, datetime):
+def _observed_duration(row: ScheduleResult) -> float:
+    start, end = row.start_time, row.end_time
+    if start is None or end is None:
         raise _NotApplicable("invalid_result_times")
     try:
         hours = (end - start).total_seconds() / 3600.0
@@ -176,9 +173,7 @@ def _observed_duration(row: Any) -> float:
     return hours
 
 
-def _start_offset(starts: Any, start_dt: datetime) -> float:
-    if not isinstance(start_dt, datetime):
-        raise _NotApplicable("invalid_start_dt")
+def _start_offset(starts: List[datetime], start_dt: datetime) -> float:
     try:
         return max((min(starts) - start_dt).total_seconds() / 3600.0, 0.0)
     except TypeError as exc:

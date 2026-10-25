@@ -1,7 +1,6 @@
 """Elapsed-time sampling for the shared optimizer process writer."""
 from __future__ import annotations
 
-from copy import deepcopy
 from typing import Any, Dict, List
 
 POINT_BUDGET = 200
@@ -20,7 +19,7 @@ def sample_elapsed_points(points: List[Dict[str, Any]], *, elapsed_ms: int, limi
             bucket = min(int(row["elapsed_ms"] * slots / elapsed_ms), slots - 1) if elapsed_ms else 0
             buckets[bucket] = index
     selected = sorted(mandatory | set(buckets.values()))
-    return [deepcopy(points[index]) for index in selected], {
+    return [points[index] for index in selected], {
         "policy": SAMPLING_POLICY, "point_budget": int(limit), "event_total_count": len(points),
         "retained_point_count": len(selected), "bucket_count": slots,
         "bucket_width_ms": elapsed_ms / slots if slots else None, "mandatory": list(_MANDATORY),

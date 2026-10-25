@@ -1,11 +1,11 @@
 """Exact actual-Gantt cohort and independent local-view export filters."""
 
-import json
 from dataclasses import dataclass
 from typing import NoReturn, Optional, Tuple
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_scope import PlanReadScope, local_time, plan_reference
+from core.shared.strict_json import load_strict_json
 
 COHORT_KEYS = ("plan_ref", "source", "range_start", "range_end", "plan_finish_date_from",
                "plan_finish_date_to", "resource_type", "resource_ref", "batch_ids")
@@ -78,12 +78,8 @@ class ActualGanttScope:
     def parse(cls, values):
         args = dict(values)
         if "batch_ids" in args:
-            try:
-                batches = json.loads(args["batch_ids"])
-            except (ValueError, TypeError) as exc:
-                raise WorkbenchCommandRejected("invalid_input", "批次范围必须是 JSON 数组。", 400) from exc
-            if not isinstance(batches, list):
-                invalid("批次范围必须是数组。")
+            batches = load_strict_json(args["batch_ids"], on_malformed=lambda: invalid("批次范围必须是 JSON 数组。"),
+                                       expected=list, on_unexpected=lambda: invalid("批次范围必须是数组。"))
             args["batch_ids"] = tuple(batches)
         if "plan_ref" not in args:
             invalid("请先选择计划。")

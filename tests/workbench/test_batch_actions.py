@@ -509,3 +509,23 @@ def test_batch_import_preview_rejects_legacy_padded_batch_or_part_without_bindin
     part_row, = part_preview["rows"]
     assert part_row["action"] == "rejected"
     assert any("批次号或图号存在首尾空格，请先核对原记录。" in err for err in part_row["errors"])
+
+
+def test_batch_import_scope_rejects_duplicate_keys_and_non_finite_numbers(batch_client):
+    from io import BytesIO
+
+    for raw in ('{"page": 1, "page": 1}', '{"page": NaN}', '{"size": Infinity}', '{"size": 1e999}', '{"query": '):
+        response = batch_client.post(BASE + "/import-preview", content_type="multipart/form-data", data={
+            "file": (BytesIO(b"never parsed"), "batches.xlsx"), "mode": "overwrite", "scope": raw, "snapshot_ref": "x"})
+        value = assert_error(response, "invalid_input", 400)
+        assert value["error"]["message"] == "文件导入范围不对，文件还没有导入。请刷新页面后重新点「开始预检」。", raw
+
+
+def test_strict_json_provider_rejects_duplicate_keys_and_non_finite_numbers_in_get_json(app_client):
+    """create_app 挂上的严格 provider：request.get_json() 遇重复键或 NaN，与读不出的请求体同一条文案。"""
+    for raw in ('{"request_key": "batch-provider-000001", "request_key": "batch-provider-000002", '
+                '"write_token": "x", "input": {"preview_ref": "x"}}',
+                '{"request_key": "batch-provider-000001", "write_token": "x", "input": {"preview_ref": NaN}}'):
+        response = app_client.post(BASE + "/import-confirm", data=raw, content_type="application/json")
+        value = assert_error(response, "invalid_input", 400)
+        assert value["error"]["message"] == "提交的内容不完整或有多余项，还没有保存。请刷新页面后重新填写。", raw

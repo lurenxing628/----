@@ -1,27 +1,42 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Tuple, cast
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union, cast
 
 from core.algorithm_contracts.schedule_point_evidence import verified_point
+from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.errors import ValidationError
+from core.models.batch_operation import BatchOperation
 from core.models.enums import SourceType
 from core.shared.strict_parse import parse_required_int
 
 from .schedule_persistence_errors import raise_no_actionable_schedule_error
 
-_ALLOWED_RESULT_SOURCES = frozenset((SourceType.INTERNAL.value, SourceType.EXTERNAL.value))
-
 
 @dataclass(frozen=True)
 class ValidatedScheduleRow:
     op_id: int
-    machine_id: Any
-    operator_id: Any
+    machine_id: Optional[str]
+    operator_id: Optional[str]
     start_time: datetime
     end_time: datetime
     source: str
+
+
+_ROW_FIELDS = tuple(item.name for item in fields(ValidatedScheduleRow))
+
+
+def arrangement_row(values: Mapping[str, Any]) -> ValidatedScheduleRow:
+    """一条种子或结果字典里的安排（工序、设备、人员、起止、来源），原值不校验，交给零工时见证和采用复核读取。"""
+    return ValidatedScheduleRow(**{name: values[name] for name in _ROW_FIELDS})
+
+
+# 写库前最终守卫接收的两种真实排程行：排产结果 ScheduleResult；候选采用按已存任务、试调采用按归档场景
+# （trial_scenario_archive.schedule_rows）重建的 ValidatedScheduleRow。两者共有工序编号、设备、人员、起止和来源；
+# 只有 ScheduleResult 另带工序代码、批次和工序号，供错误提示定位。
+ScheduleRowInput = Union[ScheduleResult, ValidatedScheduleRow]
 
 
 @dataclass(frozen=True)
@@ -31,9 +46,6 @@ class ValidatedSchedulePayload:
     assigned_by_op_id: Dict[int, Dict[str, Any]]
     out_of_scope_op_ids: List[int] = field(default_factory=list)
     validation_errors: List[str] = field(default_factory=list)
-
-def _strict_positive_int(value: Any) -> int:
-    return parse_required_int(value, field="op_id", min_value=1, reject_integer_float=True)
 
 
 def _resource_text(value: Any) -> str:
@@ -83,49 +95,35 @@ def _raise_duplicate_schedule_rows_error(duplicate_op_ids: List[int]) -> None:
     )
 
 
-def _result_identity(result: Any, *, index: int) -> str:
+def _result_identity(result: Optional[ScheduleRowInput], *, index: int) -> str:
     if result is None:
         return f"results[{index}]"
     parts: List[str] = [f"index={index}"]
-    for field_name in ("op_id", "op_code", "batch_id", "seq"):
-        value = getattr(result, field_name, None)
+    named: List[Tuple[str, Any]] = [("op_id", result.op_id)]
+    if isinstance(result, ScheduleResult):
+        named += [("op_code", result.op_code), ("batch_id", result.batch_id), ("seq", result.seq)]
+    for field_name, value in named:
         if value in (None, ""):
             continue
         parts.append(f"{field_name}={value}")
     return ",".join(parts)
 
 
-def _operation_sources(operations: Optional[List[Any]]) -> Tuple[Dict[int, str], List[str]]:
-    out: Dict[int, str] = {}
-    errors: List[str] = []
-    for index, op in enumerate(operations or ()):
-        try:
-            op_id = _strict_positive_int(getattr(op, "id", None))
-        except (TypeError, ValueError, ValidationError):
-            continue
-        source = _source_text(getattr(op, "source", ""))
-        if source not in _ALLOWED_RESULT_SOURCES:
-            errors.append(f"operations[{index}],op_id={op_id}: source 必须是 internal 或 external")
-            continue
-        out[int(op_id)] = source
-    return out, errors
-
-
 def _resolve_schedule_row_source(
-    result: Any,
+    result: ScheduleRowInput,
     *,
     op_id: int,
     op_source_by_id: Dict[int, str],
     identity: str,
 ) -> Tuple[Optional[str], Optional[str]]:
-    raw_source = _source_text(getattr(result, "source", ""))
-    op_source = op_source_by_id.get(int(op_id))
-    if raw_source and raw_source not in _ALLOWED_RESULT_SOURCES:
+    raw_source = _source_text(result.source)
+    op_source = op_source_by_id.get(op_id)
+    if raw_source and raw_source not in OPERATION_SOURCES:
         return None, f"{identity}: source 必须是 internal 或 external"
     if op_source and raw_source and raw_source != op_source:
         return None, f"{identity}: source 与原工序不一致"
     source = op_source or raw_source
-    if source not in _ALLOWED_RESULT_SOURCES:
+    if source not in OPERATION_SOURCES:
         return None, f"{identity}: source 必须是 internal 或 external"
     return source, None
 
@@ -139,7 +137,7 @@ def _validate_schedule_row_resources(row: ValidatedScheduleRow, *, identity: str
 
 
 def _build_validated_schedule_row(
-    result: Any,
+    result: Optional[ScheduleRowInput],
     *,
     index: int,
     allowed_op_ids: Optional[Set[int]],
@@ -149,15 +147,16 @@ def _build_validated_schedule_row(
     identity = _result_identity(result, index=index)
     if result is None:
         return None, None, f"{identity}: 排产结果为空"
+    # 写库前最终守卫：结果行的工序编号在这里按共享严格口径解析一次。
     try:
-        op_id = _strict_positive_int(getattr(result, "op_id", None))
-    except (TypeError, ValueError, ValidationError):
+        op_id = parse_required_int(result.op_id, field="op_id", min_value=1, reject_integer_float=True)
+    except ValidationError:
         return None, None, f"{identity}: 工序编号不合法"
     if allowed_op_ids is not None and op_id not in allowed_op_ids:
-        return None, int(op_id), None
+        return None, op_id, None
 
-    start_time = getattr(result, "start_time", None)
-    end_time = getattr(result, "end_time", None)
+    start_time = result.start_time
+    end_time = result.end_time
     if not isinstance(start_time, datetime) or not isinstance(end_time, datetime):
         return None, None, f"{identity}: start_time/end_time 必须是有效时间"
     try:
@@ -169,7 +168,7 @@ def _build_validated_schedule_row(
 
     source, source_error = _resolve_schedule_row_source(
         result,
-        op_id=int(op_id),
+        op_id=op_id,
         op_source_by_id=op_source_by_id,
         identity=identity,
     )
@@ -177,9 +176,9 @@ def _build_validated_schedule_row(
         return None, None, source_error
 
     row = ValidatedScheduleRow(
-        op_id=int(op_id),
-        machine_id=getattr(result, "machine_id", None),
-        operator_id=getattr(result, "operator_id", None),
+        op_id=op_id,
+        machine_id=result.machine_id,
+        operator_id=result.operator_id,
         start_time=start_time,
         end_time=end_time,
         source=cast(str, source),
@@ -193,14 +192,14 @@ def _build_validated_schedule_row(
 
 
 def build_validated_schedule_payload(
-    results: List[Any],
+    results: Sequence[Optional[ScheduleRowInput]],
     *,
+    operations: List[BatchOperation],
+    operation_sources: Dict[int, str],
     allowed_op_ids: Optional[Set[int]] = None,
-    operations: Optional[List[Any]] = None,
     missing_internal_resource_op_ids: Optional[Set[int]] = None,
     schedule_errors: Optional[List[str]] = None,
     point_validator: Any = None,
-    operation_sources: Optional[Tuple[Dict[int, str], List[str]]] = None,
 ) -> ValidatedSchedulePayload:
     schedule_rows: List[ValidatedScheduleRow] = []
     scheduled_op_ids: Set[int] = set()
@@ -209,20 +208,17 @@ def build_validated_schedule_payload(
     validation_errors: List[str] = []
     duplicate_op_ids: List[int] = []
     no_actionable_errors = list(schedule_errors or [])
-    op_source_by_id, operation_source_errors = (_operation_sources(operations) if operation_sources is None
-                                               else operation_sources)
-    validation_errors.extend(operation_source_errors)
 
-    for index, result in enumerate(results or ()):
+    for index, result in enumerate(results):
         row, out_of_scope_op_id, validation_error = _build_validated_schedule_row(
             result,
             index=index,
             allowed_op_ids=allowed_op_ids,
-            op_source_by_id=op_source_by_id,
+            op_source_by_id=operation_sources,
             point_validator=point_validator,
         )
         if out_of_scope_op_id is not None:
-            out_of_scope_op_ids.append(int(out_of_scope_op_id))
+            out_of_scope_op_ids.append(out_of_scope_op_id)
             continue
         if validation_error is not None:
             validation_errors.append(validation_error)
@@ -265,5 +261,6 @@ def build_validated_schedule_payload(
 __all__ = [
     "ValidatedSchedulePayload",
     "ValidatedScheduleRow",
+    "arrangement_row",
     "build_validated_schedule_payload",
 ]

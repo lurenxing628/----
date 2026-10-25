@@ -9,7 +9,6 @@ from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.models.batch import Batch
 from core.models.batch_operation import BatchOperation
-from core.services.common.build_outcome import BuildOutcome
 
 
 class SummaryMetrics(Protocol):
@@ -47,18 +46,14 @@ class SummaryBuildContext:
     attempts: List[Dict[str, Any]]
     improvement_trace: List[Dict[str, Any]]
     frozen_op_ids: Set[int]
+    scheduled_op_ids: Set[int]
     search_report: Dict[str, Any] = field(default_factory=dict)
     missing_internal_resource_op_ids: Optional[Set[int]] = None
-    scheduled_op_ids: Optional[Set[int]] = None
     freeze_meta: Optional[Dict[str, Any]] = None
-    input_build_outcome: Optional[BuildOutcome[List[Any]]] = None
-    downtime_meta: Optional[Dict[str, Any]] = None
+    downtime_meta: Dict[str, Any] = field(default_factory=dict)
     resource_pool_meta: Optional[Dict[str, Any]] = None
     readiness_gate_enabled: bool = False
     algo_stats: Optional[Dict[str, Any]] = None
-    algo_warnings: Optional[List[str]] = None
-    # Producer and degradation consumer share a mutable Dict contract, not a TypedDict.
-    warning_merge_status: Optional[Dict[str, Any]] = None
     graph_analysis_public: Optional[Dict[str, Any]] = None
     graph_analysis_diagnostics: Optional[Dict[str, Any]] = None
     candidate_comparison_public: Optional[Dict[str, Any]] = None
@@ -82,44 +77,21 @@ class RuntimeState:
 
 
 @dataclass(frozen=True)
-class WarningState:
-    summary_warnings: List[str]
-    algo_warning_list: List[str]
-    all_warnings: List[str]
-    merge_context_degraded: bool
-    merge_context_events: List[Dict[str, Any]]
-
-
-@dataclass(frozen=True)
-class FreezeState:
-    data: Dict[str, Any]
-    all_warnings: List[str]
-
-
-@dataclass(frozen=True)
 class FallbackState:
     fallback_counts: Dict[str, int]
     param_fallbacks: Dict[str, int]
-    legacy_external_days_defaulted_count: int
     ortools_warmstart_failed_count: int
-    fallback_count_parse_errors: List[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class AlgorithmSummaryState:
     ctx: SummaryBuildContext
-    input_state: Dict[str, Any]
-    downtime_state: Dict[str, Any]
     hard_constraints: List[str]
-    warning_state: WarningState
-    freeze_state: FreezeState
+    freeze_state: Dict[str, Any]
     frozen_batch_ids: List[str]
     resource_pool_meta: Optional[Dict[str, Any]]
     resource_pool_enabled: bool
-    resource_pool_degraded: bool
-    resource_pool_degradation_reason: Optional[str]
     resource_pool_attempted: bool
-    warning_pipeline: Dict[str, Any]
     fallback_state: FallbackState
 
 

@@ -3,6 +3,7 @@
 import re
 from collections import defaultdict
 
+from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.workbench_batch import MAX_INTEGER, normalize_batch_input, object_fields, public_ref
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_template_lineage import operation_code
@@ -34,7 +35,7 @@ def copied_operation(op, code):
     return {**op, "ref": None, "operation_ref": None, "status": "pending", "stored_status": "pending", "completed": False,
             "execution": None, "execution_state": "unreported", "data_quality": "incomplete", "data_gaps": [],
             "issues": [row for row in op["issues"] if row not in op["data_gaps"]],
-            "editable": op["source"] in ("internal", "external"),
+            "editable": op["source"] in OPERATION_SOURCES,
             "business_code": operation_code(code, op["sequence"], op["piece_id"])}
 
 

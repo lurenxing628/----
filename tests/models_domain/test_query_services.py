@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import sqlite3
 
+import pytest
+
+from core.models.schedule_history import ScheduleHistory
 from core.services.personnel.operator_machine_normalizers import normalize_operator_machine_row
 from core.services.workbench.resource.projection import _authorization_issues
 from data.repositories import OperatorMachineRepository, ScheduleHistoryRepository
@@ -127,3 +130,12 @@ def test_schedule_history_query_service_versions_and_latest() -> None:
     assert h1.version == 1
     assert h1.strategy == "s_new"
     assert h1.result_status == "fail"
+
+
+def test_schedule_history_row_missing_column_fails_instead_of_defaulting() -> None:
+    # 行里缺列说明查询和表结构契约已经对不上，读取时直接报错，不拿默认值顶上。
+    row = _mem_conn().execute("SELECT 1 AS id, 2 AS version, 'v2' AS strategy").fetchone()
+    with pytest.raises(IndexError):
+        ScheduleHistory.from_row(row)
+    with pytest.raises(KeyError):
+        ScheduleHistory.from_row(dict(row))

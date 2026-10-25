@@ -1,29 +1,29 @@
 """Calibration facets bind all toolbar filters and every other column to one snapshot."""
 
-import json
 from dataclasses import replace
 
 from flask import g, request
 
-from core.models.workbench_calibration import CalibrationQuery, unique_calibration_object
+from core.models.workbench_calibration import DUPLICATE_FILTER_MESSAGE, CalibrationQuery
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench import messages
 from core.services.workbench.calibration.service import WorkbenchCalibrationService, filtered_suggestions
 from core.services.workbench.calibration.table import facet_data, validate_facet
+from core.shared.strict_json import load_strict_json
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot, current_snapshot_time, page_integer, resolve_read_snapshot
+from .request_json import rejecter
 
 
 @api_endpoint
 def calibration_facets(column, selection=False):
     if set(request.args) - {"scope", "query", "page", "size", "snapshot_ref"} or any(len(request.args.getlist(key)) != 1 for key in request.args):
         raise WorkbenchCommandRejected("invalid_input", "列筛选的查询条件有重复或不支持的项，筛选没有变化。请刷新页面后重新打开列筛选。", 400)
-    try:
-        scope = json.loads(request.args.get("scope", "{}"), object_pairs_hook=unique_calibration_object)
-    except json.JSONDecodeError as exc:
-        raise WorkbenchCommandRejected("invalid_input", "列筛选内容读不出来，筛选没有变化。请点「清除筛选」后重新选择。", 400) from exc
+    scope = load_strict_json(request.args.get("scope", "{}"),
+                             on_malformed=rejecter("列筛选内容读不出来，筛选没有变化。请点「清除筛选」后重新选择。"),
+                             on_duplicate=rejecter(DUPLICATE_FILTER_MESSAGE))
     if type(scope) is not dict or set(scope) - {"query", "part_ref", "source", "status", "deviation", "column_filters"}:
         raise WorkbenchCommandRejected("invalid_input", "列筛选里有不支持的列，筛选没有变化。请刷新页面后重新打开列筛选。", 400)
     query = CalibrationQuery(**scope)

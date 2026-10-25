@@ -41,7 +41,7 @@ PLAN_ROLE_LABELS = {
 }
 
 
-def plan_role_order_sql(column: str = "role") -> str:
+def plan_role_order_sql(column: str) -> str:
     """Order fixed repository role columns by the same public role catalog."""
     cases = " ".join("WHEN '" + role + "' THEN " + str(index) for index, role in enumerate(PLAN_ROLE_ORDER, 1))
     return "CASE " + column + " " + cases + " ELSE 99 END"

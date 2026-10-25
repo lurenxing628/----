@@ -7,34 +7,28 @@ from typing import Any, Iterable, List, Tuple
 from core.models.operation_execution_event import (
     EXECUTION_EVENT_EXCEPTION,
     EXECUTION_EVENT_PAUSE,
+    OPERATION_EXECUTION_EVENT_COLUMNS,
+    OPERATION_EXECUTION_EVENT_SEQUENCE_COLUMNS,
     OperationExecutionEvent,
+    OperationExecutionEventSequenceEntry,
     normalize_operation_event_time,
     validate_operation_execution_event_sequence,
 )
 
-_EVENT_VALUE_SQL = """
-    SELECT
-        id, schedule_version, schedule_id, op_id, batch_id,
-        source_table, effective_plan_role, scenario_id,
-        event_type, reported_status, event_time,
-        quantity_done, quantity_scrapped, reason_code, severity,
-        impact_minutes, handling_status, suggest_reschedule,
-        created_by, idempotency_key, request_fingerprint,
-        previous_state_revision, created_at
-    FROM OperationExecutionEvents
-    ORDER BY schedule_version, schedule_id, op_id, batch_id,
-             source_table, effective_plan_role, scenario_id, id
-"""
-
-_EVENT_SEQUENCE_SQL = """
-    SELECT
-        id, schedule_version, schedule_id, op_id, batch_id,
-        source_table, effective_plan_role, scenario_id,
-        event_type, reported_status, event_time, previous_state_revision
-    FROM OperationExecutionEvents
+_EVENT_ORDER_SQL = """
     ORDER BY schedule_version ASC, schedule_id ASC, op_id ASC, batch_id ASC,
              source_table ASC, effective_plan_role ASC, scenario_id ASC, id ASC
 """
+_EVENT_VALUE_SQL = (
+    "SELECT " + ", ".join(OPERATION_EXECUTION_EVENT_COLUMNS) + " FROM OperationExecutionEvents" + _EVENT_ORDER_SQL
+)
+# 迁移 v16/v18/v19 在旧表结构上也跑顺序校验，只读顺序校验需要的列。
+_EVENT_SEQUENCE_SQL = (
+    "SELECT " + ", ".join(OPERATION_EXECUTION_EVENT_SEQUENCE_COLUMNS) + " FROM OperationExecutionEvents" + _EVENT_ORDER_SQL
+)
+
+_SEQUENCE_SCOPE_COLUMNS = ("schedule_version", "schedule_id", "op_id", "batch_id", "source_table",
+                           "effective_plan_role", "scenario_id")
 
 
 def operation_execution_event_data_issues(conn: sqlite3.Connection, *, limit: int = 8) -> List[str]:
@@ -66,36 +60,36 @@ def _optional_value(value: Any, allowed_values: Tuple[str, ...], field_name: str
 
 
 def _validate_event_contract_row(row: Any) -> OperationExecutionEvent:
-    if row[7] is not None:
+    if row["scenario_id"] is not None:
         raise ValueError("scenario_id must be NULL")
     event = OperationExecutionEvent.from_row(row)
     event_type = event.event_type
     reason_code = _optional_value(
-        row[13],
+        row["reason_code"],
         ("equipment", "person", "material", "quality", "process", "external", "other"),
         "reason_code",
     )
     if event_type in (EXECUTION_EVENT_PAUSE, EXECUTION_EVENT_EXCEPTION) and not reason_code:
         raise ValueError("reason_code is required for pause or exception event")
     severity = _optional_value(
-        row[14],
+        row["severity"],
         ("low", "medium", "high", "critical"),
         "severity",
     )
     if event_type == EXECUTION_EVENT_EXCEPTION and not severity:
         raise ValueError("severity is required for exception event")
     _optional_value(
-        row[16],
+        row["handling_status"],
         ("new", "checking", "waiting", "handled"),
         "handling_status",
     )
-    _required_text(row[18], "created_by")
-    _required_text(row[19], "idempotency_key")
-    fingerprint = row[20]
+    _required_text(row["created_by"], "created_by")
+    _required_text(row["idempotency_key"], "idempotency_key")
+    fingerprint = row["request_fingerprint"]
     if fingerprint is not None:
         _required_text(fingerprint, "request_fingerprint")
-    _required_text(row[21], "previous_state_revision")
-    normalize_operation_event_time(row[22])
+    _required_text(row["previous_state_revision"], "previous_state_revision")
+    normalize_operation_event_time(row["created_at"])
     return event
 
 
@@ -114,8 +108,8 @@ def _collect_scoped_event_issues(
             if not validate_row:
                 scoped_rows = list(group)
                 issue = _sequence_issue(
-                    (OperationExecutionEvent.from_row(item) for item in scoped_rows),
-                    event_ids=(item[0] for item in scoped_rows),
+                    (OperationExecutionEventSequenceEntry.from_row(item) for item in scoped_rows),
+                    event_ids=(item["id"] for item in scoped_rows),
                 )
             else:
                 events: List[OperationExecutionEvent] = []
@@ -123,7 +117,7 @@ def _collect_scoped_event_issues(
                     try:
                         events.append(_validate_event_contract_row(row))
                     except ValueError as exc:
-                        issues.append(f"bad_data: OperationExecutionEvents.id={row[0]} {exc}")
+                        issues.append(f"bad_data: OperationExecutionEvents.id={row['id']} {exc}")
                         if len(issues) >= limit:
                             return issues[:limit]
                 issue = _sequence_issue(events, event_ids=(event.id for event in events)) if events else ""
@@ -146,19 +140,11 @@ def _event_value_issues(conn: sqlite3.Connection, *, limit: int) -> List[str]:
     )
 
 
-def _sequence_key(row: Any) -> Tuple[str, str, str, str, str, str, str]:
-    return (
-        _text(row[1]),
-        _text(row[2]),
-        _text(row[3]),
-        _text(row[4]),
-        _text(row[5]),
-        _text(row[6]),
-        _text(row[7]),
-    )
+def _sequence_key(row: Any) -> Tuple[str, ...]:
+    return tuple(_text(row[name]) for name in _SEQUENCE_SCOPE_COLUMNS)
 
 
-def _sequence_issue(events: Iterable[OperationExecutionEvent], *, event_ids: Iterable[object]) -> str:
+def _sequence_issue(events: Iterable[OperationExecutionEventSequenceEntry], *, event_ids: Iterable[object]) -> str:
     try:
         validate_operation_execution_event_sequence(events)
     except ValueError as exc:

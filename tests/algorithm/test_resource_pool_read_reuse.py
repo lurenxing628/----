@@ -7,6 +7,7 @@ from core.services.personnel.operator_qualification import OperatorQualification
 from core.services.scheduler import resource_pool_builder
 from core.services.workbench.run.input_runtime import downtime_overlap, held_machine_downtimes, runtime_resource_facts
 from core.services.workbench.run.preflight_facts import PreflightFacts
+from tests._support.algo_operations import make_algo_op
 
 START = datetime(2026, 10, 14, 8)
 
@@ -28,8 +29,8 @@ def test_empty_downtime_is_read_once_when_extending_pool(schema_conn):
             resources = runtime_resource_facts(facts)
             assert runtime_resource_facts(facts) is resources
             downtime = resource_pool_builder.load_machine_downtimes(
-                algo_ops=[SimpleNamespace(source="internal", machine_id="M_A")],
-                start_dt=START, downtimes=resources.downtimes, meta=meta,
+                algo_ops=[make_algo_op(machine_id="M_A")],
+                start_dt=START, downtimes=resources.downtimes,
             )
             assert downtime == {"M_A": []}
             pool = {"operators_by_machine": {"M_A": ["O1"], "M_B": ["O1"]}}
@@ -43,7 +44,7 @@ def test_empty_downtime_is_read_once_when_extending_pool(schema_conn):
         conn.set_trace_callback(None)
     assert sum(' FROM "MachineDowntimes" ' in statement for statement in sql) == 1
     assert downtime == {"M_A": [], "M_B": [(datetime(2026, 10, 14, 9), datetime(2026, 10, 14, 10))]}
-    assert meta["downtime_load_ok"] is True and meta["downtime_extend_ok"] is True
+    assert meta == {"downtime_extend_attempted": True}
 
 
 def test_padded_machine_downtime_stays_on_its_own_machine(schema_conn):
@@ -54,8 +55,10 @@ def test_padded_machine_downtime_stays_on_its_own_machine(schema_conn):
         ("2026-10-14 09:00:00", "2026-10-14 10:00:00"),
     )
     conn.commit()
-    padded, plain = ({"source": "internal", "machine_id": mid, "start_time": START,
-                      "end_time": datetime(2026, 10, 14, 11)} for mid in (" M1 ", "M1"))
+    padded, plain = ({"op_id": op_id, "op_code": "OP" + str(op_id), "batch_id": "B1", "seq": op_id,
+                      "machine_id": mid, "operator_id": "O1", "start_time": START, "end_time": datetime(2026, 10, 14, 11),
+                      "source": "internal", "op_type_name": "T", "op_type_id": "T1", "seed_source": "freeze_window"}
+                     for op_id, mid in ((1, " M1 "), (2, "M1")))
     stop = (datetime(2026, 10, 14, 9), datetime(2026, 10, 14, 10))
     facts = PreflightFacts(conn)
     with facts.snapshot(fingerprint=False):
@@ -114,13 +117,13 @@ def test_multi_work_type_pool_loads_qualifications_once_and_keeps_selection(sche
         facts = PreflightFacts(conn)
         with facts.snapshot(fingerprint=False):
             resources = runtime_resource_facts(facts)
-            resources.validate_fixed(conn, [SimpleNamespace(source="internal", op_type_id="OT_B",
-                                                           machine_id="M_A", operator_id="O_SKILLED")])
+            resources.validate_fixed(conn, [make_algo_op(op_type_id="OT_B", machine_id="M_A", operator_id="O_SKILLED")])
             for _ in range(2):
                 pool = resource_pool_builder.build_resource_pool(
                     cfg=SimpleNamespace(auto_assign_enabled="yes"),
-                    algo_ops=[SimpleNamespace(source="internal", op_type_id=code, machine_id=None, operator_id=None)
-                              for code in ("OT_A", "OT_B")], meta=meta, resource_facts=resources,
+                    algo_ops=[make_algo_op(id=op_id, op_type_id=code)
+                              for op_id, code in enumerate(("OT_A", "OT_B"), 1)],
+                    meta=meta, resource_facts=resources,
                 )
     finally:
         conn.set_trace_callback(None)
@@ -135,7 +138,7 @@ def test_multi_work_type_pool_loads_qualifications_once_and_keeps_selection(sche
         "pair_rank": {("O_LEGACY", "M_A"): 11, ("O_SKILLED", "M_A"): 0, ("O_LEGACY", "M_B"): 12},
         "operator_skills": {"O_EMPTY": [], "O_LEGACY": None, "O_SKILLED": ["OT_B"]},
     }
-    assert meta["resource_pool_build_ok"] is True
+    assert meta == {"resource_pool_attempted": True}
 
 
 def test_resource_pool_recognizes_chinese_primary_synonyms(schema_conn):
@@ -149,8 +152,7 @@ def test_resource_pool_recognizes_chinese_primary_synonyms(schema_conn):
         resources = runtime_resource_facts(facts)
         pool = resource_pool_builder.build_resource_pool(
             cfg=SimpleNamespace(auto_assign_enabled="yes"),
-            algo_ops=[SimpleNamespace(source="internal", op_type_id=code, machine_id=None, operator_id=None)
-                      for code in ("OT_A", "OT_B")],
+            algo_ops=[make_algo_op(id=op_id, op_type_id=code) for op_id, code in enumerate(("OT_A", "OT_B"), 1)],
             resource_facts=resources,
         )
     assert pool is not None

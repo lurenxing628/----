@@ -7,11 +7,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any, Dict
 
-from .types import GraphAnalysisSummary, GraphWarning
-
-
-def graph_warning_to_dict(warning: GraphWarning) -> Dict[str, Any]:
-    return asdict(warning)
+from .types import GraphAnalysisSummary
 
 
 def graph_summary_to_dict(summary: GraphAnalysisSummary) -> Dict[str, Any]:
@@ -24,8 +20,8 @@ def graph_summary_to_dict(summary: GraphAnalysisSummary) -> Dict[str, Any]:
         "critical_path": list(summary.critical_path),
         "critical_path_minutes": summary.critical_path_minutes,
         "node_metrics": dict(summary.node_metrics),
-        "warnings": [graph_warning_to_dict(warning) for warning in summary.warnings],
+        "warnings": [asdict(warning) for warning in summary.warnings],
     }
 
 
-__all__ = ["graph_summary_to_dict", "graph_warning_to_dict"]
+__all__ = ["graph_summary_to_dict"]

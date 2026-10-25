@@ -8,9 +8,8 @@ start, which holds when every certified work window the walk can touch, from S u
 result's end, reports the same efficiency (shift lengths and non-working gaps never break
 monotonicity; a faster later day would). A single window is the smallest such span; a
 chain of same-efficiency windows extends the proof across days, so saturated resources
-whose slots land days later can still share. Walks that carry attempt-path flags (early
-stop, efficiency fallback) are never shared. Operation-specific changeover penalties are
-always recomputed.
+whose slots land days later can still share. Walks that stop early are never shared.
+Operation-specific changeover penalties are always recomputed.
 """
 
 import math
@@ -142,7 +141,7 @@ class SharedSlotEstimateCache:
         self.misses += 1
         estimate = compute()
         scan = read_scan()
-        if scan is None or estimate.abort_after_hit or estimate.efficiency_fallback_used:
+        if scan is None or estimate.abort_after_hit:
             return estimate
         if not earliest <= estimate.start_time < estimate.end_time:
             return estimate

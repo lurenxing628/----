@@ -4,7 +4,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from core.algorithms import ScheduleResult, ScheduleSummary, SortStrategy
+from core.algorithm_contracts.sort_strategies import SortStrategy
+from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.algorithms.evaluation import ScheduleMetrics, objective_score
 from core.services.scheduler.run.optimizer.graph_ready_profiles import (
     GraphReadyWeightProfile,

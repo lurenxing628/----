@@ -20,6 +20,7 @@ from core.services.workbench.facts.decision_baseline import (
     _last_official_rows,
     read_decision_baseline,
     read_decision_baseline_members,
+    same_saved_arrangements,
 )
 from core.services.workbench.facts.decision_baseline_source import (
     _operation_metadata,
@@ -70,7 +71,7 @@ def _resolver(originals, calls):
             key: row[key] for key in ("source", "supplier", "machine", "operator", "data_gaps")}
             for row in source.tasks}
         return {"evidence": {"audit": audit, "arranged": [row["payload"] for row in source.raw_tasks]},
-                "origins": origins, "point_work": work}
+                "origins": origins, "point_work": lambda: work}
     return resolve
 
 
@@ -238,6 +239,16 @@ def test_adoption_arrangement_and_identity_mismatches_are_reported(candidate_cas
         assert kind not in fields and kind + ".ref" not in fields
         assert kind + ".admission_identity" in fields
         assert _resource_delta(deleted, {kind: {"ref": "f" * 48}, "data_gaps": []}, kind) is True
+
+
+def test_unreadable_saved_schedule_time_never_matches_adoption_evidence():
+    adopted = {"op_id": 7, "machine_id": "M1", "operator_id": None,
+               "start_time": "2026-09-13T08:00:00", "end_time": "2026-09-13T10:00:00"}
+    saved = dict(adopted, id=1, version=1, start_time="2026-09-13 08:00:00", end_time="2026-09-13 10:00:00")
+    assert same_saved_arrangements([saved], [adopted])
+    # 归档排程里的时间是存储原值：读不出来就证明不了和原采用安排相同，按漂移处理而不是报错。
+    for value in (None, "2026-09-13 08:00", {"sqlite_blob_base64": "AA=="}):
+        assert not same_saved_arrangements([dict(saved, start_time=value)], [adopted])
 
 
 def test_formal_deferred_ids_use_original_stage_source_independently_of_current_run(candidate_case):

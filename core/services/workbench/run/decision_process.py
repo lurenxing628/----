@@ -7,7 +7,6 @@ from core.models.workbench_run_candidate import reference, reject
 from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
 from core.services.workbench.facts.candidate_process import PROCESS_VERSION
 from core.services.workbench.facts.candidate_store import CandidateStore
-from core.services.workbench.facts.candidate_values import corrupt
 from core.services.workbench.facts.unified_process import PROCESS_CANDIDATE_FIELDS, project_unified_process
 
 from .decision_queries import parse_page
@@ -27,18 +26,6 @@ def normalize_process_filters(*, process_candidate_ref=None, objective=None, rec
     if objective is not None:
         filters["objective"] = objective
     return filters
-
-
-def _projection(source):
-    if source._process_projection is None:
-        saved = source.saved_process
-        if saved is None or saved.get("version") != PROCESS_VERSION:
-            corrupt()
-        projected = {row["candidate"]["candidate_ref"]: row for row in saved["candidates"]}
-        if len(projected) != len(saved["candidates"]) or set(projected) != {row["candidate_ref"] for row in source.rows}:
-            corrupt()
-        source._process_projection = projected
-    return source._process_projection
 
 
 def _ordered(rows, filters):
@@ -88,7 +75,7 @@ def process_details(source, filters, *, page: Union[int, str] = 1, size: Union[i
                 "page": {"number": page, "size": size, "total": len(rows), "has_more": offset + size < len(rows)}, "filters": filters}
     if "objective" in filters:
         reject("invalid_input", "这份历史记录按候选保存过程，请选择候选查看。", 422)
-    projected = _projection(source)
+    projected = source.candidate_processes
     saved = projected[anchor]
     rows = _ordered(saved["attempts"] if filters["record_kind"] == "attempts" else saved["progress"]["points"], filters)
     return {"run_ref": source.run["run_ref"], "capture_ref": source.run["run_ref"], "scope": source.scope, "baseline": source.baseline,
@@ -115,7 +102,7 @@ def process_export_records(source, filters=None, *, include_all_objectives=False
         return [{"process_version": UNIFIED_PROCESS_VERSION, "process": process,
                  "export_objectives": process["target_objectives"] if include_all_objectives or filters is None else [selected["selected_objective"]["name"]],
                  "projected": selected}]
-    projected = _projection(source)
+    projected = source.candidate_processes
     if filters is None:
         refs = [row["candidate_ref"] for row in source.rows]
         current = normalize_process_filters()

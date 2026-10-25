@@ -6,6 +6,7 @@ from dataclasses import replace
 import pytest
 
 from core.algorithms.evaluation import ScheduleMetrics, objective_score
+from core.algorithms.evaluation_completion import BatchCompletion
 from core.models.objective import objective_metric_keys, target_objectives_for
 from core.models.workbench_run_job import durable_value
 from core.services.scheduler.run.schedule_candidate_plan import CandidatePlan
@@ -16,6 +17,10 @@ from core.services.workbench.facts.decision_selection import selection_basis, se
 from core.services.workbench.run.result_preparation import _selection_references
 from tests.workbench.legacy_run_archive_support import stored_legacy_selection
 
+COMPLETE = BatchCompletion(expected_operation_count=2, missing_operation_count=0, unexpected_result_count=0,
+                           complete_batch_count=2, incomplete_batch_ids=(), partial_batch_ids=(),
+                           failure_detail_count=0, failure_batch_ids=())
+
 
 def _candidate(key, *, sequence, overdue=2, weighted=10.0, tardiness=10.0, health_state="same"):
     metrics = ScheduleMetrics(
@@ -24,6 +29,7 @@ def _candidate(key, *, sequence, overdue=2, weighted=10.0, tardiness=10.0, healt
         weighted_tardiness_hours=weighted,
         makespan_hours=20.0,
         changeover_count=1,
+        completion=COMPLETE,
     )
     health = {"state": health_state, "score": 2 if health_state == "better" else 0,
         "reason_code": "critical_chain_" + health_state,

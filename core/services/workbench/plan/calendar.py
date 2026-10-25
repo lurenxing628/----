@@ -21,7 +21,7 @@ from core.services.capacity.plan_calendar_io import CalendarFacts, ProjectionLim
 from core.services.capacity.plan_calendar_limits import MAX_CALENDAR_DATES, MAX_POLICY_CELLS
 from core.services.capacity.plan_calendar_windows import policy_projection, project_resource_calendars, unavailable
 
-from .calendar_context import public_resource, resource_ids, selected_context
+from .calendar_context import public_resource, resource_ids
 
 
 def range_days(start, end):
@@ -50,11 +50,8 @@ def _unavailable_result(scope, time_scope, context, code):
     return dto, {"context": context, "state": "unavailable", "reason": code, "sources": None, "resources": None}
 
 
-def project_plan_calendar(conn, *, entry, scope, rows, resources, plan_span, context=None, selected=None, captured_calendar=None):
-    """rows/resources must already belong to entry, selected in this transaction."""
-    if selected is None:
-        selected = (context.calendar_selection(entry, scope, resources, plan_span) if context is not None else
-                    selected_context(conn, entry, scope, rows, resources, plan_span))
+def project_plan_calendar(conn, *, scope, resources, selected):
+    """selected/resources must already belong to the plan, selected in this transaction."""
     rows, start, end, time_scope, context = selected
     first, last, dates = range_days(start, end)
     point_days = [row["_point_work"] for row in rows if row.get("_point_work")]
@@ -66,7 +63,7 @@ def project_plan_calendar(conn, *, entry, scope, rows, resources, plan_span, con
         return _unavailable_result(scope, time_scope, context, "calendar_range_limit")
     if dates * (1 + sum(len(value) for value in ids.values())) > MAX_POLICY_CELLS:
         return _unavailable_result(scope, time_scope, context, "calendar_cell_limit")
-    reader = CalendarFacts(conn, captured=captured_calendar) if captured_calendar is not None else CalendarFacts(conn)
+    reader = CalendarFacts(conn)
     try:
         reader.calendar(first.isoformat(), last.isoformat(), ids["operator"])
         reader.resources(ids["machine"], ids["operator"], [row["op_id"] for row in rows], start, end)

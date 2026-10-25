@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
-from core.algorithm_contracts.types import ScheduleSummary
 from core.services.scheduler.contracts.schedule_summary_types import SummaryBuildContext
 
 from .schedule_candidate_plan import CandidateComparisonOutcome, CandidatePlan
@@ -20,33 +19,16 @@ class ScheduleOrchestrationOutcome:
     candidate_comparison: CandidateComparisonOutcome
 
 
-def _merge_summary_warnings(summary: Optional[ScheduleSummary], algo_warnings: List[str]) -> Dict[str, Any]:
-    warning_merge_status: Dict[str, Any] = {
-        "summary_merge_attempted": bool(algo_warnings),
-        "summary_merge_failed": False,
-        "summary_merge_error": None,
-    }
-
-    if summary is None:
-        warning_merge_status["summary_merge_failed"] = bool(algo_warnings)
-        warning_merge_status["summary_merge_error"] = "summary_missing"
-    else:
-        summary.warnings.extend(algo_warnings)
-
-    return warning_merge_status
-
-
 def _run_plan_selection(
     *,
     schedule_input: ScheduleRunInput,
     strict_mode: bool,
-    logger: Any = None,
     candidate_comparison_fn: Any = None,
 ) -> Tuple[CandidatePlan, Optional[Dict[str, Any]], Optional[Dict[str, Any]], CandidateComparisonOutcome]:
     candidate_comparison = (candidate_comparison_fn or run_candidate_comparison)(
         schedule_input=schedule_input,
         run_time_budget_seconds=schedule_input.run_time_budget_seconds,
-        strict_mode=strict_mode, logger=logger,
+        strict_mode=strict_mode,
     )
     adopted_plan: CandidatePlan = candidate_comparison.selection.selected_plan
     return adopted_plan, adopted_plan.graph_analysis_public, adopted_plan.graph_analysis_diagnostics, candidate_comparison
@@ -58,14 +40,12 @@ def orchestrate_schedule_run(
     version: int,
     strict_mode: bool,
     build_result_summary_fn: Any,
-    logger: Any = None,
     point_validator: Any = None,
     candidate_comparison_fn: Any = None,
 ) -> ScheduleOrchestrationOutcome:
     """Compute candidates and their summary using an already prepared run input."""
     adopted_plan, graph_analysis_public, graph_analysis_diagnostics, candidate_comparison = _run_plan_selection(
         schedule_input=schedule_input,
-        logger=logger,
         strict_mode=strict_mode,
         candidate_comparison_fn=candidate_comparison_fn,
     )
@@ -77,12 +57,6 @@ def orchestrate_schedule_run(
         missing_internal_resource_op_ids=schedule_input.missing_internal_resource_op_ids,
         schedule_errors=adopted_plan.summary.errors if adopted_plan.summary is not None else [],
         point_validator=point_validator,
-    )
-
-    algo_warnings = schedule_input.algo_warnings
-    warning_merge_status = _merge_summary_warnings(
-        adopted_plan.summary,
-        algo_warnings,
     )
 
     time_budget_seconds = int(adopted_plan.time_budget_seconds)
@@ -110,13 +84,10 @@ def orchestrate_schedule_run(
         missing_internal_resource_op_ids=schedule_input.missing_internal_resource_op_ids,
         scheduled_op_ids=validated_schedule_payload.scheduled_op_ids,
         freeze_meta=schedule_input.freeze_meta,
-        input_build_outcome=schedule_input.algo_input_outcome,
         downtime_meta=schedule_input.downtime_meta,
         resource_pool_meta=schedule_input.resource_pool_meta,
         readiness_gate_enabled=schedule_input.readiness_gate_enabled,
         algo_stats=adopted_plan.algo_stats,
-        algo_warnings=algo_warnings,
-        warning_merge_status=warning_merge_status,
         graph_analysis_public=graph_analysis_public,
         graph_analysis_diagnostics=graph_analysis_diagnostics,
         candidate_comparison_public=candidate_comparison_public_summary(candidate_comparison),
@@ -127,10 +98,7 @@ def orchestrate_schedule_run(
         t0=schedule_input.t0,
     )
 
-    result_summary_obj = build_result_summary_fn(
-        ctx=summary_ctx,
-        logger=logger,
-    )
+    result_summary_obj = build_result_summary_fn(ctx=summary_ctx)
 
     return ScheduleOrchestrationOutcome(
         validated_schedule_payload=validated_schedule_payload,

@@ -14,7 +14,7 @@ from core.models.workbench_run_candidate import MAX_TASKS, local_time, reference
 from core.services.workbench.facts.adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
 from core.services.workbench.facts.material_deferral_evidence import archived_deferred_payload_evidence
 
-from .candidate_baseline import AdmissionBaseline, ArchivedAdmissionPlan, invalid_baseline
+from .candidate_baseline import AdmissionBaseline, ArchivedAdmissionPlan, baseline_interval, invalid_baseline
 from .candidate_facts import index_rows
 from .candidate_tasks import operation_labels
 from .candidate_values import bounded_size, gap
@@ -72,21 +72,27 @@ def _adoption_identity(source):
     return {**source, "source_candidate_ref": candidate, "source_run_ref": run, "data_gaps": gaps}, audit
 
 
-def _arrangement(row):
-    return (row["op_id"], row.get("machine_id"), row.get("operator_id"),
-            local_time(row["start_time"].replace(" ", "T", 1)),
-            local_time(row["end_time"].replace(" ", "T", 1)))
+def _saved_arrangement(row):
+    """Archived Schedule times are stored values; an unreadable one cannot match any adoption."""
+    gaps = []
+    start, end = baseline_interval(row, gaps)
+    return None if gaps else (row["op_id"], row["machine_id"], row["operator_id"], start, end)
 
 
-def _same_arrangements(saved, arranged):
-    if type(arranged) is not list or len(saved) != len(arranged):
+def _adopted_arrangement(row):
+    """Adoption evidence rows were already validated by their candidate or trial reader."""
+    return (row["op_id"], row["machine_id"], row["operator_id"],
+            local_time(row["start_time"]), local_time(row["end_time"]))
+
+
+def same_saved_arrangements(saved, arranged):
+    """Multiple segments of the same operation remain separate arrangements."""
+    if len(saved) != len(arranged):
         return False
-    try:
-        # Multiple segments of the same operation remain separate arrangements.
-        return sorted((_arrangement(row) for row in saved), key=repr) == sorted(
-            (_arrangement(row) for row in arranged), key=repr)
-    except (KeyError, TypeError, ValueError, AttributeError):
+    rows = [_saved_arrangement(row) for row in saved]
+    if None in rows:
         return False
+    return sorted(rows, key=repr) == sorted((_adopted_arrangement(row) for row in arranged), key=repr)
 
 
 def _resolved_source(source, audit, resolver, saved):
@@ -106,7 +112,7 @@ def _resolved_source(source, audit, resolver, saved):
     if evidence is not None and (canonical_json(evidence.get("audit")) != canonical_json(audit)
                                  or evidence["audit"].get("version") != source["version"]):
         invalid_baseline()
-    if evidence is not None and not _same_arrangements(saved, evidence.get("arranged")):
+    if evidence is not None and not same_saved_arrangements(saved, evidence["arranged"]):
         return {"available": False, "origins": {}, "point_work": None,
                 "issue": {"code": "adoption_plan_drift", "message": REASONS["adoption_plan_drift"]}}
     return {"available": evidence is not None, "origins": value.get("origins", {}) if evidence is not None else {},
@@ -139,7 +145,7 @@ def _deferred_source(source, audit, resolved):
 
 
 def _bindings(admission, rows, sources):
-    saved, tasks = admission._schedule_bindings, admission.tasks
+    saved, tasks = admission.schedule_bindings, admission.tasks
     task_pairs = {(row.get("plan_ref"), row.get("row_ref")): row["ref"] for row in tasks.values()}
     if len(task_pairs) != len(tasks):
         invalid_baseline()
@@ -193,9 +199,9 @@ def _adopted_resource_identity(segment, origin, gaps):
 
 def _task(admission, row, operation_type):
     labels, _ = operation_labels(admission.facts, row["operation_ref"])
-    segment = admission._segment(row)
+    segment = admission.segment(row)
     gaps = labels["data_gaps"] + segment["data_gaps"]
-    _adopted_resource_identity(segment, admission._origins.get(row["op_id"], {}), gaps)
+    _adopted_resource_identity(segment, admission.origin(row["op_id"]), gaps)
     execution = labels["execution_at_generation"]
     if execution is not None:
         saved = admission.facts.execution[row["operation_ref"]]
@@ -252,7 +258,7 @@ def read_decision_baseline(capture, facts, disposition, *, source_resolver):
     ``source_resolver`` is called once per archived version with keyword arguments
     ``plan_ref``, ``version``, ``history``. It returns ``evidence`` from the existing
     adoption reader, ``origins`` from its operation-facts reader and ``point_work``
-    from its point reader (a mapping or deferred callable). Missing original
+    as a zero-argument loader of its point witnesses. Missing original
     sources are reported as task data gaps; permanent binding mismatches reject
     the archive. Labels use admission metadata; replaced resource identities keep
     their recorded adoption identities and names with an explicit data gap. Source,
@@ -287,10 +293,7 @@ def read_decision_baseline(capture, facts, disposition, *, source_resolver):
             "source_draft_ref": audit.get("draft_ref") if audit is not None else None,
             "available": resolved["available"], "issue_code": None if resolved["available"] else resolved["issue"]["code"]})
         deferred_ids.update(_deferred_source(source, audit, resolved))
-        admission._origins, admission._origin_issue = resolved["origins"], resolved["issue"]
-        work = resolved["point_work"]
-        admission._point_work_loader = work if callable(work) else lambda work=work: work or {}
-        admission._point_work = None
+        admission.bind_origin(resolved["origins"], resolved["issue"], resolved["point_work"])
         efforts = saved_operation_efforts(resolved.get("operation_effort"))
         effort_source = _effort_source(source, audit)
         types, standards = resolved.get("operation_types", {}), resolved.get("operation_standards", {})

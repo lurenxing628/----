@@ -30,7 +30,9 @@ def test_bounded_cohort_matches_single_load_with_revisions_voids_and_legacy(ledg
     third = case.command("create", case.task(2, ids[2]), case.values(0))["data"]["rows"][0]
     case.command("report_void", third["report_ref"], {"original_revision_ref": third["revision_ref"],
                  "reason": "Duplicate empty report", "declared_operator": "Foreman"})
-    refs = [case.ledger.task_header(case.task(2, op))["operation_ref"] for op in ids]
+    tasks = [case.task(2, op) for op in ids]
+    headers = case.ledger.repo.task_headers(tasks)
+    refs = [headers[task]["operation_ref"] for task in tasks]
     reads, clocks = [], []
     original_read, original_clock = WorkbenchExecutionRepository.reports, case.ledger.current_plan_provider
 
@@ -74,8 +76,10 @@ def test_large_cohort_reads_task_plan_once_and_keeps_requested_duplicate_guard(l
     other = case.op("UNSELECTED", seq=4)
     case.plan(3, list(ids) + [other])
     case.install()
-    refs = [case.ledger.task_header(case.task(3, op))["operation_ref"] for op in ids]
-    other_ref = case.ledger.task_header(case.task(3, other))["operation_ref"]
+    tasks = [case.task(3, op) for op in list(ids) + [other]]
+    headers = case.ledger.repo.task_headers(tasks)
+    refs = [headers[task]["operation_ref"] for task in tasks[:-1]]
+    other_ref = headers[tasks[-1]]["operation_ref"]
     plan_ref = case.plan_ref(3)
     duplicate_row, duplicate_task = "d" * 48, "e" * 48
     case.conn.execute("""INSERT INTO WorkbenchPlanSourceRefs

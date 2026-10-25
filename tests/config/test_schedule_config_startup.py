@@ -23,12 +23,18 @@ def config_rows(conn):
     return [tuple(row) for row in conn.execute("SELECT * FROM ScheduleConfig ORDER BY config_key")]
 
 
+def _stored_snapshot(conn):
+    """Build the snapshot from stored ScheduleConfig rows, as the run preflight reads them."""
+    rows = [dict(row) for row in conn.execute("SELECT config_key, config_value FROM ScheduleConfig ORDER BY rowid")]
+    return build_schedule_config_snapshot(rows=rows)
+
+
 def test_fresh_application_first_real_worker_run_needs_no_config_page(db_env):
     conn = get_connection(db_env)
     try:
         assert conn.execute("SELECT COUNT(*) FROM ScheduleConfig").fetchone()[0] == 0
         app = create_application()
-        assert build_schedule_config_snapshot(ConfigRepository(conn)).sort_strategy == default_for("sort_strategy")
+        assert _stored_snapshot(conn).sort_strategy == default_for("sort_strategy")
         assert ConfigRepository(conn).get_value(ACTIVE_PRESET_KEY) == BUILTIN_PRESET_DEFAULT
         assert conn.execute("SELECT COUNT(*) FROM ScheduleConfig").fetchone()[0] == len(list_config_fields()) + 3
         initialized = config_rows(conn)
@@ -68,7 +74,7 @@ def test_restart_preserves_existing_missing_or_invalid_configuration(db_env, dam
         create_application()
         assert config_rows(conn) == before
         with pytest.raises(ValidationError) as exc:
-            build_schedule_config_snapshot(ConfigRepository(conn))
+            _stored_snapshot(conn)
         assert exc.value.field == "sort_strategy"
     finally:
         conn.close()

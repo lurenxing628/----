@@ -4,8 +4,8 @@ import codecs
 import csv
 from tempfile import SpooledTemporaryFile
 
+from core.models.workbench_action_values import FileDownload
 from core.models.workbench_command import canonical_json
-from core.models.workbench_resource_file import ResourceFileDownload
 from core.services.common.excel_instruction_sheet import close_write_only_sheets
 from core.services.workbench.facts.file_writer import _value, check_capacity
 from core.services.workbench.facts.process_file_xml import preserve_carriage_returns
@@ -65,7 +65,7 @@ def write_run_candidate_export(data, snapshot, fmt):
     check_capacity(count, fmt)
     content = _csv(data, snapshot) if fmt == "csv" else _xlsx(data, snapshot)
     mime = "text/csv; charset=utf-8" if fmt == "csv" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    return ResourceFileDownload("候选范围导出." + fmt, mime, content, count)
+    return FileDownload("候选范围导出." + fmt, mime, content, count)
 
 
 def _csv(data, snapshot):

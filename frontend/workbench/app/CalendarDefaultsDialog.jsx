@@ -2,10 +2,6 @@
   'use strict';
   const C = window.APSResourceContract, P = window.APSWorkPeriods, S = window.APSResourceSession;
   const { Button, ErrorBox, Modal } = window.ResourceControls;
-  function isStale(command) {
-    const error = command && command.error, code = error && (error.code || error.error && error.error.code);
-    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
-  }
   function CalendarDefaultsDialog({ adapter, command, onClose, refreshState, onRefresh }) {
     const request = S.useQuery(async signal => {
       const result = await adapter.query('/api/workbench/v1/calendar/defaults', {}, signal), data = result.data;
@@ -36,7 +32,7 @@
     }
     function updatePeriods(next) {
       setPeriods(next); setError(null);
-      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     return <Modal title="修改默认工作时间" icon="calendar-days" onClose={onClose} guardOwner={owner} locked={command.locked}
       footer={<><Button disabled={command.locked} onClick={close}>{done ? '关闭' : '取消'}</Button>

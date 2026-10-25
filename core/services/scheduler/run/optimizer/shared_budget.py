@@ -97,12 +97,12 @@ class SharedSearchBudget:
             estimate += self.estimate("sgs_full")
         return estimate
 
-    def can_afford_decode(self, kind: str, *, reserve_full: bool = False, unpruned_sgs: bool = False) -> bool:
+    def can_afford_decode(self, kind: str, *, reserve_full: bool = False) -> bool:
         """Check whether the remaining budget can cover one decode without mutating admission state."""
         remaining = self.remaining()
         if remaining <= 0.0 or not any(self._decode_counts.values()):
             return False
-        return self._required_estimate(kind, reserve_full=reserve_full, unpruned_sgs=unpruned_sgs) <= remaining
+        return self._required_estimate(kind, reserve_full=reserve_full) <= remaining
 
     def reject(self, reason: str) -> NoReturn:
         """Count one admission rejection without inventing a decode request."""

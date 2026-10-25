@@ -32,7 +32,7 @@
   }
   // Opening the editor and taking an unedited latest route follow one rule:
   // a route without operations shows its saved route text and one blank row.
-  const openingText = (data, rows) => rows.length ? D.serialize(rows) : data.fields.route_raw || '';
+  const openingText = (data, rows) => rows.length ? D.serialize(rows) : data.fields.route_raw === null ? '' : data.fields.route_raw;
   const openingRows = rows => rows.length ? rows : [{ seq: '', op_type_name: '' }];
   function ProcessRouteEntry({ adapter, result, command, onClose, onDirty, refreshState = {}, onRefresh, active = true, disabled = false }) {
     const [context, setContext] = React.useState(result);
@@ -46,13 +46,15 @@
     const [state, setState] = React.useState({ busy: false, result: null, error: null });
     const [discarded, setDiscarded] = React.useState([]), [review, setReview] = React.useState(null);
     const [mergeReview, setMergeReview] = React.useState(null), [mergeChoices, setMergeChoices] = React.useState({});
-    const paging = E.usePage(rows), locked = !!command && (command.locked || command.phase === 'done');
+    const paging = E.usePage(rows), locked = command.locked || command.phase === 'done';
     const blocked = disabled || locked;
+    // 只有带完整工艺接口的工艺详情才能打开路线录入（校准页的只读详情禁用了入口），这里的能力只看后端 capabilities。
+    const previewReason = P.reason(entity.capabilities, 'route_preview', true);
     // Read the op_type catalog once on entry so the row inputs can suggest real names. Free text stays allowed and
     // the server route preflight remains the only authority on what is recognized.
     const opTypeListId = React.useId();
     const opTypes = S.useQuery(signal => Promise.resolve(adapter.choices('op_type', { query: '', page: 1, size: OP_TYPE_PAGE_SIZE }, signal)).then(result => C.query(result, 'choices')),
-      [adapter], typeof adapter.choices === 'function');
+      [adapter]);
     const opTypeNames = React.useMemo(() => opTypes.result ? Array.from(new Set(opTypes.result.data.entities.map(item => item.label).filter(Boolean))) : [],
       [opTypes.result]);
     function abort() { if (request.current) request.current.abort(); request.current = null; }
@@ -85,7 +87,7 @@
       if (!(mode === 'rows' ? D.serialize(rows) : routeRaw).trim()) {
         invalidate(); setRows([{ key: ++sequence.current, seq: '', op_type_name: '' }]); setRouteRaw(''); setMode(next); return;
       }
-      if (P.reason(entity.capabilities, 'route_preview', typeof adapter.routePreview === 'function')) return;
+      if (previewReason) return;
       invalidate(); setState({ busy: true, result: null, error: null });
       try {
         const parsed = await parsedDraft(context.meta.snapshot_ref);
@@ -121,7 +123,7 @@
       } catch (error) { setState({ busy: false, result: null, error }); }
     }
     async function preflight() {
-      if (blocked || review || state.busy || P.reason(entity.capabilities, 'route_preview', typeof adapter.routePreview === 'function')) return;
+      if (blocked || review || state.busy || previewReason) return;
       abort(); const controller = new AbortController(); request.current = controller;
       setState({ busy: true, result: null, error: null });
       try {
@@ -133,7 +135,7 @@
       } finally { if (request.current === controller) request.current = null; }
     }
     async function reloadDetail() {
-      if (blocked || state.busy || typeof adapter.detail !== 'function') return;
+      if (blocked || state.busy) return;
       abort(); const controller = new AbortController(); request.current = controller;
       setState({ busy: true, result: null, error: null, reading: true });
       try {
@@ -144,7 +146,7 @@
       } finally { if (request.current === controller) request.current = null; }
     }
     const affected = state.result ? state.result.data.affected_groups : [];
-    const saveReason = P.reason(entity.capabilities, 'stage_confirm', typeof adapter.command === 'function' && !!command) ||
+    const saveReason = P.reason(entity.capabilities, 'stage_confirm', true) ||
       (review ? '请先核对最新资料。' : !state.result || !state.result.data.can_confirm_route ? '请先完成当前路线预检。' :
         !affected.every(row => discarded.includes(row.ref)) ? '请明确勾选解除所有受影响的外协组。' : C.blocked(state.result.data.write_context, 'process', 'route_confirm', state.result.meta.source));
     async function save() {
@@ -152,11 +154,11 @@
       await command.submit('process', 'route_confirm', entity.ref, state.result.data.write_context, { route: state.route, discard_group_refs: discarded });
     }
     return <div className="process-route-entry"><Modal title={'录入工艺路线 · ' + entity.business_code} icon="chart-gantt" onClose={() => { if (!locked) close(); }} locked={locked} suspended={!active}
-      footer={<><Button onClick={close} disabled={locked}>取消</Button><Button icon="search" busy={state.busy} disabled={blocked || !!review} reason={P.reason(entity.capabilities, 'route_preview', typeof adapter.routePreview === 'function')} onClick={preflight}>预检路线</Button>
+      footer={<><Button onClick={close} disabled={locked}>取消</Button><Button icon="search" busy={state.busy} disabled={blocked || !!review} reason={previewReason} onClick={preflight}>预检路线</Button>
         <Button icon="check" className="btn primary" disabled={blocked} reason={saveReason} onClick={save}>确认保存路线</Button></>}>
       <div className="modal-b scroll">
         <div className="seg re-mode" role="group" aria-label="路线录入模式" style={{ marginBottom: 16 }}>
-          {[['text', '整条录入'], ['rows', '逐行表格']].map(([value, label]) => <Button key={value} aria-pressed={mode === value} className={mode === value ? 'on' : ''} disabled={blocked || !!review || state.busy} reason={P.reason(entity.capabilities, 'route_preview', typeof adapter.routePreview === 'function')} onClick={() => switchMode(value)}>{label}</Button>)}
+          {[['text', '整条录入'], ['rows', '逐行表格']].map(([value, label]) => <Button key={value} aria-pressed={mode === value} className={mode === value ? 'on' : ''} disabled={blocked || !!review || state.busy} reason={previewReason} onClick={() => switchMode(value)}>{label}</Button>)}
         </div>
         <p className="muted">整条和逐行维护的是同一条路线。可直接填写“10: 车削；20: 热处理；30: 精磨”；原来的“10车削20热处理”也能识别。名称含数字或空格时，保留工序号后的冒号即可。</p>
         {mode === 'text' ? <label className="field full">路线文字<textarea aria-label="路线文字" className="re-text" rows={5} value={routeRaw} disabled={blocked} onChange={event => { edited(); setRouteRaw(event.target.value); }} style={{ width: '100%', resize: 'vertical' }} /></label> : <>
@@ -173,13 +175,13 @@
         {state.busy && <p role="status">{state.reading ? '正在刷新详情…' : '正在预检路线…'}</p>}<ErrorBox error={state.error} /><ErrorBox error={opTypes.error} />
         {state.refreshed && <p role="status">已刷新详情，录入内容保留；请核对后重新预检。</p>}
         {state.error && <Button icon="refresh-cw" disabled={blocked || !!review} onClick={preflight}>重试预检</Button>}
-        <Button icon="refresh-cw" disabled={blocked || state.busy} reason={typeof adapter.detail !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={reloadDetail}>{window.WorkbenchTerms.refresh_latest}</Button>
+        <Button icon="refresh-cw" disabled={blocked || state.busy} onClick={reloadDetail}>{window.WorkbenchTerms.refresh_latest}</Button>
         {review && <E.Review before={context.data} after={review.data} disabled={blocked || state.busy} onAccept={acceptLatest} />}
         {mergeReview && <section className="match-note is-block" role="alert"><p>以下工序同时被本次草稿和最新资料修改，请逐项选择后，再点“已核对，继续编辑”。其余工序会保留本地修改并采用最新资料。</p>
           {mergeReview.conflicts.map(row => <fieldset key={row.seq}><legend>工序 {row.seq}</legend>{[['local', '保留我的修改'], ['latest', '采用最新资料']].map(([choice, label]) => <label key={choice} style={{ display: 'block' }}><input type="radio" name={'route-conflict-' + row.seq} checked={mergeChoices[row.seq] === choice} disabled={blocked} onChange={() => setMergeChoices(current => ({ ...current, [row.seq]: choice }))} />{label}：{row[choice] ? row[choice].op_type_name : '移除这道工序'}</label>)}</fieldset>)}</section>}
         {state.result && <Preview result={state.result} />}
         {state.result && <E.Groups title="受影响外协组" empty="本次预检未发现受影响外协组。" rows={affected} affected={affected.map(row => row.ref)} discarded={discarded} onDiscard={setDiscarded} disabled={blocked} />}
-        {command && <window.ResourceForms.Feedback command={command} />}
+        <window.ResourceForms.Feedback command={command} />
         <ErrorBox error={refreshState.error} />{refreshState.error && <Button icon="refresh-cw" onClick={onRefresh}>查询结果</Button>}
       </div>
     </Modal></div>;

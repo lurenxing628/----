@@ -7,7 +7,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, cast
 
 from core.algorithm_contracts.dispatch_rules import dispatch_rule_search_pool
-from core.algorithms import SortStrategy
+from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithms.evaluation import objective_score
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 

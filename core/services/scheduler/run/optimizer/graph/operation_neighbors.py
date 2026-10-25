@@ -88,7 +88,7 @@ def _operation_moves(timelines: List[List[Any]], rows: Dict[int, Any], metrics: 
 def _critical_block_moves(timeline: List[Any], rows: Dict[int, Any], metrics: Dict[int, Dict[str, Any]],
                           latest: datetime, objective_name: str) -> Iterator[Tuple[str, int, int]]:
     for left, right in zip(timeline, timeline[1:]):
-        left_id, right_id = int(left.op_id), int(right.op_id)
+        left_id, right_id = left.op_id, right.op_id
         if left_id not in rows or right_id not in rows:
             continue
         if _is_critical_block_pair(left, right, (left_id, right_id), metrics, latest, objective_name):
@@ -99,9 +99,7 @@ def _is_critical_block_pair(left: Any, right: Any, ids: Tuple[int, int], metrics
                             latest: datetime, objective_name: str) -> bool:
     touches = left.end_time == right.start_time
     critical_signal = any(bool(metrics[op_id].get("is_on_critical_path")) for op_id in ids)
-    same_machine = bool(getattr(left, "machine_id", None)) and (
-        getattr(left, "machine_id", None) == getattr(right, "machine_id", None)
-    )
+    same_machine = left.machine_id is not None and left.machine_id == right.machine_id
     nonzero_duration = left.start_time < left.end_time and right.start_time < right.end_time
     changeover_signal = (
         objective_name == "min_changeover"
@@ -114,15 +112,15 @@ def _is_critical_block_pair(left: Any, right: Any, ids: Tuple[int, int], metrics
 
 def _time_insert_moves(timeline: List[Any], rows: Dict[int, Any], metrics: Dict[int, Dict[str, Any]],
                        start_dt: datetime, objective_name: str) -> Iterator[Tuple[str, int, int]]:
-    ranked = heapq.nsmallest(3, (row for row in timeline if int(row.op_id) in rows),
-                            key=lambda row: _target_priority(row, metrics[int(row.op_id)], start_dt, objective_name))
+    ranked = heapq.nsmallest(3, (row for row in timeline if row.op_id in rows),
+                            key=lambda row: _target_priority(row, metrics[row.op_id], start_dt, objective_name))
     for target in ranked:
         previous_end = start_dt
         for anchor in timeline:
             if anchor.start_time >= target.start_time:
                 break
             if previous_end < anchor.start_time:
-                yield "operation_time_insert", int(target.op_id), int(anchor.op_id)
+                yield "operation_time_insert", target.op_id, anchor.op_id
             previous_end = max(previous_end, anchor.end_time)
 
 
@@ -130,5 +128,5 @@ def _target_priority(row: Any, metric: Dict[str, Any], start_dt: datetime, objec
     finish = (row.end_time - start_dt).total_seconds() / 3600.0
     tardy = max(finish - float(metric.get("due_deadline_hours", 1e9)), 0.0)
     if objective_name == "min_weighted_tardiness":
-        return (-float(metric.get("weighted_due_pressure", metric.get("due_pressure", 0.0))), -tardy, int(row.op_id))
-    return (-tardy, -float(metric.get("due_pressure", 0.0)), -finish, int(row.op_id))
+        return (-float(metric.get("weighted_due_pressure", metric.get("due_pressure", 0.0))), -tardy, row.op_id)
+    return (-tardy, -float(metric.get("due_pressure", 0.0)), -finish, row.op_id)

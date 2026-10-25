@@ -725,3 +725,25 @@ def test_drain_timeout_before_restore_records_terminal_unchanged_and_does_not_lo
     assert result["terminal"] is True
     assert result["restart_required"] is True
     assert_system_maintenance_ready(str(system_api.database), str(system_api.journal_dir))
+
+
+def test_unexpected_system_failure_logs_the_request_ref_shown_to_the_user(tmp_path, monkeypatch, caplog):
+    """系统工作区的未预期错误：日志记下的编号就是响应里的编号，原始异常留在日志里。"""
+    from web.routes.workbench import system_reads
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("maintenance records broke")
+
+    api = SystemTestAPI(tmp_path)
+    monkeypatch.setattr(system_reads, "maintenance_records", broken)
+    with caplog.at_level(logging.ERROR):
+        response = api.get("/backups")
+    assert response.status_code == 500, response.get_data(as_text=True)
+    assert response.headers["Cache-Control"] == "no-store"
+    result = response.get_json()
+    error = result["error"]
+    assert result["committed"] is False and "request_key" not in error
+    assert (error["code"], error["message"]) == ("storage_failure", "这次维护操作结果不确定，可能已经生效。请刷新后核对，不要重复提交。")
+    record, = [item for item in caplog.records if item.getMessage().startswith("系统工作区请求失败")]
+    assert record.getMessage() == "系统工作区请求失败 endpoint=system_test.system_backups_read request_ref=" + error["request_ref"]
+    assert isinstance(record.exc_info[1], RuntimeError)

@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from core.algorithm_contracts.changeover_events import count_known_changeovers
 from core.algorithm_runtime.resource_quality import MachineTypeState, slot_changeover_penalty
 from core.algorithm_runtime.runtime_state import update_machine_last_state
-from core.algorithms.evaluation import _count_changeovers
 from core.algorithms.greedy.internal_operation import _build_internal_result
 from core.services.scheduler.run.freeze_window_seed_rows import build_seed_results
 from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_result_item
@@ -16,6 +16,7 @@ from core.services.workbench.facts.changeovers import changeover_projection, sub
 from core.services.workbench.facts.decision_metrics import metric_definitions, metric_delta
 from core.services.workbench.facts.resource_intervals import task_interval
 from core.services.workbench.run.decision_changeovers import DecisionChangeovers
+from tests._support.algo_operations import make_algo_op
 
 DAY = "2026-09-09"
 MACHINE = {"ref": "machine:one", "label": "归档设备"}
@@ -53,8 +54,7 @@ def test_actual_type_identity_drives_shared_events_and_runtime_result_seed_count
     assert event["previous_type_ref"] == "type:T1" and event["next_type_ref"] == "type:T2"
     # Fresh internal results and frozen seed coercion carry real IDs into the
     # same event rule, including same ID/different name and different ID/same name.
-    operations = [SimpleNamespace(id=index + 1, op_code=str(index), batch_id="B1", seq=index + 1, source="internal",
-                                  op_type_id=type_ref, op_type_name=label)
+    operations = [make_algo_op(id=index + 1, op_code=str(index), seq=index + 1, op_type_id=type_ref, op_type_name=label)
                   for index, (type_ref, label) in enumerate((("T1", "车削"), ("T1", "精车"), ("T2", "精车")))]
     first = _build_internal_result(op=operations[0], batch_id="B1", machine_id="M1", operator_id="O1",
                                   estimate=SimpleNamespace(start_time=datetime.fromisoformat(rows[0]["start"]),
@@ -64,14 +64,14 @@ def test_actual_type_identity_drives_shared_events_and_runtime_result_seed_count
                     "start_time": datetime.fromisoformat(rows[index]["start"]), "end_time": datetime.fromisoformat(rows[index]["end"])}
         for index in (1, 2)})
     results = [first] + [coerce_seed_result_item(row, idx=index) for index, row in enumerate(seeds)]
-    assert _count_changeovers({"M1": list(reversed(results))}) == projected["count"]
+    assert count_known_changeovers({"M1": list(reversed(results))}) == projected["count"]
     state, ends = MachineTypeState(), {}
     update_machine_last_state(last_end_by_machine=ends, last_op_type_by_machine=state, machine_id="M1",
                               start_time=first.start_time, end_time=first.end_time, op_id=first.op_id,
                               op_type_name=first.op_type_name, op_type_id=first.op_type_id, seed_mode=False)
     same = slot_changeover_penalty(state, op=operations[1], machine_id="M1", start=results[1].start_time,
                                     end=results[1].end_time, legacy_penalty=1)
-    different = slot_changeover_penalty(state, op=SimpleNamespace(id=3, op_type_id="T2", op_type_name="车削"),
+    different = slot_changeover_penalty(state, op=make_algo_op(id=3, op_type_id="T2", op_type_name="车削"),
                                          machine_id="M1", start=results[1].start_time, end=results[1].end_time,
                                          legacy_penalty=0)
     assert same == 0 and different == 1

@@ -251,14 +251,12 @@ class SchedulePlanQueryService:
         source_table: str,
         candidate_id: Optional[int],
         scenario_id: Optional[str] = None,
-        allow_points: bool = False,
     ) -> List[Dict[str, Any]]:
         return self.repo.list_overdue_base_rows(
             version=int(version),
             source_table=source_table,
             candidate_id=candidate_id,
             scenario_id=scenario_id,
-            allow_points=allow_points,
         )
     @staticmethod
     def _role_option_from_row(row: Dict[str, Any]) -> SchedulePlanRoleOption:

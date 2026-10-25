@@ -6,7 +6,9 @@ from datetime import datetime
 from typing import Any, Mapping, NoReturn, Optional, Sequence, Tuple
 
 from core.algorithm_contracts.material_release import released_start
+from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.errors import ValidationError
+from core.models.batch import Batch
 from core.shared.field_labels import display_field_label
 
 from .busy_block_skip import advance_busy_block
@@ -27,47 +29,26 @@ class InternalSlotEstimate:
     changeover_penalty: int
     blocked_by_window: bool = False
     abort_after_hit: bool = False
-    efficiency_fallback_used: bool = False
 
 
-@dataclass(frozen=True)
-class _SlotAttempt:
-    start_time: datetime
-    end_time: datetime
-    total_hours: float
-    efficiency_fallback_used: bool
-
-
-def validate_internal_hours(op: Any, batch: Any) -> float:
+def validate_internal_hours(op: OpForScheduleAlgo, batch: Batch) -> float:
     return internal_requirement_parts(op, batch)[2]
 
 
-def validate_internal_hours_for_mode(op: Any, batch: Any, *, strict_mode: bool) -> float:
+def validate_internal_hours_for_mode(op: OpForScheduleAlgo, batch: Batch, *, strict_mode: bool) -> float:
     try:
         return validate_internal_hours(op, batch)
-    except ValueError as exc:
+    except ValueError:
         if strict_mode:
-            raise_strict_internal_hours_validation(op, batch, exc)
+            raise_strict_internal_hours_validation(op, batch)
         raise
 
 
-def raise_strict_internal_hours_validation(op: Any, batch: Any, exc: ValueError) -> NoReturn:
-    for field, raw_value in _internal_hour_fields(op, batch):
-        try:
-            if not raw_value:
-                continue
-        except Exception:
-            raise
-        _raise_if_invalid_strict_number(field, raw_value)
+def raise_strict_internal_hours_validation(op: OpForScheduleAlgo, batch: Batch) -> NoReturn:
+    for field, raw_value in (("setup_hours", op.setup_hours), ("unit_hours", op.unit_hours), ("quantity", batch.quantity)):
+        if raw_value:
+            _raise_if_invalid_strict_number(field, raw_value)
     raise ValidationError("工时总量不合法，请检查换型时间、单件工时和数量。", field="setup_hours")
-
-
-def _internal_hour_fields(op: Any, batch: Any) -> Tuple[Tuple[str, Any], ...]:
-    return (
-        ("setup_hours", getattr(op, "setup_hours", None)),
-        ("unit_hours", getattr(op, "unit_hours", None)),
-        ("quantity", getattr(batch, "quantity", None)),
-    )
 
 
 def _raise_if_invalid_strict_number(field: str, raw_value: Any) -> None:
@@ -82,59 +63,15 @@ def _raise_if_invalid_strict_number(field: str, raw_value: Any) -> None:
         raise ValidationError(f"“{label}”必须大于等于 0", field=field)
 
 
-def _resolve_efficiency(
-    calendar: Any,
-    *,
-    start_time: datetime,
-    operator_id: str,
-) -> Tuple[float, bool]:
-    raw_eff = calendar.get_efficiency(start_time, operator_id=operator_id)
-    if raw_eff is None:
-        return 1.0, True
-    try:
-        eff = float(raw_eff)
-    except (TypeError, ValueError) as exc:
-        raise ValidationError(f"日历效率必须是数字：efficiency={raw_eff!r}", field="efficiency") from exc
-    if not math.isfinite(eff):
-        raise ValidationError(f"日历效率必须是有限数字：efficiency={raw_eff!r}", field="efficiency")
-    if eff <= 0:
-        raise ValidationError(f"日历效率必须大于 0：efficiency={raw_eff!r}", field="efficiency")
-    return eff, False
-
-
-def _changeover_penalty(op: Any, machine_id: str, last_op_type_by_machine: Optional[Mapping[str, str]]) -> int:
+def _changeover_penalty(op: OpForScheduleAlgo, machine_id: str, last_op_type_by_machine: Optional[Mapping[str, str]]) -> int:
     if not last_op_type_by_machine:
         return 0
-    current_type = str(getattr(op, "op_type_name", None) or "").strip()
-    if not current_type:
-        return 0
-    last_type = str(last_op_type_by_machine.get(machine_id) or "").strip()
-    if last_type and last_type != current_type:
-        return 1
-    return 0
+    # Tail types are recorded stripped and non-empty (runtime_state); a machine without one has no changeover.
+    last_type = last_op_type_by_machine.get(machine_id)
+    return 1 if last_type is not None and last_type != op.op_type_name else 0
 
 
-def _abort_result(
-    *,
-    machine_id: str,
-    operator_id: str,
-    start_time: datetime,
-    changeover_penalty: int,
-    efficiency_fallback_used: bool,
-) -> InternalSlotEstimate:
-    return InternalSlotEstimate(
-        machine_id=machine_id,
-        operator_id=operator_id,
-        start_time=start_time,
-        end_time=start_time,
-        total_hours=0.0,
-        changeover_penalty=changeover_penalty,
-        abort_after_hit=True,
-        efficiency_fallback_used=bool(efficiency_fallback_used),
-    )
-
-
-def _resolve_total_base(op: Any, batch: Any, total_hours_base: Optional[float]) -> float:
+def _resolve_total_base(op: OpForScheduleAlgo, batch: Batch, total_hours_base: Optional[float]) -> float:
     total_base = validate_internal_hours(op, batch) if total_hours_base is None else float(total_hours_base)
     if not math.isfinite(total_base) or total_base < 0:
         raise ValueError(f"工时总量不合法：total_hours_base={total_base!r}")
@@ -181,40 +118,9 @@ def _adjust_slot_start(calendar: Any, start_time: datetime, *, priority: Any, op
     return calendar.adjust_to_working_time(start_time, priority=priority, operator_id=operator_id)
 
 
-def _abort_after_result(
-    *,
-    earliest: datetime,
-    abort_after: Optional[datetime],
-    machine_id: str,
-    operator_id: str,
-    changeover_penalty: int,
-    efficiency_fallback_used: bool,
-) -> Optional[InternalSlotEstimate]:
-    if abort_after is None or earliest <= abort_after:
-        return None
-    return _abort_result(
-        machine_id=machine_id,
-        operator_id=operator_id,
-        start_time=earliest,
-        changeover_penalty=changeover_penalty,
-        efficiency_fallback_used=efficiency_fallback_used,
-    )
-
-
-def _estimate_attempt(calendar: Any, *, earliest: datetime, total_base: float, priority: Any, operator_id: str) -> _SlotAttempt:
-    advance_effective = getattr(calendar, "add_effective_hours", None)
-    if advance_effective is not None:
-        end = advance_effective(earliest, total_base, priority=priority, operator_id=operator_id)
-        return _SlotAttempt(earliest, end, -1.0, False)
-    # Continuous adapters and older test calendars expose only a fixed-efficiency clock.
-    eff, used_fallback = _resolve_efficiency(calendar, start_time=earliest, operator_id=operator_id)
-    total_hours = total_base / eff if eff != 1.0 else total_base
-    return _SlotAttempt(
-        start_time=earliest,
-        end_time=calendar.add_working_hours(earliest, total_hours, priority=priority, operator_id=operator_id),
-        total_hours=total_hours,
-        efficiency_fallback_used=used_fallback,
-    )
+def _estimate_attempt(calendar: Any, *, earliest: datetime, total_base: float, priority: Any, operator_id: str) -> datetime:
+    """End of one attempt: every calendar consumes effective hours at its own per-window efficiency."""
+    return calendar.add_effective_hours(earliest, total_base, priority=priority, operator_id=operator_id)
 
 
 def _latest_overlap_shift_end(
@@ -234,29 +140,58 @@ def _shifted_start(calendar: Any, *, earliest: datetime, shift_to: datetime, pri
     return _adjust_slot_start(calendar, max(earliest, shift_to), priority=priority, operator_id=operator_id)
 
 
-def _build_slot_estimate(
+def _walk(
+    calendar: Any,
+    handoff: Any,
     *,
+    release: datetime,
+    total_base: float,
+    priority: Any,
     machine_id: str,
     operator_id: str,
-    attempt: _SlotAttempt,
-    changeover_penalty: int,
-    end_dt_exclusive: Optional[datetime],
-    efficiency_fallback_used: bool,
+    segment_groups: Tuple[SegmentOverlapIndex, ...],
+    abort_after: Optional[datetime],
+) -> Tuple[datetime, datetime, float, bool]:
+    """(start, end, working hours, aborted) of the first attempt from ``release`` clear of every busy segment.
+
+    An aborted walk stops at the first start past ``abort_after``: end equals start and hours are 0.
+    """
+    max_shifts = _max_shift_count(segment_groups)
+    earliest = _adjust_slot_start(calendar, release, priority=priority, operator_id=operator_id)
+    if abort_after is not None and earliest > abort_after:
+        return earliest, earliest, 0.0, True
+    shift_count = 0
+    # Busy blocks outside [scan_start, scan_end] never steered this walk; the SGS pair memo relies on that.
+    scan_start = scan_end = earliest
+    while True:
+        end_time = _estimate_attempt(calendar, earliest=earliest, total_base=total_base, priority=priority, operator_id=operator_id)
+        shift_to = _latest_overlap_shift_end(segment_groups, earliest, end_time)
+        if shift_to is None:
+            if handoff is not None:
+                handoff.note_scan(scan_start, max(scan_end, end_time))
+            hours = calendar.working_hours_between(earliest, end_time, priority=priority, operator_id=operator_id)
+            return earliest, end_time, float(hours), False
+
+        if end_time > earliest:
+            shift_to = advance_busy_block(calendar, earliest=earliest, shift_to=shift_to,
+                segment_groups=segment_groups, total_base=total_base, priority=priority,
+                operator_id=operator_id, abort_after=abort_after)
+        scan_end = max(scan_end, end_time, shift_to)
+
+        shift_count += 1
+        if shift_count > max_shifts:
+            raise RuntimeError(
+                f"自制工序避让超出显式上界：machine_id={machine_id!r} operator_id={operator_id!r} max_shifts={max_shifts}"
+            )
+        earliest = _shifted_start(calendar, earliest=earliest, shift_to=shift_to, priority=priority, operator_id=operator_id)
+        if abort_after is not None and earliest > abort_after:
+            return earliest, earliest, 0.0, True
+
+
+def refresh_changeover_penalty(
+    estimate: InternalSlotEstimate, *, op: OpForScheduleAlgo, machine_id: str,
+    last_op_type_by_machine: Optional[Mapping[str, str]],
 ) -> InternalSlotEstimate:
-    return InternalSlotEstimate(
-        machine_id=machine_id,
-        operator_id=operator_id,
-        start_time=attempt.start_time,
-        end_time=attempt.end_time,
-        total_hours=attempt.total_hours,
-        changeover_penalty=changeover_penalty,
-        blocked_by_window=bool(end_dt_exclusive is not None and attempt.end_time >= end_dt_exclusive),
-        abort_after_hit=False,
-        efficiency_fallback_used=efficiency_fallback_used,
-    )
-
-
-def refresh_changeover_penalty(estimate: InternalSlotEstimate, *, op: Any, machine_id: str, last_op_type_by_machine: Any) -> InternalSlotEstimate:
     """``estimate`` with the changeover penalty a fresh scan ending at the same slot would report now."""
     penalty = slot_changeover_penalty(
         last_op_type_by_machine, op=op, machine_id=machine_id, start=estimate.start_time, end=estimate.end_time,
@@ -268,8 +203,8 @@ def refresh_changeover_penalty(estimate: InternalSlotEstimate, *, op: Any, machi
 def estimate_internal_slot(
     *,
     calendar: Any,
-    op: Any,
-    batch: Any,
+    op: OpForScheduleAlgo,
+    batch: Batch,
     machine_id: str,
     operator_id: str,
     base_time: datetime,
@@ -288,7 +223,7 @@ def estimate_internal_slot(
         # Inside one SGS decode the calendar is constant; its certified timing answers are memoized per decode.
         calendar = handoff.timing_calendar(calendar)
     total_base = _resolve_total_base(op, batch, total_hours_base)
-    priority = getattr(batch, "priority", None)
+    priority = batch.priority
     changeover_penalty = _changeover_penalty(op, machine_id, last_op_type_by_machine)
     segment_groups = _slot_segments(
         machine_timeline=machine_timeline,
@@ -298,70 +233,42 @@ def estimate_internal_slot(
         machine_id=machine_id,
         operator_id=operator_id,
     )
-    max_shifts = _max_shift_count(segment_groups)
-
-    earliest = released_start(op, max(prev_end, base_time))
-    earliest = _adjust_slot_start(calendar, earliest, priority=priority, operator_id=operator_id)
-    abort_result = _abort_after_result(
-        earliest=earliest,
+    start_time, end_time, total_hours, aborted = _walk(
+        calendar, handoff, release=released_start(op, max(prev_end, base_time)), total_base=total_base,
+        priority=priority, machine_id=machine_id, operator_id=operator_id, segment_groups=segment_groups,
         abort_after=abort_after,
+    )
+    if aborted:
+        return InternalSlotEstimate(
+            machine_id=machine_id, operator_id=operator_id, start_time=start_time, end_time=end_time,
+            total_hours=total_hours, changeover_penalty=changeover_penalty, abort_after_hit=True,
+        )
+    return InternalSlotEstimate(
         machine_id=machine_id,
         operator_id=operator_id,
-        changeover_penalty=changeover_penalty,
-        efficiency_fallback_used=False,
+        start_time=start_time,
+        end_time=end_time,
+        total_hours=total_hours,
+        changeover_penalty=slot_changeover_penalty(
+            last_op_type_by_machine, op=op, machine_id=machine_id,
+            start=start_time, end=end_time, legacy_penalty=changeover_penalty,
+        ),
+        blocked_by_window=bool(end_dt_exclusive is not None and end_time >= end_dt_exclusive),
     )
-    if abort_result is not None:
-        return abort_result
 
-    shift_count = 0
-    efficiency_fallback_used = False
-    # Busy blocks outside [scan_start, scan_end] never steered this walk; the SGS pair memo relies on that.
-    scan_start = scan_end = earliest
-    while True:
-        attempt = _estimate_attempt(calendar, earliest=earliest, total_base=total_base, priority=priority, operator_id=operator_id)
-        efficiency_fallback_used = bool(efficiency_fallback_used or attempt.efficiency_fallback_used)
-        shift_to = _latest_overlap_shift_end(segment_groups, earliest, attempt.end_time)
-        if shift_to is None:
-            if handoff is not None:
-                handoff.note_scan(scan_start, max(scan_end, attempt.end_time))
-            if attempt.total_hours < 0.0:
-                hours = calendar.working_hours_between(
-                    earliest, attempt.end_time, priority=priority, operator_id=operator_id
-                )
-                attempt = _SlotAttempt(
-                    attempt.start_time, attempt.end_time, float(hours), attempt.efficiency_fallback_used
-                )
-            return _build_slot_estimate(
-                machine_id=machine_id,
-                operator_id=operator_id,
-                attempt=attempt,
-                changeover_penalty=slot_changeover_penalty(
-                    last_op_type_by_machine, op=op, machine_id=machine_id,
-                    start=attempt.start_time, end=attempt.end_time, legacy_penalty=changeover_penalty,
-                ),
-                end_dt_exclusive=end_dt_exclusive,
-                efficiency_fallback_used=efficiency_fallback_used,
-            )
 
-        if attempt.end_time > attempt.start_time:
-            shift_to = advance_busy_block(calendar, earliest=earliest, shift_to=shift_to,
-                segment_groups=segment_groups, total_base=total_base, priority=priority,
-                operator_id=operator_id, abort_after=abort_after)
-        scan_end = max(scan_end, attempt.end_time, shift_to)
+def estimate_point_slot(*, calendar: Any, priority: Any, machine_id: str, operator_id: str, start: datetime) -> Tuple[datetime, datetime]:
+    """Where zero hours from ``start`` land on the calendar, through the same walk as every operation slot.
 
-        shift_count += 1
-        if shift_count > max_shifts:
-            raise RuntimeError(
-                f"自制工序避让超出显式上界：machine_id={machine_id!r} operator_id={operator_id!r} max_shifts={max_shifts}"
-            )
-        earliest = _shifted_start(calendar, earliest=earliest, shift_to=shift_to, priority=priority, operator_id=operator_id)
-        abort_result = _abort_after_result(
-            earliest=earliest,
-            abort_after=abort_after,
-            machine_id=machine_id,
-            operator_id=operator_id,
-            changeover_penalty=changeover_penalty,
-            efficiency_fallback_used=efficiency_fallback_used,
-        )
-        if abort_result is not None:
-            return abort_result
+    A point event occupies no resource time and has no material lower bound or changeover, so only the
+    calendar's shift, priority and personal rules decide; a point is valid when both instants equal ``start``.
+    """
+    handoff = current_sgs_handoff()
+    if handoff is not None:
+        calendar = handoff.timing_calendar(calendar)
+    segment_groups = _slot_segments(machine_timeline=(), operator_timeline=(), machine_downtimes=())
+    start_time, end_time, _hours, _aborted = _walk(
+        calendar, handoff, release=start, total_base=0.0, priority=priority, machine_id=machine_id,
+        operator_id=operator_id, segment_groups=segment_groups, abort_after=None,
+    )
+    return start_time, end_time

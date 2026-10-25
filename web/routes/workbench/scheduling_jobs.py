@@ -39,18 +39,22 @@ def _boundary(function):
         except WorkbenchCommandRejected as exc:
             response = failure(exc.code, str(exc), exc.status)
         except WorkbenchCommandUncertain as exc:
-            current_app.logger.exception("排产受理结果待核实")
+            request_ref = uuid4().hex
+            current_app.logger.exception("排产受理结果待核实 request_ref=%s", request_ref)
             response = failure("storage_failure", str(exc), 500, committed="unknown", request_key=exc.request_key,
-                               result_target="/api/workbench/v1/scheduling/requests/" + exc.request_key)
+                               result_target="/api/workbench/v1/scheduling/requests/" + exc.request_key,
+                               request_ref=request_ref)
         except HTTPException as exc:
             response = failure("invalid_input", "提交的内容格式不正确，这次排产没有开始。请刷新页面后重新点「确认开始排产」。", exc.code or 400)
         except Exception:
-            current_app.logger.exception("排产运行接口失败")
+            request_ref = uuid4().hex
+            current_app.logger.exception("排产运行接口失败 request_ref=%s", request_ref)
             is_accept = function.__name__ == "accept_scheduling_run"
             request_key = g.get("workbench_request_key") if is_accept else None
             response = failure("storage_failure", "排产记录没有读出来。请刷新重试；仍不行请联系维护人员，并告知下方编号。", 500,
                                committed="unknown" if is_accept else False, request_key=request_key,
-                               result_target=("/api/workbench/v1/scheduling/requests/" + request_key) if request_key else None)
+                               result_target=("/api/workbench/v1/scheduling/requests/" + request_key) if request_key else None,
+                               request_ref=request_ref)
         response.headers["Cache-Control"] = "no-store"
         return response
     return wrapped

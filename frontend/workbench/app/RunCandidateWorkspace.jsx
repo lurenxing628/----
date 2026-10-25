@@ -17,7 +17,7 @@
     const [busy, setBusy] = React.useState(false), [error, setError] = React.useState(null), [done, setDone] = React.useState(''), [format, setFormat] = React.useState(null);
     const active = React.useRef(null);
     React.useEffect(() => () => { if (active.current) active.current.abort(); }, []);
-    const d = result.data, allowed = d.capabilities.export === true && d.candidate.capabilities.export === true && typeof adapter.export === 'function';
+    const d = result.data, allowed = d.capabilities.export === true && d.candidate.capabilities.export === true;
     function cancel() { if (active.current) active.current.abort(); active.current = null; setBusy(false); setFormat(null); }
     async function save() {
       if (!allowed || active.current || !format) return;
@@ -48,11 +48,11 @@
     const historyOrigin = historyReturn ? { return_decision_history_context: historyReturn } : {};
     const isReference = initialContext.reference_view === true;
     const invalid = initialContext.run_ref !== undefined && !A.ref(initialContext.run_ref) || initialContext.candidate_ref !== undefined && !A.ref(initialContext.candidate_ref) || isReference && !A.ref(initialContext.run_ref);
-    const [runRef, setRunRef] = React.useState(initialContext.run_ref || null), [candidateRef, setCandidateRef] = React.useState(initialContext.candidate_ref || null);
+    const [runRef, setRunRef] = React.useState(initialContext.run_ref === undefined ? null : initialContext.run_ref), [candidateRef, setCandidateRef] = React.useState(initialContext.candidate_ref === undefined ? null : initialContext.candidate_ref);
     const [catalogQuery, setCatalogQuery] = React.useState({}), [scope, setScope] = React.useState(() => {
       const value = {}; for (const key of ['range_start', 'range_end', 'batch_ref', 'sort', 'order']) if (initialContext[key] !== undefined) value[key] = initialContext[key]; return value;
     });
-    const [range, setRange] = React.useState({ start: scope.range_start || '', end: scope.range_end || '' }), [rangeOpen, setRangeOpen] = React.useState(false);
+    const [range, setRange] = React.useState({ start: scope.range_start === undefined ? '' : scope.range_start, end: scope.range_end === undefined ? '' : scope.range_end }), [rangeOpen, setRangeOpen] = React.useState(false);
     const [rangeError, setRangeError] = React.useState(null), [query, setQuery] = React.useState(typeof initialContext.query === 'string' ? initialContext.query : ''), [selected, setSelected] = React.useState(null);
     const [pendingRow, setPendingRow] = React.useState(A.ref(initialContext.selected_row_ref) ? initialContext.selected_row_ref : null);
     const [pendingOperation, setPendingOperation] = React.useState(A.ref(initialContext.operation_ref) ? initialContext.operation_ref : null);
@@ -69,11 +69,9 @@
     React.useEffect(() => { if (data && !runRef) setRunRef(data.candidate.run_ref); }, [data, runRef]);
     const shown = data && data.capabilities.view === true && data.candidate.capabilities.view === true ? data : null;
     const analysisRead = useRead(async signal => {
-      if (typeof adapter.analysis !== 'function') throw new Error('dependency not wired: adapter.analysis');
       return adapter.analysis(candidateRef, runRef, signal);
     }, [adapter, candidateRef, revision, analysisPaused], !!candidateRef && !invalid && !analysisPaused && !isReference);
     const historyRead = useRead(async signal => {
-      if (typeof adapter.adoptions !== 'function') throw new Error('dependency not wired: adapter.adoptions');
       return adapter.adoptions(candidateRef, runRef, signal);
     }, [adapter, candidateRef, revision, result && result.meta.snapshot_ref], !!shown && tab === 'history' && !historyPaused && !isReference);
     const analysis = shown && !analysisPaused && analysisRead.result && analysisRead.result.data.run_ref === shown.candidate.run_ref ? analysisRead.result.data : null;
@@ -97,7 +95,7 @@
       const pendingFact = pendingRow && prepared.taskIndex.get(pendingRow);
       const exact = pendingFact && (!pendingOperation || pendingFact.task.operation_ref === pendingOperation) && pendingFact.task;
       const task = exact || pendingOperation && shown.tasks.find(row => row.operation_ref === pendingOperation);
-      const unplannedTask = !task && pendingOperation && (shown.unplanned_operations || []).find(row => row.operation_ref === pendingOperation);
+      const unplannedTask = !task && pendingOperation && shown.unplanned_operations !== null && shown.unplanned_operations.find(row => row.operation_ref === pendingOperation);
       if (task || unplannedTask) { setSelected({ task: task || unplannedTask, result }); setPendingRow(null); setPendingOperation(null); setDetailsOpen(true); if (unplannedTask) setTab('unplanned'); }
       else if (!scope.range_start && !scope.batch_ref) { setRangeError(new Error('完整保存范围中缺少这道工序，请核对明细中的定位编号。')); setPendingRow(null); setPendingOperation(null); }
       else setRangeError(new Error('这道工序位于当前查看范围之外，请打开完整保存范围定位。'));
@@ -133,9 +131,8 @@
           {onNavigate && runHistoryReturn && <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>返回排产记录</C.Button>}
           {onNavigate && initialContext.return_plan_context && A.ref(initialContext.return_plan_context.plan_ref) && <C.Button icon="chevron-left" className="btn link" onClick={() => onNavigate('analysis', returnContext(initialContext.return_plan_context))}>返回正式计划</C.Button>}</div>
         <div className="rc-actions">
-          {!isReference && (typeof renderAdoption === 'function' ? renderAdoption(candidateRef, { candidateDisplay: shown && shown.candidate.candidate_ref === candidateRef ? { candidate_ref: candidateRef, label: shown.candidate.label || '候选名称未填写' } : undefined, candidateCatalog: directory.result ? directory.result.data.candidates : [] }) : <C.Button icon="check" className="btn primary" reasonDisplay="inline" reason={window.WorkbenchTerms.outcomes.unavailable}>采用前核对</C.Button>)}
-          {!isReference && (typeof renderTrial === 'function' ? renderTrial({ candidateRef, scope, query, disabled: !shown || read.busy || invalid }) :
-            <C.Button icon="square-pen" reason={window.WorkbenchTerms.outcomes.unavailable}>试调</C.Button>)}
+          {!isReference && renderAdoption(candidateRef, { candidateDisplay: shown && shown.candidate.candidate_ref === candidateRef ? { candidate_ref: candidateRef, label: shown.candidate.label || '候选名称未填写' } : undefined, candidateCatalog: directory.result ? directory.result.data.candidates : [] })}
+          {!isReference && renderTrial({ candidateRef, scope, query, disabled: !shown || read.busy || invalid })}
           <C.Button icon="refresh-cw" aria-label="刷新候选方案" disabled={invalid || !runRef && !candidateRef} busy={read.busy || directory.busy} onClick={reload} /></div></div></div>
       {invalid && <C.ErrorBox error={new Error('记录编号无效，请从排产记录重新打开。')} />}
       {!runRef && !candidateRef && <div className="rc-empty" role="status">请从排产记录里打开候选方案。</div>}
@@ -191,7 +188,7 @@
   function RunCandidateWorkspace(props) {
     const adapter = React.useMemo(() => window.RunDecisionAPI.adapter(window.RunCandidateAnalysisAPI.adapter(props.adapter || { ...window.RunCandidateAnalysisAPI.create(), ...window.RunDecisionAPI.create() })), [props.adapter]);
     if (!adapterIds.has(adapter)) adapterIds.set(adapter, ++nextAdapter);
-    const context = props.initialContext || {}, identity = [context.run_ref, context.candidate_ref, context.range_start, context.range_end, context.batch_ref, context.operation_ref, context.selected_row_ref, context.reference_view, context.plan_ref, context.comparison_mode, context.resource_view, context.resource_kind, context.resource_ref];
+    const context = props.initialContext, identity = [context.run_ref, context.candidate_ref, context.range_start, context.range_end, context.batch_ref, context.operation_ref, context.selected_row_ref, context.reference_view, context.plan_ref, context.comparison_mode, context.resource_view, context.resource_kind, context.resource_ref];
     return props.view === 'analysis' ? <window.RunDecisionComparison.Workspace key={adapterIds.get(adapter) + ':' + JSON.stringify(identity)} {...props} adapter={adapter} />
       : <Session key={adapterIds.get(adapter) + ':' + JSON.stringify(identity)} {...props} adapter={adapter} />;
   }

@@ -211,3 +211,29 @@ def test_material_xlsx_export_import_preserves_cr_and_crlf(app_client, monkeypat
     response = confirm(app_client, preview, key="material-cr-import-confirm")
     assert response.status_code == 200, response.get_data(as_text=True)
     assert _detail(app_client, ref)["fields"] == expected
+
+
+_UNREADABLE_MATERIAL_BODY = "提交的内容格式不正确或有重复项，物料没有改动。请刷新页面后重新填写。"
+_INCOMPLETE_MATERIAL_BODY = "提交的内容不完整或有多余项，物料没有改动。请刷新页面后重新填写。"
+
+
+@pytest.mark.parametrize("raw,content_type,message", [
+    ('{"action": "delete", "action": "delete", "refs": [], "scope": {}, "snapshot_ref": "x"}', "application/json",
+     _UNREADABLE_MATERIAL_BODY),
+    ('{"action": "delete", "refs": [], "scope": {}, "snapshot_ref": "x", "page_size": NaN}', "application/json",
+     _UNREADABLE_MATERIAL_BODY),
+    ('{"action": "delete", "refs": [], "scope": {}, "snapshot_ref": "x", "page_size": Infinity}', "application/json",
+     _UNREADABLE_MATERIAL_BODY),
+    ('{"action": "delete", "refs": [], "scope": {}, "snapshot_ref": "x", "page_size": 1e999}', "application/json",
+     _UNREADABLE_MATERIAL_BODY),
+    ('{"action": ', "application/json", _UNREADABLE_MATERIAL_BODY),
+    ('[]', "application/json", _INCOMPLETE_MATERIAL_BODY),
+    ('{"action": "delete"}', "application/json", _INCOMPLETE_MATERIAL_BODY),
+    ('{}', "text/plain", "提交的内容格式不正确，物料没有改动。请刷新页面后重新填写。"),
+], ids=("duplicate", "nan", "infinity", "overflow", "syntax", "not_object", "missing_key", "transport"))
+def test_material_action_body_rejects_duplicate_keys_and_non_finite_numbers(app_client, raw, content_type, message):
+    response = app_client.post(BASE + "/bulk-preview", data=raw, content_type=content_type)
+    assert response.status_code == 400, response.get_data(as_text=True)
+    result = response.get_json()
+    assert result["committed"] is False
+    assert (result["error"]["code"], result["error"]["message"]) == ("invalid_input", message)

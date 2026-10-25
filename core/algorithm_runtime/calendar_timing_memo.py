@@ -118,7 +118,7 @@ def _remember(memo: Dict[Any, Any], key: Any, value: Any) -> Any:
 class MemoizedTimingCalendar:
     """The estimator-facing timing surface of one certified calendar, with memoized pure answers."""
 
-    __slots__ = ("calendar", "hits", "misses", "_adjust", "_efficiency", "_hours", "_effective_hours", "_window", "_between")
+    __slots__ = ("calendar", "hits", "misses", "_adjust", "_efficiency", "_effective_hours", "_window", "_between")
 
     def __init__(self, calendar: Any) -> None:
         self.calendar = calendar
@@ -126,7 +126,6 @@ class MemoizedTimingCalendar:
         self.misses = 0
         self._adjust: Dict[Tuple[Any, ...], datetime] = {}
         self._efficiency: Dict[Tuple[Any, ...], Any] = {}
-        self._hours: Dict[Tuple[Any, ...], datetime] = {}
         self._effective_hours: Dict[Tuple[Any, ...], datetime] = {}
         self._window: Dict[Tuple[Any, ...], Optional[Tuple[datetime, datetime]]] = {}
         self._between: Dict[Tuple[Any, ...], float] = {}
@@ -165,17 +164,6 @@ class MemoizedTimingCalendar:
             return found
         self.misses += 1
         return _remember(self._efficiency, key, self.calendar.get_efficiency(dt, operator_id=operator_id))
-
-    def add_working_hours(self, start: datetime, hours: Any, *, priority: Any, operator_id: Any) -> datetime:
-        if type(start) is not datetime or type(hours) is not float or not _plain_text(priority) or not _plain_text(operator_id):
-            return self.calendar.add_working_hours(start, hours, priority=priority, operator_id=operator_id)
-        key = (start, hours, priority, operator_id)
-        found = self._hours.get(key, _MISSING)
-        if found is not _MISSING:
-            self.hits += 1
-            return found
-        self.misses += 1
-        return _remember(self._hours, key, self.calendar.add_working_hours(start, hours, priority=priority, operator_id=operator_id))
 
     def add_effective_hours(self, start: datetime, hours: Any, *, priority: Any, operator_id: Any) -> datetime:
         if type(start) is not datetime or type(hours) is not float or not _plain_text(priority) or not _plain_text(operator_id):

@@ -1,7 +1,6 @@
 """Request-local reads of original history sources inside one read snapshot."""
 
 from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.read_evidence import read_evidence_scope
 from core.infrastructure.workbench_run_schema import workbench_run_contract_issues
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.candidate_facts import GenerationFacts
@@ -10,7 +9,6 @@ from core.services.workbench.facts.candidate_read_source import read_candidate_s
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_values import corrupt
 from core.services.workbench.facts.decision_baseline_source import candidate_evidence, trial_evidence
-from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 from core.services.workbench.facts.trial_policy import load_scenario_record
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
 from core.services.workbench.run.decision import decision_history_candidate
@@ -265,9 +263,3 @@ class HistoryReader:
         key = (run_ref, candidate_ref, range_start, range_end)
         return _cached(self._decisions, key, lambda: decision_history_candidate(self.run_source(run_ref, candidate_ref,
             range_start=range_start, range_end=range_end)))
-
-
-def read_history_source(conn, descriptor):
-    """One-off saved-source read; grouped history requests share HistoryReader."""
-    with candidate_read_snapshot(conn), read_evidence_scope(conn):
-        return HistoryReader(conn).read(descriptor)

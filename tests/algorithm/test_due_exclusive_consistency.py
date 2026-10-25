@@ -2,9 +2,8 @@
 
 import time
 from datetime import date, datetime
-from types import SimpleNamespace
 
-import pytest
+from tests._support.algo_operations import make_algo_op, make_batch
 
 
 def test_due_exclusive_consistency() -> None:
@@ -40,8 +39,10 @@ def test_due_exclusive_consistency() -> None:
         op_type_name="A工种",
     )
 
-    metrics = compute_metrics([result], {"B001": batch})
-    assert compute_metrics([result], {"B001": batch}, prepared=prepare_evaluation_context(batches={"B001": batch})).to_dict() == metrics.to_dict()
+    operations = [make_algo_op(id=1, batch_id="B001")]
+    metrics = compute_metrics([result], {"B001": batch}, expected_operations=operations)
+    prepared = prepare_evaluation_context(batches={"B001": batch}, expected_operations=operations)
+    assert compute_metrics([result], {"B001": batch}, expected_operations=operations, prepared=prepared).to_dict() == metrics.to_dict()
     assert metrics.overdue_count == 1, f"evaluation overdue_count 应为 1，实际={metrics.overdue_count}"
     assert abs(metrics.total_tardiness_hours - 0.0) < 1e-9, f"边界拖期应为 0，实际={metrics.total_tardiness_hours}"
 
@@ -83,6 +84,7 @@ def test_due_exclusive_consistency() -> None:
         attempts=[],
         improvement_trace=[],
         frozen_op_ids=set(),
+        scheduled_op_ids={1},
         downtime_meta={},
         simulate=False,
         t0=time.time(),
@@ -110,7 +112,7 @@ def test_due_exclusive_max_due_sentinel_end_to_end_not_overdue() -> None:
     from core.services.common.overdue_calculations import compute_overdue_bucket_groups
 
     finish_dt = datetime(2026, 2, 2, 0, 0, 0)
-    batch = SimpleNamespace(batch_id="B900", due_date="9999-12-31", priority="normal", quantity=1)
+    batch = make_batch(batch_id="B900", due_date="9999-12-31")
     result = ScheduleResult(
         op_id=1,
         op_code="OP001",
@@ -124,8 +126,10 @@ def test_due_exclusive_max_due_sentinel_end_to_end_not_overdue() -> None:
         op_type_name="A工种",
     )
 
-    metrics = compute_metrics([result], {"B900": batch})
-    assert compute_metrics([result], {"B900": batch}, prepared=prepare_evaluation_context(batches={"B900": batch})).to_dict() == metrics.to_dict()
+    operations = [make_algo_op(id=1, batch_id="B900")]
+    metrics = compute_metrics([result], {"B900": batch}, expected_operations=operations)
+    prepared = prepare_evaluation_context(batches={"B900": batch}, expected_operations=operations)
+    assert compute_metrics([result], {"B900": batch}, expected_operations=operations, prepared=prepared).to_dict() == metrics.to_dict()
     assert metrics.overdue_count == 0, f"9999-12-31 哨兵交期不应判逾期，实际 overdue_count={metrics.overdue_count}"
     assert abs(metrics.total_tardiness_hours - 0.0) < 1e-9, f"9999-12-31 哨兵交期拖期应为 0，实际={metrics.total_tardiness_hours}"
 
@@ -147,35 +151,28 @@ def test_prepared_due_sources_keep_order_and_standalone_uses_current_inputs() ->
     from core.algorithms.evaluation_completion import collect_batch_completion
 
     batches = {
-        " B1 ": SimpleNamespace(due_date="2026-01-01", priority="critical"),
-        "B1": SimpleNamespace(due_date=date(2026, 1, 2), priority="normal"),
-        " B3 ": SimpleNamespace(due_date="bad-due", priority="urgent"),
-        "B2": SimpleNamespace(due_date=None, priority="normal"),
+        " B1 ": make_batch(batch_id=" B1 ", due_date="2026-01-01", priority="critical"),
+        "B1": make_batch(batch_id="B1", due_date=date(2026, 1, 2), priority="normal"),
+        " B3 ": make_batch(batch_id=" B3 ", due_date="bad-due", priority="urgent"),
+        "B2": make_batch(batch_id="B2", due_date=None, priority="normal"),
     }
-    operation = SimpleNamespace(id=1, batch_id="B1")
+    operation = make_algo_op(id=1, batch_id="B1")
     result = ScheduleResult(op_id=1, op_code="OP1", batch_id="B1", seq=1, machine_id="M1", operator_id="O1",
                             start_time=datetime(2026, 1, 1, 8), end_time=datetime(2026, 1, 3, 1), source="internal")
     prepared = prepare_evaluation_context(batches=batches, expected_operations=[operation])
-    metrics = compute_metrics([result], batches, prepared=prepared)
+    metrics = compute_metrics([result], batches, expected_operations=[operation], prepared=prepared)
     assert (metrics.overdue_count, metrics.total_tardiness_hours, metrics.weighted_tardiness_hours) == (2, 26.0, 76.0)
     assert metrics.unscheduled_batch_ids_sample == ["B3(bad-due)", "B2"]
     assert metrics.invalid_due_batch_ids_sample == ["B3"]
-    absent = collect_batch_completion([], batches, failure_details=[{"op_id": 1}], prepared=prepared)
-    assert absent is not None
+    absent = collect_batch_completion([], failure_details=[{"op_id": 1}], prepared=prepared)
     assert absent.incomplete_work_weight == 4.0  # normalized B1 uses its last source's normal weight.
-    empty = compute_metrics([], batches, prepared=prepared)
+    empty = compute_metrics([], batches, expected_operations=[operation], prepared=prepared)
     assert empty.unscheduled_batch_ids_sample == ["B1(2026-01-01)", "B1(2026-01-02)", "B3(bad-due)", "B2"]
 
     batches["B1"].priority = "critical"
     batches["B1"].due_date = "2026-01-04"
-    standalone = compute_metrics([result], batches)
-    assert standalone.completion is None
+    standalone = compute_metrics([result], batches, expected_operations=[operation])
     assert (standalone.overdue_count, standalone.total_tardiness_hours, standalone.weighted_tardiness_hours) == (1, 25.0, 75.0)
     operation.id = 2
     current = compute_metrics([result], batches, expected_operations=[operation])
-    assert current.completion is not None
     assert current.completion.missing_operation_count == current.completion.unexpected_result_count == 1
-    with pytest.raises(ValueError, match="Completion evidence requires expected_operations"):
-        compute_metrics([result], batches, seed_results=[])
-    with pytest.raises(ValueError, match="Completion evidence requires expected_operations"):
-        compute_metrics([result], batches, failure_details=[])

@@ -9,7 +9,7 @@ not also run the legacy flat-seq downstream check over independent pieces.
 """
 
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from core.errors import AppError
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
@@ -34,14 +34,16 @@ from .piece_adoption_execution import _quantities, validate_piece_execution
 from .piece_adoption_facts import current_piece_scope
 
 
-def validate_piece_candidate(conn, *, prepared, payload, context=None, candidate_validated=False):
-    """Validate a known payload for publication while retaining every protected seed."""
-    return _validate_piece(
-        conn, prepared, payload, purpose="publication", context=context, candidate_validated=candidate_validated
-    )
+def validate_piece_candidate(conn, *, prepared, payload, context=None):
+    """Validate a known payload for publication while retaining every protected seed.
+
+    payload has already passed validate_candidate, which owns time representability,
+    the scheduling window and zero-duration point proof.
+    """
+    return _validate_piece(conn, prepared, payload, purpose="publication", context=context)
 
 
-def validate_piece_adoption(conn, *, prepared, payload, candidate_validated=False):
+def validate_piece_adoption(conn, *, prepared, payload):
     """Validate formal adoption for a piece scope; raise a typed blocker without writes or repair.
 
     prepared uses the existing CandidateRunInput fields, including raw operations,
@@ -49,7 +51,7 @@ def validate_piece_adoption(conn, *, prepared, payload, candidate_validated=Fals
     calendar, seeds and full execution guards. payload is ValidatedSchedulePayload.
     No proof is inferred from the engine's completion flag.
     """
-    return _validate_piece(conn, prepared, payload, purpose="adoption", candidate_validated=candidate_validated)
+    return _validate_piece(conn, prepared, payload, purpose="adoption")
 
 
 @contextmanager
@@ -94,22 +96,20 @@ def _prepare_piece_validation_context(conn, prepared):
         "actual_intervals": actual_intervals,
         "downtime": adoption_downtimes(prepared),
         "actual": prepared.execution_fixed_op_ids | prepared.execution_completed_op_ids,
-        "seeds": {row["op_id"] for row in prepared.seed_results},
-        "high": datetime.combine(prepared.end_date_norm + timedelta(days=1), datetime.min.time()),
     }
 
 
-def _validate_piece(conn, prepared, payload, *, purpose, context=None, candidate_validated):
+def _validate_piece(conn, prepared, payload, *, purpose, context=None):
     with _piece_validation_snapshot(conn):
         if context is None:
             context = _prepare_piece_validation_context(conn, prepared)
         scope = context["scope"]
-        _payload(prepared, payload, scope, purpose=purpose, candidate_validated=candidate_validated)
+        _payload(prepared, payload, scope, purpose=purpose)
         validate_piece_execution(prepared, payload, purpose=purpose)
-        _constraints(prepared, payload, context, candidate_validated=candidate_validated)
+        _constraints(prepared, payload, context)
 
 
-def _payload(prepared, payload, scope, *, purpose, candidate_validated):
+def _payload(prepared, payload, scope, *, purpose):
     scope_ids = {work.op_id for work in scope.operations}
     ids = scope_ids - {row["op_id"] for row in prepared.dispositions if row["status"] == "skipped"}
     adoption_ids = scope_ids - material_deferred_ids(prepared.dispositions, prepared.normalized_input)
@@ -119,19 +119,14 @@ def _payload(prepared, payload, scope, *, purpose, candidate_validated):
             or (purpose == "publication" and not scheduled)
             or (purpose == "adoption" and scheduled != adoption_ids)):
         block("piece_scope_incomplete", "排产结果没有把共同工序和每个分件各排一次，本次没有采用。请回「执行排产」重新排一次。")
-    if not candidate_validated:
-        for row in payload.schedule_rows:
-            for time in (row.start_time, row.end_time):
-                if not isinstance(time, datetime) or time.tzinfo is not None:
-                    block("piece_time_unrepresentable", "排产结果的开始或结束时刻无效，写不进正式计划。请回「执行排产」重新排一次。")
 
 
-def _constraints(prepared, payload, context, *, candidate_validated):
+def _constraints(prepared, payload, context):
     calendar, checks = prepared.cal_svc, context["checks"]
     downtime, actual_intervals = context["downtime"], context["actual_intervals"]
     quantities, ops, algo_ops = context["quantities"], context["ops"], context["algo_ops"]
     raw_batches = context["raw_batches"]
-    actual, seeds, high = context["actual"], context["seeds"], context["high"]
+    actual = context["actual"]
     _resource_overlaps(payload.schedule_rows, prepared.execution_facts)
     for row in payload.schedule_rows:
         op, algo = ops[row.op_id], algo_ops[row.op_id]
@@ -143,12 +138,9 @@ def _constraints(prepared, payload, context, *, candidate_validated):
             block("piece_resource_invalid", "原工序资料或分配的设备、人员、工种资格有问题，本次没有采用。请到基础资料核对后重新排产。")
         if row.op_id in actual:
             continue
-        _mutable_work(prepared, checks, row, op, batch, raw_batch, raw, quantities[row.op_id], seeds, high,
-                      actual_cycle=row.op_id in actual_intervals, candidate_validated=candidate_validated)
-        _duration(
-            calendar, downtime, row, algo, batch, quantities[row.op_id], actual_intervals,
-            candidate_validated=candidate_validated,
-        )
+        _mutable_work(prepared, checks, row, op, batch, raw_batch, raw, quantities[row.op_id],
+                      actual_cycle=row.op_id in actual_intervals)
+        _duration(calendar, downtime, row, algo, batch, quantities[row.op_id], actual_intervals)
 
 
 def _material_deferrals(prepared, checks, ops, raw_batches):
@@ -165,16 +157,11 @@ def _material_deferrals(prepared, checks, ops, raw_batches):
         block("piece_scope_incomplete", "被暂缓的工序没有当前缺料依据，请重新排产。")
 
 
-def _mutable_work(prepared, checks, row, op, batch, raw_batch, raw, quantity, seeds, high, *,
-                  actual_cycle, candidate_validated):
+def _mutable_work(prepared, checks, row, op, batch, raw_batch, raw, quantity, *, actual_cycle):
     if op.status in ("processing", "completed", "skipped") or batch.status in ("completed", "cancelled"):
         block("piece_execution_unprotected", "已开工、已完工或已取消的工序没有对应的报工记录保护，本次没有采用。请刷新现场记录后重新排产。")
     if op.source == "external" and quantity == 0:
         block("piece_scope_incomplete", "外协工序的目标数量是 0，排不出工期，本次没有采用。请到批次管理补数量后重新排产。")
-    if not candidate_validated and row.op_id not in seeds and (
-        row.start_time < prepared.start_dt_norm or row.end_time > high or row.start_time == high
-    ):
-        block("piece_outside_window", "有工序排到了这次排产日期范围之外，本次没有采用。请回「执行排产」重新排一次。")
     if not actual_cycle:
         _release_dates(prepared, checks, row, batch, raw_batch, raw)
 
@@ -193,15 +180,13 @@ def _release_dates(prepared, checks, row, batch, raw_batch, raw):
             block("piece_before_ready_date", "有工序排在齐套日期之前，本次没有采用。请回「执行排产」重新排一次。")
 
 
-def _duration(calendar, downtime, row, op, batch, quantity, actual_intervals, *, candidate_validated):
+def _duration(calendar, downtime, row, op, batch, quantity, actual_intervals):
     if op.source == "external":
         if (external_holds_resources(row)
                 or external_duration_conflict(calendar, row, op, actual_intervals)):
             block("piece_external_duration_conflict", "外协工序的周期或设备人员安排和原资料不一致，本次没有采用。请回「执行排产」重新排一次。")
         return
-    if candidate_validated and row.start_time == row.end_time:
+    if row.start_time == row.end_time:
         return
     if calendar_duration_conflict(calendar, row, op, batch, downtime.get(row.machine_id, ()), quantity=quantity):
-        if row.start_time == row.end_time:
-            block("piece_calendar_duration_conflict", "零工时工序的时刻和当前工作日历算出来的不一致，本次没有采用。请回「执行排产」重新排一次。")
         block("piece_calendar_duration_conflict", "工序时长和数量、工时定额、工作日历算出来的对不上，本次没有采用。请回「执行排产」重新排一次。")

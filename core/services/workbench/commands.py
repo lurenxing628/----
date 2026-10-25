@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from core.errors import BusinessError, ValidationError
 from core.infrastructure.transaction import TransactionManager
@@ -27,14 +27,14 @@ class WorkbenchCommandService:
         row = self.repo.get(validate_request_key(request_key))
         return self.repo.public_result(row, replayed=True) if row else None
 
-    def replay(self, *, request_key: str, action: str, context_ref: str, normalized_input: Any) -> Optional[Dict[str, Any]]:
+    def replay(self, *, request_key: str, action: object, context_ref: object, normalized_input: Any) -> Optional[Dict[str, Any]]:
         """Read-only: the committed result of this same intent, or None when none is observed.
 
         Callers that refuse new work before ``execute`` (for example while a
         scheduling run holds the scheduler lock) check this first, so a retry of
         an already committed request still replays instead of being refused.
         """
-        input_text = self._admit(request_key, action, context_ref, normalized_input)
+        action, context_ref, input_text = self._admit(request_key, action, context_ref, normalized_input)
         try:
             return self._replay(request_key, action, context_ref, input_text)
         except (WorkbenchCommandRejected, BusinessError, ValidationError):
@@ -42,7 +42,7 @@ class WorkbenchCommandService:
         except Exception as exc:
             raise WorkbenchCommandUncertain(request_key) from exc
 
-    def execute(self, *, request_key: str, action: str, context_ref: str, normalized_input: Any,
+    def execute(self, *, request_key: str, action: object, context_ref: object, normalized_input: Any,
                 guard: Callable[[], Any], mutate: Callable[[Any], WorkbenchCommandOutcome]) -> Dict[str, Any]:
         """Own the outer transaction; replay before checking a now-expired edit token.
 
@@ -52,7 +52,7 @@ class WorkbenchCommandService:
         A missing lookup means no committed receipt was observed, not that an in-flight
         request cannot still complete. A retry must retain its original request key.
         """
-        input_text = self._admit(request_key, action, context_ref, normalized_input)
+        action, context_ref, input_text = self._admit(request_key, action, context_ref, normalized_input)
         try:
             # Receipts are immutable and committed atomically with their mutation.
             # A completed SELECT is enough to replay one: taking a write lock here
@@ -72,7 +72,8 @@ class WorkbenchCommandService:
         except Exception as exc:
             raise WorkbenchCommandUncertain(request_key) from exc
 
-    def _admit(self, request_key: str, action: str, context_ref: str, normalized_input: Any) -> str:
+    def _admit(self, request_key: str, action: object, context_ref: object, normalized_input: Any) -> Tuple[str, str, str]:
+        # Admission boundary: some routes pass raw request-body values (for example a preview_ref).
         validate_request_key(request_key)
         if not isinstance(action, str) or not action or not isinstance(context_ref, str) or not context_ref:
             raise WorkbenchCommandRejected("invalid_input", "没有指定要操作哪条记录或做什么操作。", 400)
@@ -82,7 +83,7 @@ class WorkbenchCommandService:
             raise WorkbenchCommandRejected("invalid_input", "提交的内容里有存不下来的数据，操作没有完成。", 400) from exc
         if self.conn.in_transaction:
             raise RuntimeError("工作台命令必须拥有最外层事务，不能在调用方未提交的事务中声称已保存。")
-        return input_text
+        return action, context_ref, input_text
 
     def _replay(self, request_key: str, action: str, context_ref: str, input_text: str) -> Optional[Dict[str, Any]]:
         row = self.repo.get(request_key)

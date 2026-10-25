@@ -1,17 +1,15 @@
 """One display graph over captured process relations and the complete schedule."""
 
-from types import SimpleNamespace
-
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.services.scheduler.gantt.critical_chain import compute_critical_chain_from_dependencies
 
 from .piece_scope import build_piece_adoption_scope
+from .stored_algo_inputs import stored_batch_operation
 
 
 def frozen_process_relations(operations, batches, refs):
-    fields = ("id", "batch_id", "piece_id", "seq")
-    scope = build_piece_adoption_scope([SimpleNamespace(**{key: row[key] for key in fields}) for row in operations.values()],
-                                      {key: SimpleNamespace(quantity=row["quantity"]) for key, row in batches.items()})
+    scope = build_piece_adoption_scope([stored_batch_operation(row) for row in operations.values()],
+                                       {key: row["quantity"] for key, row in batches.items()})
     return {refs[row.op_id]: [refs[key] for key in row.predecessor_op_ids] for row in scope.operations}
 
 

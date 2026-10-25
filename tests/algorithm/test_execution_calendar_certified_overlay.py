@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
+from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_runtime.calendar_timing_memo import native_timing_calendar
 from core.algorithms.greedy import scheduler as scheduler_module
 from core.algorithms.greedy.dispatch.sgs_graph import graph_priority_key_map
@@ -19,6 +20,7 @@ from core.services.scheduler.run.schedule_execution_reservations import (
     native_execution_overlay_timing,
     reserve_execution_machines,
 )
+from tests._support.algo_operations import make_algo_op, make_batch
 from tests._support.busy_block_case import BASE, at, native_calendar, run_estimate, slot_case, spans
 
 
@@ -82,13 +84,12 @@ def _saturated_case(batch_count=30, ops_per_batch=3):
     batches, operations, predecessors, successors = {}, [], {}, {}
     for b in range(batch_count):
         bid = f"B{b:03d}"
-        batches[bid] = SimpleNamespace(batch_id=bid, priority="urgent" if b % 4 == 0 else "normal",
-                                       due_date=(BASE + timedelta(days=2 + b % 9)).date(), ready_status="yes",
-                                       ready_date=None, created_at=None, quantity=1 + b % 3)
+        batches[bid] = make_batch(batch_id=bid, priority="urgent" if b % 4 == 0 else "normal",
+                                  due_date=(BASE + timedelta(days=2 + b % 9)).date(), quantity=1 + b % 3)
         for seq in range(ops_per_batch):
             oid = b * ops_per_batch + seq + 1
-            operations.append(SimpleNamespace(
-                id=oid, op_code=f"{bid}_{seq}", batch_id=bid, seq=seq, source="internal",
+            operations.append(make_algo_op(
+                id=oid, op_code=f"{bid}_{seq}", batch_id=bid, seq=seq,
                 machine_id=machines[(b + seq) % 3], operator_id=operators[(b + 2 * seq) % 2],
                 setup_hours=0.25 * (1 + oid % 3), unit_hours=0.2 + 0.1 * (oid % 4),
                 op_type_id=f"T{oid % 2}", op_type_name=f"TYPE{oid % 2}"))
@@ -122,11 +123,9 @@ def _single_resource_case(count=40):
     batches, operations = {}, []
     for index in range(count):
         bid = f"B{index:03d}"
-        batches[bid] = SimpleNamespace(batch_id=bid, priority="normal", due_date=None, ready_status="yes",
-                                       ready_date=None, created_at=None, quantity=1)
-        operations.append(SimpleNamespace(id=index + 1, op_code=bid, batch_id=bid, seq=1, source="internal",
-                                          machine_id="M1", operator_id="O1", setup_hours=1.0, unit_hours=0.0,
-                                          op_type_id="T", op_type_name="TURN"))
+        batches[bid] = make_batch(batch_id=bid)
+        operations.append(make_algo_op(id=index + 1, op_code=bid, batch_id=bid, machine_id="M1", operator_id="O1",
+                                       setup_hours=1.0, unit_hours=0.0, op_type_id="T", op_type_name="TURN"))
     return dict(operations=operations, batches=batches, start_dt=BASE, dispatch_mode="sgs", dispatch_rule="slack")
 
 
@@ -158,8 +157,9 @@ def _mixed_case(batch_count=30):
             op.source, op.machine_id, op.operator_id = "external", None, None
             op.ext_days = 0.25
             if batch_index % 3 == 0:
-                op.ext_merge_mode, op.ext_group_id = "merged", "supplier-group"
-                op.ext_group_total_days = "0.5"
+                # 与排产输入构建一致：合并组只带整组周期（规范浮点数），不带单道周期。
+                op.ext_merge_mode, op.ext_group_id, op.ext_days = "merged", "supplier-group", None
+                op.ext_group_total_days = 0.5
     return case
 
 
@@ -173,13 +173,13 @@ def test_mixed_external_decode_keeps_pruning_and_exact_schedule_with_release_flo
     assert on["graph_candidates_pruned"] > 0
 
 
-def _pruning(case, calendar, *, strict_mode=True):
+def _pruning(case, calendar):
     graph = dict(case["graph_ready_context"])
     graph["op_by_id"] = {op.id: (op.batch_id, op) for op in case["operations"]}
     graph["ready_op_ids"] = {op.id for op in case["operations"] if op.seq == 0}
     hours = {op.id: float(op.setup_hours + op.unit_hours * case["batches"][op.batch_id].quantity)
              for op in case["operations"] if op.source == "internal"}
-    return GraphPriorityPruning(graph, case["batches"], hours, strict_mode=strict_mode, calendar=calendar), graph
+    return GraphPriorityPruning(graph, case["batches"], hours, strict_mode=True, calendar=calendar), graph
 
 
 @pytest.mark.parametrize("admitted", [False, True])
@@ -243,14 +243,16 @@ def test_external_calendar_override_disables_both_narrowing_paths_without_disabl
         assert pruning.frontier(list(graph["op_by_id"].values()), graph) is None
 
 
-@pytest.mark.parametrize("field,value", [("ext_days", "bad"), ("ext_days", 36501.0), ("ext_group_total_days", 0.0)])
-def test_invalid_external_duration_keeps_the_complete_path_and_original_first_error(field, value):
+@pytest.mark.parametrize("merged", [False, True])
+def test_out_of_range_external_duration_keeps_the_complete_path_and_the_calendar_error(merged):
+    # 输入构建只保证周期是正有限数；超出日历可加天数的周期由日历拒绝，剪枝认证不能放行。
     case = _saturated_case(batch_count=3, ops_per_batch=1)
-    first, second = case["operations"][:2]
-    first.source, first.ext_days = "external", value
-    if field == "ext_group_total_days":
-        first.ext_merge_mode, first.ext_group_id, first.ext_group_total_days = "merged", "G", value
-    second.source, second.ext_days = "external", "another invalid duration"
+    first = case["operations"][0]
+    first.source = "external"
+    if merged:
+        first.ext_merge_mode, first.ext_group_id, first.ext_group_total_days = "merged", "G", 36501.0
+    else:
+        first.ext_days = 36501.0
     errors = []
     for enabled in (False, True):
         with native_calendar() as calendar:
@@ -260,17 +262,21 @@ def test_invalid_external_duration_keeps_the_complete_path_and_original_first_er
                 _decode(calendar, case, cache_enabled=enabled)
             errors.append((exc.value.field, str(exc.value)))
     assert errors[0] == errors[1]
-    assert errors[0][0] == ("days" if value == 36501.0 else field)
+    assert errors[0][0] == "days"
 
 
 def test_external_duration_descriptor_is_not_read_by_certification():
     calls = []
 
-    class External(SimpleNamespace):
+    class External(OpForScheduleAlgo):
         @property
         def ext_days(self):
             calls.append("duration")
             return 0.25
+
+        @ext_days.setter
+        def ext_days(self, value):
+            pass  # 构造时的赋值不落实例字典，读取只走上面的描述符
 
     case = _saturated_case(batch_count=2, ops_per_batch=1)
     first = case["operations"][0]
@@ -278,15 +284,6 @@ def test_external_duration_descriptor_is_not_read_by_certification():
     with native_calendar() as calendar:
         pruning, _ = _pruning(case, calendar)
     assert not pruning.supported and calls == []
-
-
-def test_blank_external_duration_keeps_the_existing_strict_and_non_strict_rules():
-    case = _saturated_case(batch_count=2, ops_per_batch=1)
-    case["operations"][0].source, case["operations"][0].ext_days = "external", None
-    with native_calendar() as calendar:
-        non_strict, _ = _pruning(case, calendar, strict_mode=False)
-        strict, _ = _pruning(case, calendar, strict_mode=True)
-    assert non_strict.supported and not strict.supported
 
 
 def test_blocked_lowest_external_group_still_scores_the_other_ready_operations():

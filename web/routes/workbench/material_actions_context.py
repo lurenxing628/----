@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -10,7 +9,6 @@ from functools import wraps
 from types import MappingProxyType
 from typing import Optional, Union
 
-from flask import request
 from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError, ValidationError
@@ -22,6 +20,7 @@ from core.services.workbench.material.files import local_created_at
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
 from .api_responses import api_endpoint
+from .request_json import read_json_body
 from .write_context import preview_write_context, validate_preview_confirmation
 
 PREVIEW_SCOPE = "workbench-material-preview-v1"
@@ -48,27 +47,20 @@ def read_endpoint(function):
     return api_endpoint(wrapped, readonly=True)
 
 
+_INCOMPLETE_BODY = "提交的内容不完整或有多余项，物料没有改动。请刷新页面后重新填写。"
+
+
 def json_body(required, optional=()):
-    if request.args or not request.is_json:
-        raise WorkbenchCommandRejected("invalid_input", "提交的内容格式不正确，物料没有改动。请刷新页面后重新填写。", 400)
-    # Reject duplicate keys rather than silently taking the last scope or ref.
-    def pairs(items):
-        result = {}
-        for key, value in items:
-            if key in result:
-                raise ValueError("duplicate JSON key")
-            result[key] = value
-        return result
-    try:
-        body = json.loads(request.get_data(), object_pairs_hook=pairs)
-    except (ValueError, UnicodeError) as exc:
-        raise WorkbenchCommandRejected("invalid_input", "提交的内容格式不正确或有重复项，物料没有改动。请刷新页面后重新填写。", 400) from exc
-    if type(body) is not dict or not set(required) <= set(body) or set(body) - set(required) - set(optional):
-        raise WorkbenchCommandRejected("invalid_input", "提交的内容不完整或有多余项，物料没有改动。请刷新页面后重新填写。", 400)
+    # Duplicate keys share the syntax-error text rather than silently taking the last scope or ref.
+    body = read_json_body(transport="提交的内容格式不正确，物料没有改动。请刷新页面后重新填写。",
+                          malformed="提交的内容格式不正确或有重复项，物料没有改动。请刷新页面后重新填写。",
+                          incomplete=_INCOMPLETE_BODY)
+    if not set(required) <= set(body) or set(body) - set(required) - set(optional):
+        raise WorkbenchCommandRejected("invalid_input", _INCOMPLETE_BODY, 400)
     return body
 
 
-def opaque_ref(value, field):
+def opaque_ref(value):
     if type(value) is not str or re.fullmatch(r"[A-Za-z0-9_-]{32}", value) is None:
         raise WorkbenchCommandRejected("invalid_input", "这次操作的编号已失效，物料没有改动。请关掉弹窗后重新打开。", 400)
     return value
@@ -79,7 +71,7 @@ def scope_input(body):
     size = body.get("page_size", 20)
     if type(size) is not int or not 1 <= size <= 200:
         raise WorkbenchCommandRejected("invalid_input", "每页条数必须是1至200之间的整数。", 400)
-    token = opaque_ref(body["snapshot_ref"], "snapshot_ref")
+    token = opaque_ref(body["snapshot_ref"])
     return scope, {"kind": "material", "size": size, **scope}, token
 
 

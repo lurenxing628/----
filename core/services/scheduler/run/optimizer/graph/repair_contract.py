@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
-
-from core.errors import ValidationError
+from typing import Any, Dict
 
 REPAIR_PHASE = "graph_ready_v2_elite_repair"
 REPAIR_GENERATORS = ("adjacent_swap", "single_insert", "tardy_boundary_move", "critical_block_swap",
@@ -12,41 +10,15 @@ REPAIR_GENERATORS = ("adjacent_swap", "single_insert", "tardy_boundary_move", "c
 
 @dataclass(frozen=True)
 class EliteRepairLimits:
-    enabled: bool = True
     top_k: int = 3
     max_neighbors_per_elite: int = 8
     max_rounds: int = 3
 
 
-def resolve_elite_repair_limits(construction: Optional[Dict[str, Any]], *, enabled: bool) -> EliteRepairLimits:
-    optimization = (construction or {}).get("graph_ready_optimization", {})
-    if not isinstance(optimization, dict):
-        _invalid("graph_ready_optimization")
-    raw = optimization.get("elite_repair", {})
-    if not isinstance(raw, dict):
-        _invalid("elite_repair")
-    allowed = {"enabled", "top_k", "max_neighbors_per_elite", "time_budget_ms", "max_rounds"}
-    if set(raw).difference(allowed):
-        _invalid("elite_repair")
-    active = raw.get("enabled", enabled)
-    if not isinstance(active, bool):
-        _invalid("enabled")
-    time_budget = raw.get("time_budget_ms")
-    if time_budget is not None:
-        _positive_int(time_budget, "time_budget_ms")
-    _positive_int(optimization.get("max_candidate_profiles", 60), "max_candidate_profiles")
-    return EliteRepairLimits(
-        enabled=active and enabled,
-        top_k=min(_positive_int(raw.get("top_k", 3), "top_k"), 8),
-        max_neighbors_per_elite=min(_positive_int(raw.get("max_neighbors_per_elite", 8), "max_neighbors_per_elite"), 32),
-        max_rounds=min(_positive_int(raw.get("max_rounds", 3), "max_rounds"), 8),
-    )
-
-
 def new_repair_report(limits: EliteRepairLimits, *, objective_name: str) -> Dict[str, Any]:
     pruning = {
         "schema_version": 1, "phase": REPAIR_PHASE,
-        "pruning_enabled": limits.enabled, "pruning_strategy": "hybrid",
+        "pruning_enabled": True, "pruning_strategy": "hybrid",
         "pruning_rule_version": "elite_top_k_duplicate_budget_v1",
         "candidate_space_total": 0, "candidate_space_total_status": "exact",
         "generated_candidates": 0, "evaluated_candidates": 0, "pruned_candidates": 0,
@@ -61,7 +33,7 @@ def new_repair_report(limits: EliteRepairLimits, *, objective_name: str) -> Dict
         "budget_ms": 0, "runtime_ms": 0, "rule_trace": [],
     }
     return {
-        "repair_enabled": limits.enabled, "repair_top_k": limits.top_k,
+        "repair_enabled": True, "repair_top_k": limits.top_k,
         "repair_max_rounds": limits.max_rounds, "repair_rounds_completed": 0,
         "repair_stop_reason": None, "repair_round_improvements": [],
         "repair_round_policy": "improvement_first", "repair_deferred_by_improvement": 0,
@@ -86,17 +58,3 @@ def finish_repair_report(report: Dict[str, Any]) -> None:
                 "evaluated_candidates", "pruned_candidates", "skipped_by_budget"):
         report["repair_" + key] = pruning[key]
     report["repair_rejection_summary"] = dict(pruning["rejected_by_reason"])
-
-
-def _positive_int(value: Any, field: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        _invalid(field)
-    return int(value)
-
-
-def _invalid(field: str) -> None:
-    raise ValidationError(
-        "GraphReady repair 配置无效：" + field,
-        field="graph_ready_elite_repair",
-        details={"reason": "graph_ready_bad_repair_config"},
-    )

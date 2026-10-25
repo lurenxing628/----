@@ -5,16 +5,8 @@
   const text = v => typeof v === 'string', count = v => Number.isSafeInteger(v) && v >= 0;
   const ref = v => text(v) && /^[a-f0-9]{48}$/.test(v), token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v);
   const key = v => text(v) && /^run-[a-f0-9]{48}$/.test(v);
-  function contextRef(v) {
-    if (window.RunAdoptionAPI && typeof window.RunAdoptionAPI.contextRef === 'function') return window.RunAdoptionAPI.contextRef(v);
-    if (!text(v)) return false;
-    if (/^[a-f0-9]{64}$/.test(v)) return true;
-    try {
-      const data = JSON.parse(v), refs = data && data.successful_restores;
-      return shape(data, ['database_scope', 'successful_restores']) && text(data.database_scope) && data.database_scope.length > 0
-        && Array.isArray(refs) && refs.every((item, index) => text(item) && /^[a-f0-9]{32}$/.test(item) && (index === 0 || refs[index - 1] < item));
-    } catch (_) { return false; }
-  }
+  // 数据上下文编号的格式只在 RunAdoptionAPI 定义一份；本文件先于它加载，所以在调用时再取。
+  const contextRef = v => window.RunAdoptionAPI.contextRef(v);
   const rejections = new WeakSet();
   const terminal = run => !!run && ['complete', 'partial', 'failed', 'interrupted'].includes(run.state);
   function check(valid, message = '读到的排产数据不完整，请刷新重试。') { if (!valid) throw new Error(message); }

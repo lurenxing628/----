@@ -30,7 +30,7 @@
     }, [done, command.result]);
     function invalidate() {
       setPreview(null); setError(null); setAcknowledged(false); serial.current++;
-      if (command.phase === 'rejected' && typeof command.reset === 'function') command.reset();
+      command.clearRejection({ includeStale: true });
     }
     function changeMode(value) { setMode(value); invalidate(); }
     function chooseFile(list) { setFile(list && list[0] || null); invalidate(); }

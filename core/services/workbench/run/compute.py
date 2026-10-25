@@ -39,7 +39,7 @@ def _prepare_and_compute_in_snapshot(
         facts = PreflightFacts(conn, capture=capture)
         facts.bind_capture(capture)
     prepared = prepare_candidate_run_input(
-        conn, normalized_input, execution_projections, capture_fingerprint=False, facts=facts,
+        conn, normalized_input, execution_projections, facts=facts,
         validated_projections=validated_projections)
     version = _prepared_version(prepared, version_override)
     return _compute_in_read_snapshot(conn, prepared, version)
@@ -69,7 +69,6 @@ def _candidate_payloads(conn, schedule_input, comparison, *, selected_payload):
                     validate_piece_candidate(
                         conn, prepared=schedule_input,
                         payload=payloads[candidate.candidate_key], context=piece_context,
-                        candidate_validated=True,
                     )
     return payloads
 

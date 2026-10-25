@@ -25,7 +25,7 @@ from web.api_responses import failure, json_response, query_success
 
 from .api_responses import api_endpoint, read_endpoint
 from .calendar_defaults import register_calendar_defaults_routes
-from .calendars_preview import calendar_now, release_preview, resolve_preview, retain_preview
+from .calendars_preview import release_preview, resolve_preview, retain_preview
 from .calendars_projection import calendar_day, calendar_preview, calendar_snapshot
 from .materials import _command_body
 from .read_context import bind_read_snapshot
@@ -38,7 +38,7 @@ from .write_context import (
 
 
 def _service():
-    return WorkbenchCalendarService(g.db, current_app.logger, clock=calendar_now)
+    return WorkbenchCalendarService(g.db, current_app.logger)
 
 
 def _month_input():

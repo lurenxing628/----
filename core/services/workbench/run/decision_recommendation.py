@@ -129,7 +129,7 @@ class RecommendationSupport:
                 if not events:
                     self._changeover_support = []
                 else:
-                    lookup = {task["row_ref"]: task for task in source.changeovers.tasks(key)}
+                    lookup = {task["row_ref"]: task for task in source.analysis_tasks(key)}
                     self._changeover_support = [_support(source, key, "changeover", row["next_row_ref"], "changeovers",
                         {"resource_ref": row["machine_ref"], "resource_kind": "machine"},
                         tasks=[lookup[row["next_row_ref"]]], batch_ref=lookup[row["next_row_ref"]]["batch_ref"],

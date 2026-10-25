@@ -15,13 +15,11 @@ def accumulate_busy_hours(
     start_time: datetime,
     end_time: datetime,
 ) -> float:
-    if not isinstance(start_time, datetime) or not isinstance(end_time, datetime):
-        raise TypeError("start_time/end_time 必须是 datetime")
     duration_hours = (end_time - start_time).total_seconds() / 3600.0
     if machine_id:
-        machine_busy_hours[machine_id] = float(machine_busy_hours.get(machine_id, 0.0) or 0.0) + duration_hours
+        machine_busy_hours[machine_id] = machine_busy_hours.get(machine_id, 0.0) + duration_hours
     if operator_id:
-        operator_busy_hours[operator_id] = float(operator_busy_hours.get(operator_id, 0.0) or 0.0) + duration_hours
+        operator_busy_hours[operator_id] = operator_busy_hours.get(operator_id, 0.0) + duration_hours
     return duration_hours
 
 
@@ -39,12 +37,11 @@ def update_machine_last_state(
 ) -> None:
     if not machine_id:
         return
-    if not isinstance(end_time, datetime):
-        raise TypeError("end_time 必须是 datetime")
 
-    op_type = str(op_type_name or "").strip()
+    # Result rows carry Optional types: seed rows may lack them or keep the stored spelling.
+    op_type = "" if op_type_name is None else op_type_name.strip()
     if isinstance(last_op_type_by_machine, MachineTypeState):
-        last_op_type_by_machine.record(machine_id, start_time, end_time, op_id, str(op_type_id or ""))
+        last_op_type_by_machine.record(machine_id, start_time, end_time, op_id, "" if op_type_id is None else op_type_id)
     prev_end = last_end_by_machine.get(machine_id)
 
     if seed_mode:

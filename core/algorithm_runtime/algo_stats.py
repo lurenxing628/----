@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from typing import Any, Dict, Mapping, Optional
 
 _COUNTER_BUCKETS = ("fallback_counts", "param_fallbacks")
@@ -34,20 +33,10 @@ def _strict_int(value: Any, *, label: str) -> int:
     return converted
 
 
-def ensure_algo_stats(target: Any) -> Dict[str, Any]:
-    if target is None:
+def ensure_algo_stats(stats: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """补齐调用方统计字典的固定分桶；``None`` 表示本次不留存，返回一份新字典。"""
+    if stats is None:
         return make_algo_stats()
-    if isinstance(target, dict):
-        stats = target
-    else:
-        stats = getattr(target, "_last_algo_stats", None)
-        if not isinstance(stats, dict):
-            stats = {}
-            try:
-                target._last_algo_stats = stats
-            except (AttributeError, TypeError) as exc:
-                raise RuntimeError("算法降级统计无法挂到当前排产对象，不能静默丢弃。") from exc
-
     for bucket in _BUCKETS:
         current = stats.get(bucket)
         if not isinstance(current, dict):
@@ -55,7 +44,9 @@ def ensure_algo_stats(target: Any) -> Dict[str, Any]:
     return stats
 
 
-def increment_counter(target: Any, key: str, amount: int = 1, *, bucket: str = "fallback_counts") -> None:
+def increment_counter(
+    target: Optional[Dict[str, Any]], key: str, amount: int = 1, *, bucket: str = "fallback_counts",
+) -> None:
     if not key:
         return
     stats = ensure_algo_stats(target)
@@ -82,11 +73,6 @@ def merge_algo_stats(*sources: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
     return merged
 
 
-def capture_algo_stats(target: Any, *sources: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
-    """Produce independent merged statistics directly from the decoder's current facts."""
-    return merge_algo_stats(*sources, ensure_algo_stats(target))
-
-
 def _merge_counter_buckets(merged: Dict[str, Any], src: Mapping[str, Any]) -> None:
     for bucket in _COUNTER_BUCKETS:
         part = src.get(bucket)
@@ -111,5 +97,6 @@ def _merge_sample_buckets(merged: Dict[str, Any], src: Mapping[str, Any]) -> Non
                 continue
             existing = bucket_out.get(key)
             existing_list = existing if isinstance(existing, list) else []
-            existing_list.extend(deepcopy(value))
+            # 合并结果自带新列表；样本条目只读，下游只会整桶丢弃（summary_size_guard），不改条目本身。
+            existing_list.extend(value)
             bucket_out[str(key)] = existing_list

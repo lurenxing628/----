@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Union
 
 from core.algorithm_contracts.date_parsers import parse_date
 from core.algorithm_contracts.dispatch_rules import (
@@ -24,7 +24,7 @@ from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_handoff, remember_sgs_estimate
 from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
 from core.errors import ValidationError
-from core.shared.strict_parse import parse_optional_date, parse_required_int
+from core.shared.strict_parse import parse_optional_date
 
 from .resource_validation import (
     RESOURCE_REASON_AUTO_ASSIGN_UNAVAILABLE,
@@ -33,6 +33,10 @@ from .resource_validation import (
     internal_resource_validation_message,
 )
 from .sgs_due_span import due_span_inputs, external_candidate_window
+
+if TYPE_CHECKING:
+    from core.algorithm_contracts.types import OpForScheduleAlgo
+    from core.models.batch import Batch
 
 
 class _ScoringResources(NamedTuple):
@@ -76,7 +80,7 @@ def _dispatch_key(
     *,
     dispatch_key_builder: Callable[[DispatchInputs], Tuple[float, ...]] = build_dispatch_key,
     dispatch_rule: Union[DispatchRule, DispatchRuleSpec],
-    priority: Any,
+    priority: str,
     due_date: Optional[date],
     est_start: datetime,
     est_end: datetime,
@@ -96,7 +100,7 @@ def _dispatch_key(
     base_key = dispatch_key_builder(
         DispatchInputs(
             rule=spec.rule,
-            priority=str(priority or "normal"),
+            priority=priority,
             due_date=due_date,
             est_start=est_start,
             est_end=est_end,
@@ -121,11 +125,11 @@ def with_graph_priority_key(base_key: Tuple[float, ...], graph_key: Tuple[float,
 def _collect_sgs_candidates(
     *,
     batch_ids_in_order: List[str],
-    ops_by_batch: Dict[str, List[Any]],
+    ops_by_batch: Dict[str, List[OpForScheduleAlgo]],
     next_idx: Dict[str, int],
     blocked_batches: set,
-) -> List[Tuple[str, Any]]:
-    candidates: List[Tuple[str, Any]] = []
+) -> List[Tuple[str, OpForScheduleAlgo]]:
+    candidates: List[Tuple[str, OpForScheduleAlgo]] = []
     for batch_id in batch_ids_in_order:
         idx = next_idx[batch_id]
         operations = ops_by_batch[batch_id]
@@ -134,22 +138,12 @@ def _collect_sgs_candidates(
     return candidates
 
 
-def _positive_op_id(value: Any) -> Optional[int]:
-    if isinstance(value, bool):
-        return None
-    try:
-        op_id = int(value or 0)
-    except (TypeError, ValueError):
-        return None
-    return op_id if op_id > 0 else None
-
-
 def _score_external_candidate(
     *,
     ctx: Any,
     state: ScheduleRunState,
-    op: Any,
-    batch: Any,
+    op: OpForScheduleAlgo,
+    batch: Batch,
     batch_id: str,
     batch_order: Dict[str, int],
     dispatch_rule: Union[DispatchRule, DispatchRuleSpec],
@@ -159,7 +153,7 @@ def _score_external_candidate(
     dispatch_key_builder: Callable[[DispatchInputs], Tuple[float, ...]] = build_dispatch_key,
 ) -> Tuple[float, ...]:
     meta = _candidate_meta(op=op, batch=batch, batch_id=batch_id, state=state, strict_mode=strict_mode)
-    window = external_candidate_window(ctx, state, op=op, prev_end=meta["prev_end"], strict_mode=strict_mode)
+    window = external_candidate_window(ctx, state, op=op, prev_end=meta["prev_end"])
     est_start, est_end = window
     proc_hours = max((est_end - est_start).total_seconds() / 3600.0, 0.0)
     slack_hours, time_left_hours = due_span_inputs(
@@ -190,8 +184,8 @@ def _score_internal_candidate(
     *,
     ctx: Any,
     state: ScheduleRunState,
-    op: Any,
-    batch: Any,
+    op: OpForScheduleAlgo,
+    batch: Batch,
     batch_id: str,
     batch_order: Dict[str, int],
     dispatch_rule: Union[DispatchRule, DispatchRuleSpec],
@@ -301,12 +295,14 @@ def _score_internal_candidate(
     )
 
 
-def _candidate_meta(*, op: Any, batch: Any, batch_id: str, state: ScheduleRunState, strict_mode: bool) -> Dict[str, Any]:
+def _candidate_meta(
+    *, op: OpForScheduleAlgo, batch: Batch, batch_id: str, state: ScheduleRunState, strict_mode: bool,
+) -> Dict[str, Any]:
     return {
-        "priority": getattr(batch, "priority", None),
-        "due_date": parse_due_date(getattr(batch, "due_date", None), strict_mode=strict_mode),
-        "seq": parse_required_int(getattr(op, "seq", 0), field="seq"),
-        "op_id": parse_required_int(getattr(op, "id", 0), field="id"),
+        "priority": batch.priority,
+        "due_date": parse_due_date(batch.due_date, strict_mode=strict_mode),
+        "seq": op.seq,
+        "op_id": op.id,
         "batch_id": batch_id,
         "prev_end": state.prev_end(batch_id),
     }
@@ -314,21 +310,20 @@ def _candidate_meta(*, op: Any, batch: Any, batch_id: str, state: ScheduleRunSta
 
 def _scoring_total_hours(
     *,
-    op: Any,
-    batch: Any,
+    op: OpForScheduleAlgo,
+    batch: Batch,
     strict_mode: bool,
     total_hours_by_op_id: Optional[Dict[int, float]] = None,
     op_id: int,
 ) -> float:
-    cache_key = op_id if op_id > 0 else None
-    if total_hours_by_op_id is not None and cache_key is not None and cache_key in total_hours_by_op_id:
-        return total_hours_by_op_id[cache_key]
+    if total_hours_by_op_id is not None and op_id in total_hours_by_op_id:
+        return total_hours_by_op_id[op_id]
     try:
         total_hours = validate_internal_hours_for_mode(op, batch, strict_mode=strict_mode)
-    except ValueError as exc:
-        raise_strict_internal_hours_validation(op, batch, exc)
-    if total_hours_by_op_id is not None and cache_key is not None:
-        total_hours_by_op_id[cache_key] = total_hours
+    except ValueError:
+        raise_strict_internal_hours_validation(op, batch)
+    if total_hours_by_op_id is not None:
+        total_hours_by_op_id[op_id] = total_hours
     return total_hours
 
 
@@ -336,16 +331,17 @@ def _scoring_resources(
     ctx: Any,
     *,
     state: ScheduleRunState,
-    op: Any,
-    batch: Any,
+    op: OpForScheduleAlgo,
+    batch: Batch,
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
     attempt_sink: Optional[Callable[[Any], None]] = None,
 ) -> _ScoringResources:
-    machine_id = str(getattr(op, "machine_id", None) or "").strip()
-    operator_id = str(getattr(op, "operator_id", None) or "").strip()
+    # None (not specified) and the empty string an optimizer resource variant may carry both mean unassigned.
+    machine_id = op.machine_id or ""
+    operator_id = op.operator_id or ""
     if machine_id and operator_id:
         return _ScoringResources(machine_id, operator_id, RESOURCE_REASON_FIXED, "")
     if not auto_assign_enabled or resource_pool is None:
@@ -370,8 +366,8 @@ def _auto_assign_attempt_for_scoring(
     ctx: Any,
     *,
     state: ScheduleRunState,
-    op: Any,
-    batch: Any,
+    op: OpForScheduleAlgo,
+    batch: Batch,
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     resource_pool: Optional[Dict[str, Any]],
@@ -397,8 +393,8 @@ def _auto_assign_attempt_for_scoring(
 def _estimate_scoring_slot(
     ctx: Any,
     state: ScheduleRunState,
-    op: Any,
-    batch: Any,
+    op: OpForScheduleAlgo,
+    batch: Batch,
     meta: Dict[str, Any],
     machine_id: str,
     operator_id: str,

@@ -3796,6 +3796,7 @@ function SMExport({
     }));
     return adapter;
   }
+  // 注入的 adapter（测试或组合用）可以只提供部分读取方法：没提供的方法保持缺省，由调用方按能力判断，不在这里补空实现。
   function checked(adapter, validators) {
     const result = {
       ...adapter
@@ -3826,7 +3827,7 @@ function SMExport({
   // Classic scripts: contract -> controls/session -> forms/tables -> workspace.
   // Queries keep QuerySuccess envelopes; failures may be returned or thrown.
   // choices(kind, {query,category,page,size,snapshot_ref}, signal) uses real refs.
-  // openImport/openExport/openBulk/openCalendar/openCatalog receive
+  // openImport/openExport/openBulk/openCatalog receive
   // (kind, {refs,scope,entity?,onCommitted,onClosed?}, signal). Resolve {state:'cancelled'}
   // or {state:'opened'} for host-owned dialogs, or an explicit CommandResult.
   // openCatalog's opened dialog calls onClosed on cancel, onCommitted(receipt)
@@ -3906,7 +3907,10 @@ function SMExport({
     operator: [],
     supplier: []
   };
+  // 每种可编辑资料都登记关系表；空表表示这类资料没有关系字段。
   const relations = {
+    material: [],
+    op_type: [],
     machine: [{
       key: 'op_type_refs',
       label: '可做工种',
@@ -3952,6 +3956,12 @@ function SMExport({
   function message(error) {
     return error && error.error && error.error.message || error && error.message || '读取失败，请刷新后重试。';
   }
+  // 服务端说这次操作依据的资料已过期：需要用户刷新，不能静默复位后照旧重提。页面专属的过期码由调用方追加。
+  const staleCodes = ['stale_write', 'snapshot_stale'];
+  function stale(error, extraCodes = []) {
+    const code = error && (error.code || error.error && error.error.code);
+    return staleCodes.includes(code) || extraCodes.includes(code);
+  }
   function fieldErrors(error) {
     const list = error && error.error && error.error.fields || error && error.fields || [];
     return Array.isArray(list) ? list.filter(row => row && text(row.path) && text(row.message)) : [];
@@ -3980,21 +3990,20 @@ function SMExport({
     if (source !== 'production') return '当前不是生产数据，不能保存。';
     if (!context || !text(context.write_token) || !context.write_token) return '还没读到可以保存的资料，请点「刷新最新资料」后重试。';
     const name = kind + '.' + action;
-    if (!context.capabilities || context.capabilities[name] !== true) {
-      const reasons = Array.isArray(context.blocked_reasons) ? context.blocked_reasons : [];
-      const reason = reasons.find(row => row && (!row.action || row.action === name));
-      return reason && reason.message || '当前记录不允许此操作。';
+    // 后端每份写入上下文都带 capabilities 和 blocked_reasons（web/routes/workbench/write_context.py）；不带 action 的原因对所有动作生效。
+    if (context.capabilities[name] !== true) {
+      const reason = context.blocked_reasons.find(row => !row.action || row.action === name);
+      return reason ? reason.message : '当前记录不允许此操作。';
     }
     return '';
   }
   function requestKey() {
-    if (!window.crypto || typeof window.crypto.getRandomValues !== 'function') throw failure('本次没有提交。当前浏览器不支持，请用 Chrome 打开本页。');
     const bytes = new Uint8Array(24);
     window.crypto.getRandomValues(bytes);
     return 'resource-' + Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
   }
   function statusLabel(kind, status, fields = {}) {
-    const match = (statuses[kind] || []).find(row => row[0] === status);
+    const match = own(statuses, kind) ? statuses[kind].find(row => row[0] === status) : undefined;
     let label = match ? match[1] : status === 'active' ? '启用' : '旧状态 / 原因未知';
     if (fields.inactive_reason === 'unknown' && status !== 'active' && status !== 'unknown') label += '（旧原因未知）';
     return label;
@@ -4065,7 +4074,8 @@ function SMExport({
     if (key === 'category' && kind !== 'op_type') return String(value);
     return own(values, key) && own(values[key], value) ? values[key][value] : String(value);
   }
-  function draft(kind, current, category) {
+  // 新建工种时 category 来自所在的自制或外协列表；从工艺里新建工种不带归属，留空让用户明确选择。
+  function draft(kind, current, category = '') {
     const fields = current ? current.fields : {};
     const result = {
       business_code: current ? current.business_code : '',
@@ -4073,16 +4083,17 @@ function SMExport({
       fields: {},
       relationships: {}
     };
-    (textFields[kind] || []).forEach(key => {
+    textFields[kind].forEach(key => {
       result.fields[key] = fields[key] == null ? '' : fields[key];
     });
-    if (kind === 'op_type' && !current) result.fields.category = category || '';
+    if (kind === 'op_type' && !current) result.fields.category = category;
     if (statuses[kind]) result.fields.status = current ? current.status || 'unknown' : '';
     if (kind === 'material') result.fields.stock_qty = fields.stock_qty == null ? '' : String(fields.stock_qty);
     if (kind === 'supplier') result.fields.default_days = fields.default_days == null ? '' : String(fields.default_days);
-    (relations[kind] || []).forEach(item => {
-      const value = current && current.relationships[item.key];
-      result.relationships[item.key] = item.multiple ? Array.isArray(value) ? value.slice() : [] : value || '';
+    // 已有记录的多选关系恒为编号数组、单选关系为编号或 null（core/services/workbench/resource/projection.py）。
+    relations[kind].forEach(item => {
+      const value = current ? current.relationships[item.key] : null;
+      result.relationships[item.key] = value === null ? item.multiple ? [] : '' : value;
     });
     return result;
   }
@@ -4141,16 +4152,16 @@ function SMExport({
       } else if (key === 'category') {
         if (!['internal', 'external', 'both'].includes(v)) bad('fields.category', '请明确选择自制或外协。');else fields.category = v;
       } else if (key === 'default_merge_mode') {
-        if (!['', 'separate', 'merged'].includes(v)) bad('fields.default_merge_mode', '请选择有效的周期规则。');else fields[key] = v || null;
+        if (!['', 'separate', 'merged'].includes(v)) bad('fields.default_merge_mode', '请选择有效的周期规则。');else fields[key] = v === '' ? null : v;
       } else {
         const normalized = v.trim();
-        if (!create || normalized) fields[key] = normalized || null;
+        if (!create || normalized) fields[key] = normalized === '' ? null : normalized;
       }
     });
-    (relations[kind] || []).forEach(item => {
+    relations[kind].forEach(item => {
       const v = value.relationships[item.key];
       if (!create && same(v, base.relationships[item.key])) return;
-      if (item.multiple) relationships[item.key] = v.slice();else if (!create || v) relationships[item.key] = v || null;
+      if (item.multiple) relationships[item.key] = v;else if (!create || v) relationships[item.key] = v === '' ? null : v;
     });
     if (Object.keys(fields).length) result.fields = fields;
     if (kind !== 'material' && Object.keys(relationships).length) result.relationships = relationships;
@@ -4164,8 +4175,9 @@ function SMExport({
     if (['committed', 'unchanged', 'partial'].includes(result.result) && text(result.receipt_ref) && result.receipt_ref && object(result.data) && Array.isArray(result.warnings)) return 'terminal';
     return 'pending';
   }
+  // 只在命令已完成（receipt() 判为 terminal，data 已校验为对象）后调用。
   function resultRef(result, fallback) {
-    const data = result && result.data || {};
+    const data = result.data;
     return data.entity_ref || data.ref || data.entity && data.entity.ref || fallback;
   }
   window.APSResourceContract = {
@@ -4181,6 +4193,7 @@ function SMExport({
     nonnegativeInt64,
     positiveInt64,
     message,
+    stale,
     fieldErrors,
     failure,
     statusLabel,
@@ -4532,8 +4545,9 @@ function SMExport({
   function capabilities(value) {
     return C.object(value) && ['route_preview', 'create', 'delete', 'stage_confirm', 'import', 'export'].every(key => typeof value[key] === 'boolean');
   }
+  // 只校验工艺专属字段：通用实体合同已由 list()/detail() 开头的 C.query 校验过一次。
   function entity(value) {
-    if (!C.entity(value) || !ref(value.ref) || value.status !== null || !writeContext(value.write_context)) return false;
+    if (!ref(value.ref) || value.status !== null || !writeContext(value.write_context)) return false;
     const w = value.workflow;
     return ['route_raw', 'route_parsed', 'remark'].every(key => nullableText(value.fields[key])) && issues(value.issues) && ['batch_count', 'operation_count', 'internal_count', 'external_count', 'unclassified_count'].every(key => count(value.relationships[key])) && C.object(w) && ['legacy', 'managed'].includes(w.origin) && ['route', 'source', 'hours', 'ready'].includes(w.stage) && typeof w.ready === 'boolean' && stamp(w.route, ['present', 'missing', 'unconfirmed', 'confirmed']) && stamp(w.source, ['unconfirmed', 'locked', 'confirmed']) && stamp(w.hours, ['unconfirmed', 'locked', 'confirmed']) && w.ready === (w.stage === 'ready') && (!w.ready || ['route', 'source', 'hours'].every(key => w[key].state === 'confirmed'));
   }
@@ -4584,7 +4598,7 @@ function SMExport({
     const d = result.data,
       p = d.page,
       sort = ordering(scope);
-    if (!d.entities.every(entity) || !uniqueRefs(d.entities) || !capabilities(d.capabilities) || d.create_context !== null && !writeContext(d.create_context) || !C.object(d.metrics) || !C.object(d.metrics.counts) || !stages.every(row => count(d.metrics.counts[row[2]])) || p.number !== scope.page || p.size !== scope.size || p.pages !== Math.max(1, Math.ceil(p.total / p.size)) && !(p.total === 0 && p.pages === 0) || p.sort.length !== sort.length || !p.sort.every((item, index) => C.object(item) && item.field === sort[index].field && item.direction === sort[index].direction)) throw C.failure('读到的工艺列表不完整，请刷新后重试。');
+    if (!d.entities.every(entity) || !capabilities(d.capabilities) || d.create_context !== null && !writeContext(d.create_context) || !C.object(d.metrics) || !C.object(d.metrics.counts) || !stages.every(row => count(d.metrics.counts[row[2]])) || p.number !== scope.page || p.size !== scope.size || p.pages !== Math.max(1, Math.ceil(p.total / p.size)) && !(p.total === 0 && p.pages === 0) || p.sort.length !== sort.length || !p.sort.every((item, index) => C.object(item) && item.field === sort[index].field && item.direction === sort[index].direction)) throw C.failure('读到的工艺列表不完整，请刷新后重试。');
     if (scope.snapshot_ref && result.meta.snapshot_ref !== scope.snapshot_ref) throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
     return result;
   }
@@ -5309,7 +5323,9 @@ function SMExport({
   }
   function occupancy(value, data, resourcesByRef) {
     if (!exact(value, ['state', 'plan_ref', 'time_scope', 'basis', 'resources', 'issues']) || !states.includes(value.state) || value.plan_ref !== data.plan.plan_ref || !same(value.time_scope, data.time_scope) || value.basis !== 'selected_plan_only' || !projectedResources(value.resources, resourcesByRef) || !projectionIssues(value.issues, true)) return false;
-    const calendars = new Map((data.projections.calendar.resources || []).map(row => [row.resource_ref, row]));
+    // 日历投影不可用时 resources 为 null（见 calendar()），此时没有可对照的资源日历。
+    const resources = data.projections.calendar.resources,
+      calendars = new Map(resources === null ? [] : resources.map(row => [row.resource_ref, row]));
     if (!value.resources.every(row => occupancyRow(row, data, calendars))) return false;
     const unknown = value.issues.some(row => row.code === 'assignment_source_unknown');
     const state = unknown ? value.resources.length ? 'partial' : 'unavailable' : value.resources.every(row => row.state === 'available') ? 'available' : value.resources.every(row => row.state === 'unavailable') ? 'unavailable' : 'partial';
@@ -5597,14 +5613,6 @@ function SMExport({
     async function check() {
       if (store.running || !store.state.intent) return;
       const intent = store.state.intent;
-      if (typeof adapter.lookup !== 'function') {
-        publish(store, {
-          ...store.state,
-          phase: 'pending',
-          error: C.failure('dependency not wired: adapter.lookup')
-        });
-        return;
-      }
       store.running = true;
       publish(store, {
         ...store.state,
@@ -5632,13 +5640,6 @@ function SMExport({
     }
     async function submit(kind, action, ref, context, input, listCategory) {
       if (store.running || ['sending', 'pending', 'checking', 'done'].includes(store.state.phase)) return;
-      if (typeof adapter.command !== 'function') {
-        publish(store, {
-          phase: 'rejected',
-          error: C.failure('dependency not wired: adapter.command')
-        });
-        return;
-      }
       let intent;
       try {
         // category keeps the source list; the entity's category belongs to input.fields.
@@ -5722,12 +5723,21 @@ function SMExport({
       });
       return true;
     }
+    // 用户改了输入就清掉拒绝态。过期拒绝默认保留，等用户刷新资料；重新预检、换文件本身会产出新的写入依据，传 includeStale 一并清掉。
+    function clearRejection({
+      includeStale = false
+    } = {}) {
+      if (store.state.phase !== 'rejected' || !includeStale && C.stale(store.state.error)) return false;
+      return reset();
+    }
     return {
       ...state,
       locked,
+      stale: state.phase === 'rejected' && C.stale(state.error),
       submit,
       check,
-      reset
+      reset,
+      clearRejection
     };
   }
   const nonnegative = value => Number.isFinite(value) && value >= 0;
@@ -5743,7 +5753,6 @@ function SMExport({
   }
   function useSummary(adapter, revision, enabled = true) {
     return useQuery(async signal => {
-      if (typeof adapter.summary !== 'function') throw C.failure('dependency not wired: adapter.summary');
       const result = C.query(await adapter.summary(signal), 'summary'),
         data = {
           ...result.data
@@ -5938,7 +5947,7 @@ function SMExport({
       className: "wb-visually-hidden"
     }, reason));
   }
-  const fieldPath = path => String(path || '').replace(/^input\./, '');
+  const fieldPath = path => path.replace(/^input\./, '');
   function uniqueFieldErrors(error, errors) {
     const seen = new Set();
     return (errors || C.fieldErrors(error)).filter(row => {
@@ -5981,7 +5990,8 @@ function SMExport({
     const generated = React.useId(),
       child = React.Children.only(children),
       id = child.props.id || generated;
-    const target = fieldPath(path);
+    // 没有 path 的字段不认领任何字段级错误。
+    const target = path === undefined ? null : fieldPath(path);
     const messages = uniqueFieldErrors(error, errors).filter(row => fieldPath(row.path) === target).map(row => row.message);
     const describedBy = [child.props['aria-describedby'], hint && id + '-hint', messages.length && id + '-error'].filter(Boolean).join(' ');
     return /*#__PURE__*/React.createElement("div", {
@@ -6007,9 +6017,9 @@ function SMExport({
     }, messages.join(' ')));
   }
   function focusFirstInvalid(form) {
-    if (!form || typeof form.querySelectorAll !== 'function') return false;
+    if (!form) return false;
     const element = Array.from(form.querySelectorAll('[aria-invalid="true"]')).find(node => {
-      if (node.disabled || typeof node.focus !== 'function' || node.closest('[hidden],[inert],[aria-hidden="true"]')) return false;
+      if (node.disabled || node.closest('[hidden],[inert],[aria-hidden="true"]')) return false;
       for (let parent = node.parentElement; parent && form.contains(parent); parent = parent.parentElement) {
         if (parent.tagName === 'DETAILS') parent.open = true;
       }
@@ -6089,7 +6099,7 @@ function SMExport({
     return !!(node && node.isConnected && node.getClientRects().length && !node.closest('[hidden],[inert],[aria-hidden="true"]') && !['hidden', 'collapse'].includes(getComputedStyle(node).visibility));
   }
   function modalFocusable(node) {
-    return modalVisible(node) && node.matches(modalSelector) && !node.matches(':disabled') && typeof node.focus === 'function';
+    return modalVisible(node) && node.matches(modalSelector) && !node.matches(':disabled');
   }
   function topModal() {
     return modalStack.slice().reverse().find(entry => !entry.suspended && modalVisible(entry.root));
@@ -6242,7 +6252,7 @@ function SMExport({
       syncModalFocus();
     });
     React.useLayoutEffect(() => {
-      entry.current.parent = parent || modalStack.slice().reverse().find(item => item.root.contains(entry.current.origin[0] || null)) || null;
+      entry.current.parent = parent || modalStack.slice().reverse().find(item => item.root.contains(entry.current.origin[0]));
       return mountModal(entry.current);
     }, []);
     const canClose = () => topModal() === entry.current && !entry.current.locked;
@@ -6310,30 +6320,18 @@ function SMExport({
     };
     const related = entity.relationships[objects[key]],
       refs = entity.relationships[key];
-    if (Array.isArray(related) && Array.isArray(refs)) return refs.map(ref => ({
+    // 后端投影的多值关系同时给编号表和对象表（编号表由对象表导出），单值关系给对象或 null。
+    if (Array.isArray(refs)) return refs.map(ref => ({
       ref,
-      label: (related.find(item => item.ref === ref) || {}).label
+      label: related.find(item => item.ref === ref).label
     }));
-    if (C.object(related) && related.ref === refs) return [{
+    if (C.object(related)) return [{
       ref: refs,
       label: related.label
     }];
-    const map = {
-      op_type_ref: 'op_type_label',
-      group_ref: 'group_label',
-      shift_profile_ref: 'shift_profile_label',
-      skill_refs: 'skill_labels',
-      op_type_refs: 'op_type_labels',
-      machine_refs: 'machine_labels'
-    };
-    const labels = entity.relationships[map[key]];
-    if (Array.isArray(refs)) return refs.map((ref, index) => ({
-      ref,
-      label: Array.isArray(labels) ? labels[index] : C.object(labels) ? labels[ref] : null
-    }));
     return refs ? [{
       ref: refs,
-      label: typeof labels === 'string' ? labels : null
+      label: null
     }] : [];
   }
   function Relation({
@@ -6354,7 +6352,7 @@ function SMExport({
       key: item.ref
     }, item.label || '名称未填写'))) : /*#__PURE__*/React.createElement("span", {
       className: "muted"
-    }, entity.relationships[field] === null || Array.isArray(entity.relationships[field]) ? '未选' : '未读取');
+    }, "\u672A\u9009");
   }
   function Choice({
     adapter,
@@ -6378,7 +6376,6 @@ function SMExport({
       describedBy = invalid ? id + '-error' : undefined;
     const S = window.APSResourceSession;
     const request = S.useQuery(async signal => {
-      if (typeof adapter.choices !== 'function') throw C.failure('dependency not wired: adapter.choices');
       const scope = {
         query,
         page,
@@ -6521,7 +6518,6 @@ function SMExport({
       icon: "plus",
       busy: catalogBusy,
       disabled: disabled,
-      reason: typeof adapter.openCatalog !== 'function' ? '维护' + field.label + '尚未开通。' : '',
       onClick: () => onCatalog(field, request.reload)
     }, "\u7EF4\u62A4", field.label));
   }
@@ -7098,7 +7094,7 @@ function SMExport({
   function preview(raw) {
     const result = envelope(raw),
       data = result.data;
-    if (!/^[0-9a-f]{32}$/.test(data.preview_ref || '') || !Array.isArray(data.days) || !Array.isArray(data.dates) || !C.object(data.counts) || data.counts.selected !== data.days.length || data.dates.length !== data.days.length || !C.object(data.request) || !isDate(data.request.start_date) || !isDate(data.request.end_date) || data.request.start_date > data.request.end_date || !['all', 'weekday', 'weekend'].includes(data.request.scope) || !['upsert', 'delete'].includes(data.request.operation) || typeof data.expires_at !== 'string' || new Set(data.dates).size !== data.dates.length || !data.days.every((row, index) => isDate(row.date) && row.date === data.dates[index] && day(row.before) && row.before.date === row.date && policy(row.after) && typeof row.changed === 'boolean') || data.counts.changed !== data.days.filter(row => row.changed).length || data.counts.unchanged !== data.days.length - data.counts.changed || data.dates.join() !== rangeDates(data.request).join()) throw C.failure('读到的变更清单不完整，没有写入。请点「重新预览变更」。');
+    if (typeof data.preview_ref !== 'string' || !/^[0-9a-f]{32}$/.test(data.preview_ref) || !Array.isArray(data.days) || !Array.isArray(data.dates) || !C.object(data.counts) || data.counts.selected !== data.days.length || data.dates.length !== data.days.length || !C.object(data.request) || !isDate(data.request.start_date) || !isDate(data.request.end_date) || data.request.start_date > data.request.end_date || !['all', 'weekday', 'weekend'].includes(data.request.scope) || !['upsert', 'delete'].includes(data.request.operation) || typeof data.expires_at !== 'string' || new Set(data.dates).size !== data.dates.length || !data.days.every((row, index) => isDate(row.date) && row.date === data.dates[index] && day(row.before) && row.before.date === row.date && policy(row.after) && typeof row.changed === 'boolean') || data.counts.changed !== data.days.filter(row => row.changed).length || data.counts.unchanged !== data.days.length - data.counts.changed || data.dates.join() !== rangeDates(data.request).join()) throw C.failure('读到的变更清单不完整，没有写入。请点「重新预览变更」。');
     return result;
   }
   function draft(value) {
@@ -7111,10 +7107,10 @@ function SMExport({
         ...row
       })),
       shiftStart: value.stored && value.stored.shift_start || value.effective.window_start.slice(11, 16),
-      shiftEnd: value.stored && value.stored.shift_end || '',
+      shiftEnd: value.stored === null || value.stored.shift_end === null ? '' : value.stored.shift_end,
       hours: displayNumber(value.fields.hours),
       eff: displayNumber(value.fields.eff),
-      note: value.fields.note || ''
+      note: value.fields.note === null ? '' : value.fields.note
     };
   }
   // 切换「这一天是否排产」。休息改回工作日时：草稿里还留着逐段时段，或原记录是旧单班工作日（periods 为 null），
@@ -7143,10 +7139,11 @@ function SMExport({
     return result;
   }
   function input(value, original) {
-    const converted = {
-      type: value.type,
-      note: value.note.trim() || null
-    };
+    const note = value.note.trim(),
+      converted = {
+        type: value.type,
+        note: note === '' ? null : note
+      };
     if (value.type === 'work') Object.assign(converted, {
       hours: number(value.hours, 'hours'),
       eff: number(value.eff, 'eff'),
@@ -7154,7 +7151,7 @@ function SMExport({
       allowUrgent: value.allowUrgent
     });
     if (value.type === 'work' && value.shiftStart) converted.shiftStart = value.shiftStart;
-    if (value.type === 'work' && value.shiftEnd !== undefined) converted.shiftEnd = value.shiftEnd || null;
+    if (value.type === 'work' && value.shiftEnd !== undefined) converted.shiftEnd = value.shiftEnd === '' ? null : value.shiftEnd;
     if (Array.isArray(value.periods)) {
       const periods = value.type === 'rest' ? [] : value.periods,
         issue = window.APSWorkPeriods.validate(periods);
@@ -7174,14 +7171,10 @@ function SMExport({
     keys.forEach(key => {
       // 有逐段时段时工时由时段算出：时段没改就不比较、不提交工时，免得换算末位差异被当成改了工时。
       if (key === 'hours' && C.own(converted, 'periods') && JSON.stringify(converted.periods) === JSON.stringify(original.fields.periods)) return;
-      const before = ['shiftStart', 'shiftEnd'].includes(key) ? baseDraft[key] || null : ['hours', 'eff'].includes(key) ? Number(displayNumber(original.fields[key])) : original.fields[key];
+      const before = ['shiftStart', 'shiftEnd'].includes(key) ? baseDraft[key] === '' ? null : baseDraft[key] : ['hours', 'eff'].includes(key) ? Number(displayNumber(original.fields[key])) : original.fields[key];
       if (C.own(converted, key) && JSON.stringify(converted[key]) !== JSON.stringify(before)) output[key] = converted[key];
     });
     return output;
-  }
-  function stale(command) {
-    const error = command.error;
-    return command.phase === 'rejected' && ['stale_write', 'snapshot_stale'].includes(error && (error.code || error.error && error.error.code));
   }
   // 月历格子里的工时带单位显示，数字格式和单位统一走 WorkbenchFormat，不在这里手拼“小时”。
   const hoursText = value => window.APSWorkPeriods.duration(value);
@@ -7209,7 +7202,6 @@ function SMExport({
     draft,
     switchType,
     input,
-    stale,
     tag,
     displayNumber
   };
@@ -7262,12 +7254,12 @@ function SMExport({
         ...row
       })),
       type: value.day_type === 'holiday' ? 'rest' : 'work',
-      shiftStart: value.shift_start || '08:00',
-      shiftEnd: value.shift_end || '',
+      shiftStart: value.shift_start,
+      shiftEnd: value.shift_end === null ? '' : value.shift_end,
       eff: String(Number((value.efficiency * 100).toPrecision(15))),
       allowNormal: value.allow_normal,
       allowUrgent: value.allow_urgent,
-      note: value.remark || ''
+      note: value.remark === null ? '' : value.remark
     };
   }
   // 只有从休息改回上班才可能补默认时段，已经是上班时再点「上班」什么都不改。草稿里还有逐段时段，
@@ -7327,7 +7319,7 @@ function SMExport({
       fields.periods = window.APSWorkPeriods.clone(periods);
     }
     const note = String(draft.note == null ? '' : draft.note).trim();
-    fields.note = note || null;
+    fields.note = note === '' ? null : note;
     if (original && original.explicit && draft.eff === draftOf(original).eff) delete fields.eff;
     return fields;
   }
@@ -10140,11 +10132,6 @@ function SMExport({
       end_date: prefix + '-' + monthDays(target.year, target.month)
     };
   }
-  function isStale(command) {
-    const error = command && command.error,
-      code = error && (error.code || error.error && error.error.code);
-    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
-  }
   function DayEditor({
     day,
     draft,
@@ -10499,13 +10486,13 @@ function SMExport({
     function updateDraft(next) {
       setDraft(next);
       setError(null);
-      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     function updateRange(next) {
       setRange(next);
       setPreview(null);
       setError(null);
-      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     async function toggleMode() {
       const abandonDraft = dirty;
@@ -10689,7 +10676,7 @@ function SMExport({
       onClearing: value => {
         setClearing(value);
         setError(null);
-        if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+        command.clearRejection();
       }
     }), editorData && mode === 'day' && !current && /*#__PURE__*/React.createElement("p", {
       role: "status"
@@ -10798,7 +10785,8 @@ function SMExport({
       role: "alert"
     }, "\u7ED3\u679C\u91CC\u6CA1\u6709\u9010\u9879\u660E\u7EC6\uFF0C\u8BF7\u5728\u7EF4\u62A4\u5411\u5BFC\u91CC\u6838\u5BF9\u3002\u6CA1\u6709\u5F53\u6210\u5168\u90E8\u6210\u529F\u3002")));
   }
-  function LegacyFacts({
+  // 人员详情投影（core/services/workbench/resource/projection.py::_operator）总带 machine_permissions 列表；新增人员时还没有实体。
+  function MachinePermissionFacts({
     entity
   }) {
     if (!entity) return /*#__PURE__*/React.createElement("div", {
@@ -10807,7 +10795,7 @@ function SMExport({
       className: "fhint"
     }, "\u8BF7\u5728\u4EBA\u5458\u8BE6\u60C5\u4E2D\u8BBE\u7F6E\u53EF\u64CD\u4F5C\u8BBE\u5907\u3002"));
     const permissions = entity.relationships.machine_permissions;
-    if (Array.isArray(permissions)) return /*#__PURE__*/React.createElement("div", {
+    return /*#__PURE__*/React.createElement("div", {
       className: "field full"
     }, /*#__PURE__*/React.createElement("label", null, "\u53EF\u64CD\u4F5C\u8BBE\u5907"), permissions.length ? /*#__PURE__*/React.createElement("div", {
       className: "chipline"
@@ -10822,29 +10810,6 @@ function SMExport({
     }, "\u5C1A\u672A\u8BBE\u7F6E\u53EF\u64CD\u4F5C\u8BBE\u5907\u3002"), /*#__PURE__*/React.createElement("span", {
       className: "fhint"
     }, "\u5728\u4EBA\u5458\u8BE6\u60C5\u4E2D\u70B9\u300C\u7F16\u8F91\u53EF\u64CD\u4F5C\u8BBE\u5907\u300D\u7EF4\u62A4\u8BBE\u5907\u5173\u8054\u3002"));
-    const facts = entity.relationships.legacy_machine_authorizations;
-    return /*#__PURE__*/React.createElement("div", {
-      className: "field full"
-    }, /*#__PURE__*/React.createElement("label", null, "\u65E2\u6709\u8BBE\u5907\u6388\u6743\uFF08\u53EA\u8BFB\uFF09"), Array.isArray(facts) ? facts.length ? /*#__PURE__*/React.createElement("div", {
-      className: "chipline"
-    }, facts.map((item, index) => /*#__PURE__*/React.createElement("span", {
-      className: "chip",
-      key: item.ref || index,
-      style: {
-        whiteSpace: 'normal'
-      }
-    }, item.label || '设备名称未填写', item.status && item.status !== 'active' ? '（历史授权）' : ''))) : /*#__PURE__*/React.createElement("span", {
-      className: "fhint"
-    }, "\u65E0\u65E2\u6709\u8BBE\u5907\u6388\u6743\u3002") : Number.isSafeInteger(entity.relationships.machine_authorization_count) ? /*#__PURE__*/React.createElement("span", {
-      className: "fhint"
-    }, "\u5DF2\u767B\u8BB0 ", entity.relationships.machine_authorization_count, " \u9879\u8BBE\u5907\u6388\u6743\uFF0C\u660E\u7EC6\u672A\u8BFB\u53D6\u3002") : C.own(entity.relationships, 'machine_refs') ? /*#__PURE__*/React.createElement(Relation, {
-      entity: entity,
-      field: "machine_refs"
-    }) : /*#__PURE__*/React.createElement("span", {
-      className: "fhint"
-    }, "\u8BBE\u5907\u6388\u6743\u5C1A\u672A\u8BFB\u53D6\u3002"), /*#__PURE__*/React.createElement("span", {
-      className: "fhint"
-    }, "\u6280\u80FD\u767B\u8BB0\u4E0D\u6539\u53D8\u65E2\u6709\u8BBE\u5907\u6388\u6743\u3002"));
   }
   function Remark({
     kind,
@@ -10932,7 +10897,7 @@ function SMExport({
     const adjustingStock = stockOnly && kind === 'material' && action === 'update';
     const done = command.phase === 'done',
       disabled = command.locked || done || catalogBusy || contextBusy;
-    const reason = typeof adapter.command !== 'function' ? '保存功能尚未开通。' : C.blocked(writeContext, kind, action, source);
+    const reason = C.blocked(writeContext, kind, action, source);
     // Deleting basic data takes the checkbox confirmation used for backup deletion; the unchecked state is the button's own reason, not a bare sentence.
     const confirmReason = action === 'delete' && !deleteChecked ? '请先勾选已核对要删除的资料及其关联关系。' : '';
     const currentError = error || command.error;
@@ -10945,7 +10910,7 @@ function SMExport({
     React.useEffect(() => {
       if (currentError) focusFirstInvalid(form.current);
     }, [currentError]);
-    const fieldPaths = action === 'delete' ? [] : adjustingStock ? ['fields.stock_qty'] : ['business_code', 'label', ...(kind === 'material' ? ['fields.spec', 'fields.unit', 'fields.stock_qty', 'fields.remark'] : []), ...(kind === 'op_type' ? ['fields.remark', 'fields.category', ...(['external', 'both'].includes(opCategory) ? ['fields.default_merge_mode'] : [])] : []), ...(kind === 'supplier' ? ['fields.default_days'] : []), ...(C.statuses[kind] ? ['fields.status'] : []), ...(C.relations[kind] || []).flatMap(field => [field.key, 'relationships.' + field.key])];
+    const fieldPaths = action === 'delete' ? [] : adjustingStock ? ['fields.stock_qty'] : ['business_code', 'label', ...(kind === 'material' ? ['fields.spec', 'fields.unit', 'fields.stock_qty', 'fields.remark'] : []), ...(kind === 'op_type' ? ['fields.remark', 'fields.category', ...(['external', 'both'].includes(opCategory) ? ['fields.default_merge_mode'] : [])] : []), ...(kind === 'supplier' ? ['fields.default_days'] : []), ...(C.statuses[kind] ? ['fields.status'] : []), ...C.relations[kind].flatMap(field => [field.key, 'relationships.' + field.key])];
     async function close(detail) {
       if (command.locked || catalogBusy || contextBusy) return;
       if (!(detail && detail.guardConfirmed === true && detail.guardOwner === guardOwner) && !(await window.WorkbenchGuards.confirmLeave({
@@ -10965,8 +10930,7 @@ function SMExport({
         [key]: value
       });
       setError(null);
-      const code = command.error && (command.error.code || command.error.error && command.error.error.code);
-      if (command.phase === 'rejected' && !['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code) && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     async function submit(event) {
       event.preventDefault();
@@ -11163,7 +11127,7 @@ function SMExport({
       value: "merged"
     }, "\u5408\u5E76\u8BBE\u7F6E"), !['', 'separate', 'merged'].includes(draft.fields.default_merge_mode) && /*#__PURE__*/React.createElement("option", {
       value: draft.fields.default_merge_mode
-    }, "\u539F\u5468\u671F\u89C4\u5219\u672A\u8BC6\u522B\uFF08\u4FDD\u6301\u539F\u503C\uFF09")))), (C.relations[kind] || []).map(field => /*#__PURE__*/React.createElement(Choice, {
+    }, "\u539F\u5468\u671F\u89C4\u5219\u672A\u8BC6\u522B\uFF08\u4FDD\u6301\u539F\u503C\uFF09")))), C.relations[kind].map(field => /*#__PURE__*/React.createElement(Choice, {
       key: field.key,
       adapter: adapter,
       field: field,
@@ -11188,10 +11152,10 @@ function SMExport({
     }, entity.fields.legacy_status === 'inactive' ? '原停用状态，原因未登记' : '原状态：' + String(entity.fields.legacy_status))), (kind === 'material' || kind === 'op_type') && text('remark', kind === 'op_type' && opCategory === 'internal' ? '产能备注' : '备注', {
       full: true,
       multiline: true
-    }), kind === 'operator' && /*#__PURE__*/React.createElement(LegacyFacts, {
+    }), kind === 'operator' && /*#__PURE__*/React.createElement(MachinePermissionFacts, {
       entity: entity
-    })), /*#__PURE__*/React.createElement(Issues, {
-      issues: entity && entity.issues || []
+    })), entity && /*#__PURE__*/React.createElement(Issues, {
+      issues: entity.issues
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error,
       excludePaths: fieldPaths
@@ -11217,7 +11181,7 @@ function SMExport({
     })), /*#__PURE__*/React.createElement(CurrentFields, {
       kind: kind,
       entity: contextReview.data
-    }), (C.relations[kind] || []).map(field => /*#__PURE__*/React.createElement("p", {
+    }), C.relations[kind].map(field => /*#__PURE__*/React.createElement("p", {
       key: field.key
     }, field.label, "\uFF1A", /*#__PURE__*/React.createElement(Relation, {
       entity: contextReview.data,
@@ -11226,8 +11190,8 @@ function SMExport({
       role: "status"
     }, refreshState.loading ? '正在刷新列表和详情…' : refreshState.done ? '已刷新到最新数据。' : '最新数据还没确认。请点「刷新保存结果」。'), /*#__PURE__*/React.createElement(ErrorBox, {
       error: refreshState.error
-    }), /*#__PURE__*/React.createElement(Issues, {
-      issues: refreshState.detail && refreshState.detail.data.issues || []
+    }), refreshState.detail && /*#__PURE__*/React.createElement(Issues, {
+      issues: refreshState.detail.data.issues
     }), refreshState.error && /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       onClick: onRefresh
@@ -11267,7 +11231,7 @@ function SMExport({
         onClick: onDelete
       }, "\u5220\u9664"), kind === 'material' && /*#__PURE__*/React.createElement(Button, {
         icon: "square-pen",
-        reason: C.blocked(entity.write_context, kind, 'update', result.meta.source) || (typeof onAdjustStock !== 'function' ? '调整库存尚未开通。' : ''),
+        reason: C.blocked(entity.write_context, kind, 'update', result.meta.source),
         onClick: onAdjustStock
       }, "\u8C03\u6574\u5E93\u5B58"), /*#__PURE__*/React.createElement(Button, {
         icon: "square-pen",
@@ -11294,18 +11258,18 @@ function SMExport({
       kind: kind,
       entity: entity,
       includeRemark: false
-    }), (kind === 'op_type' || (C.relations[kind] || []).length > 0) && /*#__PURE__*/React.createElement("div", {
+    }), (kind === 'op_type' || C.relations[kind].length > 0) && /*#__PURE__*/React.createElement("div", {
       className: "wb-resource-links fgrid"
     }, kind === 'op_type' && /*#__PURE__*/React.createElement("div", {
       className: "field"
-    }, /*#__PURE__*/React.createElement("label", null, "\u6392\u4EA7\u65B9\u5F0F"), /*#__PURE__*/React.createElement("span", null, entity.fields.category === 'internal' ? '工时（换型＋单件）' : entity.fields.category === 'external' ? '周期（天）' : entity.fields.category === 'both' ? '按每道工序选择自制工时或外协周期' : '未明确')), (C.relations[kind] || []).map(field => /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("label", null, "\u6392\u4EA7\u65B9\u5F0F"), /*#__PURE__*/React.createElement("span", null, entity.fields.category === 'internal' ? '工时（换型＋单件）' : entity.fields.category === 'external' ? '周期（天）' : entity.fields.category === 'both' ? '按每道工序选择自制工时或外协周期' : '未明确')), C.relations[kind].map(field => /*#__PURE__*/React.createElement("div", {
       className: "field",
       key: field.key
     }, /*#__PURE__*/React.createElement("label", null, field.label), /*#__PURE__*/React.createElement(Relation, {
       entity: entity,
       field: field.key,
       onOpen: !field.catalog && onRelated ? ref => onRelated(field.kind, ref, field.category) : undefined
-    }))), kind === 'operator' && /*#__PURE__*/React.createElement(LegacyFacts, {
+    }))), kind === 'operator' && /*#__PURE__*/React.createElement(MachinePermissionFacts, {
       entity: entity
     })), /*#__PURE__*/React.createElement(Remark, {
       kind: kind,
@@ -11314,11 +11278,11 @@ function SMExport({
       issues: entity.issues
     }), kind === 'operator' && /*#__PURE__*/React.createElement(Button, {
       icon: "machine",
-      reason: C.blocked(entity.write_context, kind, 'update', result.meta.source) || (typeof onMachinePermissions !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : ''),
+      reason: C.blocked(entity.write_context, kind, 'update', result.meta.source),
       onClick: onMachinePermissions
     }, "\u7F16\u8F91\u53EF\u64CD\u4F5C\u8BBE\u5907"), kind === 'operator' && /*#__PURE__*/React.createElement(Button, {
       icon: "calendar-days",
-      reason: C.blocked(entity.write_context, kind, 'update', result.meta.source) || (typeof onOperatorCalendar !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : ''),
+      reason: C.blocked(entity.write_context, kind, 'update', result.meta.source),
       onClick: onOperatorCalendar
     }, "\u7F16\u8F91", window.WorkbenchTerms.personal_calendar), kind === 'machine' && /*#__PURE__*/React.createElement(Button, {
       icon: "wrench",
@@ -11419,7 +11383,9 @@ function SMExport({
       }
     }
     function select(row) {
-      if (command.phase === 'rejected') command.reset();
+      command.clearRejection({
+        includeStale: true
+      });
       setLastReceipt(null);
       const value = row ? Object.fromEntries(Object.keys(blank()).map(key => [key, row[key] || ''])) : blank();
       value.start_time = value.start_time.replace(' ', 'T');
@@ -11431,7 +11397,9 @@ function SMExport({
       setError(null);
     }
     function updateDraft(key, value) {
-      if (command.phase === 'rejected') command.reset();
+      command.clearRejection({
+        includeStale: true
+      });
       setLastReceipt(null);
       setError(null);
       setDraft(current => ({
@@ -12408,7 +12376,6 @@ function SMExport({
   } = window.ResourceControls;
   const Forms = window.ResourceForms,
     Tables = window.ResourceTables;
-  const emptyAdapter = {};
   const readScopeKeys = ['query', 'status', 'page', 'size', 'sort', 'direction', 'category', 'column_filters'];
   function readColumns(config) {
     const fields = config.kind === 'op_type' ? config.category === 'internal' ? ['available_machines', 'available_operators', 'remark'] : ['default_merge_mode', 'remark'] : {
@@ -12424,7 +12391,7 @@ function SMExport({
     const config = C.nodes[node],
       scope = view.scope;
     if (!C.object(scope) || Object.keys(scope).some(key => !readScopeKeys.includes(key)) || typeof scope.query !== 'string' || !Number.isSafeInteger(scope.page) || scope.page < 1 || !Number.isSafeInteger(scope.size) || scope.size < 1 || scope.size > 100 || typeof scope.sort !== 'string' || !readColumns(config).includes(scope.sort) || !['asc', 'desc'].includes(scope.direction) || typeof view.sort_active !== 'boolean') throw C.failure('上次浏览位置的范围、排序或分页不正确。');
-    if (config.category ? scope.category !== config.category || C.own(scope, 'status') : C.own(scope, 'category') || !['', ...(C.statuses[config.kind] || []).map(row => row[0])].includes(scope.status)) throw C.failure('上次浏览位置与当前资料不一致。');
+    if (config.category ? scope.category !== config.category || C.own(scope, 'status') : C.own(scope, 'category') || !['', ...C.statuses[config.kind].map(row => row[0])].includes(scope.status)) throw C.failure('上次浏览位置与当前资料不一致。');
     const selected = view.selected_refs;
     if (!Array.isArray(selected) || selected.some(value => typeof value !== 'string' || !/^[0-9a-f]{48}$/.test(value)) || new Set(selected).size !== selected.length) throw C.failure('上次勾选的记录编号不正确。');
     if (scope.column_filters !== undefined) {
@@ -12438,7 +12405,7 @@ function SMExport({
       });
       if (checked.error || !checked.context || ['part', 'calendar'].includes(checked.context.kind)) throw C.failure('上次打开的详情对不上，已取消定位。');
     }
-    const migration = window.ResourceTableFilterModel.restore(scope.column_filters || {}),
+    const migration = window.ResourceTableFilterModel.restore(scope.column_filters === undefined ? {} : scope.column_filters),
       restored = JSON.parse(JSON.stringify(view));
     restored.scope.column_filters = migration.filters;
     return {
@@ -12493,7 +12460,8 @@ function SMExport({
       action: 'view',
       ref: context.entity_ref,
       category: context.category,
-      navigation: true
+      navigation: true,
+      history: []
     };
   }
   const scopeFor = node => ({
@@ -12510,7 +12478,6 @@ function SMExport({
     } : {})
   });
   async function readList(adapter, kind, scope, signal) {
-    if (typeof adapter.list !== 'function') throw C.failure('dependency not wired: adapter.list');
     const result = C.query(await adapter.list(kind, scope, signal), 'list');
     if (result.data.page.number !== scope.page || result.data.page.size !== scope.size) throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
     const page = Math.min(scope.page, Math.max(1, Math.ceil(result.data.page.total / scope.size)));
@@ -12543,7 +12510,7 @@ function SMExport({
     const [search, setSearch] = React.useState(scope.query);
     React.useEffect(() => setSearch(scope.query), [scope.query, config.kind]);
     // 附属资料的文件入口只在挂靠它的那类资料上出现，有几种、叫什么由适配器给，页面不写死。
-    const attached = typeof adapter.attachedFiles === 'function' ? adapter.attachedFiles(config.kind) : [];
+    const attached = adapter.attachedFiles(config.kind);
     const actions = [['openImport', 'file-input', '导入'], ['openExport', 'file-output', '导出'], ...attached.flatMap(item => [['openRelationImport', 'file-input', '导入' + item.label, item.family], ['openRelationExport', 'file-output', '导出' + item.label, item.family]]), ['openBulk', 'trash-2', '批量删除']];
     return /*#__PURE__*/React.createElement("form", {
       className: "toolbar",
@@ -12604,12 +12571,12 @@ function SMExport({
     }), /*#__PURE__*/React.createElement("div", {
       className: "wb-actions"
     }, actions.map(([name, icon, label, family]) => /*#__PURE__*/React.createElement(Button, {
-      key: name + ':' + (family || ''),
+      key: family === undefined ? name : name + ':' + family,
       icon: icon,
       transfer: /Import$/.test(name) ? 'import' : /Export$/.test(name) ? 'export' : undefined,
       disabled: disabled || loading,
       reasonDisplay: "tooltip",
-      reason: typeof adapter[name] !== 'function' || typeof adapter.supports === 'function' && !adapter.supports(name, config.kind) ? label + '尚未开通。' : !ready ? '请先读取当前列表。' : name === 'openBulk' && !selected.length ? '请先勾选记录。' : '',
+      reason: !adapter.supports(name, config.kind) ? label + '尚未开通。' : !ready ? '请先读取当前列表。' : name === 'openBulk' && !selected.length ? '请先勾选记录。' : '',
       onClick: () => onExternal(name, family ? {
         family
       } : {})
@@ -12621,47 +12588,8 @@ function SMExport({
       onClick: onCreate
     }, "\u65B0\u589E", config.label)));
   }
-  function Calendar({
-    adapter,
-    disabled,
-    onExternal
-  }) {
-    const [month, setMonth] = React.useState(() => {
-      const date = new Date();
-      return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
-    });
-    return /*#__PURE__*/React.createElement("div", {
-      className: "cal-wrap"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "cal-panel"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "cal-top",
-      style: {
-        flexWrap: 'wrap'
-      }
-    }, /*#__PURE__*/React.createElement("label", {
-      className: "field"
-    }, /*#__PURE__*/React.createElement("span", null, "\u6708\u4EFD"), /*#__PURE__*/React.createElement("input", {
-      type: "month",
-      value: month,
-      disabled: disabled,
-      onChange: event => setMonth(event.target.value)
-    })), /*#__PURE__*/React.createElement(Button, {
-      icon: "calendar-days",
-      disabled: disabled || !month,
-      reason: typeof adapter.openCalendar !== 'function' ? '工作日历维护尚未开通，不能修改。' : '',
-      onClick: () => onExternal('openCalendar', {
-        month
-      })
-    }, "\u7EF4\u62A4\u5DE5\u4F5C\u65E5\u5386")), /*#__PURE__*/React.createElement("p", {
-      className: "muted",
-      role: "status"
-    }, typeof adapter.openCalendar === 'function' ? '工作日历在维护向导里读取和修改。' : '工作日历明细尚未开通。')), /*#__PURE__*/React.createElement("aside", {
-      className: "cal-panel cal-side"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u9ED8\u8BA4\u89C4\u5219"), /*#__PURE__*/React.createElement("p", null, "\u9ED8\u8BA4\u89C4\u5219\u8FD8\u6CA1\u8BFB\u53D6\u3002\u8BF7\u70B9\u300C\u7EF4\u62A4\u5DE5\u4F5C\u65E5\u5386\u300D\u67E5\u770B\u6BCF\u5929\u5DE5\u65F6\u3001\u6548\u7387\u548C\u5468\u672B\u5B89\u6392\u3002")));
-  }
   function ResourceWorkspace({
-    adapter = emptyAdapter,
+    adapter,
     onNavigate,
     initialNode = 'material',
     initialContext,
@@ -12671,11 +12599,10 @@ function SMExport({
     onNavigationReady,
     rememberEnabled = true
   }) {
-    adapter = adapter && typeof adapter === 'object' ? adapter : emptyAdapter;
     const [target] = React.useState(() => navigation(initialContext));
     const command = S.useCommand(adapter);
     const [deferred, setDeferred] = React.useState(() => !!target.context && command.phase !== 'idle');
-    const [navigationError, setNavigationError] = React.useState(target.error || null);
+    const [navigationError, setNavigationError] = React.useState(target.error === undefined ? null : target.error);
     const startNode = target.node || initialNode;
     const readView = target.context && !['part', 'calendar'].includes(target.context.kind) && target.context.read_view;
     const [node, setNode] = React.useState(startNode),
@@ -12722,7 +12649,6 @@ function SMExport({
       };
     }, [request, effectiveScope, list.result]);
     const detail = S.useQuery(async signal => {
-      if (typeof adapter.detail !== 'function') throw C.failure('dependency not wired: adapter.detail');
       const result = C.query(await adapter.detail(dialog.kind, dialog.ref, signal), 'entity');
       if (result.data.ref !== dialog.ref) throw C.failure('读到的详情与所选记录不一致，请刷新后重试。');
       if (dialog.navigation && (result.meta.source !== 'production' || C.own(result.data, 'kind') && result.data.kind !== dialog.kind || dialog.kind === 'op_type' && ![dialog.category, "both"].includes(result.data.fields.category))) throw C.failure('这条记录的来源、类型或工种类别和定位不一致，没有打开别的记录。');
@@ -12795,12 +12721,9 @@ function SMExport({
     function columnFilter(key, rule) {
       if (blocked) return;
       const column_filters = {
-        ...(effectiveScope.column_filters || {})
+        ...effectiveScope.column_filters
       };
-      if (rule === null || rule.mode === 'exclude' && !rule.values.length) delete column_filters[key];else column_filters[key] = {
-        mode: rule.mode,
-        values: rule.values.slice()
-      };
+      if (rule === null || rule.mode === 'exclude' && !rule.values.length) delete column_filters[key];else column_filters[key] = rule;
       setRequestScope({
         ...effectiveScope,
         column_filters,
@@ -12838,7 +12761,7 @@ function SMExport({
         action,
         ref,
         category: related ? related.category : config.category,
-        history: related && dialog ? (dialog.history || []).concat({
+        history: related && dialog ? dialog.history.concat({
           ...dialog,
           action: 'view',
           history: undefined
@@ -12848,7 +12771,7 @@ function SMExport({
       });
     }
     function back() {
-      if (blocked || !dialog || !dialog.history || !dialog.history.length || !command.reset()) return;
+      if (blocked || !dialog || !dialog.history.length || !command.reset()) return;
       const history = dialog.history.slice();
       setDialog({
         ...history.pop(),
@@ -12925,7 +12848,6 @@ function SMExport({
       });
       counts.summary.reload();
       try {
-        if (typeof adapter.list !== 'function') throw C.failure('dependency not wired: adapter.list');
         const intentNode = Object.keys(C.nodes).find(key => C.nodes[key].kind === intent.kind && (!C.nodes[key].category || C.nodes[key].category === intent.category));
         const sameView = config && config.kind === intent.kind && (intent.kind !== 'op_type' || config.category === intent.category);
         const readScope = {
@@ -12945,7 +12867,6 @@ function SMExport({
           const ref = C.resultRef(command.result, intent.ref);
           if (typeof ref !== 'string' || !ref) throw C.failure('保存结果里没有记录编号，暂时读不到详情。请点「刷新」后核对。');
           if (intent.ref && ref !== intent.ref) throw C.failure('保存结果对应的记录和上次提交的不一致，请点「查询结果」核对。');
-          if (typeof adapter.detail !== 'function') throw C.failure('dependency not wired: adapter.detail');
           fresh = C.query(await adapter.detail(intent.kind, ref, new AbortController().signal), 'entity');
           if (fresh.data.ref !== ref) throw C.failure('保存后的详情和结果编号对不上，请点「刷新」后核对。');
         }
@@ -12964,7 +12885,7 @@ function SMExport({
       if (command.phase === 'done') readAfterCommand();
     }, [command.phase, command.result && command.result.receipt_ref]);
     async function openExternal(name, extra = {}) {
-      if (blocked || typeof adapter[name] !== 'function') return;
+      if (blocked) return;
       setExternal({
         busy: true,
         error: null
@@ -12979,7 +12900,7 @@ function SMExport({
           });
           return;
         }
-        if (result.data && Number.isInteger(result.data.deleted_count) && Array.isArray(result.data.rows)) {
+        if (Number.isInteger(result.data.deleted_count) && Array.isArray(result.data.rows)) {
           const removed = new Set(result.data.rows.map(row => row.entity_ref));
           setSelected(current => current.filter(ref => !removed.has(ref)));
         }
@@ -12993,7 +12914,7 @@ function SMExport({
       };
       try {
         const result = await adapter[name](config.kind, {
-          refs: selected.slice(),
+          refs: selected,
           scope: {
             ...effectiveScope,
             source: list.result && list.result.meta.source
@@ -13046,7 +12967,7 @@ function SMExport({
       onClick: continueNavigation
     }, "\u7EE7\u7EED\u8DF3\u8F6C")), !config ? /*#__PURE__*/React.createElement(ErrorBox, {
       error: C.failure('未知的基础资料入口，请在上方产能链里选一项。')
-    }) : /*#__PURE__*/React.createElement(React.Fragment, null, !(node === 'calendar' && renderCalendar) && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    }) : /*#__PURE__*/React.createElement(React.Fragment, null, node !== 'calendar' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
       className: "crumb"
     }, /*#__PURE__*/React.createElement("span", null, "\u4EA7\u80FD\u94FE"), /*#__PURE__*/React.createElement("span", {
       className: "sep"
@@ -13071,25 +12992,18 @@ function SMExport({
         result: external.result
       },
       action: external.action
-    }), node === 'process' ? typeof renderPart === 'function' ? renderPart({
+    }), node === 'process' ? renderPart({
       adapter,
       onNavigate,
       onRefresh: refresh,
       rememberEnabled: rememberEnabled && !navigationError && !deferred,
       initialContext: !deferred && target.context && target.context.kind === 'part' ? target.context : undefined
-    }) : /*#__PURE__*/React.createElement("p", {
-      role: "status",
-      className: "muted"
-    }, "\u5DE5\u827A\u5DE5\u4F5C\u533A\u5C1A\u672A\u5F00\u901A\u3002") : node === 'calendar' ? typeof renderCalendar === 'function' ? renderCalendar({
+    }) : node === 'calendar' ? renderCalendar({
       onCommitted: refresh,
       externalRevision,
       summaryState: counts.summary,
       rememberEnabled: rememberEnabled && !navigationError && !deferred,
       initialContext: !deferred && target.context && target.context.kind === 'calendar' ? target.context : undefined
-    }) : /*#__PURE__*/React.createElement(Calendar, {
-      adapter: adapter,
-      disabled: blocked,
-      onExternal: openExternal
     }) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(window.ResourceMetrics, {
       node: node,
       data: data
@@ -13164,7 +13078,7 @@ function SMExport({
         kind,
         category
       }),
-      onBack: dialog.history && dialog.history.length ? back : null,
+      onBack: dialog.history.length ? back : null,
       onEdit: () => edit('update'),
       onAdjustStock: () => edit('update', true),
       onMachinePermissions: () => edit('machine_permissions'),
@@ -13513,8 +13427,7 @@ function SMExport({
     React.useEffect(() => {
       if (error || command.error) focusFirstInvalid(formRef.current);
     }, [error, command.error]);
-    const stale = K.stale(command);
-    const reason = stale ? window.WorkbenchTerms.outcomes.stale : review ? '请先核对最新资料。' : C.blocked(base.write_context, 'calendar', clearing ? 'delete' : 'upsert', source);
+    const reason = command.stale ? window.WorkbenchTerms.outcomes.stale : review ? '请先核对最新资料。' : C.blocked(base.write_context, 'calendar', clearing ? 'delete' : 'upsert', source);
     async function reloadContext() {
       if (disabled) return;
       setReading(true);
@@ -13571,7 +13484,7 @@ function SMExport({
     function toggleClearing(next) {
       setClearing(next);
       setError(null);
-      if (command.phase === 'rejected' && !stale && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     return /*#__PURE__*/React.createElement(Modal, {
       title: base.date + ' · 工作日历',
@@ -13596,7 +13509,7 @@ function SMExport({
         icon: clearing ? 'minus' : 'check',
         busy: disabled,
         reason: reason,
-        reasonDisplay: stale ? 'tooltip' : 'inline'
+        reasonDisplay: command.stale ? 'tooltip' : 'inline'
       }, clearing ? '确认清除，恢复默认' : '保存配置'))
     }, /*#__PURE__*/React.createElement("form", {
       id: formId,
@@ -13619,7 +13532,7 @@ function SMExport({
       onChange: next => {
         setValue(next);
         setError(null);
-        if (command.phase === 'rejected' && !stale && typeof command.reset === 'function') command.reset();
+        command.clearRejection();
       }
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error,
@@ -13662,11 +13575,6 @@ function SMExport({
     ErrorBox,
     Modal
   } = window.ResourceControls;
-  function isStale(command) {
-    const error = command && command.error,
-      code = error && (error.code || error.error && error.error.code);
-    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
-  }
   function CalendarDefaultsDialog({
     adapter,
     command,
@@ -13727,7 +13635,7 @@ function SMExport({
     function updatePeriods(next) {
       setPeriods(next);
       setError(null);
-      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     return /*#__PURE__*/React.createElement(Modal, {
       title: "\u4FEE\u6539\u9ED8\u8BA4\u5DE5\u4F5C\u65F6\u95F4",
@@ -13933,7 +13841,7 @@ function SMExport({
     React.useEffect(() => {
       if (error) focusFirstInvalid(formRef.current);
     }, [error]);
-    const reason = K.stale(command) ? '预览变更已过期，没有写入。请点「重新预览变更」。' : !result ? '请先点「预览变更」查看全部命中日期。' : !result.data.counts.selected ? '当前范围没有命中日期。' : C.blocked(result.data.write_context, 'calendar', 'confirm', result.meta.source);
+    const reason = command.stale ? '预览变更已过期，没有写入。请点「重新预览变更」。' : !result ? '请先点「预览变更」查看全部命中日期。' : !result.data.counts.selected ? '当前范围没有命中日期。' : C.blocked(result.data.write_context, 'calendar', 'confirm', result.meta.source);
     async function preview(event) {
       event.preventDefault();
       if (disabled) return;
@@ -13986,13 +13894,13 @@ function SMExport({
       }, done ? '关闭' : '取消'), !done && result && /*#__PURE__*/React.createElement(Button, {
         disabled: disabled,
         onClick: back
-      }, "\u8FD4\u56DE\u4FEE\u6539\u8303\u56F4"), !done && (!result || K.stale(command)) && /*#__PURE__*/React.createElement(Button, {
+      }, "\u8FD4\u56DE\u4FEE\u6539\u8303\u56F4"), !done && (!result || command.stale) && /*#__PURE__*/React.createElement(Button, {
         type: "submit",
         form: formId,
         icon: "list-checks",
         className: "btn primary",
         busy: disabled
-      }, K.stale(command) ? '重新预览变更' : '预览变更'), !done && result && /*#__PURE__*/React.createElement(Button, {
+      }, command.stale ? '重新预览变更' : '预览变更'), !done && result && /*#__PURE__*/React.createElement(Button, {
         icon: "check",
         className: "btn primary",
         busy: disabled,
@@ -14586,7 +14494,7 @@ function SMExport({
     function preview(raw, mode, expected) {
       const result = envelope(raw),
         data = result.data;
-      if (!token(data.preview_ref) || data.operation !== kind + (mode === 'import' ? '.import' : '.bulk_delete') || data.commit_policy !== 'atomic' || typeof data.can_confirm !== 'boolean' || !C.object(data.summary) || !Array.isArray(data.rows) || !C.object(data.write_context) || !C.object(data.write_context.capabilities) || !token(data.write_context.write_token) || !Number.isFinite(Date.parse(data.expires_at))) throw C.failure('预检结果不完整，本批没有提交。请重新预检。');
+      if (!token(data.preview_ref) || data.operation !== kind + (mode === 'import' ? '.import' : '.bulk_delete') || data.commit_policy !== 'atomic' || typeof data.can_confirm !== 'boolean' || !C.object(data.summary) || !Array.isArray(data.rows) || !C.object(data.write_context) || !C.object(data.write_context.capabilities) || !Array.isArray(data.write_context.blocked_reasons) || !token(data.write_context.write_token) || !Number.isFinite(Date.parse(data.expires_at))) throw C.failure('预检结果不完整，本批没有提交。请重新预检。');
       if (!Object.keys(results).every(key => count(data.summary[key])) || Object.keys(results).reduce((sum, key) => sum + data.summary[key], 0) !== data.rows.length) throw C.failure('预检统计与明细不一致，本批没有提交。');
       const validRow = row => C.object(row) && count(row.row) && row.row > 0 && C.own(results, row.result) && (row.business_code === null || typeof row.business_code === 'string') && (row.before === null || C.object(row.before)) && (row.after === null || C.object(row.after)) && C.object(row.changes) && Array.isArray(row.errors) && row.errors.every(error => C.object(error) && typeof error.message === 'string') && (row.reference_fields === undefined || Array.isArray(row.reference_fields) && row.reference_fields.every(key => typeof key === 'string' && (kind !== 'material' || key === 'created_at')) && new Set(row.reference_fields).size === row.reference_fields.length) && typeof row.requires_confirmation === 'boolean' && count(row.reference_count);
       const counts = {
@@ -14616,7 +14524,7 @@ function SMExport({
     }
     function selection(request) {
       if (!Array.isArray(request.refs) || request.refs.some(ref => typeof ref !== 'string' || !/^[0-9a-f]{48}$/.test(ref)) || new Set(request.refs).size !== request.refs.length) throw C.failure('缺少明确勾选的' + label + '，请重新勾选。');
-      return request.refs.slice();
+      return request.refs;
     }
     function listContext(request) {
       const input = request.scope || {},
@@ -14663,9 +14571,8 @@ function SMExport({
         context = data.write_context;
       if (!data.can_confirm || data.summary.rejected) return '存在未通过检查的行，请修正后重新预检。';
       if (context.capabilities[data.operation] !== true) {
-        const reasons = context.blocked_reasons || [];
-        const reason = reasons.find(item => item.action === data.operation);
-        return reason && reason.message || '系统不允许本次确认。';
+        const reason = context.blocked_reasons.find(item => item.action === data.operation);
+        return reason ? reason.message : '系统不允许本次确认。';
       }
       if (Date.now() >= Date.parse(data.expires_at)) return '预检结果已过期，请重新预检。';
       return '';
@@ -16562,10 +16469,7 @@ function SMExport({
     }, [editor && editor.action, editor && editor.ref, done, showList]);
     React.useEffect(() => {
       if (done) setLastReceipt(command.result);
-      if (command.phase === 'rejected') {
-        const code = command.error && command.error.error && command.error.error.code;
-        if (['stale_write', 'stale_context', 'context_expired'].includes(code)) setNeedsReview(true);
-      }
+      if (command.stale) setNeedsReview(true);
     }, [command.phase, command.result, command.error]);
     async function load(action, ref, reviewing = false) {
       if (locked) return;
@@ -16639,8 +16543,7 @@ function SMExport({
         }
       }));
       setError(null);
-      const code = command.error && (command.error.code || command.error.error && command.error.error.code);
-      if (!needsReview && command.phase === 'rejected' && !['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code) && typeof command.reset === 'function') command.reset();
+      if (!needsReview) command.clearRejection();
     }
     function acknowledge(value) {
       setEditor(current => ({
@@ -17234,8 +17137,6 @@ function SMExport({
       locked: true,
       error: receiptError
     } : command;
-    const errorCode = command.error && (command.error.code || command.error.error && command.error.error.code);
-    const stale = command.phase === 'rejected' && ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(errorCode);
     const done = !!saved,
       dirty = !done && Object.values(draft).some(value => value !== ''),
       locked = visible.locked || opening || reading;
@@ -17332,14 +17233,14 @@ function SMExport({
     if (!create && data && now >= Date.parse(data.expires_at)) reason = '预检已过期，请重新预检。';
     if (!create && !reason && !ack) reason = '请先核对并勾选完整删除范围。';
     if (review) reason = '请先核对新读取的资料。';
-    if (command.phase === 'rejected' && (!create || stale)) reason = create ? '本次未保存，请刷新资料后再试。' : '本次未删除，请重新预检。';
+    if (command.phase === 'rejected' && (!create || command.stale)) reason = create ? '本次未保存，请刷新资料后再试。' : '本次未删除，请重新预检。';
     function updateDraft(key, value) {
       setDraft(current => ({
         ...current,
         [key]: value
       }));
       setError(null);
-      if (command.phase === 'rejected' && !stale && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     function confirm(event) {
       if (event && typeof event.preventDefault === 'function') event.preventDefault();
@@ -17527,13 +17428,14 @@ function SMExport({
     if (request.target_ref && (!A.ref(request.target_ref) || d.rows.some(row => row.entity_ref !== request.target_ref && row.result !== 'rejected') || d.affected_groups.some(group => group.part_ref !== request.target_ref))) throw C.failure('文件包含其他零件，不能从当前详情提交。');
     return result;
   }
+  // groupRefs 是页面里勾选的外协组编号数组（React 状态，只整体替换不原地改）。
   function confirmInput(data, groupRefs, zero) {
-    const groupSet = Array.isArray(groupRefs) ? new Set(groupRefs) : null;
-    if (!groupSet || groupSet.size !== groupRefs.length || groupRefs.length !== data.affected_groups.length || data.affected_groups.some(group => !groupSet.has(group.ref))) throw C.failure('请逐项核对并勾选全部受影响的外协组，未自动解除任何组。');
+    const groupSet = new Set(groupRefs);
+    if (groupSet.size !== groupRefs.length || groupRefs.length !== data.affected_groups.length || data.affected_groups.some(group => !groupSet.has(group.ref))) throw C.failure('请逐项核对并勾选全部受影响的外协组，未自动解除任何组。');
     if (typeof zero !== 'boolean' || data.zero_review_required && !zero) throw C.failure('单件工时为 0，排产只计算换型工时。请按 0 导入。');
     return {
       preview_ref: data.preview_ref,
-      discard_group_refs: groupRefs.slice(),
+      discard_group_refs: groupRefs,
       confirm_zero_unit_hours: zero
     };
   }
@@ -17563,7 +17465,7 @@ function SMExport({
   function exportPreview(raw, requestedKind, body) {
     const result = envelope(raw),
       d = result.data;
-    if (!A.token(d.export_ref) || d.selection !== body.selection || d.kind !== kind(requestedKind) || !count(d.row_count) || !count(d.part_count) || !Number.isFinite(Date.parse(d.expires_at)) || d.format !== body.format || !columns(d.columns) || !C.object(d.scope) || d.target_ref !== (body.target_ref || null) || body.target_ref && Object.keys(d.scope).length !== 0 || body.selection === 'filtered' && window.ResourceTableFilterModel.signature(A.scope(d.scope)) !== window.ResourceTableFilterModel.signature(A.scope(body.scope)) || body.selection === 'explicit' && d.part_count !== body.refs.length || requestedKind === 'route' && d.row_count !== d.part_count) throw C.failure('导出预检的类型、范围或数量不完整，未下载文件。');
+    if (!A.token(d.export_ref) || d.selection !== body.selection || d.kind !== kind(requestedKind) || !count(d.row_count) || !count(d.part_count) || !Number.isFinite(Date.parse(d.expires_at)) || d.format !== body.format || !columns(d.columns) || !C.object(d.scope) || d.target_ref !== (body.target_ref ?? null) || body.target_ref && Object.keys(d.scope).length !== 0 || body.selection === 'filtered' && window.ResourceTableFilterModel.signature(A.scope(d.scope)) !== window.ResourceTableFilterModel.signature(A.scope(body.scope)) || body.selection === 'explicit' && d.part_count !== body.refs.length || requestedKind === 'route' && d.row_count !== d.part_count) throw C.failure('导出预检的类型、范围或数量不完整，未下载文件。');
     return result;
   }
   function receipt(result, intent, requestedKind, previewData, targetRef) {
@@ -20383,7 +20285,7 @@ function SMExport({
   }
   // Opening the editor and taking an unedited latest route follow one rule:
   // a route without operations shows its saved route text and one blank row.
-  const openingText = (data, rows) => rows.length ? D.serialize(rows) : data.fields.route_raw || '';
+  const openingText = (data, rows) => rows.length ? D.serialize(rows) : data.fields.route_raw === null ? '' : data.fields.route_raw;
   const openingRows = rows => rows.length ? rows : [{
     seq: '',
     op_type_name: ''
@@ -20426,8 +20328,10 @@ function SMExport({
     const [mergeReview, setMergeReview] = React.useState(null),
       [mergeChoices, setMergeChoices] = React.useState({});
     const paging = E.usePage(rows),
-      locked = !!command && (command.locked || command.phase === 'done');
+      locked = command.locked || command.phase === 'done';
     const blocked = disabled || locked;
+    // 只有带完整工艺接口的工艺详情才能打开路线录入（校准页的只读详情禁用了入口），这里的能力只看后端 capabilities。
+    const previewReason = P.reason(entity.capabilities, 'route_preview', true);
     // Read the op_type catalog once on entry so the row inputs can suggest real names. Free text stays allowed and
     // the server route preflight remains the only authority on what is recognized.
     const opTypeListId = React.useId();
@@ -20435,7 +20339,7 @@ function SMExport({
       query: '',
       page: 1,
       size: OP_TYPE_PAGE_SIZE
-    }, signal)).then(result => C.query(result, 'choices')), [adapter], typeof adapter.choices === 'function');
+    }, signal)).then(result => C.query(result, 'choices')), [adapter]);
     const opTypeNames = React.useMemo(() => opTypes.result ? Array.from(new Set(opTypes.result.data.entities.map(item => item.label).filter(Boolean))) : [], [opTypes.result]);
     function abort() {
       if (request.current) request.current.abort();
@@ -20519,7 +20423,7 @@ function SMExport({
         setMode(next);
         return;
       }
-      if (P.reason(entity.capabilities, 'route_preview', typeof adapter.routePreview === 'function')) return;
+      if (previewReason) return;
       invalidate();
       setState({
         busy: true,
@@ -20628,7 +20532,7 @@ function SMExport({
       }
     }
     async function preflight() {
-      if (blocked || review || state.busy || P.reason(entity.capabilities, 'route_preview', typeof adapter.routePreview === 'function')) return;
+      if (blocked || review || state.busy || previewReason) return;
       abort();
       const controller = new AbortController();
       request.current = controller;
@@ -20663,7 +20567,7 @@ function SMExport({
       }
     }
     async function reloadDetail() {
-      if (blocked || state.busy || typeof adapter.detail !== 'function') return;
+      if (blocked || state.busy) return;
       abort();
       const controller = new AbortController();
       request.current = controller;
@@ -20697,7 +20601,7 @@ function SMExport({
       }
     }
     const affected = state.result ? state.result.data.affected_groups : [];
-    const saveReason = P.reason(entity.capabilities, 'stage_confirm', typeof adapter.command === 'function' && !!command) || (review ? '请先核对最新资料。' : !state.result || !state.result.data.can_confirm_route ? '请先完成当前路线预检。' : !affected.every(row => discarded.includes(row.ref)) ? '请明确勾选解除所有受影响的外协组。' : C.blocked(state.result.data.write_context, 'process', 'route_confirm', state.result.meta.source));
+    const saveReason = P.reason(entity.capabilities, 'stage_confirm', true) || (review ? '请先核对最新资料。' : !state.result || !state.result.data.can_confirm_route ? '请先完成当前路线预检。' : !affected.every(row => discarded.includes(row.ref)) ? '请明确勾选解除所有受影响的外协组。' : C.blocked(state.result.data.write_context, 'process', 'route_confirm', state.result.meta.source));
     async function save() {
       if (blocked || saveReason) return;
       await command.submit('process', 'route_confirm', entity.ref, state.result.data.write_context, {
@@ -20722,7 +20626,7 @@ function SMExport({
         icon: "search",
         busy: state.busy,
         disabled: blocked || !!review,
-        reason: P.reason(entity.capabilities, 'route_preview', typeof adapter.routePreview === 'function'),
+        reason: previewReason,
         onClick: preflight
       }, "\u9884\u68C0\u8DEF\u7EBF"), /*#__PURE__*/React.createElement(Button, {
         icon: "check",
@@ -20745,7 +20649,7 @@ function SMExport({
       "aria-pressed": mode === value,
       className: mode === value ? 'on' : '',
       disabled: blocked || !!review || state.busy,
-      reason: P.reason(entity.capabilities, 'route_preview', typeof adapter.routePreview === 'function'),
+      reason: previewReason,
       onClick: () => switchMode(value)
     }, label))), /*#__PURE__*/React.createElement("p", {
       className: "muted"
@@ -20870,7 +20774,6 @@ function SMExport({
     }, "\u91CD\u8BD5\u9884\u68C0"), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
       disabled: blocked || state.busy,
-      reason: typeof adapter.detail !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: reloadDetail
     }, window.WorkbenchTerms.refresh_latest), review && /*#__PURE__*/React.createElement(E.Review, {
       before: context.data,
@@ -20906,7 +20809,7 @@ function SMExport({
       discarded: discarded,
       onDiscard: setDiscarded,
       disabled: blocked
-    }), command && /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
+    }), /*#__PURE__*/React.createElement(window.ResourceForms.Feedback, {
       command: command
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: refreshState.error
@@ -21554,10 +21457,8 @@ function SMExport({
     Issues
   } = window.ResourceControls;
   const FileButtons = window.ProcessFileButtons;
-  const emptyAdapter = {};
   const readScopeKeys = window.APSProcessReadView.scopeKeys;
   async function readList(adapter, scope, signal) {
-    if (!adapter || typeof adapter.list !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.list');
     const result = P.list(await adapter.list('part', scope, signal), scope);
     if (scope.page > 1 && !scope.snapshot_ref && result.meta.source !== 'production') throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
     return result;
@@ -21710,7 +21611,7 @@ function SMExport({
         sortActive: !!sorted,
         onSort: onSort,
         onFilter: rule => onFilter(column.key, rule),
-        filter: scope.column_filters && scope.column_filters[column.key],
+        filter: scope.column_filters[column.key],
         matchingCount: matchingCount,
         width: width(column),
         onResize: value => resize(column.key, value),
@@ -21782,11 +21683,11 @@ function SMExport({
       error: error,
       onClear: onClear,
       onRetry: onRetry,
-      filtered: !!(scope.query || scope.stage || Object.keys(scope.column_filters || {}).length)
+      filtered: !!(scope.query || scope.stage || Object.keys(scope.column_filters).length)
     }))))));
   }
   function ProcessWorkspace({
-    adapter = emptyAdapter,
+    adapter,
     onCommitted,
     disabled = false,
     initialContext,
@@ -21804,7 +21705,7 @@ function SMExport({
       } : parsed;
     });
     const [deferred, setDeferred] = React.useState(() => !!target.context && command.phase !== 'idle');
-    const [navigationError, setNavigationError] = React.useState(target.error || null);
+    const [navigationError, setNavigationError] = React.useState(target.error === undefined ? null : target.error);
     const restored = target.context && target.context.read_view;
     const restoredRef = restored ? restored.entity_ref : target.context && target.context.entity_ref;
     const navigationDialog = () => restoredRef ? {
@@ -21845,7 +21746,7 @@ function SMExport({
     }, [dialog, command.phase, recoveryError, onNavigationReady]);
     React.useEffect(() => {
       try {
-        const intent = typeof adapter.readPending === 'function' && adapter.readPending();
+        const intent = adapter.readPending();
         const restored = A.restored(intent);
         if (restored) setDialog({
           ...restored,
@@ -21937,7 +21838,7 @@ function SMExport({
       setDialog({
         mode,
         fileKind,
-        refs: refs.slice(),
+        refs,
         scope: A.scope(scope),
         snapshot_ref: list.result.meta.snapshot_ref,
         page_size: data.page.size,
@@ -21946,7 +21847,8 @@ function SMExport({
         adapter
       });
     }
-    const deleteReason = P.reason(data && data.capabilities, 'delete', typeof adapter.bulkPreview === 'function' && typeof adapter.command === 'function');
+    const deleteReason = P.reason(data && data.capabilities, 'delete', true);
+    const activeStage = scope.stage === undefined ? '' : scope.stage;
     const blocked = disabled || !!dialog || command.locked || !!recoveryError;
     function continueNavigation() {
       if (blocked || command.phase !== 'idle') {
@@ -21990,11 +21892,11 @@ function SMExport({
       "aria-label": "\u6309\u5DE5\u827A\u9636\u6BB5\u7B5B\u9009"
     }, P.stages.map(([stage, label, key]) => /*#__PURE__*/React.createElement(Button, {
       key: key,
-      className: 'subtab' + ((scope.stage || '') === stage ? ' on' : ''),
-      "aria-pressed": (scope.stage || '') === stage,
+      className: 'subtab' + (activeStage === stage ? ' on' : ''),
+      "aria-pressed": activeStage === stage,
       disabled: blocked,
       onClick: () => filter({
-        stage: stage || undefined
+        stage: stage === '' ? undefined : stage
       })
     }, label, " ", /*#__PURE__*/React.createElement("span", {
       className: "cnt"
@@ -22039,12 +21941,12 @@ function SMExport({
     }, /*#__PURE__*/React.createElement(FileButtons, {
       capabilities: data && data.capabilities,
       disabled: blocked || list.loading,
-      onAction: typeof adapter.filePreview === 'function' && typeof adapter.fileDownload === 'function' ? (kind, mode) => action(mode, selected, kind) : undefined
+      onAction: (kind, mode) => action(mode, selected, kind)
     }), /*#__PURE__*/React.createElement(Button, {
       icon: "plus",
       className: "btn primary",
       disabled: blocked || list.loading,
-      reason: P.reason(data && data.capabilities, 'create', typeof adapter.command === 'function') || A.createReason(data && data.create_context, list.result && list.result.meta.source),
+      reason: P.reason(data && data.capabilities, 'create', true) || A.createReason(data && data.create_context, list.result && list.result.meta.source),
       onClick: () => action('create')
     }, "\u65B0\u589E\u96F6\u4EF6"))), /*#__PURE__*/React.createElement("div", {
       className: "toolbar"
@@ -22531,8 +22433,9 @@ function SMExport({
   }
   function reason(ctx, action, source) {
     if (source !== 'production') return '当前不是可写生产资料。';
-    if (!ctx || ctx.capabilities['batch.' + action] !== true) return (ctx && ctx.blocked_reasons.find(row => row.action === 'batch.' + action) || {}).message || '当前资料不允许此操作。';
-    return '';
+    if (ctx && ctx.capabilities['batch.' + action] === true) return '';
+    const blocked = ctx && ctx.blocked_reasons.find(row => row.action === 'batch.' + action);
+    return blocked ? blocked.message : '当前资料不允许此操作。';
   }
   function readyStatus(entity) {
     return Object.prototype.hasOwnProperty.call(entity, 'display_ready_status') ? entity.display_ready_status : entity.fields.ready_status;
@@ -22568,7 +22471,10 @@ function SMExport({
         next = Number(next);
       } else if (key.endsWith('_date')) {
         next = next === '' ? null : next;
-      } else if (key === 'remark') next = next.trim() || null;
+      } else if (key === 'remark') {
+        next = next.trim();
+        if (next === '') next = null;
+      }
       patch[key] = next;
     }
     if (original) return {
@@ -22883,11 +22789,6 @@ function SMExport({
     ENTERED_DAYS = {
       exact: true
     };
-  function isStale(command) {
-    const error = command && command.error,
-      code = error && (error.code || error.error && error.error.code);
-    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
-  }
   function BaseEditor({
     adapter,
     entity: original,
@@ -23018,7 +22919,7 @@ function SMExport({
       setValue: next => {
         setValue(next);
         setError(null);
-        if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+        command.clearRejection();
       },
       entity: entity,
       disabled: locked,
@@ -23212,11 +23113,6 @@ function SMExport({
     {
       Field
     } = window.BatchControls;
-  function isStale(command) {
-    const error = command && command.error,
-      code = error && (error.code || error.error && error.error.code);
-    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
-  }
   function BatchOperationEditor({
     adapter,
     entity,
@@ -23319,7 +23215,7 @@ function SMExport({
         [key]: value
       }));
       setError(null);
-      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     return /*#__PURE__*/React.createElement(Modal, {
       title: '工序 ' + operation.sequence + ' · ' + operation.label,
@@ -23411,11 +23307,6 @@ function SMExport({
     required_quantity: row.required_quantity == null ? '' : String(row.required_quantity),
     available_quantity: row.available_quantity == null ? '' : String(row.available_quantity)
   }));
-  function isStale(command) {
-    const error = command && command.error,
-      code = error && (error.code || error.error && error.error.code);
-    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
-  }
   function BatchMaterialEditor({
     adapter,
     entity: initial,
@@ -23464,7 +23355,7 @@ function SMExport({
     }
     function clearError() {
       setError(null);
-      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     function add() {
       const item = data && data.entities.find(row => row.ref === selected);
@@ -24280,7 +24171,9 @@ function SMExport({
       setError(null);
       setAcknowledged(false);
       serial.current++;
-      if (command.phase === 'rejected' && typeof command.reset === 'function') command.reset();
+      command.clearRejection({
+        includeStale: true
+      });
     }
     function changeMode(value) {
       setMode(value);
@@ -24514,7 +24407,6 @@ function SMExport({
     direction: 'asc',
     column_filters: {}
   };
-  const emptyAdapter = {};
   const emptyBulk = {
     priority: '',
     due_date: '',
@@ -24572,7 +24464,8 @@ function SMExport({
     });
     const selected = view && view.selected_refs !== undefined ? view.selected_refs : [];
     if (!Array.isArray(selected) || !selected.every(B.ref) || new Set(selected).size !== selected.length) throw C.failure('上次勾选的批次已失效' + fallbackList);
-    const opened = view && view.entity_ref !== undefined ? view.entity_ref : context.entity_ref || context.batch_ref || null;
+    const located = context.entity_ref !== undefined ? context.entity_ref : context.batch_ref !== undefined ? context.batch_ref : null;
+    const opened = view && view.entity_ref !== undefined ? view.entity_ref : located;
     if (opened !== null && !B.ref(opened)) throw C.failure('上次打开的批次已失效' + fallbackList);
     if (view && context.entity_ref && context.entity_ref !== opened) throw C.failure('批次导航与恢复详情不一致。');
     const sort = view && view.sort_state !== undefined ? view.sort_state : null;
@@ -24587,7 +24480,7 @@ function SMExport({
     };
   }
   function BatchWorkspace({
-    adapter = emptyAdapter,
+    adapter,
     onCommitted,
     disabled = false,
     initialContext,
@@ -24630,7 +24523,6 @@ function SMExport({
       };
     }, [adapter]);
     const list = S.useQuery(async signal => {
-      if (typeof adapter.list !== 'function') throw C.failure('dependency not wired: window.APSBatchAPI.list');
       return B.list(await adapter.list('batch', scope, signal), scope);
     }, [adapter, scope, revision], !initial.error);
     const data = list.result && list.result.data,
@@ -24678,7 +24570,8 @@ function SMExport({
       }))) close();
     }
     function committed(receipt) {
-      const deleted = receipt.data.deleted_refs || [];
+      // 只有删除类回执（批量删除、文件导入）带 deleted_refs。
+      const deleted = receipt.data.deleted_refs === undefined ? [] : receipt.data.deleted_refs;
       if (deleted.length) {
         const deletedSet = new Set(deleted);
         setSelected(current => current.filter(ref => !deletedSet.has(ref)));
@@ -24741,7 +24634,7 @@ function SMExport({
       });
     }
     // 没有来源入口时是从侧栏直接进来的，按钮是去下一步而不是返回。
-    const returnSource = initial.sourceContext && initial.sourceContext.return_to || null;
+    const returnSource = initial.sourceContext !== null && initial.sourceContext.return_to !== undefined ? initial.sourceContext.return_to : null;
     const returnTarget = returnSource || 'run';
     const returnView = typeof returnTarget === 'string' ? returnTarget : returnTarget.view;
     const openEditor = entity => {
@@ -24852,7 +24745,6 @@ function SMExport({
     }), /*#__PURE__*/React.createElement(Button, {
       transfer: "import",
       disabled: blocked || !snapshot,
-      reason: typeof adapter.importPreview !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: () => {
         command.reset();
         setDialog({
@@ -24865,7 +24757,6 @@ function SMExport({
     }, "\u6279\u91CF\u5BFC\u5165"), /*#__PURE__*/React.createElement(Button, {
       transfer: "export",
       disabled: blocked || !snapshot,
-      reason: typeof adapter.exportPreview !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: () => setDialog({
         type: 'files',
         mode: 'export',
@@ -25038,9 +24929,9 @@ function SMExport({
       label: label,
       key: key
     }, /*#__PURE__*/React.createElement("select", {
-      value: scope[key] || '',
+      value: scope[key] == null ? '' : scope[key],
       onChange: event => filter({
-        [key]: event.target.value || undefined
+        [key]: event.target.value === '' ? undefined : event.target.value
       })
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
@@ -28496,9 +28387,12 @@ function SMExport({
     if (mode === 'preview' && (!/^[A-Za-z0-9_-]{32}$/.test(d.preview_ref) || typeof d.actual_source_ref !== 'string' || !/^[a-f0-9]{32}$/.test(d.actual_source_ref) || !Array.isArray(d.rows) || typeof d.can_confirm !== 'boolean' || d.commit_policy !== 'atomic' || !C.object(d.write_context))) throw C.failure('读到的文件预检结果不完整，请刷新重试。');
     return result;
   }
+  // context 是已校验过的任务、记录或预检上下文；关闭的上下文没有 write_token、capabilities 为空，原因都在 blocked_reasons 里
+  // （core/models/workbench_execution_input.py closed_write_context）。
   function blocked(context, action) {
-    if (!context || !context.write_token || !context.capabilities || context.capabilities[action] !== true) return (context && context.blocked_reasons || []).map(item => item.message).join('；') || '本页数据已过期，请刷新后重试。';
-    return '';
+    if (context.write_token && context.capabilities[action] === true) return '';
+    const reasons = context.blocked_reasons.map(item => item.message);
+    return reasons.length ? reasons.join('；') : '本页数据已过期，请刷新后重试。';
   }
   function draft(record) {
     return Object.fromEntries(fields.map(key => [key, record && record[key] != null ? String(record[key]) : '']).concat([['reason', ''], ['declared_operator', '']]));
@@ -28518,7 +28412,7 @@ function SMExport({
       } else if (key === 'actual_start' || key === 'actual_end') {
         v = v ? v.length === 16 ? v + ':00' : v : null;
         if (v !== null && !validTime(v)) bad(key, '请按 2026-09-13 08:30 这样填写；未知时请清除。');
-      } else if (key.endsWith('_ref')) v = v || null;
+      } else if (key.endsWith('_ref')) v = v === '' ? null : v;
       if (!record || v !== record[key]) result[key] = v;
     });
     if (record) {
@@ -29297,8 +29191,7 @@ function SMExport({
       return () => clearTimeout(timer);
     }, [command.phase, command.result, continueAfter, context, task.task_ref, task.operation_ref, onDone]);
     function clearRejected() {
-      const code = command.error && (command.error.code || command.error.error && command.error.error.code);
-      if (command.phase === 'rejected' && !['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code) && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     function change(key, value) {
       setDraft(current => ({
@@ -29414,11 +29307,6 @@ function SMExport({
       Feedback,
       Issues
     } = window.FieldControls;
-  function isStale(command) {
-    const error = command && command.error,
-      code = error && (error.code || error.error && error.error.code);
-    return ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(code);
-  }
   function FieldVoidEditor({
     task,
     record,
@@ -29484,7 +29372,7 @@ function SMExport({
       }));
       setPreview(null);
       setError(null);
-      if (command.phase === 'rejected' && !isStale(command) && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     async function inspect() {
       if (locked || !form.current.reportValidity()) return;
@@ -29498,7 +29386,9 @@ function SMExport({
         if (!value || !value.target_report || value.target_report.report_ref !== record.report_ref || value.target_report.original_revision_ref !== baseline.revision_ref || !value.before || !value.after || !Array.isArray(value.downstream_impacts) || typeof value.can_confirm !== 'boolean' || !value.write_context || !Array.isArray(value.warnings) || !value.warnings.every(item => item && typeof item.message === 'string' && item.message)) throw window.APSResourceContract.failure('撤销预检与原报工不一致，请刷新后重试。');
         // A fresh preview supersedes the last rejected confirmation.
         setPreview(value);
-        if (command.phase === 'rejected') command.reset();
+        command.clearRejection({
+          includeStale: true
+        });
       } catch (failure) {
         if (!controller.signal.aborted) setError(failure);
       } finally {
@@ -30125,7 +30015,9 @@ function SMExport({
     }, []);
     const locked = busy || command.locked || command.phase === 'done';
     async function run(action) {
-      if (action === 'preview' && command.phase === 'rejected' && typeof command.reset === 'function') command.reset();
+      if (action === 'preview') command.clearRejection({
+        includeStale: true
+      });
       setError(null);
       setBusy(true);
       controller.current = new AbortController();
@@ -30196,7 +30088,9 @@ function SMExport({
         setFile(event.target.files[0] || null);
         setPreview(null);
         setError(null);
-        if (command.phase === 'rejected' && typeof command.reset === 'function') command.reset();
+        command.clearRejection({
+          includeStale: true
+        });
       }
     })), busy && /*#__PURE__*/React.createElement("p", {
       role: "status"
@@ -31208,7 +31102,8 @@ function SMExport({
   function gapMinutes(start, end) {
     const seconds = (Date.parse(end.slice(0, 19) + 'Z') - Date.parse(start.slice(0, 19) + 'Z')) / 1000;
     const minutes = Math.floor(seconds / 60);
-    const remainder = (seconds - minutes * 60) * 1000000 + Number(end.slice(20) || 0) - Number(start.slice(20) || 0);
+    // 第 21 位起是 6 位微秒；没有小数秒时截出空串，Number('') 就是 0。
+    const remainder = (seconds - minutes * 60) * 1000000 + Number(end.slice(20)) - Number(start.slice(20));
     return minutes - (remainder < 0 ? 1 : 0);
   }
   const nullableTime = value => value === null || local(value);
@@ -31256,7 +31151,7 @@ function SMExport({
   }
   function scopeMatches(value, query) {
     return object(value) && cohortKeys.every(key => {
-      const expected = key === 'source' ? query.source || 'production' : key === 'batch_ids' ? (query[key] || []).slice().sort() : query[key] == null ? null : query[key];
+      const expected = key === 'source' ? query.source || 'production' : key === 'batch_ids' ? own(query, key) ? query[key].slice().sort() : [] : query[key] == null ? null : query[key];
       return JSON.stringify(value[key]) === JSON.stringify(expected);
     });
   }
@@ -32153,9 +32048,10 @@ function SMExport({
   }
   function initial(context) {
     const input = {
-        ...(context.scope || {})
+        ...context.scope
       },
       scope = {};
+    const taskRef = context.task_ref !== undefined ? context.task_ref : context.entity_ref;
     for (const key of ['source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids']) if (context[key] !== undefined && input[key] === undefined) input[key] = context[key];
     const allowed = ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids', 'query', 'focus', 'as_of', 'snapshot_ref', 'kind', 'baseline_ref'];
     let issue = Object.keys(input).some(key => !allowed.includes(key)) ? '查询条件无效，请清除筛选后重试。' : null;
@@ -32163,7 +32059,7 @@ function SMExport({
     if (input.query !== undefined && (typeof input.query !== 'string' || input.query.length > 200)) issue = '来源搜索条件无效。';
     if (context.return_to && !['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(context.return_to.view)) issue = '返回页面未登记。';
     if (context.report_ref !== undefined && !C.ref(context.report_ref)) issue = '来源报工编号无效，请从现场记录重新打开。';
-    if (context.report_ref !== undefined && !C.ref(context.task_ref || context.entity_ref)) issue = '报工关联的任务资料缺失，请刷新后重选。';
+    if (context.report_ref !== undefined && !C.ref(taskRef)) issue = '报工关联的任务资料缺失，请刷新后重选。';
     for (const key of ['plan_ref', 'source', 'range_start', 'range_end', 'plan_finish_date_from', 'plan_finish_date_to', 'resource_type', 'resource_ref', 'batch_ids']) if (input[key] !== undefined && input[key] !== null && input[key] !== '') scope[key] = input[key];
     if (context.plan_ref) scope.plan_ref = context.plan_ref;
     let persisted = null;
@@ -32177,8 +32073,8 @@ function SMExport({
       issue,
       persisted,
       query: typeof input.query === 'string' ? input.query : typeof context.query === 'string' ? context.query : '',
-      selected: context.task_ref || context.entity_ref || null,
-      report: context.report_ref || null
+      selected: taskRef === undefined ? null : taskRef,
+      report: context.report_ref === undefined ? null : context.report_ref
     };
   }
   function Content({
@@ -32252,7 +32148,7 @@ function SMExport({
       patch({
         details: false
       });
-      const button = typeof document !== 'undefined' && typeof document.querySelector === 'function' ? document.querySelector('[aria-controls="actual-gantt-detail"]') : null;
+      const button = document.querySelector('[aria-controls="actual-gantt-detail"]');
       if (button) button.focus();
     }
     React.useEffect(() => {
@@ -32605,7 +32501,7 @@ function SMExport({
         query: view.query
       };
       // Actual uses [] for all batches; Field represents that scope by omission.
-      if (viewName === 'field' && Array.isArray(destinationScope.batch_ids) && destinationScope.batch_ids.length === 0) delete destinationScope.batch_ids;
+      if (viewName === 'field' && destinationScope.batch_ids !== undefined && destinationScope.batch_ids.length === 0) delete destinationScope.batch_ids;
       const task = selected && selected.task;
       let locator;
       if (viewName === 'field') {
@@ -32625,7 +32521,7 @@ function SMExport({
         zoom,
         position: snapshotPosition
       });
-      if (typeof onNavigate === 'function') onNavigate(viewName, {
+      onNavigate(viewName, {
         plan_ref: scope.plan_ref,
         ...locator,
         scope: destinationScope,
@@ -32661,7 +32557,7 @@ function SMExport({
       icon: "chevron-left",
       onClick: () => {
         const target = initialContext.return_to;
-        if (['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(target.view)) onNavigate(target.view, target.context || {});
+        if (['gantt', 'field', 'analysis', 'reports', 'review', 'dashboard'].includes(target.view)) onNavigate(target.view, target.context);
       }
     }, "\u8FD4\u56DE"))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
@@ -32842,9 +32738,9 @@ function SMExport({
       className: "fg-report-selector"
     }, "\u9010\u6B21\u62A5\u5DE5 ", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u9009\u62E9\u62A5\u5DE5\u8BE6\u60C5",
-      value: view.report || '',
+      value: view.report === null ? '' : view.report,
       onChange: e => patch({
-        report: e.target.value || null
+        report: e.target.value === '' ? null : e.target.value
       })
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
@@ -32916,10 +32812,15 @@ function SMExport({
       error: exportError
     }))));
   }
-  function ActualGanttWorkspace(props) {
+  // 侧栏直接进入时 main.jsx 不带定位上下文（initialContext 为 undefined）。
+  function ActualGanttWorkspace({
+    initialContext = {},
+    ...props
+  }) {
     return /*#__PURE__*/React.createElement(Content, {
-      key: JSON.stringify(props.initialContext || {}),
-      ...props
+      key: JSON.stringify(initialContext),
+      ...props,
+      initialContext: initialContext
     });
   }
   window.ActualGanttWorkspace = ActualGanttWorkspace;
@@ -33635,7 +33536,9 @@ function SMExport({
         setQuantity(e.target.value);
         setPreview(null);
         setError(null);
-        if (command.phase === 'rejected' && typeof command.reset === 'function') command.reset();
+        command.clearRejection({
+          includeStale: true
+        });
       }
     })), /*#__PURE__*/React.createElement(Button, {
       busy: busy,
@@ -33655,14 +33558,18 @@ function SMExport({
       onClose: () => {
         if (!command.locked) {
           setPreview(null);
-          if (command.phase === 'rejected' && typeof command.reset === 'function') command.reset();
+          command.clearRejection({
+            includeStale: true
+          });
         }
       },
       footer: /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Button, {
         disabled: command.locked,
         onClick: () => {
           setPreview(null);
-          if (command.phase === 'rejected' && typeof command.reset === 'function') command.reset();
+          command.clearRejection({
+            includeStale: true
+          });
         }
       }, "\u53D6\u6D88"), /*#__PURE__*/React.createElement(Button, {
         className: "btn primary",
@@ -34367,18 +34274,8 @@ function SMExport({
   const ref = v => text(v) && /^[a-f0-9]{48}$/.test(v),
     token = v => text(v) && /^[A-Za-z0-9_-]{32}$/.test(v);
   const key = v => text(v) && /^run-[a-f0-9]{48}$/.test(v);
-  function contextRef(v) {
-    if (window.RunAdoptionAPI && typeof window.RunAdoptionAPI.contextRef === 'function') return window.RunAdoptionAPI.contextRef(v);
-    if (!text(v)) return false;
-    if (/^[a-f0-9]{64}$/.test(v)) return true;
-    try {
-      const data = JSON.parse(v),
-        refs = data && data.successful_restores;
-      return shape(data, ['database_scope', 'successful_restores']) && text(data.database_scope) && data.database_scope.length > 0 && Array.isArray(refs) && refs.every((item, index) => text(item) && /^[a-f0-9]{32}$/.test(item) && (index === 0 || refs[index - 1] < item));
-    } catch (_) {
-      return false;
-    }
-  }
+  // 数据上下文编号的格式只在 RunAdoptionAPI 定义一份；本文件先于它加载，所以在调用时再取。
+  const contextRef = v => window.RunAdoptionAPI.contextRef(v);
   const rejections = new WeakSet();
   const terminal = run => !!run && ['complete', 'partial', 'failed', 'interrupted'].includes(run.state);
   function check(valid, message = '读到的排产数据不完整，请刷新重试。') {
@@ -35701,7 +35598,7 @@ function SMExport({
     const d = v && v.data,
       p = d && d.official_plan,
       s = intent && intent.preview;
-    check(validIntent(intent) && shape(v, ['ok', 'result', 'data', 'warnings', 'receipt_ref', 'replayed']) && v.ok === true && v.result === 'committed' && text(v.receipt_ref) && /^[a-f0-9]{32}$/.test(v.receipt_ref) && typeof v.replayed === 'boolean' && Array.isArray(v.warnings) && v.warnings.length === 0 && shape(d, ['candidate_ref', 'run_ref', 'official_plan', 'row_count']) && d.candidate_ref === intent.candidate_ref && d.run_ref === s.run_ref && d.row_count === s.task_count && shape(p, ['plan_ref', 'version', 'kind', 'is_current_official', 'display_name', 'source_run_ref', 'baseline_ref', 'completeness', 'capabilities', 'blocked_reasons']) && ref(p.plan_ref) && p.plan_ref !== intent.candidate_ref && p.plan_ref !== s.baseline.plan_ref && count(p.version) && p.version > (s.baseline.version || 0) && p.kind === 'official' && p.is_current_official === true && p.display_name === '正式计划 v' + p.version && p.source_run_ref === s.run_ref && p.baseline_ref === s.baseline.plan_ref && p.completeness === 'complete' && shape(p.capabilities, ['view', 'edit_draft', 'adopt', 'report_actual']) && p.capabilities.view === true && p.capabilities.edit_draft === false && p.capabilities.adopt === false && p.capabilities.report_actual === true && Array.isArray(p.blocked_reasons) && p.blocked_reasons.length === 0);
+    check(validIntent(intent) && shape(v, ['ok', 'result', 'data', 'warnings', 'receipt_ref', 'replayed']) && v.ok === true && v.result === 'committed' && text(v.receipt_ref) && /^[a-f0-9]{32}$/.test(v.receipt_ref) && typeof v.replayed === 'boolean' && Array.isArray(v.warnings) && v.warnings.length === 0 && shape(d, ['candidate_ref', 'run_ref', 'official_plan', 'row_count']) && d.candidate_ref === intent.candidate_ref && d.run_ref === s.run_ref && d.row_count === s.task_count && shape(p, ['plan_ref', 'version', 'kind', 'is_current_official', 'display_name', 'source_run_ref', 'baseline_ref', 'completeness', 'capabilities', 'blocked_reasons']) && ref(p.plan_ref) && p.plan_ref !== intent.candidate_ref && p.plan_ref !== s.baseline.plan_ref && count(p.version) && p.version > (s.baseline.version === null ? 0 : s.baseline.version) && p.kind === 'official' && p.is_current_official === true && p.display_name === '正式计划 v' + p.version && p.source_run_ref === s.run_ref && p.baseline_ref === s.baseline.plan_ref && p.completeness === 'complete' && shape(p.capabilities, ['view', 'edit_draft', 'adopt', 'report_actual']) && p.capabilities.view === true && p.capabilities.edit_draft === false && p.capabilities.adopt === false && p.capabilities.report_actual === true && Array.isArray(p.blocked_reasons) && p.blocked_reasons.length === 0);
     return v;
   }
   function lookup(v, intent) {
@@ -36532,7 +36429,7 @@ function SMExport({
     return v === null || shape(v, ['start', 'end']) && time(v.start) && time(v.end) && timeKey(v.start) <= timeKey(v.end);
   }
   function delivery(v, data, query) {
-    check(shape(v, ['candidate_ref', 'scope', 'state', 'items', 'items_complete', 'batch_count', 'issues', 'summary', 'basis']) && v.candidate_ref === data.candidate.candidate_ref && shape(v.scope, ['kind', 'candidate_ref', 'range_start', 'range_end', 'batch_ref', 'sort', 'order']) && v.scope.kind === 'run-candidate-workspace' && v.scope.candidate_ref === v.candidate_ref && ['range_start', 'range_end', 'batch_ref'].every(k => v.scope[k] === (query[k] || null)) && v.scope.sort === query.sort && v.scope.order === query.order && ['available', 'partial', 'unavailable'].includes(v.state) && typeof v.items_complete === 'boolean' && count(v.batch_count) && Array.isArray(v.items) && v.items.length <= v.batch_count && (!v.items_complete || v.items.length === v.batch_count) && Array.isArray(v.issues) && v.issues.every(r => shape(r, ['code', 'message']) && text(r.code) && text(r.message)));
+    check(shape(v, ['candidate_ref', 'scope', 'state', 'items', 'items_complete', 'batch_count', 'issues', 'summary', 'basis']) && v.candidate_ref === data.candidate.candidate_ref && shape(v.scope, ['kind', 'candidate_ref', 'range_start', 'range_end', 'batch_ref', 'sort', 'order']) && v.scope.kind === 'run-candidate-workspace' && v.scope.candidate_ref === v.candidate_ref && ['range_start', 'range_end', 'batch_ref'].every(k => v.scope[k] === (query[k] ?? null)) && v.scope.sort === query.sort && v.scope.order === query.order && ['available', 'partial', 'unavailable'].includes(v.state) && typeof v.items_complete === 'boolean' && count(v.batch_count) && Array.isArray(v.items) && v.items.length <= v.batch_count && (!v.items_complete || v.items.length === v.batch_count) && Array.isArray(v.issues) && v.issues.every(r => shape(r, ['code', 'message']) && text(r.code) && text(r.message)));
     check(shape(v.basis, ['kind', 'metadata_basis', 'operation_scope', 'completion_scope', 'time_basis', 'due_boundary', 'current_entities_consulted', 'actual_completion', 'actual_delivery', 'root_causes']) && v.basis.kind === 'planned_delivery' && v.basis.metadata_basis === 'captured_at_run_admission' && v.basis.operation_scope === 'captured_batch_operations' && v.basis.completion_scope === 'full_candidate' && v.basis.time_basis === 'factory_local' && v.basis.due_boundary === 'next_day_exclusive' && v.basis.current_entities_consulted === false && ['actual_completion', 'actual_delivery', 'root_causes'].every(k => v.basis[k] === 'not_evaluated'));
     const rowKeys = ['batch_ref', 'batch_id', 'part_no', 'part_label', 'schedule_complete', 'operation_count', 'scheduled_operation_count', 'unscheduled_operation_count', 'task_count', 'invalid_task_count', 'planned_finish', 'partial_planned_finish', 'risk', 'is_overdue', 'delay_hours', 'delay_days', 'due_date', 'delivery_deadline_exclusive', 'due_state', 'due_issue', 'completion_state', 'deferred_operation_count', 'ordinary_unscheduled_operation_count', 'completeness', 'issues', 'priority', 'quantity', 'last_operations'];
     const tasks = new Map(data.tasks.map(row => [row.row_ref, row]));
@@ -36555,8 +36452,8 @@ function SMExport({
     check(shape(d, ['candidate', 'generation', 'tasks', 'task_count', 'tasks_complete', 'candidate_task_count', 'candidate_span', 'task_span', 'unplanned_operations', 'unplanned_operation_count', 'time_scope', 'batch_ref', 'capabilities', 'blocked_reasons', 'data_gaps', 'delivery_risks', 'gantt_graph']));
     summary(d.candidate, runRef);
     check(d.candidate.candidate_ref === candidateRef);
-    check(Array.isArray(d.tasks) && count(d.task_count) && d.task_count === d.tasks.length && d.tasks_complete === true && d.candidate_task_count === d.candidate.task_count && d.task_count <= d.candidate_task_count && span(d.candidate_span) && span(d.task_span) && d.task_count === 0 === (d.task_span === null) && d.candidate_task_count === 0 === (d.candidate_span === null) && caps(d.capabilities) && blocked(d.blocked_reasons) && gaps(d.data_gaps) && (!q.snapshot_ref || q.snapshot_ref === v.meta.snapshot_ref) && d.batch_ref === (q.batch_ref || null));
-    check(shape(d.time_scope, ['range_start', 'range_end', 'interval', 'time_basis', 'unplanned_policy']) && d.time_scope.range_start === (q.range_start || null) && d.time_scope.range_end === (q.range_end || null) && d.time_scope.interval === 'half_open_overlap' && d.time_scope.time_basis === 'factory_local' && d.time_scope.unplanned_policy === 'included_without_time_interval');
+    check(Array.isArray(d.tasks) && count(d.task_count) && d.task_count === d.tasks.length && d.tasks_complete === true && d.candidate_task_count === d.candidate.task_count && d.task_count <= d.candidate_task_count && span(d.candidate_span) && span(d.task_span) && d.task_count === 0 === (d.task_span === null) && d.candidate_task_count === 0 === (d.candidate_span === null) && caps(d.capabilities) && blocked(d.blocked_reasons) && gaps(d.data_gaps) && (!q.snapshot_ref || q.snapshot_ref === v.meta.snapshot_ref) && d.batch_ref === (q.batch_ref ?? null));
+    check(shape(d.time_scope, ['range_start', 'range_end', 'interval', 'time_basis', 'unplanned_policy']) && d.time_scope.range_start === (q.range_start ?? null) && d.time_scope.range_end === (q.range_end ?? null) && d.time_scope.interval === 'half_open_overlap' && d.time_scope.time_basis === 'factory_local' && d.time_scope.unplanned_policy === 'included_without_time_interval');
     const rowRefs = new Set(),
       operationRefs = new Set();
     let start = null,
@@ -36613,7 +36510,9 @@ function SMExport({
   }
   function download(value, result, fmt) {
     const d = result.data;
-    check(value && value.blob instanceof Blob && value.blob.size > 0 && value.candidate_ref === d.candidate.candidate_ref && value.snapshot_ref === result.meta.snapshot_ref && value.task_count === d.task_count && value.row_count === Math.max(1, d.task_count + (d.unplanned_operation_count || 0)) && text(value.filename) && !/[\\/\r\n]/.test(value.filename) && value.filename.endsWith('.' + fmt), '下载结果与当前完整范围不一致，没有保存文件。');
+    check(value && value.blob instanceof Blob && value.blob.size > 0 && value.candidate_ref === d.candidate.candidate_ref && value.snapshot_ref === result.meta.snapshot_ref && value.task_count === d.task_count
+    // 未安排工序资料缺项时 unplanned_operation_count 为 null，导出与后端一样只算已安排行（candidate_export.py）。
+    && value.row_count === Math.max(1, d.task_count + (d.unplanned_operation_count === null ? 0 : d.unplanned_operation_count)) && text(value.filename) && !/[\\/\r\n]/.test(value.filename) && value.filename.endsWith('.' + fmt), '下载结果与当前完整范围不一致，没有保存文件。');
     return value;
   }
   function create(fetcher = window.fetch.bind(window)) {
@@ -36710,6 +36609,7 @@ function SMExport({
     check,
     ref,
     time,
+    timeKey,
     version,
     shape,
     envelope,
@@ -37961,10 +37861,10 @@ function SMExport({
       check,
       ref,
       time,
+      timeKey,
       envelope
     } = A;
   const queryKeys = ['selected_candidate_ref', 'reference_candidate_ref', 'comparison_mode', 'resource_view', 'range_start', 'range_end', 'snapshot_ref'];
-  const timeKey = value => value.slice(0, 19) + '.' + (value.split('.')[1] || '').padEnd(6, '0');
   function bindSnapshot(payload, query) {
     if (query.snapshot_ref) check(payload.meta.snapshot_ref === query.snapshot_ref, '比较资料已更新，请刷新后重试。');
   }
@@ -37974,6 +37874,7 @@ function SMExport({
     for (const key of ['range_start', 'range_end']) if (query[key]) check(time(data.scope[key]) && timeKey(data.scope[key]) === timeKey(query[key]), '比较时间范围已变化，请刷新。');
     if (query.comparison_mode === 'admission_official') check(data.scope.reference && data.scope.reference.kind === 'admission_official' && data.baseline && data.baseline.kind === 'admission_official' && data.baseline.baseline_ref === data.scope.reference.baseline_ref && data.baseline.state === data.scope.reference_state, '比较基准的正式计划资料已变化，请刷新。');
   }
+  // 各 *Scope 只保留填了值的筛选（空串、null、undefined 都不进 q）；后端把未填的筛选回显为 null，比较时用 `?? null` 对齐。
   function scope(runRef, query = {}) {
     check(ref(runRef), '请从排产记录打开方案对比。');
     const value = {
@@ -38303,7 +38204,10 @@ function SMExport({
         const list = pointsByEvent.get(saved.event_index);
         if (list) list.push(saved);else pointsByEvent.set(saved.event_index, [saved]);
       });
-      check(data.items.every(value => point(value) && (pointsByEvent.get(value.event_index) || []).some(saved => sameSaved(saved, value))) && new Set(data.items.map(value => value.event_index)).size === data.items.length, '本页优化进展与保存的记录不一致，请点“刷新优化过程”。');
+      check(data.items.every(value => {
+        const saved = pointsByEvent.get(value.event_index);
+        return point(value) && saved !== undefined && saved.some(row => sameSaved(row, value));
+      }) && new Set(data.items.map(value => value.event_index)).size === data.items.length, '本页优化进展与保存的记录不一致，请点“刷新优化过程”。');
     } else {
       const attemptsByIndex = data.attempts === undefined ? null : new Map(data.attempts.map(saved => [saved.saved_index, saved]));
       check(data.items.every(value => attemptsByIndex === null ? attempt(value) : attemptsByIndex.has(value.saved_index) && sameSaved(attemptsByIndex.get(value.saved_index), value)) && new Set(data.items.map(value => value.saved_index)).size === data.items.length, '本页计算尝试的记录不完整，请点“刷新优化过程”。');
@@ -38336,14 +38240,14 @@ function SMExport({
     check(data.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref && data.scope.comparison_mode === q.comparison_mode && data.candidate && data.candidate.candidate_ref === q.selected_candidate_ref && Array.isArray(data.items) && data.page && data.page.number === q.page && data.page.size === q.size && data.filters && data.filters.section === section, '明细的方案、比较范围或页码已变化，请点“刷新影响明细”。');
     if (q.comparison_mode === 'candidates' && q.reference_candidate_ref) check(data.scope.reference && data.scope.reference.candidate_ref === q.reference_candidate_ref, '明细的比较基准已变化，请点“刷新影响明细”。');
     ['change_kind', 'sort', 'order'].forEach(key => check(data.filters[key] === q[key], '明细的筛选或排序已变化，请点“刷新影响明细”。'));
-    ['batch_ref', ...(section === 'operations' ? ['resource_ref'] : [])].forEach(key => check(data.filters[key] === (q[key] || null), '明细的批次或资源已变化，请点“刷新影响明细”。'));
+    ['batch_ref', ...(section === 'operations' ? ['resource_ref'] : [])].forEach(key => check(data.filters[key] === (q[key] ?? null), '明细的批次或资源已变化，请点“刷新影响明细”。'));
     if (section === 'batches') {
       check(data.summary && object(data.summary.operation_changes) && ['changed_operation_count', 'machine_change_count'].every(key => {
         const metric = data.summary.operation_changes[key];
         return window.EffortProjectionContract.metric(metric) && metric.scope === 'full_admission' && metric.metric_version === 'decision-preparation-v4';
       }), '全范围工序安排变化资料不完整，请点“刷新影响明细”。');
       if (data.filters.delivery_filter !== undefined) check(data.filters.delivery_filter === q.delivery_filter, '交付问题筛选已变化，请点“刷新影响明细”。');
-      if (q.selected_batch_ref || data.filters.selected_batch_ref !== undefined) check(data.filters.selected_batch_ref === (q.selected_batch_ref || null) && (q.selected_batch_ref ? data.selected_batch && data.selected_batch.batch_ref === q.selected_batch_ref : data.selected_batch === null), '所选批次与当前方案的归档资料不一致，请点“刷新影响明细”。');
+      if (q.selected_batch_ref || data.filters.selected_batch_ref !== undefined) check(data.filters.selected_batch_ref === (q.selected_batch_ref ?? null) && (q.selected_batch_ref ? data.selected_batch && data.selected_batch.batch_ref === q.selected_batch_ref : data.selected_batch === null), '所选批次与当前方案的归档资料不一致，请点“刷新影响明细”。');
     }
     check(data.items.every(row => ref(row.batch_ref) && (section === 'batches' || ref(row.operation_ref)) && row.drill), '明细的甘特定位资料不完整，请点“刷新影响明细”。');
     if (section === 'operations') check(data.items.every(row => row.runtime_effort === undefined || row.runtime_effort && window.EffortProjectionContract.compact(row.runtime_effort.before) && window.EffortProjectionContract.compact(row.runtime_effort.after)), '工序工时资料不完整，请点“刷新影响明细”。');
@@ -38386,7 +38290,7 @@ function SMExport({
     check(data.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref && data.scope.comparison_mode === q.comparison_mode && data.candidate && data.candidate.candidate_ref === q.selected_candidate_ref && data.metric_version === 'decision-preparation-v4' && data.filters && data.filters.section === section && Array.isArray(data.items) && data.baseline && ['available', 'absent', 'selection_required'].includes(data.baseline.state) && data.page && data.page.number === q.page && data.page.size === q.size && Number.isSafeInteger(data.page.total) && data.page.total >= 0, '准备与切换明细的方案、范围或页码已变化，请点“刷新准备与切换明细”。');
     if (q.comparison_mode === 'candidates' && q.reference_candidate_ref) check(data.scope.reference && data.scope.reference.candidate_ref === q.reference_candidate_ref, '准备与切换明细的比较基准已变化，请点“刷新准备与切换明细”。');
     ['sort', 'order', ...(section === 'preparation' ? ['allocation_state', 'work_scope'] : ['event_side'])].forEach(key => check(data.filters[key] === q[key], '准备与切换明细的筛选或排序已变化，请点“刷新准备与切换明细”。'));
-    ['machine_ref', ...(section === 'preparation' ? ['batch_ref'] : [])].forEach(key => check(data.filters[key] === (q[key] || null), '准备与切换明细的批次或设备已变化，请点“刷新准备与切换明细”。'));
+    ['machine_ref', ...(section === 'preparation' ? ['batch_ref'] : [])].forEach(key => check(data.filters[key] === (q[key] ?? null), '准备与切换明细的批次或设备已变化，请点“刷新准备与切换明细”。'));
     bindScope(payload, data, q);
     check(data.filter_options && Array.isArray(data.filter_options.machines) && data.filter_options.machines.every(row => ref(row.ref) && row.kind === 'machine') && (section !== 'preparation' || Array.isArray(data.filter_options.batches) && data.filter_options.batches.every(row => ref(row.ref))), '准备与切换明细的批次或设备选项不完整，请点“刷新准备与切换明细”。');
     function drill(value, side, operationRef) {
@@ -38541,10 +38445,10 @@ function SMExport({
   function resourceDetails(payload, runRef, query, section = 'resources') {
     const data = envelope(payload),
       q = resourceScope(runRef, query, section);
-    check(data.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref && data.scope.comparison_mode === q.comparison_mode && data.candidate && data.candidate.candidate_ref === q.selected_candidate_ref && data.metric_version === 'decision-resource-v4' && data.filters && data.filters.section === section && data.filters.resource_kind === q.resource_kind && data.filters.resource_ref === (q.resource_ref || null) && Array.isArray(data.items) && data.page && data.page.number === q.page && data.page.size === q.size, '资源明细的方案、设备人员范围或页码已变化，请点“刷新资源影响”。');
+    check(data.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref && data.scope.comparison_mode === q.comparison_mode && data.candidate && data.candidate.candidate_ref === q.selected_candidate_ref && data.metric_version === 'decision-resource-v4' && data.filters && data.filters.section === section && data.filters.resource_kind === q.resource_kind && data.filters.resource_ref === (q.resource_ref ?? null) && Array.isArray(data.items) && data.page && data.page.number === q.page && data.page.size === q.size, '资源明细的方案、设备人员范围或页码已变化，请点“刷新资源影响”。');
     if (q.comparison_mode === 'candidates' && q.reference_candidate_ref) check(data.scope.reference && data.scope.reference.candidate_ref === q.reference_candidate_ref, '资源明细的比较基准已变化，请点“刷新资源影响”。');
     bindScope(payload, data, q);
-    check(data.filters.grain === q.grain && data.filters.pressure_threshold === q.pressure_threshold && (section === 'resources' || ['bucket_start', 'bucket_end'].every(key => data.filters[key] === (q[key] || null))), '资源时间粒度、关注线或所选时段已变化，请点“刷新资源影响”。');
+    check(data.filters.grain === q.grain && data.filters.pressure_threshold === q.pressure_threshold && (section === 'resources' || ['bucket_start', 'bucket_end'].every(key => data.filters[key] === (q[key] ?? null))), '资源时间粒度、关注线或所选时段已变化，请点“刷新资源影响”。');
     const cohort = data.scope.resource_refs;
     check(cohort && ['machine', 'operator'].every(kind => Array.isArray(cohort[kind]) && cohort[kind].every(ref) && new Set(cohort[kind]).size === cohort[kind].length), '参与比较的设备或人员资料不完整，请点“刷新资源影响”。');
     if (query.expected_resource_refs) check(['machine', 'operator'].every(kind => JSON.stringify(cohort[kind]) === JSON.stringify(query.expected_resource_refs[kind])), '参与比较的设备或人员已变化，请点“刷新资源影响”。');
@@ -39119,6 +39023,11 @@ function SMExport({
     candidate_tasks: '保存的候选安排'
   };
   const countText = value => value === null || value === undefined ? '资料未记录' : M.number(value);
+  // RunDecisionAPI.scope 只保留非空的范围键；未设置范围时输入框显示为空。
+  const rangeDraft = value => ({
+    start: value.range_start === undefined ? '' : value.range_start,
+    end: value.range_end === undefined ? '' : value.range_end
+  });
   const comparisonTabs = [['delivery', '交期与未排'], ['differences', '方案差异'], ['resources', '资源占用'], ['process', '计算过程'], ['preparation', '准备与切换']];
   const secondaryTabs = [['metrics', '全部指标'], ['completion', '工序安排']];
   const tabAliases = {
@@ -39666,7 +39575,7 @@ function SMExport({
     runStatus,
     runTiming
   }) {
-    const [runRef, setRunRef] = React.useState(initialContext.run_ref || null),
+    const [runRef, setRunRef] = React.useState(initialContext.run_ref === undefined ? null : initialContext.run_ref),
       [query, setQuery] = React.useState(() => {
         const value = {
           comparison_mode: initialContext.comparison_mode === 'admission_official' ? 'admission_official' : 'candidates',
@@ -39680,10 +39589,7 @@ function SMExport({
       });
     const [revision, refresh] = React.useReducer(value => value + 1, 0),
       [rangeOpen, setRangeOpen] = React.useState(false),
-      [range, setRange] = React.useState({
-        start: query.range_start || '',
-        end: query.range_end || ''
-      });
+      [range, setRange] = React.useState(() => rangeDraft(query));
     const [rangeError, setRangeError] = React.useState(null),
       [historyOpen, setHistoryOpen] = React.useState(false);
     const [sourceOpen, setSourceOpen] = React.useState(false),
@@ -39692,9 +39598,10 @@ function SMExport({
       rangeReturnFocus = React.useRef(null),
       referenceChoice = React.useRef(null);
     const metricView = initialContext.metric_view === 'all' ? 'all' : 'common';
+    const initialDetails = initialContext.detail_queries === undefined ? {} : initialContext.detail_queries;
     const [tab, updateTab] = React.useState(() => {
       const requested = tabAliases[initialContext.comparison_tab] || initialContext.comparison_tab;
-      const leaves = initialContext.detail_queries || {},
+      const leaves = initialDetails,
         legacyOverview = !initialContext.comparison_tab || initialContext.comparison_tab === 'overview';
       if (legacyOverview && leaves.process && leaves.process.open) return 'process';
       if (legacyOverview && leaves['completion-batches'] && leaves['completion-batches'].open) return 'completion';
@@ -39705,9 +39612,9 @@ function SMExport({
       updateTab(value);
       setVisitedPanels(current => current.includes(value) ? current : [...current, value]);
     }
-    const [selectedBatchRef, setSelectedBatchRef] = React.useState(initialContext.selected_batch_ref || initialContext.batch_ref || null);
+    const [selectedBatchRef, setSelectedBatchRef] = React.useState(initialContext.selected_batch_ref !== undefined ? initialContext.selected_batch_ref : initialContext.batch_ref !== undefined ? initialContext.batch_ref : null);
     const [detailQueries, setDetailQueries] = React.useState(() => {
-      const initial = initialContext.detail_queries || {},
+      const initial = initialDetails,
         resources = {
           ...(initialContext.resource_kind ? {
             resource_kind: initialContext.resource_kind
@@ -39772,11 +39679,13 @@ function SMExport({
         } : {})
       };
     });
+    // 各明细分区的查询条件按需出现；还没打开过的分区按空条件读取。
+    const leafQuery = key => detailQueries[key] === undefined ? {} : detailQueries[key];
     const lookup = window.APSResourceSession.useQuery(signal => adapter.identity(initialContext.candidate_ref, signal), [adapter, initialContext.candidate_ref], !runRef && A.ref(initialContext.candidate_ref));
     React.useEffect(() => {
       if (lookup.result) setRunRef(lookup.result.data.run_ref);
     }, [lookup.result]);
-    const read = window.APSResourceSession.useQuery(signal => tab === 'resources' ? adapter.resourceWorkspace(runRef, query, detailQueries.resources || {}, signal) : adapter.decisionSummary(runRef, query, signal), [adapter, runRef, query, revision], A.ref(runRef));
+    const read = window.APSResourceSession.useQuery(signal => tab === 'resources' ? adapter.resourceWorkspace(runRef, query, leafQuery('resources'), signal) : adapter.decisionSummary(runRef, query, signal), [adapter, runRef, query, revision], A.ref(runRef));
     const result = read.result,
       data = result && result.data,
       selected = data && data.candidates.find(row => row.candidate_ref === data.scope.selected_candidate_ref);
@@ -39995,7 +39904,7 @@ function SMExport({
         [section === 'differences' ? 'difference-chain' : 'delivery-chain']: value
       }));
     }
-    const completionQuery = detailQueries['completion-batches'] || {};
+    const completionQuery = leafQuery('completion-batches');
     function completionQueryChange(value) {
       setDetailQueries(queries => ({
         ...queries,
@@ -40067,10 +39976,7 @@ function SMExport({
         entry
       };
       setQuery(value);
-      setRange({
-        start: value.range_start || '',
-        end: value.range_end || ''
-      });
+      setRange(rangeDraft(value));
       setRangeError(null);
       setFullPaused(false);
       setDetailQueries(values => {
@@ -40358,7 +40264,7 @@ function SMExport({
     }, "\u9009\u62E9\u5F53\u524D\u65B9\u6848\u67E5\u770B\u5DE5\u5E8F\u5B89\u6392\u3002") : selected && selected.persisted_status === 'completed' ? panel === 'resources' ? /*#__PURE__*/React.createElement(window.RunDecisionResources.Pane, {
       adapter: adapter,
       result: result,
-      query: detailQueries[panel] || {},
+      query: leafQuery(panel),
       onQuery: value => detailQuery(panel, value),
       onView: resourceView,
       onRange: changeRange,
@@ -40368,7 +40274,7 @@ function SMExport({
       adapter: adapter,
       result: result,
       section: panel,
-      query: detailQueries[panel] || {},
+      query: leafQuery(panel),
       onQuery: value => detailQuery(panel, value),
       onDrill: onNavigate && drill,
       enabled: tab === panel
@@ -40376,11 +40282,11 @@ function SMExport({
       adapter: adapter,
       result: result,
       section: panel === 'differences' ? 'differences' : 'delivery',
-      query: detailQueries[panel] || {},
+      query: leafQuery(panel),
       onQuery: value => detailQuery(panel, value),
       selectedBatchRef: selectedBatchRef,
       onSelectBatch: selectBatch,
-      chainQuery: detailQueries[panel === 'differences' ? 'difference-chain' : 'delivery-chain'] || {},
+      chainQuery: leafQuery(panel === 'differences' ? 'difference-chain' : 'delivery-chain'),
       onChainQuery: value => chainQuery(panel, value),
       onDrill: onNavigate && drill,
       onChooseReference: () => {
@@ -45505,8 +45411,8 @@ function SMExport({
       export: false
     }) && Array.isArray(d.data_gaps) && d.data_gaps.every(reason));
     check(equal(d.time_scope, {
-      range_start: q.range_start || null,
-      range_end: q.range_end || null,
+      range_start: workspace.time_scope.range_start,
+      range_end: workspace.time_scope.range_end,
       interval: 'half_open_overlap',
       membership: 'either_side_overlap',
       counterpart_policy: 'retain_complete_counterpart',
@@ -46935,7 +46841,7 @@ function SMExport({
       if (active.current) active.current.abort();
     }, []);
     const d = result.data,
-      allowed = d.capabilities.export === true && d.candidate.capabilities.export === true && typeof adapter.export === 'function';
+      allowed = d.capabilities.export === true && d.candidate.capabilities.export === true;
     function cancel() {
       if (active.current) active.current.abort();
       active.current = null;
@@ -47029,8 +46935,8 @@ function SMExport({
     } : {};
     const isReference = initialContext.reference_view === true;
     const invalid = initialContext.run_ref !== undefined && !A.ref(initialContext.run_ref) || initialContext.candidate_ref !== undefined && !A.ref(initialContext.candidate_ref) || isReference && !A.ref(initialContext.run_ref);
-    const [runRef, setRunRef] = React.useState(initialContext.run_ref || null),
-      [candidateRef, setCandidateRef] = React.useState(initialContext.candidate_ref || null);
+    const [runRef, setRunRef] = React.useState(initialContext.run_ref === undefined ? null : initialContext.run_ref),
+      [candidateRef, setCandidateRef] = React.useState(initialContext.candidate_ref === undefined ? null : initialContext.candidate_ref);
     const [catalogQuery, setCatalogQuery] = React.useState({}),
       [scope, setScope] = React.useState(() => {
         const value = {};
@@ -47038,8 +46944,8 @@ function SMExport({
         return value;
       });
     const [range, setRange] = React.useState({
-        start: scope.range_start || '',
-        end: scope.range_end || ''
+        start: scope.range_start === undefined ? '' : scope.range_start,
+        end: scope.range_end === undefined ? '' : scope.range_end
       }),
       [rangeOpen, setRangeOpen] = React.useState(false);
     const [rangeError, setRangeError] = React.useState(null),
@@ -47072,11 +46978,9 @@ function SMExport({
     }, [data, runRef]);
     const shown = data && data.capabilities.view === true && data.candidate.capabilities.view === true ? data : null;
     const analysisRead = useRead(async signal => {
-      if (typeof adapter.analysis !== 'function') throw new Error('dependency not wired: adapter.analysis');
       return adapter.analysis(candidateRef, runRef, signal);
     }, [adapter, candidateRef, revision, analysisPaused], !!candidateRef && !invalid && !analysisPaused && !isReference);
     const historyRead = useRead(async signal => {
-      if (typeof adapter.adoptions !== 'function') throw new Error('dependency not wired: adapter.adoptions');
       return adapter.adoptions(candidateRef, runRef, signal);
     }, [adapter, candidateRef, revision, result && result.meta.snapshot_ref], !!shown && tab === 'history' && !historyPaused && !isReference);
     const analysis = shown && !analysisPaused && analysisRead.result && analysisRead.result.data.run_ref === shown.candidate.run_ref ? analysisRead.result.data : null;
@@ -47106,7 +47010,7 @@ function SMExport({
       const pendingFact = pendingRow && prepared.taskIndex.get(pendingRow);
       const exact = pendingFact && (!pendingOperation || pendingFact.task.operation_ref === pendingOperation) && pendingFact.task;
       const task = exact || pendingOperation && shown.tasks.find(row => row.operation_ref === pendingOperation);
-      const unplannedTask = !task && pendingOperation && (shown.unplanned_operations || []).find(row => row.operation_ref === pendingOperation);
+      const unplannedTask = !task && pendingOperation && shown.unplanned_operations !== null && shown.unplanned_operations.find(row => row.operation_ref === pendingOperation);
       if (task || unplannedTask) {
         setSelected({
           task: task || unplannedTask,
@@ -47242,26 +47146,18 @@ function SMExport({
       onClick: () => onNavigate('analysis', returnContext(initialContext.return_plan_context))
     }, "\u8FD4\u56DE\u6B63\u5F0F\u8BA1\u5212")), /*#__PURE__*/React.createElement("div", {
       className: "rc-actions"
-    }, !isReference && (typeof renderAdoption === 'function' ? renderAdoption(candidateRef, {
+    }, !isReference && renderAdoption(candidateRef, {
       candidateDisplay: shown && shown.candidate.candidate_ref === candidateRef ? {
         candidate_ref: candidateRef,
         label: shown.candidate.label || '候选名称未填写'
       } : undefined,
       candidateCatalog: directory.result ? directory.result.data.candidates : []
-    }) : /*#__PURE__*/React.createElement(C.Button, {
-      icon: "check",
-      className: "btn primary",
-      reasonDisplay: "inline",
-      reason: window.WorkbenchTerms.outcomes.unavailable
-    }, "\u91C7\u7528\u524D\u6838\u5BF9")), !isReference && (typeof renderTrial === 'function' ? renderTrial({
+    }), !isReference && renderTrial({
       candidateRef,
       scope,
       query,
       disabled: !shown || read.busy || invalid
-    }) : /*#__PURE__*/React.createElement(C.Button, {
-      icon: "square-pen",
-      reason: window.WorkbenchTerms.outcomes.unavailable
-    }, "\u8BD5\u8C03")), /*#__PURE__*/React.createElement(C.Button, {
+    }), /*#__PURE__*/React.createElement(C.Button, {
       icon: "refresh-cw",
       "aria-label": "\u5237\u65B0\u5019\u9009\u65B9\u6848",
       disabled: invalid || !runRef && !candidateRef,
@@ -47530,7 +47426,7 @@ function SMExport({
       ...window.RunDecisionAPI.create()
     })), [props.adapter]);
     if (!adapterIds.has(adapter)) adapterIds.set(adapter, ++nextAdapter);
-    const context = props.initialContext || {},
+    const context = props.initialContext,
       identity = [context.run_ref, context.candidate_ref, context.range_start, context.range_end, context.batch_ref, context.operation_ref, context.selected_row_ref, context.reference_view, context.plan_ref, context.comparison_mode, context.resource_view, context.resource_kind, context.resource_ref];
     return props.view === 'analysis' ? /*#__PURE__*/React.createElement(window.RunDecisionComparison.Workspace, {
       key: adapterIds.get(adapter) + ':' + JSON.stringify(identity),
@@ -48033,7 +47929,8 @@ function SMExport({
   const copy = value => JSON.parse(JSON.stringify(value));
   const states = ['all', 'queued', 'running', 'complete', 'partial', 'failed', 'interrupted', 'committed', 'success', 'unknown', 'available', 'current', 'historical', 'unavailable'];
   const queryKeys = ['timeline', 'date_from', 'date_to', 'metric_keys', 'comparison', 'reference_run_ref', 'selected_entry_ref', 'range_start', 'range_end', 'resource_window_days', 'state', 'sort', 'order', 'page', 'size', 'condition_page', 'condition_size', 'snapshot_ref'];
-  const defaultMetrics = ['overdue_count', 'total_tardiness_hours', 'makespan_hours', 'elapsed_seconds'];
+  // 默认指标列表直接放进每份默认查询，冻结后谁也不能原地改它；切换指标一律生成新数组。
+  const defaultMetrics = Object.freeze(['overdue_count', 'total_tardiness_hours', 'makespan_hours', 'elapsed_seconds']);
   const sourceLabels = {
     run: '排产运行',
     candidate_adoption: '候选方案采用',
@@ -48098,7 +47995,7 @@ function SMExport({
       timeline: 'run',
       date_from: null,
       date_to: null,
-      metric_keys: defaultMetrics.slice(),
+      metric_keys: defaultMetrics,
       comparison: 'observed',
       reference_run_ref: null,
       selected_entry_ref: null,
@@ -48154,7 +48051,7 @@ function SMExport({
   }
   function context(value = {}) {
     check(object(value) && Object.keys(value).every(key => ['query', 'selected_entry_ref', 'reference_entry_ref', 'metric_key', 'detail_queries'].includes(key)), '历史页面的返回条件无效，请从排产记录重新打开。');
-    const query = scope(value.query || {}),
+    const query = scope(value.query),
       selected = value.selected_entry_ref === undefined ? query.selected_entry_ref : value.selected_entry_ref;
     const reference = value.reference_entry_ref === undefined ? query.reference_run_ref && 'run:' + query.reference_run_ref : value.reference_entry_ref;
     check(selected === null || entryRef(selected), '选中历史条目的编号无效。');
@@ -48168,7 +48065,7 @@ function SMExport({
       selected_entry_ref: selected,
       reference_entry_ref: reference,
       metric_key: metric,
-      detail_queries: copy(value.detail_queries || {})
+      detail_queries: value.detail_queries === undefined ? {} : copy(value.detail_queries)
     };
   }
   function serialized(query) {
@@ -49371,8 +49268,8 @@ function SMExport({
           page: 1,
           condition_page: 1,
           snapshot_ref: null,
-          date_from: draft.date_from || null,
-          date_to: draft.date_to || null
+          date_from: draft.date_from === '' ? null : draft.date_from,
+          date_to: draft.date_to === '' ? null : draft.date_to
         }));
         setError(null);
       } catch (problem) {
@@ -49408,7 +49305,7 @@ function SMExport({
     }, "\u5DF2\u91C7\u7528\u65B9\u6848"))), /*#__PURE__*/React.createElement("label", null, "\u8D77\u65E5", /*#__PURE__*/React.createElement("input", {
       type: "date",
       "aria-label": "\u5386\u53F2\u53D1\u751F\u8D77\u65E5",
-      value: draft.date_from || '',
+      value: draft.date_from === null ? '' : draft.date_from,
       disabled: busy,
       onChange: event => set({
         date_from: event.target.value
@@ -49416,7 +49313,7 @@ function SMExport({
     })), /*#__PURE__*/React.createElement("label", null, "\u6B62\u65E5", /*#__PURE__*/React.createElement("input", {
       type: "date",
       "aria-label": "\u5386\u53F2\u53D1\u751F\u6B62\u65E5",
-      value: draft.date_to || '',
+      value: draft.date_to === null ? '' : draft.date_to,
       disabled: busy,
       onChange: event => set({
         date_to: event.target.value
@@ -49494,8 +49391,8 @@ function SMExport({
         };
         if (draft.range_start !== null) {
           const time = window.WorkbenchDatePickerModel.factoryTime;
-          next.range_start = time(draft.range_start || '');
-          next.range_end = time(draft.range_end || '');
+          next.range_start = time(draft.range_start);
+          next.range_end = time(draft.range_end);
         }
         onQuery({
           ...next,
@@ -49551,8 +49448,8 @@ function SMExport({
       disabled: busy,
       onChange: event => setDraft(old => ({
         ...old,
-        range_start: event.target.value === 'absolute' ? query.range_start || '' : null,
-        range_end: event.target.value === 'absolute' ? query.range_end || '' : null
+        range_start: event.target.value === 'absolute' ? query.range_start === null ? '' : query.range_start : null,
+        range_end: event.target.value === 'absolute' ? query.range_end === null ? '' : query.range_end : null
       }))
     }, /*#__PURE__*/React.createElement("option", {
       value: "fixed_days"
@@ -49574,7 +49471,7 @@ function SMExport({
       type: "text",
       "data-picker-type": "factory-local",
       "aria-label": "\u5386\u53F2\u8D44\u6E90\u5171\u540C\u7A97\u53E3\u5F00\u59CB",
-      value: draft.range_start || '',
+      value: draft.range_start,
       disabled: busy,
       onChange: event => setDraft(old => ({
         ...old,
@@ -49584,7 +49481,7 @@ function SMExport({
       type: "text",
       "data-picker-type": "factory-local",
       "aria-label": "\u5386\u53F2\u8D44\u6E90\u5171\u540C\u7A97\u53E3\u7ED3\u675F",
-      value: draft.range_end || '',
+      value: draft.range_end,
       disabled: busy,
       onChange: event => setDraft(old => ({
         ...old,
@@ -49715,7 +49612,6 @@ function SMExport({
       setBusy(true);
       setError(null);
       try {
-        A.check(typeof adapter.historyExport === 'function', '历史导出接口尚未接入。');
         const file = await adapter.historyExport(query, result.meta.snapshot_ref, format, controller.signal, section);
         if (controller.signal.aborted) return;
         window.APSWorkbenchTransport.saveBlob(file.filename, file.blob);
@@ -49943,7 +49839,7 @@ function SMExport({
       });
     }
     function open(target) {
-      if (typeof onNavigate === 'function' && target.enabled) onNavigate(target.view, {
+      if (target.enabled) onNavigate(target.view, {
         ...target.context,
         return_decision_history_context: remembered
       });
@@ -50041,7 +49937,7 @@ function SMExport({
       data: data,
       onQuery: change,
       onOpen: open,
-      canNavigate: typeof onNavigate === 'function',
+      canNavigate: true,
       busy: read.loading,
       conditionsOpen: conditionsOpen,
       onConditionsToggle: setConditionsOpen,
@@ -50093,7 +49989,6 @@ function SMExport({
     let start;
     try {
       start = A.context(initialContext);
-      A.check(active && typeof active.history === 'function', '历史查询接口尚未接入。');
     } catch (error) {
       return /*#__PURE__*/React.createElement("div", {
         className: "plana run-history-workspace decision-history-workspace"
@@ -54197,7 +54092,7 @@ function SMExport({
     const d = v && v.data,
       p = d && d.official_plan,
       s = overview(intent.preview);
-    check(key(intent.request_key) && intent.scenario_ref === s.scenario_ref && equal(input(intent.input), intent.input) && shape(v, ['ok', 'result', 'data', 'receipt_ref', 'replayed', 'warnings']) && v.ok === true && v.result === 'committed' && text(v.receipt_ref) && /^[a-f0-9]{32}$/.test(v.receipt_ref) && typeof v.replayed === 'boolean' && Array.isArray(v.warnings) && !v.warnings.length && shape(d, ['scenario_ref', 'draft_ref', 'row_count', 'official_plan']) && d.scenario_ref === s.scenario_ref && d.draft_ref === s.draft_ref && d.row_count === s.task_count && shape(p, ['plan_ref', 'version', 'kind', 'is_current_official', 'display_name', 'baseline_ref', 'completeness', 'capabilities', 'blocked_reasons', 'source_scenario_ref', 'source_draft_ref']) && ref(p.plan_ref) && ![s.scenario_ref, s.draft_ref, s.baseline.plan_ref].includes(p.plan_ref) && positive(p.version) && p.version > (s.baseline.version || 0) && p.kind === 'official' && p.is_current_official === true && p.display_name === '正式计划 v' + p.version && p.completeness === 'complete' && p.source_scenario_ref === s.scenario_ref && p.source_draft_ref === s.draft_ref && p.baseline_ref === s.baseline.plan_ref && equal(p.capabilities, {
+    check(key(intent.request_key) && intent.scenario_ref === s.scenario_ref && equal(input(intent.input), intent.input) && shape(v, ['ok', 'result', 'data', 'receipt_ref', 'replayed', 'warnings']) && v.ok === true && v.result === 'committed' && text(v.receipt_ref) && /^[a-f0-9]{32}$/.test(v.receipt_ref) && typeof v.replayed === 'boolean' && Array.isArray(v.warnings) && !v.warnings.length && shape(d, ['scenario_ref', 'draft_ref', 'row_count', 'official_plan']) && d.scenario_ref === s.scenario_ref && d.draft_ref === s.draft_ref && d.row_count === s.task_count && shape(p, ['plan_ref', 'version', 'kind', 'is_current_official', 'display_name', 'baseline_ref', 'completeness', 'capabilities', 'blocked_reasons', 'source_scenario_ref', 'source_draft_ref']) && ref(p.plan_ref) && ![s.scenario_ref, s.draft_ref, s.baseline.plan_ref].includes(p.plan_ref) && positive(p.version) && p.version > (s.baseline.version === null ? 0 : s.baseline.version) && p.kind === 'official' && p.is_current_official === true && p.display_name === '正式计划 v' + p.version && p.completeness === 'complete' && p.source_scenario_ref === s.scenario_ref && p.source_draft_ref === s.draft_ref && p.baseline_ref === s.baseline.plan_ref && equal(p.capabilities, {
       view: true,
       edit_draft: false,
       adopt: false,
@@ -56608,8 +56503,7 @@ function SMExport({
     adapter,
     mode = 'reports',
     initialContext = {},
-    onNav,
-    onOpenOperation
+    onNav
   }) {
     const {
       Scope,
@@ -56626,10 +56520,10 @@ function SMExport({
     } = window.ReportTable;
     const api = React.useMemo(() => adapter || window.ReportAPI.create(), [adapter]);
     const initialTopic = mode === 'review' ? 'delivery' : window.ReportAPI.topics.includes(initialContext.topic) ? initialContext.topic : 'delivery';
-    const [scope, setScope] = React.useState(() => window.ReportAPI.scope(initialContext.scope || {}));
+    const [scope, setScope] = React.useState(() => window.ReportAPI.scope(initialContext.scope));
     const [state, setState] = React.useState(() => window.ReportAPI.table(initialContext.table, initialTopic));
     const [revision, refresh] = React.useReducer(value => value + 1, 0),
-      [selected, setSelected] = React.useState(initialContext.selected || null),
+      [selected, setSelected] = React.useState(initialContext.selected === undefined ? null : initialContext.selected),
       [notice, setNotice] = React.useState(''),
       [error, setError] = React.useState(null),
       [downloading, setDownloading] = React.useState(false),
@@ -56638,7 +56532,7 @@ function SMExport({
       [chartsOpen, setChartsOpen] = React.useState(!!initialContext.chartsOpen);
     const root = React.useRef(null),
       restored = React.useRef(false);
-    const [scroll, setScroll] = React.useState(initialContext.scroll || {});
+    const [scroll, setScroll] = React.useState(initialContext.scroll === undefined ? {} : initialContext.scroll);
     const [resourceView, setResourceView] = React.useState(initialContext.resourceView || {
       kind: 'machine',
       page: 1
@@ -56894,11 +56788,9 @@ function SMExport({
       className: "rw-actions"
     }, initialContext.returnTo && initialContext.returnTo.view === 'calib' && /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-left",
-      disabled: typeof onNav !== 'function',
       onClick: () => go('calib')
     }, "\u8FD4\u56DE\u5DE5\u65F6\u6821\u51C6"), initialContext.returnTo && ['reports', 'review'].includes(initialContext.returnTo.view) && /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-left",
-      disabled: typeof onNav !== 'function',
       onClick: () => go(initialContext.returnTo.view)
     }, "\u8FD4\u56DE\u6765\u6E90"), /*#__PURE__*/React.createElement(Button, {
       icon: "refresh-cw",
@@ -56919,7 +56811,7 @@ function SMExport({
       "aria-selected": mode === target,
       "aria-controls": "analytics-view-panel",
       tabIndex: mode === target ? 0 : -1,
-      disabled: !data || typeof onNav !== 'function',
+      disabled: !data,
       onClick: () => target !== mode && go(target, true),
       onKeyDown: event => {
         if (event.altKey || event.ctrlKey || event.metaKey) return;
@@ -56949,7 +56841,7 @@ function SMExport({
       expanded: true,
       resourceView: resourceView,
       onResourceView: setResourceView,
-      onDrill: typeof onNav === 'function' ? drill : undefined
+      onDrill: drill
     }), /*#__PURE__*/React.createElement("div", {
       className: "rw-results wb-surface"
     }, !review && /*#__PURE__*/React.createElement(Tabs, {
@@ -57032,14 +56924,14 @@ function SMExport({
       onClose: () => setSelected(null),
       initialView: detailView,
       onView: setDetailView,
-      onOpenOperation: onOpenOperation || (typeof onNav === 'function' ? navigateOperation : undefined)
+      onOpenOperation: navigateOperation
     })))), data && /*#__PURE__*/React.createElement(React.Fragment, null, !review && /*#__PURE__*/React.createElement(window.ReviewCharts, {
       data: data,
       open: chartsOpen,
       onChange: setChartsOpen,
       resourceView: resourceView,
       onResourceView: setResourceView,
-      onDrill: typeof onNav === 'function' ? drill : undefined
+      onDrill: drill
     }), /*#__PURE__*/React.createElement("div", {
       className: "rw-support"
     }, /*#__PURE__*/React.createElement("details", {
@@ -57056,17 +56948,20 @@ function SMExport({
       snapshot: response.meta.snapshot_ref
     }))))));
   }
-  function GuardedWorkspace(props) {
+  // 侧栏直接进入时 main.jsx 不带定位上下文（initialContext 为 undefined）。
+  function GuardedWorkspace({
+    initialContext = {},
+    ...props
+  }) {
     try {
-      window.ReportAPI.scope(props.initialContext && props.initialContext.scope || {});
-      const context = props.initialContext || {},
-        topic = props.mode === 'review' ? 'delivery' : context.topic || 'delivery';
+      window.ReportAPI.scope(initialContext.scope);
+      const topic = props.mode === 'review' || initialContext.topic === undefined ? 'delivery' : initialContext.topic;
       if (!window.ReportAPI.topics.includes(topic)) throw window.APSResourceContract.failure('原报表专题无效，未改用默认专题。');
-      window.ReportAPI.table(context.table, topic);
-      if (context.selected !== undefined && context.selected !== null && !/^[0-9a-f]{48}$/.test(context.selected)) throw window.APSResourceContract.failure('原工序编号无效，没有改选其他工序。');
-      const value = props.initialContext && props.initialContext.resourceView;
+      window.ReportAPI.table(initialContext.table, topic);
+      if (initialContext.selected !== undefined && initialContext.selected !== null && !/^[0-9a-f]{48}$/.test(initialContext.selected)) throw window.APSResourceContract.failure('原工序编号无效，没有改选其他工序。');
+      const value = initialContext.resourceView;
       if (value !== undefined && (!value || !['machine', 'operator'].includes(value.kind) || !Number.isSafeInteger(value.page) || value.page < 1)) throw window.APSResourceContract.failure('资源工时查看状态无效，未改选其他资源。');
-      const detail = props.initialContext && props.initialContext.detailView;
+      const detail = initialContext.detailView;
       if (detail !== undefined && (!detail || !Number.isSafeInteger(detail.page) || detail.page < 1 || ![10, 20, 50].includes(detail.size))) throw window.APSResourceContract.failure('报表记录详情分页无效，未改选其他记录。');
     } catch (error) {
       return /*#__PURE__*/React.createElement("section", {
@@ -57078,7 +56973,8 @@ function SMExport({
       }));
     }
     return /*#__PURE__*/React.createElement(Workspace, {
-      ...props
+      ...props,
+      initialContext: initialContext
     });
   }
   window.ReportWorkspace = GuardedWorkspace;
@@ -57193,7 +57089,9 @@ function SMExport({
     if (!result || result.ok !== true || result.schema_version !== 1 || !meta || meta.source !== 'production' || meta.time_basis !== 'factory_local' || typeof meta.snapshot_ref !== 'string' || !meta.snapshot_ref || typeof meta.as_of !== 'string' || !Array.isArray(result.warnings) || !data || !object(data.scope) || !object(data.summary) || !object(data.capabilities) || !Array.isArray(data.blocked_reasons) || !Array.isArray(data.source_constraints) || typeof data.lineage_available !== 'boolean' || !object(data.exports) || data.exports.url !== base + '/export' || data.exports.scope !== 'all_filtered_suggestions' || !Array.isArray(data.exports.formats)) throw failure('校准数据不完整，未使用样例或零值替代。');
     const wanted = input(query);
     if (wanted.snapshot_ref && wanted.snapshot_ref !== meta.snapshot_ref) throw failure(window.WorkbenchTerms.outcomes.stale, 'snapshot_stale');
-    if (Object.keys(defaults).filter(key => !['page', 'column_filters'].includes(key)).some(key => data.scope[key] !== wanted[key]) || window.ResourceTableFilterModel.signature(data.scope.column_filters || {}) !== window.ResourceTableFilterModel.signature(wanted.column_filters)) throw failure('返回筛选范围不一致，未改选其他来源。', 'snapshot_stale');
+    if (Object.keys(defaults).filter(key => !['page', 'column_filters'].includes(key)).some(key => data.scope[key] !== wanted[key])
+    // 后端在没有列筛选时省略 scope.column_filters（core/models/workbench_calibration.py scope()）。
+    || window.ResourceTableFilterModel.signature(data.scope.column_filters === undefined ? {} : data.scope.column_filters) !== window.ResourceTableFilterModel.signature(wanted.column_filters)) throw failure('返回筛选范围不一致，未改选其他来源。', 'snapshot_stale');
     if (!['total', 'suggested', 'insufficient_data', 'over_20_percent'].every(key => count(data.summary[key])) || data.summary.total !== data.summary.suggested + data.summary.insufficient_data) throw failure('校准汇总数量不一致。');
     if (detailRef) {
       if (!validRow(data.suggestion, meta) || data.suggestion.suggestion_ref !== detailRef || !validSamples(data)) throw failure('完工记录分组或来源不一致，没有当作可用记录显示。');
@@ -58583,7 +58481,7 @@ function SMExport({
       snapshot_ref: result ? result.meta.snapshot_ref : input.snapshot_ref
     };
     const detail = useRead(async signal => A.validate(await api.detail(selected, bound, signal), bound, selected), selected + ':' + JSON.stringify(bound) + ':' + revision, api, !!(selected && result && data.capabilities.view === true && !stale));
-    const isStale = failure => failure && failure.error && ['snapshot_stale', 'calibration_source_changed'].includes(failure.error.code);
+    const isStale = failure => window.APSResourceContract.stale(failure, ['calibration_source_changed']);
     window.WorkbenchPageContext.useSnapshot(data ? {
       scope: Object.fromEntries(Object.entries(input).filter(([key]) => !['page', 'size', 'sort', 'direction', 'snapshot_ref'].includes(key))),
       table: {
@@ -58916,7 +58814,7 @@ function SMExport({
       ...defaults,
       ...value,
       column_filters: {
-        ...(value.column_filters || {})
+        ...value.column_filters
       }
     };
     if (!['issues', 'entities'].includes(result.view) || result.domain !== 'all' && !domainIds.includes(result.domain) || result.status !== 'all' && !statusKeys.includes(result.status) || ![20, 50, 100].includes(result.size) || !['business_code', 'label', 'issue_count', 'relation_count'].includes(result.sort) || !['asc', 'desc'].includes(result.direction) || typeof result.query !== 'string' || result.query.length > 1000) fail('基础资料的筛选范围无效，当前筛选没有变化。请重新选择。');
@@ -58975,7 +58873,7 @@ function SMExport({
       if (!object(domain) || domain.id !== id || typeof domain.loaded !== 'boolean' || (domain.loaded ? !count(domain.count) || !count(domain.attention) || !count(domain.unknown) || domain.attention > domain.count || domain.unknown > domain.count : domain.count !== null || domain.attention !== null || domain.unknown !== null)) fail('资料类别的数量对不上，请刷新后重试。');
     });
     const stats = overview.stats;
-    if (['entities', 'issues', 'affected', 'known_relation_pairs'].some(key => !count(stats[key])) || !(stats.relations === null || count(stats.relations)) || stats.entities !== overview.domains.reduce((sum, item) => sum + (item.loaded ? item.count : 0), 0) || stats.affected > stats.entities || stats.issues < stats.affected || stats.affected !== overview.domains.reduce((sum, item) => sum + (item.attention || 0), 0) || stats.relations !== null && stats.relations !== stats.known_relation_pairs || !overview.complete && stats.relations !== null || overview.complete !== overview.domains.every(item => item.loaded)) fail('资料总览的数量对不上，请刷新后重试。');
+    if (['entities', 'issues', 'affected', 'known_relation_pairs'].some(key => !count(stats[key])) || !(stats.relations === null || count(stats.relations)) || stats.entities !== overview.domains.reduce((sum, item) => sum + (item.loaded ? item.count : 0), 0) || stats.affected > stats.entities || stats.issues < stats.affected || stats.affected !== overview.domains.reduce((sum, item) => sum + (item.loaded ? item.attention : 0), 0) || stats.relations !== null && stats.relations !== stats.known_relation_pairs || !overview.complete && stats.relations !== null || overview.complete !== overview.domains.every(item => item.loaded)) fail('资料总览的数量对不上，请刷新后重试。');
     return result;
   }
   function detail(result, expected, selection, section, snapshot) {
@@ -59430,7 +59328,8 @@ function SMExport({
       page: 1,
       selected: null,
       section: 'issues',
-      detailPage: 1
+      detailPage: 1,
+      notice: ''
     };
     if (context == null) return empty;
     if (!C.canonical(context) || typeof context !== 'object' || Array.isArray(context) || Object.keys(context).some(key => !['domain', 'entity_ref', 'read_view'].includes(key))) C.fail('跳转到基础资料的条件不支持，页面没有跳转。请刷新后重试。');
@@ -59539,12 +59438,13 @@ function SMExport({
       values: [["issues", "待维护项", count('issues')], ["entities", "资料清单", count('entities')]]
     });
   }
+  // 侧栏直接进入时 main.jsx 不带定位上下文（initialContext 为 undefined），按“无定位”处理。
   function MasterOverviewWorkspace({
     onNavigate,
-    initialContext
+    initialContext = null
   }) {
     const api = useMemo(() => window.APSMasterOverviewAPI.create(), []);
-    const contextKey = C.canonical(initialContext || null);
+    const contextKey = C.canonical(initialContext);
     const initial = useMemo(() => {
       try {
         return readContext(initialContext);
@@ -59585,7 +59485,7 @@ function SMExport({
     const [search, setSearch] = useState(initial.scope.query),
       [column, setColumn] = useState(null),
       [columnText, setColumnText] = useState('');
-    const [message, setMessage] = useState(initial.notice || ''),
+    const [message, setMessage] = useState(initial.notice),
       [actionError, setActionError] = useState(null),
       [exporting, setExporting] = useState(false),
       [stale, setStale] = useState(false);
@@ -59661,7 +59561,7 @@ function SMExport({
       });
       setSearch(initial.scope.query);
       setColumn(null);
-      setMessage(initial.notice || '');
+      setMessage(initial.notice);
     }, [contextKey, initial]);
     useEffect(() => {
       const controller = new AbortController();
@@ -59670,7 +59570,7 @@ function SMExport({
       setError(null);
       setStale(false);
       setActionError(null);
-      setMessage(request.restore && request.restore.notice || '');
+      setMessage(request.restore === undefined ? '' : request.restore.notice);
       if (!request.keep) {
         setResult(null);
         setDetailRequest({
@@ -59850,7 +59750,6 @@ function SMExport({
       try {
         C.target(target);
         if (target.unavailable_reason) C.fail(target.unavailable_reason);
-        if (typeof onNavigate !== 'function') C.fail('dependency not wired: props.onNavigate');
         await onNavigate(target.view, target.context);
       } catch (failure) {
         setActionError(failure);
@@ -59914,7 +59813,6 @@ function SMExport({
     }, "\u5BFC\u51FA\u7B5B\u9009\u7ED3\u679C"), /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       className: "btn primary",
-      reason: typeof onNavigate !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: async () => {
         try {
           await onNavigate('process', {
@@ -60082,12 +59980,12 @@ function SMExport({
       onMaintain: navigate,
       onClear: clearFilters,
       onRetry: refresh,
-      navigation: typeof onNavigate === 'function',
+      navigation: true,
       loading: pending,
       error: readError,
       onFilter: key => {
         setColumn(key);
-        setColumnText(scope.column_filters[key] || '');
+        setColumnText(scope.column_filters[key] === undefined ? '' : scope.column_filters[key]);
       }
     }), data && /*#__PURE__*/React.createElement(Pager, {
       page: data.page,
@@ -60123,7 +60021,7 @@ function SMExport({
       onLocate: locate,
       onMaintain: navigate,
       onBack: closeDetail,
-      navigation: typeof onNavigate === 'function',
+      navigation: true,
       loading: detailPending,
       error: currentDetailError,
       triggerRef: opener,
@@ -60444,7 +60342,7 @@ function SMExport({
   }
   function parameters(input) {
     const params = new URLSearchParams();
-    Object.entries(input || {}).forEach(([key, value]) => {
+    Object.entries(input).forEach(([key, value]) => {
       if (value !== '' && value !== undefined && value !== null) params.set(key, value);
     });
     return params.toString() ? '?' + params : '';
@@ -60474,7 +60372,7 @@ function SMExport({
       file: '',
       start: '',
       end: '',
-      ...(value.filters || {})
+      ...value.filters
     };
     check((value.filters === undefined || object(value.filters)) && Object.keys(filters).every(key => ['query', 'type', 'status', 'level', 'file', 'start', 'end'].includes(key) && text(filters[key]) && filters[key].length <= 200), '上次的筛选条件无法恢复。请刷新后重新筛选。');
     const page = value.page === undefined ? 1 : value.page,
@@ -60561,6 +60459,7 @@ function SMExport({
           throw error;
         }
       },
+      // input 是页面按当前筛选组装的查询对象（配置页传 {}），不会缺省。
       async read(kind, input, signal) {
         check(['backups', 'logs', 'config'].includes(kind));
         const value = await request('/' + kind + parameters(input), {
@@ -60568,8 +60467,7 @@ function SMExport({
         });
         if (kind === 'config') config(envelope(value, false));else {
           collection(value, kind);
-          const query = input || {};
-          check(value.data.page.number === (query.page === undefined ? 1 : query.page) && value.data.page.size === (query.page_size === undefined ? 10 : query.page_size) && (!query.snapshot_ref || value.meta.snapshot_ref === query.snapshot_ref), '读到的维护记录和刚才的筛选不一致，页面没有改动。请刷新后重试。');
+          check(value.data.page.number === (input.page === undefined ? 1 : input.page) && value.data.page.size === (input.page_size === undefined ? 10 : input.page_size) && (!input.snapshot_ref || value.meta.snapshot_ref === input.snapshot_ref), '读到的维护记录和刚才的筛选不一致，页面没有改动。请刷新后重试。');
         }
         return value;
       },
@@ -62585,10 +62483,11 @@ function SystemLiveOverview({
     target(d.target, true);
     facts(d.after, v.meta.as_of);
     boundary(d.execution, d.target);
-    check(equal(d.input, input) && d.outsourcing_ref === (input.outsourcing_ref || null) && d.can_confirm === true && object(d.write_context) && text(d.write_context.write_token) && d.write_context.capabilities.confirm === true);
+    // 新登记的 input 只有 target、没有 outsourcing_ref，后端回显 null。
+    check(equal(d.input, input) && d.outsourcing_ref === (input.outsourcing_ref ?? null) && d.can_confirm === true && object(d.write_context) && text(d.write_context.write_token) && d.write_context.capabilities.confirm === true);
     if (input.target) check(d.before === null && equal(target(d.target), input.target));else facts(d.before);
     check(equal(d.after, {
-      ...(d.before || {}),
+      ...d.before,
       ...Object.fromEntries(fields.filter(k => Object.prototype.hasOwnProperty.call(input, k)).map(k => [k, input[k]]))
     }));
     return v;
@@ -65613,6 +65512,14 @@ function SystemLiveOverview({
       ErrorBox,
       Issues
     } = window.ResourceControls;
+  // Q.context 保证 range_start / range_end 成对出现；未设置范围时输入框显示为空。
+  const rangeDraft = value => value.range_start === undefined ? {
+    start: '',
+    end: ''
+  } : {
+    start: value.range_start,
+    end: value.range_end
+  };
   function rangeFor(input) {
     const start = input && input.start_date + 'T00:00:00',
       raw = input && input.end_date + 'T00:00:00';
@@ -65680,19 +65587,13 @@ function SystemLiveOverview({
       error: null,
       loading: false
     });
-    const [range, setRange] = React.useState({
-        start: choice.range_start || '',
-        end: choice.range_end || ''
-      }),
+    const [range, setRange] = React.useState(() => rangeDraft(choice)),
       [rangeError, setRangeError] = React.useState(null);
     const [summary, setSummary] = React.useState(false),
       [rangeOpen, setRangeOpen] = React.useState(false),
       signature = JSON.stringify(context);
     React.useEffect(() => {
-      setRange({
-        start: choice.range_start || '',
-        end: choice.range_end || ''
-      });
+      setRange(rangeDraft(choice));
     }, [choice.range_start, choice.range_end]);
     React.useEffect(() => {
       const controller = new AbortController(),
@@ -65835,10 +65736,7 @@ function SystemLiveOverview({
       }) : '编辑比较时间范围',
       "aria-label": "\u7F16\u8F91\u5019\u9009\u6BD4\u8F83\u65F6\u95F4\u8303\u56F4",
       onClick: () => {
-        if (!rangeOpen) setRange({
-          start: choice.range_start || '',
-          end: choice.range_end || ''
-        });
+        if (!rangeOpen) setRange(rangeDraft(choice));
         setRangeOpen(!rangeOpen);
       }
     }, choice.range_start && choice.range_end ? window.WorkbenchFormat.compactRange(choice.range_start, choice.range_end) : '时间范围'), /*#__PURE__*/React.createElement(Button, {
@@ -65850,7 +65748,7 @@ function SystemLiveOverview({
       className: "dy-run-picker"
     }, "\u6392\u4EA7\u8BB0\u5F55", /*#__PURE__*/React.createElement("select", {
       "aria-label": "\u9009\u62E9\u6392\u4EA7\u8BB0\u5F55",
-      value: choice.run_ref || '',
+      value: choice.run_ref === undefined ? '' : choice.run_ref,
       onChange: event => changeRun(event.target.value)
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
@@ -65860,7 +65758,7 @@ function SystemLiveOverview({
       key: run.run_ref,
       value: run.run_ref
     }, window.WorkbenchFormat.compactDateTime(run.accepted_at), " \xB7 ", run.candidate_count, " \u4EFD\u5019\u9009")))), /*#__PURE__*/React.createElement(Issues, {
-      issues: catalog.issues || []
+      issues: catalog.issues
     }), /*#__PURE__*/React.createElement(ErrorBox, {
       error: list.error
     }), /*#__PURE__*/React.createElement(ErrorBox, {
@@ -68308,7 +68206,7 @@ function SystemLiveOverview({
     check(typeof boot.help_url === 'string' && boot.help_url.startsWith('/') && !boot.help_url.startsWith('//') && new URL(boot.help_url, location.origin).origin === location.origin);
   }
   function historyView(page) {
-    const context = page.context || {};
+    const context = page.context;
     return ['analysis', 'gantt', 'delay'].includes(page.view) && context.source === 'run_history' && !own(context, 'run_ref') && !own(context, 'candidate_ref');
   }
   function title(boot, page) {
@@ -68381,7 +68279,7 @@ function SystemLiveOverview({
   }
   function auxiliary(state) {
     const result = {};
-    Object.keys(state || {}).forEach(key => {
+    Object.keys(state).forEach(key => {
       if (!['workbench', 'workbenchPages'].includes(key)) result[key] = state[key];
     });
     return result;
@@ -68434,9 +68332,9 @@ function SystemLiveOverview({
       context: context === undefined ? current.context : context,
       scroll: captured === undefined ? captureScroll() : normalizedScroll(captured)
     };
-    const state = history.state || {};
+    const state = history.state === null ? {} : history.state;
     check(!own(state, 'workbenchPages') || object(state.workbenchPages));
-    const pages = state.workbenchPages || {};
+    const pages = own(state, 'workbenchPages') ? state.workbenchPages : {};
     const nextPages = {
       ...pages,
       [page.view]: {
@@ -68460,7 +68358,7 @@ function SystemLiveOverview({
     // Resuming restores the target's own view state wholesale (scope, topic, table, selection, scroll):
     // every tab keeps its own range and the supplied context only seeds a first visit. Mixing the
     // current tab's scope / topic into the target's saved table produced unreadable combinations.
-    const context = resume ? saved.context : supplied || {};
+    const context = resume ? saved.context : supplied === undefined ? {} : supplied;
     const scroll = object(context.scroll) ? context.scroll : resume ? saved.scroll : {};
     const next = {
       view: target,
@@ -68489,7 +68387,8 @@ function SystemLiveOverview({
     }, '', location.href);
   }
   function restore(page, done) {
-    const scroll = page.scroll || {},
+    // 初次进入的页面还没记过滚动位置（read() 不带 scroll）。
+    const scroll = page.scroll === undefined ? {} : page.scroll,
       started = performance.now();
     let frame = 0,
       stopped = false;
@@ -68542,7 +68441,6 @@ function SystemLiveOverview({
   // silently drops the excess writes. One trailing write per `delay` keeps the remembered position fresh, and flush()
   // writes once more before the page is hidden.
   function scrollMemory(save, delay = 200) {
-    if (typeof save !== 'function' || !Number.isFinite(delay) || delay < 0) throw new TypeError('scroll_memory_invalid');
     let timer = 0;
     function cancel() {
       if (timer) {

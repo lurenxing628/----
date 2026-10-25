@@ -25,6 +25,7 @@ from web.routes.workbench.registration import bp as workbench_bp
 from web.runtime_host import install_runtime_host
 
 from .app_config import config as _config_map
+from .json_provider import StrictJSONProvider
 from .launcher_observability import launcher_log_warning
 from .launcher_paths import is_portable_runtime, resolve_runtime_db_path, resolve_shared_data_root
 from .launcher_shutdown import (
@@ -34,8 +35,7 @@ from .launcher_shutdown import (
 )
 from .paths import runtime_base_dir
 from .plugins import bootstrap_plugins
-from .runtime_server import create_runtime_server, make_runtime_server
-from .runtime_server import prepare_runtime_server as _prepare_runtime_server
+from .runtime_server import create_runtime_server
 from .schedule_config import bootstrap_schedule_config
 from .security import apply_session_cookie_hardening, ensure_secret_key, register_security_headers
 from .startup_config import resolve_config_class
@@ -55,7 +55,6 @@ _RUNTIME_SERVER: Any = None
 _RUNTIME_SERVER_LOCK = threading.Lock()
 _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
 _FACTORY_ONCE_FLAGS_KEY = "aps.factory.once_flags"
-make_server = make_runtime_server
 
 
 def resolve_startup_debug_flag() -> bool:
@@ -131,14 +130,10 @@ def _default_anchor_file() -> str:
     return str(Path(__file__).resolve().parents[2] / "app.py")
 
 
-def prepare_runtime_server(app: Flask, host: str, port: int) -> ThreadedWSGIServer:
-    return _prepare_runtime_server(app, host, port, server_factory=make_server)
-
-
 def serve_runtime_app(app: Flask, host: str, port: int, *, server: Optional[ThreadedWSGIServer] = None) -> None:
     global _RUNTIME_SERVER, _RUNTIME_SERVER_SHUTDOWN_REQUESTED
     if server is None:
-        server = cast(ThreadedWSGIServer, create_runtime_server(app, host, port, server_factory=make_server))
+        server = cast(ThreadedWSGIServer, create_runtime_server(app, host, port))
     with _RUNTIME_SERVER_LOCK:
         _RUNTIME_SERVER = server
         _RUNTIME_SERVER_SHUTDOWN_REQUESTED = False
@@ -218,6 +213,7 @@ def create_app_core(
     templates_dir = os.path.join(base_dir, "templates")
 
     app = Flask(__name__, static_folder=static_dir, template_folder=templates_dir)
+    app.json = StrictJSONProvider(app)
     install_runtime_host(app, request_shutdown=request_runtime_server_shutdown)
     app.config.from_object(cfg_class)
     _apply_runtime_config(app, base_dir=base_dir)

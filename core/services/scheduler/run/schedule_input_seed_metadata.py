@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
-from core.algorithms.greedy.seed import identity_int
+from core.algorithm_contracts.types import OpForScheduleAlgo
+from core.algorithm_contracts.value_domains import EXTERNAL, MERGED
 from core.errors import ValidationError
-from core.models.enums import MergeMode, SourceType
 
 MERGED_EXECUTION_GROUP_SOURCE = "merged_execution_group"
 
@@ -17,69 +17,48 @@ def _metadata_error(op_id: int, reason: str) -> ValidationError:
     )
 
 
-def _external_seed_ids(seed_results: List[Dict[str, Any]]) -> Set[int]:
-    return {
-        identity_int(seed.get("op_id"))
-        for seed in seed_results
-        if str(seed.get("source") or "").strip().lower() == SourceType.EXTERNAL.value
-    }
-
-
-def _enriched_operation_lookup(algo_ops: List[Any], external_seeds: Set[int]) -> Dict[int, Any]:
-    by_id: Dict[int, Any] = {}
-    for op in algo_ops:
-        op_id = identity_int(getattr(op, "id", None))
-        if op_id not in external_seeds:
-            continue
-        if op_id in by_id:
-            raise _metadata_error(op_id, "duplicate_operation")
-        by_id[op_id] = op
-    return by_id
-
-
-def _enrich_external_seed(seed: Dict[str, Any], by_id: Dict[int, Any]) -> Dict[str, Any]:
-    op_id = identity_int(seed.get("op_id"))
+def _enrich_external_seed(seed: Dict[str, Any], by_id: Dict[int, OpForScheduleAlgo]) -> Dict[str, Any]:
+    op_id = seed["op_id"]
     op = by_id.get(op_id)
     if op is None:
         raise _metadata_error(op_id, "missing_operation")
-    batch_id = str(op.batch_id or "").strip()
-    mode = str(getattr(op, "ext_merge_mode", None) or "").strip().lower()
-    if mode not in ("", MergeMode.SEPARATE.value, MergeMode.MERGED.value):
-        raise _metadata_error(op_id, "invalid_merge_mode")
-    if mode != MergeMode.MERGED.value:
+    identity = merged_external_group_identity(op)
+    if identity is None:
         return seed
-    group_id = str(getattr(op, "ext_group_id", None) or "").strip()
-    if not group_id:
-        raise _metadata_error(op_id, "invalid_merged_group")
+    batch_id, group_id, piece = identity
     metadata = {"op_id": op_id, "batch_id": batch_id, "ext_group_id": group_id}
-    piece = getattr(op, "piece_id", None)
     if piece is not None:
         metadata["piece_id"] = piece
     return dict(seed, _external_group_metadata=metadata)
 
 
 def with_external_seed_metadata(
-    seed_results: List[Dict[str, Any]], *, algo_ops: List[Any],
+    seed_results: List[Dict[str, Any]], *, algo_ops: List[OpForScheduleAlgo],
 ) -> List[Dict[str, Any]]:
     # All protected seeds bind to the same enriched input before their operations are filtered.
-    external_seeds = _external_seed_ids(seed_results)
+    # 种子与算法工序都由本次输入构建给出规范编号和来源，这里直接按字段比对。
+    external_seeds = {seed["op_id"] for seed in seed_results if seed["source"] == EXTERNAL}
     if not external_seeds:
         return seed_results
-    by_id = _enriched_operation_lookup(algo_ops, external_seeds)
-    return [
-        _enrich_external_seed(seed, by_id) if identity_int(seed.get("op_id")) in external_seeds else seed
-        for seed in seed_results
-    ]
+    by_id = {op.id: op for op in algo_ops if op.id in external_seeds}
+    return [_enrich_external_seed(seed, by_id) if seed["op_id"] in external_seeds else seed for seed in seed_results]
 
 
-def merged_external_group_identity(op: Any, *, group: Any = None) -> Optional[Tuple[str, str, Optional[str]]]:
-    """One cycle identity for enriched inputs and verified frozen-group projections."""
-    mode = getattr(group, "merge_mode", None) if group is not None else getattr(op, "ext_merge_mode", None)
-    group_id = getattr(group, "group_id", None) if group is not None else getattr(op, "ext_group_id", None)
-    if (str(getattr(op, "source", None) or "").strip().lower() != SourceType.EXTERNAL.value
-            or mode != MergeMode.MERGED.value or not group_id):
+def merged_group_identity(
+    batch_id: str, piece_id: Optional[str], *, merge_mode: Optional[str], group_id: Optional[str],
+) -> Optional[Tuple[str, str, Optional[str]]]:
+    """One cycle identity for enriched inputs and verified frozen-group projections.
+
+    合并方式只在已核对的外协冻结周期记录上出现，且合并时组身份必有；调用方传入的就是这份记录。
+    """
+    if merge_mode != MERGED:
         return None
-    return str(op.batch_id), str(group_id), getattr(op, "piece_id", None)
+    return batch_id, cast(str, group_id), piece_id
+
+
+def merged_external_group_identity(op: OpForScheduleAlgo) -> Optional[Tuple[str, str, Optional[str]]]:
+    # 排产输入构建只给外协工序填合并方式与组身份（来自同一份已核对的冻结周期记录）。
+    return merged_group_identity(op.batch_id, op.piece_id, merge_mode=op.ext_merge_mode, group_id=op.ext_group_id)
 
 
 def _actual_group_conflict(op_id):

@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 from functools import wraps
 from types import MappingProxyType
+from uuid import uuid4
 
 from flask import current_app, g, request
 from werkzeug.exceptions import HTTPException
@@ -35,10 +36,11 @@ def system_endpoint(function):
         except HTTPException as exc:
             response = failure("invalid_input", "提交的内容格式不正确，还没有保存。请刷新页面后重新填写。", exc.code or 400)
         except Exception:
-            current_app.logger.exception("系统工作区请求失败 endpoint=%s", request.endpoint)
+            request_ref = uuid4().hex
+            current_app.logger.exception("系统工作区请求失败 endpoint=%s request_ref=%s", request.endpoint, request_ref)
             key = getattr(g, "system_request_key", None)
             payload = failure_payload("storage_failure", messages.unknown("这次维护操作"), 500,
-                                      committed="unknown" if key else False)
+                                      committed="unknown" if key else False, request_ref=request_ref)
             if key:
                 payload["error"].update({"request_key": key, "result_target": BASE + "/results/" + key})
             response = json_response(payload, status=500)

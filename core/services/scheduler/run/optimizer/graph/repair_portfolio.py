@@ -132,7 +132,7 @@ def build_repair_portfolio(candidate: Dict[str, Any], *, operations: List[Any], 
         metrics_by_op_id=metrics_by_op_id, batch_order=batches.order, start_dt=start_dt, objective_name=objective_name,
         prepared_parent=prepared)
     resources = (("resource_alternative", decision) for decision in iter_resource_decisions(
-        candidate, operations=operations, resource_pool=resource_pool, batch_order=batches.order,
+        operations=operations, resource_pool=resource_pool, batch_order=batches.order,
         operation_order=prepared.operation_order, prepared_parent=prepared))
     extras = tuple(item for group in zip_longest(operation_decisions, resources) for item in group if item is not None)
     return RepairPortfolio(batches, extras, inherited)

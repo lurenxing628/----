@@ -62,7 +62,7 @@ class BatchResourceFacts:
                 field="设备/人员", details={"reason": "operator_machine_not_authorized", "operator_id": operator_id, "machine_id": machine_id})
         skills = self.qualification(operator_id)
         if operator_id in self.qualification_errors:
-            raise self.qualification_errors[operator_id]
+            raise self.qualification_errors[operator_id].with_traceback(None)
         if skills is not None and op_type_id not in skills:
             raise OperatorQualificationError(
                 f"人员“{operator_id}”未登记自制工种“{op_type_id or '未填写'}”的资格，不能分配；请核对技能登记。",

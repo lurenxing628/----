@@ -132,9 +132,6 @@ class ResourceTableFacts:
             raise WorkbenchCommandRejected("storage_failure", "这条资源在资料里查不到编号，列表没有打开，数据也没有被改动。请到资料总览核对后重试。", 500)
         return WorkbenchEntityIdentity(row["ref"], kind, code, row["revision"], True)
 
-    def records(self, kind):
-        return self.metrics._records(kind)
-
     def raw_lookup(self, name, key):
         """Index captured rows for single-state consumption without a full metric gate."""
         lookup_key = (name, key)
@@ -200,18 +197,18 @@ class ResourceTableFacts:
 
     def related(self, kind, code):
         self.identity(kind, code)
-        raw = self.records(kind).get(code)
+        raw = self.metrics.kind_records(kind).get(code)
         if raw is None:
             raise WorkbenchCommandRejected("storage_failure", "这条资源的关联指向一条已经不存在的记录。请到资料总览核对后重试。", 500)
         return raw
 
     def supplier_types(self, code):
-        legacy = self.records("supplier")[code]["op_type_id"]
+        legacy = self.metrics.kind_records("supplier")[code]["op_type_id"]
         explicit = {row["op_type_id"] for row in self.grouped("capabilities", "supplier_id")[code]}
         return sorted(explicit | ({legacy} if legacy not in (None, "") else set()))
 
     def machine_types(self, code):
-        legacy = self.records("machine")[code]["op_type_id"]
+        legacy = self.metrics.kind_records("machine")[code]["op_type_id"]
         explicit = {row["op_type_id"] for row in self.grouped("machine_capabilities", "machine_id")[code]}
         return sorted(explicit | ({legacy} if legacy else set()))
 
@@ -258,7 +255,7 @@ class ResourceTableFacts:
 
     def index(self, query, codes):
         rows, cells, legacy_values = {}, {}, {}
-        records = self.records(query.kind)
+        records = self.metrics.kind_records(query.kind)
         statuses = None if query.kind == "op_type" else self.metrics._statuses(query.kind)
         for code in codes:
             identity = self.identity(query.kind, code)

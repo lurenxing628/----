@@ -24,7 +24,7 @@
   function scope(value) {
     if (!object(value) || Object.keys(value).some(key => !Object.hasOwnProperty.call(defaults, key))) fail('基础资料的筛选条件不正确，当前筛选没有变化。请重新选择。');
     if (value.column_filters !== undefined && !object(value.column_filters)) fail('列筛选条件格式不对，当前筛选没有变化。请重新填写。');
-    const result = { ...defaults, ...value, column_filters: { ...(value.column_filters || {}) } };
+    const result = { ...defaults, ...value, column_filters: { ...value.column_filters } };
     if (!['issues', 'entities'].includes(result.view) || result.domain !== 'all' && !domainIds.includes(result.domain)
       || result.status !== 'all' && !statusKeys.includes(result.status) || ![20, 50, 100].includes(result.size)
       || !['business_code', 'label', 'issue_count', 'relation_count'].includes(result.sort) || !['asc', 'desc'].includes(result.direction)
@@ -89,7 +89,7 @@
     const stats = overview.stats;
     if (['entities', 'issues', 'affected', 'known_relation_pairs'].some(key => !count(stats[key])) || !(stats.relations === null || count(stats.relations))
       || stats.entities !== overview.domains.reduce((sum, item) => sum + (item.loaded ? item.count : 0), 0)
-      || stats.affected > stats.entities || stats.issues < stats.affected || stats.affected !== overview.domains.reduce((sum, item) => sum + (item.attention || 0), 0)
+      || stats.affected > stats.entities || stats.issues < stats.affected || stats.affected !== overview.domains.reduce((sum, item) => sum + (item.loaded ? item.attention : 0), 0)
       || stats.relations !== null && stats.relations !== stats.known_relation_pairs || !overview.complete && stats.relations !== null
       || overview.complete !== overview.domains.every(item => item.loaded)) fail('资料总览的数量对不上，请刷新后重试。');
     return result;

@@ -3,10 +3,8 @@
   const C = window.APSResourceContract, P = window.APSProcessContract, A = window.APSProcessActions, S = window.APSResourceSession;
   const { Button, Icon, ErrorBox, Issues } = window.ResourceControls;
   const FileButtons = window.ProcessFileButtons;
-  const emptyAdapter = {};
   const readScopeKeys = window.APSProcessReadView.scopeKeys;
   async function readList(adapter, scope, signal) {
-    if (!adapter || typeof adapter.list !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.list');
     const result = P.list(await adapter.list('part', scope, signal), scope);
     if (scope.page > 1 && !scope.snapshot_ref && result.meta.source !== 'production')
       throw C.failure('翻页位置已失效，请回到第 1 页重新查询。');
@@ -45,7 +43,7 @@
         onChange={event => setSelected(event.target.checked ? Array.from(new Set(selected.concat(visible))) : selected.filter(ref => !visible.includes(ref)))} /></th>
         {P.columns.map(column => { const sorted = ordering.find(row => row.field === column.key); return <th scope="col" key={column.key} data-column={column.key} style={{ width: width(column) }} aria-sort={sorted ? sorted.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
           <window.ResourceTableHeader column={column} kind="part" scope={scope} adapter={adapter} sort={sorted && sorted.field} direction={sorted && sorted.direction} sortActive={!!sorted}
-            onSort={onSort} onFilter={rule => onFilter(column.key, rule)} filter={scope.column_filters && scope.column_filters[column.key]} matchingCount={matchingCount}
+            onSort={onSort} onFilter={rule => onFilter(column.key, rule)} filter={scope.column_filters[column.key]} matchingCount={matchingCount}
             width={width(column)} onResize={value => resize(column.key, value)} disabled={disabled} scopeTransform={A.facetScope} pageSize={50} />
         </th>; })}<th scope="col" className="wb-col-actions" data-column="__actions" style={{ width: widths ? widths.__actions : 190 }}>下一步 / 操作</th></tr></thead>
       <tbody>{entities.map(row => <tr key={row.ref} data-process-ref={row.ref}>
@@ -55,10 +53,10 @@
         <td className="wb-col-actions"><div className="wb-actions" style={{ flexWrap: 'wrap' }}><Button className="linkbtn" icon="arrow-right" disabled={disabled || loading} aria-label={'浏览步骤 ' + row.business_code} onClick={() => onOpen(row.ref)}>{row.workflow.route.state !== 'confirmed' ? '确认路线' : ({ source: '确认归属', hours: '填写工时', ready: '已就绪 · 汇总' })[row.workflow.stage]}</Button>
           <Button className="mini" icon="trash-2" disabled={disabled || loading} reasonDisplay="tooltip" reason={deleteReason} aria-label={'删除 ' + row.business_code} onClick={() => onDelete([row.ref])}>删除</Button></div></td>
       </tr>)}{!entities.length && <tr><td colSpan={P.columns.length + 2}><TableEmpty loading={loading} error={error} onClear={onClear} onRetry={onRetry}
-        filtered={!!(scope.query || scope.stage || Object.keys(scope.column_filters || {}).length)} /></td></tr>}</tbody>
+        filtered={!!(scope.query || scope.stage || Object.keys(scope.column_filters).length)} /></td></tr>}</tbody>
     </table></div>;
   }
-  function ProcessWorkspace({ adapter = emptyAdapter, onCommitted, disabled = false, initialContext, onNavigationReady, rememberEnabled = true }) {
+  function ProcessWorkspace({ adapter, onCommitted, disabled = false, initialContext, onNavigationReady, rememberEnabled = true }) {
     const command = S.useCommand(adapter);
     const [target] = React.useState(() => {
       if (initialContext == null) return { context: null };
@@ -66,7 +64,7 @@
       return parsed.context && parsed.context.kind !== 'part' ? { error: C.failure('工艺导航必须指向原零件记录。') } : parsed;
     });
     const [deferred, setDeferred] = React.useState(() => !!target.context && command.phase !== 'idle');
-    const [navigationError, setNavigationError] = React.useState(target.error || null);
+    const [navigationError, setNavigationError] = React.useState(target.error === undefined ? null : target.error);
     const restored = target.context && target.context.read_view;
     const restoredRef = restored ? restored.entity_ref : target.context && target.context.entity_ref;
     const navigationDialog = () => restoredRef ? ({ ref: restoredRef, adapter, navigation: target.context }) : null;
@@ -83,7 +81,7 @@
     React.useEffect(() => { if (onNavigationReady) onNavigationReady(!dialog && command.phase === 'idle' && !recoveryError); }, [dialog, command.phase, recoveryError, onNavigationReady]);
     React.useEffect(() => {
       try {
-        const intent = typeof adapter.readPending === 'function' && adapter.readPending();
+        const intent = adapter.readPending();
         const restored = A.restored(intent);
         if (restored) setDialog({ ...restored, adapter });
         setRecoveryError(null);
@@ -128,10 +126,11 @@
     }
     function action(mode, refs = selected, fileKind) {
       if (!data || blocked || list.loading) return;
-      setDialog({ mode, fileKind, refs: refs.slice(), scope: A.scope(scope), snapshot_ref: list.result.meta.snapshot_ref, page_size: data.page.size,
+      setDialog({ mode, fileKind, refs, scope: A.scope(scope), snapshot_ref: list.result.meta.snapshot_ref, page_size: data.page.size,
         source: list.result.meta.source, create_context: data.create_context, adapter });
     }
-    const deleteReason = P.reason(data && data.capabilities, 'delete', typeof adapter.bulkPreview === 'function' && typeof adapter.command === 'function');
+    const deleteReason = P.reason(data && data.capabilities, 'delete', true);
+    const activeStage = scope.stage === undefined ? '' : scope.stage;
     const blocked = disabled || !!dialog || command.locked || !!recoveryError;
     function continueNavigation() {
       if (blocked || command.phase !== 'idle') { setNavigationError(C.failure('请先处理完上次操作并关闭工艺详情，再继续。')); return; }
@@ -144,15 +143,15 @@
         {[['total', '零件总数', 'primary'], ['source', '待定归属', 'warn'], ['hours', '待填工时', 'warn'], ['ready', '已就绪', 'ok']].map(([key, label, tone]) =>
           <div key={key} className="stat wb-metric" data-tone={tone}><span className="sl wb-metric-label">{label}</span><span className="sv wb-metric-value">{counts ? counts[key] : '未读取'}</span></div>)}
       </div>
-      <div className="process-list-controls"><div className="subtabs" role="group" aria-label="按工艺阶段筛选">{P.stages.map(([stage, label, key]) => <Button key={key} className={'subtab' + ((scope.stage || '') === stage ? ' on' : '')}
-        aria-pressed={(scope.stage || '') === stage} disabled={blocked} onClick={() => filter({ stage: stage || undefined })}>{label} <span className="cnt">{counts ? counts[key] : '…'}</span></Button>)}</div>
+      <div className="process-list-controls"><div className="subtabs" role="group" aria-label="按工艺阶段筛选">{P.stages.map(([stage, label, key]) => <Button key={key} className={'subtab' + (activeStage === stage ? ' on' : '')}
+        aria-pressed={activeStage === stage} disabled={blocked} onClick={() => filter({ stage: stage === '' ? undefined : stage })}>{label} <span className="cnt">{counts ? counts[key] : '…'}</span></Button>)}</div>
       <form className="toolbar" onSubmit={event => { event.preventDefault(); if (!blocked) filter({ query: search }); }}>
         <label className="search"><span className="ic"><Icon name="search" /></span><input type="search" aria-label="搜索图号、名称、路线" placeholder="搜索图号、名称、路线…" value={search} disabled={blocked} onChange={event => setSearch(event.target.value)} /></label>
         <Button type="submit" icon="search" disabled={blocked}>搜索</Button><Button icon="refresh-cw" aria-label="刷新工艺列表" disabled={blocked} busy={list.loading} onClick={() => filter({})} />
         <span className="tb-spacer" /><div className="wb-actions" style={{ flexWrap: 'wrap' }}>
           <FileButtons capabilities={data && data.capabilities} disabled={blocked || list.loading}
-            onAction={typeof adapter.filePreview === 'function' && typeof adapter.fileDownload === 'function' ? (kind, mode) => action(mode, selected, kind) : undefined} />
-          <Button icon="plus" className="btn primary" disabled={blocked || list.loading} reason={P.reason(data && data.capabilities, 'create', typeof adapter.command === 'function') || A.createReason(data && data.create_context, list.result && list.result.meta.source)} onClick={() => action('create')}>新增零件</Button>
+            onAction={(kind, mode) => action(mode, selected, kind)} />
+          <Button icon="plus" className="btn primary" disabled={blocked || list.loading} reason={P.reason(data && data.capabilities, 'create', true) || A.createReason(data && data.create_context, list.result && list.result.meta.source)} onClick={() => action('create')}>新增零件</Button>
         </div>
       </form>
       <div className="toolbar"><span className="muted" aria-live="polite">已选 <b data-process-selection-count>{selected.length}</b> 项{selected.some(ref => !data || !data.entities.some(row => row.ref === ref)) ? ' · 含非当前页记录' : ''}</span>

@@ -3,13 +3,15 @@
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
+from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_runtime.checkpoint_calendar import checkpoint_calendar_signature
 from core.algorithm_runtime.checkpoint_inputs import input_record, input_value
 from core.algorithm_runtime.piece_input import operation_batch
 from core.algorithm_runtime.resource_demand import ResourceClaim
 from core.errors import ValidationError
+from core.models.batch import Batch
 
 
 @dataclass
@@ -17,14 +19,14 @@ class NativeSchedulePreparation:
     normalized_machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]]
     calendar: Any
     run_context: Any
-    operations: Any
+    operations: List[OpForScheduleAlgo]
     records_by_token: Dict[int, Any]
-    batches: Any
-    seed_results: Any
+    batches: Dict[str, Batch]
+    seed_results: Optional[List[ScheduleResult]]
     seed_applications: Any
     seed_external_group_cache: Dict[Any, Any]
-    seed_op_ids: Any
-    unseeded_operations: Any
+    seed_op_ids: Set[int]
+    unseeded_operations: List[OpForScheduleAlgo]
     resource_pool: Any
     graph_ready_context: Any
     warnings: Tuple[str, ...]
@@ -37,35 +39,32 @@ class NativeSchedulePreparation:
     piece_batches: Dict[int, Any] = field(default_factory=dict)
     pruning_records: Dict[int, bool] = field(default_factory=dict)
     total_hours_by_op_id: Dict[int, float] = field(default_factory=dict)
-    _variant_operations: List[Any] = field(default_factory=list)
+    _variant_operations: List[OpForScheduleAlgo] = field(default_factory=list)
     _calendar_signature: Any = field(init=False, repr=False, default=None)
     _checkpoint_parts: Any = field(init=False, repr=False, default=None)
 
-    def operation_batch(self, op: Any, batch: Any) -> Any:
-        piece = getattr(op, "piece_id", None)
-        if piece is None:
+    def operation_batch(self, op: OpForScheduleAlgo, batch: Batch) -> Batch:
+        if op.piece_id is None:
             return batch
-        if type(piece) is not str or not piece or piece.strip() != piece:
-            raise ValidationError("Piece identity must be canonical.", field="piece_id")
         token = id(batch)
         if token not in self.piece_batches:
             self.piece_batches[token] = operation_batch(op, batch)
         return self.piece_batches[token]
 
-    def resource_candidates_for(self, op: Any) -> Any:
+    def resource_candidates_for(self, op: OpForScheduleAlgo) -> Any:
         from .auto_assign import fixed_resource_inputs, prepare_resource_candidates
         key = fixed_resource_inputs(op)
         if key not in self.resource_candidates:
             self.resource_candidates[key] = prepare_resource_candidates(op, self.resource_pool)
         return self.resource_candidates[key]
 
-    def qualified_resource_pairs(self, op: Any) -> Any:
+    def qualified_resource_pairs(self, op: OpForScheduleAlgo) -> Any:
         return self.resource_candidates_for(op).pairs
 
-    def eligible_auto_assign_resources(self, op: Any) -> Any:
+    def eligible_auto_assign_resources(self, op: OpForScheduleAlgo) -> Any:
         return self.resource_candidates_for(op).eligible_resources
 
-    def resource_claim_for(self, op: Any) -> Any:
+    def resource_claim_for(self, op: OpForScheduleAlgo) -> Any:
         token = id(op)
         if token in self.resource_claims:
             return self.resource_claims[token]
@@ -87,7 +86,7 @@ class NativeSchedulePreparation:
             self.resource_claims[token] = claim
         return claim
 
-    def register_operation_variant(self, base_op: Any, variant_op: Any) -> None:
+    def register_operation_variant(self, base_op: OpForScheduleAlgo, variant_op: OpForScheduleAlgo) -> None:
         base_token = id(base_op)
         variant_token = id(variant_op)
         self.records_by_token[variant_token] = variant_op

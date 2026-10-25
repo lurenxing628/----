@@ -60,12 +60,12 @@ class WorkbenchMaterialQueryService:
         self._snapshot = None
 
     @contextmanager
-    def read_snapshot(self, *, capture_fingerprint=True):
+    def read_snapshot(self):
         with TransactionManager(self.conn).transaction():
             previous = self._snapshot
             self._snapshot = {"fingerprint": None, "records": {}, "indexes": {}, "scopes": {}, "orders": {}}
             try:
-                yield self.state_fingerprint() if capture_fingerprint else None
+                yield self.state_fingerprint()
             finally:
                 self._snapshot = previous
 

@@ -1,6 +1,5 @@
 """Process read/preview endpoints; no stage mutation or legacy form dispatch."""
 
-import json
 import re
 
 from flask import current_app, g, request
@@ -9,14 +8,16 @@ from werkzeug.exceptions import HTTPException
 from core.errors import AppError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_query import ProcessPageRequest
-from core.models.workbench_process_table_query import ProcessTablePageRequest, unique_process_table_object
+from core.models.workbench_process_table_query import DUPLICATE_QUERY_MESSAGE, ProcessTablePageRequest
 from core.services.workbench.process.projection import capabilities
 from core.services.workbench.process.queries import WorkbenchProcessQueryService
+from core.shared.strict_json import load_strict_json
 from web.api_responses import query_success
 
 from .api_responses import api_endpoint, read_endpoint
 from .process_json import read_process_json
 from .read_context import bind_read_snapshot
+from .request_json import rejecter
 from .write_context import issue_write_context
 
 
@@ -32,11 +33,10 @@ def _list_query():
         values[key] = int(text)
     ordering = request.args.get("sort", "business_code")
     if "column_filters" in request.args or ordering.lstrip().startswith("["):
-        try:
-            sort = json.loads(ordering, object_pairs_hook=unique_process_table_object) if ordering.lstrip().startswith("[") else ordering
-            filters = json.loads(request.args.get("column_filters", "{}"), object_pairs_hook=unique_process_table_object)
-        except json.JSONDecodeError as exc:
-            raise WorkbenchCommandRejected("invalid_input", "排序或筛选内容读不出来，当前筛选没有变化。请点「清除筛选」后重新选择。", 400) from exc
+        unreadable = rejecter("排序或筛选内容读不出来，当前筛选没有变化。请点「清除筛选」后重新选择。")
+        duplicate = rejecter(DUPLICATE_QUERY_MESSAGE)
+        sort = load_strict_json(ordering, on_malformed=unreadable, on_duplicate=duplicate) if ordering.lstrip().startswith("[") else ordering
+        filters = load_strict_json(request.args.get("column_filters", "{}"), on_malformed=unreadable, on_duplicate=duplicate)
         return ProcessTablePageRequest(query=request.args.get("query", ""), stage=request.args.get("stage") or None,
                                        number=values["page"], size=values["size"], sort=sort,
                                        direction=request.args.get("direction", "asc"), column_filters=filters)

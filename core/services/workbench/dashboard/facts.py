@@ -1,6 +1,6 @@
 """Current-official and unified execution adapters under one caller read snapshot."""
 
-from typing import Any, Dict, cast
+from typing import Any, Dict, Optional, cast
 
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.content import content_text
@@ -18,7 +18,7 @@ from core.services.workbench.plan.projection import project_plan
 from core.services.workbench.plan.read_context import PlanReadContext
 from data.repositories.workbench_dashboard_source_repo import DashboardSourceRepository
 
-from .calendar_capture import capture_resource_pressure
+from .calendar_capture import ResourcePressureMetrics, capture_resource_pressure
 from .catalogs import candidate_catalog
 from .policy import entity_refs_from_rows
 
@@ -65,14 +65,7 @@ class DashboardFacts:
         self.pressure = {"state": "unavailable", "resource_count": None, "issues": []}
         self.candidates = {"state": "unavailable", "run_count": None, "issues": []}
         self._ledger = None
-        self.calendar_factory = None
-        self._resource_pressure_cache = {}
-        self._resource_pressure_index = None
-        self._resource_pressure_window = None
-        self._resource_pressure_cohort = None
-        self._resource_pressure_tasks = None
-        self._resource_pressure_intervals = None
-        self._resource_pressure_identity_issues = []
+        self.pressure_metrics: Optional[ResourcePressureMetrics] = None
         self._entity_refs = {}
         self._observations = {}
 
@@ -167,9 +160,9 @@ class DashboardFacts:
             self.raw["plan_identity_revision"] = context.references.read_revision()
             self.plan_state = "loaded"
             self._capture_calendar_inputs(resource_ids(original_rows, "machine"))
-            self.pressure, self.raw["resource_pressure"], self.calendar_factory = capture_resource_pressure(
+            self.pressure, self.raw["resource_pressure"], self.pressure_metrics = capture_resource_pressure(
                 self.conn, entry=entry, scope=scope, resources=resources, identities=resource_state, plan_span=span,
-                context=context, facts=self, captured_calendar=self.calendar_inputs)
+                context=context, plan_tasks=(self.tasks, self.task_rows), captured_calendar=self.calendar_inputs)
         except WorkbenchPlanReferenceError as exc:
             self._plan_failure("plan_binding_invalid", "正式计划记录已失效，请刷新重试。")
             self.raw["plan_reference_failure"] = exc.code

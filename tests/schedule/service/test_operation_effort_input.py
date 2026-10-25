@@ -5,20 +5,26 @@ from types import SimpleNamespace
 
 from core.algorithm_runtime.operation_effort import internal_operation_effort
 from core.services.scheduler.run.operation_effort import build_operation_efforts
+from tests._support.algo_operations import make_algo_op, make_batch, make_batch_operation
 
 
 def operation(op_id, *, piece=None, setup=2, unit=0.5):
-    return SimpleNamespace(id=op_id, batch_id="B1", piece_id=piece, source="internal",
-                           setup_hours=setup, unit_hours=unit)
+    return make_algo_op(id=op_id, piece_id=piece, setup_hours=setup, unit_hours=unit)
+
+
+def row(op):
+    """The batch operation row that the algorithm input was built from."""
+    return make_batch_operation(id=op.id, piece_id=op.piece_id, setup_hours=op.setup_hours, unit_hours=op.unit_hours)
 
 
 def test_actual_slot_seed_and_skipped_roles_preserve_their_own_evidence():
     ops = [operation(1), operation(2), operation(3), operation(4), operation(5), operation(6, piece="P6")]
-    batch = SimpleNamespace(quantity=10)
+    rows = [row(op) for op in ops]
+    batch = make_batch(quantity=10)
     saved = internal_operation_effort(ops[1], batch).to_dict()
     original = deepcopy(saved)
     # A current template edit must not rewrite the retained arrangement's original requirement.
-    ops[1].setup_hours, ops[1].unit_hours = 99, 99
+    ops[1].setup_hours = ops[1].unit_hours = rows[1].setup_hours = rows[1].unit_hours = 99
     projections = {1: SimpleNamespace(target_quantity=10, target_basis="batch", remaining_quantity=10,
                                      execution_state="unreported", first_actual_start=None),
                    3: SimpleNamespace(target_quantity=10, target_basis="batch", remaining_quantity=6,
@@ -28,7 +34,7 @@ def test_actual_slot_seed_and_skipped_roles_preserve_their_own_evidence():
     seeds = [{"op_id": 2}, {"op_id": 3, "seed_source": "execution_fact"},
              {"op_id": 4, "seed_source": "execution_fact"}]
     efforts = build_operation_efforts(
-        operations=ops, batches={"B1": batch}, algo_operations=ops,
+        operations=rows, batches={"B1": batch}, algo_operations=ops,
         operations_to_schedule=[ops[0], ops[5]], seed_results=seeds,
         execution_facts={}, execution_projections=projections, saved_efforts={2: saved},
     )
@@ -51,12 +57,12 @@ def test_actual_slot_seed_and_skipped_roles_preserve_their_own_evidence():
 
 def test_execution_seed_can_retain_authenticated_saved_decomposition_without_recharging_setup():
     op = operation(1)
-    batch = SimpleNamespace(quantity=10)
+    batch = make_batch(quantity=10)
     saved = internal_operation_effort(op, batch)
     fact = SimpleNamespace(actual_status="processing", actual_start_time="2026-10-13T08:00:00", remaining_quantity=6,
                            target_quantity=10, quantity_basis="batch")
     efforts = build_operation_efforts(
-        operations=[op], batches={"B1": batch}, algo_operations=[op], operations_to_schedule=[],
+        operations=[row(op)], batches={"B1": batch}, algo_operations=[op], operations_to_schedule=[],
         seed_results=[{"op_id": 1, "seed_source": "execution_fact"}], execution_facts={1: fact}, saved_efforts={1: saved},
     )
     effort = efforts[0]
@@ -69,11 +75,11 @@ def test_execution_seed_can_retain_authenticated_saved_decomposition_without_rec
 
 def test_retained_demand_target_stays_with_saved_decomposition_after_current_target_changes():
     op = operation(1)
-    saved = internal_operation_effort(op, SimpleNamespace(quantity=10))
+    saved = internal_operation_effort(op, make_batch(quantity=10))
     projection = SimpleNamespace(target_quantity=20, target_basis="batch", remaining_quantity=20,
                                  execution_state="unreported", first_actual_start=None)
     effort = build_operation_efforts(
-        operations=[op], batches={"B1": SimpleNamespace(quantity=20)}, algo_operations=[op],
+        operations=[row(op)], batches={"B1": make_batch(quantity=20)}, algo_operations=[op],
         operations_to_schedule=[], seed_results=[{"op_id": 1}], execution_projections={1: projection}, saved_efforts={1: saved},
     )[0]
     assert effort.requirement_role == "retained" and effort.required_standard_hours == 7

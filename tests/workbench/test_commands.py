@@ -6,8 +6,8 @@ from datetime import date
 import pytest
 
 from core.infrastructure.transaction import TransactionManager
-from core.models import OpType
 from core.models.content import same
+from core.models.op_type import OpType
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.services.workbench.commands import WorkbenchCommandService
 from data.repositories.op_type_repo import OpTypeRepository

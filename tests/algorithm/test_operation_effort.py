@@ -12,25 +12,26 @@ from core.algorithm_runtime.operation_effort import external_operation_effort, i
 from core.algorithm_runtime.piece_input import operation_batch
 from core.algorithms.greedy.dispatch.batch_order import _dispatch_one
 from core.algorithms.ortools_bottleneck import OrtoolsWarmstartError, try_solve_bottleneck_batch_order
+from tests._support.algo_operations import make_algo_op, make_batch
 
 
 class FixedEfficiencyCalendar:
     def adjust_to_working_time(self, value, **kwargs):
         return value
 
-    def get_efficiency(self, value, **kwargs):
-        return 0.5
+    def add_effective_hours(self, value, hours, **kwargs):
+        return value + timedelta(hours=hours / 0.5)  # every window works at efficiency 0.5
 
-    def add_working_hours(self, value, hours, **kwargs):
-        return value + timedelta(hours=hours)
+    def working_hours_between(self, start, end, **kwargs):
+        return (end - start).total_seconds() / 3600
 
 
 @pytest.mark.parametrize("piece,setup,unit,quantity,required", [
     (None, 2, 0.5, 10, 7), ("piece-1", 2, 0.5, 10, 2.5), (None, 0, 0, 10, 0), (None, 2, 0.5, 0, 2),
 ])
 def test_effort_matches_slot_and_keeps_standard_hours_before_efficiency(piece, setup, unit, quantity, required):
-    op = SimpleNamespace(id=1, batch_id="B1", piece_id=piece, setup_hours=setup, unit_hours=unit)
-    batch = SimpleNamespace(quantity=quantity, priority="normal")
+    op = make_algo_op(piece_id=piece, setup_hours=setup, unit_hours=unit)
+    batch = make_batch(quantity=quantity)
     work = operation_batch(op, batch)
     effort = internal_operation_effort(op, batch, remaining_quantity=work.quantity)
     start = datetime(2026, 10, 13, 8)
@@ -52,9 +53,9 @@ def test_effort_matches_slot_and_keeps_standard_hours_before_efficiency(piece, s
 
 
 def test_external_merged_cycle_is_separate_from_internal_preparation():
-    op = SimpleNamespace(id=4, batch_id="B1", piece_id="piece-2", setup_hours=None, unit_hours=None,
-                         ext_merge_mode="merged", ext_group_id="G1", ext_group_total_days=3, ext_days=None)
-    effort = external_operation_effort(op, SimpleNamespace(quantity=10))
+    op = make_algo_op(id=4, piece_id="piece-2", source="external", setup_hours=0.0, unit_hours=0.0,
+                      ext_merge_mode="merged", ext_group_id="G1", ext_group_total_days=3)
+    effort = external_operation_effort(op, make_batch(quantity=10))
     assert effort.setup_standard_hours == effort.processing_standard_hours == effort.required_standard_hours == 0
     assert effort.external_cycle_days == 3 and effort.external_group_id == "G1"
     assert effort.external_merge_mode == "merged" and effort.setup_state == "external"
@@ -97,12 +98,12 @@ def cp_boundary(monkeypatch):
 
 
 def _warmstart_op(op_id, batch_id, *, piece=None, op_type="turning", setup=0, unit=1):
-    return SimpleNamespace(id=op_id, op_code=f"OP{op_id}", batch_id=batch_id, piece_id=piece, op_type_id=op_type,
-                           source="internal", setup_hours=setup, unit_hours=unit)
+    return make_algo_op(id=op_id, batch_id=batch_id, piece_id=piece, op_type_id=op_type, op_type_name=op_type,
+                        setup_hours=setup, unit_hours=unit)
 
 
 def test_warmstart_aggregates_piece_load_and_reads_solver_order(cp_boundary):
-    batches = {"B1": SimpleNamespace(quantity=20), "B2": SimpleNamespace(quantity=2)}
+    batches = {"B1": make_batch(batch_id="B1", quantity=20), "B2": make_batch(batch_id="B2", quantity=2)}
     ops = [_warmstart_op(index, "B1", piece=f"P{index}") for index in range(20)]
     ops += [_warmstart_op(20 + index, "B2", piece=f"Q{index}") for index in range(2)]
     order = try_solve_bottleneck_batch_order(operations=ops, batches=batches, start_dt=datetime(2026, 10, 13))
@@ -113,10 +114,10 @@ def test_warmstart_aggregates_piece_load_and_reads_solver_order(cp_boundary):
 
 def test_warmstart_selects_bottleneck_by_effective_piece_work(cp_boundary):
     batches = {
-        "B1": SimpleNamespace(quantity=20),
-        "B2": SimpleNamespace(quantity=2),
-        "B_LATE": SimpleNamespace(quantity=1, due_date="2026-10-20"),
-        "B_EARLY": SimpleNamespace(quantity=1, due_date="2026-10-14"),
+        "B1": make_batch(batch_id="B1", quantity=20),
+        "B2": make_batch(batch_id="B2", quantity=2),
+        "B_LATE": make_batch(batch_id="B_LATE", quantity=1, due_date="2026-10-20"),
+        "B_EARLY": make_batch(batch_id="B_EARLY", quantity=1, due_date="2026-10-14"),
     }
     ops = [_warmstart_op(index, "B1", piece=f"P{index}") for index in range(20)]
     ops += [_warmstart_op(20, "B1", op_type="grinding", unit=0.1),
@@ -135,7 +136,7 @@ def test_warmstart_selects_bottleneck_by_effective_piece_work(cp_boundary):
     ("setup_hours", -1), ("unit_hours", -1), ("quantity", -1),
 ])
 def test_internal_and_warmstart_reject_invalid_component_values(cp_boundary, field, value):
-    op, batch = _warmstart_op(1, "B1", setup=2), SimpleNamespace(quantity=10)
+    op, batch = _warmstart_op(1, "B1", setup=2), make_batch(quantity=10)
     if field == "quantity":
         batch.quantity = value
     elif field == "setup_hours":
@@ -153,7 +154,7 @@ def test_internal_and_warmstart_reject_invalid_component_values(cp_boundary, fie
 
 @pytest.mark.parametrize("source,callback", [("internal", "schedule_internal"), ("external", "schedule_external")])
 def test_batch_order_dispatch_supplies_required_operation_input(source, callback):
-    op, batch = _warmstart_op(1, "B1", piece="P1"), SimpleNamespace(quantity=20)
+    op, batch = _warmstart_op(1, "B1", piece="P1"), make_batch(quantity=20)
     op.source = source
     ctx, state = MagicMock(), MagicMock()
     _dispatch_one(
@@ -181,19 +182,20 @@ def test_piece_operation_dispatch_state_prev_end_uses_operation_release_floor():
         "end_time_by_op_id": {1: piece_end},
         "predecessor_op_ids_by_op_id": {2: {1}, 3: set()},
     }
-    batch = SimpleNamespace(quantity=2, ready_date=None)
-    dependent = operation_dispatch_state(state, graph_state, SimpleNamespace(id=2, batch_id="B1"), batch)
-    independent = operation_dispatch_state(state, graph_state, SimpleNamespace(id=3, batch_id="B1"), batch)
+    batch = make_batch(quantity=2)
+    dependent = operation_dispatch_state(state, graph_state, make_algo_op(id=2), batch)
+    independent = operation_dispatch_state(state, graph_state, make_algo_op(id=3), batch)
     assert dependent.prev_end("B1") == piece_end
     assert independent.prev_end("B1") == base
     assert state.prev_end("B1") == batch_end
 
 
-def _external_op(*, merged, total_days=3, material_ready_date="2026-10-16"):
-    return SimpleNamespace(id=5, op_code="EXT", batch_id="B1", seq=1, source="external", op_type_name=None,
-                           material_ready_date=material_ready_date, ext_days=2,
-                           ext_merge_mode="merged" if merged else None, ext_group_id="G1" if merged else None,
-                           ext_group_total_days=total_days if merged else None)
+def _external_op(*, merged, total_days=3.0, material_ready_date="2026-10-16"):
+    # 与排产输入构建一致：合并组只带整组周期，单道外协只带自己的周期。
+    return make_algo_op(id=5, op_code="EXT", source="external", setup_hours=0.0, unit_hours=0.0,
+                        material_ready_date=material_ready_date, ext_days=None if merged else 2.0,
+                        ext_merge_mode="merged" if merged else None, ext_group_id="G1" if merged else None,
+                        ext_group_total_days=total_days if merged else None)
 
 
 class _NaturalDayCalendar:
@@ -211,18 +213,16 @@ def test_external_candidate_window_waits_for_material_like_the_placement(merged)
     base = datetime(2026, 10, 13, 8)
     op, calendar = _external_op(merged=merged), _NaturalDayCalendar()
     state = ScheduleRunState(base_time=base)
-    window = external_candidate_window(SimpleNamespace(calendar=calendar), state, op=op, prev_end=base, strict_mode=True)
-    result, blocked = schedule_external(SimpleNamespace(calendar=calendar), op=op, batch_progress={},
-                                        external_group_cache={}, base_time=base, errors=[], end_dt_exclusive=None,
-                                        strict_mode=True)
+    window = external_candidate_window(SimpleNamespace(calendar=calendar), state, op=op, prev_end=base)
+    result, blocked = schedule_external(calendar=calendar, op=op, batch_progress={},
+                                        external_group_cache={}, base_time=base, errors=[], end_dt_exclusive=None)
     assert not blocked and window == (result.start_time, result.end_time)
     assert window[0] == datetime(2026, 10, 16)
     if merged:
         # An already placed group block is shared as-is, even when it started before this member's material.
         placed = (base, base + timedelta(days=3))
         state.external_group_cache[external_group_key(op)] = placed
-        assert external_candidate_window(SimpleNamespace(calendar=calendar), state, op=op, prev_end=base,
-                                          strict_mode=True) == placed
+        assert external_candidate_window(SimpleNamespace(calendar=calendar), state, op=op, prev_end=base) == placed
 
 
 def test_merged_external_group_is_cached_only_when_it_fits_the_window():
@@ -230,13 +230,13 @@ def test_merged_external_group_is_cached_only_when_it_fits_the_window():
     from core.algorithms.greedy.external_groups import schedule_external
 
     base = datetime(2026, 10, 13, 8)
-    op, scheduler = _external_op(merged=True, total_days=5, material_ready_date=None), SimpleNamespace(calendar=_NaturalDayCalendar())
+    op, calendar = _external_op(merged=True, total_days=5.0, material_ready_date=None), _NaturalDayCalendar()
     cache, errors = {}, []
-    result, blocked = schedule_external(scheduler, op=op, batch_progress={}, external_group_cache=cache, base_time=base,
-                                        errors=errors, end_dt_exclusive=base + timedelta(days=2), strict_mode=True)
+    result, blocked = schedule_external(calendar=calendar, op=op, batch_progress={}, external_group_cache=cache, base_time=base,
+                                        errors=errors, end_dt_exclusive=base + timedelta(days=2))
     assert result is None and blocked and len(errors) == 1
     assert cache == {}
-    result, blocked = schedule_external(scheduler, op=op, batch_progress={}, external_group_cache=cache, base_time=base,
-                                        errors=errors, end_dt_exclusive=base + timedelta(days=10), strict_mode=True)
+    result, blocked = schedule_external(calendar=calendar, op=op, batch_progress={}, external_group_cache=cache, base_time=base,
+                                        errors=errors, end_dt_exclusive=base + timedelta(days=10))
     assert result is not None and not blocked
     assert cache == {external_group_key(op): (result.start_time, result.end_time)}

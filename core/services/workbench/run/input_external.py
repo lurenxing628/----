@@ -1,7 +1,6 @@
 """Bind scheduling to the batch contexts used by preflight and batch detail."""
 
 from collections import defaultdict
-from types import SimpleNamespace
 
 from core.errors import AppError
 from core.models.operation_execution_event import (
@@ -22,30 +21,33 @@ from core.services.scheduler.run.schedule_execution_guardrails import build_exec
 from core.services.scheduler.run.schedule_execution_resource_facts import collect_resource_execution_facts
 from core.services.scheduler.run.schedule_input_seed_metadata import (
     merged_actual_group_intervals,
-    merged_external_group_identity,
+    merged_group_identity,
 )
+from core.services.scheduler.run.schedule_template_lookup import FrozenExternalContext
 from core.services.workbench.execution.ledger import ExecutionLedgerService
 from core.services.workbench.facts.run_input_rows import fail
+from core.services.workbench.facts.stored_algo_inputs import stored_batch, stored_batch_operation
 from data.repositories.sqlite_rows import sql_order
 
 
-def prime_template_cache(svc, tables, batches, operations):
+def verified_external_contexts(tables, batches, operations):
+    """本次排产的外协工序在同一份快照里只核对一次冻结周期记录，按工序编号交给排产输入构建。"""
     contexts = {row["operation_id"]: row for row in tables["BatchExternalContexts"]}
     members = member_index(contexts, tables["BatchOperations"])
+    verified = {}
     for op in operations:
         if op.source != "external":
             continue
-        problem = context_problem(contexts.get(op.id), operation_id=op.id,
-                                  part_no=batches[op.batch_id].part_no, sequence=op.seq)
+        problem = context_problem(contexts.get(op.id), operation_id=op.id, part_no=batches[op.batch_id].part_no, sequence=op.seq)
         if problem:
             fail("external_context_invalid", problem, op_id=op.id)
         row = contexts[op.id]
-        problem = merged_supplier_problem(row, op.supplier_id,
-            members.get((op.batch_id, context_group_key(row), op.piece_id)))
+        group_key = context_group_key(row)
+        problem = merged_supplier_problem(row, op.supplier_id, members.get((op.batch_id, group_key, op.piece_id)))
         if problem:
             fail("external_context_invalid", problem, op_id=op.id)
-    svc._aps_schedule_input_cache = {"batch": dict(batches), "external_contexts": contexts,
-                                     "external_members": members, "external_contexts_bound": True}
+        verified[op.id] = FrozenExternalContext(row, group_key)
+    return verified
 
 
 def _merged_groups(tables, batches, operations):
@@ -57,8 +59,8 @@ def _merged_groups(tables, batches, operations):
         context = contexts.get(op.id)
         if context is None or context_problem(context, operation_id=op.id, part_no=batches[op.batch_id].part_no, sequence=op.seq):
             continue
-        group = SimpleNamespace(merge_mode=context["merge_mode"], group_id=context_group_key(context))
-        groups[op.id] = merged_external_group_identity(op, group=group)
+        groups[op.id] = merged_group_identity(op.batch_id, op.piece_id, merge_mode=context["merge_mode"],
+                                              group_id=context_group_key(context))
     return groups
 
 
@@ -118,8 +120,8 @@ def preflight_external_cycles(facts, batches, operations, projections):
     svc = build_schedule_repository_bundle(facts.conn)
     version = max((row["version"] for row in facts.capture.table("ScheduleHistory")), default=0)
     prior = prior_execution_projections(facts, version)
-    models = [SimpleNamespace(**op) for op in operations]
-    batch_models = {batch["batch_id"]: SimpleNamespace(**batch) for batch in batches}
+    models = [stored_batch_operation(op) for op in operations]
+    batch_models = {batch["batch_id"]: stored_batch(batch) for batch in batches}
     groups = execution_groups(facts, batch_models, models)
     _, fixed, completed, seeds, _ = build_execution_guardrails_from_projections(
         svc, models, prev_version=version, execution_projections=prior, facts=facts, external_groups=groups)

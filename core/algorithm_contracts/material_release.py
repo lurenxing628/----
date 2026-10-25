@@ -1,12 +1,16 @@
-"""Optional per-operation material release; absence preserves legacy decodes."""
+"""Optional per-operation material release; an operation without one keeps its earliest start."""
+
+from __future__ import annotations
 
 from datetime import datetime
 
 from core.errors import ValidationError
 
+from .types import OpForScheduleAlgo
 
-def released_start(op, earliest):
-    value = getattr(op, "material_ready_date", None)
+
+def released_start(op: OpForScheduleAlgo, earliest: datetime) -> datetime:
+    value = op.material_ready_date
     if value is None:
         return earliest
     try:

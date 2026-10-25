@@ -30,8 +30,9 @@
   function capabilities(value) {
     return C.object(value) && ['route_preview', 'create', 'delete', 'stage_confirm', 'import', 'export'].every(key => typeof value[key] === 'boolean');
   }
+  // 只校验工艺专属字段：通用实体合同已由 list()/detail() 开头的 C.query 校验过一次。
   function entity(value) {
-    if (!C.entity(value) || !ref(value.ref) || value.status !== null || !writeContext(value.write_context)) return false;
+    if (!ref(value.ref) || value.status !== null || !writeContext(value.write_context)) return false;
     const w = value.workflow;
     return ['route_raw', 'route_parsed', 'remark'].every(key => nullableText(value.fields[key])) && issues(value.issues)
       && ['batch_count', 'operation_count', 'internal_count', 'external_count', 'unclassified_count'].every(key => count(value.relationships[key]))
@@ -97,7 +98,7 @@
   function list(result, scope) {
     C.query(result, 'list');
     const d = result.data, p = d.page, sort = ordering(scope);
-    if (!d.entities.every(entity) || !uniqueRefs(d.entities) || !capabilities(d.capabilities)
+    if (!d.entities.every(entity) || !capabilities(d.capabilities)
         || d.create_context !== null && !writeContext(d.create_context)
         || !C.object(d.metrics) || !C.object(d.metrics.counts) || !stages.every(row => count(d.metrics.counts[row[2]]))
         || p.number !== scope.page || p.size !== scope.size

@@ -6,6 +6,7 @@
     names.forEach(name => Object.defineProperty(adapter[name], verifiedReader, { value: true }));
     return adapter;
   }
+  // 注入的 adapter（测试或组合用）可以只提供部分读取方法：没提供的方法保持缺省，由调用方按能力判断，不在这里补空实现。
   function checked(adapter, validators) {
     const result = { ...adapter };
     Object.entries(validators).forEach(([name, validate]) => {
@@ -33,7 +34,7 @@
   // Classic scripts: contract -> controls/session -> forms/tables -> workspace.
   // Queries keep QuerySuccess envelopes; failures may be returned or thrown.
   // choices(kind, {query,category,page,size,snapshot_ref}, signal) uses real refs.
-  // openImport/openExport/openBulk/openCalendar/openCatalog receive
+  // openImport/openExport/openBulk/openCatalog receive
   // (kind, {refs,scope,entity?,onCommitted,onClosed?}, signal). Resolve {state:'cancelled'}
   // or {state:'opened'} for host-owned dialogs, or an explicit CommandResult.
   // openCatalog's opened dialog calls onClosed on cancel, onCommitted(receipt)
@@ -60,7 +61,9 @@
     material: ['spec', 'unit', 'remark'], op_type: ['category', 'default_merge_mode', 'remark'],
     machine: [], operator: [], supplier: []
   };
+  // 每种可编辑资料都登记关系表；空表表示这类资料没有关系字段。
   const relations = {
+    material: [], op_type: [],
     machine: [
       { key: 'op_type_refs', label: '可做工种', kind: 'op_type', category: 'internal', multiple: true },
       { key: 'group_ref', label: '设备组', kind: 'machine_group', catalog: true }
@@ -80,6 +83,12 @@
   }
   function message(error) {
     return error && error.error && error.error.message || error && error.message || '读取失败，请刷新后重试。';
+  }
+  // 服务端说这次操作依据的资料已过期：需要用户刷新，不能静默复位后照旧重提。页面专属的过期码由调用方追加。
+  const staleCodes = ['stale_write', 'snapshot_stale'];
+  function stale(error, extraCodes = []) {
+    const code = error && (error.code || error.error && error.error.code);
+    return staleCodes.includes(code) || extraCodes.includes(code);
   }
   function fieldErrors(error) {
     const list = error && error.error && error.error.fields || error && error.fields || [];
@@ -121,21 +130,19 @@
     if (source !== 'production') return '当前不是生产数据，不能保存。';
     if (!context || !text(context.write_token) || !context.write_token) return '还没读到可以保存的资料，请点「刷新最新资料」后重试。';
     const name = kind + '.' + action;
-    if (!context.capabilities || context.capabilities[name] !== true) {
-      const reasons = Array.isArray(context.blocked_reasons) ? context.blocked_reasons : [];
-      const reason = reasons.find(row => row && (!row.action || row.action === name));
-      return reason && reason.message || '当前记录不允许此操作。';
+    // 后端每份写入上下文都带 capabilities 和 blocked_reasons（web/routes/workbench/write_context.py）；不带 action 的原因对所有动作生效。
+    if (context.capabilities[name] !== true) {
+      const reason = context.blocked_reasons.find(row => !row.action || row.action === name);
+      return reason ? reason.message : '当前记录不允许此操作。';
     }
     return '';
   }
   function requestKey() {
-    if (!window.crypto || typeof window.crypto.getRandomValues !== 'function')
-      throw failure('本次没有提交。当前浏览器不支持，请用 Chrome 打开本页。');
     const bytes = new Uint8Array(24); window.crypto.getRandomValues(bytes);
     return 'resource-' + Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
   }
   function statusLabel(kind, status, fields = {}) {
-    const match = (statuses[kind] || []).find(row => row[0] === status);
+    const match = own(statuses, kind) ? statuses[kind].find(row => row[0] === status) : undefined;
     let label = match ? match[1] : status === 'active' ? '启用' : '旧状态 / 原因未知';
     if (fields.inactive_reason === 'unknown' && status !== 'active' && status !== 'unknown') label += '（旧原因未知）';
     return label;
@@ -168,17 +175,19 @@
     if (key === 'category' && kind !== 'op_type') return String(value);
     return own(values, key) && own(values[key], value) ? values[key][value] : String(value);
   }
-  function draft(kind, current, category) {
+  // 新建工种时 category 来自所在的自制或外协列表；从工艺里新建工种不带归属，留空让用户明确选择。
+  function draft(kind, current, category = '') {
     const fields = current ? current.fields : {};
     const result = { business_code: current ? current.business_code : '', label: current ? current.label : '', fields: {}, relationships: {} };
-    (textFields[kind] || []).forEach(key => { result.fields[key] = fields[key] == null ? '' : fields[key]; });
-    if (kind === 'op_type' && !current) result.fields.category = category || '';
+    textFields[kind].forEach(key => { result.fields[key] = fields[key] == null ? '' : fields[key]; });
+    if (kind === 'op_type' && !current) result.fields.category = category;
     if (statuses[kind]) result.fields.status = current ? current.status || 'unknown' : '';
     if (kind === 'material') result.fields.stock_qty = fields.stock_qty == null ? '' : String(fields.stock_qty);
     if (kind === 'supplier') result.fields.default_days = fields.default_days == null ? '' : String(fields.default_days);
-    (relations[kind] || []).forEach(item => {
-      const value = current && current.relationships[item.key];
-      result.relationships[item.key] = item.multiple ? (Array.isArray(value) ? value.slice() : []) : value || '';
+    // 已有记录的多选关系恒为编号数组、单选关系为编号或 null（core/services/workbench/resource/projection.py）。
+    relations[kind].forEach(item => {
+      const value = current ? current.relationships[item.key] : null;
+      result.relationships[item.key] = value === null ? (item.multiple ? [] : '') : value;
     });
     return result;
   }
@@ -229,17 +238,17 @@
         else fields.category = v;
       } else if (key === 'default_merge_mode') {
         if (!['', 'separate', 'merged'].includes(v)) bad('fields.default_merge_mode', '请选择有效的周期规则。');
-        else fields[key] = v || null;
+        else fields[key] = v === '' ? null : v;
       } else {
         const normalized = v.trim();
-        if (!create || normalized) fields[key] = normalized || null;
+        if (!create || normalized) fields[key] = normalized === '' ? null : normalized;
       }
     });
-    (relations[kind] || []).forEach(item => {
+    relations[kind].forEach(item => {
       const v = value.relationships[item.key];
       if (!create && same(v, base.relationships[item.key])) return;
-      if (item.multiple) relationships[item.key] = v.slice();
-      else if (!create || v) relationships[item.key] = v || null;
+      if (item.multiple) relationships[item.key] = v;
+      else if (!create || v) relationships[item.key] = v === '' ? null : v;
     });
     if (Object.keys(fields).length) result.fields = fields;
     if (kind !== 'material' && Object.keys(relationships).length) result.relationships = relationships;
@@ -254,10 +263,11 @@
         && result.receipt_ref && object(result.data) && Array.isArray(result.warnings)) return 'terminal';
     return 'pending';
   }
+  // 只在命令已完成（receipt() 判为 terminal，data 已校验为对象）后调用。
   function resultRef(result, fallback) {
-    const data = result && result.data || {};
+    const data = result.data;
     return data.entity_ref || data.ref || data.entity && data.entity.ref || fallback;
   }
   window.APSResourceContract = { nodes, statuses, relations, object, own, entity, query, blocked, requestKey, nonnegativeInt64, positiveInt64,
-    message, fieldErrors, failure, statusLabel, resourceName, codeLabel, nameLabel, fieldLabels, fieldValue, availability, draft, rebaseDraft, input, receipt, resultRef };
+    message, stale, fieldErrors, failure, statusLabel, resourceName, codeLabel, nameLabel, fieldLabels, fieldValue, availability, draft, rebaseDraft, input, receipt, resultRef };
 })();

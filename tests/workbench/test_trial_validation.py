@@ -96,6 +96,19 @@ def test_old_lock_mark_no_longer_blocks_trial_changes(trial_case):
     assert task["changed"] is True and task["start"] == "2026-09-09T13:00:00"
 
 
+def test_structurally_damaged_calendar_blocks_trial_instead_of_skipping_calendar_checks(trial_case, monkeypatch):
+    """日历表结构坏了（引擎为 None）不能跳过日历核对静默通过：草稿标记 calendar_unproven 不能采用，调整直接被拒。"""
+    case = trial_case
+    draft = create(case)
+    monkeypatch.setattr("core.services.workbench.trial.validation.calendar_engine", lambda tables: None)
+    refreshed = service(case.conn).get(draft["draft_ref"])
+    assert "calendar_unproven" in codes(refreshed)
+    assert refreshed["validation"]["status"] == "blocked"
+    with pytest.raises(WorkbenchCommandRejected) as exc:
+        change(case, refreshed)
+    assert (exc.value.code, exc.value.status) == ("calendar_unproven", 422)
+
+
 @pytest.mark.parametrize("state", ["new_complete"])
 def test_fixed_and_unique_execution_projection_protect_changes(trial_case, state):
     case = trial_case

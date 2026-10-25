@@ -3,20 +3,23 @@
 import base64
 import binascii
 from collections import defaultdict
-from types import SimpleNamespace
 from typing import Any, Dict, NoReturn
 
+from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.content import unpacked
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
 from core.models.workbench_preflight import normalize_preflight_input
 from core.models.workbench_run_candidate import MAX_TASKS, local_time, reference, reject
 from core.models.workbench_run_compute import CandidateRunInputError
+from core.services.scheduler.run.schedule_payload_contract import ValidatedScheduleRow
 
 from .candidate_facts import index_rows
 from .candidate_tasks import task_resource
 from .candidate_values import bounded_size, gap
 from .run_input_codec import prepare_execution_projections
 from .zero_duration import point_event_dto
+
+_ORIGIN_NOT_RECORDED = {"code": "adoption_not_recorded", "message": "此正式版本未保存可核对的采用来源。"}
 
 
 def invalid_baseline() -> NoReturn:
@@ -83,7 +86,7 @@ class ArchivedAdmissionPlan:
         for row in source_refs.values():
             if row.get("kind") == "schedule_row" and row.get("active") == 1:
                 active_rows[(row.get("version"), row.get("source_key"))].append(row)
-        self._schedule_bindings = active_rows
+        self.schedule_bindings = active_rows
         self.by_operation = defaultdict(list)
         for row in self.baseline["rows"]:
             matches = active_rows[(self.baseline["version"], str(row["id"]))]
@@ -105,10 +108,8 @@ class AdmissionBaseline(ArchivedAdmissionPlan):
 
     def __init__(self, capture, facts, disposition, *, point_work=None, origins=None, origin_issue=None):
         super().__init__(capture, facts)
-        self._point_work_loader = point_work
-        self._point_work = None
-        self._origins = origins or {}
-        self._origin_issue = origin_issue or {"code": "adoption_not_recorded", "message": "此正式版本未保存可核对的采用来源。"}
+        self.bind_origin({} if origins is None else origins,
+                         _ORIGIN_NOT_RECORDED if origin_issue is None else origin_issue, point_work)
         self.settings = self._settings(capture["input"])
         self.selected = self._selected(disposition)
         self._execution(capture)
@@ -184,17 +185,29 @@ class AdmissionBaseline(ArchivedAdmissionPlan):
             elif current is not None:
                 invalid_baseline()
 
-    def segments(self, ref):
-        return [self._segment(row) for row in self.by_operation.get(ref, [])]
+    def bind_origin(self, origins, origin_issue, point_work):
+        """Read segments against one official version's adoption origins and point work.
 
-    def _segment(self, row):
+        ``point_work`` is a zero-argument loader of that version's point witnesses, or
+        None when the version has no adoption evidence; it is loaded once per binding.
+        """
+        self._origins, self._origin_issue = origins, origin_issue
+        self._point_work_loader, self._point_work = point_work, None
+
+    def origin(self, op_id):
+        return self._origins.get(op_id, {})
+
+    def segments(self, ref):
+        return [self.segment(row) for row in self.by_operation.get(ref, [])]
+
+    def segment(self, row):
         gaps = []
-        start, end = _baseline_interval(row, gaps)
+        start, end = baseline_interval(row, gaps)
         point = self._point(row, start, end, gaps) if start is not None and start == end else {}
-        origin = self._origins.get(row["op_id"], {})
+        origin = self.origin(row["op_id"])
         source = row.get("source", origin.get("source"))
         gaps.extend(origin.get("data_gaps", []))
-        if source not in ("internal", "external"):
+        if type(source) is not str or source not in OPERATION_SOURCES:
             source = None
             if not any(row["field"] == "source" for row in gaps):
                 gaps.append({"field": "source", **self._origin_issue})
@@ -217,8 +230,8 @@ class AdmissionBaseline(ArchivedAdmissionPlan):
                     raise
                 self._point_work = {}
         work = self._point_work.get(row["op_id"])
-        original = SimpleNamespace(op_id=row["op_id"], source="internal", machine_id=row.get("machine_id"),
-                                   operator_id=row.get("operator_id"), start_time=start, end_time=end)
+        original = ValidatedScheduleRow(op_id=row["op_id"], source="internal", machine_id=row.get("machine_id"),
+                                        operator_id=row.get("operator_id"), start_time=start, end_time=end)
         if work is None or not work["witness"].matches(original):
             gaps.append(gap("point_evidence", "source_missing" if work is None else "invalid_stored_value"))
             return {}
@@ -238,7 +251,7 @@ def unpack_blob(value):
         invalid_baseline()
 
 
-def _baseline_interval(row, gaps):
+def baseline_interval(row, gaps):
     values = []
     for field in ("start_time", "end_time"):
         value = row.get(field)

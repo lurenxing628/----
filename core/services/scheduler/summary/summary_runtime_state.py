@@ -1,18 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime
-from decimal import Decimal, InvalidOperation
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.models.batch import Batch
-from core.models.schedule_config_runtime import ScheduleConfigSnapshot
 from core.services.scheduler.contracts.schedule_summary_types import (
     FallbackState,
-    FreezeState,
     RuntimeState,
     SummaryMetrics,
-    WarningState,
 )
 
 from .due_risk_items import (
@@ -24,7 +19,6 @@ from .due_risk_items import (
 from .schedule_summary_assembly import (
     _finish_time_by_batch as finish_time_by_batch,
 )
-from .schedule_summary_freeze import _extract_freeze_warnings, _freeze_meta_dict
 
 
 def _metric_int(metrics: Any, key: str) -> Optional[int]:
@@ -85,53 +79,20 @@ def _dedupe_text_list(values: Any) -> List[str]:
     return out
 
 
-def _append_summary_warning(summary: Optional[ScheduleSummary], message: str) -> bool:
-    if summary is None:
-        return False
-    summary.warnings.append(message)
-    return True
+def _append_summary_warning(summary: Optional[ScheduleSummary], message: str) -> None:
+    if summary is not None:
+        summary.warnings.append(message)
 
 
-def _parse_counter_value(raw: Any, *, bucket_name: str, key_text: str) -> Tuple[Optional[int], Optional[str]]:
-    if raw is None or raw == "":
-        return None, None
-    if isinstance(raw, bool):
-        return None, f"{bucket_name}.{key_text} 不能是布尔值：{raw!r}"
-    try:
-        if isinstance(raw, int):
-            count = raw
-        else:
-            decimal_value = Decimal(str(raw).strip())
-            if not decimal_value.is_finite() or decimal_value != decimal_value.to_integral_value():
-                return None, f"{bucket_name}.{key_text} 必须是整数：{raw!r}"
-            count = int(decimal_value)
-    except (InvalidOperation, TypeError, ValueError):
-        return None, f"{bucket_name}.{key_text} 必须是整数：{raw!r}"
-    if count < 0:
-        return None, f"{bucket_name}.{key_text} 不能为负数：{raw!r}"
-    return count, None
-
-
-def _counter_dict(value: Any, *, bucket_name: str) -> Tuple[Dict[str, int], List[str]]:
+def _counter_dict(value: Any) -> Dict[str, int]:
+    # 计数桶只经 increment_counter / merge_algo_stats 写入，键非空、值是校验过的整数。
     if not isinstance(value, dict):
-        return {}, []
-    out: Dict[str, int] = {}
-    errors: List[str] = []
-    for key, raw in value.items():
-        key_text = str(key or "").strip()
-        if not key_text:
-            continue
-        count, error = _parse_counter_value(raw, bucket_name=bucket_name, key_text=key_text)
-        if error:
-            errors.append(error)
-        if count:
-            out[key_text] = int(count)
-    return out, errors
+        return {}
+    return {key: count for key, count in value.items() if count}
 
 
 def _build_runtime_state(
     *,
-    logger: Any,
     batches: Dict[str, Batch],
     results: List[ScheduleResult],
     summary: Optional[ScheduleSummary],
@@ -145,7 +106,6 @@ def _build_runtime_state(
         finish_by_batch,
     )
     overdue_items, overdue_meta = _build_overdue_items_impl(
-        logger=logger,
         batches=batches,
         finish_by_batch=finish_by_batch,
         summary=summary,
@@ -190,88 +150,34 @@ def _build_runtime_state(
     )
 
 
-def _build_warning_state(
+def _build_summary_warnings(
     *,
     summary: Optional[ScheduleSummary],
-    algo_warnings: Optional[List[str]],
-    input_state: Dict[str, Any],
     runtime_state: RuntimeState,
-) -> WarningState:
-    summary_warnings = _warning_list(summary.warnings if summary is not None else None)
-    algo_warning_list = _warning_list(algo_warnings)
-    all_warnings = _merge_warning_lists(summary_warnings, algo_warning_list)
-    merge_context_degraded = bool(input_state.get("merge_context_degraded"))
-    merge_context_events = list(input_state.get("merge_context_events") or [])
+) -> List[str]:
+    all_warnings = _warning_list(summary.warnings if summary is not None else None)
     if runtime_state.unscheduled_batch_count > 0:
         all_warnings = _merge_warning_lists(
             all_warnings,
             [f"存在 {runtime_state.unscheduled_batch_count} 个批次未形成完工结果，请到系统管理里的排产历史查看这次排产的详细提醒。"],
         )
-    return WarningState(
-        summary_warnings=summary_warnings,
-        algo_warning_list=algo_warning_list,
-        all_warnings=all_warnings,
-        merge_context_degraded=merge_context_degraded,
-        merge_context_events=merge_context_events,
-    )
-
-
-def _build_freeze_state(
-    *,
-    cfg: ScheduleConfigSnapshot,
-    frozen_op_ids: Set[int],
-    freeze_meta: Optional[Dict[str, Any]],
-    all_warnings: List[str],
-) -> FreezeState:
-    freeze_warnings = _extract_freeze_warnings(all_warnings)
-    freeze_data = _freeze_meta_dict(
-        cfg,
-        frozen_op_ids=frozen_op_ids,
-        freeze_meta=freeze_meta,
-        freeze_warnings=freeze_warnings,
-    )
-    merged_warnings = list(all_warnings)
-    if (
-        freeze_warnings
-        and str(freeze_data.get("freeze_state") or "") == "degraded"
-        and not bool(freeze_data.get("degradation_from_warning_fallback"))
-    ):
-        freeze_warning_set = {str(item) for item in freeze_warnings}
-        merged_warnings = [item for item in merged_warnings if str(item) not in freeze_warning_set]
-    return FreezeState(
-        data=freeze_data,
-        all_warnings=merged_warnings,
-    )
+    return all_warnings
 
 
 def _build_fallback_state(algo_stats: Optional[Dict[str, Any]]) -> FallbackState:
     algo_stats_dict = algo_stats if isinstance(algo_stats, dict) else {}
-    fallback_counts, fallback_count_errors = _counter_dict(
-        algo_stats_dict.get("fallback_counts"),
-        bucket_name="fallback_counts",
-    )
-    param_fallbacks, param_fallback_errors = _counter_dict(
-        algo_stats_dict.get("param_fallbacks"),
-        bucket_name="param_fallbacks",
-    )
+    fallback_counts = _counter_dict(algo_stats_dict.get("fallback_counts"))
     return FallbackState(
         fallback_counts=fallback_counts,
-        param_fallbacks=param_fallbacks,
-        legacy_external_days_defaulted_count=int(fallback_counts.get("legacy_external_days_defaulted_count") or 0),
+        param_fallbacks=_counter_dict(algo_stats_dict.get("param_fallbacks")),
         ortools_warmstart_failed_count=int(fallback_counts.get("ortools_warmstart_failed_count") or 0),
-        fallback_count_parse_errors=fallback_count_errors + param_fallback_errors,
     )
 
 
 def _merge_fallback_warnings(all_warnings: List[str], fallback_state: FallbackState) -> List[str]:
-    legacy_count = fallback_state.legacy_external_days_defaulted_count
     warmstart_count = fallback_state.ortools_warmstart_failed_count
-    if legacy_count > 0:
-        all_warnings = _merge_warning_lists(all_warnings, [f"有 {legacy_count} 道外协工序缺少可用周期，本次先按 1 天计算。"])
     if warmstart_count > 0:
         all_warnings = _merge_warning_lists(all_warnings, ["OR-Tools 预热失败，系统已改用普通计算方式继续排产。"])
-    if fallback_state.fallback_count_parse_errors:
-        all_warnings = _merge_warning_lists(all_warnings, ["排产降级统计记录异常，部分降级原因无法完整展示。"])
     return all_warnings
 
 
@@ -287,14 +193,6 @@ def _degraded_cause_codes(
         code = str(raw_event.get("code") or "").strip()
         if code in {
             "config_fallback",
-            "input_fallback",
-            "freeze_window_degraded",
-            "downtime_avoid_degraded",
-            "resource_pool_degraded",
-            "merge_context_degraded",
-            "summary_merge_failed",
-            "optimizer_metrics_invalid",
-            "fallback_count_parse_failed",
             "graph_enhancement_degraded",
             "dispatch_failure_details",
         }:

@@ -7,16 +7,13 @@ from typing import Optional
 
 from core.infrastructure.backup import MIN_KEEP_BACKUPS
 from core.infrastructure.logging import safe_log
-from core.models import SystemJobState
 from core.models.enums import YesNo
+from core.models.system_job_state import SystemJobState
+from core.services.system.maintenance.backup_task import maybe_run_auto_backup
+from core.services.system.maintenance.cleanup_task import maybe_run_auto_backup_cleanup, maybe_run_auto_log_cleanup
+from core.services.system.maintenance.throttle import MaintenanceThrottle
 from data.repositories import SystemJobStateRepository
 
-from .maintenance import (
-    MaintenanceThrottle,
-    maybe_run_auto_backup,
-    maybe_run_auto_backup_cleanup,
-    maybe_run_auto_log_cleanup,
-)
 from .system_config_service import SystemConfigService
 
 

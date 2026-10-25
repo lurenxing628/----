@@ -3,9 +3,9 @@
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
-from types import SimpleNamespace
 from typing import Any, Dict, List, Set
 
+from core.algorithm_contracts.types import ScheduleResult
 from core.services.scheduler.resource_pool_builder import (
     CapturedResourceFacts,
     build_resource_pool,
@@ -28,7 +28,6 @@ from .input_points import read_point_freeze_rows
 class HeldArrangements:
     frozen_op_ids: Set[int]
     seed_results: List[Dict[str, Any]]
-    warnings: List[str]
     meta: Dict[str, Any]
 
 
@@ -49,13 +48,6 @@ def stored_point_validator(facts, version):
     return validate
 
 
-def _strict_pool(*, cfg, algo_ops, meta, resource_facts):
-    pool = build_resource_pool(cfg=cfg, algo_ops=algo_ops, meta=meta, resource_facts=resource_facts)
-    if cfg.auto_assign_enabled == "yes" and (pool is None or meta.get("resource_pool_build_ok") is not True):
-        fail("resource_pool_unavailable", "自动分配要用的设备人员清单建不起来，这次排产没有开始。请到资料总览核对设备和人员后重试。")
-    return pool
-
-
 def _occupies_machine(seed):
     # 外协和零工时安排不占设备时段，采用复核也不按停机检查。
     machine_id = seed["machine_id"]
@@ -72,7 +64,7 @@ def held_machine_downtimes(seeds, *, facts):
     internal = [seed for seed in seeds if _occupies_machine(seed)]
     if not internal:
         return {}
-    return load_machine_downtimes(algo_ops=[SimpleNamespace(**seed) for seed in internal],
+    return load_machine_downtimes(algo_ops=[ScheduleResult(**seed) for seed in internal],
                                   start_dt=min(seed["start_time"] for seed in internal),
                                   downtimes=runtime_resource_facts(facts).downtimes)
 
@@ -88,39 +80,36 @@ def downtime_overlap(seed, downtimes):
     return overlaps[0] if overlaps else None
 
 
-def _freeze_hold_window(svc, *, facts, cfg, prev_version, start_dt, operations, reschedulable_operations, meta,
-                        hold_window):
+def _freeze_hold_window(*, facts, cfg, prev_version, start_dt, reschedulable_operations, meta, hold_window):
     """只按本次的不重排时段保留原安排。正式计划里的锁定标记（旧版「锁定近期排程」顺带打上的）不再起作用：
-    已开工、做完的工序由报工记录保护，其余工序要不要保持原安排，每次排产由不重排时段决定。"""
-    frozen, seeds, warnings = build_freeze_window_seed(
+    已开工、做完的工序由报工记录保护，其余工序要不要保持原安排，每次排产由不重排时段决定。
+
+    前道原安排不在排产起日之后（排产起日前还没报工，或者没排过）的批次整批前后顺序保不住：
+    这批本次不保留、照常重排，排产检查事先提醒；其它原安排读不出来仍整次拒绝。
+    """
+    return build_freeze_window_seed(
         # 试调在来源排产起日上准备这份冻结结果，与来源排产同一口径。
-        svc, cfg=cfg, prev_version=prev_version, start_dt=start_dt, operations=operations,
-        reschedulable_operations=reschedulable_operations, strict_mode=True, meta=meta,
+        cfg=cfg, prev_version=prev_version, start_dt=start_dt,
+        reschedulable_operations=reschedulable_operations, meta=meta,
         # 零工时点事件的见证在冻结前缀校验时取一次，随 seed 的 _point_evidence 带出。
         point_validator=stored_point_validator(facts, prev_version),
         schedule_rows_reader=partial(read_point_freeze_rows, facts=facts),
-        # 前道原安排不在排产起日之后（排产起日前还没报工，或者没排过）的批次整批前后顺序保不住：
-        # 这批本次不保留、照常重排，排产检查事先提醒；其它原安排读不出来仍整次拒绝。
-        skip_incomplete_prefix=True,
         # 工作台的配置副本已关掉按天数冻结；不重排时段为 None 时这里就不保留任何时段内的原安排。
         hold_window=hold_window,
     )
-    return set(frozen), seeds, warnings
 
 
-def held_arrangements(svc, *, facts, cfg, prev_version, start_dt, operations, reschedulable_operations,
-                      hold_window):
+def held_arrangements(*, facts, cfg, prev_version, start_dt, reschedulable_operations, hold_window):
     """排产会原样保留的原安排：落在本次不重排时段里的（含同批次一起保留的前道）；与排产计算同一口径、同样严格。
 
     返回完整冻结结果；保留信息里 hold_window 是本次的不重排时段，freeze_skipped_batch_ids 是前道原安排不全、
     这次不保留的批次。原安排读不出来抛 ValidationError（field=freeze_window）。
     """
     freeze_meta = {}
-    frozen, seeds, warnings = _freeze_hold_window(
-        svc, facts=facts, cfg=cfg, prev_version=prev_version, start_dt=start_dt,
-        operations=operations, reschedulable_operations=reschedulable_operations,
-        meta=freeze_meta, hold_window=hold_window)
-    return HeldArrangements(frozen, seeds, warnings, freeze_meta)
+    frozen, seeds = _freeze_hold_window(
+        facts=facts, cfg=cfg, prev_version=prev_version, start_dt=start_dt,
+        reschedulable_operations=reschedulable_operations, meta=freeze_meta, hold_window=hold_window)
+    return HeldArrangements(frozen, seeds, freeze_meta)
 
 
 def _blank(value):
@@ -197,7 +186,7 @@ def build_runtime(svc, *, facts, cfg, prev_version, start_dt, batches, operation
     resources = runtime_resource_facts(facts)
     if held is None:
         held = held_arrangements(
-            svc, facts=facts, cfg=cfg, prev_version=prev_version, start_dt=start_dt, operations=operations,
+            facts=facts, cfg=cfg, prev_version=prev_version, start_dt=start_dt,
             reschedulable_operations=mutable, hold_window=hold_window)
     frozen, seeds, to_schedule = prepare_runtime_seeds(
         svc, run_label="排产计算", batches=batches, operations=operations, algo_ops=algo_ops,
@@ -209,14 +198,14 @@ def build_runtime(svc, *, facts, cfg, prev_version, start_dt, batches, operation
         validate_fixed_operator_qualifications_fn=resources.validate_fixed,
     )
     if for_adoption:
-        return frozen, seeds, held.warnings, held.meta, [], {}, {}, {}, None, 0
+        return frozen, seeds, held.meta, [], {}, {}, {}, None, 0
     downtime_meta, pool_meta, downtime, pool = _load_runtime_resource_inputs(
         cfg=cfg, algo_ops=algo_ops, resource_pool_ops=to_schedule, start_dt_norm=start_dt,
         load_machine_downtimes_fn=partial(load_machine_downtimes, downtimes=resources.downtimes),
-        build_resource_pool_fn=partial(_strict_pool, resource_facts=resources),
+        build_resource_pool_fn=partial(build_resource_pool, resource_facts=resources),
         extend_downtime_map_for_resource_pool_fn=partial(extend_downtime_map_for_resource_pool,
                                                        downtimes=resources.downtimes),
     )
     downtime = reserve_execution_machines(downtime, reservations)
     seed_version = max(int(prev_version) + 1, 1)
-    return frozen, seeds, held.warnings, held.meta, to_schedule, downtime_meta, pool_meta, downtime, pool, seed_version
+    return frozen, seeds, held.meta, to_schedule, downtime_meta, pool_meta, downtime, pool, seed_version

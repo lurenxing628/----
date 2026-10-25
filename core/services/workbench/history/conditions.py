@@ -683,10 +683,3 @@ def compare_prepared_history_conditions(before, after):
             "gate": {"production_state": conditions["state"], "objective_state": objective_state,
                      "state": "equal" if conditions["state"] == objective_state == "equal" else (
                          "different" if "different" in (conditions["state"], objective_state) else "unknown")}}
-
-
-def compare_history_conditions(before_source, after_source, shared_window):
-    """Prepare standalone inputs for this call; grouped history reads use their reader."""
-    before, after = (prepare_history_condition_side(prepare_history_condition_source(packet), shared_window)
-                     for packet in (before_source, after_source))
-    return compare_prepared_history_conditions(before, after)

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, List, Optional
 
-from core.algorithms import SortStrategy
+from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.candidate_comparison import candidate_is_preferred
 from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
@@ -94,8 +94,6 @@ class RepairStage(SearchStage):
         return self.run.available()
 
     def unavailable_reason(self) -> Optional[str]:
-        if not self.run.pool.limits.enabled:
-            return "disabled"
         if self.run.clock() >= self.run.repair_deadline:
             return "time_budget"
         if self.run.report["repair_stop_reason"] in ("time_budget", "estimated_decode_cost"):
@@ -124,8 +122,6 @@ class IteratedGreedyStage(SearchStage):
         return self.run.available() and (self.run.started_at is not None or self.startup_ready())
 
     def unavailable_reason(self) -> Optional[str]:
-        if not self.run.limits.enabled:
-            return "disabled"
         if self.run.state.best is None:
             return "no_incumbent"
         deadline = self.run.deadline if self.run.search is None else self.run.search.deadline

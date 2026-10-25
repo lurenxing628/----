@@ -44,9 +44,12 @@ def api_endpoint(function, *, readonly=False):
         try:
             return function(*args, **kwargs)
         except WorkbenchCommandRejected as exc:
+            # 500 拒绝的文案让用户“告知下方编号”：日志记下的编号就是响应里的这一个。
+            request_ref = uuid.uuid4().hex
             if exc.status >= 500:
-                current_app.logger.exception("工作台请求失败 code=%s", exc.code)
-            return failure(exc.code, str(exc), exc.status, conflicts=exc.conflicts, row_number=exc.row_number)
+                current_app.logger.exception("工作台请求失败 code=%s request_ref=%s", exc.code, request_ref)
+            return failure(exc.code, str(exc), exc.status, conflicts=exc.conflicts, row_number=exc.row_number,
+                           request_ref=request_ref)
         except WorkbenchCommandUncertain as exc:
             request_ref = uuid.uuid4().hex
             current_app.logger.exception("工作台写入结果待核实 request_key=%s request_ref=%s", exc.request_key, request_ref)

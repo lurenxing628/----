@@ -57,10 +57,12 @@
     if (mode === 'preview' && (!/^[A-Za-z0-9_-]{32}$/.test(d.preview_ref) || typeof d.actual_source_ref !== 'string' || !/^[a-f0-9]{32}$/.test(d.actual_source_ref) || !Array.isArray(d.rows) || typeof d.can_confirm !== 'boolean' || d.commit_policy !== 'atomic' || !C.object(d.write_context))) throw C.failure('读到的文件预检结果不完整，请刷新重试。');
     return result;
   }
+  // context 是已校验过的任务、记录或预检上下文；关闭的上下文没有 write_token、capabilities 为空，原因都在 blocked_reasons 里
+  // （core/models/workbench_execution_input.py closed_write_context）。
   function blocked(context, action) {
-    if (!context || !context.write_token || !context.capabilities || context.capabilities[action] !== true)
-      return (context && context.blocked_reasons || []).map(item => item.message).join('；') || '本页数据已过期，请刷新后重试。';
-    return '';
+    if (context.write_token && context.capabilities[action] === true) return '';
+    const reasons = context.blocked_reasons.map(item => item.message);
+    return reasons.length ? reasons.join('；') : '本页数据已过期，请刷新后重试。';
   }
   function draft(record) {
     return Object.fromEntries(fields.map(key => [key, record && record[key] != null ? String(record[key]) : '']).concat([['reason', ''], ['declared_operator', '']]));
@@ -77,7 +79,7 @@
         v = v ? v.length === 16 ? v + ':00' : v : null;
         if (v !== null && !validTime(v)) bad(key, '请按 2026-09-13 08:30 这样填写；未知时请清除。');
       }
-      else if (key.endsWith('_ref')) v = v || null;
+      else if (key.endsWith('_ref')) v = v === '' ? null : v;
       if (!record || v !== record[key]) result[key] = v;
     });
     if (record) {

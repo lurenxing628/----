@@ -22,13 +22,16 @@ def block(code, message, *, batch_id=None) -> NoReturn:
     raise PieceAdoptionBlocked(code, message, batch_id=batch_id)
 
 
-def build_piece_adoption_scope(operations, batches):
-    """Pure adapter usable before computation; it does not prove DB freshness."""
+def build_piece_adoption_scope(operations, quantities):
+    """Pure adapter usable before computation; it does not prove DB freshness.
+
+    ``quantities`` maps every selected batch ID to its batch quantity.
+    """
     by_batch = defaultdict(list)
     ids = set()
     for op in operations:
         if (not number(op.id, integer=True, positive=True) or op.id in ids
-                or not number(op.seq, integer=True, positive=True) or op.batch_id not in batches):
+                or not number(op.seq, integer=True, positive=True) or op.batch_id not in quantities):
             block("piece_identity_invalid", "工序编号或工序顺序号无效、重复，本次没有采用。请到批次管理核对本批工序。", batch_id=op.batch_id)
         if op.piece_id is not None and (
             type(op.piece_id) is not str or not op.piece_id or op.piece_id.strip() != op.piece_id
@@ -36,11 +39,11 @@ def build_piece_adoption_scope(operations, batches):
             block("piece_identity_invalid", "分件号必须明确填写，不能留空白，本次没有采用。请到批次管理核对本批工序。", batch_id=op.batch_id)
         ids.add(op.id)
         by_batch[op.batch_id].append(op)
-    if set(by_batch) != set(batches):
+    if set(by_batch) != set(quantities):
         block("piece_scope_incomplete", "所选批次里有批次缺工序，本次没有采用。请到批次管理核对本批工序。")
     work = []
     for batch_id, ops in sorted(by_batch.items()):
-        quantity = batches[batch_id].quantity
+        quantity = quantities[batch_id]
         if not number(quantity, integer=True):
             block("piece_quantity_unknown", "批次数量必须是明确的非负整数，本次没有采用。请到批次管理补填数量。", batch_id=batch_id)
         work.extend(_batch_stages(batch_id, ops, quantity))

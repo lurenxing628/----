@@ -3,8 +3,8 @@
 import pytest
 from flask import Blueprint, Flask, g
 
+from tests._support.sqlite_snapshot import stored_state
 from tests.workbench.identity_metadata_support import insert_row, seed_resources
-from tests.workbench.process_workflow_support import stored_state
 
 BASE = "/api/workbench/v1/entities/batch"
 

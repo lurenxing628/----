@@ -51,7 +51,7 @@ class ProcessRouteFileOperations:
     def apply_rows(self, rows):
         if not self.conn.in_transaction:
             raise RuntimeError("路线文件保存必须在外层BEGIN IMMEDIATE事务中执行。")
-        check_part_action_storage(self.conn, self.contracts)
+        check_part_action_storage(self.contracts)
         creator = WorkbenchProcessPartActionService(self.conn, self.logger, self.contracts)
         self.creations = {row["row"]: creator.prepare_create(row["input"],
             parts=self.parts,

@@ -12,8 +12,12 @@ from core.services.report.report_degradation import (
     record_report_missing_machine_row,
     report_degradation_payload,
 )
-from core.services.report.utilization import compute_utilization
-from core.services.report.utilization_calendars import _internal_resource_ids, _project_resources, resource_calendars
+from core.services.report.utilization import group_utilization_rows, utilization_from_groups
+from core.services.report.utilization_calendars import (
+    _project_resources,
+    resource_calendars_for_ids,
+    resource_ids_from_groups,
+)
 from core.shared.degradation import DegradationCollector
 
 
@@ -166,8 +170,9 @@ def test_downtime_overlap_clips_to_query_window_and_zero_duration_point_events_d
         ("machine", "M1"): calendar_projection,
         ("operator", "OP1"): calendar_projection,
     }
-    machines, operators = compute_utilization(
-        schedule_rows=schedule_rows,
+    groups = group_utilization_rows(schedule_rows, start_dt, end_dt_excl, collector)
+    machines, operators = utilization_from_groups(
+        groups,
         start_dt=start_dt,
         end_dt_excl=end_dt_excl,
         calendars=calendars,
@@ -212,7 +217,8 @@ def test_report_preserves_raw_resource_id_without_stripping_non_empty_whitespace
             "end_time": "2026-10-17T11:00:00",
         }
     ]
-    ids = _internal_resource_ids(schedule_rows)
+    groups = group_utilization_rows(schedule_rows, start_dt, end_dt_excl, collector)
+    ids = resource_ids_from_groups(groups)
     assert ids == {"machine": [" M1 "], "operator": [" OP1 "]}
 
     facts = {
@@ -261,8 +267,8 @@ def test_report_preserves_raw_resource_id_without_stripping_non_empty_whitespace
         start_dt,
         end_dt_excl,
     )
-    machines, operators = compute_utilization(
-        schedule_rows=schedule_rows,
+    machines, operators = utilization_from_groups(
+        groups,
         start_dt=start_dt,
         end_dt_excl=end_dt_excl,
         calendars=calendars,
@@ -314,13 +320,15 @@ def test_resource_calendars_only_project_resources_occupying_the_report_window(s
                      row("M-EXTERNAL", "2026-10-17T08:00:00", "2026-10-17T10:00:00", source="external")]
     # 700 个点事件各带一台设备一个人：若也投影日历，32 天 ×(1+1400) 个单元格会超过 40000 的预算。
     schedule_rows += [row(f"M-POINT-{index}", "2026-10-17T08:00:00", "2026-10-17T08:00:00") for index in range(700)]
-    calendars = resource_calendars(conn, schedule_rows, start_dt, end_dt_excl)
+    # 与报表引擎同一条链路：一次分组同时决定日历投影范围和占用率。
+    collector = DegradationCollector()
+    groups = group_utilization_rows(schedule_rows, start_dt, end_dt_excl, collector)
+    calendars = resource_calendars_for_ids(conn, resource_ids_from_groups(groups), start_dt, end_dt_excl)
     assert set(calendars) == {("machine", "M1"), ("operator", "OP1")}
     assert all(item["state"] == "available" for item in calendars.values())
-    collector = DegradationCollector()
-    machines, operators = compute_utilization(schedule_rows=schedule_rows, start_dt=start_dt, end_dt_excl=end_dt_excl,
-                                              calendars=calendars, degradation_collector=collector)
+    machines, operators = utilization_from_groups(groups, start_dt=start_dt, end_dt_excl=end_dt_excl,
+                                                  calendars=calendars, degradation_collector=collector)
     assert [item["machine_id"] for item in machines] == ["M1"] and [item["operator_id"] for item in operators] == ["OP1"]
     assert machines[0]["capacity_hours"] is not None and operators[0]["capacity_hours"] is not None
-    # 日历预算和占用率共用同一判定，但坏时间只由占用率计算报一次。
+    # 日历预算和占用率共用同一次分组，坏时间只报一次。
     assert collector.to_counters() == {"bad_time_row_skipped": 2}

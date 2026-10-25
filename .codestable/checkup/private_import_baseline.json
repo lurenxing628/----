@@ -11,7 +11,7 @@
     {
       "path": "core/algorithms/greedy/dispatch/sgs.py",
       "kind": "private_symbol",
-      "count": 7
+      "count": 6
     },
     {
       "path": "core/algorithms/greedy/dispatch/sgs_graph.py",
@@ -34,11 +34,6 @@
       "count": 4
     },
     {
-      "path": "core/infrastructure/migrations/v4.py",
-      "kind": "private_symbol",
-      "count": 1
-    },
-    {
       "path": "core/infrastructure/workbench_plan_identity_write_guard.py",
       "kind": "private_symbol",
       "count": 1
@@ -47,11 +42,6 @@
       "path": "core/services/common/plan_query.py",
       "kind": "private_symbol",
       "count": 1
-    },
-    {
-      "path": "core/services/scheduler/run/optimizer/graph/candidates.py",
-      "kind": "private_symbol",
-      "count": 4
     },
     {
       "path": "core/services/scheduler/run/optimizer/graph/iterated_greedy.py",
@@ -114,29 +104,14 @@
       "count": 2
     },
     {
-      "path": "core/services/scheduler/run/schedule_seed_contracts.py",
-      "kind": "private_symbol",
-      "count": 1
-    },
-    {
       "path": "core/services/scheduler/summary/schedule_summary.py",
       "kind": "private_symbol",
-      "count": 13
-    },
-    {
-      "path": "core/services/scheduler/summary/schedule_summary_degradation.py",
-      "kind": "private_symbol",
-      "count": 1
-    },
-    {
-      "path": "core/services/scheduler/summary/schedule_summary_downtime_degradation.py",
-      "kind": "private_symbol",
-      "count": 1
+      "count": 12
     },
     {
       "path": "core/services/scheduler/summary/summary_runtime_state.py",
       "kind": "private_symbol",
-      "count": 4
+      "count": 2
     },
     {
       "path": "core/services/system/workbench_overview.py",
@@ -217,11 +192,6 @@
       "path": "core/services/workbench/trial/adoption_validation.py",
       "kind": "private_symbol",
       "count": 2
-    },
-    {
-      "path": "core/services/workbench/trial/base.py",
-      "kind": "private_symbol",
-      "count": 1
     },
     {
       "path": "web/bootstrap/launcher_runtime_lock.py",

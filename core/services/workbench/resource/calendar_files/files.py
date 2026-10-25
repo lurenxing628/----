@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.calendar_period_columns import export_period_columns, parse_period_columns
+from core.models.workbench_action_values import FileDownload
 from core.models.workbench_calendar_file import (
     CLOCK_FIELDS,
     ENUMS,
@@ -22,7 +23,6 @@ from core.models.workbench_calendar_file import (
     NUMERIC,
     REQUIRED,
     UI_FIELDS,
-    CalendarFileDownload,
     CalendarFilePreview,
     calendar_kind,
     file_columns,
@@ -41,7 +41,8 @@ from core.models.workbench_resource_action import (
 )
 from core.models.workbench_resource_file_source import PreparedImportSource
 
-from ..calendars import WorkbenchCalendarService, engine_read_row
+from ..calendar_reading import engine_read_row
+from ..calendars import WorkbenchCalendarService
 from .file_codec import read_calendar_file, read_clock, read_date, read_number
 from .file_writer import check_capacity, number_text, percent_text, write_calendar_file
 
@@ -82,9 +83,6 @@ class WorkbenchCalendarFileService:
                          else WorkbenchCalendarService(conn, logger))
         self.tx = TransactionManager(conn)
 
-    def _normalization_operation(self):
-        return self.calendar._calendar._admin.normalization_operation(self.calendar._calendar._engine.default_periods)
-
     # ---------- 导入 ----------
 
     def _prepare_source(self, content, *, file_format, mode):
@@ -101,7 +99,7 @@ class WorkbenchCalendarFileService:
 
     def _preview_import(self, prepared: PreparedImportSource, request: Dict[str, Any]):
         source, notices = prepared.parsed()
-        with self._normalization_operation():
+        with self.calendar._calendar.normalization_operation():
             rows = self._build_rows(source)
             calendars = {row["row"]: row.pop("calendar") for row in rows if "calendar" in row}
             return replace(CalendarFilePreview.build(self.kind + ".import", request, rows, notices, source=prepared),
@@ -300,10 +298,10 @@ class WorkbenchCalendarFileService:
     def preview_export(self, *, start_date: str, end_date: str, rows):
         return ({"start_date": start_date, "end_date": end_date}, len(rows))
 
-    def export(self, file_format, *, rows) -> CalendarFileDownload:
+    def export(self, file_format, *, rows) -> FileDownload:
         check_capacity(len(rows), file_format)
         return write_calendar_file(self.kind, rows, file_format)
 
     @staticmethod
-    def template(kind, file_format="xlsx") -> CalendarFileDownload:
+    def template(kind, file_format="xlsx") -> FileDownload:
         return write_calendar_file(calendar_kind(kind), [], file_format, template=True)

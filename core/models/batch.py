@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from ._helpers import RowLike, get, parse_int_or_default
 from .enums import BatchPriority, BatchStatus, ReadyStatus
 
 
@@ -21,28 +20,6 @@ class Batch:
     remark: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
-
-    @classmethod
-    def from_row(cls, row: RowLike) -> Batch:
-        qty = get(row, "quantity")
-        return cls(
-            batch_id=str(get(row, "batch_id") or ""),
-            part_no=str(get(row, "part_no") or ""),
-            part_name=get(row, "part_name"),
-            quantity=parse_int_or_default(qty, 0, field="quantity"),
-            due_date=get(row, "due_date"),
-            priority=(
-                str(get(row, "priority") or BatchPriority.NORMAL.value).strip().lower() or BatchPriority.NORMAL.value
-            ),
-            ready_status=(
-                str(get(row, "ready_status") or ReadyStatus.YES.value).strip().lower() or ReadyStatus.YES.value
-            ),
-            ready_date=get(row, "ready_date"),
-            status=(str(get(row, "status") or BatchStatus.PENDING.value).strip().lower() or BatchStatus.PENDING.value),
-            remark=get(row, "remark"),
-            created_at=get(row, "created_at"),
-            updated_at=get(row, "updated_at"),
-        )
 
     def to_dict(self) -> Dict[str, Any]:
         return {

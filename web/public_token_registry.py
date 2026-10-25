@@ -134,14 +134,10 @@ class PublicTokenIssuer:
         """Retain the value directly; only the per-subject key varies in a batch."""
         if value is None or isinstance(value, str) and not value.strip():
             raise ValueError("公开 token 的内容不能为空。")
-        index_key = value if key is None else key
-        return self._issue_with_expiry(lambda _group: value, index_key)
+        return self.issue_bound_with_expiry(lambda _group: value, key=value if key is None else key)
 
     def issue_bound_with_expiry(self, binding: Callable[[Any], Any], *, key: Any) -> Tuple[str, float]:
         """Build the retained binding from the group's canonical facts under the lock."""
-        return self._issue_with_expiry(binding, key)
-
-    def _issue_with_expiry(self, binding: Callable[[Any], Any], index_key: Any) -> Tuple[str, float]:
         with _LOCK:
             now = time.time()
             state = self._state
@@ -157,7 +153,7 @@ class PublicTokenIssuer:
                 self._index = index
                 self._group = index.group
             tokens = state["tokens"]
-            existing_token = index.get(index_key)
+            existing_token = index.get(key)
             if existing_token:
                 entry = tokens.get(existing_token)
                 if entry is not None and entry["expires_at"] - now >= self._ttl * _REUSE_MIN_REMAINING_RATIO:
@@ -172,10 +168,10 @@ class PublicTokenIssuer:
                 if token not in tokens:
                     expires = now + self._ttl
                     tokens[token] = {
-                        "value": value, "index": index, "index_key": index_key,
+                        "value": value, "index": index, "index_key": key,
                         "last_used_at": now, "expires_at": expires,
                     }
-                    index[index_key] = token
+                    index[key] = token
                     state["next_expiry"] = min(state["next_expiry"], expires)
                     return token, expires
         raise RuntimeError("无法生成唯一公开 token。")

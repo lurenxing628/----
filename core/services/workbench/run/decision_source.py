@@ -7,6 +7,7 @@ from core.models.workbench_preflight import preflight_window
 from core.models.workbench_run_candidate import local_time, reference, reject
 from core.services.workbench.facts.candidate_baseline import invalid_baseline
 from core.services.workbench.facts.candidate_facts import GenerationFacts
+from core.services.workbench.facts.candidate_process import index_saved_processes
 from core.services.workbench.facts.candidate_projection import dispositions, validate_manifest
 from core.services.workbench.facts.candidate_tasks import project_validated_tasks, validate_saved_tasks
 from core.services.workbench.facts.candidate_values import corrupt
@@ -79,7 +80,6 @@ class DecisionSource:
         self._candidate_reference(self.selected_ref, require_result=False)
         self._projected, self._task_intervals, self._analysis, self._candidate_records = {}, {}, {}, {}
         self._raw_tasks, self._candidate_sources, self._scheduled_op_ids = {}, {}, {}
-        self._process_projection = None
         self._candidate_records.update({row["candidate_ref"]: row for row in prepared.get("rows", ())})
         for name in ("receipt", "capture", "facts", "disposition"):
             if name in prepared:
@@ -198,6 +198,10 @@ class DecisionSource:
         if self.run["state"] in ("queued", "running"):
             return None
         return decode_model(self.repo.decision_read_model(self.run["run_ref"], ("process",)), ("process",))["process"]
+
+    @cached_property
+    def candidate_processes(self):
+        return index_saved_processes(self.saved_process, self.rows)
 
     @overload
     def _candidate_reference(self, candidate_ref: None, *, require_result: bool = True) -> None: ...
@@ -402,7 +406,7 @@ class DecisionSource:
 
     @cached_property
     def resources(self):
-        from .decision_resources import DecisionResources
+        from .decision_resource_engine import DecisionResources
         return DecisionResources(self)
 
     @cached_property

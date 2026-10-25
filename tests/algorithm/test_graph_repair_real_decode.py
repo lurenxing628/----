@@ -9,7 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.algorithms import ScheduleResult, SortStrategy
+from core.algorithm_contracts.sort_strategies import SortStrategy
+from core.algorithm_contracts.types import ScheduleResult
 from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.candidate_fingerprint import build_candidate_fingerprint
 from core.services.scheduler.run.optimizer.graph.candidates import evaluate_graph_ready_candidate
@@ -18,8 +19,8 @@ from core.services.scheduler.run.optimizer.graph.repair import EliteRepairPool
 from core.services.scheduler.run.optimizer.graph.repair_contract import EliteRepairLimits
 from core.services.scheduler.run.optimizer.graph.repair_decisions import (
     RepairDecision,
-    decoded_resource_overrides,
     iter_resource_decisions,
+    prepare_repair_parent,
 )
 from core.services.scheduler.run.optimizer.graph.repair_neighbors import RepairNeighborhood
 from core.services.scheduler.run.optimizer.graph.repair_portfolio import (
@@ -28,15 +29,16 @@ from core.services.scheduler.run.optimizer.graph.repair_portfolio import (
     build_repair_portfolio,
 )
 from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
+from core.services.scheduler.run.optimizer.graph.v2_ranks import build_v2_common_rank_cache
 from core.services.scheduler.run.optimizer.graph_ready_feature_basis import (
     BATCH_WORKLOAD_BASIS,
     SUCCESSOR_WORKLOAD_BASIS,
 )
-from core.services.scheduler.run.optimizer.graph_ready_profiles import resolve_v2_profiles_and_summary
+from core.services.scheduler.run.optimizer.graph_ready_profiles import resolve_v2_profiles
+from tests._support.algo_operations import make_batch, make_schedule_result
 from tests._support.optimizer_graph_ready_benchmark import (
     BASE_BATCH_ORDER,
     START_DT,
-    _schedule_with_scheduler,
     _scheduler,
     graph_ready_benchmark_batches,
     graph_ready_benchmark_context,
@@ -54,9 +56,9 @@ def test_fixed_decision_features_admit_effective_profiles_once_and_preserve_raw_
         context["node_metrics_by_op_id"], operations=operations, batches=batches,
         start_dt=START_DT, graph_ready_context=context,
     )
-    ranks = candidates.build_v2_common_rank_cache(metrics)
+    ranks = build_v2_common_rank_cache(metrics)
     owner = SharedGraphFeatures(metrics, ranks)
-    profiles = resolve_v2_profiles_and_summary(max_candidate_profiles=60)[0]
+    profiles = resolve_v2_profiles(seed=0, objective_name="min_overdue")
     profile = next(item for item in profiles if item.formula_version.startswith("graph_ready_v2")
                    and item.feature_basis == SUCCESSOR_WORKLOAD_BASIS)
     original = deepcopy((metrics, ranks))
@@ -103,9 +105,9 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
     def unused_ranking(*args, **kwargs):
         raise AssertionError("Explicit decisions must not prepare discarded profile ranks")
 
-    monkeypatch.setattr(candidates, "_normalized_v2_metrics_by_op_id", unused_ranking)
+    monkeypatch.setattr(candidates, "normalized_v2_metrics_by_op_id", unused_ranking)
     operations, batches = graph_ready_benchmark_operations(), graph_ready_benchmark_batches()
-    operations[2].machine_id = operations[2].operator_id = ""
+    operations[2].machine_id = operations[2].operator_id = None
     context = graph_ready_benchmark_context()
     seed = ScheduleResult(op_id=99, op_code="FIXED", batch_id="B_LONG", seq=0,
                           machine_id="MC-BENCH", operator_id="OP-BENCH", op_type_name="BENCH",
@@ -123,7 +125,7 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
         start_dt=START_DT, seed_results=[seed], resource_pool=pool, downtime_map=downtime,
         graph_ready_context=context,
     )
-    profile = resolve_v2_profiles_and_summary(max_candidate_profiles=60)[0][1]
+    profile = next(p for p in resolve_v2_profiles(seed=0, objective_name="min_overdue") if p.slug == "v2_seeded_micro_perturbation")
     profile = replace(profile, candidate_origin="graph_ready_v2_repaired", candidate_policy="elite_repair")
 
     sessions, seed_results = [], [seed]
@@ -138,7 +140,7 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
                                     target_objectives=targets, configured_seconds=10)
         session = SharedDecodeSession(
             archive=archive, budget=budget, scheduler=scheduler, operations=decoder_operations, batches=batches,
-            seed_results=seed_results, downtime_map=downtime, resource_pool=pool, graph_ready_context=context, schedule_fn=_schedule_with_scheduler, start_dt=START_DT,
+            seed_results=seed_results, downtime_map=downtime, resource_pool=pool, graph_ready_context=context, start_dt=START_DT,
             clock=lambda: 0.0, started_at=0.0, deadline=10.0,
         )
         sessions.append(session)
@@ -176,7 +178,6 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
         "operation_order": [2, 4, 3, 1],
     })
     inherited = ((3, "MC-ALT", "OP-ALT"), (4, "MC-BENCH", "OP-BENCH"))
-    assert decoded_resource_overrides(stale_parent, mutable_operations, pool) == inherited
     parent = _parent_from_candidate(stale_parent, operations=mutable_operations, graph_context=context, resource_pool=pool)
     assert parent is not None and parent.inherited == inherited
     assert parent.order.index(1) < parent.order.index(2)
@@ -201,7 +202,7 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
     counts = {}
     with monkeypatch.context() as patch:
         for name in ("_operations_by_id", "_decoded_rows", "decoded_topological_order", "resource_timeline_groups",
-                     "_decoded_resource_facts", "decoded_batch_order"):
+                     "decoded_batch_order"):
             original_helper = getattr(repair_decisions, name)
 
             def counted(*args, _name=name, _helper=original_helper, **kwargs):
@@ -214,7 +215,7 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
             raise AssertionError("A decoded parent's inherited selections must not be qualified again")
 
         patch.setattr(repair_decisions, "_validated_overrides", repeated_qualification)
-        profiles = resolve_v2_profiles_and_summary(max_candidate_profiles=60)[0]
+        profiles = resolve_v2_profiles(seed=0, objective_name="min_overdue")
         successor = next(item for item in profiles if item.feature_basis == SUCCESSOR_WORKLOAD_BASIS
                          and item.formula_version.startswith("graph_ready_v2"))
         baseline = next(item for item in profiles if item.feature_basis == BATCH_WORKLOAD_BASIS
@@ -253,25 +254,15 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
     assert pure_rows[2].start_time >= pure_rows[1].end_time
     assert pure_rows[3].start_time >= downtime["MC-ALT"][0][1]
 
-    # Existing qualification and fixed-input errors apply to actual output evidence.
-    fixed_conflict = dict(stale_parent, results=[replace(row, machine_id="MC-ALT") if row.op_id == 1 else row
-                                               for row in alternative["results"]])
-    with pytest.raises(ValidationError) as exc:
-        decoded_resource_overrides(fixed_conflict, mutable_operations, pool)
-    assert exc.value.details["reason"] == "graph_ready_repair_fixed_resource"
-    unqualified = dict(stale_parent, results=[replace(row, operator_id="OP-BENCH") if row.op_id == 3 else row
-                                            for row in alternative["results"]])
-    with pytest.raises(ValidationError) as exc:
-        decoded_resource_overrides(unqualified, mutable_operations, pool)
-    assert exc.value.details["reason"] == "graph_ready_repair_resource_qualification"
-
     # A resource-free point event contributes no invented pair; external rows and fixed seeds stay out.
     event_operations = deepcopy(mutable_operations)
     event_operations[3].source = "external"
     event_parent = dict(stale_parent, results=[replace(row, machine_id=None, operator_id=None, end_time=row.start_time)
                                              if row.op_id == 3 else row for row in alternative["results"]])
-    assert decoded_resource_overrides(event_parent, event_operations, pool) == ()
-    assert list(iter_resource_decisions(event_parent, event_operations, pool, parent.batch_order, parent.order)) == []
+    event_prepared = prepare_repair_parent(event_parent, event_operations, pool, context, resource_moves=True)
+    assert event_prepared.inherited_resources == ()
+    assert list(iter_resource_decisions(operations=event_operations, resource_pool=pool, batch_order=parent.batch_order,
+                                        operation_order=parent.order, prepared_parent=event_prepared)) == []
     assert (operations, context, pool, seed) == original
 
 
@@ -287,7 +278,7 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
     order = tuple("B" + str(index) for index in range(10))
     batches = RepairNeighborhood(order, tuple(("adjacent_swap", index, index + 1) for index in range(9)))
     portfolio = RepairPortfolio(batches, (), ())
-    profile = resolve_v2_profiles_and_summary(max_candidate_profiles=60)[0][1]
+    profile = next(p for p in resolve_v2_profiles(seed=0, objective_name="min_overdue") if p.slug == "v2_seeded_micro_perturbation")
     expanded = []
     expand = RepairPortfolio._batch_decision
 
@@ -353,7 +344,7 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
 
     monkeypatch.setattr(operation_neighbors, "_critical_block_moves", family("critical_block_swap"))
     monkeypatch.setattr(operation_neighbors, "_time_insert_moves", family("operation_time_insert"))
-    rows = {1: SimpleNamespace(op_id=1, end_time=START_DT), 2: SimpleNamespace(op_id=2, end_time=START_DT)}
+    rows = {op_id: make_schedule_result(op_id=op_id, end_time=START_DT) for op_id in (1, 2)}
     moves = operation_neighbors._operation_moves([[rows[1]], [rows[2]]], rows, {}, START_DT, "min_overdue")
     assert next(moves) == ("critical_block_swap", 1, 2)
     assert generated == [("critical_block_swap", 1, 0), ("operation_time_insert", 1, 0)]
@@ -384,8 +375,8 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
     results = [ScheduleResult(op_id=index + 1, op_code="R" + str(index + 1), batch_id=batch, seq=index, machine_id="M", op_type_id=kind,
                               start_time=START_DT + timedelta(hours=index), end_time=START_DT + timedelta(hours=index + 1))
                for index, (batch, kind) in enumerate((("BA", "A"), ("blank", ""), ("BB", "B"), ("BC", "C")))]
-    batch_map = {"BA": SimpleNamespace(due_date="2025-12-31"), "BB": SimpleNamespace(due_date="2026-01-01"),
-                 "BC": SimpleNamespace(due_date=None)}
+    batch_map = {batch_id: make_batch(batch_id=batch_id, due_date=due)
+                 for batch_id, due in (("BA", "2025-12-31"), ("BB", "2026-01-01"), ("BC", None))}
     counts = {"sort_key": 0, "due": 0, "tardy": 0}
     for name, key in (("result_time_key", "sort_key"), ("batch_due_date", "due"), ("most_tardy_batch", "tardy")):
         helper = getattr(neighborhood_move_support, name)

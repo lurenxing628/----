@@ -3,99 +3,21 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.models.enums import YesNo
-from core.models.schedule_config_runtime import ScheduleConfigSnapshot
-from core.models.scheduler_degradation_messages import (
-    RESOURCE_POOL_BUILD_FAILED_MESSAGE,
-    public_degradation_event_message,
-)
-from core.services.common.build_outcome import BuildOutcome
-from core.services.scheduler.contracts.summary_count_parse import _meta_bool_state
+from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
+from core.models.scheduler_degradation_messages import public_degradation_event_message
 from core.shared.degradation import DegradationCollector, degradation_events_to_dicts
 
-_LEGACY_MERGE_CONTEXT_CODES = {"template_missing", "external_group_missing"}
 
-
-def _legacy_merge_context_events(event_dicts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return [
-        dict(event)
-        for event in event_dicts
-        if str(event.get("code") or "").strip() in _LEGACY_MERGE_CONTEXT_CODES
-    ]
-
-
-def _input_build_state(input_build_outcome: Optional[BuildOutcome[Any]]) -> Dict[str, Any]:
-    if not isinstance(input_build_outcome, BuildOutcome):
-        return {
-            "degraded": False,
-            "degradation_events": [],
-            "degradation_counters": {},
-            "empty_reason": None,
-            "merge_context_degraded": False,
-            "merge_context_events": [],
-            "input_fallback": False,
-        }
-
-    event_dicts = degradation_events_to_dicts(input_build_outcome.events)
-    merge_context_events = _legacy_merge_context_events(event_dicts)
-    merge_context_degraded = bool(merge_context_events)
-    input_fallback = any(str(e.get("code") or "").strip() not in _LEGACY_MERGE_CONTEXT_CODES for e in event_dicts)
-    degradation_counters = dict(input_build_outcome.counters or {})
-    return {
-        "degraded": bool(input_build_outcome.has_events or merge_context_degraded),
-        "degradation_events": event_dicts,
-        "degradation_counters": degradation_counters,
-        "empty_reason": input_build_outcome.empty_reason,
-        "merge_context_degraded": merge_context_degraded,
-        "merge_context_events": merge_context_events,
-        "input_fallback": input_fallback,
-    }
-
-
-def _optional_text(value: Any) -> Optional[str]:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
-def _event_count(event: Dict[str, Any]) -> int:
-    try:
-        return max(1, int(event.get("count") or 1))
-    except Exception:
-        return 1
-
-
-def _add_input_events(collector: DegradationCollector, input_state: Dict[str, Any]) -> None:
-    for event in list(input_state.get("degradation_events") or []):
-        if not isinstance(event, dict):
-            continue
-        code = _optional_text(event.get("code"))
-        if code is None:
-            continue
+def _add_existing_degradation_events(collector: DegradationCollector, events: Tuple[Dict[str, Any], ...]) -> None:
+    # 配置快照的降级事件由 DegradationCollector 产出并转成字典：code/scope/message 非空，
+    # field 是配置键，count 至少为 1。
+    for event in events:
         collector.add(
-            code=code,
-            scope=_optional_text(event.get("scope")) or "schedule.input_contract",
-            field=_optional_text(event.get("field")),
-            message=public_degradation_event_message(code),
-            count=_event_count(event),
-            sample=None,
-        )
-
-
-def _add_existing_degradation_events(collector: DegradationCollector, raw_events: Any) -> None:
-    for event in raw_events or ():
-        if not isinstance(event, dict):
-            continue
-        code = _optional_text(event.get("code"))
-        message = _optional_text(event.get("message"))
-        if not code or not message:
-            continue
-        collector.add(
-            code=code,
-            scope=_optional_text(event.get("scope")) or "scheduler.config_snapshot",
-            field=_optional_text(event.get("field")),
-            message=public_degradation_event_message(code),
-            count=_event_count(event),
+            code=event["code"],
+            scope=event["scope"],
+            field=event["field"],
+            message=public_degradation_event_message(event["code"]),
+            count=event["count"],
             sample=None,
         )
 
@@ -133,18 +55,9 @@ def _add_state_event(
 def _summary_degradation_state(
     *,
     cfg: ScheduleConfigSnapshot,
-    input_state: Dict[str, Any],
     invalid_due_count: int,
     invalid_due_batch_ids_sample: List[str],
-    legacy_external_days_defaulted_count: int,
-    freeze_state: Dict[str, Any],
-    downtime_state: Dict[str, Any],
-    resource_pool_enabled: bool,
-    resource_pool_degraded: bool,
-    resource_pool_degradation_reason: Optional[str],
     ortools_warmstart_failed_count: int,
-    merge_context_degraded: bool,
-    warning_merge_status: Dict[str, Any],
 ) -> Dict[str, Any]:
     collector = DegradationCollector()
     _add_existing_degradation_events(collector, cfg.degradation_events)
@@ -157,16 +70,6 @@ def _summary_degradation_state(
         message=None,
         default_message="配置中有填写不完整或不正确的设置，本次先按默认值生成摘要。",
     )
-    _add_input_events(collector, input_state)
-    _add_state_event(
-        collector,
-        enabled=bool(input_state.get("input_fallback")),
-        code="input_fallback",
-        scope="schedule.summary.input_contract",
-        field="input_contract",
-        message=None,
-        default_message="排产输入里有填写不完整或不正确的数据，本次先按默认值生成摘要。",
-    )
     _add_counted_event(
         collector,
         count=invalid_due_count,
@@ -178,86 +81,24 @@ def _summary_degradation_state(
     )
     _add_counted_event(
         collector,
-        count=legacy_external_days_defaulted_count,
-        code="legacy_external_days_defaulted",
-        scope="greedy.external",
-        field="ext_days",
-        message="部分外协周期缺失或填写不对，本次先按 1 天计算。",
-    )
-    _add_counted_event(
-        collector,
         count=ortools_warmstart_failed_count,
         code="ortools_warmstart_failed",
         scope="optimizer.warmstart",
         field="ortools_enabled",
         message="OR-Tools 预热失败，系统已改用普通计算方式继续排产。",
     )
-    _add_state_event(
-        collector,
-        enabled=str(freeze_state.get("freeze_state") or "").strip().lower() == "degraded",
-        code="freeze_window_degraded",
-        scope="schedule.summary.freeze_window",
-        field="freeze_window",
-        message=_optional_text(freeze_state.get("degradation_reason")),
-        default_message="冻结窗口资料不完整，本次排产未使用冻结窗口。",
-    )
-    _add_state_event(
-        collector,
-        enabled=bool(downtime_state.get("downtime_degraded")),
-        code="downtime_avoid_degraded",
-        scope="schedule.summary.downtime_avoid",
-        field="downtime_avoid",
-        message=_optional_text(downtime_state.get("downtime_degradation_reason")),
-        default_message="停机时间资料不完整，本次先按可用数据继续。",
-    )
-    _add_state_event(
-        collector,
-        enabled=resource_pool_enabled and resource_pool_degraded,
-        code="resource_pool_degraded",
-        scope="schedule.summary.resource_pool",
-        field="resource_pool",
-        message=resource_pool_degradation_reason,
-        default_message="自动分配设备人员所需资料不完整，本次排产先不自动补设备和人员。",
-    )
-    _add_state_event(
-        collector,
-        enabled=merge_context_degraded,
-        code="merge_context_degraded",
-        scope="schedule.summary.merge_context",
-        field="warnings",
-        message=None,
-        default_message="组合并资料不完整，摘要已按可确认内容继续生成。",
-    )
-    _add_state_event(
-        collector,
-        enabled=bool(warning_merge_status.get("summary_merge_failed")),
-        code="summary_merge_failed",
-        scope="schedule.summary.warning_pipeline",
-        field="warnings",
-        message=None,
-        default_message="排产提示没有完整整理，已保留能确认的提示。",
-    )
     return {"events": degradation_events_to_dicts(collector.to_list()), "counters": collector.to_counters()}
 
 
-def _compute_resource_pool_degradation(cfg: ScheduleConfigSnapshot, *, resource_pool_meta: Optional[Dict[str, Any]]) -> Tuple[bool, bool, Optional[str], bool]:
+def _compute_resource_pool_state(cfg: ScheduleConfigSnapshot, *, resource_pool_meta: Optional[Dict[str, Any]]) -> Tuple[bool, bool]:
+    # 资源池建不起来时 build_resource_pool 直接抛错停止排产，摘要只记录启用与是否尝试构建。
     auto_assign_enabled = cfg.auto_assign_enabled == YesNo.YES.value
     meta = resource_pool_meta if isinstance(resource_pool_meta, dict) else {}
-    attempted, attempted_parse_failed = _meta_bool_state(meta, "resource_pool_attempted", default=False)
-    build_ok, build_ok_parse_failed = _meta_bool_state(meta, "resource_pool_build_ok", default=True)
-    if attempted_parse_failed or build_ok_parse_failed:
-        if attempted_parse_failed:
-            attempted = True
-        build_ok = False
-    degraded = auto_assign_enabled and attempted and not build_ok
-    reason = RESOURCE_POOL_BUILD_FAILED_MESSAGE if degraded else None
-    return auto_assign_enabled, degraded, reason, attempted
+    return auto_assign_enabled, meta.get("resource_pool_attempted", False)
 
 
-def _hard_constraints(*, downtime_degraded: bool, freeze_applied: bool) -> List[str]:
-    hard_constraints: List[str] = ["precedence", "calendar", "resource_machine_operator"]
-    if not downtime_degraded:
-        hard_constraints.append("downtime_avoid")
+def _hard_constraints(*, freeze_applied: bool) -> List[str]:
+    hard_constraints: List[str] = ["precedence", "calendar", "resource_machine_operator", "downtime_avoid"]
     if freeze_applied:
         hard_constraints.append("freeze_window")
     return hard_constraints

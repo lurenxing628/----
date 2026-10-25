@@ -13,6 +13,11 @@ from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.decision_baseline import read_decision_baseline
 from core.services.workbench.facts.decision_baseline_source import decision_baseline_source_resolver
 from core.services.workbench.facts.decision_read_model import build_decision_read_models, prepare_admission_read_models
+from core.services.workbench.history.conditions import (
+    compare_prepared_history_conditions,
+    prepare_history_condition_side,
+    prepare_history_condition_source,
+)
 from data.repositories.workbench_command_repo import WorkbenchCommandRepository
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from tests.workbench.plan_catalog_support import history as legacy_history
@@ -28,6 +33,13 @@ from tests.workbench.trial_adoption_support import service as trial_adopter
 from tests.workbench.trial_support import trial_case
 
 BASE = "/api/workbench/v1/scheduling/decision-history"
+
+
+def compare_conditions(before_packet, after_packet, window):
+    """两侧各自独立准备再比对；生产的成组读取经 HistoryReader 复用同一份准备结果。"""
+    before, after = (prepare_history_condition_side(prepare_history_condition_source(packet), window)
+                     for packet in (before_packet, after_packet))
+    return compare_prepared_history_conditions(before, after)
 
 
 def exported_history_references(headers, rows):

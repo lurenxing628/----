@@ -13,8 +13,6 @@
     let saved = null, receiptError = null;
     if (command.phase === 'done') { try { saved = A.receipt(command.result, command.intent, !create && !recovery ? original.refs : undefined); } catch (failure) { receiptError = failure; } }
     const visible = receiptError ? { ...command, phase: 'pending', locked: true, error: receiptError } : command;
-    const errorCode = command.error && (command.error.code || command.error.error && command.error.error.code);
-    const stale = command.phase === 'rejected' && ['stale_write', 'stale_context', 'context_expired', 'snapshot_stale'].includes(errorCode);
     const done = !!saved, dirty = !done && Object.values(draft).some(value => value !== ''), locked = visible.locked || opening || reading;
     const preview = S.useQuery(async signal => A.deletePreview(await adapter.bulkPreview(job.body, signal), original), [adapter, job], !!job);
     const result = preview.result, data = result && result.data;
@@ -65,10 +63,10 @@
     if (!create && data && now >= Date.parse(data.expires_at)) reason = '预检已过期，请重新预检。';
     if (!create && !reason && !ack) reason = '请先核对并勾选完整删除范围。';
     if (review) reason = '请先核对新读取的资料。';
-    if (command.phase === 'rejected' && (!create || stale)) reason = create ? '本次未保存，请刷新资料后再试。' : '本次未删除，请重新预检。';
+    if (command.phase === 'rejected' && (!create || command.stale)) reason = create ? '本次未保存，请刷新资料后再试。' : '本次未删除，请重新预检。';
     function updateDraft(key, value) {
       setDraft(current => ({ ...current, [key]: value })); setError(null);
-      if (command.phase === 'rejected' && !stale && typeof command.reset === 'function') command.reset();
+      command.clearRejection();
     }
     function confirm(event) {
       if (event && typeof event.preventDefault === 'function') event.preventDefault();

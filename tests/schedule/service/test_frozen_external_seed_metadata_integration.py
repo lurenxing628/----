@@ -76,3 +76,46 @@ def test_template_change_keeps_frozen_batch_cycles_and_execution_facts(run_case,
     assert all(type(row) is ScheduleResult for row in adopted_results)
     assert not any(key.startswith("_external_group") for row in adopted_results for key in vars(row))
     assert [tuple(row) for row in case.conn.execute("SELECT * FROM Schedule ORDER BY id")] == original
+
+
+@pytest.mark.parametrize("source", ["missing", None, "", " internal", "Internal", "legacy"])
+def test_seed_contract_rejects_missing_or_irregular_source(source):
+    """种子来源与工序来源同一值域：缺失或不规范一律按无效种子停止排产，不再静默当作自制。"""
+    from core.errors import ValidationError
+    from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_results
+
+    seed = {"op_id": 1, "op_code": "OP1", "batch_id": "B1", "seq": 1, "machine_id": "M1", "operator_id": "O1",
+            "start_time": datetime(2026, 9, 9, 8), "end_time": datetime(2026, 9, 9, 9)}
+    if source != "missing":
+        seed["source"] = source
+    with pytest.raises(ValidationError) as exc_info:
+        coerce_seed_results([seed], optimizer_algo_stats={"fallback_counts": {}, "param_fallbacks": {}})
+    details = exc_info.value.details or {}
+    assert details["reason"] == "invalid_seed_results"
+    assert details["invalid_seed_samples"][0]["error"] == "第 1 条已有排产记录的工序来源不正确。"
+
+
+_MISSING_TIME = "第 1 条已有排产记录缺少开始时间或结束时间。"
+_INVALID_TIME = "第 1 条已有排产记录的开始时间和结束时间必须是有效时间。"
+_UNORDERED_TIME = "第 1 条已有排产记录的开始时间必须早于结束时间。"
+
+
+@pytest.mark.parametrize(("start_time", "end_time", "error"), [
+    (None, datetime(2026, 9, 9, 9), _MISSING_TIME),
+    (datetime(2026, 9, 9, 8), None, _MISSING_TIME),
+    ("2026-09-09 08:00:00", datetime(2026, 9, 9, 9), _INVALID_TIME),
+    (datetime(2026, 9, 9, 9), datetime(2026, 9, 9, 8), _UNORDERED_TIME),
+    (datetime(2026, 9, 9, 9), datetime(2026, 9, 9, 9), _UNORDERED_TIME),
+])
+def test_seed_contract_rejects_missing_irregular_or_unordered_time_window(start_time, end_time, error):
+    """种子起止时间只在入口校验一次：缺失、非时间、倒序、无见证的零时长都整次拒绝，下游不再二次丢弃。"""
+    from core.errors import ValidationError
+    from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_results
+
+    seed = {"op_id": 1, "op_code": "OP1", "batch_id": "B1", "seq": 1, "machine_id": "M1", "operator_id": "O1",
+            "start_time": start_time, "end_time": end_time, "source": "internal"}
+    with pytest.raises(ValidationError) as exc_info:
+        coerce_seed_results([seed], optimizer_algo_stats={"fallback_counts": {}, "param_fallbacks": {}})
+    details = exc_info.value.details or {}
+    assert details["reason"] == "invalid_seed_results"
+    assert details["invalid_seed_samples"][0]["error"] == error

@@ -19,6 +19,7 @@ import math
 from datetime import datetime
 from types import SimpleNamespace
 
+from core.algorithm_contracts.value_domains import EXTERNAL
 from core.algorithm_runtime.calendar_timing_memo import native_timing_calendar
 from core.algorithm_runtime.native_snapshot import UNSUPPORTED, scalar_snapshot
 from core.algorithm_runtime.run_state import ScheduleRunState
@@ -37,10 +38,6 @@ _FIELDS = ("id", "seq", "batch_id", "piece_id", "source", "machine_id", "operato
 def prepare_pruning_record(record, plain_classes):
     kind = type(record)
     return plain_classes.get(kind, False) and all(scalar_snapshot(getattr(record, name, None)) is not UNSUPPORTED for name in _FIELDS)
-
-
-def _blank_or_text(value):
-    return value is None or type(value) is str
 
 
 class GraphPriorityPruning:
@@ -97,26 +94,21 @@ class GraphPriorityPruning:
             if not self._record(batch):
                 return False
             try:
-                parse_due_date(getattr(batch, "due_date", None), strict_mode=strict)
+                parse_due_date(batch.due_date, strict_mode=strict)
             except (ValidationError, ValueError, OverflowError):
                 return False
-        return self._certify_operations(graph, hours, strict)
+        return self._certify_operations(graph, hours)
 
-    def _certify_operations(self, graph, hours, strict):
+    def _certify_operations(self, graph, hours):
         for op_id, (_batch_id, op) in graph["op_by_id"].items():
-            if (not self._record(op) or type(getattr(op, "id", None)) is not int
-                    or type(getattr(op, "seq", None)) is not int):
+            if not self._record(op):
                 return False
-            source = getattr(op, "source", "internal")
-            if type(source) is not str:
-                return False
-            normalized_source = source.strip().lower()
-            if normalized_source == "external":
-                if not self._certified_external(op, strict):
+            if op.source == EXTERNAL:
+                if not self._certified_external(op):
                     return False
                 self._has_external, self.fixed_resources = True, False
                 continue
-            if not self._certified_internal(normalized_source, op_id, hours):
+            if not self._certified_internal(op_id, hours):
                 return False
             fixed = self._certified_resources(op)
             if fixed is None:
@@ -124,25 +116,24 @@ class GraphPriorityPruning:
             self.fixed_resources = self.fixed_resources and fixed
         return True
 
-    def _certified_external(self, op, strict):
+    def _certified_external(self, op):
         if self._calendar_days is None:
             return False
-        # Run the normal duration/merge/calendar validation with an empty group cache.
-        # A native natural-day call is pure arithmetic; the earliest datetime leaves room
-        # for every valid duration without depending on this operation's future progress.
+        # Run the normal merge/calendar path with an empty group cache; the calendar rejects a
+        # duration it cannot add. A native natural-day call is pure arithmetic; the earliest datetime
+        # leaves room for every valid duration without depending on this operation's future progress.
         try:
             external_candidate_window(
                 SimpleNamespace(calendar=self._calendar), ScheduleRunState(base_time=datetime.min),
-                op=op, prev_end=datetime.min, strict_mode=strict,
+                op=op, prev_end=datetime.min,
             )
         except (ValidationError, ValueError, OverflowError):
             return False
         return True
 
     @staticmethod
-    def _certified_internal(normalized_source, op_id, hours):
-        return (normalized_source == "internal"
-                and op_id in hours and type(hours[op_id]) is float and math.isfinite(hours[op_id]) and hours[op_id] >= 0)
+    def _certified_internal(op_id, hours):
+        return op_id in hours and type(hours[op_id]) is float and math.isfinite(hours[op_id]) and hours[op_id] >= 0
 
     def _certified_resources(self, op):
         """True for a fixed machine/operator pair, False for a certified auto-assign operation, None otherwise.
@@ -151,10 +142,8 @@ class GraphPriorityPruning:
         one machine and one operator: the probe then always produces a feasibility penalty rather
         than a validation error, so an unscored group can never hide a static input error.
         """
-        machine, operator = getattr(op, "machine_id", None), getattr(op, "operator_id", None)
-        if not _blank_or_text(machine) or not _blank_or_text(operator):
-            return None
-        if machine and machine.strip() and operator and operator.strip():
+        # None and the empty string an optimizer resource variant may carry both leave the resource to auto-assign.
+        if op.machine_id and op.operator_id:
             return True
         if self._eligible_resources is None:
             return None

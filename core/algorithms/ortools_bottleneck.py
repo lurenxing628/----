@@ -12,16 +12,20 @@ from __future__ import annotations
 - 若环境未安装 `ortools`，会抛出 `OrtoolsWarmstartError`，由上层记录为可见降级后继续主流程
 """
 
+import logging
 import math
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
 from core.algorithm_contracts.priority_constants import priority_weight_scaled
+from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_contracts.value_domains import INTERNAL
 from core.algorithm_runtime.operation_effort import internal_operation_effort
 from core.errors import ValidationError
-from core.infrastructure.logging import safe_log
+from core.models.batch import Batch
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class OrtoolsWarmstartError(RuntimeError):
@@ -47,12 +51,11 @@ def _status_name(cp_model: Any, status: int) -> str:
 
 def try_solve_bottleneck_batch_order(
     *,
-    operations: List[Any],
-    batches: Dict[str, Any],
+    operations: List[OpForScheduleAlgo],
+    batches: Dict[str, Batch],
     start_dt: datetime,
     time_limit_seconds: int = 5,
     max_jobs: int = 200,
-    logger=None,
 ) -> Optional[List[str]]:
     """
     返回一个 batch_id 列表（优先顺序），可直接作为 `batch_order_override` 传入启发式排产。
@@ -72,13 +75,10 @@ def try_solve_bottleneck_batch_order(
     per_batch_type_load: Dict[Tuple[str, str], float] = {}
 
     for op in operations:
-        if (getattr(op, "source", INTERNAL) or INTERNAL).strip().lower() != INTERNAL:
+        if op.source != INTERNAL:
             continue
-        bid = str(getattr(op, "batch_id", "") or "").strip()
-        if not bid or bid not in batches:
-            continue
-        ot = str(getattr(op, "op_type_id", "") or "").strip()
-        if not ot:
+        bid, ot = op.batch_id, op.op_type_id
+        if bid not in batches:
             continue
         try:
             effort = internal_operation_effort(op, batches[bid])
@@ -93,14 +93,14 @@ def try_solve_bottleneck_batch_order(
     if not load_by_type:
         return None
 
-    bottleneck_ot = max(load_by_type.items(), key=lambda x: float(x[1] or 0.0))[0]
+    bottleneck_ot = max(load_by_type.items(), key=lambda x: x[1])[0]
 
     # 2) 聚合成 job（按 batch）
     jobs: List[Tuple[str, int, int]] = []  # (batch_id, dur_min, weight)
     due_min_by_batch: Dict[str, int] = {}
 
     for bid, b in batches.items():
-        due_d = parse_date(getattr(b, "due_date", None))
+        due_d = parse_date(b.due_date)
         if due_d:
             due_dt_exclusive = due_exclusive(due_d)
             due_min = int((due_dt_exclusive - start_dt).total_seconds() / 60.0)
@@ -109,11 +109,11 @@ def try_solve_bottleneck_batch_order(
         else:
             due_min_by_batch[bid] = 10**9  # 无交期：放到最后
 
-        h = float(per_batch_type_load.get((bid, bottleneck_ot), 0.0) or 0.0)
+        h = per_batch_type_load.get((bid, bottleneck_ot), 0.0)
         if (not math.isfinite(float(h))) or h <= 0:
             continue
         dur_min = max(1, int(math.ceil(h * 60.0)))
-        w = priority_weight_scaled(getattr(b, "priority", None))
+        w = priority_weight_scaled(b.priority)
         jobs.append((bid, dur_min, int(w)))
 
     if len(jobs) < 2:
@@ -165,7 +165,7 @@ def try_solve_bottleneck_batch_order(
         # 允许并行（若环境支持）
         solver.parameters.num_search_workers = 8
     except Exception as exc:
-        safe_log(logger, "warning", f"OR-Tools 预热并行参数设置失败，继续单线程求解：{exc}")
+        _LOGGER.warning(f"OR-Tools 预热并行参数设置失败，继续单线程求解：{exc}")
 
     status = solver.Solve(model)
     success_statuses = {_status_value(cp_model, "OPTIMAL"), _status_value(cp_model, "FEASIBLE")}
@@ -186,14 +186,12 @@ def try_solve_bottleneck_batch_order(
         rest.sort(
             key=lambda bid: (
                 due_min_by_batch.get(bid, 10**9),
-                -priority_weight_scaled(getattr(batches.get(bid), "priority", None)),
+                -priority_weight_scaled(batches[bid].priority),
                 bid,
             )
         )
 
-    safe_log(
-        logger,
-        "info",
+    _LOGGER.info(
         f"OR-Tools bottleneck warm-start: op_type_id={bottleneck_ot} jobs={len(jobs)} total_batches={len(batches)} time_limit={time_limit_seconds}s",
     )
 

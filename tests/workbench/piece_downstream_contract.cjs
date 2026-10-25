@@ -7,7 +7,7 @@ const C = window.FieldContract, M = window.ActualGanttModel;
 const filePreview = { ok: true, schema_version: 1, meta: { source: 'production', time_basis: 'factory_local', snapshot_ref: 'snapshot', as_of: '2026-10-01T10:00:00' }, warnings: [],
   data: { preview_ref: 'p'.repeat(32), actual_source_ref: 'a'.repeat(32), operation: 'material.import', format: 'csv', mode: 'upsert', template_version: 1,
     rows: [], summary: Object.fromEntries(['new', 'update', 'unchanged', 'delete', 'rejected'].map(key => [key, 0])), can_confirm: false, commit_policy: 'atomic',
-    expires_at: '2026-10-01T10:15:00', write_context: { capabilities: { 'material.import': false }, write_token: 'w'.repeat(32) } } };
+    expires_at: '2026-10-01T10:15:00', write_context: { capabilities: { 'material.import': false }, write_token: 'w'.repeat(32), blocked_reasons: [] } } };
 assert.strictEqual(window.APSResourceMaterial.preview(filePreview, 'import', 'csv'), filePreview);
 assert.strictEqual(C.query(filePreview, 'preview'), filePreview);
 for (const value of [undefined, ['a'.repeat(32)], 'bad-source']) {

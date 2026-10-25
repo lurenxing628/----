@@ -136,6 +136,6 @@ def validate_actual_values(values, now):
             reject("有效加工小时不能超过实际起止时间的时长。")
 
 
-def closed_write_context(reason="context_not_bound"):
+def closed_write_context():
     return {"write_token": None, "expires_at": None, "capabilities": [],
-            "blocked_reasons": [{"code": reason, "message": "本页数据已过期，请刷新后核对正式计划再录入。"}]}
+            "blocked_reasons": [{"code": "context_not_bound", "message": "本页数据已过期，请刷新后核对正式计划再录入。"}]}

@@ -20,6 +20,12 @@ from .schedule_time_sql import (
     require_dt_for_sql,
 )
 
+# 方案头的单点直读与目录分页共用同一组列，两条路径读出的行形状一致（同一缓存里不会混进两种行）。
+SCENARIO_HEADER_COLUMNS_SQL = (
+    "scenario_id, source_draft_id, base_version, base_plan_role, base_source_table, base_candidate_id, "
+    "base_candidate_key, scenario_name, status, validation_status, issue_count, issues_json, row_count, "
+    "published_version"
+)
 _SCHEDULE_PLAN_ROWS_SQL = """
 SELECT
     id,
@@ -186,24 +192,7 @@ class SchedulePlanQueryRepository(BaseRepository):
 
     def get_scenario_context(self, scenario_id: str) -> Optional[Dict[str, Any]]:
         return self.fetchone(
-            """
-            SELECT
-                scenario_id,
-                source_draft_id,
-                base_version,
-                base_plan_role,
-                base_source_table,
-                base_candidate_id,
-                base_candidate_key,
-                scenario_name,
-                status,
-                validation_status,
-                issue_count,
-                issues_json,
-                row_count
-            FROM ScheduleAdjustmentScenario
-            WHERE scenario_id = ?
-            """,
+            "SELECT " + SCENARIO_HEADER_COLUMNS_SQL + " FROM ScheduleAdjustmentScenario WHERE scenario_id = ?",
             (scenario_id,),
         )
 
@@ -313,8 +302,8 @@ class SchedulePlanQueryRepository(BaseRepository):
         source_table: str,
         candidate_id: Optional[int],
         scenario_id: Optional[str] = None,
-        allow_points: bool = False,
     ) -> List[Dict[str, Any]]:
+        """零工时点事件（开工即完工）是合法安排，计入完工时间，不算时间无效行。"""
         plan_sql, extra_params = self._plan_rows_sql(
             source_table=source_table,
             candidate_id=candidate_id,
@@ -330,7 +319,7 @@ class SchedulePlanQueryRepository(BaseRepository):
               b.part_name AS part_name,
               b.quantity AS quantity,
               CAST(b.due_date AS TEXT) AS due_date,
-              {interval_summary_sql("s", allow_points=allow_points)} AS interval_summary,
+              {interval_summary_sql("s", allow_points=True)} AS interval_summary,
               COUNT(s.id) AS schedule_row_count
             FROM Batches b
             LEFT JOIN BatchOperations bo ON bo.batch_id = b.batch_id

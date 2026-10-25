@@ -177,7 +177,7 @@ def write_runtime_contract_file(
 
 def _write_runtime_contract_payload(state_dir: str, payload: Dict[str, Any]) -> str:
     contract_path = runtime_contract_path(state_dir)
-    write_fixed_json(contract_path, payload, ensure_ascii=False, indent=2, sort_keys=True)
+    write_fixed_json(contract_path, payload)
     return contract_path
 
 

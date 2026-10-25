@@ -276,7 +276,8 @@
     if (!exact(value, ['state', 'plan_ref', 'time_scope', 'basis', 'resources', 'issues']) || !states.includes(value.state)
         || value.plan_ref !== data.plan.plan_ref || !same(value.time_scope, data.time_scope) || value.basis !== 'selected_plan_only'
         || !projectedResources(value.resources, resourcesByRef) || !projectionIssues(value.issues, true)) return false;
-    const calendars = new Map((data.projections.calendar.resources || []).map(row => [row.resource_ref, row]));
+    // 日历投影不可用时 resources 为 null（见 calendar()），此时没有可对照的资源日历。
+    const resources = data.projections.calendar.resources, calendars = new Map(resources === null ? [] : resources.map(row => [row.resource_ref, row]));
     if (!value.resources.every(row => occupancyRow(row, data, calendars))) return false;
     const unknown = value.issues.some(row => row.code === 'assignment_source_unknown');
     const state = unknown ? value.resources.length ? 'partial' : 'unavailable' : value.resources.every(row => row.state === 'available')

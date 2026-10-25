@@ -414,3 +414,21 @@ def test_unsaved_recommendation_does_not_invent_missing_saved_selection_evidence
                              [dict(candidate, status="completed")])["explanation"]
     assert legacy["headline"] == "推荐方案已保存；这条旧记录未保存具体选择依据。"
     assert {issue["code"] for issue in legacy["issues"]} == {"selection_detail_missing", "health_detail_missing"}
+
+
+_NAVIGATION_MALFORMED = "页面地址里的定位或范围不对，页面没有打开；系统没有恢复上次选择，也没有换记录或放宽范围。请从侧栏重新进入。"
+_NAVIGATION_NON_FINITE = "页面地址里的数字不是有效数字，页面没有打开。请从侧栏重新进入。"
+
+
+@pytest.mark.parametrize("raw,message", [
+    ('{"version": 1, "version": 1, "view": "analysis", "context": {}}',
+     "页面地址里的定位内容有重复项，页面没有打开；系统没有替你挑一个继续。请从侧栏重新进入。"),
+    ('{"version": 1, "view": "analysis", "context": {"range_start": NaN}}', _NAVIGATION_NON_FINITE),
+    ('{"version": 1, "view": "analysis", "context": {"range_start": -Infinity}}', _NAVIGATION_NON_FINITE),
+    ('{"version": 1e999, "view": "analysis", "context": {}}', _NAVIGATION_NON_FINITE),
+    ('{"version": 1, "view": "analysis", "context": {}', _NAVIGATION_MALFORMED),
+], ids=("duplicate", "nan", "infinity", "overflow", "syntax"))
+def test_navigation_json_rejects_duplicate_keys_and_non_finite_numbers(raw, message):
+    with pytest.raises(WorkbenchNavigationInvalid) as raised:
+        read_navigation("analysis", {"nav": raw})
+    assert str(raised.value) == message

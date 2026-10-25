@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from core.algorithm_runtime.calendar_timing_memo import make_lineage_timing_guard, register_calendar_timing_guard
 from core.errors import BusinessError, ErrorCode, ValidationError
-from core.models import OperatorCalendar, WorkCalendar
+from core.models.calendar import OperatorCalendar, WorkCalendar
 from core.models.calendar_periods import (
     decode_periods,
     encode_periods,
@@ -30,7 +30,7 @@ from .working_hours import WorkingHoursPrefix
 MAX_CALENDAR_DAYS = 36500.0
 # Engine members whose identity certifies native timing; certificates and the per-decode memo both rely on it.
 NATIVE_TIMING_METHODS = ("get_efficiency", "adjust_to_working_time", "add_working_hours", "add_effective_hours", "_add_hours", "policy_for_datetime",
-                         "_policy_for_datetime", "_policy_for_date", "_effective_segments", "_allowed_segments",
+                         "_policy_for_date", "_effective_segments", "_allowed_segments",
                          "certified_slot_window", "working_hours_between", "default_periods")
 _NORMAL_PRIORITY = BatchPriority.NORMAL.value
 _ALLOWED_FLAG = YesNo.YES.value
@@ -216,7 +216,7 @@ class CalendarEngine:
                 raise ValidationError("默认工作时间至少需要一个工作时段。", field="periods")
             self._default_periods = periods
             if self._default_periods_json is None:
-                self._default_periods_json = encode_periods(periods, normalized=True)
+                self._default_periods_json = encode_periods(periods)
             _, self._default_period_hours = self._period_facts_for_json(self._default_periods_json, periods)
         return self._default_periods
 
@@ -353,7 +353,7 @@ class CalendarEngine:
         )
         return p
 
-    def _policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:
+    def policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:
         """
         获取某时刻所属的 DayPolicy（支持跨午夜班次）。
 
@@ -377,14 +377,8 @@ class CalendarEngine:
 
         return p_today
 
-    def policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:
-        """
-        公共接口：获取某时刻所在日期的排产策略（DayPolicy）。
-        """
-        return self._policy_for_datetime(dt, operator_id=operator_id)
-
     def get_efficiency(self, dt: datetime, machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> float:
-        return self._policy_for_datetime(dt, operator_id=operator_id).efficiency
+        return self.policy_for_datetime(dt, operator_id=operator_id).efficiency
 
     def capacity_hours_between(self, start: datetime, end: datetime, *, priority=None, operator_id=None) -> float:
         """Efficiency-weighted capacity over the same disjoint pieces used by scheduling."""
@@ -532,10 +526,11 @@ class CalendarEngine:
             self._working_hours_prefix[key] = prefix
         return prefix.between(start, end)
 
-    def add_calendar_days(self, start: datetime, days: float, machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> datetime:
+    def add_calendar_days(self, start: datetime, days: Optional[float], machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> datetime:
         """
         自然日累加（外协周期使用）：不受工作日历影响。
         - days 支持小数
+        - 采用复核、排产检查按工序原值传周期，未单独设置周期的外协工序会传 None，这里按缺少周期拒绝。
         """
         if days is None:
             raise ValidationError("缺少周期参数", field="days")

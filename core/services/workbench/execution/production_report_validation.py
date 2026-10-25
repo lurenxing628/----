@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.operation_execution_event import parse_operation_event_time
 from core.models.resource_capabilities import machine_types
 from core.models.workbench_execution_input import reject
@@ -82,7 +83,7 @@ def require_current(facts, operation_ref, task_ref=None):
     plan = facts["plan"]
     if not operation["identity_active"] or operation["id"] is None:
         reject("工序已删除，请刷新重选。", "entity_not_found", 404)
-    if operation["source"] not in ("internal", "external"):
+    if operation["source"] not in OPERATION_SOURCES:
         reject("工序归属无法读取，请到基础资料确认自制或外协。", "constraint_conflict", 409)
     if operation_ref in facts["unresolved"]:
         reject("历史报工关联记录不明确，请核对后再登记。", "constraint_conflict", 409)

@@ -1,13 +1,13 @@
 """Snapshot-local route dependencies and final execution facts for one report command."""
 
 from collections import defaultdict
-from types import SimpleNamespace
 
 from core.models.workbench_execution_input import MAX_OPERATIONS, reject
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.services.scheduler.contracts.external_context import context_group_key, require_context
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 from core.services.workbench.facts.preflight_checks import number
+from core.services.workbench.facts.stored_algo_inputs import stored_batch_operation
 from data.repositories.batch_external_context_repo import BatchExternalContextRepository
 from data.repositories.workbench_report_validation_repo import WorkbenchReportValidationRepository
 
@@ -17,8 +17,8 @@ def _predecessors(rows):
     if mixed:
         first = rows[0]
         try:
-            scope = build_piece_adoption_scope([SimpleNamespace(**row) for row in rows],
-                {first["batch_id"]: SimpleNamespace(quantity=first["batch_quantity"])})
+            scope = build_piece_adoption_scope([stored_batch_operation(row) for row in rows],
+                {first["batch_id"]: first["batch_quantity"]})
         except PieceAdoptionBlocked:
             reject("共同工序和分件工序的关系不完整，请先核对工艺，未修改报工。", "execution_dependencies_unproven", 409)
         return {work.op_id: work.predecessor_op_ids for work in scope.operations}

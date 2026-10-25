@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from core.models import OperatorMachine
+from core.models.operator_machine import OperatorMachine
 
 from .operator_machine_normalizers import normalize_yes_no_stored
 

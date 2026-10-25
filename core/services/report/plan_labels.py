@@ -2,7 +2,7 @@
 
 from typing import Any, Dict
 
-from core.models.resource_identity import ResourceIdentity, build_resource_identity
+from core.models.resource_identity import resource_display_label
 
 
 def _display_time(value: Any) -> str:
@@ -19,9 +19,7 @@ def _operation_label(row: Dict[str, Any]) -> str:
     return op_name or op_code or "未命名工序"
 
 
-def resource_pair_label(machine: ResourceIdentity, operator: ResourceIdentity, *, empty_label: str) -> str:
-    machine_display = machine.display_label
-    operator_display = operator.display_label
+def resource_pair_label(machine_display: str, operator_display: str, *, empty_label: str) -> str:
     if machine_display and operator_display:
         return f"{machine_display} / {operator_display}"
     if machine_display:
@@ -33,8 +31,8 @@ def resource_pair_label(machine: ResourceIdentity, operator: ResourceIdentity, *
 
 def planned_review_labels(row: Dict[str, Any]) -> Dict[str, Any]:
     """Render only planned facts; actual labels come from the relevant ledger."""
-    machine = build_resource_identity(row.get("machine_id"), row.get("machine_name"))
-    operator = build_resource_identity(row.get("operator_id"), row.get("operator_name"))
+    machine = resource_display_label(row.get("machine_id"), row.get("machine_name"))
+    operator = resource_display_label(row.get("operator_id"), row.get("operator_name"))
     return {
         "batch_id_label": str(row.get("batch_id") or ""),
         "operation_label": _operation_label(row),

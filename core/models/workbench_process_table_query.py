@@ -11,16 +11,8 @@ PROCESS_TABLE_COLUMNS = ("business_code", "label", "operation_count", "stage")
 PROCESS_STAGES = ("route", "source", "hours", "ready")
 MAX_PROCESS_SORT_KEYS = len(PROCESS_TABLE_COLUMNS)
 _SCOPE_FIELDS = {"query", "stage", "sort", "direction", "column_filters"}
-
-
-def unique_process_table_object(pairs):
-    """Use as json.loads object_pairs_hook before duplicate JSON keys are lost."""
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            raise WorkbenchCommandRejected("invalid_input", "查询条件里有重复的项，请重新选择。", 400)
-        result[key] = value
-    return result
+# The list and facet routes decode their JSON arguments strictly and share this duplicate-key text.
+DUPLICATE_QUERY_MESSAGE = "查询条件里有重复的项，请重新选择。"
 
 
 def normalize_process_column_filters(value):

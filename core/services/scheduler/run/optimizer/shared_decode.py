@@ -2,21 +2,25 @@
 
 from __future__ import annotations
 
-import inspect
 import math
 from copy import copy
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
 
 from core.algorithm_contracts.ordering import normalize_batch_order_override
-from core.algorithm_runtime.algo_stats import capture_algo_stats, merge_algo_stats
+from core.algorithm_contracts.sort_strategies import SortStrategy
+from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
+from core.algorithm_runtime.algo_stats import merge_algo_stats
 from core.algorithms.evaluation import compute_metrics, prepare_evaluation_context
 from core.algorithms.greedy.schedule_params import resolve_schedule_params
 from core.errors import ValidationError
 
 from .shared_archive import ArchiveObservation
 from .shared_budget import SharedSearchSkip
+
+if TYPE_CHECKING:
+    from core.algorithms.greedy.scheduler import GreedyScheduler
 
 _REDECODE_KINDS = {
     "capture_checkpoints": "capture_checkpoints", "validate_trial": "validation_decode",
@@ -91,24 +95,28 @@ def _immutable(value: Any) -> Tuple[Any, ...]:
     raise ValidationError("共享解码输入包含不支持的值。", field="shared_decode_request")
 
 
+def resource_pair(item: Union[OpForScheduleAlgo, ScheduleResult]) -> Tuple[str, str]:
+    """An unassigned machine or operator is spelled "" in request keys, variants and repair decisions."""
+    return ("" if item.machine_id is None else item.machine_id,
+            "" if item.operator_id is None else item.operator_id)
 
 
 class SharedDecodeSession:
     """Keep request identity and costs; completed schedules belong to the archive."""
 
     def __init__(
-        self, *, archive: Any, budget: Any, scheduler: Any, operations: Any, batches: Any,
+        self, *, archive: Any, budget: Any, scheduler: GreedyScheduler, operations: Any, batches: Any,
         seed_results: Any, downtime_map: Any, resource_pool: Any,
         graph_ready_context: Optional[Dict[str, Any]] = None, clock: Callable[[], float],
         started_at: float, deadline: float, start_dt: Any = None,
-        schedule_fn: Optional[Callable[..., Any]] = None, event_sink: Optional[Callable[[Dict[str, Any]], Optional[int]]] = None,
+        event_sink: Optional[Callable[[Dict[str, Any]], Optional[int]]] = None,
         evaluation_context: Optional[Any] = None,
     ) -> None:
         from core.algorithms.greedy.scheduler import prepare_native_schedule_inputs
 
         self.archive, self.budget, self.scheduler = archive, budget, scheduler
         self.operations, self.batches, self.seed_results = operations, batches, seed_results
-        self.downtime_map, self.resource_pool = downtime_map, resource_pool
+        self.resource_pool = resource_pool
         self.base_time = start_dt if start_dt is not None else datetime.now()
         self.clock, self.started_at, self.deadline = clock, started_at, deadline
         self.event_sink = event_sink
@@ -125,14 +133,10 @@ class SharedDecodeSession:
             )
         )
         self._graph_context = self.native_preparation.graph_ready_context
-        self._base_operation_resources = {
-            op.id: (str(getattr(op, "machine_id", None) or "").strip(),
-                    str(getattr(op, "operator_id", None) or "").strip()) for op in operations
-        }
+        self._base_operation_resources = {op.id: resource_pair(op) for op in operations}
         self._operations_by_id = {op.id: op for op in operations}
         self._op_variant_cache: Dict[Tuple[int, str, str], Any] = {}
         self._last_resources_ops: Optional[Tuple[Tuple[Tuple[int, str, str], ...], List[Any]]] = None
-        self._select_decoder(schedule_fn)
         self._operation_ids = {op.id for op in operations}
         self._records: Dict[DecodeRequest, _RequestRecord] = {}
         self._by_id: Dict[int, _RequestRecord] = {}
@@ -142,18 +146,6 @@ class SharedDecodeSession:
         self.skipped_requests = 0
         self.failed_decoder_calls = 0
         self._execution_counts: Dict[str, int] = {}
-
-    def _select_decoder(self, schedule_fn: Optional[Callable[..., Any]]) -> None:
-        from core.algorithms.greedy.scheduler import GreedyScheduler
-
-        method = self.scheduler.schedule
-        native_method = getattr(method, "__func__", None) is GreedyScheduler.schedule and schedule_fn is None
-        self._native_decode = self.scheduler.schedule_prepared if native_method else None
-        self._schedule_method = method
-        self._schedule_adapter = schedule_fn
-        signature = inspect.signature(method)
-        self._schedule_keywords = None if any(p.kind == inspect.Parameter.VAR_KEYWORD
-                                             for p in signature.parameters.values()) else set(signature.parameters)
 
     def _request(self, kwargs: Dict[str, Any]) -> Tuple[DecodeRequest, Any, Dict[str, int], Any, Any, Any]:
         from core.algorithms.greedy.dispatch.sgs_graph import graph_priority_key_map
@@ -181,7 +173,7 @@ class SharedDecodeSession:
                                        strict_mode=strict, readiness_gate_enabled=readiness)
         order = tuple(sorted(batch_ranks, key=batch_ranks.__getitem__))
         sort_inputs = () if full_override else (
-            str(getattr(params.strategy, "value", params.strategy)),
+            params.strategy.value,
             tuple((name, _immutable(params.used_params[name])) for name in ("priority_weight", "due_weight")
                   if name in params.used_params),
         )
@@ -202,9 +194,8 @@ class SharedDecodeSession:
             context = dict(self._graph_context, score_enabled=score_enabled, graph_priority_key_by_op_id=keys)
         resource_changes = kwargs.get("operation_resources")
         resources = (
-            tuple(sorted((op_id, str(pair[0] or "").strip(), str(pair[1] or "").strip())
-                         for op_id, pair in resource_changes.items()
-                         if tuple(pair) != self._base_operation_resources.get(op_id)))
+            tuple(sorted((op_id, machine_id, operator_id) for op_id, (machine_id, operator_id) in resource_changes.items()
+                         if (machine_id, operator_id) != self._base_operation_resources.get(op_id)))
             if resource_changes else ()
         )
         operations = self.operations
@@ -234,36 +225,14 @@ class SharedDecodeSession:
 
     def _decode(self, kwargs: Dict[str, Any], params: Any, batch_order: Dict[str, int],
                 operations: Any, resource_pool: Any, context: Any) -> Any:
-        if self._native_decode is not None:
-            return self._native_decode(
-                self.native_preparation, params=params, batch_order=batch_order,
-                operations=operations, resource_pool=resource_pool, graph_ready_context=context,
-                graph_enabled=bool(kwargs.get("graph_enabled", False)),
-                readiness_gate_enabled=bool(kwargs.get("readiness_gate_enabled", False)),
-                strict_mode=bool(kwargs.get("strict_mode", False)), decode_resume=kwargs.get("decode_resume"),
-                decode_checkpoints=kwargs.get("decode_checkpoints"),
-            )
-        call_kwargs = dict(
-            operations=operations, batches=self.batches, seed_results=self.seed_results,
-            machine_downtimes=self.downtime_map, resource_pool=resource_pool,
-            strategy=params.strategy, strategy_params=params.used_params, start_dt=params.base_time,
-            end_date=kwargs.get("end_date"), dispatch_mode=params.dispatch_mode_key,
-            dispatch_rule=params.dispatch_rule_spec.token, batch_order_override=list(batch_order),
-            strict_mode=bool(kwargs.get("strict_mode", False)),
-            readiness_gate_enabled=bool(kwargs.get("readiness_gate_enabled", False)), graph_ready_context=context,
+        return self.scheduler.schedule_prepared(
+            self.native_preparation, params=params, batch_order=batch_order,
+            operations=operations, resource_pool=resource_pool, graph_ready_context=context,
+            graph_enabled=bool(kwargs.get("graph_enabled", False)),
+            readiness_gate_enabled=bool(kwargs.get("readiness_gate_enabled", False)),
+            strict_mode=bool(kwargs.get("strict_mode", False)), decode_resume=kwargs.get("decode_resume"),
+            decode_checkpoints=kwargs.get("decode_checkpoints"),
         )
-        for name in ("decode_resume", "decode_checkpoints"):
-            if kwargs.get(name) is not None:
-                call_kwargs[name] = kwargs[name]
-        if self._schedule_keywords is not None:
-            from .signature_support import raise_unsupported_schedule_keyword
-            for name in ("graph_ready_context", "readiness_gate_enabled", "decode_resume", "decode_checkpoints"):
-                if name not in self._schedule_keywords and call_kwargs.get(name):
-                    raise_unsupported_schedule_keyword(name)
-            call_kwargs = {key: value for key, value in call_kwargs.items() if key in self._schedule_keywords}
-        if self._schedule_adapter is not None:
-            return self._schedule_adapter(self.scheduler, **call_kwargs)
-        return self._schedule_method(**call_kwargs)
 
     def _record(self, request: DecodeRequest) -> _RequestRecord:
         record = self._records.get(request)
@@ -370,14 +339,9 @@ class SharedDecodeSession:
                                                                operations, pool, context)
             metrics = compute_metrics(res, self.batches, expected_operations=self.operations,
                                       seed_results=self.seed_results,
-                                      failure_details=getattr(summ, "failure_details", ()),
+                                      failure_details=summ.failure_details,
                                       prepared=self.evaluation_context)
-            if self._native_decode is None and params.warnings:
-                existing = list(summ.warnings)
-                prefix = list(params.warnings)
-                if existing[:len(prefix)] != prefix:
-                    summ.warnings = prefix + existing
-            algo_stats = capture_algo_stats(self.scheduler, optimizer_algo_stats)
+            algo_stats = merge_algo_stats(optimizer_algo_stats, self.scheduler.last_algo_stats)
             algo_stats["param_fallbacks"] = param_fallbacks
         except Exception as exc:
             elapsed = max(self.clock() - call_started, 0)
@@ -455,7 +419,7 @@ def decode_and_metrics(
     *, decode_session: SharedDecodeSession, objective_name: str,
     optimizer_algo_stats: Optional[Dict[str, Any]] = None,
     before_decode: Optional[Callable[[], None]] = None, redecode_reason: Optional[str] = None,
-    strategy: Any = None, strategy_params: Any = None, start_dt: Any = None, end_date: Any = None,
+    strategy: Optional[SortStrategy] = None, strategy_params: Any = None, start_dt: Any = None, end_date: Any = None,
     batch_order_override: Any = None, dispatch_mode: Any = None, dispatch_rule: Any = None,
     readiness_gate_enabled: bool = False, strict_mode: bool = False,
     graph_enabled: bool = False, graph_score_enabled: bool = False,
@@ -477,4 +441,4 @@ def decode_and_metrics(
     )
 
 
-__all__ = ["DecodeRequest", "DecodedEvaluation", "SharedDecodeSession", "decode_and_metrics"]
+__all__ = ["DecodeRequest", "DecodedEvaluation", "SharedDecodeSession", "decode_and_metrics", "resource_pair"]

@@ -4,13 +4,12 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.ordering import normalize_text_id
-from core.algorithm_contracts.types import ScheduleResult
+from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS,
     AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL,
-    AUTO_ASSIGN_REASON_MISSING_OP_TYPE_ID,
     AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
     auto_assign_attempt_from_result,
 )
@@ -22,6 +21,7 @@ from core.algorithm_runtime.internal_slot import (
 )
 from core.algorithm_runtime.sgs_estimate_reuse import selected_sgs_estimate, selected_sgs_resources
 from core.algorithm_runtime.slot_overlap_reuse import overlap_reuse_for
+from core.models.batch import Batch
 
 
 def schedule_internal_operation(
@@ -29,8 +29,8 @@ def schedule_internal_operation(
     calendar: Any,
     algo_stats: Any,
     auto_assign_resources: Any,
-    op: Any,
-    batch: Any,
+    op: OpForScheduleAlgo,
+    batch: Batch,
     batch_progress: Dict[str, datetime],
     machine_timeline: Dict[str, List[Tuple[datetime, datetime]]],
     operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],
@@ -44,9 +44,9 @@ def schedule_internal_operation(
     machine_busy_hours: Optional[Dict[str, float]] = None,
     operator_busy_hours: Optional[Dict[str, float]] = None,
     strict_mode: bool = False,
-    total_hours_by_op_id: Any = None,
+    total_hours_by_op_id: Optional[Dict[int, float]] = None,
 ) -> Tuple[Optional[ScheduleResult], bool]:
-    bid = normalize_text_id(getattr(op, "batch_id", ""))
+    bid = op.batch_id
     machine_id, operator_id = _resolve_internal_resources(
         algo_stats=algo_stats,
         auto_assign_resources=auto_assign_resources,
@@ -84,7 +84,7 @@ def schedule_internal_operation(
         last_op_type_by_machine=last_op_type_by_machine,
         errors=errors,
         strict_mode=bool(strict_mode),
-        total_hours_base=(total_hours_by_op_id.get(getattr(op, "id", None)) if total_hours_by_op_id is not None else None),
+        total_hours_base=(total_hours_by_op_id.get(op.id) if total_hours_by_op_id is not None else None),
     )
     if estimate is None:
         return None, False
@@ -94,8 +94,6 @@ def schedule_internal_operation(
 
     occupy_resource(machine_timeline, machine_id, estimate.start_time, estimate.end_time)
     occupy_resource(operator_timeline, operator_id, estimate.start_time, estimate.end_time)
-    if estimate.efficiency_fallback_used:
-        increment_counter(algo_stats, "internal_efficiency_fallback_count")
     return _build_internal_result(op=op, batch_id=bid, machine_id=machine_id, operator_id=operator_id, estimate=estimate), False
 
 
@@ -103,8 +101,8 @@ def _resolve_internal_resources(
     *,
     algo_stats: Any,
     auto_assign_resources: Any,
-    op: Any,
-    batch: Any,
+    op: OpForScheduleAlgo,
+    batch: Batch,
     batch_progress: Dict[str, datetime],
     machine_timeline: Dict[str, List[Tuple[datetime, datetime]]],
     operator_timeline: Dict[str, List[Tuple[datetime, datetime]]],
@@ -118,13 +116,14 @@ def _resolve_internal_resources(
     operator_busy_hours: Dict[str, float],
     errors: List[str],
 ) -> Tuple[str, str]:
-    machine_id = normalize_text_id(getattr(op, "machine_id", None))
-    operator_id = normalize_text_id(getattr(op, "operator_id", None))
+    # 未固定资源在原始输入里是 None，优化器派生的资源变体里是 ""，两者同义。
+    machine_id = normalize_text_id(op.machine_id)
+    operator_id = normalize_text_id(op.operator_id)
     if machine_id and operator_id:
         return machine_id, operator_id
     if not auto_assign_enabled or resource_pool is None:
         increment_counter(algo_stats, "internal_missing_resource_without_auto_assign_count")
-        errors.append(f"自制工序未补全设备或人员，无法排产：工序 {getattr(op, 'op_code', '-') or '-'}")
+        errors.append(f"自制工序未补全设备或人员，无法排产：工序 {op.op_code}")
         return "", ""
 
     increment_counter(algo_stats, "internal_auto_assign_attempt_count")
@@ -152,10 +151,8 @@ def _resolve_internal_resources(
     return "", ""
 
 
-def _auto_assign_failure_message(*, op: Any, reason: str) -> str:
-    op_code = getattr(op, "op_code", "-") or "-"
-    if reason == AUTO_ASSIGN_REASON_MISSING_OP_TYPE_ID:
-        return f"自制工序缺少自动派工所需工种信息，无法自动分配：工序 {op_code}"
+def _auto_assign_failure_message(*, op: OpForScheduleAlgo, reason: str) -> str:
+    op_code = op.op_code
     if reason == AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL:
         return f"自动派工资料不完整，本次无法自动补齐设备和人员：工序 {op_code}"
     if reason == AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS:
@@ -176,8 +173,8 @@ def _auto_assign_failure_message(*, op: Any, reason: str) -> str:
 def _estimate_internal(
     *,
     calendar: Any,
-    op: Any,
-    batch: Any,
+    op: OpForScheduleAlgo,
+    batch: Batch,
     bid: str,
     machine_id: str,
     operator_id: str,
@@ -218,35 +215,35 @@ def _estimate_internal(
             estimate = estimate_internal_slot(**inputs, abort_after=None, overlap_reuse=overlap_reuse_for(machine_timeline))
     except ValueError as exc:
         if strict_mode:
-            raise_strict_internal_hours_validation(op, batch, exc)
-        errors.append(f"工时不合法：工序 {getattr(op, 'op_code', '-') or '-'} {exc}")
+            raise_strict_internal_hours_validation(op, batch)
+        errors.append(f"工时不合法：工序 {op.op_code} {exc}")
         return None
     if estimate.abort_after_hit:
         raise RuntimeError("正式内部排产不应命中 abort_after 早停")
     return estimate
 
 
-def _window_blocked_error(*, op: Any, batch_id: str, end_time: datetime, end_dt_exclusive: Optional[datetime]) -> str:
+def _window_blocked_error(*, op: OpForScheduleAlgo, batch_id: str, end_time: datetime, end_dt_exclusive: Optional[datetime]) -> str:
     deadline = (end_dt_exclusive - timedelta(seconds=1)).strftime("%Y-%m-%d") if end_dt_exclusive else "-"
     return (
-        f"排产窗口截止到 {deadline}：自制工序 {getattr(op, 'op_code', '-') or '-'}"
+        f"排产窗口截止到 {deadline}：自制工序 {op.op_code}"
         f"（批次 {batch_id}）预计完工 {end_time.strftime('%Y-%m-%d %H:%M')} 超出窗口"
     )
 
 
-def _build_internal_result(*, op: Any, batch_id: str, machine_id: str, operator_id: str, estimate: Any) -> ScheduleResult:
+def _build_internal_result(*, op: OpForScheduleAlgo, batch_id: str, machine_id: str, operator_id: str, estimate: Any) -> ScheduleResult:
     return ScheduleResult(
-        op_id=int(getattr(op, "id", 0) or 0),
-        op_code=str(getattr(op, "op_code", "") or ""),
+        op_id=op.id,
+        op_code=op.op_code,
         batch_id=batch_id,
-        seq=int(getattr(op, "seq", 0) or 0),
+        seq=op.seq,
         machine_id=machine_id,
         operator_id=operator_id,
         start_time=estimate.start_time,
         end_time=estimate.end_time,
         source=INTERNAL,
-        op_type_name=str(getattr(op, "op_type_name", None) or "") or None,
-        op_type_id=str(getattr(op, "op_type_id", None) or "") or None,
+        op_type_name=op.op_type_name,
+        op_type_id=op.op_type_id,
     )
 
 

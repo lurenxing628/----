@@ -68,7 +68,7 @@ def material_export_preview():
 @read_endpoint
 def material_export():
     file_format = download_args({"export_ref", "format"})
-    ref = opaque_ref(request.args["export_ref"], "export_ref")
+    ref = opaque_ref(request.args["export_ref"])
     binding = resolve_binding(EXPORT_SCOPE, ref, field="export_ref", code="snapshot_stale")
     reader = WorkbenchMaterialQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as fingerprint:

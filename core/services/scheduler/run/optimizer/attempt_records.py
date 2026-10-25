@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
+from core.algorithm_contracts.types import ScheduleSummary
+from core.algorithms.evaluation import ScheduleMetrics
 from core.errors import ValidationError
 
 from .search_state import append_unique_rejected_attempt
@@ -13,36 +15,48 @@ if TYPE_CHECKING:
 
 _COMPARISON_METRICS = ("failed_ops", "overdue_count", "weighted_tardiness_hours", "total_tardiness_hours",
                        "makespan_hours", "changeover_count")
+_COMPLETION_COUNTS = ("expected_operation_count", "missing_operation_count", "unexpected_result_count",
+                      "complete_batch_count")
 
 
 def _finite_value(value: Any) -> Optional[float]:
     return value if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) else None
 
 
-def _comparison_snapshot(candidate: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    metrics = (candidate or {}).get("metrics")
-    completion = getattr(metrics, "completion", None)
-    known = bool(completion is not None and completion.components_known)
-    summary = (candidate or {}).get("summary")
+def _comparison_snapshot(candidate: Dict[str, Any]) -> Dict[str, Any]:
+    metrics: ScheduleMetrics = candidate["metrics"]
+    summary: ScheduleSummary = candidate["summary"]
+    completion = metrics.completion
+    known = completion.components_known
     values = {
-        key: _finite_value(
-            getattr(summary, key, None) if key == "failed_ops" else (getattr(metrics, key, None) if known else None)
-        )
+        key: _finite_value(summary.failed_ops if key == "failed_ops" else (getattr(metrics, key) if known else None))
         for key in _COMPARISON_METRICS
     }
-    raw_score = (candidate or {}).get("score", ())
+    raw_score = candidate["score"]
     if known:
         score = [_finite_value(value) for value in raw_score]
     else:
         score = [_finite_value(raw_score[0]) if raw_score else None] + [None for _ in raw_score[1:]]
-    counts = {key: getattr(completion, key, None) for key in (
-        "expected_operation_count", "missing_operation_count", "unexpected_result_count", "complete_batch_count")}
-    counts["incomplete_batch_count"] = len(completion.incomplete_batch_ids) if completion is not None else None
-    scope = getattr(completion, "objective_scope", "unknown")
-    context = (scope, tuple(completion.incomplete_batch_ids) if completion is not None else None,
-               counts["expected_operation_count"])
+    counts = {key: getattr(completion, key) for key in _COMPLETION_COUNTS}
+    counts["incomplete_batch_count"] = len(completion.incomplete_batch_ids)
+    scope, incomplete_batch_ids = completion.objective_scope, tuple(completion.incomplete_batch_ids)
+    context = (scope, incomplete_batch_ids, counts["expected_operation_count"])
     return {"metrics": values, "score": score, "completion": counts, "scope": scope,
             "context": context, "known": known}
+
+
+def _comparison_state(current: Dict[str, Any], previous: Dict[str, Any], *, verified: bool,
+                      objective_name: Optional[str]) -> str:
+    if not verified:
+        return "unverified"
+    if not objective_name or not current["known"] or not previous["known"]:
+        return "unavailable"
+    if current["context"] != previous["context"]:
+        return "different_coverage"
+    if (not current["score"] or len(current["score"]) != len(previous["score"])
+            or any(value is None for value in current["score"] + previous["score"])):
+        return "unavailable"
+    return "comparable"
 
 
 def attempt_decision_evidence(
@@ -53,40 +67,33 @@ def attempt_decision_evidence(
 ) -> Dict[str, Any]:
     """Freeze the actual decision against its then-current reference, independently of representative rank."""
     elapsed = max(int((clock() - t_begin) * 1000), 0) if clock is not None and t_begin is not None else None
-    verified = bool(verified)
-    current, previous = _comparison_snapshot(candidate), _comparison_snapshot(reference)
-    objective_name = getattr(search_report_state, "objective_name", None)
-    if not verified:
-        state = "unverified"
-    elif reference is None:
-        state = "no_reference"
-    elif not objective_name or not current["known"] or not previous["known"]:
-        state = "unavailable"
-    elif current["context"] != previous["context"]:
-        state = "different_coverage"
-    elif (not current["score"] or len(current["score"]) != len(previous["score"])
-          or any(value is None for value in current["score"] + previous["score"])):
-        state = "unavailable"
-    else:
-        state = "comparable"
-    comparable = state == "comparable"
-    deltas = {key: current["metrics"][key] - previous["metrics"][key]
-              if current["metrics"][key] is not None and previous["metrics"][key] is not None else None
-              for key in _COMPARISON_METRICS} if comparable else None
-    return {"elapsed_ms": elapsed, "event_index": None,
-            "accepted": accepted, "verified": verified,
-            "strict_improved": current["score"] < previous["score"] if comparable else None,
-            "comparison": {"kind": comparison_kind if reference is not None else "none", "state": state,
-                           "objective_name": objective_name, "objective_scope": current["scope"],
-                           "reference_scope": previous["scope"] if reference is not None else None,
-                           "reference_score": previous["score"] if reference is not None else None,
-                           "reference_metrics": previous["metrics"] if reference is not None else None,
-                           "reference_completion": previous["completion"] if reference is not None else None,
-                           "metric_deltas": deltas}}
+    current = _comparison_snapshot(candidate)
+    objective_name = search_report_state.objective_name if search_report_state is not None else None
+    comparison: Dict[str, Any] = {
+        "kind": "none", "state": "no_reference" if verified else "unverified",
+        "objective_name": objective_name, "objective_scope": current["scope"],
+        "reference_scope": None, "reference_score": None, "reference_metrics": None,
+        "reference_completion": None, "metric_deltas": None,
+    }
+    strict_improved = None
+    if reference is not None:
+        previous = _comparison_snapshot(reference)
+        state = _comparison_state(current, previous, verified=verified, objective_name=objective_name)
+        comparison.update(kind=comparison_kind, state=state, reference_scope=previous["scope"],
+                          reference_score=previous["score"], reference_metrics=previous["metrics"],
+                          reference_completion=previous["completion"])
+        if state == "comparable":
+            comparison["metric_deltas"] = {
+                key: current["metrics"][key] - previous["metrics"][key]
+                if current["metrics"][key] is not None and previous["metrics"][key] is not None else None
+                for key in _COMPARISON_METRICS}
+            strict_improved = current["score"] < previous["score"]
+    return {"elapsed_ms": elapsed, "event_index": None, "accepted": accepted, "verified": verified,
+            "strict_improved": strict_improved, "comparison": comparison}
 
 
 def validation_error_origin(exc: ValidationError) -> Dict[str, Any]:
-    return {"type": "ValidationError", "field": getattr(exc, "field", None), "message": str(exc)}
+    return {"type": "ValidationError", "field": exc.field, "message": str(exc)}
 
 
 def candidate_tag(strategy_key: str, dispatch_mode: str, dispatch_rule: str) -> str:
@@ -153,7 +160,7 @@ def append_rejected_reason_attempt(
         "dispatch_mode": dispatch_mode,
         "dispatch_rule": dispatch_rule,
         "source": "candidate_rejected",
-        "origin": {"type": str(reason), "field": str(reason), "message": str(message)},
+        "origin": {"type": reason, "field": reason, "message": message},
     }
     append_unique_rejected_attempt(attempts, attempt)
     return attempt

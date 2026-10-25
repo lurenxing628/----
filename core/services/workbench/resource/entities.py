@@ -1,7 +1,9 @@
 """Resource changes prepared once from current rows and explicit relationships."""
 
 from core.errors import BusinessError, ErrorCode
-from core.models import Machine, Operator, OpType
+from core.models.machine import Machine
+from core.models.op_type import OpType
+from core.models.operator import Operator
 from core.models.resource_capabilities import supports_source
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_resource_input import normalize_resource_input

@@ -2,6 +2,7 @@
 
 from datetime import date
 
+from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.workbench_run_candidate import local_time
 
 from .candidate_projection import scheduled_ids, uses_task_rows
@@ -136,7 +137,7 @@ def validate_task_payload(payload, expected=None, seen=None):
         start, end = local_time(payload.get("start_time")), local_time(payload.get("end_time"))
     except (ValueError, TypeError):
         corrupt()
-    if (start > end or payload.get("source") not in ("internal", "external")
+    if (start > end or type(payload.get("source")) is not str or payload["source"] not in OPERATION_SOURCES
             or type(payload.get("locked")) is not bool
             or any(payload[key] is not None and type(payload[key]) is not str for key in ("machine_id", "operator_id"))):
         corrupt()
