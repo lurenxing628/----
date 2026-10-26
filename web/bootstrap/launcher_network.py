@@ -31,62 +31,20 @@ def pick_bind_host(raw_host: Optional[str], *, logger: Optional[logging.Logger] 
 
 
 def _can_bind_result(
-    host0: str,
-    port0: int,
+    host: str,
+    port: int,
     *,
-    logger: Optional[logging.Logger] = None,
-    log_failures: bool = False,
-    state_dir: Optional[str] = None,
-    runtime_dir: Optional[str] = None,
-    cfg_log_dir: Optional[str] = None,
+    logger: logging.Logger,
+    state_dir: str,
+    runtime_dir: str,
 ) -> BindProbeResult:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    host_s = str(host0 or "").strip() or "127.0.0.1"
     try:
-        port_i = int(port0)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((host, port))
+        return BindProbeResult(True, host, port)
     except Exception as exc:
-        if log_failures:
-            launcher_log_warning(
-                logger,
-                "端口绑定探测端口非法：host=%s port=%r error=%s",
-                host_s,
-                port0,
-                exc,
-                state_dir=state_dir,
-                runtime_dir=runtime_dir,
-                cfg_log_dir=cfg_log_dir,
-            )
-        return BindProbeResult(False, host_s, 0, "invalid_port", str(exc))
-    try:
-        try:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        except Exception as exc:
-            if log_failures:
-                launcher_log_warning(
-                    logger,
-                    "设置 socket 复用选项失败，继续尝试绑定：host=%s port=%s error=%s",
-                    host_s,
-                    port_i,
-                    exc,
-                    state_dir=state_dir,
-                    runtime_dir=runtime_dir,
-                    cfg_log_dir=cfg_log_dir,
-                )
-        s.bind((host_s, port_i))
-        return BindProbeResult(True, host_s, port_i)
-    except Exception as exc:
-        if log_failures:
-            launcher_log_warning(
-                logger,
-                "端口绑定探测失败：host=%s port=%s error=%s",
-                host_s,
-                port_i,
-                exc,
-                state_dir=state_dir,
-                runtime_dir=runtime_dir,
-                cfg_log_dir=cfg_log_dir,
-            )
-        return BindProbeResult(False, host_s, port_i, "bind_failed", str(exc))
+        return BindProbeResult(False, host, port, "bind_failed", str(exc))
     finally:
         try:
             s.close()
@@ -94,24 +52,19 @@ def _can_bind_result(
             launcher_log_warning(
                 logger,
                 "关闭端口探测 socket 失败，已继续：host=%s port=%s error=%s",
-                host_s,
-                port_i,
+                host,
+                port,
                 exc,
                 state_dir=state_dir,
                 runtime_dir=runtime_dir,
-                cfg_log_dir=cfg_log_dir,
             )
 
 
 def candidate_ports(preferred: int) -> List[int]:
     candidates: List[int] = []
     for p in [preferred, 5000, 5705, 5706, 5707, 5710, 5711, 5712, 5713, 5714, 5715]:
-        try:
-            p0 = int(p)
-        except (TypeError, ValueError):
-            continue
-        if p0 > 0 and p0 not in candidates:
-            candidates.append(p0)
+        if p > 0 and p not in candidates:
+            candidates.append(p)
     return candidates
 
 
@@ -119,17 +72,16 @@ def _bind_ephemeral_port(
     host: str,
     fallback_host: str,
     *,
-    logger: Optional[logging.Logger] = None,
-    state_dir: Optional[str] = None,
-    runtime_dir: Optional[str] = None,
-    cfg_log_dir: Optional[str] = None,
+    logger: logging.Logger,
+    state_dir: str,
+    runtime_dir: str,
 ) -> Tuple[str, int]:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         try:
             s.bind((host, 0))
             _h, p = s.getsockname()
-            return (host, int(p))
+            return (host, p)
         except Exception as exc:
             launcher_log_warning(
                 logger,
@@ -139,13 +91,12 @@ def _bind_ephemeral_port(
                 exc,
                 state_dir=state_dir,
                 runtime_dir=runtime_dir,
-                cfg_log_dir=cfg_log_dir,
             )
             s.close()
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.bind((fallback_host, 0))
             _h, p = s.getsockname()
-            return (fallback_host, int(p))
+            return (fallback_host, p)
     finally:
         try:
             s.close()
@@ -156,7 +107,6 @@ def _bind_ephemeral_port(
                 exc,
                 state_dir=state_dir,
                 runtime_dir=runtime_dir,
-                cfg_log_dir=cfg_log_dir,
             )
 
 
@@ -164,18 +114,17 @@ def pick_port(
     host: str,
     preferred: int,
     *,
-    logger: Optional[logging.Logger] = None,
-    state_dir: Optional[str] = None,
-    runtime_dir: Optional[str] = None,
-    cfg_log_dir: Optional[str] = None,
+    logger: logging.Logger,
+    state_dir: str,
+    runtime_dir: str,
 ) -> Tuple[str, int]:
     candidates = candidate_ports(preferred)
     fallback_host = "127.0.0.1"
-    last_result = BindProbeResult(False, str(host or "").strip() or fallback_host, 0, "no_candidates")
+    last_result = BindProbeResult(False, host, 0, "no_candidates")
     for p in candidates:
-        last_result = _can_bind_result(host, p, logger=logger, state_dir=state_dir, runtime_dir=runtime_dir, cfg_log_dir=cfg_log_dir)
+        last_result = _can_bind_result(host, p, logger=logger, state_dir=state_dir, runtime_dir=runtime_dir)
         if last_result.ok:
-            return (host, int(p))
+            return (host, p)
 
     launcher_log_warning(
         logger,
@@ -186,7 +135,6 @@ def pick_port(
         last_result.error,
         state_dir=state_dir,
         runtime_dir=runtime_dir,
-        cfg_log_dir=cfg_log_dir,
     )
 
     if host != fallback_host:
@@ -197,7 +145,6 @@ def pick_port(
                 logger=logger,
                 state_dir=state_dir,
                 runtime_dir=runtime_dir,
-                cfg_log_dir=cfg_log_dir,
             )
             if last_result.ok:
                 launcher_log_warning(
@@ -205,13 +152,12 @@ def pick_port(
                     "已回退到本机监听地址：requested_host=%s fallback_host=%s fallback_port=%s last_reason=%s",
                     host,
                     fallback_host,
-                    int(p),
+                    p,
                     last_result.reason,
                     state_dir=state_dir,
                     runtime_dir=runtime_dir,
-                    cfg_log_dir=cfg_log_dir,
                 )
-                return (fallback_host, int(p))
+                return (fallback_host, p)
 
     launcher_log_warning(
         logger,
@@ -223,7 +169,6 @@ def pick_port(
         last_result.error,
         state_dir=state_dir,
         runtime_dir=runtime_dir,
-        cfg_log_dir=cfg_log_dir,
     )
     return _bind_ephemeral_port(
         host,
@@ -231,5 +176,4 @@ def pick_port(
         logger=logger,
         state_dir=state_dir,
         runtime_dir=runtime_dir,
-        cfg_log_dir=cfg_log_dir,
     )

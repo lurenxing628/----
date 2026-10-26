@@ -106,15 +106,9 @@ def _supplied_projection_map(execution_projections, refs, plan):
 
 
 def _load_projections(ledger, refs, execution_projections):
-    if execution_projections is None:
-        loaded = ledger.load(refs)
-        projections = {row.operation_ref: row for row in ledger.project_loaded(loaded)}
-        plan, ledger_revision = loaded["plan"], loaded["clock"]["ledger_revision"]
-    else:
-        plan = ledger._current_plan()
-        projections = _supplied_projection_map(execution_projections, refs, plan)
-        ledger_revision = ledger.revision_clock()["ledger_revision"]
-    return projections, plan, ledger_revision
+    plan = ledger._current_plan()
+    projections = _supplied_projection_map(execution_projections, refs, plan)
+    return projections, plan, ledger.revision_clock()["ledger_revision"]
 
 
 def _adapt_scope_facts(legacy_facts, tasks, projections, plan, ledger_revision, resources, refs_by_op):
@@ -146,7 +140,7 @@ def _adapt_scope_facts(legacy_facts, tasks, projections, plan, ledger_revision, 
     return result
 
 
-def adapt_ledger_facts(ledger, legacy_facts, *, execution_projections=None):
+def adapt_ledger_facts(ledger, legacy_facts, *, execution_projections):
     try:
         _require_reported_operation_scopes(ledger)
         scopes = [scope for scope in legacy_facts if scope.source_table == SOURCE_SCHEDULE

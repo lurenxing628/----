@@ -19,7 +19,7 @@ def run(conn: sqlite3.Connection, logger=None) -> MigrationOutcome:
                 fallback_log(logger, "warning", f"数据库迁移 v2：WorkCalendar 表不存在，已跳过 day_type 规范化（{e}）。")
             return MigrationOutcome.SKIPPED
         raise
-    changed = int(getattr(cur, "rowcount", 0) or 0)
+    changed = cur.rowcount
     if changed and logger:
         fallback_log(logger, "warning", f"数据库迁移 v2：已将 WorkCalendar.day_type 的 weekend 统一为 holiday（影响行数={changed}）。")
     return MigrationOutcome.APPLIED

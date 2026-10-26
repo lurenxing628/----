@@ -23,8 +23,8 @@ def maybe_run_auto_backup(
     backup_dir: str,
     keep_days: int,
     job_key: str,
-    logger=None,
-    op_logger=None,
+    logger,
+    op_logger,
     is_due_fn: Callable[..., bool],
     fmt_db_dt_fn: Callable[[datetime], str],
 ) -> Tuple[bool, bool]:

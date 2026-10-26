@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 from core.infrastructure.migration_state import ensure_schema_version
+from core.infrastructure.schema_declaration import load_schema_sql
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.resource.queries import WorkbenchResourceQueryService
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
@@ -45,7 +46,7 @@ ROTATING_FIELDS = {
 
 @pytest.fixture(name="resource_conn")
 def resource_database(schema_conn):
-    ensure_schema_version(schema_conn)
+    ensure_schema_version(schema_conn, schema_sql=load_schema_sql())
     seed_resources(schema_conn, relations=True)
     for code, category in (("OT2", "internal"), ("EXT", "external")):
         insert_row(schema_conn, "OpTypes", {"op_type_id": code, "name": code, "category": category})

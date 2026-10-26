@@ -148,8 +148,7 @@ def build_admission_read_model(capture, *, facts):
     summary = scope_summary(canonical_json(capture["input"]))
     if options["generation_policy_version"] is not None:
         summary = dict(summary, run_options=options)
-    workload = project_admitted_scope(capture["input"], facts.archive, tables=facts.tables,
-                                      entity_refs=facts.entity_refs, summary=summary)
+    workload = project_admitted_scope(capture["input"], facts, summary=summary)
     return {"scope_summary": summary, "input": capture["input"], "run_options": options,
             **{field: workload[field] for field in ("batches", "operation_count", "objective", "objective_label")},
             "workload_data_gaps": workload["data_gaps"]}
@@ -313,7 +312,6 @@ def _header_artifact(artifact):
 
 
 def _header(run, receipt, candidates):
-    receipt = receipt or {}
     saved_manifest = {row["candidate_ref"]: row for row in receipt.get("candidates", [])}
     manifest = [dict(candidate_ref=row["candidate_ref"], run_ref=row["run_ref"],
         sequence=row["sequence"], candidate_key=row["artifact"].get("candidate_key"),
@@ -345,10 +343,10 @@ def build_decision_read_models(run, capture, receipt, candidates, prepared_candi
     operation_scope = set(refs), deferred, skipped
     deferred_ids = {facts.operations[ref] for ref in deferred}
     legacy_deferred_ids = material_deferred_ids((disposition or {}).values(), capture["input"])
-    efforts = saved_operation_efforts((receipt or {}).get("operation_effort"), identities=facts.operations)
+    efforts = saved_operation_efforts(receipt.get("operation_effort"), identities=facts.operations)
     standards = admission_operation_standards(facts, refs, run["run_ref"])
     basis, candidate_models = selection_basis(receipt, candidates), []
-    unified = ((receipt or {}).get("selection") or {}).get("generation_policy_version") == "unified_search_v1"
+    unified = (receipt.get("selection") or {}).get("generation_policy_version") == "unified_search_v1"
     default_reference = (next((row for row in candidates if row["candidate_ref"] == basis["selected_candidate_ref"]
                               and row["status"] == "completed"), None) if unified else
                          next((row for row in candidates if row["status"] == "completed" and row["artifact"].get("kind") == "baseline"), None))
@@ -376,7 +374,7 @@ def build_decision_read_models(run, capture, receipt, candidates, prepared_candi
                        resource_views=_resource_views(tasks, refs, intervals))
         prepared = project_decision_preparation(facts, refs, efforts, tasks, run_ref=run["run_ref"], available=available,
             deferred_refs=deferred, standards=standards,
-            requirements_available=(receipt or {}).get("operation_effort") is not None or available)
+            requirements_available=receipt.get("operation_effort") is not None or available)
         work = preparation_work_items(facts, prepared["rows"], disposition, available=available)
         completion = project_completion_summary(delivery, work, available=available, schedulable_coverage=summary["coverage"]["schedulable"])
         detail = project_legacy_delivery_detail(

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timedelta
 from functools import partial
@@ -29,27 +28,6 @@ from tests._support.algo_operations import make_algo_op, make_batch_operation
 
 def _make_dt(hours: int) -> datetime:
     return datetime(2026, 1, 1, 8, 0, 0) + timedelta(hours=hours)
-
-
-class _TxManager:
-    @contextmanager
-    def transaction(self) -> Any:
-        yield
-
-
-class _HistoryRepo:
-    def __init__(self) -> None:
-        self.allocate_calls = 0
-
-    def allocate_next_version(self) -> int:
-        self.allocate_calls += 1
-        return 7
-
-
-class _Svc:
-    def __init__(self) -> None:
-        self.tx_manager = _TxManager()
-        self.history_repo = _HistoryRepo()
 
 
 def _schedule_input(mode: str, *, block_on_cycle: str) -> ScheduleRunInput:
@@ -83,7 +61,6 @@ def _schedule_input(mode: str, *, block_on_cycle: str) -> ScheduleRunInput:
             graph_debug_export="no",
         ),
         cal_svc=SimpleNamespace(),
-        cfg_svc=SimpleNamespace(),
         readiness_gate_enabled=True,
         algo_ops=algo_ops,
         algo_ops_to_schedule=list(algo_ops),
@@ -100,7 +77,6 @@ def _schedule_input(mode: str, *, block_on_cycle: str) -> ScheduleRunInput:
         execution_snapshot_revision="rev-0",
         execution_snapshot_op_ids=[1],
         execution_snapshot_op_count=1,
-        run_time_budget_seconds=None,
         normalized_batch_ids=["B001"],
         freeze_meta={"loaded": True},
         downtime_meta={},
@@ -179,11 +155,11 @@ def _summary_from_ctx(*, ctx: Any, logger: Any = None) -> Dict[str, Any]:
     return result_summary_obj
 
 
-def _run_orchestrator(schedule_input: Any, svc: _Svc) -> Any:
-    return _run_orchestrator_with_decoder(schedule_input, svc, decode_fn=lambda **_kwargs: _optimizer_outcome())
+def _run_orchestrator(schedule_input: Any) -> Any:
+    return _run_orchestrator_with_decoder(schedule_input, decode_fn=lambda **_kwargs: _optimizer_outcome())
 
 
-def _run_orchestrator_with_decoder(schedule_input: Any, svc: _Svc, *, decode_fn: Any) -> Any:
+def _run_orchestrator_with_decoder(schedule_input: Any, *, decode_fn: Any) -> Any:
     preparation = None
 
     def prepare_graph(inputs):
@@ -212,6 +188,7 @@ def _run_orchestrator_with_decoder(schedule_input: Any, svc: _Svc, *, decode_fn:
             strict_mode=True,
             candidate_comparison_fn=compare,
             build_result_summary_fn=_summary_from_ctx,
+            point_validator=lambda _row: None,
         )
 
 
@@ -228,9 +205,8 @@ def cycle_graph(monkeypatch: Any) -> None:
 
 
 def test_report_mode_cycle_only_reports_warning_and_keeps_scheduling(cycle_graph: None) -> None:
-    svc = _Svc()
 
-    outcome = _run_orchestrator(_schedule_input("report", block_on_cycle="yes"), svc)
+    outcome = _run_orchestrator(_schedule_input("report", block_on_cycle="yes"))
 
     graph_analysis = outcome.result_summary_obj["algo"]["graph_analysis"]
     assert graph_analysis["mode"] == "report"
@@ -240,14 +216,12 @@ def test_report_mode_cycle_only_reports_warning_and_keeps_scheduling(cycle_graph
     assert graph_analysis["cycle_edge_count"] == 2
     assert outcome.candidate_comparison.selection.selected_plan.dispatch_mode == "batch_order"
     assert outcome.result_summary_obj["algo"]["used_params"]["dispatch_mode"] == "batch_order"
-    assert svc.history_repo.allocate_calls == 0
 
 
 def test_on_mode_cycle_with_block_yes_stops_before_version_allocation(cycle_graph: None) -> None:
-    svc = _Svc()
 
     with pytest.raises(ValidationError) as exc_info:
-        _run_orchestrator(_schedule_input("on", block_on_cycle="yes"), svc)
+        _run_orchestrator(_schedule_input("on", block_on_cycle="yes"))
 
     assert exc_info.value.field == "schedule_graph_cycle"
     assert "工序图存在循环依赖" in exc_info.value.message
@@ -260,18 +234,16 @@ def test_on_mode_cycle_with_block_yes_stops_before_version_allocation(cycle_grap
         ],
         "field": "schedule_graph_cycle",
     }
-    assert svc.history_repo.allocate_calls == 0
 
 
 def test_on_mode_cycle_with_block_no_disables_graph_enhancement_and_keeps_old_sgs(cycle_graph: None) -> None:
-    svc = _Svc()
     captured: Dict[str, Any] = {}
 
     def _optimize(**kwargs: Any) -> Tuple[List[ScheduleResult], ScheduleSummary, SortStrategy, Dict[str, Any]]:
         captured.update(kwargs)
         return _optimizer_outcome()
 
-    outcome = _run_orchestrator_with_decoder(_schedule_input("on", block_on_cycle="no"), svc, decode_fn=_optimize)
+    outcome = _run_orchestrator_with_decoder(_schedule_input("on", block_on_cycle="no"), decode_fn=_optimize)
 
     graph_analysis = outcome.result_summary_obj["algo"]["graph_analysis"]
     assert graph_analysis["effective_mode"] == "sgs_without_graph_ready_queue"
@@ -286,11 +258,9 @@ def test_on_mode_cycle_with_block_no_disables_graph_enhancement_and_keeps_old_sg
     assert selected.dispatch_mode == "sgs"
     assert "graph_ready_profile" not in selected.origin
     assert outcome.result_summary_obj["algo"]["used_params"]["dispatch_mode"] == "sgs"
-    assert svc.history_repo.allocate_calls == 0
 
 
 def test_on_mode_improve_with_zero_score_weights_skips_graph_feature_prep_and_keeps_scheduling() -> None:
-    svc = _Svc()
     schedule_input = _schedule_input("on", block_on_cycle="yes")
     schedule_input.cfg = replace(
         schedule_input.cfg,
@@ -299,7 +269,7 @@ def test_on_mode_improve_with_zero_score_weights_skips_graph_feature_prep_and_ke
         graph_impact_weight=0,
     )
 
-    outcome = _run_orchestrator(schedule_input, svc)
+    outcome = _run_orchestrator(schedule_input)
 
     graph_analysis = outcome.result_summary_obj["algo"]["graph_analysis"]
     assert graph_analysis["mode"] == "on"
@@ -308,7 +278,6 @@ def test_on_mode_improve_with_zero_score_weights_skips_graph_feature_prep_and_ke
     assert graph_analysis["score_disabled_reason"] == "score_weights_zero"
     selected = outcome.candidate_comparison.selection.selected_plan
     assert "graph_ready_profile" not in selected.origin
-    assert svc.history_repo.allocate_calls == 0
 
 
 @pytest.mark.parametrize(
@@ -353,10 +322,9 @@ def test_on_mode_known_graph_error_is_not_reported_as_cycle(
             raise exception_factory()
 
     monkeypatch.setattr(analysis_service, "ScheduleGraphAnalysisService", FailingGraphService)
-    svc = _Svc()
 
     with pytest.raises(ValidationError) as exc_info:
-        _run_orchestrator(_schedule_input("on", block_on_cycle="yes"), svc)
+        _run_orchestrator(_schedule_input("on", block_on_cycle="yes"))
 
     assert exc_info.value.field == reason
     assert exc_info.value.details == {
@@ -366,7 +334,6 @@ def test_on_mode_known_graph_error_is_not_reported_as_cycle(
     }
     assert "工序图增强无法启用" in exc_info.value.message
     assert "循环依赖" not in exc_info.value.message
-    assert svc.history_repo.allocate_calls == 0
 
 
 def test_unknown_graph_error_is_not_swallowed_before_scheduling(monkeypatch: Any) -> None:
@@ -377,11 +344,9 @@ def test_unknown_graph_error_is_not_swallowed_before_scheduling(monkeypatch: Any
             raise RuntimeError("boom")
 
     monkeypatch.setattr(analysis_service, "ScheduleGraphAnalysisService", FailingGraphService)
-    svc = _Svc()
 
     with pytest.raises(RuntimeError, match="boom"):
-        _run_orchestrator(_schedule_input("on", block_on_cycle="yes"), svc)
-    assert svc.history_repo.allocate_calls == 0
+        _run_orchestrator(_schedule_input("on", block_on_cycle="yes"))
 
 
 def _analysis_graph(durations: List[Tuple[str, int]], edges: List[Tuple[str, str, int]]) -> Any:
@@ -389,7 +354,8 @@ def _analysis_graph(durations: List[Tuple[str, int]], edges: List[Tuple[str, str
 
     graph = import_networkx().DiGraph()
     for node_id, duration in durations:
-        graph.add_node(node_id, batch_id="B", piece_id=None, seq=0, op_code=node_id, duration_minutes=duration)
+        graph.add_node(node_id, batch_id="B", piece_id=None, seq=0, op_code=node_id, duration_minutes=duration,
+                       machine_id=None, candidate_machine_ids=())
     for parent, child, lag in edges:
         graph.add_edge(parent, child, lag_minutes=lag, kind="precedence")
     return graph
@@ -449,9 +415,8 @@ def test_critical_path_keeps_original_networkx_order_and_zero_semantics(
         sum(weighted.edges[parent, child]["weight"] for parent, child in zip(raw_path, raw_path[1:])),
     )
     assert oracle == expected
-    order = metrics.get_topological_order(graph)
+    order = [node_id for group in metrics.get_topological_generations(graph) for node_id in group]
     assert metrics.get_critical_path(graph, topological_order=order) == oracle
-    assert metrics.get_critical_path(graph) == oracle
 
 
 @pytest.mark.parametrize("metrics_mode", ["basic", "full"])
@@ -498,24 +463,6 @@ def test_graph_analysis_keeps_cycle_evidence_after_topology_failure(monkeypatch:
     assert summary.warnings[-1].code == "GRAPH_HAS_CYCLE"
     assert summary.warnings[-1].data == {"cycle_edges": summary.cycle_edges}
     assert topology.call_count == cycle.call_count == 1
-
-
-def test_standalone_node_metrics_prepares_topology_once_and_reuses_given_order(monkeypatch: Any) -> None:
-    from unittest.mock import Mock
-
-    from core.services.scheduler.graph import metrics
-    from core.services.scheduler.graph.nx_runtime import import_networkx
-
-    graph = _analysis_graph([("a", 3), ("b", 4)], [("a", "b", 2)])
-    nx = import_networkx()
-    topology = Mock(wraps=nx.topological_generations)
-    monkeypatch.setattr(nx, "topological_generations", topology)
-
-    expected = metrics.build_node_metrics(graph)
-    assert topology.call_count == 1
-    topology.reset_mock()
-    assert metrics.build_node_metrics(graph, topological_order=["a", "b"]) == expected
-    assert topology.call_count == 0
 
 
 def test_piece_sequences_chain_and_duplicate_check_stay_within_each_piece() -> None:

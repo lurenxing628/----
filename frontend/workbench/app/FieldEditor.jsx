@@ -12,7 +12,7 @@
     const [baseline] = React.useState(() => retained ? retained.baseline : currentBaseline);
     const changed = JSON.stringify(baseline) !== JSON.stringify(currentBaseline);
     const dirty = JSON.stringify(draft) !== JSON.stringify(initial.initialDraft);
-    React.useLayoutEffect(() => { if (typeof onDraft === 'function') onDraft({ draft, baseline, initialDraft: initial.initialDraft, suggestions, dirty }); }, [draft, baseline, suggestions, dirty, initial, onDraft]);
+    React.useLayoutEffect(() => { onDraft({ draft, baseline, initialDraft: initial.initialDraft, suggestions, dirty }); }, [draft, baseline, suggestions, dirty, initial, onDraft]);
     const form = React.useRef(null), first = React.useRef(null);
     const title = legacy ? '补齐原始完工记录' : action === 'create' ? '本次报工' : action === 'supplement' ? '补齐本次报工' : '更正报工';
     const context = record ? record.write_context : task.execution.write_context;

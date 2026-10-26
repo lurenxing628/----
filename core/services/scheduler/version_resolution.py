@@ -29,7 +29,7 @@ def resolve_version_or_latest(
     latest_version: int,
     version_exists: Callable[[int], bool],
 ) -> VersionResolution:
-    latest = int(latest_version or 0)
+    latest = latest_version
     raw_text = "" if value is None else str(value).strip()
     if not raw_text or raw_text.lower() == "latest":
         return VersionResolution(selected_version=latest if latest > 0 else None)

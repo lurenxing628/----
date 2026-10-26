@@ -50,4 +50,4 @@ def system_api(db_env, tmp_path, monkeypatch):
             assert runtime.shutdown(timeout=15)
         if gate is not None:
             assert gate.shutdown(timeout=15)
-        release_runtime_lock(scope, db_path=db_env)
+        release_runtime_lock(scope, db_path=db_env, expected_payload=payload)

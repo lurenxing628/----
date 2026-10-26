@@ -7,34 +7,20 @@ from core.algorithm_contracts.changeover_events import type_transition
 from core.algorithm_contracts.date_parsers import due_exclusive, parse_date
 
 
-def batch_id(result: Any) -> str:
-    return str(result.batch_id or "").strip()
-
-
 def latest_result(results: List[Any]) -> Optional[Any]:
-    rows = [
-        row
-        for row in results or ()
-        if row.end_time is not None and batch_id(row)
-    ]
+    # Decoded rows carry their batch id and sequence (ScheduleResult, schedule_seed_contracts).
+    rows = [row for row in results if row.end_time is not None]
     if not rows:
         return None
-    return max(
-        rows,
-        key=lambda row: (
-            row.end_time,
-            batch_id(row),
-            int(row.seq or 0),
-        ),
-    )
+    return max(rows, key=lambda row: (row.end_time, row.batch_id, row.seq))
 
 
 def finish_by_batch(results: List[Any]) -> Dict[str, datetime]:
     out: Dict[str, datetime] = {}
-    for result in results or ():
-        bid = batch_id(result)
+    for result in results:
+        bid = result.batch_id
         end_time = result.end_time
-        if not bid or not isinstance(end_time, datetime):
+        if not isinstance(end_time, datetime):
             continue
         current = out.get(bid)
         if current is None or end_time > current:
@@ -58,11 +44,10 @@ def most_tardy_batch(
     batches: Dict[str, Any],
 ) -> Optional[str]:
     best: Optional[Tuple[str, float]] = None
-    for raw_batch_id, batch in (batches or {}).items():
-        bid = str(raw_batch_id or "").strip()
+    for bid, batch in batches.items():
         due_date = batch_due_date(batch)
         finish_time = finish_by_batch_rows.get(bid)
-        if not bid or due_date is None or finish_time is None:
+        if due_date is None or finish_time is None:
             continue
         due_end = due_exclusive(due_date)
         if finish_time < due_end:
@@ -79,10 +64,9 @@ def earliest_due_pressure_batch(
     batches: Dict[str, Any],
 ) -> str:
     best: Optional[Tuple[date, str]] = None
-    for raw_batch_id, batch in (batches or {}).items():
-        bid = str(raw_batch_id or "").strip()
+    for bid, batch in batches.items():
         due_date = batch_due_date(batch)
-        if not bid or due_date is None:
+        if due_date is None:
             continue
         finish_time = finish_by_batch_rows.get(bid)
         if finish_time is not None and finish_time < due_exclusive(due_date):
@@ -95,7 +79,7 @@ def earliest_due_pressure_batch(
 
 def bottleneck_machine_rows(results: List[Any]) -> List[Any]:
     grouped: Dict[str, List[Any]] = {}
-    for result in results or ():
+    for result in results:
         machine_id = str(result.machine_id or "").strip()
         if machine_id:
             grouped.setdefault(machine_id, []).append(result)
@@ -117,7 +101,7 @@ def busy_hours(rows: List[Any]) -> float:
 
 def first_changeover_pair(results: List[Any]) -> Optional[Tuple[Any, Any]]:
     grouped: Dict[str, List[Any]] = {}
-    for result in results or ():
+    for result in results:
         machine_id = str(result.machine_id or "").strip()
         if machine_id:
             grouped.setdefault(machine_id, []).append(result)
@@ -139,7 +123,7 @@ def result_time_key(row: Any) -> Tuple[datetime, datetime, int]:
     return (
         row.start_time,
         row.end_time,
-        int(row.op_id or 0),
+        row.op_id,
     )
 
 
@@ -155,7 +139,7 @@ def pick_resource_pair(pool: Dict[str, Any]) -> Optional[Tuple[str, str, int]]:
     for machine_id in sorted(str(key) for key in operators_by_machine.keys()):
         operators = [
             text
-            for item in operators_by_machine.get(machine_id) or ()
+            for item in operators_by_machine[machine_id]
             for text in (str(item).strip(),)
             if text
         ]
@@ -171,7 +155,6 @@ def pick_resource_pair(pool: Dict[str, Any]) -> Optional[Tuple[str, str, int]]:
 
 
 __all__ = [
-    "batch_id",
     "bottleneck_machine_rows",
     "earliest_due_pressure_batch",
     "finish_by_batch",

@@ -356,12 +356,12 @@ def exercise(client, seed_state, progress):
         raise
 
 
-def exercise_sample(base_url, seed_state, output=None):
+def exercise_sample(base_url, seed_state, output):
     client = SampleClient(base_url)
     client.request_count = seed_state.get("request_count", 0)
     progress = SampleProgress(None, client)
     progress.started -= seed_state.get("elapsed_seconds", 0)
-    progress.output = Path(output) if output is not None else None
+    progress.output = Path(output)
     return exercise(client, seed_state, progress)
 
 

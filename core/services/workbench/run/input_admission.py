@@ -29,7 +29,6 @@ def candidate_admission_issues(conn, *, prepared):
             facts=prepared.preflight_facts,
             config_snapshot=prepared.config_snapshot,
             baseline=prepared.baseline,
-            validated_projections={row.operation_ref: row for row in prepared.execution_projections},
             held=prepared.held_arrangements,
         )
         prepared.prepared_input = result

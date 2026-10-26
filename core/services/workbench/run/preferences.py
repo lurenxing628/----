@@ -1,7 +1,6 @@
 """Remember the exact scheduling input without admitting or executing a run."""
 
-import json
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, NoReturn, Tuple
 
 from core.infrastructure.logging import OperationLogger
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected, canonical_json
@@ -12,7 +11,12 @@ from core.models.workbench_preflight import (
     normalize_preflight_input,
 )
 from core.services.workbench.commands import WorkbenchCommandService
+from core.shared.strict_json import load_strict_json
 from data.repositories.system_config_repo import SystemConfigRepository
+
+
+def _invalid_preferences() -> NoReturn:
+    raise WorkbenchCommandRejected("scheduling_preferences_invalid", "保存的排产范围或条件无法读取，请联系维护人员核对。", 409)
 
 
 class SchedulingPreferencesService:
@@ -25,13 +29,12 @@ class SchedulingPreferencesService:
         state = {"present": present, "stored": stored}
         if not present:
             return {"input": None}, state
+        if not isinstance(stored, str):
+            _invalid_preferences()
+        value = load_strict_json(stored, on_malformed=_invalid_preferences, expected=dict)
+        if set(value) != {"version", "input"} or type(value["version"]) is not int or value["version"] != 1:
+            _invalid_preferences()
         try:
-            if not isinstance(stored, str):
-                raise ValueError("Stored scheduling preferences must be text")
-            value = json.loads(stored)
-            if (type(value) is not dict or set(value) != {"version", "input"}
-                    or type(value["version"]) is not int or value["version"] != 1):
-                raise ValueError("Unsupported scheduling preference document")
             normalized = normalize_preflight_input(value["input"])
         except (TypeError, ValueError) as exc:
             raise WorkbenchCommandRejected("scheduling_preferences_invalid", "保存的排产范围或条件无法读取，请联系维护人员核对。", 409) from exc

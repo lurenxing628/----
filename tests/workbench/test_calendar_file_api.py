@@ -96,6 +96,15 @@ def test_preview_does_not_write_and_confirm_commits_once(client, monkeypatch):
     assert snapshot(client) == after
 
 
+def test_zero_hour_workday_preview_notes_the_fact_and_requires_confirmation(client):
+    row, = preview_ok(client, [(OTHER, "工作日", "0", "", "是", "是", "")])["rows"]
+    assert row["result"] == "new" and row["requires_confirmation"] is True
+    assert [note for note in row["notes"] if "可排工时是 0" in note] == [
+        "这一天是工作日，但可排工时是 0，排产时一道工序也排不进来。要上班请填可排工时；要休息请把类型填成「假期」。"]
+    worked, = preview_ok(client, [(OTHER, "工作日", "8", "", "是", "是", "")])["rows"]
+    assert not any("可排工时是 0" in note for note in worked["notes"])
+
+
 def test_legacy_null_shift_start_and_empty_remark_csv_roundtrip_without_false_diff(client):
     preview = preview_ok(client, [(DAY, "工作日", "8", "100", "是", "是", "初值")])
     assert confirm(client, preview, key="calendar-file-legacy-setup").status_code == 200
@@ -276,6 +285,9 @@ def test_operator_zero_hour_workday_roundtrip_and_fullwidth_clock_rejected(clien
     create_prev = create_resp.get_json()["data"]
     assert create_prev["can_confirm"] is True
     assert create_prev["rows"][0]["after"]["shift_hours"] == "0"
+    assert create_prev["rows"][0]["requires_confirmation"] is True
+    assert [note for note in create_prev["rows"][0]["notes"] if "可排工时是 0" in note] == [
+        "这一天是工作日，但可排工时是 0，排产时这个人一道工序也排不进来。要上班请填班次起止或工作时段；要休息请把类型填成「假期」。"]
     confirmed_create = client.post(
         BASE + "/operator_calendar/confirm",
         json={

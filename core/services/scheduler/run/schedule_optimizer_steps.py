@@ -6,10 +6,11 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithms.evaluation import objective_score
+from core.algorithms.ortools_bottleneck import OrtoolsWarmstartError, try_solve_bottleneck_batch_order
 from core.errors import ValidationError
+from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 
 from .optimizer.config import (
-    ensure_optimizer_config_snapshot,
     is_ortools_enabled,
     ortools_time_limit_seconds,
     weighted_strategy_params,
@@ -30,17 +31,13 @@ def _solve_ortools_order(
     *,
     deadline: float,
     now: Callable[[], float],
-    snapshot: Any,
+    snapshot: ScheduleConfigSnapshot,
     algo_ops_to_schedule: List[Any],
     batches: Dict[str, Any],
     start_dt: datetime,
-    order_time_budget_seconds: Optional[float] = None,
+    order_time_budget_seconds: float,
 ) -> Optional[List[str]]:
-    from core.algorithms.ortools_bottleneck import try_solve_bottleneck_batch_order
-
-    remaining = float(deadline - now())
-    if order_time_budget_seconds is not None:
-        remaining = min(remaining, order_time_budget_seconds)
+    remaining = min(float(deadline - now()), order_time_budget_seconds)
     # 时间预算不足时跳过 OR-Tools warm-start：
     # - remaining<=0：避免已经超时仍强行跑 1s
     # - remaining<1：避免 int(remaining)=0 被 tl=max(1,...) 拉回 1s 导致超时
@@ -57,7 +54,7 @@ def _solve_ortools_order(
     )
 
 
-def _ortools_strategy_params(snapshot: Any, *, strategy: SortStrategy) -> Dict[str, Any]:
+def _ortools_strategy_params(snapshot: ScheduleConfigSnapshot, *, strategy: SortStrategy) -> Dict[str, Any]:
     if strategy != SortStrategy.WEIGHTED:
         return {}
     return weighted_strategy_params(snapshot)
@@ -109,25 +106,23 @@ def _evaluate_ortools_candidate(
         "algo_stats": decoded.algo_stats,
         "resource_pool": resource_pool or {},
     }
-    candidate["_shared_entry_id"] = decoded.entry_id
-    candidate["_archive_observation"] = decoded.archive_observation
-    if decoded.receipt is not None:
-        candidate["decode_receipt"] = decoded.receipt
-        if decoded.receipt["execution_kind"] == "decision_reused":
-            source_runtime = decoded.receipt["source_runtime_ms"]
-            source_initial = decoded.receipt["source_initial_decode_runtime_ms"]
-            candidate["runtime_ms"] = source_runtime if source_runtime is not None else decoded.receipt["original_decode_ms"]
-            candidate["initial_decode_runtime_ms"] = (
-                source_initial if source_initial is not None else decoded.receipt["original_decode_ms"])
-        else:
-            candidate["runtime_ms"] = int(decoded.receipt["original_decode_ms"])
+    candidate["archive_ref"] = decoded.archive_ref()
+    candidate["decode_receipt"] = decoded.receipt
+    if decoded.receipt["execution_kind"] == "decision_reused":
+        source_runtime = decoded.receipt["source_runtime_ms"]
+        source_initial = decoded.receipt["source_initial_decode_runtime_ms"]
+        candidate["runtime_ms"] = source_runtime if source_runtime is not None else decoded.receipt["original_decode_ms"]
+        candidate["initial_decode_runtime_ms"] = (
+            source_initial if source_initial is not None else decoded.receipt["original_decode_ms"])
+    else:
+        candidate["runtime_ms"] = int(decoded.receipt["original_decode_ms"])
     return candidate
 
 
 def _ortools_warmstart_skip_reason(
     *,
     algo_mode: str,
-    snapshot: Any,
+    snapshot: ScheduleConfigSnapshot,
     deadline: float,
     now: Callable[[], float],
 ) -> Optional[str]:
@@ -143,7 +138,7 @@ def _ortools_warmstart_skip_reason(
 def run_ortools_warmstart(
     *,
     algo_mode: str,
-    cfg: Any,
+    cfg: ScheduleConfigSnapshot,
     strategy_enum: SortStrategy,
     objective_name: str,
     deadline: float,
@@ -163,14 +158,13 @@ def run_ortools_warmstart(
     graph_ready_context: Optional[Any] = None,
     strict_mode: bool = False,
     clock: Optional[Callable[[], float]] = None,
-    search_report_state: Optional[OptimizationSearchReportState] = None,
+    search_report_state: OptimizationSearchReportState,
     decode_session: SharedDecodeSession,
 ) -> Optional[Dict[str, Any]]:
     # 可选：OR-Tools 高质量起点（瓶颈子问题）
-    snapshot = ensure_optimizer_config_snapshot(cfg, strict_mode=bool(strict_mode))
     now = clock or time.time
 
-    skip_reason = _ortools_warmstart_skip_reason(algo_mode=algo_mode, snapshot=snapshot, deadline=deadline, now=now)
+    skip_reason = _ortools_warmstart_skip_reason(algo_mode=algo_mode, snapshot=cfg, deadline=deadline, now=now)
     if skip_reason == "time_budget":
         _record_warmstart_shared_skip(attempts, SharedSearchSkip(skip_reason), strategy_enum,
                                       dispatch_mode_cfg, dispatch_rule_cfg)
@@ -191,7 +185,7 @@ def run_ortools_warmstart(
         ort_order = _solve_ortools_order(
             deadline=deadline,
             now=now,
-            snapshot=snapshot,
+            snapshot=cfg,
             algo_ops_to_schedule=algo_ops_to_schedule,
             batches=batches,
             start_dt=start_dt,
@@ -209,10 +203,8 @@ def run_ortools_warmstart(
             exc=e,
         )
         return best
-    except SharedSearchSkip as exc:
-        _record_warmstart_shared_skip(attempts, exc, strategy_enum, dispatch_mode_cfg, dispatch_rule_cfg)
-        raise
-    except Exception as e:
+    except OrtoolsWarmstartError as e:
+        # The optional warm start degrades visibly on its real failures; other errors are defects.
         _record_ortools_optional_failure(
             attempts=attempts,
             strategy=strategy_enum,
@@ -235,7 +227,7 @@ def run_ortools_warmstart(
         cand = _evaluate_ortools_candidate(
             strict_mode=bool(strict_mode),
             strategy=strategy_enum,
-            params=_ortools_strategy_params(snapshot, strategy=strategy_enum),
+            params=_ortools_strategy_params(cfg, strategy=strategy_enum),
             start_dt=start_dt,
             end_date=end_date,
             ort_order=list(ort_order),

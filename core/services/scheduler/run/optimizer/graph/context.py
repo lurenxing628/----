@@ -16,7 +16,7 @@ def validate_graph_ready_context(
     graph_ready_context: Any,
     *,
     algo_ops_to_schedule: List[OpForScheduleAlgo],
-    seed_sr_list: Optional[List[Any]] = None,
+    seed_sr_list: List[Any],
 ) -> set:
     if not isinstance(graph_ready_context, dict) or not graph_ready_context.get("enabled"):
         _raise("图 ready 候选缺少可用图上下文。", "graph_ready_unavailable")
@@ -99,7 +99,7 @@ def _validate_schedulable_ids(schedulable_ids: set, fixed_ids: set, *, algo_ops_
         _raise("图 ready 候选的待排工序和本次输入不一致。", "graph_ready_schedulable_mismatch")
 
 
-def _validate_fixed_sources(graph_ready_context: Dict[str, Any], *, fixed_ids: set, seed_sr_list: Optional[List[Any]]) -> None:
+def _validate_fixed_sources(graph_ready_context: Dict[str, Any], *, fixed_ids: set, seed_sr_list: List[Any]) -> None:
     sources = graph_ready_context.get("fixed_op_sources_by_op_id")
     if sources is None:
         return
@@ -107,7 +107,7 @@ def _validate_fixed_sources(graph_ready_context: Dict[str, Any], *, fixed_ids: s
         _raise("图 ready 候选固定工序来源必须是映射。", "graph_ready_bad_fixed_sources")
     if set(sources) != fixed_ids:
         _raise("图 ready 候选固定工序来源和固定工序集合不一致。", "graph_ready_fixed_source_mismatch")
-    seed_ids = {item.op_id for item in seed_sr_list or ()}
+    seed_ids = {item.op_id for item in seed_sr_list}
     for op_id in seed_ids:
         if op_id not in fixed_ids:
             _raise("图 ready 候选没有把种子工序标为固定。", "graph_ready_seed_fixed_mismatch")

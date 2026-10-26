@@ -20,14 +20,15 @@
     'rotate-ccw': ['M3 3v6h6', 'M3 9a9 9 0 1 1 .7 8']
   };
   function Icon({ name, className }) {
-    const nodes = window.APSFieldReports && window.APSFieldReports.iconNodes[name];
+    // 图标表、SMIcon、Ico 都由同一个 main.js 的基础层（build-order.json foundation）先行定义。
+    const nodes = window.APSFieldReports.iconNodes[name];
     if (nodes) return <svg className={className} data-wb-icon={name} viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {nodes.map(([tag, attrs], index) => React.createElement(tag, { ...attrs, key: index }))}</svg>;
-    if (name === 'refresh-cw' && typeof SMIcon === 'function') return <SMIcon name={name} />;
+    if (name === 'refresh-cw') return <SMIcon name={name} />;
     if (railPaths[name]) return <svg className={className} data-wb-icon={name} viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {railPaths[name].map((d, index) => <path key={index} d={d} />)}
       {name === 'truck' && <><circle cx="7" cy="18" r="1.9" /><circle cx="17" cy="18" r="1.9" /></>}</svg>;
-    return typeof Ico === 'function' ? <Ico name={name} /> : null;
+    return <Ico name={name} />;
   }
   function Search({ className = '', ...props }) {
     return <label className={'search wb-search ' + className}><Icon name="search" /><input {...props} type="search" /></label>;
@@ -365,9 +366,6 @@
     const jumpErrorId = React.useId();
     React.useEffect(() => { setJump(String(number)); setJumpError(false); }, [number]);
     if (!['pages', 'cursor'].includes(mode)) throw new TypeError('pager_mode_unknown: ' + mode);
-    if (onSize && (!Array.isArray(sizes) || !sizes.length || !sizes.every(value => Number.isSafeInteger(value) && value > 0))) {
-      throw new TypeError('pager_sizes_not_declared_by_domain_api');
-    }
     const locked = disabled || busy;
     const previous = mode === 'cursor' ? !!hasPrevious : number > 1;
     const next = mode === 'cursor' ? !!hasNext : pageCount != null ? number < pageCount : !!hasNext;

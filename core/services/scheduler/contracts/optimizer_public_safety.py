@@ -4,6 +4,7 @@ import math
 from typing import Any, Dict, List
 
 from core.models.public_identifier_redaction import contains_internal_identifier
+from core.shared.strict_parse import is_int, is_number
 
 COMPARISON_METRIC_KEYS = (
     "failed_ops",
@@ -23,21 +24,15 @@ def safe_metric_key(value: Any) -> str:
 
 
 def public_int(value: Any) -> Any:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    return None
+    return value if is_int(value) else None
 
 
 def safe_non_negative_int(value: Any) -> Any:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
+    if is_int(value):
         return value if value >= 0 else None
     if isinstance(value, str):
         text = value.strip()
-        if text.isdigit():
+        if text.isdecimal():
             return int(text)
     return None
 
@@ -63,7 +58,7 @@ def safe_public_text_list(value: Any) -> List[str]:
 def project_attempt_score(value: Any) -> List[Any]:
     if not isinstance(value, (list, tuple)):
         return []
-    return [item for item in value if isinstance(item, (int, float)) and not isinstance(item, bool)]
+    return [item for item in value if is_number(item)]
 
 
 def project_attempt_metrics(value: Any) -> Dict[str, Any]:
@@ -72,9 +67,7 @@ def project_attempt_metrics(value: Any) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for key in PUBLIC_ATTEMPT_METRIC_KEYS:
         metric_value = value.get(key)
-        if isinstance(metric_value, bool):
-            continue
-        if isinstance(metric_value, (int, float)):
+        if is_number(metric_value):
             out[key] = metric_value
     _add_metric_completion(out, value)
     return out
@@ -88,9 +81,7 @@ def project_public_metrics(value: Any) -> Dict[str, Any]:
         key = safe_attempt_text(raw_key)
         if not key:
             continue
-        if isinstance(metric_value, bool):
-            continue
-        if isinstance(metric_value, (int, float)):
+        if is_number(metric_value):
             out[key] = metric_value
     _add_metric_completion(out, value)
     return out
@@ -125,21 +116,9 @@ def _add_metric_completion(out: Dict[str, Any], metrics: Dict[str, Any]) -> None
         out["completion"] = completion
 
 
-def safe_counter_dict(value: Any) -> Dict[str, int]:
-    if not isinstance(value, dict):
-        return {}
-    out: Dict[str, int] = {}
-    for key, raw in value.items():
-        normalized_key = safe_attempt_text(key)
-        if not normalized_key:
-            continue
-        try:
-            count = int(raw or 0)
-        except Exception:
-            continue
-        if count:
-            out[normalized_key] = count
-    return out
+def public_counter_dict(counts: Dict[str, int]) -> Dict[str, int]:
+    """Public view of an internal counter bucket (written only by increment_counter / merge_algo_stats)."""
+    return {key: count for key, count in counts.items() if count and safe_attempt_text(key)}
 
 
 __all__ = [
@@ -150,7 +129,7 @@ __all__ = [
     "project_attempt_score",
     "project_public_metrics",
     "safe_attempt_text",
-    "safe_counter_dict",
+    "public_counter_dict",
     "public_int",
     "safe_metric_key",
     "safe_non_negative_int",

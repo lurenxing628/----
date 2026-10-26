@@ -9,11 +9,13 @@ const filePreview = { ok: true, schema_version: 1, meta: { source: 'production',
     rows: [], summary: Object.fromEntries(['new', 'update', 'unchanged', 'delete', 'rejected'].map(key => [key, 0])), can_confirm: false, commit_policy: 'atomic',
     expires_at: '2026-10-01T10:15:00', write_context: { capabilities: { 'material.import': false }, write_token: 'w'.repeat(32), blocked_reasons: [] } } };
 assert.strictEqual(window.APSResourceMaterial.preview(filePreview, 'import', 'csv'), filePreview);
-assert.strictEqual(C.query(filePreview, 'preview'), filePreview);
+// 报工文件预检与物料预检共用来源编号规则，但汇总口径是报工自己的五项计数（field_report_files.py）。
+const fieldPreview = { ...filePreview, data: { ...filePreview.data, summary: { total: 0, changed: 0, unchanged: 0, blank: 0, rejected: 0 } } };
+assert.strictEqual(C.query(fieldPreview, 'preview'), fieldPreview);
 for (const value of [undefined, ['a'.repeat(32)], 'bad-source']) {
   const changed = { ...filePreview, data: { ...filePreview.data, actual_source_ref: value, file_sha256: 'b'.repeat(64) } };
   assert.throws(() => window.APSResourceMaterial.preview(changed, 'import', 'csv'));
-  assert.throws(() => C.query(changed, 'preview'));
+  assert.throws(() => C.query({ ...fieldPreview, data: { ...fieldPreview.data, actual_source_ref: value, file_sha256: 'b'.repeat(64) } }, 'preview'));
 }
 assert.strictEqual(M.instant, window.PlanGanttModel.instant, 'Actual and planned marks share the factory-local coordinate parser');
 const base = { piece_id: 'item-A', quantity: 1, batch_quantity: 3, quantity_basis: 'run_admission', quantity_reason: null };

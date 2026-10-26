@@ -4,7 +4,7 @@ from core.models.workbench_preflight import normalize_preflight_input
 from core.services.workbench.run.input import _prepare_facts
 
 
-def prepare_trial_adoption_input(conn, settings, projections, live, *, capture, validated_projections, held):
+def prepare_trial_adoption_input(conn, settings, projections, live, *, capture, held):
     if not conn.in_transaction:
         raise RuntimeError("Saved scenario input requires the caller's current read transaction")
     settings = normalize_preflight_input(settings)
@@ -16,4 +16,4 @@ def prepare_trial_adoption_input(conn, settings, projections, live, *, capture, 
     # Adoption validates in this caller-owned read transaction; it does not
     # hand this prepared input to an independent calculation.
     return _prepare_facts(conn, settings, facts, projections, None, live["baseline"],
-                          validated_projections, for_adoption=True, held=held)
+                          for_adoption=True, held=held)

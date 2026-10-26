@@ -2,7 +2,6 @@
 
 from core.errors import AppError
 from core.models.workbench_trial import issue
-from core.services.scheduler.repository_bundle import build_schedule_repository_bundle
 from core.services.scheduler.run.schedule_execution_guardrails import build_execution_guardrails_from_projections
 from core.services.scheduler.run.schedule_input_seed_metadata import (
     MERGED_EXECUTION_GROUP_SOURCE,
@@ -56,14 +55,13 @@ def execution_anchors(conn, rows, live):
     version = live["baseline"]["version"]
     if version is None:
         raise ValueError("Actual production has no official plan")
-    svc = build_schedule_repository_bundle(conn)
     projections = _prior_plan_projections(version, live)
     operations = [stored_batch_operation(row["original"]["operation"]) for row in rows]
     facts = live["preflight_facts"]
     batches = {row["batch_id"]: stored_batch(row) for row in facts.tables["Batches"]}
     groups = execution_groups(facts, batches, operations)
     _, fixed, completed, seeds, _ = build_execution_guardrails_from_projections(
-        svc, operations, prev_version=version, execution_projections=projections, facts=facts,
+        conn, operations, prev_version=version, execution_projections=projections, facts=facts,
         external_groups=groups)
     refs = facts.refs
     result = _merged_group_anchors(groups, seeds, fixed | completed, refs)

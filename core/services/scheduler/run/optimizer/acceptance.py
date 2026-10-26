@@ -30,7 +30,7 @@ class AcceptanceDecision:
 
 
 def validate_acceptance_name(name: Any) -> str:
-    text = str(name or "").strip().lower()
+    text = str(name).strip().lower()
     if text not in set(ALLOWED_ACCEPTANCES):
         raise ValidationError(
             f"未知接受准则“{name}”，本阶段只允许：{', '.join(ALLOWED_ACCEPTANCES)}。",

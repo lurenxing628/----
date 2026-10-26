@@ -5,8 +5,6 @@ from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
 from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable, indexed, require
 from core.services.workbench.facts.gantt_graph import build_gantt_graph, frozen_process_relations, unavailable_graph
-from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
-from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 from .adoption_baseline_identity import _live_sources
 from .projection import public_time, wire_positive_int64
@@ -75,10 +73,9 @@ def _acyclic(relations):
     require(len(ready) == len(relations), "process_order.frozen_cycle")
 
 
-def _task_bindings(conn, plan_ref, rows, relations, refs, *, context):
-    repository = context.references if context is not None else WorkbenchPlanIdentityRepository(conn)
-    tasks = repository.get_task_refs(plan_ref, [dict(row, schedule_id=row["id"]) for row in rows])
-    all_refs = context.all_task_refs(plan_ref) if context is not None else set(WorkbenchPlanBaselineRepository(conn).list_task_refs_by_plan(plan_ref))
+def _task_bindings(plan_ref, rows, relations, refs, *, context):
+    tasks = context.references.get_task_refs(plan_ref, ((row["id"], row["op_id"], row["version"]) for row in rows))
+    all_refs = context.all_task_refs(plan_ref)
     require(all_refs == set(tasks.values()) and len(tasks) == len(rows), "process_order.complete_task_membership")
     for row in rows:
         operation_ref = refs[row["op_id"]]
@@ -87,11 +84,10 @@ def _task_bindings(conn, plan_ref, rows, relations, refs, *, context):
     return tasks
 
 
-def project_process_order(conn, *, plan_ref, context=None):
+def project_process_order(conn, *, plan_ref, context: PlanReadContext):
     """Return a complete read-only projection and the facts used by its fingerprint."""
     if not conn.in_transaction:
         raise RuntimeError("Process order reads require a caller-owned read transaction.")
-    context = PlanReadContext(conn) if context is None else context
     with context.read_scope():
         return _process_order(conn, plan_ref=plan_ref, context=context)
 
@@ -112,7 +108,7 @@ def _process_order(conn, *, plan_ref, context):
         else:
             relations = _trial_relations(evidence["trial_source"], refs)
         _acyclic(relations)
-        task_refs = _task_bindings(conn, plan_ref, selected, relations, refs, context=context)
+        task_refs = _task_bindings(plan_ref, selected, relations, refs, context=context)
         data = {"state": "available", "basis": "run_admission" if basis == "candidate_adoption" else "trial_creation",
                 "issues": []}
         facts.update(relations=relations)

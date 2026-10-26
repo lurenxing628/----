@@ -26,7 +26,7 @@
         const file = A.download(await adapter.export(d.candidate.candidate_ref, scope, result.meta.snapshot_ref, fmt, controller.signal), result, fmt);
         if (controller.signal.aborted) return;
         window.APSWorkbenchTransport.saveBlob(file.filename, file.blob);
-        setDone(window.WorkbenchTerms.download_started(file.filename) + '，共 ' + file.row_count + ' 条记录（安排 ' + d.task_count + '，未安排 ' + (d.unplanned_operation_count === null ? '未知' : d.unplanned_operation_count) + '）。');
+        setDone(window.WorkbenchTerms.download_started(file.filename) + '，共 ' + file.row_count + ' 条记录（安排 ' + d.task_count + '，未安排 ' + d.unplanned_operation_count + '）。');
         setFormat(null);
       } catch (e) { if (!controller.signal.aborted) setError(e); }
       finally { if (!controller.signal.aborted) { active.current = null; setBusy(false); } }
@@ -38,7 +38,7 @@
         <div className="modal-b rc-export-summary"><div role="radiogroup" aria-label="候选导出格式" className="rc-export-format">{[['csv', 'CSV'], ['xlsx', 'XLSX']].map(([key, text]) =>
           <label key={key}><input type="radio" name="rc-export-format" value={key} checked={format === key} disabled={busy} onChange={() => setFormat(key)} />{text}</label>)}</div>
           <p><strong>{d.candidate.label || window.WorkbenchTerms.name_missing}</strong></p>
-          <p>导出当前读取范围全部安排与未安排记录：安排 {d.task_count} 道，未安排 {d.unplanned_operation_count === null ? '未知' : d.unplanned_operation_count + ' 道'}。搜索不改变导出范围。</p>
+          <p>导出当前读取范围全部安排与未安排记录：安排 {d.task_count} 道，未安排 {d.unplanned_operation_count} 道。搜索不改变导出范围。</p>
           <C.ErrorBox error={error} /></div></window.ResourceControls.Modal>}
     </div>;
   }
@@ -95,7 +95,7 @@
       const pendingFact = pendingRow && prepared.taskIndex.get(pendingRow);
       const exact = pendingFact && (!pendingOperation || pendingFact.task.operation_ref === pendingOperation) && pendingFact.task;
       const task = exact || pendingOperation && shown.tasks.find(row => row.operation_ref === pendingOperation);
-      const unplannedTask = !task && pendingOperation && shown.unplanned_operations !== null && shown.unplanned_operations.find(row => row.operation_ref === pendingOperation);
+      const unplannedTask = !task && pendingOperation && shown.unplanned_operations.find(row => row.operation_ref === pendingOperation);
       if (task || unplannedTask) { setSelected({ task: task || unplannedTask, result }); setPendingRow(null); setPendingOperation(null); setDetailsOpen(true); if (unplannedTask) setTab('unplanned'); }
       else if (!scope.range_start && !scope.batch_ref) { setRangeError(new Error('完整保存范围中缺少这道工序，请核对明细中的定位编号。')); setPendingRow(null); setPendingOperation(null); }
       else setRangeError(new Error('这道工序位于当前查看范围之外，请打开完整保存范围定位。'));
@@ -159,7 +159,7 @@
         <C.ErrorBox error={rangeError} />{rangeError && (pendingRow || pendingOperation) && <C.Button onClick={() => { setScope({}); setRange({ start: '', end: '' }); setRangeError(null); }}>完整保存范围定位</C.Button>}
       </>}
       {shown && <><details className="rc-reasons"><summary>范围与导出说明</summary><div>全方案共 {shown.candidate_task_count} 道安排；当前读取范围 {shown.task_count} 道安排。</div>
-          <div>未安排工序：{shown.unplanned_operation_count === null ? '数量未保存，请查看原因' : shown.unplanned_operation_count + ' 道'}。这些工序没有时间区间，按批次范围读取，保留在未安排明细。</div>
+          <div>未安排工序：{shown.unplanned_operation_count} 道。这些工序没有时间区间，按批次范围读取，保留在未安排明细。</div>
           <div>时间边界：{scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束时刻）' : '全部保存时间'}。时间筛选保留相交安排的完整起止。零工时工序按发生时刻筛选，结束边界不包含。</div>
           {scope.batch_ref && <window.WorkbenchReference entries={{ '筛选批次编号': scope.batch_ref }} />}<div>导出当前读取范围的全部安排与未安排记录。搜索和指定资源只筛选页面显示。</div></details>
         {view === 'delay' && <C.Delivery data={shown.delivery_risks} onLast={lastOperation} />}

@@ -58,7 +58,7 @@ def _freeze_meta_dict(
     meta = freeze_meta if isinstance(freeze_meta, dict) else {}
     if "freeze_enabled" in meta:
         enabled = bool(meta["freeze_enabled"])
-        days = int(meta.get("freeze_days") or 0)
+        days = meta["freeze_days"]
     else:
         enabled, days = _freeze_window_config_state(cfg)
     applied = _freeze_applied(meta, frozen_op_ids=frozen_op_ids)

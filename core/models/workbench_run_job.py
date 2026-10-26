@@ -1,16 +1,16 @@
 """Run identity and strict durable artifact serialization, separate from plan identity."""
 
 import base64
-import json
 import math
 import re
 import secrets
 from dataclasses import fields, is_dataclass
 from datetime import date, datetime
 from enum import Enum
-from typing import Any
+from typing import Any, NoReturn
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.strict_json import load_strict_json
 
 TERMINAL_STATES = frozenset(("complete", "partial", "failed", "interrupted"))
 PROCESS_EXECUTOR_REF = secrets.token_hex(24)
@@ -27,6 +27,10 @@ def validate_run_ref(value):
     return value
 
 
+def _not_data_context() -> NoReturn:
+    raise ValueError("Data context reference is not strict JSON")
+
+
 def valid_data_context_ref(value):
     """Read old generation IDs and the current recorded restore-source content."""
     if type(value) is not str:
@@ -34,7 +38,7 @@ def valid_data_context_ref(value):
     if re.fullmatch(r"[0-9a-f]{64}", value):
         return True
     try:
-        data = json.loads(value)
+        data = load_strict_json(value, on_malformed=_not_data_context)
     except ValueError:
         return False
     return (type(data) is dict and set(data) == {"database_scope", "successful_restores"}

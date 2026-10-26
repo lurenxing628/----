@@ -116,7 +116,7 @@ def _isolate_factory_exit_backup_globals():
     manager = _factory._EXIT_BACKUP_MANAGER
     yield
     # 注销退出备份回调，并把"已注册"标志复位为未注册态——使 flag 与 atexit 状态一致（避免 flag=True 但
-    # 回调已注销的瞬态 desync）。_run_exit_backup 测试态 return False 无副作用、注销它正是本 fixture 目的；
+    # 回调已注销的瞬态 desync）。测试进程不得执行真实退出备份，注销它正是本 fixture 目的；
     # manager 还原测试前快照（它每次 create_app 重新赋值、残留本身无害，还原仅为干净）。
     atexit.unregister(_factory._run_exit_backup)
     _factory._EXIT_BACKUP_REGISTERED = False

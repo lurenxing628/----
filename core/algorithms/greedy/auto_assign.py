@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, NamedTuple, Optional, Tuple
 
 from core.algorithm_contracts.operator_eligibility import qualified_operators
-from core.algorithm_contracts.ordering import normalize_text_id
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithm_runtime.auto_assign_contract import (
@@ -39,7 +38,7 @@ class _MachineCandidates:
 @dataclass(frozen=True)
 class ResourceCandidates:
     machines: Tuple[str, ...]
-    fixed_operator: str
+    fixed_operator: Optional[str]
     op_type_id: str
     pool: Dict[str, Any]
     reason: str
@@ -107,7 +106,6 @@ def auto_assign_internal_resources_attempt(
     operator_busy_hours: Dict[str, float],
     probe_only: bool = False,
     resource_preparation: NativeSchedulePreparation,
-    total_hours_by_op_id: Optional[Dict[int, float]] = None,
 ) -> AutoAssignAttempt:
     count = (lambda key: None) if probe_only else (lambda key: increment_counter(algo_stats, key))
     candidates = resource_preparation.resource_candidates_for(op)
@@ -119,7 +117,7 @@ def auto_assign_internal_resources_attempt(
         pool = candidates.pool
     else:
         pool = _coerce_resource_pool(resource_pool)
-    total_hours_base = total_hours_by_op_id.get(op.id) if total_hours_by_op_id is not None else None
+    total_hours_base = resource_preparation.total_hours_by_op_id.get(op.id)
     if total_hours_base is None:
         total_hours_base = _validated_total_hours(op, batch, count=count)
     if total_hours_base is None:
@@ -157,9 +155,9 @@ def qualified_resource_pairs(op: OpForScheduleAlgo, resource_pool: Any) -> Tuple
     return prepare_resource_candidates(op, resource_pool).pairs
 
 
-def fixed_resource_inputs(op: OpForScheduleAlgo) -> Tuple[str, str, str]:
-    # 未固定资源在原始输入里是 None，优化器派生的资源变体里是 ""，两者同义。
-    return normalize_text_id(op.machine_id), normalize_text_id(op.operator_id), op.op_type_id
+def fixed_resource_inputs(op: OpForScheduleAlgo) -> Tuple[Optional[str], Optional[str], str]:
+    # 未指定的设备或人员只拼作 None。
+    return op.machine_id, op.operator_id, op.op_type_id
 
 
 def _coerce_resource_pool(resource_pool: Dict[str, Any]) -> Dict[str, Any]:
@@ -181,8 +179,8 @@ def _dict_part(source: Dict[str, Any], key: str) -> Dict[Any, Any]:
 
 def _resolve_machine_candidates(
     *,
-    fixed_machine: str,
-    fixed_operator: str,
+    fixed_machine: Optional[str],
+    fixed_operator: Optional[str],
     op_type_id: str,
     pool: Dict[str, Any],
     count: Any,
@@ -192,7 +190,7 @@ def _resolve_machine_candidates(
     elif fixed_operator:
         candidates = _machines_for_fixed_operator(fixed_operator, pool=pool)
     elif op_type_id in pool["machines_by_op_type"]:
-        candidates = [str(x) for x in (pool["machines_by_op_type"].get(op_type_id) or []) if str(x).strip()]
+        candidates = [str(x) for x in pool["machines_by_op_type"][op_type_id] if str(x).strip()]
         if not candidates:
             count("auto_assign_missing_machine_pool_count")
             return _MachineCandidates([], AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL)
@@ -216,17 +214,18 @@ def _machines_for_fixed_operator(fixed_operator: str, *, pool: Dict[str, Any]) -
         return candidates
     for mid0, operator_ids in pool["operators_by_machine"].items():
         machine_id = str(mid0).strip()
-        if machine_id and any(str(x).strip() == fixed_operator for x in (operator_ids or [])):
+        if machine_id and any(str(x).strip() == fixed_operator for x in operator_ids):
             candidates.append(machine_id)
     return candidates
 
 
-def _needs_op_type_machine_filter(*, fixed_machine: str, op_type_id: str, pool: Dict[str, Any]) -> bool:
+def _needs_op_type_machine_filter(*, fixed_machine: Optional[str], op_type_id: str, pool: Dict[str, Any]) -> bool:
     return not fixed_machine or op_type_id in pool["machines_by_op_type"]
 
 
 def _filter_machines_by_op_type(candidates: List[str], *, op_type_id: str, pool: Dict[str, Any], count: Any) -> Optional[List[str]]:
-    allowed = {str(x).strip() for x in (pool["machines_by_op_type"].get(op_type_id) or []) if str(x).strip()}
+    # build_resource_pool sets a list for every op type of the internal operations being scheduled.
+    allowed = {str(x).strip() for x in pool["machines_by_op_type"][op_type_id] if str(x).strip()}
     if not allowed:
         count("auto_assign_missing_machine_pool_count")
         return None
@@ -251,7 +250,8 @@ def _sort_machine_candidates(
     return sorted(
         candidates,
         key=lambda mid: (
-            0 if (current_type and (str(last_op_type_by_machine.get(mid) or "").strip() == current_type)) else 1,
+            # Machine types are written only non-empty and stripped (runtime_state.update_machine_last_state).
+            0 if last_op_type_by_machine.get(mid) == current_type else 1,
             machine_busy_hours.get(mid, 0.0),
             mid,
         ),
@@ -360,7 +360,7 @@ def _pair_failure_attempt(
     return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_NO_FEASIBLE_PAIR, pair_tie_occurred=False)
 
 
-def _operator_candidates_for_machine(machine_id: str, *, fixed_operator: str, pool: Dict[str, Any], op_type_id: str) -> List[str]:
+def _operator_candidates_for_machine(machine_id: str, *, fixed_operator: Optional[str], pool: Dict[str, Any], op_type_id: str) -> List[str]:
     qualified = [str(x) for x in (pool["operators_by_machine"].get(machine_id) or []) if str(x).strip()]
     qualified = qualified_operators(pool, qualified, op_type_id)
     if not fixed_operator:

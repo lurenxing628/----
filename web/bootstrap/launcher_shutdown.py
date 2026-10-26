@@ -67,7 +67,7 @@ class RuntimeExitBackupManager(BackupManager):
     def __init__(self, app):
         super().__init__(db_path=app.config["DATABASE_PATH"], backup_dir=app.config["BACKUP_DIR"],
                          keep_days=app.config.get("BACKUP_KEEP_DAYS", 7), logger=app.logger)
-        self._system_restore_app = app
+        self.app = app
 
 
 def drain_before_exit_backup(manager):
@@ -85,6 +85,7 @@ def drain_before_exit_backup(manager):
 
 
 def read_exit_backup_enabled(manager, connect):
+    """True/False 是读到的开关；None 表示读取没有完整确认（读失败，或配置连接没能确认关闭），不做退出备份。"""
     conn = None
     try:
         conn = connect(manager.db_path)
@@ -92,17 +93,17 @@ def read_exit_backup_enabled(manager, connect):
 
         cfg = SystemConfigService(conn, logger=manager.logger).get_snapshot_readonly(
             backup_keep_days_default=int(manager.keep_days))
-        return cfg.auto_backup_enabled == YesNo.YES.value
+        enabled = cfg.auto_backup_enabled == YesNo.YES.value
     except Exception as exc:
         fallback_log(manager.logger, "error", "读取退出自动备份配置失败：" + str(exc))
-        return None
-    finally:
-        if conn is not None:
-            try:
-                conn.close()
-            except Exception as exc:
-                fallback_log(manager.logger, "error", "关闭退出自动备份配置连接失败：" + str(exc))
-                raise
+        enabled = None
+    if conn is not None:
+        try:
+            conn.close()
+        except Exception as exc:
+            fallback_log(manager.logger, "error", "关闭退出自动备份配置连接失败，本次不做退出备份：" + str(exc))
+            return None
+    return enabled
 
 
 def run_exit_backup(manager, is_enabled):

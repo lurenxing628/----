@@ -1,6 +1,5 @@
 """One scheduler lock, short claim/result transactions, actual read-only computation."""
 
-import json
 from datetime import datetime
 
 from core.errors import AppError
@@ -10,6 +9,7 @@ from core.models.workbench_run_compute import CandidateRunInputError
 from core.models.workbench_run_job import PROCESS_EXECUTOR_REF, validate_run_ref
 from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
 from core.services.workbench.facts.candidate_facts import GenerationFacts
+from core.services.workbench.facts.candidate_values import stored_json
 from core.services.workbench.facts.decision_read_model import build_failure_read_models
 from core.services.workbench.facts.decision_read_models import decode_model, public_job_head
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
@@ -92,15 +92,13 @@ class WorkbenchRunWorker:
         with candidate_read_snapshot(snapshot):
             current_capture = ProductionFactsCapture(snapshot)
             self._check_facts(row, snapshot, capture=current_capture)
-            raw_execution = json.loads(row["execution_json"])
-            normalized_input = json.loads(row["normalized_input_json"])
+            # 与 CandidateStore.capture 读同一组排产原件，同一个严格读取器。
+            raw_execution = stored_json(row["execution_json"], list)
+            normalized_input = stored_json(row["normalized_input_json"])
             projections = restore_execution_projections(raw_execution)
-            computation = compute_candidate_run(
-                snapshot, normalized_input, projections,
-                capture=current_capture,
-                validated_projections={row.operation_ref: row for row in projections})
+            computation = compute_candidate_run(snapshot, normalized_input, projections, capture=current_capture)
             capture = {"input": normalized_input, "execution": raw_execution,
-                       "baseline": json.loads(row["baseline_json"]), "facts_text": row["facts_json"],
+                       "baseline": stored_json(row["baseline_json"]), "facts_text": row["facts_json"],
                        "facts_hash": row["facts_hash"]}
             facts = GenerationFacts(capture)
             identities = {op_id: ref for ref, op_id in facts.operations.items()}

@@ -25,17 +25,18 @@ _ROLES = (OperationRequirementRole.RETAINED.value, OperationRequirementRole.EXEC
 
 
 def project_operation_effort(runtime, standard, *, allocation_state, source_available=True, source=None,
-                             execution=None, evidence_source=None) -> Dict[str, Any]:
-    """The old standard remains visible without inventing a runtime split."""
-    current_execution = execution is not None
-    execution = execution or {}
+                             execution, evidence_source=None) -> Dict[str, Any]:
+    """The old standard remains visible without inventing a runtime split.
+
+    execution is the operation's captured execution row, or {} when none was captured.
+    """
     standard = standard or {"basis": "archived_operation_standard", "setup_standard_hours": None, "unit_standard_hours": None,
                             "target_quantity": None, "remaining_quantity": None, "standard_total_hours": None, "state": "unavailable",
                             "reason": {"code": "standard_effort_missing", "message": "此来源未保存可核对的工序标准。"}}
     result: Dict[str, Any]
     if runtime is None:
         result = {field: None for field in _FIELDS}
-        completed = source_available and current_execution and execution.get("execution_state") == "complete"
+        completed = source_available and execution.get("execution_state") == "complete"
         result.update(source=source, quantity_basis="unknown", execution_quantity_basis=execution.get("target_basis", "unknown"),
                       execution_target_quantity=execution.get("target_quantity"), remaining_quantity=execution.get("remaining_quantity"),
                       setup_state="already_completed" if completed else "unknown", requirement_role="completed" if completed else "unknown", state="unavailable",
@@ -43,9 +44,8 @@ def project_operation_effort(runtime, standard, *, allocation_state, source_avai
                                   "message": "这条记录未分别保存准备和加工所需的标准工时。" if source_available else "此比较没有可用的基准安排。"}])
     else:
         result = {field: runtime.get(field) for field in _FIELDS}
-        if current_execution:
-            result.update(execution_quantity_basis=execution.get("target_basis", "unknown"),
-                          execution_target_quantity=execution.get("target_quantity"), remaining_quantity=execution.get("remaining_quantity"))
+        result.update(execution_quantity_basis=execution.get("target_basis", "unknown"),
+                      execution_target_quantity=execution.get("target_quantity"), remaining_quantity=execution.get("remaining_quantity"))
         result["data_gaps"] = list(runtime.get("data_gaps", []))
         unknown = sum(result[field] is None for field in ("setup_standard_hours", "processing_standard_hours", "required_standard_hours"))
         result["state"] = ("not_applicable" if result["source"] == SourceType.EXTERNAL.value else

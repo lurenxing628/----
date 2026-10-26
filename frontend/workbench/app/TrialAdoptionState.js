@@ -64,10 +64,8 @@
     React.useEffect(() => {
       if (!result || notified.current === result.receipt_ref) return;
       notified.current = result.receipt_ref;
-      if (typeof callback.current === 'function') {
-        const failed = () => { if (mounted.current) setNotice('采用已确认，但相关页面没有更新成功。请重新打开正式计划。'); };
-        try { Promise.resolve(callback.current(result)).catch(failed); } catch (_) { failed(); }
-      }
+      const failed = () => { if (mounted.current) setNotice('采用已确认，但相关页面没有更新成功。请重新打开正式计划。'); };
+      try { Promise.resolve(callback.current(result)).catch(failed); } catch (_) { failed(); }
     }, [result]);
     function accept(value, intent) {
       if (!mounted.current) return;

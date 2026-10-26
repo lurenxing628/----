@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import math
 from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,6 +19,7 @@ from core.services.scheduler.run.optimizer.graph_ready_feature_basis import (
 from .v2_capacity import (
     FixedResourceBlockingFacts,
     bottleneck_on,
+    non_negative_float,
     residual_capacity_for_operation,
     residual_capacity_window_end,
     seed_results_by_resource_id,
@@ -53,11 +53,11 @@ def enrich_graph_ready_v2_metrics(
     operations: List[OpForScheduleAlgo],
     batches: Dict[str, Any],
     start_dt: datetime,
-    calendar_service: Optional[Any] = None,
-    downtime_map: Optional[Dict[str, List[Tuple[datetime, datetime]]]] = None,
-    seed_results: Optional[List[Any]] = None,
+    calendar_service: Any,
+    downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
+    seed_results: List[Any],
     resource_pool: Optional[Dict[str, Any]] = None,
-    graph_ready_context: Optional[Dict[str, Any]] = None,
+    graph_ready_context: Dict[str, Any],
 ) -> Dict[int, Dict[str, Any]]:
     inputs = dict(batches=batches, start_dt=start_dt, calendar_service=calendar_service,
                   seed_results=seed_results, resource_pool=resource_pool,
@@ -109,7 +109,7 @@ def _prepare_common_features(metrics, *, operations, batches, start_dt, seed_res
             }
         )
         base_row_by_op_id[op_id] = base_row
-    resource_seeds = seed_results_by_resource_id(seed_results or [])
+    resource_seeds = seed_results_by_resource_id(seed_results)
     return {
         "operations": op_by_id,
         "metrics": metrics,
@@ -128,7 +128,7 @@ def _prepare_common_features(metrics, *, operations, batches, start_dt, seed_res
         },
         "base_row_by_op_id": base_row_by_op_id,
         "resource_blocking": FixedResourceBlockingFacts(
-            downtime_map=downtime_map or {}, seed_results_by_resource_id=resource_seeds),
+            downtime_map=downtime_map, seed_results_by_resource_id=resource_seeds),
         "capacity_by_window": {},
         "work_buckets": build_work_buckets(op_by_id, durations),
     }
@@ -141,7 +141,7 @@ def _enrich_feature_basis(*, batches, start_dt, calendar_service,
     out: Dict[int, Dict[str, Any]] = {}
     remaining_by_op_id, ready_offset_hours_by_op_id = _workload_signals(
         feature_basis, op_by_id, duration_by_op_id, batches=batches, start_dt=start_dt,
-        graph_ready_context=graph_ready_context, seed_results=seed_results or [], calendar_service=calendar_service,
+        graph_ready_context=graph_ready_context, seed_results=seed_results, calendar_service=calendar_service,
         work_buckets=prepared["work_buckets"])
     base_row_by_op_id = prepared["base_row_by_op_id"]
     capacity_by_window = prepared["capacity_by_window"]
@@ -191,7 +191,6 @@ def _enrich_feature_basis(*, batches, start_dt, calendar_service,
         else:
             due_budget_hours = _deadline_budget_hours(
                 op,
-                calendar_service=calendar_service,
                 due_wall_hours=_ordering_deadline_hours(feature_basis, start_dt, capacity_start_dt, parsed_due_exclusive),
                 capacity=capacity,
             )
@@ -253,7 +252,7 @@ def _duration_by_op_id_with_zero_total_trace(
     duration_by_op_id: Dict[int, float] = {}
     zero_total_op_ids: List[int] = []
     for op_id, op in op_by_id.items():
-        total = _non_negative_float(_operation_hours(op, batches=batches), field="operation.total_hours")
+        total = non_negative_float(_operation_hours(op, batches=batches), field="operation.total_hours")
         if total <= 0.0:
             # 真零工时工序：按文档化 epsilon 计入并留痕，取舍与除零安全论证见
             # _ZERO_TOTAL_DURATION_EPSILON_HOURS 常量注释。
@@ -278,12 +277,12 @@ def _operation_hours(op: Any, *, batches: Dict[str, Any]) -> float:
     # 单一真相源：total=setup+unit*quantity 与 core/algorithm_runtime/internal_slot.validate_internal_hours
     # 同口径——quantity==0 合法（总量=setup）、总工时 0 合法，不复辟 quantity>0 / total>0 硬闸
     # （系统口径见 schedule_input_runtime_support._ensure_internal_runtime_hours 护栏注释与回归测试
-    # test_ensure_internal_runtime_hours_allows_zero_quantity）。缺失/非数字/非有限/负数在两处都按坏输入
-    # 报错（validate_internal_hours 对 None 同样报错，不补 0）；这里逐字段检查只为给出带字段名的
+    # test_ensure_internal_runtime_hours_allows_zero_quantity）。缺失/非数字/非有限/负数已由 validate_internal_hours
+    # 按坏输入报错（对 None 同样报错，不补 0）；这里逐字段检查只为给出带字段名的
     # graph_ready_v2_features 错误。total==0 的处理见 _duration_by_op_id_with_zero_total_trace。
-    quantity = _non_negative_float(batch.quantity, field="batch.quantity")
-    setup = _non_negative_float(op.setup_hours, field="operation.setup_hours")
-    unit = _non_negative_float(op.unit_hours, field="operation.unit_hours")
+    quantity = non_negative_float(batch.quantity, field="batch.quantity")
+    setup = non_negative_float(op.setup_hours, field="operation.setup_hours")
+    unit = non_negative_float(op.unit_hours, field="operation.unit_hours")
     return float(setup + unit * quantity)
 
 
@@ -332,7 +331,6 @@ def _parse_due_day(value: Any) -> Optional[date]:
 def _deadline_budget_hours(
     op: Any,
     *,
-    calendar_service: Optional[Any],
     due_wall_hours: float,
     capacity: Dict[str, Any],
 ) -> float:
@@ -340,13 +338,10 @@ def _deadline_budget_hours(
         return float(due_wall_hours)
     if op.source == EXTERNAL:
         return float(due_wall_hours)
-    if _uses_calendar_capacity_budget(calendar_service=calendar_service, capacity=capacity):
+    # The production calendar is always present (scheduler.calendar), so a candidate machine decides the budget.
+    if int(capacity["candidate_machine_count"]) > 0:
         return float(capacity["residual_capacity_window_hours"])
     return float(due_wall_hours)
-
-
-def _uses_calendar_capacity_budget(*, calendar_service: Optional[Any], capacity: Dict[str, Any]) -> bool:
-    return calendar_service is not None and int(capacity["candidate_machine_count"]) > 0
 
 
 def _due_pressure(*, due_hours: float, remaining_hours: float) -> float:
@@ -383,30 +378,16 @@ def _processing_time_ranks(duration_by_op_id: Dict[int, float]) -> Dict[int, int
 
 
 def _positive_float(value: Any, *, field: str) -> float:
-    number = _non_negative_float(value, field=field)
+    number = non_negative_float(value, field=field)
     if number <= 0.0:
         raise ValidationError(f"{field} 必须大于 0。", field="graph_ready_v2_features")
-    return number
-
-
-def _non_negative_float(value: Any, *, field: str) -> float:
-    if isinstance(value, bool):
-        raise ValidationError(f"{field} 必须是数字。", field="graph_ready_v2_features")
-    try:
-        number = float(value)
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise ValidationError(f"{field} 必须是数字。", field="graph_ready_v2_features") from exc
-    if not math.isfinite(number):
-        raise ValidationError(f"{field} 必须是有限数字。", field="graph_ready_v2_features")
-    if number < 0.0:
-        raise ValidationError(f"{field} 必须是非负数。", field="graph_ready_v2_features")
     return number
 
 
 def _required_non_negative(metric: Dict[str, Any], *, field: str) -> float:
     if field not in metric:
         raise ValidationError(f"GraphReady v2 特征缺少 {field}。", field="graph_ready_v2_features")
-    return _non_negative_float(metric.get(field), field=field)
+    return non_negative_float(metric.get(field), field=field)
 
 
 __all__ = ["enrich_graph_ready_v2_metrics"]

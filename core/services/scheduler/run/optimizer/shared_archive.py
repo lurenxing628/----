@@ -60,6 +60,25 @@ class ArchiveObservation:
     evidence_updated: bool = False
 
 
+@dataclass
+class CandidateArchiveRef:
+    """A decoded candidate's place in the archive, carried by the candidate as ``archive_ref``.
+
+    ``entry_id`` is its content identity (an unverified trial keeps a temporary number, a payload the archive
+    cannot own has none). The decode's own observation is reported once (``take_observation``); later reports
+    of the same candidate reuse ``entry_id``. ``evidence_revision`` is the archive evidence revision the candidate
+    was last bound to by the shared search (None until then).
+    """
+
+    entry_id: Optional[int]
+    observation: Optional[ArchiveObservation] = None
+    evidence_revision: Optional[int] = None
+
+    def take_observation(self) -> Optional[ArchiveObservation]:
+        observation, self.observation = self.observation, None
+        return observation
+
+
 @dataclass(frozen=True)
 class PartialScheduleGroup:
     entry_ids: Tuple[int, ...]
@@ -84,7 +103,9 @@ class _StoredSchedule:
 
 def _snapshot_candidate(candidate: Dict[str, Any]) -> Dict[str, Any]:
     # Fixed business seeds and input resource pools remain owned by the run input.
-    # All other containers belong to this completed decode, including its decisions.
+    # All other containers belong to this completed decode, including its decisions. Search attempt
+    # records still hold the stored algo_stats by reference (step_report_hooks, local search), and the
+    # published summary is appended to later (due-risk warnings), so the public copy must not share them.
     out = {key: value if key in ("resource_pool", "seed_results") else deepcopy(value)
            for key, value in candidate.items() if key not in ("results", "summary", "metrics")}
     out["results"] = [replace(result) for result in candidate["results"]]
@@ -161,7 +182,7 @@ class SharedScheduleArchive:
         objective = self.primary_objective if objective is None else objective
         self._require_objective(objective)
         stored = self._entries[entry_id]
-        return dict(stored.payload, score=stored.evaluations[objective].score, _shared_entry_id=entry_id)
+        return dict(stored.payload, score=stored.evaluations[objective].score)
 
     def results(self, entry_id: int) -> List[ScheduleResult]:
         return self._entries[entry_id].payload["results"]
@@ -199,7 +220,7 @@ class SharedScheduleArchive:
         if not stored.evidence_origin or observed.evidence_updated or observed.restored:
             stored.evidence_origin = origin
             stored.payload.update({key: value for key, value in candidate.items()
-                                   if not key.startswith("_") and key not in ("results", "summary", "metrics", "score")})
+                                   if key not in ("results", "summary", "metrics", "score", "archive_ref")})
 
     def _register_verified(self, candidate: Dict[str, Any], *, elapsed_ms: int,
                            content_key: ContentKey) -> ArchiveObservation:
@@ -415,5 +436,5 @@ class SharedScheduleArchive:
         self._partial[key] = best
 
 
-__all__ = ["ArchiveObservation", "PartialScheduleGroup", "ScheduleArchiveEntry", "ScheduleEvaluation",
+__all__ = ["ArchiveObservation", "CandidateArchiveRef", "PartialScheduleGroup", "ScheduleArchiveEntry", "ScheduleEvaluation",
            "ScheduleScoreScope", "SharedScheduleArchive"]

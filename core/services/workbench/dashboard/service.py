@@ -25,8 +25,6 @@ from .policy import (
     mapped_anchors,
     read_history,
     read_stored,
-    require_dashboard_schema,
-    require_external_schema,
     require_identity,
 )
 from .projection import category, delivery, safe_material
@@ -98,13 +96,9 @@ class WorkbenchDashboardService:
         self.external_handling = DashboardExternalHandling(conn)
         self.repo = WorkbenchDashboardRepository(conn)
 
-    def require_schema(self):
-        require_dashboard_schema(self.repo)
-
     @contextmanager
     def read_snapshot(self):
         with TransactionManager(self.conn).transaction():
-            self.require_schema()
             yield
 
     def history(self, item_ref, number, size):
@@ -112,7 +106,6 @@ class WorkbenchDashboardService:
         repo = self.repo
         if not repo.has_item(item_ref):
             repo = self.external_handling.repo
-            require_external_schema(repo)
             require_identity(repo, item_ref)
         return read_history(repo, item_ref, number, size)
 
@@ -120,7 +113,6 @@ class WorkbenchDashboardService:
         repo = self.repo
         if item["category"] == "external":
             repo = self.external_handling.repo
-            require_external_schema(repo)
         return repo.append(item=item, before=before, after=after, facts=facts, actor=actor, action=action,
                            reason=reason, request_key=request_key, now=now)
 
@@ -253,7 +245,7 @@ class WorkbenchDashboardService:
             selected.append(item)
         def key(item):
             value = item[query.sort] if query.sort in ("subject", "category") else item["handling"][query.sort]
-            return value is None, value or "", item["item_ref"]
+            return value is None, value, item["item_ref"]
         return sorted(selected, key=key, reverse=query.direction == "desc")
 
     def workspace(self, data, query):

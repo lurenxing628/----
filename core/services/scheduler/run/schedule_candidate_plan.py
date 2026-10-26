@@ -11,8 +11,6 @@ if TYPE_CHECKING:
     from core.services.scheduler.contracts.schedule_summary_types import SummaryMetrics
 
 CANDIDATE_KIND_CRITICAL_CHAIN = "critical_chain"
-UNCERTIFIED = "uncertified"
-UNCERTIFIED_PREFIX = UNCERTIFIED + ": "
 
 
 @dataclass(frozen=True)
@@ -91,5 +89,5 @@ class CandidateComparisonOutcome:
 
 __all__ = [
     "CANDIDATE_KIND_CRITICAL_CHAIN",
-    "UNCERTIFIED", "UNCERTIFIED_PREFIX", "CandidateComparisonOutcome", "CandidatePlan",
+    "CandidateComparisonOutcome", "CandidatePlan",
 ]

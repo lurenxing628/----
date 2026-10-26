@@ -1,4 +1,4 @@
-"""回归测试：GreedyScheduler.schedule 把 start_dt 的 date() 作为 base_date 传给排序器（用于 ready/due 等相对日期计算），且 WEIGHTED 策略下用该 base_date 排序——due_weight=1.0 时交期更早的批次（B_early）排在更晚的（A_late）之前。"""
+"""回归测试：生产解码入口把 start_dt 的 date() 作为 base_date 传给排序器（用于 ready/due 等相对日期计算），且 WEIGHTED 策略下用该 base_date 排序——due_weight=1.0 时交期更早的批次（B_early）排在更晚的（A_late）之前。"""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ import core.algorithms.greedy.scheduler as greedy_scheduler_module
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from tests._support.algo_operations import make_algo_op, make_batch
+from tests._support.schedule_decode import config_snapshot, production_decode
 
 
 class _DummyCalendar:
@@ -43,10 +44,11 @@ def test_greedy_scheduler_passes_start_dt_date_to_sorter(monkeypatch):
 
     monkeypatch.setattr(greedy_scheduler_module.StrategyFactory, "create", classmethod(_fake_create))
 
-    scheduler = GreedyScheduler(calendar_service=_DummyCalendar(), config_service={})
+    scheduler = GreedyScheduler(calendar_service=_DummyCalendar(), config_service=config_snapshot())
     start_dt = datetime(2032, 1, 2, 8, 30, 0)
 
-    scheduler.schedule(
+    production_decode(
+        scheduler,
         operations=[],
         batches={},
         strategy=SortStrategy.WEIGHTED,
@@ -67,7 +69,7 @@ def test_greedy_scheduler_weighted_order_uses_start_dt_base_date(monkeypatch):
 
     monkeypatch.setattr(greedy_scheduler_module, "dispatch_batch_order", _fake_dispatch_batch_order)
 
-    scheduler = GreedyScheduler(calendar_service=_DummyCalendar(), config_service={})
+    scheduler = GreedyScheduler(calendar_service=_DummyCalendar(), config_service=config_snapshot())
     start_dt = datetime(2032, 1, 4, 8, 0, 0)
 
     batches = {
@@ -77,7 +79,8 @@ def test_greedy_scheduler_weighted_order_uses_start_dt_base_date(monkeypatch):
 
     operations = [make_algo_op(id=1, batch_id="A_late"), make_algo_op(id=2, batch_id="B_early")]
 
-    scheduler.schedule(
+    production_decode(
+        scheduler,
         operations=operations,
         batches=batches,
         strategy=SortStrategy.WEIGHTED,

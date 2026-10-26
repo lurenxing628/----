@@ -36,6 +36,7 @@ from .material_actions_context import (
     scope_input,
 )
 from .read_context import bind_read_snapshot
+from .request_json import read_upload_file
 
 
 @read_endpoint
@@ -62,10 +63,7 @@ def _upload():
     file_format, mode = request.form["format"], request.form["mode"]
     if file_format not in ("csv", "xlsx") or mode != "upsert":
         raise WorkbenchCommandRejected("invalid_input", "物料导入只支持 CSV 或 XLSX，并且按物料编号增量更新；物料没有改动。请换用正确的文件后点「开始预检」。", 400)
-    content = request.files["file"].read()
-    limit = int(current_app.config.get("EXCEL_MAX_UPLOAD_BYTES") or current_app.config.get("MAX_CONTENT_LENGTH") or 0)
-    if limit > 0 and len(content) > limit:
-        raise WorkbenchCommandRejected("invalid_input", "文件超过本机允许的大小，一行都没有导入，也没有只导入前半部分。请缩小文件后重新点「开始预检」。", 413)
+    content = read_upload_file("文件超过本机允许的大小，一行都没有导入，也没有只导入前半部分。请缩小文件后重新点「开始预检」。")
     return content, file_format, mode
 
 

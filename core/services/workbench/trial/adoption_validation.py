@@ -55,8 +55,7 @@ def validate_trial_adoption(conn, scenario_ref):
             projections = run_execution_projections(conn, settings, capture=capture,
                 existing=live["preflight_facts"].execution_projections.values(), service=execution_service)
             _require_official_baseline(live["baseline"], projections)
-            prepared = prepare_trial_adoption_input(conn, settings, projections, live, held=held,
-                capture=capture, validated_projections={row.operation_ref: row for row in projections})
+            prepared = prepare_trial_adoption_input(conn, settings, projections, live, held=held, capture=capture)
             _complete_scope(rows, prepared)
             # Pending stage work follows the run's end date; the saved rows keep their own span.
             prepared = replace(prepared, end_date_norm=_span_end(rows))

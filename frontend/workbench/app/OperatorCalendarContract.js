@@ -20,16 +20,9 @@
       && (value.remark === null || typeof value.remark === 'string')
       && typeof value.calendar_ref === 'string' && /^[0-9a-f]{48}$/.test(value.calendar_ref);
   }
-  function envelope(raw) {
-    if (raw && raw.ok === false) throw raw;
-    if (!C.object(raw) || raw.ok !== true || raw.schema_version !== 1 || !C.object(raw.data) || !C.object(raw.meta)
-        || !['production', 'demo'].includes(raw.meta.source) || raw.meta.time_basis !== 'factory_local'
-        || !raw.meta.snapshot_ref || !raw.meta.request_ref || !raw.meta.as_of || !Array.isArray(raw.warnings))
-      throw C.failure('读到的个人日历数据不完整，页面没有改动。请刷新后重试。');
-    return raw;
-  }
-  function month(raw, expected) {
-    const result = envelope(raw), data = result.data;
+  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data。
+  function month(result, expected) {
+    const data = result.data;
     if (data.year !== expected.year || data.month !== expected.month || data.operator_ref !== expected.ref)
       throw C.failure('读到的个人日历不是当前人员的这个月，请刷新后重试。');
     if (!Array.isArray(data.days) || !data.days.length || !data.days.every(item => day(item)
@@ -112,8 +105,8 @@
       throw C.failure('结束日期不能早于开始日期。', [{ path: 'end_date', message: '结束日期不能早于开始日期。' }]);
     return { start_date: range.start_date, end_date: range.end_date };
   }
-  function rangePreview(raw, expected) {
-    const result = envelope(raw), data = result.data;
+  function rangePreview(result, expected) {
+    const data = result.data;
     if (!C.object(data.range) || data.range.start_date !== expected.start_date || data.range.end_date !== expected.end_date)
       throw C.failure('预检的日期范围和选的不一致，没有清除任何设置。请重新点「预检要清除的日期」。');
     if (!Number.isSafeInteger(data.count) || data.count < 0 || !Array.isArray(data.days)

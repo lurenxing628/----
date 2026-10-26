@@ -11,33 +11,27 @@ from core.models.schedule_plan_role import (
 )
 from core.models.workbench_command import WorkbenchCommandRejected
 from data.repositories.workbench_plan_delivery_repo import WorkbenchPlanDeliveryRepository
-from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
 
 def _binding_error() -> NoReturn:
     raise WorkbenchCommandRejected("plan_binding_invalid", "交付风险数据与所选计划不一致，请重新选择计划。")
 
 
-def _task_query(identity):
-    return {"version": identity.version, "source_table": identity.source_table,
-            "candidate_id": identity.candidate_id, "scenario_id": identity.scenario_id}
-
-
 class PlanDeliveryRepository(WorkbenchPlanDeliveryRepository):
-    def validate_identity(self, scope, identity, *, context=None):
-        locator = context.resolve(scope.plan_ref) if context is not None else WorkbenchPlanIdentityRepository(self.conn, logger=self.logger).resolve_plan(scope.plan_ref)
+    def validate_identity(self, scope, identity, *, context):
+        locator = context.resolve(scope.plan_ref)
         if (identity.version, identity.requested_plan_role, identity.effective_plan_role, identity.scenario_id) != (
             locator.version, locator.plan_role, locator.plan_role, locator.scenario_id,
         ) or identity.plan_resolution_status == "fallback_to_adopted":
             _binding_error()
-        roles = context.repo.list_plan_role_options(locator.version) if context is not None else self.list_plan_role_options(locator.version)
+        roles = context.repo.list_plan_role_options(locator.version)
         option = next((row for row in roles if row["role"] == locator.plan_role), None)
         expected = (SOURCE_SCHEDULE, None, None) if option is None else (
             option["source_table"], option["candidate_id"], option["candidate_key"],
         )
         scenario = None
         if locator.scenario_id is not None:
-            raw = (context.repo if context is not None else self).get_scenario_context(locator.scenario_id)
+            raw = context.repo.get_scenario_context(locator.scenario_id)
             scenario = {key: raw[key] for key in ("scenario_id", "base_version", "base_plan_role", "base_source_table", "base_candidate_id", "base_candidate_key", "status", "validation_status", "row_count", "issues_json")} if raw is not None else None
             if scenario is None or scenario["status"] != "active":
                 raise WorkbenchCommandRejected("plan_unavailable", "所选试调方案无效，请到「试调排产方案」重新选择。")
@@ -52,14 +46,8 @@ class PlanDeliveryRepository(WorkbenchPlanDeliveryRepository):
             raise WorkbenchCommandRejected("plan_unavailable", "所选候选方案没有完整保存的明细，看不了。请回「选择排产方案」重新选一个。")
         return scenario
 
-    def task_rows(self, identity, *, context, entry):
-        query = _task_query(identity)
-        if entry is None:
-            # Standalone delivery keeps bad time rows visible for its own projection.
-            raw = context.source_rows(**query)
-            details = context.repo.enrich_arrangements(raw, version=identity.version)
-        else:
-            details = context.detail_rows(entry)
+    def task_rows(self, *, context, entry):
+        details = context.detail_rows(entry)
         fields = ("schedule_id", "version", "op_id", "machine_id", "operator_id", "batch_id")
         rows = [{**{key: row[key] for key in fields},
                  "start_time": row["start_time"],
@@ -95,7 +83,7 @@ class PlanDeliveryRepository(WorkbenchPlanDeliveryRepository):
             if row is None:
                 _binding_error()
             return {"source": identity.source_table, "summary": row["summary_json"]}
-        history = context.history(identity.version) if context is not None else self.get_history_identity_row(identity.version)
+        history = context.history(identity.version)
         if history is None:
             _binding_error()
         return {"source": SOURCE_SCHEDULE, "summary": history["result_summary"],

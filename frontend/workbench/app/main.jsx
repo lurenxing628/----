@@ -16,23 +16,8 @@
       || typeof value.category !== 'string' || typeof value.message !== 'string'))) {
     fail('工作台返回的消息格式不正确。请刷新后核对上次操作的结果。'); return;
   }
-  if (boot.schema_version !== 1 || !window.React || !window.ReactDOM || !window.APSWorkbenchUI
-      || !window.APSWorkbenchTheme || !window.APSWorkbenchTransport || !window.APSWorkbenchSystemContract || typeof SystemLive !== 'function'
-      || typeof window.ResourceLive !== 'function' || typeof window.WorkbenchControls !== 'function'
-      || typeof window.WorkbenchControlStyles !== 'function' || typeof window.WorkbenchNumberControls !== 'function'
-      || typeof window.PlanWorkspace !== 'function' || typeof window.ReportWorkspace !== 'function'
-      || typeof window.ReviewWorkspace !== 'function' || typeof window.BatchWorkspace !== 'function'
-      || typeof window.MasterOverviewWorkspace !== 'function' || typeof window.SystemMaintenanceWorkspace !== 'function'
-      || typeof window.FieldWorkspace !== 'function' || typeof window.ActualGanttWorkspace !== 'function'
-      || typeof window.PreflightWorkspace !== 'function' || typeof window.RunWorkspace !== 'function'
-      || typeof window.PlanCenterWorkspace !== 'function' || typeof window.RunCandidateWorkspace !== 'function'
-      || typeof window.RunHistoryWorkspace !== 'function' || typeof window.DecisionHistoryWorkspace !== 'function'
-      || !window.DecisionHistoryAPI || typeof window.DecisionHistoryAPI.create !== 'function' || typeof window.CalibrationWorkspace !== 'function'
-      || typeof window.RunAdoptionAction !== 'function' || typeof window.WorkbenchTrialWorkspace !== 'function'
-      || typeof window.TrialAdoptionAction !== 'function' || typeof window.WorkbenchDashboardWorkspace !== 'function'
-      || !window.WorkbenchNavigation || !window.WorkbenchCaption || !window.WorkbenchPageContext || !window.WorkbenchBoundary
-      || !window.WorkbenchGuards || typeof window.WorkbenchGuardHost !== 'function' || !window.WorkbenchDensity
-      || !window.WorkbenchScrollShadows) {
+  // React、ReactDOM、theme.js 是 asset-manifest 里单独加载的脚本；其余工作区都在本文件所在的同一个 main.js 里，先于本段定义。
+  if (boot.schema_version !== 1 || !window.React || !window.ReactDOM || !window.APSWorkbenchTheme) {
     fail('工作台资源未完整加载，请检查本机安装文件。'); return;
   }
   try { window.WorkbenchNavigation.validateBoot(boot); }
@@ -108,7 +93,6 @@
     const pageSnapshots = React.useRef(new Map());
     activePage.current = page;
     const { view, context } = page;
-    const initialContext = Object.keys(context).length ? context : undefined;
     const batchAdapter = React.useMemo(() => window.APSBatchAPI.create(), []);
     const [preference, setPreference] = React.useState(() => window.APSWorkbenchTheme.get());
     const [density, setDensity] = React.useState(() => window.WorkbenchDensity.get());
@@ -223,18 +207,18 @@
       {density.error && <p role="alert" className="sm-error">{density.error}</p>}
       <window.WorkbenchBoundary key={view + ':' + page.key}>
       {page.error ? <p role="alert" className="sm-error">{page.error}</p>
-      : view === 'dashboard' ? <window.WorkbenchDashboardWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={initialContext} />
-      : view === 'system' ? <SystemLive boot={boot} theme={preference.theme} initialContext={initialContext} /> : view === 'process' ? <window.ResourceLive key={view + ':' + page.key} onNavigate={navigate} initialContext={initialContext} />
-      : view === 'batches' ? <window.BatchWorkspace key={view + ':' + page.key} adapter={batchAdapter} onNav={navigate} initialContext={initialContext} />
-      : view === 'analysis' || view === 'gantt' || view === 'delay' ? <window.PlanCenterWorkspace key={view + ':' + page.key} view={view} onNavigate={navigate} initialContext={initialContext} />
-      : view === 'reports' ? <window.ReportWorkspace key={view + ':' + page.key} onNav={navigate} initialContext={initialContext} />
-      : view === 'review' ? <window.ReviewWorkspace key={view + ':' + page.key} onNav={navigate} initialContext={initialContext} />
-      : view === 'calib' ? <window.CalibrationWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={initialContext} />
-      : view === 'basedata' ? <window.MasterOverviewWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={initialContext} />
-      : view === 'field' ? <window.FieldWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={initialContext} />
-      : view === 'fieldgantt' ? <window.ActualGanttWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={initialContext} />
-      : view === 'run' ? <window.RunWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={initialContext} />
-      : view === 'trial' ? <window.WorkbenchTrialWorkspace key={view + ':' + page.key} onNavigate={navigate} initialTarget={initialContext} onTargetChange={rememberTrialTarget}
+      : view === 'dashboard' ? <window.WorkbenchDashboardWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
+      : view === 'system' ? <SystemLive boot={boot} theme={preference.theme} initialContext={context} /> : view === 'process' ? <window.ResourceLive key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
+      : view === 'batches' ? <window.BatchWorkspace key={view + ':' + page.key} adapter={batchAdapter} onNav={navigate} initialContext={context} />
+      : view === 'analysis' || view === 'gantt' || view === 'delay' ? <window.PlanCenterWorkspace key={view + ':' + page.key} view={view} onNavigate={navigate} initialContext={context} />
+      : view === 'reports' ? <window.ReportWorkspace key={view + ':' + page.key} onNav={navigate} initialContext={context} />
+      : view === 'review' ? <window.ReviewWorkspace key={view + ':' + page.key} onNav={navigate} initialContext={context} />
+      : view === 'calib' ? <window.CalibrationWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
+      : view === 'basedata' ? <window.MasterOverviewWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
+      : view === 'field' ? <window.FieldWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
+      : view === 'fieldgantt' ? <window.ActualGanttWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
+      : view === 'run' ? <window.RunWorkspace key={view + ':' + page.key} onNavigate={navigate} initialContext={context} />
+      : view === 'trial' ? <window.WorkbenchTrialWorkspace key={view + ':' + page.key} onNavigate={navigate} initialTarget={context} onTargetChange={rememberTrialTarget}
         renderAdoption={props => <window.TrialAdoptionAction {...props} />} />
       : <section className="wb-page-panel" aria-label={boot.titles[view] || '工作区不存在'}>
         <h2>{boot.titles[view] || '工作区不存在'}</h2><p role="status">{window.WorkbenchTerms.outcomes.unavailable}</p>

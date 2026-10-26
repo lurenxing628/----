@@ -5,7 +5,6 @@ from datetime import datetime
 from functools import wraps
 from types import MappingProxyType
 
-from flask import current_app
 from werkzeug.exceptions import HTTPException
 
 from core.errors import AppError, ValidationError
@@ -16,6 +15,7 @@ from web.public_token_registry import issue_public_token_with_expiry, resolve_pu
 
 from .api_responses import api_endpoint
 from .material_actions_context import json_body, opaque_ref
+from .request_json import read_upload_file
 from .write_context import preview_write_context, validate_preview_confirmation
 
 PREVIEW_SCOPE = "workbench-resource-preview-v1"
@@ -113,10 +113,7 @@ def upload_body():
     fmt, mode = request.form["format"], request.form["mode"]
     if fmt not in ("csv", "xlsx") or mode not in ("upsert",):
         raise WorkbenchCommandRejected("invalid_input", "只支持 CSV 或 XLSX 按编号增量导入；数据没有改动。请换用正确的文件后点「开始预检」。", 400)
-    content = request.files["file"].read()
-    limit = int(current_app.config.get("EXCEL_MAX_UPLOAD_BYTES") or current_app.config.get("MAX_CONTENT_LENGTH") or 0)
-    if limit > 0 and len(content) > limit:
-        raise WorkbenchCommandRejected("invalid_input", "文件超过本机允许的大小，一行都没有导入。请缩小文件后重新选择，再点「开始预检」。", 413)
+    content = read_upload_file("文件超过本机允许的大小，一行都没有导入。请缩小文件后重新选择，再点「开始预检」。")
     return content, fmt, mode
 
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from ._helpers import RowLike, parse_int
+from ._helpers import RowLike, parse_int, parse_optional_int
 
 SCENARIO_STATUS_ACTIVE = "active"
 
@@ -41,17 +41,17 @@ class ScheduleAdjustmentScenario:
     def from_row(cls, row: RowLike) -> ScheduleAdjustmentScenario:
         return cls(
             scenario_id=str(row["scenario_id"] or ""),
-            source_draft_id=str(row["source_draft_id"] or ""),
-            base_version=parse_int(row["base_version"], default=0) or 0,
-            base_plan_role=str(row["base_plan_role"] or ""),
-            base_source_table=str(row["base_source_table"] or ""),
-            base_candidate_id=parse_int(row["base_candidate_id"], default=None),
+            source_draft_id=str(row["source_draft_id"]),
+            base_version=parse_int(row["base_version"], field="base_version"),
+            base_plan_role=str(row["base_plan_role"]),
+            base_source_table=str(row["base_source_table"]),
+            base_candidate_id=parse_optional_int(row["base_candidate_id"], field="base_candidate_id"),
             base_candidate_key=_text_or_none(row["base_candidate_key"]),
             scenario_name=_text_or_none(row["scenario_name"]),
             status=str(row["status"] or SCENARIO_STATUS_ACTIVE),
-            validation_status=str(row["validation_status"] or ""),
-            issue_count=parse_int(row["issue_count"], default=0) or 0,
+            validation_status=str(row["validation_status"]),
+            issue_count=parse_int(row["issue_count"], field="issue_count"),
             issues_json=_text_or_none(row["issues_json"]),
-            row_count=parse_int(row["row_count"], default=0) or 0,
-            published_version=parse_int(row["published_version"], default=None),
+            row_count=parse_int(row["row_count"], field="row_count"),
+            published_version=parse_optional_int(row["published_version"], field="published_version"),
         )

@@ -2,7 +2,8 @@
 
 from collections import defaultdict
 from copy import deepcopy
-from typing import Any, Dict
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List
 
 from core.models.workbench_run_candidate import local_time, reject
 from core.services.capacity.plan_calendar_intervals import instant
@@ -42,21 +43,41 @@ def resource_deltas(before, after, fields=DELTA_FIELDS):
     return {key: after[key] - before[key] if before.get(key) is not None and after.get(key) is not None else None for key in fields}
 
 
-class DecisionResources:
-    def __init__(self, source, *, calendar=None):
-        self.source = source
-        self.start, self.end = source.scope["range_start"], source.scope["range_end"]
-        self.calendar = (
-            ArchivedCalendar(source.calendar_archive, source_ref=source.run["run_ref"])
-            if calendar is None
-            else calendar
-        )
-        saved = {(item["kind"], item["ref"]): item["saved_id"] for item in source.context["resources"] if item["kind"] in KINDS}
-        self.resources = [{**item, "saved_id": saved.get((item["kind"], item["ref"]))} for item in source.resource_cohort["resources"]]
+@dataclass(frozen=True)
+class ResourceWindowInput:
+    """One fixed resource window: its calendar, frozen resource cohort and each compared side's arranged tasks."""
+    start: Any
+    end: Any
+    calendar: Any
+    resources: List[Dict[str, Any]]  # cohort rows, each carrying its calendar binding ``saved_id``
+    available: Dict[str, bool]  # computation key -> that side's arrangement is complete
+    side_tasks: Callable[[str], List[Dict[str, Any]]]  # computation key -> the side's resource tasks
+    task_intervals: Callable[[str], Dict[str, Any]]  # computation key -> the side's parsed task intervals
+    computation_key: Callable[[str], str]
+
+
+def decision_window_input(source):
+    """A decision read's window: archived calendar, admission cohort and the reference/candidate sides."""
+    calendar = ArchivedCalendar(source.calendar_archive, source_ref=source.run["run_ref"])
+    saved = {(item["kind"], item["ref"]): item["saved_id"] for item in source.context["resources"] if item["kind"] in KINDS}
+    resources = [{**item, "saved_id": saved.get((item["kind"], item["ref"]))} for item in source.resource_cohort["resources"]]
+    available = {source.computation_key(row["candidate_ref"]): row["status"] == "completed" for row in source.rows}
+    available[source.computation_key("reference")] = source.baseline["state"] == "available"
+    return ResourceWindowInput(
+        source.scope["range_start"], source.scope["range_end"], calendar, resources, available,
+        side_tasks=lambda key: source.resource_before_tasks if key == "reference" else source.resource_tasks(key),
+        task_intervals=source.task_intervals, computation_key=source.computation_key)
+
+
+class ResourceWindowMetrics:
+    """Per-resource windows, kind summaries and resource metrics of one ``ResourceWindowInput``."""
+
+    def __init__(self, inputs):
+        self.inputs = inputs
+        self.start, self.end, self.calendar = inputs.start, inputs.end, inputs.calendar
+        self.resources = inputs.resources
         self._resource_by_ref = {row["ref"]: row for row in self.resources}
         self.tasks = {}
-        self._available = {source.computation_key(row["candidate_ref"]): row["status"] == "completed" for row in source.rows}
-        self._available[source.computation_key("reference")] = source.baseline["state"] == "available"
         self.indexes, self._window_rows, self._summaries, self._groups = {}, {}, {}, {}
         self._calendars = {}
         self._calendar_times = {}
@@ -68,12 +89,12 @@ class DecisionResources:
             self.indexes, self._window_rows, self._summaries = {}, {}, {}
 
     def index(self, key):
-        key = self.source.computation_key(key)
+        key = self.inputs.computation_key(key)
         if key not in self.indexes:
             if key not in self.tasks:
-                self.tasks[key] = self.source.resource_before_tasks if key == "reference" else self.source.resource_tasks(key)
-            self.indexes[key] = ResourceTaskIndex(self.tasks[key], self.start, self.end, work_available=self._available[key],
-                                                 pressure_threshold=self.pressure_threshold, task_intervals=self.source.task_intervals(key),
+                self.tasks[key] = self.inputs.side_tasks(key)
+            self.indexes[key] = ResourceTaskIndex(self.tasks[key], self.start, self.end, work_available=self.inputs.available[key],
+                                                 pressure_threshold=self.pressure_threshold, task_intervals=self.inputs.task_intervals(key),
                                                  retain_statistics_values=False)
         return self.indexes[key]
 
@@ -84,7 +105,7 @@ class DecisionResources:
         return item
 
     def _ensure_windows(self, keys, resources):
-        keys = list(dict.fromkeys(self.source.computation_key(key) for key in keys))
+        keys = list(dict.fromkeys(self.inputs.computation_key(key) for key in keys))
         pending = [resource for resource in resources if any((key, resource["ref"]) not in self._window_rows for key in keys)]
         if not pending:
             return
@@ -94,6 +115,11 @@ class DecisionResources:
             for key in keys:
                 if (key, ref) not in self._window_rows:
                     self._window_rows[key, ref] = self.index(key).window(resource, calendar)
+
+    def window_row(self, key, ref):
+        """One resource's window on one side; computed on first use through the shared window path."""
+        self._ensure_windows([key], [self._resource_by_ref[ref]])
+        return self._window_rows[self.inputs.computation_key(key), ref]
 
     def _prepare_calendars(self, resources):
         pending = [resource for resource in resources if resource["ref"] not in self._calendars]
@@ -117,7 +143,7 @@ class DecisionResources:
         self._ensure_windows(keys, self.resources)
 
     def summary(self, key, kind):
-        key = self.source.computation_key(key)
+        key = self.inputs.computation_key(key)
         if (key, kind) not in self._summaries:
             resources = [resource for resource in self.resources if resource["kind"] == kind]
             self._ensure_windows([key], resources)
@@ -127,15 +153,8 @@ class DecisionResources:
                 identity_issues=[item for item in index.identity_issues if item["kind"] == kind], work_available=index.work_available)
         return self._summaries[key, kind]
 
-    def pair(self, resource):
-        selected = self.source.selected_ref
-        self._ensure_windows(["reference", selected], [resource])
-        before = self._window_rows[self.source.computation_key("reference"), resource["ref"]]
-        after = self._window_rows[self.source.computation_key(selected), resource["ref"]]
-        return {"before": dict(before), "after": dict(after), "deltas": resource_deltas(before, after)}
-
     def metrics(self, key):
-        key = self.source.computation_key(key)
+        key = self.inputs.computation_key(key)
         result = {}
         for kind in KINDS:
             summary = self.summary(key, kind)
@@ -167,6 +186,19 @@ class DecisionResources:
                     item.update(numerator_hours=summary["numerator_hours"], denominator_hours=summary["denominator_hours"])
                 result[kind + "_" + field] = item
         return result
+
+
+
+class DecisionResources(ResourceWindowMetrics):
+    """The decision workspace's resource reads: selected/reference pairs, coverage, drills and periods."""
+
+    def __init__(self, source):
+        super().__init__(decision_window_input(source))
+        self.source = source
+
+    def pair(self, resource):
+        before, after = (self.window_row(key, resource["ref"]) for key in ("reference", self.source.selected_ref))
+        return {"before": dict(before), "after": dict(after), "deltas": resource_deltas(before, after)}
 
     def coverage(self, key, *, details=False):
         source = self.source

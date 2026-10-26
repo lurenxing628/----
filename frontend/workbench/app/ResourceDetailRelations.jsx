@@ -6,13 +6,10 @@
   const names = { machines: '关联设备', operators: '关联人员', suppliers: '关联供应商' };
   const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
   const count = value => Number.isSafeInteger(value) && value >= 0;
+  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验关联记录与翻页。
   function query(result, parent, scope) {
-    if (result && result.ok === false) throw result;
-    const meta = result && result.meta, data = result && result.data, page = data && data.page;
-    if (!C.object(result) || result.ok !== true || result.schema_version !== 1 || !C.object(meta)
-        || !['production', 'demo'].includes(meta.source) || meta.time_basis !== 'factory_local'
-        || !['snapshot_ref', 'request_ref', 'as_of'].every(key => typeof meta[key] === 'string' && meta[key])
-        || !Array.isArray(result.warnings) || !C.object(data) || !C.object(data.basis)
+    const meta = result.meta, data = result.data, page = data.page;
+    if (!C.object(data.basis)
         || typeof data.basis.code !== 'string' || !data.basis.code || typeof data.basis.message !== 'string' || !data.basis.message
         || !ref(parent) || data.parent_ref !== parent || data.parent_kind !== 'op_type' || data.relation !== scope.relation
         || !C.own(kinds, scope.relation) || !Array.isArray(data.entities) || !data.entities.every(item => C.object(item)
@@ -32,10 +29,7 @@
   function Association({ adapter, entity, relation, onOpen }) {
     const [scope, setScope] = React.useState({ relation, query: '', page: 1, size: 5 });
     const [search, setSearch] = React.useState('');
-    const read = S.useQuery(async signal => {
-      if (!adapter || typeof adapter.relations !== 'function') throw C.failure('dependency not wired: adapter.relations');
-      return query(await adapter.relations(entity.ref, scope, signal), entity.ref, scope);
-    }, [adapter, entity.ref, scope]);
+    const read = S.useQuery(async signal => query(await adapter.relations(entity.ref, scope, signal), entity.ref, scope), [adapter, entity.ref, scope]);
     const data = read.result && read.result.data, title = names[relation];
     function refresh() { setScope(current => ({ ...current, page: 1, snapshot_ref: undefined })); }
     function next(page) { setScope(current => ({ ...current, page, snapshot_ref: read.result.meta.snapshot_ref })); }

@@ -33,7 +33,7 @@ def _validate_execution_origin(op_id, projection, prior_refs):
         fail("execution_scope_missing", "这道工序有报工记录，但不在正式计划范围里，这次排产没有开始。请到现场记录核对后重试。", op_id=op_id)
 
 
-def execution_guards(svc, facts, operations, batches, projections, prev_version, *, piece_scope=None):
+def execution_guards(conn, facts, operations, batches, projections, prev_version, *, piece_scope=None):
     plan_rows = facts.latest_plan_rows(prev_version)
     prior_refs = _prior_operation_refs(facts, plan_rows)
     selected_refs = {facts.operation_refs[op.id] for op in operations}
@@ -48,7 +48,7 @@ def execution_guards(svc, facts, operations, batches, projections, prev_version,
             _validate_execution_target(op, batches, projection)
         _validate_execution_origin(op.id, projection, prior_refs)
     return build_execution_guardrails_from_projections(
-        svc, operations, prev_version=prev_version,
+        conn, operations, prev_version=prev_version,
         execution_projections=[projections[ref] for ref in sorted(prior_refs)],
         facts=facts,
         external_groups=execution_groups(facts, batches, operations),

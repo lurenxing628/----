@@ -18,7 +18,7 @@ def rebuild_external_group_cache_from_seeds(
     external_group_cache: Dict[Tuple[str, ...], Tuple[datetime, datetime]],
     warnings: List[str],
     algo_stats: Any,
-    seed_group_keys: Optional[Dict[int, Tuple[str, ...]]] = None,
+    seed_group_keys: Dict[int, Tuple[str, ...]],
 ) -> None:
     """seed 注入时按组键把已排 merged 外协组成员的起止块写回 external_group_cache（audit 2026-07-20 A14）。
 
@@ -36,7 +36,7 @@ def rebuild_external_group_cache_from_seeds(
         return
 
     group_key_by_op_id, operation_ids = _merged_group_key_by_op_id(operations)
-    for key, blocks in _seed_blocks_by_group(seed_results, group_key_by_op_id, operation_ids, seed_group_keys or {}).items():
+    for key, blocks in _seed_blocks_by_group(seed_results, group_key_by_op_id, operation_ids, seed_group_keys).items():
         distinct_blocks = sorted(set(blocks))
         if len(distinct_blocks) == 1:
             external_group_cache[key] = distinct_blocks[0]

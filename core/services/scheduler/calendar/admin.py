@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -9,6 +8,7 @@ from core.errors import ValidationError
 from core.models.calendar import OperatorCalendar, WorkCalendar
 from core.models.calendar_periods import (
     encode_periods,
+    load_stored_periods,
     normalize_periods,
     period_summary,
 )
@@ -19,7 +19,7 @@ from core.services.common.normalization_matrix import (
     normalize_yes_no_narrow_value,
 )
 from core.services.common.normalize import normalize_text
-from core.services.scheduler.config.config_field_spec import MISSING_POLICY_ERROR, coerce_config_field
+from core.services.scheduler.config.config_field_spec import coerce_config_field
 from core.shared.strict_parse import parse_optional_float
 from data.repositories import CalendarRepository, OperatorCalendarRepository
 from data.repositories.config_repo import ConfigRepository
@@ -82,10 +82,7 @@ class CalendarAdmin:
         """
         key = "holiday_default_efficiency"
         raw_value = ConfigRepository(self.conn, logger=self.logger).get_value(key)
-        return float(coerce_config_field(
-            key, raw_value, strict_mode=True, source="scheduler.calendar.default_efficiency",
-            missing=(raw_value is None), missing_policy=MISSING_POLICY_ERROR,
-        ))
+        return coerce_config_field(key, raw_value, missing=(raw_value is None))
 
     # -------------------------
     # 规范化与校验
@@ -246,15 +243,7 @@ class CalendarAdmin:
         if "periods" in payload:
             return payload["periods"]
         raw = payload.get("periods_json")
-        if raw is None:
-            return None
-        try:
-            periods = json.loads(raw)
-        except (TypeError, ValueError):
-            raise ValidationError("已保存的工作时段损坏，请重新维护该日历或班次。", field="periods") from None
-        if periods is None:
-            raise ValidationError("已保存的工作时段不能为空值。", field="periods")
-        return periods
+        return None if raw is None else load_stored_periods(raw)
 
     def _build_work_calendar_from_payload(self, calendar_payload: Dict[str, Any], *, requested_shift_hours=None) -> WorkCalendar:
         return self._build_work_calendar(

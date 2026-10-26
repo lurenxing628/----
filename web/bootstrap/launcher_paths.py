@@ -28,19 +28,17 @@ def _normalize_abs_dir(path: Optional[str]) -> str:
     return os.path.abspath(raw)
 
 
-def _compose_runtime_owner(user: Optional[str], domain: Optional[str]) -> str:
-    user_s = str(user or "").strip()
-    domain_s = str(domain or "").strip()
-    if domain_s and user_s and domain_s.lower() != user_s.lower():
-        return f"{domain_s}\\{user_s}"
-    return user_s or domain_s or "unknown"
+def _compose_runtime_owner(user: str, domain: str) -> str:
+    if domain and user and domain.lower() != user.lower():
+        return f"{domain}\\{user}"
+    return user or domain or "unknown"
 
 
 def current_runtime_owner() -> str:
     user = str(os.environ.get("USERNAME") or "").strip()
     if not user:
         try:
-            user = str(getpass.getuser() or "").strip()
+            user = getpass.getuser().strip()
         except Exception as exc:
             launcher_log_warning(None, "读取当前用户失败，运行时 owner 将按 unknown 处理：%s", exc)
             user = ""
@@ -127,10 +125,7 @@ def db_scope_lock_path(db_path: str) -> str:
     APS_LOG_DIR 等 env 分叉时互不可见；同库双开的真互斥锁必须与 DB 绑定——
     同一 db 文件唯一锁路径，不同 db 的实例各自独立互不干扰。
     """
-    raw = str(db_path or "").strip()
-    if not raw:
-        raise ValueError("db_scope_lock_path 需要非空 db_path，拒绝为未知资源生成锁路径")
-    return os.path.abspath(raw) + RUNTIME_DB_LOCK_SUFFIX
+    return os.path.abspath(db_path) + RUNTIME_DB_LOCK_SUFFIX
 
 
 def runtime_log_dir(runtime_dir: str) -> str:
@@ -167,7 +162,7 @@ def resolve_runtime_state_dir_for_read(runtime_dir_or_state_dir: str) -> str:
 
 
 def runtime_dir_from_state_dir(state_dir: str) -> str:
-    state_dir_abs = os.path.abspath(str(state_dir or ""))
+    state_dir_abs = os.path.abspath(state_dir)
     if os.path.basename(state_dir_abs).strip().lower() == "logs":
         parent_dir = os.path.dirname(state_dir_abs)
         if parent_dir:

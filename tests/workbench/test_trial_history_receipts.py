@@ -189,6 +189,19 @@ def test_stored_adoption_bodies_reject_duplicate_keys_nonfinite_numbers_and_non_
     assert gaps == [{"code": "audit_unproven", "message": "正式计划历史与保存结果对不上，经办人、原因和采用时间暂时不采信。"}]
 
 
+def test_command_receipt_reader_rejects_duplicate_keys_and_nonfinite_numbers():
+    repo = WorkbenchCommandRepository(sqlite3.connect(":memory:"))
+    valid = canonical_json({"result": "committed", "data": {"count": 1}, "warnings": []})
+    row = {"action": "material.save", "receipt_ref": "receipt-1"}
+    assert repo.public_result(dict(row, outcome_json=valid), replayed=True)["data"] == {"count": 1}
+    for outcome, message in (('{"result":"committed",' + valid[1:], "已保存的命令回执结构不完整。"),
+                             (valid.replace('"count":1', '"count":NaN'), "已保存的命令回执包含非有限数字。"),
+                             (valid.replace('"count":1', '"count":1e999'), "已保存的命令回执包含非有限数字。")):
+        with pytest.raises(ValueError) as error:
+            repo.public_result(dict(row, outcome_json=outcome), replayed=True)
+        assert str(error.value) == message
+
+
 def test_adoption_history_reader_keeps_its_outcomes_for_unreadable_stored_json(trial_case):
     case = trial_case
     saved = saved_scenario(case)

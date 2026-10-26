@@ -40,8 +40,6 @@ from .quality_gate_shared import (
 )
 
 SILENT_REFRESH_SYMBOL_ALIASES = {
-    ("web/bootstrap/launcher_processes.py", "_pid_exists"): "_pid_state",
-    ("web/bootstrap/launcher_processes.py", "_parse_pid"): "_pid_state",
     ("web/bootstrap/launcher_processes.py", "_posix_pid_state"): "_pid_state",
     ("web/bootstrap/launcher_processes.py", "_windows_pid_state"): "_pid_state",
 }
@@ -216,7 +214,9 @@ def _silent_scan_index(entries: Sequence[Dict[str, Any]]) -> Dict[Tuple[str, str
     return index
 
 
-def _is_allowed_silent_realign(old_entry: Dict[str, Any], new_entry: Dict[str, Any]) -> Tuple[bool, str]:
+def _is_allowed_silent_realign(
+    old_entry: Dict[str, Any], new_entry: Dict[str, Any], *, allow_ordinal_shift: bool = False,
+) -> Tuple[bool, str]:
     old_kind = str(old_entry.get("fallback_kind") or "")
     new_kind = str(new_entry.get("fallback_kind") or "")
     if _silent_refresh_group_key(old_entry) != _silent_refresh_group_key(new_entry):
@@ -226,7 +226,7 @@ def _is_allowed_silent_realign(old_entry: Dict[str, Any], new_entry: Dict[str, A
         return False, "old handler_signature / handler_context missing; explicit content baseline review required"
     if not silent_entry_has_content(new_entry):
         return False, "new handler_signature / handler_context missing"
-    if int(old_entry.get("except_ordinal") or 0) != int(new_entry.get("except_ordinal") or 0):
+    if not allow_ordinal_shift and int(old_entry.get("except_ordinal") or 0) != int(new_entry.get("except_ordinal") or 0):
         return False, "except ordinal changed"
     if not silent_entry_content_equal(old_entry, new_entry):
         return False, "handler_signature / handler_context changed"
@@ -274,10 +274,39 @@ def _resolve_silent_refresh_entry(
     raise QualityGateError("静默回退条目已无法通过当前扫描对齐：{}".format(entry.get("id")))
 
 
+def _silent_deletion_alignment(
+    old_ordered: Sequence[Dict[str, Any]],
+    new_ordered: Sequence[Dict[str, Any]],
+) -> Optional[Tuple[Dict[str, Dict[str, Any]], Set[str]]]:
+    """Deletion-only refresh: survivors keep content and order, so later ordinals may shift down.
+
+    Identical handler content inside the group would make the survivor identity ambiguous;
+    such groups are left to explicit review.
+    """
+    for index, item in enumerate(old_ordered):
+        if any(silent_entry_content_equal(item, other) for other in old_ordered[index + 1:]):
+            return None
+    aligned: Dict[str, Dict[str, Any]] = {}
+    retired: Set[str] = set()
+    position = 0
+    for old_item in old_ordered:
+        old_id = str(old_item.get("id") or "")
+        if position < len(new_ordered) and _is_allowed_silent_realign(
+            old_item, new_ordered[position], allow_ordinal_shift=True,
+        )[0]:
+            aligned[old_id] = dict(new_ordered[position])
+            position += 1
+        else:
+            retired.add(old_id)
+    if position != len(new_ordered):
+        return None
+    return aligned, retired
+
+
 def _silent_group_alignment(
     silent_entries: Sequence[Dict[str, Any]],
     scan_entries: Sequence[Dict[str, Any]],
-) -> Dict[str, Dict[str, Any]]:
+) -> Tuple[Dict[str, Dict[str, Any]], Set[str]]:
     old_groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
     new_groups: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
     for entry in silent_entries:
@@ -288,18 +317,25 @@ def _silent_group_alignment(
         new_groups.setdefault(key, []).append(dict(entry))
 
     aligned: Dict[str, Dict[str, Any]] = {}
+    retired: Set[str] = set()
     for key, old_items in old_groups.items():
         new_items = new_groups.get(key) or []
-        if len(old_items) != len(new_items):
-            continue
         old_ordered = sorted(old_items, key=lambda item: (int(item.get("except_ordinal") or 0), int(item.get("line_start") or 0)))
         new_ordered = sorted(new_items, key=lambda item: (int(item.get("except_ordinal") or 0), int(item.get("line_start") or 0)))
+        if 0 < len(new_items) < len(old_items):
+            deletion = _silent_deletion_alignment(old_ordered, new_ordered)
+            if deletion is not None:
+                aligned.update(deletion[0])
+                retired.update(deletion[1])
+            continue
+        if len(old_items) != len(new_items):
+            continue
         for old_item, new_item in zip(old_ordered, new_ordered):
             old_id = str(old_item.get("id") or "")
             allowed, _reason = _is_allowed_silent_realign(old_item, new_item)
             if old_id and allowed:
                 aligned[old_id] = dict(new_item)
-    return aligned
+    return aligned, retired
 
 
 def _silent_refresh_group_key(entry: Dict[str, Any]) -> Tuple[str, str]:
@@ -421,12 +457,15 @@ def refresh_auto_fields(ledger: Optional[Dict[str, Any]] = None) -> Dict[str, An
     silent_paths = sorted({str(entry.get("path")) for entry in silent_entries})
     silent_scan_entries = _cached_silent_scan_entries(silent_paths)
     silent_scan = _silent_scan_index(silent_scan_entries)
-    silent_group_alignment = _silent_group_alignment(silent_entries, silent_scan_entries)
+    silent_group_alignment, retired_silent_ids = _silent_group_alignment(silent_entries, silent_scan_entries)
     _reject_fixed_silent_entries_still_in_scan(silent_entries, silent_scan_entries)
     refreshed_silent = []
     removed_silent_ids: Set[str] = set()
     for entry in silent_entries:
         if str(entry.get("status") or "open") == "fixed" and not is_startup_scope_path(str(entry.get("path") or "")):
+            removed_silent_ids.add(str(entry.get("id") or ""))
+            continue
+        if str(entry.get("id") or "") in retired_silent_ids:
             removed_silent_ids.add(str(entry.get("id") or ""))
             continue
         matched_entry = silent_group_alignment.get(str(entry.get("id") or ""))

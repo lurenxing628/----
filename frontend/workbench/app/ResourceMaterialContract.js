@@ -10,16 +10,9 @@
     import: 'imports/' + kind + '/preview', bulk: 'entities/' + kind + '/bulk-preview', export: 'exports/' + kind + '/preview',
     download: 'exports/' + kind, template: 'templates/' + kind
   };
-  function envelope(raw) {
-    if (raw && raw.ok === false) throw raw;
-    if (!C.object(raw) || raw.ok !== true || raw.schema_version !== 1 || !C.object(raw.data) || !C.object(raw.meta)
-        || !['production', 'demo'].includes(raw.meta.source) || raw.meta.time_basis !== 'factory_local'
-        || typeof raw.meta.snapshot_ref !== 'string' || !raw.meta.snapshot_ref || !Array.isArray(raw.warnings))
-      throw C.failure('读到的' + label + '数据不完整，请刷新重试。');
-    return raw;
-  }
-  function preview(raw, mode, expected) {
-    const result = envelope(raw), data = result.data;
+  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data。
+  function preview(result, mode, expected) {
+    const data = result.data;
     if (!token(data.preview_ref) || data.operation !== kind + (mode === 'import' ? '.import' : '.bulk_delete')
         || data.commit_policy !== 'atomic' || typeof data.can_confirm !== 'boolean' || !C.object(data.summary)
         || !Array.isArray(data.rows) || !C.object(data.write_context) || !C.object(data.write_context.capabilities)
@@ -51,8 +44,8 @@
       throw C.failure('删除预检与勾选的' + label + '不一致，本批没有提交。');
     return result;
   }
-  function exportPreview(raw, selection) {
-    const result = envelope(raw), data = result.data;
+  function exportPreview(result, selection) {
+    const data = result.data;
     if (!token(data.export_ref) || data.selection !== selection || !count(data.row_count)
         || !Array.isArray(data.formats) || !data.formats.every(value => ['csv', 'xlsx'].includes(value))
         || !Number.isFinite(Date.parse(data.expires_at))) throw C.failure('导出预检内容不完整，没有开始下载。');
@@ -65,13 +58,13 @@
     return request.refs;
   }
   function listContext(request) {
-    const input = request.scope || {}, scope = {};
+    const input = request.scope, scope = {};
     ['query', 'status', 'sort', 'direction'].forEach(key => {
       if (C.own(input, key) && input[key] !== undefined && !(key === 'status' && (input[key] === '' || input[key] === null))) scope[key] = input[key];
     });
     if (C.own(input, 'column_filters')) {
       if (!C.object(input.column_filters)) throw C.failure('列筛选范围不完整，请刷新列表。');
-      if (Object.keys(input.column_filters).length) scope.column_filters = JSON.parse(JSON.stringify(input.column_filters));
+      if (Object.keys(input.column_filters).length) scope.column_filters = input.column_filters;
     }
     if (kind === 'op_type') {
       if (!['internal', 'external'].includes(input.category)) throw C.failure('缺少工种类别，请关闭向导，重新打开自制或外协工种。');
@@ -90,7 +83,7 @@
   }
   function blocked(result, requestedSource) {
     if (!result) return '请先完成预检。';
-    if (requestedSource !== 'production' || result.meta.source !== 'production') return '当前不是生产数据，不能提交。';
+    if (requestedSource !== 'production') return '当前不是生产数据，不能提交。';
     const data = result.data, context = data.write_context;
     if (!data.can_confirm || data.summary.rejected) return '存在未通过检查的行，请修正后重新预检。';
     if (context.capabilities[data.operation] !== true) {
@@ -142,7 +135,7 @@
   // 这一类资料勾选几条就导出几行；关联资料一条记录可能带出多行，由它自己的契约改成 false。
   // 导出范围里说的还是这类资料本身，所以不给 scopeLabel，由对话框沿用当前标签（工种要区分自制与外协）。
   const rowsMatchSelection = true;
-  return { kind, label, fields, results, paths, envelope, preview, exportPreview, source, selection, listContext, requestBody, blocked, validateFile, filename, saveDownload, confirmationHint, acknowledgeHint, rowsMatchSelection };
+  return { kind, label, fields, results, paths, preview, exportPreview, source, selection, listContext, requestBody, blocked, validateFile, filename, saveDownload, confirmationHint, acknowledgeHint, rowsMatchSelection };
   }
   window.APSResourceMaterial = { ...create(), create };
 })();

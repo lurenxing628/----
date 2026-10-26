@@ -62,7 +62,7 @@
       <MaterialRules value={value} onChange={onChange} disabled={disabled} />
       {!value.ready_check && <p className="pf-material-disabled">已关闭齐套检查，本次排产不按到料条件限制。</p>}
       <div className="pf-split-action"><div><strong>物料只够做一部分？</strong><p>先检查可做数量，确认后拆成两批。</p></div>
-        <Button icon={splitExpanded ? 'chevron-up' : 'search'} disabled={disabled || !value.ready_check || !onInspectMaterials} aria-expanded={!!splitExpanded} aria-controls={splitExpanded ? 'pf-material-split' : undefined}
+        <Button icon={splitExpanded ? 'chevron-up' : 'search'} disabled={disabled || !value.ready_check} aria-expanded={!!splitExpanded} aria-controls={splitExpanded ? 'pf-material-split' : undefined}
           onClick={onInspectMaterials}>{splitExpanded ? '收起数量检查' : '检查物料可做数量'}</Button></div>
       {materialPanel}
       <div className="pf-rule"><strong>缺资源工序</strong><Segment label="缺资源工序" value={value.missing_resource_policy} choices={[["auto_assign", '自动分配'], ['exclude', '暂不排']]} disabled={disabled} onChange={missing_resource_policy => onChange({ missing_resource_policy })} /></div>

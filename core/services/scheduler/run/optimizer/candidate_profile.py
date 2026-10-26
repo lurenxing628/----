@@ -41,7 +41,7 @@ def derive_grasp_ig_limits(time_budget_seconds: int) -> Dict[str, Any]:
 
 
 def _profile_for_algo_mode(algo_mode: str) -> str:
-    text = str(algo_mode or "").strip().lower()
+    text = str(algo_mode).strip().lower()
     if text == "improve":
         return PROFILE_VNS_SA
     if text == "greedy":

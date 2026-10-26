@@ -8,7 +8,6 @@ import pytest
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import PlanReadScope
 from core.services.workbench.plan import calendar_context, queries
-from core.services.workbench.plan.delivery import read_plan_delivery
 from core.services.workbench.plan.point_query import PointPlanCatalogRepository
 from core.services.workbench.plan.read_context import PlanReadContext
 from data.repositories.workbench_plan_catalog_repo import WorkbenchPlanCatalogRepository
@@ -57,7 +56,7 @@ def test_read_context_owns_capture_and_next_request_observes_change(plan_api, mo
                 data, _ = reader.workspace(scope, context=context)
                 _, entry, _ = context.selected(ref)
                 rows = context.detail_rows(entry)
-                tasks, _, _, _ = context.projected_tasks(ref, entry)
+                tasks, _, _, _ = context.projected_tasks(ref, rows)
                 assert data["task_count"] == 1 and len(rows) == len(tasks) == 2
                 assert data["tasks"][0] == tasks[0]
                 for changed in (dict(rows[0], op_id=rows[1]["op_id"]), dict(rows[0], version=2)):
@@ -80,12 +79,10 @@ def test_read_context_owns_capture_and_next_request_observes_change(plan_api, mo
     assert changed["data"]["tasks"][0]["end"] == "2026-09-10T05:30:00"
     with plan_api.db() as conn:
         conn.execute("UPDATE Schedule SET end_time=start_time WHERE version=3 AND operator_id='PRIVATE-O1'")
-    with plan_api.db() as conn:
-        conn.execute("PRAGMA query_only=1")
-        conn.execute("BEGIN")
-        public, facts = read_plan_delivery(conn, scope=PlanReadScope(ref), identity=entry.plan_identity)
-        assert public["items"][0]["completeness"] == "unknown"
-        assert facts["tasks"][0]["point_evidence_issue"] == "point_evidence_unproven"
+    # An unproven zero-duration row makes the whole plan unreadable; no projection
+    # (delivery included) runs on a partially trusted arrangement.
+    for query in ({}, {"range_start": NIGHT_START, "range_end": NIGHT_END}):
+        assert_error(plan_api.get("/" + ref + "/workspace", **query), "plan_unavailable")
 
 
 def test_20k_saved_plan_is_selectable_and_one_day_reads_200_tasks_from_one_capture(plan_api, monkeypatch, record_property):

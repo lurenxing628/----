@@ -95,5 +95,5 @@ def issue(code, message, task_ref=None, related_task_ref=None, severity="blocker
 def validation(issues):
     state = "blocked" if any(row["severity"] == "blocker" for row in issues) else "warning" if issues else "valid"
     review = issue("scenario_adoption_preview_required", "保存试调方案后，正式采用前需要单独预检。", severity="warning")
-    return {"status": state, "can_adopt": False, "issues": [dict(row) for row in issues],
+    return {"status": state, "can_adopt": False, "issues": issues,
             "constraints_status": state, "adoption": {"available": False, "blocked_reasons": [review]}}

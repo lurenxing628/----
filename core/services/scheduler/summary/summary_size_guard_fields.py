@@ -38,10 +38,8 @@ def size_guard_dict(raw: Any, *, max_items: int = 20, max_value_chars: int = 120
     for key, value in raw.items():
         if len(out) >= max_items:
             break
-        key_text = str(key or "").strip()[:80]
-        if not key_text:
-            continue
-        out[key_text] = size_guard_scalar(value, max_chars=max_value_chars)
+        # Keys are internal non-empty literals or event codes (readiness/counts/degradation_counters).
+        out[key[:80]] = size_guard_scalar(value, max_chars=max_value_chars)
     return out
 
 
@@ -74,7 +72,6 @@ def _search_report_minimal_summary(raw: Any) -> Dict[str, Any]:
         "distinct_output_description",
         "best_output_changed",
         "improved",
-        "rejection_summary",
         "skipped_phases",
         "public_attempt_summary",
         "neighborhood_summary",
@@ -100,13 +97,9 @@ def _copy_present_int_fields(raw: Dict[str, Any], out: Dict[str, Any], fields: T
             out[key] = raw[key]
 
 
-def _guard_missing_fields(value: Any) -> List[str]:
-    fields: List[str] = []
-    for item in list(value or []):
-        text = str(item or "").strip()
-        if text in _ALLOWED_MISSING_FIELDS:
-            fields.append(text)
-    return fields[:2]
+def _guard_missing_fields(value: List[str]) -> List[str]:
+    # missing_fields is always the 设备/人员 list from schedule_persistence_errors._missing_resource_fields.
+    return [item for item in value if item in _ALLOWED_MISSING_FIELDS][:2]
 
 
 def size_guard_public_error_detail(raw: Any) -> Dict[str, Any]:
@@ -142,7 +135,7 @@ def size_guard_missing_resource_item(raw: Any) -> Dict[str, Any]:
     op_type_name = public_safe_label(raw.get("op_type_name"))
     if op_type_name:
         out["op_type_name"] = op_type_name
-    fields = _guard_missing_fields(raw.get("missing_fields"))
+    fields = _guard_missing_fields(raw["missing_fields"])
     if fields:
         out["missing_fields"] = fields
     return out
@@ -169,7 +162,7 @@ def _copy_minimal_error_fields(minimal: Dict[str, Any], result_summary_obj: Dict
             size_guard_public_error_detail,
         )
     if isinstance(result_summary_obj.get("errors_sample"), list):
-        minimal["errors_sample"] = [str(item)[:200] for item in list(result_summary_obj.get("errors_sample") or [])[:10]]
+        minimal["errors_sample"] = [str(item)[:200] for item in result_summary_obj["errors_sample"][:10]]
     if result_summary_obj.get("errors_truncated"):
         minimal["errors_truncated"] = True
 
@@ -215,16 +208,16 @@ def _copy_minimal_degradation_fields(minimal: Dict[str, Any], result_summary_obj
             minimal["degraded_causes_truncated"] = True
 
 
-def warning_sample(warnings: Any, *, limit: int = 10) -> List[str]:
+def warning_sample(warnings: Any) -> List[str]:
     if not isinstance(warnings, list):
         return []
     sample: List[str] = []
     for item in warnings:
-        text = str(item or "").strip()
+        text = item.strip()
         if not text:
             continue
         sample.append(text[:200])
-        if len(sample) >= limit:
+        if len(sample) >= 10:
             break
     return sample
 
@@ -281,7 +274,7 @@ def minimal_summary_for_size_guard(
 
     minimal: Dict[str, Any] = {
         "summary_schema_version": size_guard_scalar(result_summary_obj.get("summary_schema_version") or "1.2", max_chars=20),
-        "is_simulation": bool(result_summary_obj.get("is_simulation") or False),
+        "is_simulation": bool(result_summary_obj.get("is_simulation")),
         "completion_status": size_guard_scalar(result_summary_obj.get("completion_status"), max_chars=40),
         "readiness": size_guard_dict(result_summary_obj.get("readiness"), max_items=4, max_value_chars=40),
         "version": size_guard_scalar(result_summary_obj.get("version"), max_chars=40),

@@ -25,8 +25,6 @@ from .freeze_window_seed_rows import (
     cache_seed_for_prefix as _cache_seed_for_prefix,
 )
 
-_FREEZE_DEGRADATION_CODE = "freeze_seed_unavailable"
-_FREEZE_CONFIG_FIELDS = {"freeze_window_enabled", "freeze_window_days"}
 _FREEZE_DISABLED_CONFIG_DISABLED = "config_disabled"
 _FREEZE_DISABLED_NO_DAYS = "no_days"
 _FREEZE_DISABLED_NO_PREVIOUS_VERSION = "no_previous_version"
@@ -63,24 +61,16 @@ def _init_freeze_meta(meta: Dict[str, Any]) -> Dict[str, Any]:
     return meta
 
 
-def _freeze_config_degraded(cfg: ScheduleConfigSnapshot) -> bool:
-    # 配置快照的降级事件统一由 degradation_events_to_dicts 生成：field 为字段名或 None，code 为规范代码。
-    return any(event["field"] in _FREEZE_CONFIG_FIELDS or event["code"] == _FREEZE_DEGRADATION_CODE
-               for event in cfg.degradation_events)
-
-
 def _set_freeze_disabled(meta: Dict[str, Any], reason: str) -> None:
     meta["freeze_state"] = "disabled"
     meta["freeze_disabled_reason"] = reason
 
 
-def _freeze_window_days(cfg: Any, prev_version: int, *, meta: Dict[str, Any]) -> int:
-    if _freeze_config_degraded(cfg):
-        raise _freeze_unavailable()
+def _freeze_window_days(cfg: ScheduleConfigSnapshot, prev_version: int, *, meta: Dict[str, Any]) -> int:
     enabled = to_yes_no(cfg.freeze_window_enabled, default=YesNo.NO.value) == YesNo.YES.value
     meta["freeze_enabled"] = bool(enabled)
-    days = int(cfg.freeze_window_days or 0)
-    meta["freeze_days"] = int(days)
+    days = cfg.freeze_window_days
+    meta["freeze_days"] = days
 
     if not enabled:
         _set_freeze_disabled(meta, _FREEZE_DISABLED_CONFIG_DISABLED)
@@ -89,7 +79,7 @@ def _freeze_window_days(cfg: Any, prev_version: int, *, meta: Dict[str, Any]) ->
     if days <= 0:
         _set_freeze_disabled(meta, _FREEZE_DISABLED_NO_DAYS)
         return 0
-    if int(prev_version or 0) <= 0:
+    if prev_version <= 0:
         _set_freeze_disabled(meta, _FREEZE_DISABLED_NO_PREVIOUS_VERSION)
         return 0
     return int(days)
@@ -121,23 +111,18 @@ def _load_schedule_map(
         start_time=start_str,
         end_time=freeze_end_str,
     )
+    # The reader returns only rows whose op_id is one of ``op_ids`` (input_points.read_point_freeze_rows).
     for row in rows:
-        try:
-            row_dict = row if isinstance(row, dict) else dict(row)
-            oid = int(row_dict.get("op_id") or 0)
-            if oid <= 0:
-                raise ValueError("op_id must be positive")
-            if oid in schedule_map or oid in duplicate_op_ids:
-                duplicate_op_ids.add(int(oid))
-                schedule_map.pop(int(oid), None)
-                invalid_row_count += 1
-                continue
-            schedule_map[int(oid)] = row_dict
-        except Exception:
+        oid = row["op_id"]
+        if oid in schedule_map or oid in duplicate_op_ids:
+            duplicate_op_ids.add(oid)
+            schedule_map.pop(oid, None)
             invalid_row_count += 1
+            continue
+        schedule_map[oid] = row
     return _LoadedScheduleMapOutcome(
         schedule_map=schedule_map,
-        invalid_row_count=int(invalid_row_count),
+        invalid_row_count=invalid_row_count,
     )
 
 
@@ -156,7 +141,7 @@ def _hold_window_days(hold_window: Tuple[datetime, datetime], start_dt: datetime
     if days <= 0:
         _set_freeze_disabled(meta, _FREEZE_DISABLED_NO_DAYS)
         return 0
-    if int(prev_version or 0) <= 0:
+    if prev_version <= 0:
         _set_freeze_disabled(meta, _FREEZE_DISABLED_NO_PREVIOUS_VERSION)
         return 0
     return int(days)

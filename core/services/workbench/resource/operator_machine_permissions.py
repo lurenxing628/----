@@ -1,7 +1,6 @@
 """Preview and atomically replace one operator's explicit machine permissions."""
 
 from core.errors import ValidationError
-from core.infrastructure.transaction import TransactionManager
 from core.models.operator_machine import OperatorMachine
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_resource_action import ResourceActionPreview, check_resource_preview, resource_refs
@@ -43,13 +42,10 @@ class WorkbenchOperatorMachinePermissions:
         self.conn = conn
         self.reader = WorkbenchResourceQueryService(conn, "operator", logger)
         self.domain = OperatorMachineService(conn, logger=logger)
-        self.tx = TransactionManager(conn)
 
     def preview(self, operator_ref, permissions, *, preparation=None):
-        if self.conn.in_transaction:
-            return self._prepare(operator_ref, permissions, preparation=preparation)[0]
-        with self.tx.transaction():
-            return self._prepare(operator_ref, permissions, preparation=preparation)[0]
+        """Preview inside the caller's read snapshot."""
+        return self._prepare(operator_ref, permissions, preparation=preparation)[0]
 
     def capture(self, operator_ref, permissions):
         machine_refs = [row["machine_ref"] for row in permissions

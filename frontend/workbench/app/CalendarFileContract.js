@@ -103,8 +103,8 @@
         if (mode !== 'export') throw C.failure('日历文件只支持导入和按日期范围导出。');
         return exportBody(kind, shared, request, selected);
       },
-      exportPreview(raw, selected, request) {
-        const result = shared.envelope(raw), data = result.data;
+      exportPreview(result, selected, request) {
+        const data = result.data;
         const body = exportBody(kind, shared, request, selected);
         if (!token(data.export_ref) || !count(data.row_count) || !Array.isArray(data.formats)
             || !data.formats.every(value => ['csv', 'xlsx'].includes(value)) || !C.object(data.range)

@@ -43,20 +43,19 @@ class SupplierConstraintResolver:
         return supplier_map
 
     def _resolve_supplier_op_type_name(self, row: Dict[str, Any], supplier_id: str) -> Optional[str]:
-        raw_op_type_id = row["op_type_id"]
-        op_type_id = str(raw_op_type_id or "").strip()
-        op_type = self._op_types_by_id.get(raw_op_type_id)
+        op_type_id = row["op_type_id"]
+        op_type = self._op_types_by_id.get(op_type_id)
         name = op_type.name if op_type is not None else None
         if not name:
             message = (
-                f"供应商“{supplier_id}”工种映射加载失败（op_type_id={raw_op_type_id!r}），"
+                f"供应商“{supplier_id}”工种映射加载失败（op_type_id={op_type_id!r}），"
                 "没有找到对应工种，请检查供应商对应工种。"
             )
             self.global_issues.append(SupplierGlobalIssue(op_type_id=op_type_id))
             safe_log(self.logger, "warning", message)
             return None
         if row["explicit"] and not supports_source(op_type.category, "external"):
-            message = f"供应商“{supplier_id}”工种映射加载失败（op_type_id={raw_op_type_id!r}），显式关系不是外协工种。"
+            message = f"供应商“{supplier_id}”工种映射加载失败（op_type_id={op_type_id!r}），显式关系不是外协工种。"
             self.global_issues.append(SupplierGlobalIssue(op_type_id=op_type_id))
             safe_log(self.logger, "warning", message)
             return None

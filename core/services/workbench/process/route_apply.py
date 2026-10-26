@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from bisect import bisect_left
-from contextlib import nullcontext
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from data.repositories.external_group_repo import ExternalGroupRepository
@@ -16,7 +15,7 @@ from .route_preview import ProcessRoutePreviewService
 
 def prepare_route(conn, logger, payload, operations, *, facts):
     parser = ProcessRoutePreviewService(conn, logger, facts=facts)
-    with parser.reference_snapshot() if conn.in_transaction else nullcontext():
+    with parser.reference_snapshot():
         preview = parser.preview(payload["route"])
     from .route_choices import route_choice_context
 

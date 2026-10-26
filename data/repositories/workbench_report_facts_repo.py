@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
-
 from .base_repo import BaseRepository
 from .schedule_detail_query import build_schedule_detail_sql
 from .schedule_time_sql import register_schedule_time_sql_functions, time_dt
+from .workbench_execution_repo import stored_report_values
 
 
 class WorkbenchReportFactsRepository(BaseRepository):
@@ -54,6 +53,6 @@ class WorkbenchReportFactsRepository(BaseRepository):
             AND NOT EXISTS (SELECT 1 FROM WorkbenchProductionReportVoids void
                 WHERE void.report_ref=p.report_ref)""", (plan_ref,))
         for row in reports:
-            values = json.loads(row["values_json"])
+            values = stored_report_values(row["values_json"])
             refs.update(values[field] for field in ("actual_machine_ref", "actual_operator_ref") if values.get(field))
         return refs

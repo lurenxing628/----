@@ -19,12 +19,11 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from core.infrastructure.connection_guards import schema_contract_memo
 from core.models.schedule_plan_role import (
-    SOURCE_ADJUSTMENT_SCENARIO_ROWS,
     SOURCE_CANDIDATE_ROWS,
     SOURCE_SCHEDULE,
 )
 
-from .schedule_plan_query_repo import SCENARIO_HEADER_COLUMNS_SQL, SCENARIO_PLAN_ROWS_SQL, SchedulePlanQueryRepository
+from .schedule_plan_query_repo import SCENARIO_HEADER_COLUMNS_SQL, SchedulePlanQueryRepository
 from .schedule_rows import ScheduleTimeSpanRow
 
 DEFAULT_PLAN_PAGE_SIZE = 20
@@ -154,16 +153,6 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
         if scenario_id not in self._scenarios:
             self._scenarios[scenario_id] = super().get_scenario_context(scenario_id)
         return self._scenarios[scenario_id]
-
-    def _plan_rows_sql(self, *, source_table, candidate_id, scenario_id):
-        if source_table == SOURCE_ADJUSTMENT_SCENARIO_ROWS:
-            scenario_key = str(scenario_id or "")
-            if not scenario_key:
-                raise ValueError("scenario_id is required for adjustment_scenario_rows plan")
-            return SCENARIO_PLAN_ROWS_SQL, [scenario_key]
-        return super()._plan_rows_sql(
-            source_table=source_table, candidate_id=candidate_id, scenario_id=scenario_id,
-        )
 
     def get_plan_time_span(
         self, *, version: int, source_table: str, candidate_id: Optional[int], scenario_id: Optional[str] = None,

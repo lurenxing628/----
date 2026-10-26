@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, cast
@@ -14,9 +13,10 @@ from core.algorithms.evaluation import prepare_evaluation_context
 from core.errors import ValidationError
 from core.models.batch import Batch
 from core.models.objective import target_objectives_for
+from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 
 from .optimizer.candidate_profile import build_candidate_profile
-from .optimizer.config import ensure_optimizer_config_snapshot, is_ortools_enabled, resolve_optimizer_config
+from .optimizer.config import is_ortools_enabled, resolve_optimizer_config
 from .optimizer.graph.ready import (
     GraphReadyDeadlineExhausted,
     build_graph_search_stages,
@@ -112,32 +112,27 @@ def _mark_view_unavailable(shared_budget: SharedSearchBudget, objective: str, st
 
 
 def optimize_shared_schedule(
-    *, calendar_service: Any, cfg_svc: Any, cfg: Any, algo_ops_to_schedule: List[OpForScheduleAlgo],
+    *, calendar_service: Any, cfg: ScheduleConfigSnapshot, algo_ops_to_schedule: List[OpForScheduleAlgo],
     batches: Dict[str, Batch], start_dt: datetime, end_date: Optional[date],
     downtime_map: Dict[str, List[Tuple[datetime, datetime]]], seed_results: List[Dict[str, Any]],
     resource_pool: Optional[Dict[str, Any]], version: int,
     readiness_gate_enabled: bool = False, strict_mode: bool = False,
     graph_ready_context: Optional[Any] = None, graph_dispatch_mode_override: Optional[str] = None,
-    graph_prepare: Optional[Callable[[], Any]] = None, search_budget: Optional[SearchBudget] = None,
+    graph_prepare: Optional[Callable[[], Any]] = None, search_budget: SearchBudget,
     _runtime: Optional[OptimizerRuntime] = None,
 ) -> SharedOptimizationResult:
     """Construct once, then rotate one action at a time over all target generators."""
     runtime = resolve_runtime(_runtime, search_budget)
     started_at = runtime.clock()
     algo_stats: Dict[str, Any] = {"fallback_counts": {}, "param_fallbacks": {}}
-    cfg = ensure_optimizer_config_snapshot(cfg, strict_mode=bool(strict_mode))
     if graph_dispatch_mode_override not in (None, "sgs"):
         raise ValidationError("图派工模式覆盖只允许使用 sgs。", field="graph_dispatch_mode_override")
     seeds = coerce_seed_results(seed_results, optimizer_algo_stats=algo_stats)
     scheduler = runtime.scheduler_factory(calendar_service=calendar_service, config_service=cfg)
-    config = resolve_optimizer_config(cfg_svc=cfg_svc, snapshot=cfg, optimizer_algo_stats=algo_stats)
-    configured_seconds = config.time_budget_seconds
-    deadline = started_at + config.time_budget_seconds if config.algo_mode == "improve" else float("inf")
-    if search_budget is not None and math.isfinite(search_budget.assigned_seconds):
-        deadline = search_budget.deadline
-        configured_seconds = search_budget.assigned_seconds
-    elif search_budget is not None:
-        deadline = min(search_budget.deadline, deadline)
+    config = resolve_optimizer_config(cfg)
+    # The only caller (schedule_candidate_runner) owns the run's budget.
+    deadline = search_budget.deadline
+    configured_seconds = search_budget.assigned_seconds
     if runtime.clock() >= deadline:
         raise SearchBudgetExhausted("candidate_time_budget_reached")
 
@@ -264,12 +259,11 @@ def optimize_shared_schedule(
                 batch_order_enabled="batch_order" in dispatch_modes, search_report_state=view.report, state=view.state))
         if prepared_features is not None and runtime.clock() < deadline:
             view.graph_bundle = build_graph_search_stages(
-                **decode_common, algo_ops_to_schedule=algo_ops_to_schedule,
-                algo_mode=config.algo_mode, best=view.state.best,
+                **decode_common, algo_ops_to_schedule=algo_ops_to_schedule, best=view.state.best,
                 version=version, base_strategy=config.strategy_enum, base_params=config.strategy_params,
                 build_order=build_order, dispatch_rule_cfg=config.dispatch_rule, objective_name=view.objective,
                 attempts=view.state.attempts, improvement_trace=view.state.improvement_trace,
-                graph_ready_context=graph_ready_context,
+                graph_ready_context=cast(Dict[str, Any], graph_ready_context),
                 search_report_state=view.report, prepared_features=prepared_features)
             view.stages.extend(view.graph_bundle.stages)
         shared_budget.charge_preparation(view.objective, "prepare_view", runtime.clock() - view_started_at)

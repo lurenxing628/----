@@ -223,11 +223,10 @@ class ExecutionLedgerReader:
         operations = self._operation_rows(operation_refs) if _admitted_refs else self.operation_rows(operation_refs)
         plan = self._current_plan()
         if comparison_plan_ref is not None and (plan is None or comparison_plan_ref != plan["plan_ref"]):
-            admitted = self._snapshot_comparison_plans
-            if admitted is None or comparison_plan_ref not in admitted:
-                locator = WorkbenchPlanIdentityRepository(self.conn).resolve_plan(comparison_plan_ref)
-                if admitted is not None:
-                    admitted[comparison_plan_ref] = locator
+            # Comparison plans are only read inside read_snapshot (load_many), which owns this admission map.
+            admitted = cast(Dict[str, WorkbenchPlanLocator], self._snapshot_comparison_plans)
+            if comparison_plan_ref not in admitted:
+                admitted[comparison_plan_ref] = WorkbenchPlanIdentityRepository(self.conn).resolve_plan(comparison_plan_ref)
         stored = self._snapshot_facts
         if stored is None:
             stored = {"loaded": set(), "reports": {}, "report_heads": {}, "voids": {}, "legacy": {},
@@ -329,6 +328,6 @@ class ExecutionLedgerReader:
             result.append(_attach_source_changes(projection, facts["legacy_source"]))
         return result
 
-    def project_operations(self, operation_refs, *, comparison_plan_ref=None):
+    def project_operations(self, operation_refs):
         with self.read_snapshot():
-            return self.project_loaded(self.load(operation_refs, comparison_plan_ref=comparison_plan_ref))
+            return self.project_loaded(self.load(operation_refs))

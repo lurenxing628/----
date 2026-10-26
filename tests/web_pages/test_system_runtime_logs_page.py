@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 from tests._support.gantt_retirement import _Boot
@@ -110,6 +112,35 @@ def test_read_failure_shown_not_500(app_client, monkeypatch):
     source = _source(data, "aps_error.log")
     assert data["rows"] == [] and source["state"] == "error" and source["count"] is None
     assert "日志文件读不到" in source["message"]
+
+
+def test_operation_log_failure_mid_window_leaves_no_partial_rows(app_client, monkeypatch):
+    import core.services.workbench.facts.system_reads as mod
+    with closing(sqlite3.connect(app_client.application.config["DATABASE_PATH"])) as conn:
+        conn.executemany("INSERT INTO OperationLogs(log_level,module,action,detail) VALUES ('INFO','system','logs_cleanup',?)",
+                         [('{"deleted_count":1}',), ('{"deleted_count":2}',)])
+        conn.commit()
+    original, calls = mod.public_operation_log_detail_text, []
+
+    def fail_second(detail):
+        calls.append(detail)
+        if len(calls) == 2:
+            raise ValueError("second operation log row cannot be projected")
+        return original(detail)
+
+    monkeypatch.setattr(mod, "public_operation_log_detail_text", fail_second)
+    data = _read(app_client, file="OperationLogs")
+    source = _source(data, "OperationLogs")
+    assert len(calls) == 2
+    assert data["rows"] == [] and source["state"] == "error" and source["count"] is None
+
+
+def test_operation_log_detail_keeps_distinct_keys_and_shows_non_strict_json_as_text():
+    from core.models.operation_log_public_projection import public_operation_log_detail_text
+
+    assert public_operation_log_detail_text('{" a": 1, "a": 2, " op_id ": 3}') == '{" a":1,"a":2}'
+    for raw in ('{"a": 1, "a": 2}', '{"a": NaN}', '{"a": 1e999}', '{"a":'):
+        assert public_operation_log_detail_text("  " + raw + "\n") == raw
 
 
 def test_system_nav_has_runtime_logs_entry_and_active(app_client):

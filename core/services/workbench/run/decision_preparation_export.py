@@ -2,6 +2,8 @@
 
 import json
 
+from .decision_export_cells import baseline_ref, boolean_text, issue_text
+
 EFFORT_FIELDS = (
     ("来源", "source"), ("需求数量依据", "quantity_basis"), ("需求目标量", "target_quantity"),
     ("执行数量依据", "execution_quantity_basis"), ("执行目标量", "execution_target_quantity"), ("执行剩余量", "remaining_quantity"),
@@ -38,30 +40,20 @@ def _path(value, field):
     return value
 
 
-def _issues(value):
-    if isinstance(value, dict):
-        return value.get("message") or value.get("code")
-    return "；".join(str(item.get("message") or item.get("code")) if isinstance(item, dict) else str(item) for item in value or ()) or None
-
-
 def _json(value):
     return json.dumps(value, ensure_ascii=False, separators=(",", ":")) if value else None
 
 
 def effort_values(value):
-    return [_issues(_path(value, field)) if field in ("data_gaps", "standard.reason") else _path(value, field) for _label, field in EFFORT_FIELDS]
+    return [issue_text(_path(value, field)) if field in ("data_gaps", "standard.reason") else _path(value, field) for _label, field in EFFORT_FIELDS]
 
 
 def runtime_operation_values(row):
     return effort_values(row["runtime_effort"]["before"]) + effort_values(row["runtime_effort"]["after"])
 
 
-def _baseline_ref(baseline):
-    return baseline.get("candidate_ref") if baseline["kind"] == "candidate" else baseline.get("baseline_ref")
-
-
 def preparation_rows(data):
-    common = [data["run_ref"], _baseline_ref(data["baseline"]), data["candidate"]["candidate_ref"]]
+    common = [data["run_ref"], baseline_ref(data["baseline"]), data["candidate"]["candidate_ref"]]
     for row in data["items"]:
         before, after = row["before"], row["after"]
         yield common + [row[field] for field in ("batch_ref", "batch_label", "operation_ref", "part_label", "sequence", "process_label", "piece_id")] + (
@@ -69,15 +61,11 @@ def preparation_rows(data):
             + ["、".join(machine[field] or "" for machine in side["machines"]) or None for side in (before, after) for field in ("ref", "label")]
             + [_json(side["arrangements"]) for side in (before, after)]
             + [row["deltas"][field][name] for field in ("setup_standard_hours", "processing_standard_hours", "required_standard_hours") for name in ("value", "state", "direction")]
-            + [_issues(row["data_gaps"])])
-
-
-def _boolean(value):
-    return None if value is None else "是" if value else "否"
+            + [issue_text(row["data_gaps"])])
 
 
 def changeover_rows(data):
-    common = [data["run_ref"], _baseline_ref(data["baseline"]), data["candidate"]["candidate_ref"]]
+    common = [data["run_ref"], baseline_ref(data["baseline"]), data["candidate"]["candidate_ref"]]
     for row in data["items"]:
         identities = []
         for prefix in ("previous", "next"):
@@ -85,5 +73,5 @@ def changeover_rows(data):
             identities += [row[prefix + "_operation_ref"], row[prefix + "_row_ref"], item["batch_ref"], item["batch_label"], item["process_label"],
                            item["type_ref"], item["type_label"], row[prefix + "_start"], row[prefix + "_end"]]
         yield common + [row[field] for field in ("event_ref", "event_side", "machine_ref", "machine_label", "sequence")] + identities + [
-            _boolean(row["predecessor_outside_window"]), _boolean(row["overlap"]), _boolean(row["conflict"]), row["state"], _issues(row["data_gaps"]),
+            boolean_text(row["predecessor_outside_window"]), boolean_text(row["overlap"]), boolean_text(row["conflict"]), row["state"], issue_text(row["data_gaps"]),
             "同一设备上相邻两道工序的工种不同，后一道工序开始时间在所选范围内（含开始、不含结束）", "type_changeover_v1"]

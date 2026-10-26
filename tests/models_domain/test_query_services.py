@@ -139,3 +139,77 @@ def test_schedule_history_row_missing_column_fails_instead_of_defaulting() -> No
         ScheduleHistory.from_row(row)
     with pytest.raises(KeyError):
         ScheduleHistory.from_row(dict(row))
+
+
+def _history_conn_with_versions(*versions) -> sqlite3.Connection:
+    conn = _mem_conn()
+    conn.execute(
+        "CREATE TABLE ScheduleHistory (id INTEGER PRIMARY KEY AUTOINCREMENT, schedule_time TEXT, version INTEGER,"
+        " strategy TEXT, batch_count INTEGER, op_count INTEGER, result_status TEXT, result_summary TEXT, created_by TEXT)"
+    )
+    conn.executemany("INSERT INTO ScheduleHistory(version, strategy) VALUES (?, 's')", [(v,) for v in versions])
+    return conn
+
+
+def _history_row(**values):
+    row = {"id": 1, "schedule_time": None, "version": 3, "strategy": "s", "batch_count": None, "op_count": None,
+           "result_status": None, "result_summary": None, "created_by": None}
+    row.update(values)
+    return row
+
+
+@pytest.mark.parametrize("version", ["", "  ", "abc", 1.5, True, b"\xff1", None])
+def test_schedule_history_bad_version_is_corrupt_instead_of_reading_as_one(version) -> None:
+    # NOT NULL 的版本号坏了（空、脏文本、非整数、bool、坏字节）是存储损坏，不再读成 1。
+    with pytest.raises(ValueError, match="version 必须是整数"):
+        ScheduleHistory.from_row(_history_row(version=version))
+
+
+@pytest.mark.parametrize(("raw", "expected"), [(None, None), ("", None), ("  ", None), (7, 7), (" 7 ", 7), ("7.0", 7)])
+def test_schedule_history_optional_counts_read_blank_as_none_and_keep_integer_values(raw, expected) -> None:
+    history = ScheduleHistory.from_row(_history_row(batch_count=raw, op_count=raw))
+    assert (history.batch_count, history.op_count) == (expected, expected)
+
+
+@pytest.mark.parametrize("raw", ["x", 1.5, float("nan"), False])
+def test_schedule_history_optional_count_with_bad_value_is_corrupt(raw) -> None:
+    with pytest.raises(ValueError, match="batch_count 必须是整数"):
+        ScheduleHistory.from_row(_history_row(batch_count=raw))
+
+
+def test_schedule_adjustment_scenario_not_null_counts_no_longer_default_to_zero() -> None:
+    from core.models.schedule_adjustment import ScheduleAdjustmentScenario
+
+    row = {"scenario_id": "S1", "source_draft_id": "D1", "base_version": 2, "base_plan_role": "adopted",
+           "base_source_table": "schedule", "base_candidate_id": "", "base_candidate_key": None,
+           "scenario_name": None, "status": "active", "validation_status": "valid", "issue_count": 0,
+           "issues_json": None, "row_count": 3, "published_version": None}
+    scenario = ScheduleAdjustmentScenario.from_row(row)
+    assert (scenario.base_version, scenario.base_candidate_id, scenario.issue_count, scenario.row_count) == (2, None, 0, 3)
+    for field, raw in (("issue_count", ""), ("row_count", "n/a"), ("base_version", None), ("published_version", "v2")):
+        with pytest.raises(ValueError, match=f"{field} 必须是整数"):
+            ScheduleAdjustmentScenario.from_row(dict(row, **{field: raw}))
+
+
+@pytest.mark.parametrize("corrupt", ["abc", b"7"])
+def test_latest_version_with_corrupt_stored_value_is_a_query_error(corrupt) -> None:
+    # SQLite 允许 INTEGER 列存文本/blob，且 MAX 会返回它；精确整数口径下一律报读取失败，不再把 b"7" 读成 7。
+    from core.errors import AppError, ErrorCode
+
+    repo = ScheduleHistoryRepository(_history_conn_with_versions(1, 2, corrupt))
+    with pytest.raises(AppError) as caught:
+        repo.get_latest_version()
+    assert caught.value.code is ErrorCode.DB_QUERY_ERROR
+    assert ScheduleHistoryRepository(_history_conn_with_versions(1, 2)).get_latest_version() == 2
+
+
+@pytest.mark.parametrize(("raw", "expected"), [(None, 8.0), ("", 8.0), ("  ", 8.0), (6, 6.0), (" 7.5 ", 7.5), (b"4", 4.0)])
+def test_calendar_row_hours_keep_the_business_default_only_for_missing_values(raw, expected) -> None:
+    from core.models.calendar import WorkCalendar
+
+    row = {"date": "2026-05-01", "day_type": "workday", "shift_start": None, "shift_end": None, "shift_hours": raw,
+           "efficiency": None, "allow_normal": "yes", "allow_urgent": "yes", "remark": None, "periods_json": None}
+    assert (WorkCalendar.from_row(row).shift_hours, WorkCalendar.from_row(row).efficiency) == (expected, 1.0)
+    for corrupt in ("abc", float("nan"), True, b"\xff4"):
+        with pytest.raises(ValueError, match="shift_hours 必须是数字"):
+            WorkCalendar.from_row(dict(row, shift_hours=corrupt))

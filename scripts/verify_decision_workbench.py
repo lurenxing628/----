@@ -1264,7 +1264,7 @@ def serve(args):
     payload = acquire_runtime_lock(str(root), db_path=str(database))
     deps = _default_deps("default")
     lock_state = {"payload": payload}
-    atexit.register(release_runtime_after_jobs, deps, lock_state, str(root), os.getpid(), str(database))
+    atexit.register(release_runtime_after_jobs, deps, lock_state, str(root), str(database))
     runtime = app = server = None
     thread = None
     try:

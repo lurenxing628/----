@@ -176,12 +176,9 @@ def _append_runtime_log_dir(
     failures: List[RuntimeCleanupFailure],
     contract_path: str,
 ) -> None:
-    runtime_dir_s = str(payload.get("runtime_dir") or "").strip()
-    if not runtime_dir_s:
-        return
     _append_mirror_log_dir(
         log_dirs,
-        runtime_log_dir(runtime_dir_s),
+        runtime_log_dir(payload["runtime_dir"]),
         payload=payload,
         failures=failures,
         contract_path=contract_path,

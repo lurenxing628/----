@@ -15,10 +15,7 @@ from .types import OpForScheduleAlgo
 def normalize_text_id(value: Any) -> str:
     if value is None:
         return ""
-    try:
-        return str(value).strip()
-    except Exception as exc:
-        raise ValidationError("文本标识无法转换为字符串", field="id") from exc
+    return str(value).strip()
 
 
 def resolve_batch_sort_batch_id(batch_key: str, batch: Batch) -> str:
@@ -28,9 +25,9 @@ def resolve_batch_sort_batch_id(batch_key: str, batch: Batch) -> str:
     return batch.batch_id
 
 
-def build_normalized_batches_map(batches: Optional[Mapping[str, Batch]]) -> Dict[str, Batch]:
+def build_normalized_batches_map(batches: Mapping[str, Batch]) -> Dict[str, Batch]:
     normalized: Dict[str, Batch] = {}
-    for raw_key, batch in (batches or {}).items():
+    for raw_key, batch in batches.items():
         batch_id = resolve_batch_sort_batch_id(raw_key, batch)
         if not batch_id:
             raise ValidationError(f"批次号不能为空：来源值={raw_key!r}", field="batch_id")
@@ -82,7 +79,7 @@ def build_batch_sort_inputs(
     readiness_gate_enabled: bool = False,
 ) -> List[BatchForSort]:
     batch_for_sort: List[BatchForSort] = []
-    for batch_key, batch in (batches or {}).items():
+    for batch_key, batch in batches.items():
         batch_id = resolve_batch_sort_batch_id(batch_key, batch)
         if not batch_id:
             raise ValidationError(f"批次号不能为空：来源值={batch_key!r}", field="batch_id")

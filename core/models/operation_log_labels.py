@@ -1,6 +1,6 @@
 """Shared operation-log display labels without changing stored audit codes."""
 
-from typing import Any, Dict
+from typing import Dict
 
 MODULE_LABELS = {
     "equipment": "设备管理",
@@ -34,8 +34,8 @@ ACTION_LABELS = {
 }
 
 
-def operation_log_label(value: Any, labels: Dict[str, str], fallback: str) -> str:
-    key = str(value or "").strip()
+def operation_log_label(value: str, labels: Dict[str, str], fallback: str) -> str:
+    key = value.strip()
     if not key:
         return "-"
     if key in labels:
@@ -43,7 +43,7 @@ def operation_log_label(value: Any, labels: Dict[str, str], fallback: str) -> st
     return f"{fallback}（{key}）"
 
 
-def operation_log_summary(module: Any, action: Any) -> str:
+def operation_log_summary(module: str, action: str) -> str:
     module_label = operation_log_label(module, MODULE_LABELS, "其他模块")
     action_label = operation_log_label(action, ACTION_LABELS, "其他操作")
     return f"{module_label} · {action_label}"

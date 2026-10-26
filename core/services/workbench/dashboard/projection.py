@@ -36,7 +36,7 @@ def _delivery_sources(facts):
     for row in facts.raw["Schedule"]:
         schedule_rows[operation_batches[row["op_id"]]].append(row)
     batch_identities = {row[0]: row for row in facts.delivery_facts["batch_identities"]}
-    batches = {row["batch_id"]: row for row in facts.raw["Batches"] or []}
+    batches = {row["batch_id"]: row for row in facts.raw["Batches"]}
     return {key: {"batch": batches.get(key), "tasks": by_batch[key], "operations": operations[key],
                   "schedule_rows": schedule_rows[key], "batch_identity": batch_identities[key],
                   "plan_identity": facts.delivery_facts["identity"],
@@ -125,7 +125,7 @@ def _material_sources(raw):
         requirements[row["batch_id"]].append(row)
         requirement_batches[row["id"]] = row["batch_id"]
     for table, selected in (("BatchMaterialReviews", reviews), ("BatchMaterialArrivals", arrivals)):
-        for row in raw[table] or []:
+        for row in raw[table]:
             selected[requirement_batches.get(row["requirement_id"])].append(row)
     return {row["batch_id"]: {"batch": row, "requirements": requirements[row["batch_id"]],
                              "reviews": reviews[row["batch_id"]], "arrivals": arrivals[row["batch_id"]]}
@@ -133,13 +133,8 @@ def _material_sources(raw):
 
 
 def material(facts):
-    batches, requirements, materials = (facts.raw[key] for key in ("Batches", "BatchMaterials", "Materials"))
-    if any(value is None for value in (batches, requirements, materials)):
-        return [], category("unavailable", issues=[source_issue("source_not_read", "批次或物料需求来源尚未读取，齐套风险未知。")])
-    current = current_material_views(facts.raw, facts.now.date().isoformat())
-    if current is None:
-        return [], category("unavailable", issues=[source_issue("source_not_read", "分次到料的数据来源未读取，齐套风险未知。")])
-    batches, requirements = current
+    materials = facts.raw["Materials"]
+    batches, requirements = current_material_views(facts.raw, facts.now.date().isoformat())
     bounded(batches, MAX_ROWS)
     refs = facts.entity_refs("batch", [row["batch_id"] for row in batches])
     facts.raw["material_batch_refs"] = refs

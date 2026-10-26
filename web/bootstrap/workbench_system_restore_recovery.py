@@ -69,11 +69,9 @@ class WorkbenchSystemRestoreRecoveryHost:
 
 
 def assert_exit_system_restore_ready(manager):
-    app = getattr(manager, "_system_restore_app", None)
-    directory = system_journal_directory(manager.db_path)
-    if app is not None:
-        directory = app.config.get("WORKBENCH_SYSTEM_JOURNAL_DIR")
-        host = app.extensions.get(RESTORE_HOST_EXTENSION)
-        if app.extensions.get(RECOVERY) or (host is not None and host.static_status()["restart_required"]):
-            raise RuntimeError("Restore requires process restart; exit backup must not open the database")
-    assert_system_maintenance_ready(manager.db_path, directory)
+    # manager is the RuntimeExitBackupManager built after prepare_system_restore_startup set the journal dir.
+    app = manager.app
+    host = app.extensions.get(RESTORE_HOST_EXTENSION)
+    if app.extensions.get(RECOVERY) or (host is not None and host.static_status()["restart_required"]):
+        raise RuntimeError("Restore requires process restart; exit backup must not open the database")
+    assert_system_maintenance_ready(manager.db_path, app.config["WORKBENCH_SYSTEM_JOURNAL_DIR"])

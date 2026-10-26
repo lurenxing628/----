@@ -8,7 +8,7 @@
   // The three plan-centre tabs share the heading and task detail; the body differs: analysis = projection tables,
   // gantt = the gantt board, delay = projection tables plus resource overlap. Selecting a batch or a related task on a
   // tab without the gantt only selects it for the task detail; the gantt locates it when that tab is shown.
-  function WorkspaceSession({ adapter, view = 'analysis', planRef, initialContext = {}, disabled = false, renderTrial, navigation, onNavigate }) {
+  function WorkspaceSession({ adapter, view = 'analysis', planRef, initialContext, disabled = false, renderTrial, navigation, onNavigate }) {
     const [selection, setSelection] = React.useState(() => planRef || initialContext.plan_ref ? { plan_ref: planRef || initialContext.plan_ref, display_name: '指定计划' } : null);
     const [scope, setScope] = React.useState(() => {
       const result = {};
@@ -25,11 +25,8 @@
     const detailsToggle = React.useRef(null);
     const initialTask = React.useRef(typeof initialContext.selected_task_ref === 'string'
       ? { ref: initialContext.selected_task_ref, side: initialContext.selected_task_side === 'before' ? 'before' : 'current' } : null);
-    const read = S.useQuery(async signal => {
-      if (typeof adapter.workspace !== 'function') throw C.failure('暂时无法读取计划，请稍后重试。');
-      P.workspaceScope(selection.plan_ref, scope);
-      return adapter.workspace(selection.plan_ref, scope, signal);
-    }, [adapter, selection && selection.plan_ref, scope], !!selection && !paused);
+    // APSPlanAPI.workspace 自己校验读取范围（PlanContract.workspaceScope）。
+    const read = S.useQuery(signal => adapter.workspace(selection.plan_ref, scope, signal), [adapter, selection && selection.plan_ref, scope], !!selection && !paused);
     const result = read.result, data = result && result.data;
     const prepared = React.useMemo(() => {
       if (!data) return null;
@@ -122,7 +119,7 @@
         actions={<>
           <Button icon="calendar-days" aria-label={data ? '编辑计划时间范围：' + scopeCaption : '编辑计划时间范围'} title={scopeCaption} aria-expanded={rangeOpen} onClick={toggleRange} disabled={!selection}>
             {data ? F.compactRange(data.time_scope.range_start, data.time_scope.range_end) : '时间范围'}</Button>
-          {typeof renderTrial === 'function' && renderTrial({ planRef: selection && selection.plan_ref, scope, query, disabled: !ready || read.loading })}
+          {renderTrial({ planRef: selection && selection.plan_ref, scope, query, disabled: !ready || read.loading })}
           <window.PlanExportUI key={result ? result.meta.snapshot_ref : 'unavailable'} adapter={adapter} result={result} query={query} matched={matches.length} disabled={!ready} />
           <Button icon="refresh-cw" className="btn plan-icon" aria-label="刷新所选计划" disabled={!selection || disabled} busy={read.loading} onClick={refresh} />
           {read.loading && <Button icon="x" aria-label="取消计划读取" onClick={() => setPaused(true)}>取消读取</Button>}
@@ -164,7 +161,7 @@
   }
   function PlanWorkspace(props) {
     const adapter = React.useMemo(() => window.APSPlanAPI.adapter(props.adapter || window.APSPlanAPI.create()), [props.adapter]);
-    const context = props.initialContext || {};
+    const context = props.initialContext;
     const navigation = [props.planRef || context.plan_ref, context.range_start, context.range_end, context.snapshot_ref];
     return <WorkspaceSession key={adapterId(adapter) + ':' + JSON.stringify(navigation)} {...props} adapter={adapter} />;
   }

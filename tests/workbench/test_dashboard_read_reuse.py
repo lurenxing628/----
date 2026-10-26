@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from core.infrastructure.workbench_metadata_schema import canonical_sql
-from core.infrastructure.workbench_outsourcing_schema import objects as outsourcing_objects
+from core.infrastructure.workbench_outsourcing_schema import workbench_outsourcing_objects
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import DashboardAnalysisQuery
 from core.services.capacity.plan_calendar_io import CalendarFacts, CapturedCalendarInputs, ProjectionLimit
@@ -70,7 +70,7 @@ def test_one_capture_reuses_projections_and_only_reads_new_identity_keys(dashboa
     assert sorted(item["category"] for item in data["items"]) == ["actual", "delivery", "downtime", "material"]
     assert data["categories"]["external"]["state"] == "no_data"
     assert {name: canonical_sql(sql) for name, sql in facts.raw["external"]["schema"].items()} == {
-        name: canonical_sql(sql) for name, sql in outsourcing_objects().items()}
+        name: canonical_sql(sql) for name, sql in workbench_outsourcing_objects().items()}
     assert [requested for kind, requested in keys if kind == "batch"] == [["DB1"], ["missing-batch"]]
     rows, summary = facts.observations("actual")
     summary["handling_count"] = 999
@@ -139,9 +139,6 @@ def test_captured_calendar_preserves_sql_status_time_types_order_and_budget(monk
         limited.keyed("downtimes", captured.downtimes, ["M1"], ("2026-09-10T11:00:00", "2026-09-10T09:00:00"))
     with pytest.raises(ProjectionLimit, match="calendar_unavailable"):
         captured.downtimes(["M2"], "2026-09-10T11:00:00", "2026-09-10T09:00:00", limit=100)
-    missing = CapturedCalendarInputs(machines=None, downtimes=None, schema_version=None)
-    with pytest.raises(ProjectionLimit, match="calendar_unavailable"):
-        missing.downtimes(["M1"], "2026-09-10T11:00:00", "2026-09-10T09:00:00", limit=100)
     conn.close()
 
 

@@ -50,10 +50,7 @@ class ScheduleMetrics:
 
     def to_dict(self) -> Dict[str, Any]:
         def _round_finite(key: str, v: Any, ndigits: int) -> float:
-            try:
-                fv = float(v)
-            except (TypeError, ValueError, OverflowError) as exc:
-                raise ValueError(f"排产指标 {key} 必须是数字：{v!r}") from exc
+            fv = float(v)
             if not math.isfinite(fv):
                 raise ValueError(f"排产指标 {key} 必须是有限数字：{v!r}")
             return float(round(fv, ndigits))
@@ -77,8 +74,8 @@ class ScheduleMetrics:
             "util_defined": bool(self.util_defined),
             "invalid_due_count": int(self.invalid_due_count),
             "unscheduled_batch_count": int(self.unscheduled_batch_count),
-            "invalid_due_batch_ids_sample": [str(x) for x in (self.invalid_due_batch_ids_sample or ())[:10]],
-            "unscheduled_batch_ids_sample": [str(x) for x in (self.unscheduled_batch_ids_sample or ())[:20]],
+            "invalid_due_batch_ids_sample": [str(x) for x in self.invalid_due_batch_ids_sample[:10]],
+            "unscheduled_batch_ids_sample": [str(x) for x in self.unscheduled_batch_ids_sample[:20]],
             "completion": self.completion.to_dict(),
         }
         return payload
@@ -122,8 +119,8 @@ def compute_metrics(
     batches: Dict[str, Batch],
     *,
     expected_operations: Iterable[OpForScheduleAlgo],
-    seed_results: Optional[Iterable[ScheduleResult]] = None,
-    failure_details: Optional[Iterable[Dict[str, Any]]] = None,
+    failure_details: Iterable[Dict[str, Any]],
+    seed_results: Iterable[ScheduleResult] = (),
     prepared: Optional[PreparedEvaluationContext] = None,
 ) -> ScheduleMetrics:
     """Use explicit run inputs to distinguish completion from a partial result.
@@ -275,8 +272,9 @@ def _record_tardiness_if_overdue(
 
 def _build_utilization_metrics(state: _ResultMetricState) -> _UtilizationMetrics:
     horizon = float(_hours_between(state.min_internal_start, state.max_internal_end))
-    machine_hours = _finite_non_negative(state.machine_busy)
-    operator_hours = _finite_non_negative(state.operator_busy)
+    # Busy hours only accumulate non-negative durations (_record_internal_result).
+    machine_hours = list(state.machine_busy.values())
+    operator_hours = list(state.operator_busy.values())
     return _UtilizationMetrics(
         makespan_internal_hours=float(horizon),
         machine_hours=machine_hours,
@@ -295,20 +293,6 @@ def _hours_between(start_time: Optional[datetime], end_time: Optional[datetime])
 
 def _duration_hours(start_time: datetime, end_time: datetime) -> float:
     return max((end_time - start_time).total_seconds() / 3600.0, 0.0)
-
-
-def _finite_non_negative(values: Dict[str, float]) -> List[float]:
-    out: List[float] = []
-    for value in values.values():
-        try:
-            float_value = float(value)
-        except (TypeError, ValueError, OverflowError) as exc:
-            raise ValueError(f"负荷统计值必须是数字：{value!r}") from exc
-        if not math.isfinite(float_value):
-            raise ValueError(f"负荷统计值必须是有限数字：{value!r}")
-        if float_value >= 0:
-            out.append(float_value)
-    return out
 
 
 def _util_avg(hours: List[float], horizon: float) -> float:

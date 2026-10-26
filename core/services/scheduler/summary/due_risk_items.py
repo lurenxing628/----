@@ -42,8 +42,10 @@ def incomplete_batch_ids_from_failure_details(
     for detail in failure_details or ():
         if not isinstance(detail, dict):
             continue
-        batch_id = str(detail.get("batch_id") or "").strip()
-        if batch_id and batch_id in finish_by_batch:
+        # Failure details always carry a non-empty batch_id (run_state._failure_detail; archived
+        # details are validated by delivery_completeness._batch_details).
+        batch_id = detail["batch_id"]
+        if batch_id in finish_by_batch:
             incomplete.add(batch_id)
     return incomplete
 
@@ -66,16 +68,13 @@ def _failure_stats_by_batch(
     """按批次聚合失败明细：失败/跳过工序数 + 首条失败原因 code（按明细顺序即派工顺序）。"""
     failed_count_by_batch: Dict[str, int] = {}
     first_reason_by_batch: Dict[str, str] = {}
-    for detail in failure_details or ():
-        if not isinstance(detail, dict):
-            continue
-        batch_id = str(detail.get("batch_id") or "").strip()
+    for detail in failure_details:
+        batch_id = detail["batch_id"]
         if batch_id not in incomplete_batch_ids:
             continue
         failed_count_by_batch[batch_id] = failed_count_by_batch.get(batch_id, 0) + 1
-        code = str(detail.get("code") or "").strip()
-        if code and batch_id not in first_reason_by_batch:
-            first_reason_by_batch[batch_id] = code
+        if batch_id not in first_reason_by_batch:
+            first_reason_by_batch[batch_id] = detail["code"]
     return failed_count_by_batch, first_reason_by_batch
 
 
@@ -149,13 +148,13 @@ def _build_overdue_items(
     finish_by_batch: Dict[str, datetime],
     summary: Any,
     append_summary_warning_fn: Callable[[Any, str], None],
-    incomplete_batch_ids: Optional[Set[str]] = None,
+    incomplete_batch_ids: Set[str],
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     overdue_items: List[Dict[str, Any]] = []
     near_due_items: List[Dict[str, Any]] = []
     invalid_due_count = 0
     invalid_due_ids_sample: List[str] = []
-    excluded_incomplete = incomplete_batch_ids or set()
+    excluded_incomplete = incomplete_batch_ids
 
     for batch_id, batch in batches.items():
         due_exclusive, due_text, due_invalid = parse_due_exclusive_datetime(batch.due_date)

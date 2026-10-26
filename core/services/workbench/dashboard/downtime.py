@@ -5,7 +5,6 @@ from collections import defaultdict
 from core.models.workbench_dashboard import MAX_FACT_ROWS, bounded
 from core.services.capacity.plan_calendar_intervals import IntervalIndex, instant, union
 
-from .facts import source_issue
 from .projection import category, observation
 
 
@@ -72,8 +71,6 @@ def downtime(facts):
     if facts.plan_state != "loaded":
         return [], category(facts.plan_state, issues=facts.plan_issues)
     raw, refs, machines = (facts.raw[key] for key in ("MachineDowntimes", "WorkbenchDashboardDowntimeRefs", "Machines"))
-    if any(value is None for value in (raw, refs, machines)):
-        return [], category("unavailable", issues=[source_issue("source_not_read", "停机记录或设备资料还没读取。")])
     index, resource_rows = _index(raw, refs), {row["machine_id"]: row for row in machines}
     result, unknown, intersections = [], 0, 0
     for task, raw_task in zip(facts.tasks, facts.task_rows):

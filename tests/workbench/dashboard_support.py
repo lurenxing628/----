@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from flask import Blueprint, Flask, g, jsonify
 
-from core.infrastructure.workbench_dashboard_schema import install
+from core.infrastructure.workbench_dashboard_schema import install_workbench_dashboard_schema
 from core.infrastructure.workbench_execution_ledger_schema import install_execution_ledger
 from core.infrastructure.workbench_execution_void_schema import install_execution_voids
 from core.infrastructure.workbench_metadata_schema import install_metadata
@@ -86,7 +86,7 @@ def dashboard_case(tmp_path):
     install_plan_identity(conn)
     install_execution_ledger(conn)
     install_execution_voids(conn)
-    install(conn)
+    install_workbench_dashboard_schema(conn)
     conn.execute("INSERT INTO OpTypes(op_type_id,name) VALUES ('DT1','Turning')")
     conn.execute("INSERT INTO Machines(machine_id,name,op_type_id) VALUES ('DM1','Lathe','DT1')")
     conn.execute("INSERT INTO Operators(operator_id,name) VALUES ('DO1','Operator')")

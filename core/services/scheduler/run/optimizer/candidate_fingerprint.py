@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Iterable, Optional, Tuple
 
@@ -8,6 +7,7 @@ from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.algorithms.evaluation import ScheduleMetrics
 from core.errors import ValidationError
 from core.models.objective import objective_metric_keys
+from core.shared.strict_parse import finite_float, is_non_finite_number
 
 
 @dataclass(frozen=True)
@@ -92,7 +92,7 @@ def _evaluation_key(candidate: Dict[str, Any], *, objective_name: str) -> Tuple[
         completion.unexpected_result_count, completion.complete_batch_count,
         completion.objective_scope, completion.components_known,
     )
-    entry_id = candidate.get("_shared_entry_id")
+    entry_id = candidate["archive_ref"].entry_id
     if type(entry_id) is not int:
         raise ValidationError("候选结果须先取得共享档案身份。", field="candidate_fingerprint")
     return (entry_id, objective_name,
@@ -105,14 +105,11 @@ def _objective_metric_signature(metrics: ScheduleMetrics, *, objective_name: str
 
 
 def _finite_float(value: Any, *, field_name: str) -> float:
-    if isinstance(value, bool):
+    number = finite_float(value)
+    if number is None:
+        if is_non_finite_number(value):
+            raise ValidationError(f"候选内容指标 {field_name} 必须是有限数字：{value!r}", field="candidate_fingerprint")
         raise ValidationError(f"候选结果指标 {field_name} 须使用数字。", field="candidate_fingerprint")
-    try:
-        number = float(value)
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise ValidationError(f"候选内容指标 {field_name} 必须是数字：{value!r}", field="candidate_fingerprint") from exc
-    if not math.isfinite(number):
-        raise ValidationError(f"候选内容指标 {field_name} 必须是有限数字：{value!r}", field="candidate_fingerprint")
     return float(round(number, 6))
 
 

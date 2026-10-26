@@ -1,7 +1,8 @@
 """Shared fixed dependency catalog for single and bulk resource deletion."""
 
-import json
 from collections import defaultdict
+
+from .workbench_execution_repo import stored_report_values
 
 DEPENDENCIES = {
     "op_type": (("Machines", "op_type_id"), ("MachineOpTypes", "op_type_id"), ("Suppliers", "op_type_id"), ("OperatorSkill", "op_type_id"),
@@ -45,7 +46,7 @@ def report_revision_rows(conn, kind, key, codes=None, *, identities=None):
             ref_to_code = {row["ref"]: row["entity_key"] for row in ref_rows}
         grouped = defaultdict(list)
         for row in revisions:
-            ref = json.loads(row["values_json"]).get(key)
+            ref = stored_report_values(row["values_json"]).get(key)
             if ref in ref_to_code:
                 grouped[ref_to_code[ref]].append(dict(row))
         return dict(grouped)
@@ -79,7 +80,7 @@ def report_revision_rows(conn, kind, key, codes=None, *, identities=None):
             ref_chunk,
         ).fetchall()
         for row in revisions:
-            ref = json.loads(row["values_json"]).get(key)
+            ref = stored_report_values(row["values_json"]).get(key)
             if ref in chunk_set:
                 grouped[ref_to_code[ref]].append(dict(row))
     return dict(grouped)

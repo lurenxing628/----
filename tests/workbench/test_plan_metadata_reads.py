@@ -6,7 +6,6 @@ import sqlite3
 import pytest
 
 from core.models.workbench_plan_scope import PlanCatalogScope, PlanReadScope
-from core.services.workbench.plan.delivery_repository import PlanDeliveryRepository
 from core.services.workbench.plan.point_query import PlanMetadataRepository, PointPlanCatalogRepository
 from core.services.workbench.plan.queries import WorkbenchPlanQueryService
 from core.services.workbench.plan.read_context import PlanReadContext
@@ -114,9 +113,6 @@ def test_scenario_workspace_preserves_real_issues_from_direct_and_cached_headers
                 assert data["task_count"] == 1 and data["tasks_complete"] is True
                 assert len(data["projections"]["delivery_risks"]["items"]) == 1
                 assert "issues_json" not in json.dumps(data, ensure_ascii=False)
-                entry = context.selected(ref)[1]
-                standalone = PlanDeliveryRepository(conn).validate_identity(scope, entry.plan_identity)
-                assert standalone["issues_json"] == issues
 
 
 def test_changing_only_stored_scenario_issues_changes_workspace_snapshot_evidence(plan_api):

@@ -4,7 +4,6 @@ from __future__ import annotations
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from typing import Any, Dict, List
 
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
@@ -12,6 +11,7 @@ from core.algorithms.evaluation import compute_metrics, objective_score
 from core.models.batch import Batch
 from core.models.batch_operation import BatchOperation
 from core.models.schedule_config_runtime_fields import default_snapshot_values
+from core.models.schedule_config_runtime_snapshot import snapshot_from_values
 from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.run.schedule_candidate_runner import run_candidate_comparison
 from core.services.scheduler.run.schedule_input_contracts import ScheduleRunInput
@@ -168,7 +168,7 @@ def case_environment(data, objective, config=None):
                       end_time=datetime.fromisoformat(row["end_time"])) for row in data["seed_results"]]
         frozen_ids = {row["op_id"] for row in seeds}
         yield ScheduleRunInput(
-            cal_svc=calendar, cfg_svc=SimpleNamespace(**values), cfg=SimpleNamespace(**values),
+            cal_svc=calendar, cfg=snapshot_from_values(values),
             algo_ops=operations, algo_ops_to_schedule=[op for op in operations if op.id not in frozen_ids],
             batches={row["batch_id"]: Batch(part_no=row["batch_id"], **row) for row in data["batches"]},
             start_dt_norm=START, end_date_norm=None, downtime_map=data["downtime"], seed_results=seeds,
@@ -264,15 +264,15 @@ def _oracle_report(case, payload):
     for objective in OBJECTIVES:
         selected[objective] = list(score_schedule(case, rows, objective))
         assert selected[objective] == payload["quality_vectors"][objective]
-        optimum[objective] = list(solve_exact(case, objective).best_score)
+        optimum[objective] = list(solve_exact(case, objective))
         input_order[objective] = list(score_schedule(case, packed, objective))
     return {"selected_vectors": selected, "optimum_vectors": optimum, "input_order_vectors": input_order}
 
 
 def run_case(scenario, objective):
     data = fixture_data(scenario)
-    with case_environment(data, objective) as env:
-        outcome = run_candidate_comparison(schedule_input=env, run_time_budget_seconds=5.0, strict_mode=True)
+    with case_environment(data, objective, {"time_budget_seconds": 5, "seed": 0}) as env:
+        outcome = run_candidate_comparison(schedule_input=env, strict_mode=True)
         representatives = {}
         for plan in outcome.candidates:
             _audit_plan(plan, env, data)

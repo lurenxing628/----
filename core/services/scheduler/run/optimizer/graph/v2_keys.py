@@ -1,13 +1,10 @@
 """GraphReady v2 priority keys: rank-normalized feature tuples per candidate formula."""
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 from core.errors import ValidationError
-from core.services.scheduler.run.optimizer.graph_ready_profiles import (
-    GraphReadyWeightProfile,
-    finite_number,
-)
+from core.services.scheduler.run.optimizer.graph_ready_profiles import finite_number
 
 _FORMULA_FIELDS = {
     "edd": ("due_deadline", "sacrifice_penalty", "processing_rank", "jitter"),
@@ -63,14 +60,7 @@ def v2_formula_specs(formula: str) -> Tuple[Tuple[bool, str], ...]:
     return _FORMULA_SPECS[formula]
 
 
-def v2_priority_key_for_metric(
-    metric: Dict[str, Any],
-    *,
-    profile: GraphReadyWeightProfile,
-    specs: Optional[Tuple[Tuple[bool, str], ...]] = None,
-) -> Tuple[float, ...]:
-    if specs is None:
-        specs = v2_formula_specs(str(profile.formula_slug or "").strip())
+def v2_priority_key_for_metric(metric: Dict[str, Any], *, specs: Tuple[Tuple[bool, str], ...]) -> Tuple[float, ...]:
     result = []
     for neg, key in specs:
         val = metric.get(key)

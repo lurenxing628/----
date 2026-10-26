@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import os
 import stat
-from typing import Any, Optional
+from typing import Any, NoReturn, Optional
+
+from core.shared.strict_json import load_strict_json
 
 _O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 
@@ -113,8 +115,12 @@ def read_fixed_text(path: Any) -> str:
     return read_fixed_bytes(path).decode("utf-8")
 
 
+def _not_strict_json() -> NoReturn:
+    raise ValueError("固定文件不是严格的 JSON。")
+
+
 def read_fixed_json(path: Any) -> Any:
-    return json.loads(read_fixed_text(path))
+    return load_strict_json(read_fixed_text(path), on_malformed=_not_strict_json)
 
 
 def _raise_if_existing_path_unsafe(path_s: str, *, replace_symlink: bool = False):

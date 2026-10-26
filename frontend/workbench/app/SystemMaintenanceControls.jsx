@@ -61,7 +61,7 @@
   function Preferences({ theme, onSetTheme, pageSize, onPageSize, compact, onCompact }) {
     return <section className="sm-section sm-preferences"><div className="sm-section-head"><h3>页面偏好</h3></div><div className="sm-session-settings">
       <fieldset className="sm-choice"><legend>切换深色或浅色</legend>{[['light', '浅色'], ['dark', '深色']].map(([value, label]) => <label key={value}>
-        <input type="radio" name="system-maintenance-theme" checked={theme === value} disabled={typeof onSetTheme !== 'function'} onChange={() => onSetTheme(value)} />{label}</label>)}</fieldset>
+        <input type="radio" name="system-maintenance-theme" checked={theme === value} onChange={() => onSetTheme(value)} />{label}</label>)}</fieldset>
       <label className="sm-inline-label">每页条数<select value={pageSize} onChange={event => onPageSize(Number(event.target.value))}>{[10, 25, 50].map(size => <option key={size} value={size}>{size} 条</option>)}</select></label>
       <label className="sm-inline-label" title="应用于全工作台表格"><input type="checkbox" checked={compact} onChange={event => onCompact(event.target.checked)} />紧凑表格</label>
     </div></section>;

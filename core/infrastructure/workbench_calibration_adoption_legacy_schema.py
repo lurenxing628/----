@@ -68,7 +68,7 @@ def contract_issues(conn, *, structure=None):
     actual = schema_objects(conn, structure=structure)
     return [("missing_calibration_adoption:" if name not in actual else "invalid_calibration_adoption:") + name
             for name, sql in objects().items()
-            if name not in actual or canonical_sql(actual[name] or "") != canonical_sql(sql)]
+            if name not in actual or canonical_sql(actual[name]) != canonical_sql(sql)]
 
 
 def install(conn):

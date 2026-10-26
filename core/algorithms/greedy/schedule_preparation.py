@@ -3,7 +3,7 @@
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_runtime.checkpoint_calendar import checkpoint_calendar_signature
@@ -16,13 +16,12 @@ from core.models.batch import Batch
 
 @dataclass
 class NativeSchedulePreparation:
-    normalized_machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]]
+    normalized_machine_downtimes: Dict[str, List[Tuple[datetime, datetime]]]
     calendar: Any
-    run_context: Any
     operations: List[OpForScheduleAlgo]
     records_by_token: Dict[int, Any]
     batches: Dict[str, Batch]
-    seed_results: Optional[List[ScheduleResult]]
+    seed_results: List[ScheduleResult]
     seed_applications: Any
     seed_external_group_cache: Dict[Any, Any]
     seed_op_ids: Set[int]
@@ -40,6 +39,8 @@ class NativeSchedulePreparation:
     pruning_records: Dict[int, bool] = field(default_factory=dict)
     total_hours_by_op_id: Dict[int, float] = field(default_factory=dict)
     _variant_operations: List[OpForScheduleAlgo] = field(default_factory=list)
+    # The run context points back at this preparation, so prepare_native_schedule_inputs sets it once.
+    run_context: Any = field(init=False, repr=False, compare=False)
     _calendar_signature: Any = field(init=False, repr=False, default=None)
     _checkpoint_parts: Any = field(init=False, repr=False, default=None)
 
@@ -116,7 +117,7 @@ class NativeSchedulePreparation:
                 "batches": tuple((key, input_record(batch, field="batches")) for key, batch in self.batches.items()),
                 "downtimes": input_value(self.normalized_machine_downtimes, field="machine_downtimes"),
                 "resources": input_value(self.resource_pool, field="resource_pool"),
-                "seeds": tuple(seed_signature(result) for result in self.seed_results or ()),
+                "seeds": tuple(seed_signature(result) for result in self.seed_results),
                 "contexts": {},
             }
         return self._checkpoint_parts

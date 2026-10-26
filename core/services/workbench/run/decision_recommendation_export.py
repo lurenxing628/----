@@ -1,5 +1,6 @@
 """Three inspectable flat tables from the same recommendation and source facts."""
 
+from .decision_export_cells import issue_text
 from .decision_preparation_export import EFFORT_FIELDS, effort_values
 
 COMMON_HEADERS = ("排产编号", "归档编号", "读取编号", "读取时间", "保存推荐候选编号", "当前查看候选编号", "比较模式",
@@ -16,10 +17,6 @@ RECOMMENDATION_HEADERS = COMMON_HEADERS + EXPLANATION_FIELDS
 COMPLETION_HEADERS = COMMON_HEADERS + COMPLETION_FIELDS
 REMAINING_HEADERS = COMMON_HEADERS + REMAINING_FIELDS
 RECOMMENDATION_CSV_HEADERS = tuple(dict.fromkeys(RECOMMENDATION_HEADERS + COMPLETION_HEADERS + REMAINING_HEADERS))
-
-
-def _message(value):
-    return "；".join(str(row.get("message") or row.get("code")) if isinstance(row, dict) else str(row) for row in value or ()) or None
 
 
 def _scalars(value, path):
@@ -106,13 +103,13 @@ def recommendation_export_records(source, data):
                 "交付状态": row["risk"], "交期状态": row["due_state"], "交期": row["due_date"], "预计完工": row["planned_finish"],
                 "已排部分预计结束": row["partial_planned_finish"], "拖期小时": row["delay_hours"], "工序总数": row["operation_count"],
                 "已排工序数": row["scheduled_operation_count"], "其他未安排工序数": row["ordinary_unscheduled_operation_count"],
-                "缺料未安排工序数": row["deferred_operation_count"], "安排缺少资料": _message(row["issues"])})
+                "缺料未安排工序数": row["deferred_operation_count"], "安排缺少资料": issue_text(row["issues"])})
         for batch in scope["remaining_batches"]:
             for row in batch["operations"]:
                 record = {"record_kind": "remaining_work", **identity, "批次永久编号": row["batch_ref"], "批次编号": row["batch_label"],
                           "工序永久编号": row["operation_ref"], "零件名称": row["part_label"], "工序号": row["sequence"],
                           "工序名称": row["process_label"], "单件编号": row["piece_id"], "排产时安排状态": row["disposition_status"],
-                          "排产时说明": _message(row["reasons"])}
+                          "排产时说明": issue_text(row["reasons"])}
                 record.update({field: value for (field, _path), value in zip(EFFORT_FIELDS, effort_values(row))})
                 remaining.append(record)
         if not scope["source_available"]:

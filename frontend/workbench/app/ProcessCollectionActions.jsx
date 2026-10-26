@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const C = window.APSResourceContract, P = window.APSProcessContract, A = window.APSProcessActions, S = window.APSResourceSession;
+  const P = window.APSProcessContract, A = window.APSProcessActions, S = window.APSResourceSession;
   const { Button, Modal, ErrorBox, Issues } = window.ResourceControls;
   function ProcessCollectionActions({ adapter, request, onClose, onCommitted, onOpen, disabled = false }) {
     const [original] = React.useState(() => ({ ...request, scope: A.scope(request.scope) }));
@@ -37,7 +37,7 @@
     function preflight() {
       if (disabled || locked || done || recovery || !command.reset()) return;
       setError(null); setAck(false);
-      try { if (typeof adapter.bulkPreview !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.bulkPreview'); const body = A.deleteBody(original); setJob({ body }); setNow(Date.now()); }
+      try { const body = A.deleteBody(original); setJob({ body }); setNow(Date.now()); }
       catch (failure) { setError(failure); }
     }
     async function readCurrent() {
@@ -51,7 +51,7 @@
       finally { if (controller.current === abort) { controller.current = null; if (!abort.signal.aborted) setReading(false); } }
     }
     async function openCreated() {
-      if (!saved || locked || controller.current || typeof onOpen !== 'function') return;
+      if (!saved || locked || controller.current) return;
       const abort = new AbortController(); controller.current = abort; setOpening(true); setError(null);
       try {
         P.detail(await adapter.detail('part', saved.entity_ref, abort.signal), saved.entity_ref);
@@ -69,7 +69,7 @@
       command.clearRejection();
     }
     function confirm(event) {
-      if (event && typeof event.preventDefault === 'function') event.preventDefault();
+      event.preventDefault();
       if (disabled || locked || done || reason || recovery) return;
       setError(null);
       try {

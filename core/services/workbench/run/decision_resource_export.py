@@ -4,6 +4,8 @@ from typing import Any, List
 
 from core.services.workbench.facts.candidate_tasks import operation_labels
 
+from .decision_export_cells import boolean_text
+
 RESOURCE_MEASURES = (
     ("available_hours", "可排总时长（小时）", False),
     ("occupied_hours", "班内已占（小时）", False),
@@ -41,10 +43,6 @@ _COVERAGE_KINDS = (("missing_formal_operation_refs", "缺失正式"), ("unplanne
                    ("deferred_operation_refs", "缺料未安排"))
 
 
-def _boolean(value):
-    return None if value is None else "是" if value else "否"
-
-
 def _issues(items):
     return "；".join(item["message"] for item in items) or None
 
@@ -73,7 +71,7 @@ def _state_values(before, after):
     names = {"complete": "完整", "partial": "部分", "unavailable": "缺少资料", "not_applicable": "范围无适用对象"}
     values: List[Any] = [names[before["state"]], names[after["state"]]]
     for field in ("high_pressure", "zero_capacity_task", "conflict"):
-        values.extend(_boolean(side[field]) for side in (before, after))
+        values.extend(boolean_text(side[field]) for side in (before, after))
     for field in ("unknown_days", "zero_capacity_days", "task_count", "operation_count", "known_available_hours", "known_occupied_hours", "known_summed_load_hours"):
         values.extend(side[field] for side in (before, after))
     values += [_issues(before["issues"]), _issues(after["issues"])]
@@ -86,7 +84,7 @@ def _state_values(before, after):
 def resource_rows(documents):
     for data in documents:
         coverage = data["coverage"]["after"]
-        suffix = [coverage["formal_operation_count"], coverage["covered_formal_operation_count"], _boolean(coverage["formal_coverage_complete"]),
+        suffix = [coverage["formal_operation_count"], coverage["covered_formal_operation_count"], boolean_text(coverage["formal_coverage_complete"]),
                   len(coverage["missing_formal_operation_refs"]), len(coverage["unplanned_operation_refs"]),
                   len(coverage["deferred_operation_refs"])]
         for row in data["items"]:

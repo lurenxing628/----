@@ -3,9 +3,8 @@
   const entries = new Map(), listeners = new Set();
   let pending = null, listening = false, externalPermit = null, nextPrompt = 0;
   function affected(options = {}) {
-    const excluded = options.excludeOwners || [];
     return Array.from(entries.values()).filter(entry => (options.owner === undefined || entry.owner === options.owner)
-      && !excluded.includes(entry.owner) && (entry.dirty || entry.locked));
+      && (entry.dirty || entry.locked));
   }
   function hasDirty(options) { return affected(options).length > 0; }
   function beforeLeave(event) {
@@ -62,7 +61,6 @@
     return new Promise(resolve => { pending = { id: ++nextPrompt, options, resolve }; notify(); });
   }
   async function leaveExternal(navigate) {
-    if (typeof navigate !== 'function') throw new TypeError('leave_external_requires_navigate');
     if (!await confirmLeave()) return false;
     const permit = {}; externalPermit = permit;
     window.setTimeout(() => { if (externalPermit === permit) externalPermit = null; }, 0);

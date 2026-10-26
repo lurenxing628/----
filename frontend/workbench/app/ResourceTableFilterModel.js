@@ -26,9 +26,8 @@
   function toggle(value, key, enabled) {
     return toggleKeys(value, [key], enabled);
   }
+  // changed 只来自 facets() 已校验的选项编号或 selection() 已校验的全部匹配编号。
   function toggleKeys(value, changed, enabled) {
-    if (!Array.isArray(changed) || !changed.every(key))
-      throw C.failure('列值编号无效，筛选没有改动。');
     const selected = rule(value), keys = new Set(selected.values);
     changed.forEach(key => { if ((selected.mode === 'include') === enabled) keys.add(key); else keys.delete(key); });
     if (keys.size > 50000) throw C.failure('本次选择会使本列筛选超过 50000 个值，原条件没有改动。请先清除或减少已选范围。');

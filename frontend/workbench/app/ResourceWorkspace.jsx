@@ -37,7 +37,8 @@
   }
   const resourceReadView = (view, node) => restoreResourceReadView(view, node).view;
   function navigation(context) {
-    if (context === undefined || context === null) return { context: null };
+    // 侧栏直接进入时 main.jsx 传空对象；资料页内部没有定位目标时传 undefined 或 null。
+    if (context === undefined || context === null || !Object.keys(context).length) return { context: null };
     try {
       if (!C.object(context) || context.source !== 'production') throw C.failure('定位来源不正确，只能打开生产资料。');
       const keys = Object.keys(context), kind = context.kind, ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);

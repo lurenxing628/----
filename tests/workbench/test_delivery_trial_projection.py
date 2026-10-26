@@ -152,7 +152,8 @@ def test_candidate_trial_retains_explicit_material_deferral_from_run_capture(tri
     legacy = projection.comparison(official_draft["tasks"], official_draft["validation"], official_rows, historical)
     assert legacy["batches"][0]["completion_state"] == "deferred"
     historical["source"]["operation_effort"] = None
-    pairs, unknown = preparation_projection(official_rows, historical, None)
+    pairs, unknown = preparation_projection(official_rows, historical, None,
+                                            current_evidence={"kind": "trial", "draft_ref": official_draft["draft_ref"]})
     assert pairs[pending["operation_ref"]]["after"]["allocation_state"] == "deferred"
     assert pairs[pending["operation_ref"]]["after"]["required_standard_hours"] is None
     assert unknown["after"]["deferred_setup_hours"]["value"] is None

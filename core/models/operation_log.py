@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from ._helpers import RowLike, parse_int
+from ._helpers import RowLike, parse_optional_int
 
 
 @dataclass
@@ -23,11 +23,11 @@ class OperationLog:
     @classmethod
     def from_row(cls, row: RowLike) -> OperationLog:
         return cls(
-            id=parse_int(row["id"], default=None),
+            id=parse_optional_int(row["id"], field="id"),
             log_time=row["log_time"],
             log_level=str(row["log_level"] or "INFO"),
-            module=str(row["module"] or ""),
-            action=str(row["action"] or ""),
+            module=str(row["module"]),
+            action=str(row["action"]),
             target_type=row["target_type"],
             target_id=row["target_id"],
             operator=row["operator"],

@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  function Workspace({ initialContext = {}, onNavigate, adapter }) {
+  function Workspace({ initialContext, onNavigate, adapter }) {
     const A = window.CalibrationAPI, C = window.CalibrationControls;
     const { Button, ErrorBox, useRead } = C;
     const api = React.useMemo(() => adapter || A.create(), [adapter]);
@@ -58,10 +58,10 @@
     return <section className="calib-workbench calibration-live" aria-label="工时定额校准" data-ready={!!data} data-source="production" data-stale={stale}>
       <header className="ca-heading"><div><h2 className="wb-page-title">工时定额校准</h2><p className="ca-muted wb-page-context">模板定额与实际加工记录{result ? ' · ' + window.WorkbenchTerms.data_as_of(window.WorkbenchFormat.dateTime(result.meta.as_of)) : ''}</p></div>
         <div className="ca-actions"><Button icon="refresh-cw" aria-label="刷新校准数据" busy={request.busy} disabled={downloading} onClick={reload} />
-          {window.CalibrationAdoptionAction && <window.CalibrationAdoptionAction detail={detail.result && detail.result.data} stale={stale || detail.busy} onRefresh={reload} />}
-          {typeof onNavigate === 'function' && <Button icon="arrow-right" disabled={!data || disabled} onClick={() => onNavigate('review', { returnTo: { view: 'calib', context: {
+          <window.CalibrationAdoptionAction detail={detail.result && detail.result.data} stale={stale || detail.busy} onRefresh={reload} />
+          <Button icon="arrow-right" disabled={!data || disabled} onClick={() => onNavigate('review', { returnTo: { view: 'calib', context: {
             scope: Object.fromEntries(Object.entries(input).filter(([key]) => !['page', 'size', 'sort', 'direction', 'snapshot_ref'].includes(key))),
-            table: { page: input.page, size: input.size, sort: input.sort, direction: input.direction }, selected, sample_ref: sampleRef, table_widths: widths } } })}>执行复盘</Button>}</div></header>
+            table: { page: input.page, size: input.size, sort: input.sort, direction: input.direction }, selected, sample_ref: sampleRef, table_widths: widths } } })}>执行复盘</Button></div></header>
       <div className="ca-overview">
       <C.Filters value={input} onChange={change} disabled={disabled} />
       {input.part_ref && <p className="ca-muted">已限定零件来源 <Button icon="x" aria-label="清除零件限定" disabled={disabled} onClick={() => change({ part_ref: null })} /></p>}
@@ -94,9 +94,9 @@
   }
   function CalibrationWorkspace(props) {
     window.WorkbenchCaption.useCaption(null);
-    try { window.CalibrationAPI.initial(props.initialContext || {}); }
+    try { window.CalibrationAPI.initial(props.initialContext); }
     catch (error) { return <section className="calibration-live"><h2 className="wb-page-title">工时定额校准</h2><window.ResourceControls.ErrorBox error={error} /></section>; }
-    return <Workspace key={JSON.stringify(props.initialContext || {})} {...props} />;
+    return <Workspace key={JSON.stringify(props.initialContext)} {...props} />;
   }
   window.CalibrationWorkspace = CalibrationWorkspace;
 })();

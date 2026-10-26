@@ -41,7 +41,7 @@
       </fieldset></>;
   }
   function CalendarFileActions({ kind, month, request, ...props }) {
-    const refs = Array.isArray(request && request.refs) ? request.refs : [];
+    const refs = request.refs;
     const people = kind === window.APSCalendarFile.peopleKind;
     const contract = React.useMemo(() => ({
       ...window.APSCalendarFile.create(kind),

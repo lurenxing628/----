@@ -1,7 +1,8 @@
 """DI integration DDL. Explicit caller transaction; no version change or auto repair.
 
-Call install(conn) in the coordinator's migration, then register the route hook.
-objects() is the exact ordered DDL; contract_issues() is a SELECT-only check.
+Call install_workbench_outsourcing_schema(conn) in the coordinator's migration,
+then register the route hook. workbench_outsourcing_objects() is the exact ordered
+DDL; workbench_outsourcing_contract_issues() is a SELECT-only check.
 Existing operations use retained birth evidence; missing birth stays unknown.
 New operations capture their batch instance on insert, never a template group.
 """
@@ -85,7 +86,7 @@ def workbench_outsourcing_contract_issues(conn, *, structure=None):
     actual = schema_objects(conn, structure=structure)
     return [("missing_outsourcing_schema:" if name not in actual else "invalid_outsourcing_schema:") + name
             for name, sql in workbench_outsourcing_objects().items()
-            if name not in actual or canonical_sql(sql) != canonical_sql(actual[name] or "")]
+            if name not in actual or canonical_sql(sql) != canonical_sql(actual[name])]
 
 
 def install_workbench_outsourcing_schema(conn):
@@ -119,8 +120,3 @@ def install_workbench_outsourcing_schema(conn):
             WHERE e.operation_ref=r.ref AND e.event_type='created' ORDER BY e.event_id LIMIT 1)
         FROM WorkbenchPlanSourceRefs r JOIN BatchOperations o ON r.source_key=CAST(o.id AS TEXT)
         WHERE r.kind='operation' AND r.active=1""")
-
-
-objects = workbench_outsourcing_objects
-contract_issues = workbench_outsourcing_contract_issues
-install = install_workbench_outsourcing_schema

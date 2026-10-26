@@ -190,8 +190,7 @@
       node.scrollTop = Math.max(0, loc.top - node.clientHeight / 3);
       pan((loc.item.start + loc.item.end - 2 * model.start) / 2 / (model.end - model.start) * width - viewport / 2);
     }
-    const currentIndex = selected && candidate.taskOrder ? (candidate.taskOrder.has(selected.row_ref) ? candidate.taskOrder.get(selected.row_ref) : -1)
-      : model.tasks.findIndex(task => selected && task.row_ref === selected.row_ref);
+    const currentIndex = selected && candidate.taskOrder.has(selected.row_ref) ? candidate.taskOrder.get(selected.row_ref) : -1;
     function move(direction) {
       const index = currentIndex;
       const task = model.tasks[Math.max(0, Math.min(model.tasks.length - 1, index < 0 ? 0 : index + direction))];

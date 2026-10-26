@@ -4,9 +4,8 @@ from dataclasses import asdict
 
 import pytest
 
-from core.services.workbench.run.compute import compute_candidate_run
+from tests.workbench.run_compute_support import compute_run, unchanged
 from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
-from tests.workbench.run_compute_support import unchanged
 
 
 def _signature(outcome):
@@ -34,7 +33,7 @@ def test_graph_modes_preserve_current_candidate_contract(run_case, frozen):
     outcomes = {}
     for mode in ("off", "report", "on"):
         case.config(graph_analysis_mode=mode)
-        outcomes[mode] = unchanged(case, lambda: compute_candidate_run(case.conn, settings, case.projections()))
+        outcomes[mode] = unchanged(case, lambda: compute_run(case.conn, settings, case.projections()))
 
     assert _signature(outcomes["report"]) == _signature(outcomes["off"])
     assert _signature(outcomes["on"]) == _signature(outcomes["off"])

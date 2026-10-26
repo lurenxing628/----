@@ -55,7 +55,8 @@
   function detail(result, expected) {
     C.query(result, 'entity'); const d = result.data;
     if (!entity(d) || d.ref !== expected || !object(d.materials) || !Array.isArray(d.materials.requirements)
-        || !d.materials.requirements.every(row => object(row) && ref(row.material_ref) && finite(row.required_quantity) && finite(row.available_quantity))
+        || !d.materials.requirements.every(row => object(row) && ref(row.material_ref) && finite(row.required_quantity) && finite(row.available_quantity)
+          && (row.operation_ref === null || ref(row.operation_ref)) && Array.isArray(row.arrivals))
         || !object(d.template) || typeof d.template.complete !== 'boolean' || !count(d.template.operation_count)
         || !issueRows(d.template.diagnostics)) throw C.failure('读到的批次详情不完整或不是这个批次，请刷新后重试。');
     return result;

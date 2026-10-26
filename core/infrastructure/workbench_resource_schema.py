@@ -135,4 +135,4 @@ def workbench_resource_contract_issues(conn, *, structure=None) -> List[str]:
     actual = schema_objects(conn, structure=structure)
     return [("missing_workbench_resource: " if name not in actual else "bad_workbench_resource: ") + name
             for name, sql in resource_objects().items()
-            if name not in actual or canonical_sql(actual[name] or "") != canonical_sql(sql)]
+            if name not in actual or canonical_sql(actual[name]) != canonical_sql(sql)]

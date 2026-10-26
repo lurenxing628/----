@@ -38,7 +38,7 @@ def build_seed_results(frozen_op_ids: Set[int], *, op_by_id: Dict[int, Any],
         op, seed = op_by_id[oid], seed_tmp[oid]
         row, start, end = seed["row"], seed["start_time"], seed["end_time"]
         result = {"op_id": oid, "op_code": op.op_code, "batch_id": op.batch_id,
-                  "seq": int(op.seq or 0), "machine_id": row.get("machine_id"),
+                  "seq": op.seq, "machine_id": row.get("machine_id"),
                   "operator_id": row.get("operator_id"), "start_time": start, "end_time": end,
                   "source": (op.source or INTERNAL).strip(), "op_type_name": op.op_type_name,
                   "op_type_id": op.op_type_id, "seed_source": "freeze_window"}

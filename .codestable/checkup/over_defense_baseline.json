@@ -34,36 +34,6 @@
       "count": 1
     },
     {
-      "path": "core/infrastructure/migrations/v2.py",
-      "kind": "internal_reflect_literal",
-      "count": 1
-    },
-    {
-      "path": "core/infrastructure/migrations/v3.py",
-      "kind": "internal_reflect_literal",
-      "count": 1
-    },
-    {
-      "path": "core/infrastructure/migrations/v4_sanitizers.py",
-      "kind": "internal_reflect_literal",
-      "count": 2
-    },
-    {
-      "path": "core/infrastructure/migrations/v5.py",
-      "kind": "internal_reflect_literal",
-      "count": 1
-    },
-    {
-      "path": "core/models/schedule_config_runtime_coercion.py",
-      "kind": "internal_reflect_literal",
-      "count": 1
-    },
-    {
-      "path": "core/models/schedule_config_runtime_read.py",
-      "kind": "internal_reflect_literal",
-      "count": 2
-    },
-    {
       "path": "core/plugins/manager.py",
       "kind": "internal_reflect_literal",
       "count": 5
@@ -85,11 +55,6 @@
     },
     {
       "path": "web/bootstrap/workbench_request_lifecycle_wsgi.py",
-      "kind": "internal_reflect_literal",
-      "count": 1
-    },
-    {
-      "path": "web/bootstrap/workbench_system_restore_recovery.py",
       "kind": "internal_reflect_literal",
       "count": 1
     },

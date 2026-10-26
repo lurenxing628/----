@@ -48,7 +48,7 @@ def contract_issues(conn, *, structure=None):
     actual = schema_objects(conn, structure=structure)
     return [("missing_material_stages:" if name not in actual else "invalid_material_stages:") + name
             for name, sql in objects().items()
-            if name not in actual or canonical_sql(sql) != canonical_sql(actual[name] or "")]
+            if name not in actual or canonical_sql(sql) != canonical_sql(actual[name])]
 
 
 def install(conn):

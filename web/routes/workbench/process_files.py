@@ -3,7 +3,7 @@
 from flask import current_app, g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_process_file import IMPORT_BYTE_LIMIT, check_format, file_columns
+from core.models.workbench_process_file import check_format, file_columns
 from core.services.workbench.commands import WorkbenchCommandService
 from core.services.workbench.process.files import WorkbenchProcessFileService, file_operation
 from web.api_responses import json_response, query_success
@@ -11,6 +11,7 @@ from web.api_responses import json_response, query_success
 from .api_responses import api_endpoint
 from .process_action_context import action_preview, checked_preview, confirmed_body
 from .read_context import bind_read_snapshot
+from .request_json import read_upload_file
 from .resource_action_context import read_endpoint
 
 
@@ -25,11 +26,7 @@ def _upload(kind):
     check_format(fmt)
     if mode != "upsert":
         raise WorkbenchCommandRejected("invalid_input", "工艺文件只支持按图号增量导入，工艺资料没有改动。请换用正确的导入方式后点「开始预检」。", 400)
-    configured = current_app.config.get("EXCEL_MAX_UPLOAD_BYTES")
-    limit = min(IMPORT_BYTE_LIMIT, configured) if type(configured) is int and configured > 0 else IMPORT_BYTE_LIMIT
-    content = request.files["file"].read(limit + 1)
-    if len(content) > limit:
-        raise WorkbenchCommandRejected("invalid_input", "文件超过本机允许的大小，一行都没有导入，也没有只导入前半部分。请缩小文件后重新选择，再点「开始预检」。", 413)
+    content = read_upload_file("文件超过本机允许的大小，一行都没有导入，也没有只导入前半部分。请缩小文件后重新选择，再点「开始预检」。")
     return content, fmt, mode, request.form.get("target_ref")
 
 

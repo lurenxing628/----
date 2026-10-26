@@ -23,10 +23,14 @@ from core.algorithms.evaluation import compute_metrics, objective_score, prepare
 from core.algorithms.evaluation_completion import UNKNOWN_OBJECTIVE_VALUE
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.models.objective import objective_metric_keys
-from core.services.scheduler.contracts.optimizer_public_safety import project_attempt_metrics, project_public_metrics
+from core.services.scheduler.contracts.optimizer_public_safety import (
+    project_attempt_metrics,
+    project_public_metrics,
+    safe_non_negative_int,
+)
 from tests._support.algo_operations import make_algo_op, make_batch
 from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar as _ContinuousCalendar
-from tests._support.optimizer_graph_ready_benchmark import _default_config
+from tests._support.schedule_decode import config_snapshot, production_decode, production_session
 
 OBJECTIVES = ("min_overdue", "min_tardiness", "min_weighted_tardiness", "min_changeover")
 START = datetime(2026, 1, 1, 8)
@@ -86,7 +90,8 @@ def test_equal_failed_ops_candidates_order_by_their_completed_batches_instead_of
 
 def test_explained_incompleteness_never_outranks_a_complete_candidate_behind_failed_ops():
     complete = compute_metrics([_result(1, "B1", hours=1), _result(2, "B2", hours=90), _result(3, "B3", hours=1)],
-                               _batches(B1="critical", B2="normal", B3="urgent"), expected_operations=OPERATIONS)
+                               _batches(B1="critical", B2="normal", B3="urgent"), expected_operations=OPERATIONS,
+                               failure_details=[])
     assert complete.completion.objective_defined
     assert complete.completion.objective_score_policy == "original"
     assert complete.to_dict()["completion"]["objective_scope"] == "all_batches"
@@ -120,11 +125,13 @@ def test_real_scheduler_window_failure_is_explained_and_scores_behind_failed_ops
         for op_id, hours in ((1, 1.0), (2, 48.0))
     ]
     batches = {"B1": make_batch(due_date="2026-01-01", priority="urgent")}
-    scheduler = GreedyScheduler(calendar_service=_ContinuousCalendar(), config_service=_default_config())
-    results, summary, _strategy, _params = scheduler.schedule(
-        operations=operations, batches=batches, strategy=SortStrategy.PRIORITY_FIRST,
+    scheduler = GreedyScheduler(calendar_service=_ContinuousCalendar(),
+                                config_service=config_snapshot(dispatch_mode="sgs", algo_mode="greedy", time_budget_seconds=1))
+    decoded = production_decode(
+        scheduler, operations=operations, batches=batches, strategy=SortStrategy.PRIORITY_FIRST,
         start_dt=START, end_date=START.date(), dispatch_mode="sgs", strict_mode=True,
     )
+    results, summary = decoded.results, decoded.summary
     assert summary.failed_ops == 1
     metrics = compute_metrics(results, batches, expected_operations=operations, seed_results=[],
                               failure_details=summary.failure_details)
@@ -134,13 +141,26 @@ def test_real_scheduler_window_failure_is_explained_and_scores_behind_failed_ops
     assert score == (1.0, 0.0, 0.0, 0.0, 1.0, 0.0)
 
 
+@pytest.mark.parametrize("op_id", [0, -3])
+def test_seed_without_positive_operation_id_is_rejected_at_the_decode_entry(op_id):
+    """The evaluation context is built before the decode session, so seed normalization never sees such a seed."""
+    from core.algorithms.greedy import scheduler as scheduler_module
+
+    scheduler = GreedyScheduler(calendar_service=_ContinuousCalendar(), config_service=config_snapshot())
+    with patch.object(scheduler_module, "normalize_seed_results") as normalize, \
+            pytest.raises(ValueError, match="positive operation ID"):
+        production_session(scheduler, operations=OPERATIONS, batches=_batches(B1="normal", B2="normal", B3="normal"),
+                           start_dt=START, seed_results=[_result(op_id, "B9", hours=1)])
+    normalize.assert_not_called()
+
+
 def test_prepared_evaluation_keeps_completion_dynamic_and_prepares_static_facts_once():
     operations = [_op(1, "B1"), _op(2, "B1"), _op(3, "B2")]
     batches = _batches(B1="critical", B2="normal", B3="urgent")
     seed = _result(4, "B3", hours=0)
     complete = [_result(1, "B1", hours=0), _result(2, "B1", hours=1), _result(3, "B2", hours=26), seed]
     partial = [complete[0], complete[2], seed]
-    failures = [{"op_id": 2}]
+    failures = [{"op_id": 2, "batch_id": "B1"}]
     scenarios = [(complete, []), (partial, []), (partial, failures),
                  (partial + [_result(9, "B9", hours=1)], failures)]
     expected_metrics = [compute_metrics(results, batches, expected_operations=operations, seed_results=[seed],
@@ -172,3 +192,9 @@ def test_public_projection_carries_the_completed_subset_scope_without_samples(pr
     assert projected["objective_scope"] == "completed_batches_only"
     assert projected["incomplete_work_weight"] == 3.0
     assert "B1" not in json.dumps(projected)
+
+
+@pytest.mark.parametrize(("raw", "expected"), [(3, 3), (" 12 ", 12), ("²", None), ("-1", None), (True, None), (-2, None)])
+def test_public_count_projection_reads_only_decimal_digits_and_never_raises(raw, expected):
+    # 旧存档的计数可能是文本；“²”这类 isdigit 为真、int() 却读不了的字符不能让投影崩掉。
+    assert safe_non_negative_int(raw) == expected

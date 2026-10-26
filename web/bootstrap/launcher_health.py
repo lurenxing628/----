@@ -18,13 +18,7 @@ class HealthProbeResult:
     error: str = ""
 
 
-def probe_runtime_health_result(
-    base_url: str,
-    timeout_s: float = 1.5,
-    *,
-    log_failures: bool = False,
-    state_dir: Optional[str] = None,
-) -> HealthProbeResult:
+def probe_runtime_health_result(base_url: str, timeout_s: float, *, log_failures: bool = False) -> HealthProbeResult:
     url = base_url.rstrip("/") + "/system/health"
     req = urllib.request.Request(url, method="GET")
     try:
@@ -33,16 +27,16 @@ def probe_runtime_health_result(
             payload = json.loads(resp.read().decode("utf-8"))
     except (OSError, TypeError, ValueError) as exc:
         if log_failures:
-            launcher_log_warning(None, "运行时健康探测失败：url=%s error=%s", url, exc, state_dir=state_dir)
+            launcher_log_warning(None, "运行时健康探测失败：url=%s error=%s", url, exc)
         return HealthProbeResult(False, url, "request_failed", error=str(exc))
     try:
         contract_version = int(payload.get("contract_version") or 0)
     except (AttributeError, TypeError, ValueError) as exc:
         if log_failures:
-            launcher_log_warning(None, "运行时健康响应版本非法：url=%s error=%s", url, exc, state_dir=state_dir)
+            launcher_log_warning(None, "运行时健康响应版本非法：url=%s error=%s", url, exc)
         return HealthProbeResult(False, url, "invalid_contract_version", status=status, payload=payload, error=str(exc))
     ok = payload.get("app") == "aps" and payload.get("status") == "ok" and contract_version == 1
     reason = "" if ok else "unexpected_health_payload"
     if not ok and log_failures:
-        launcher_log_warning(None, "运行时健康响应不匹配：url=%s payload=%s", url, payload, state_dir=state_dir)
+        launcher_log_warning(None, "运行时健康响应不匹配：url=%s payload=%s", url, payload)
     return HealthProbeResult(ok, url, reason, status=status, payload=payload)

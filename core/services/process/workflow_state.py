@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-import json
 import math
 import re
 from datetime import datetime, timezone
+from typing import NoReturn
 
 from core.errors import BusinessError, ErrorCode, ValidationError
 from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_metadata_schema import workbench_metadata_contract_issues
 from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
 from core.infrastructure.workbench_process_workflow_schema import workbench_process_workflow_contract_issues
 from core.infrastructure.workbench_resource_schema import workbench_resource_contract_issues
 from core.models.content import content_text, same, unpacked
 from core.models.resource_capabilities import supports_source
+from core.shared.strict_json import load_strict_json
 from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWorkflowRepository, operation_order
 
 from .template_source import TemplateSourceFacts
@@ -162,7 +162,7 @@ def _needed_stages(stored, stage, record_stages):
     return need_route, need_source, need_hours
 
 
-def _load_facts(conn, part_no=None, *, stored=None, stage=None, cross_part_by_group=None, old_operations=()):
+def _load_facts(conn, part_no, *, stored=None, stage=None, cross_part_by_group=None, old_operations=()):
     """One bulk read per fact collection, regardless of the number of parts."""
     return _project_facts(_read_facts(conn, part_no, stored=stored, stage=stage,
                                       cross_part_by_group=cross_part_by_group, old_operations=old_operations))
@@ -270,16 +270,21 @@ def _confirmation(row, content, prefix="", *, missing_original=False):
     return result
 
 
+def _invalid_saved_source() -> NoReturn:
+    raise RuntimeError("Invalid saved process source content.")
+
+
 def _saved_groups(stored):
     saved = stored.get("source_content_json") if stored else None
     if saved is None:
         return None
+    parsed = load_strict_json(saved, on_malformed=_invalid_saved_source)
     try:
-        document = unpacked(json.loads(saved))
+        document = unpacked(parsed)
     except (TypeError, ValueError) as exc:
         raise RuntimeError("Invalid saved process source content.") from exc
     if type(document) is not list or len(document) != 4 or document[0] != "source-v2" or type(document[3]) is not dict:
-        raise RuntimeError("Invalid saved process source content.")
+        _invalid_saved_source()
     return document[3]
 
 
@@ -328,17 +333,12 @@ def _view(stored, facts, *, operation_states=None):
 
 
 def workflow_snapshot(conn, *, tables=None, identities=None) -> dict:
-    """Load JSON-safe workflow and per-operation states for the whole part catalog."""
-    if tables is not None and conn.in_transaction:
+    """Load JSON-safe workflow and per-operation states for the whole part catalog; callers own the read transaction."""
+    if tables is None:
+        raw = load_workflow_snapshot(conn)
+    else:
         _schema(conn)
         raw = _workflow_inputs_from_tables(tables, identities, conn=conn)
-    else:
-        with TransactionManager(conn).transaction():
-            if tables is None:
-                raw = load_workflow_snapshot(conn)
-            else:
-                _schema(conn)
-                raw = _workflow_inputs_from_tables(tables, identities, conn=conn)
     return project_workflow_snapshot(raw)
 
 
@@ -411,7 +411,7 @@ def _require_transaction(conn):
         raise RuntimeError("Process confirmations require a caller transaction.")
 
 
-def start_workflow(conn, part_no, *, contracts=None) -> dict:
+def start_workflow(conn, part_no, *, contracts) -> dict:
     """Enroll a newly controlled template, even before any route exists."""
     _require_transaction(conn)
     part, stored = _part(conn, part_no, contracts)

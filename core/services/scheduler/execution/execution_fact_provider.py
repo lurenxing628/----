@@ -78,9 +78,9 @@ class ExecutionFactProvider:
 
     def facts_by_scope(
         self, scopes: Sequence[OperationExecutionScope], *,
-        execution_projections: Optional[Sequence[ExecutionProjection]] = None,
+        execution_projections: Sequence[ExecutionProjection],
     ) -> Dict[OperationExecutionScope, ExecutionFact]:
-        normalized = list(dict.fromkeys(scopes or ()))
+        normalized = list(dict.fromkeys(scopes))
         with ledger_read_snapshot(self.conn, ledger=self.ledger) as ledger:
             facts = self._legacy_facts(normalized)
             if ledger is None:
@@ -119,7 +119,7 @@ class ExecutionFactProvider:
         rows: Sequence[Mapping[str, Any]],
         plan_fields: Mapping[str, Any],
         *,
-        execution_projections: Optional[Sequence[ExecutionProjection]] = None,
+        execution_projections: Sequence[ExecutionProjection],
     ) -> Dict[int, ExecutionFact]:
         scopes_by_op_id = scopes_by_op_id_for_plan_rows(rows, plan_fields)
         facts_by_scope = self.facts_by_scope(

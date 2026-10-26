@@ -69,6 +69,6 @@ def _copy_events(conn: sqlite3.Connection) -> None:
 
 
 def _reject_invalid_event_sequences(conn: sqlite3.Connection) -> None:
-    issues = operation_execution_event_sequence_issues(conn, limit=4)
+    issues = operation_execution_event_sequence_issues(conn)
     if issues:
         raise RuntimeError("现场执行事件流顺序不合法，不能静默迁移；请先人工修复后再迁移：" + "；".join(issues))

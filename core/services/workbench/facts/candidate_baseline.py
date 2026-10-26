@@ -3,7 +3,7 @@
 import base64
 import binascii
 from collections import defaultdict
-from typing import Any, Dict, NoReturn
+from typing import NoReturn
 
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.content import unpacked
@@ -103,8 +103,6 @@ class ArchivedAdmissionPlan:
 
 class AdmissionBaseline(ArchivedAdmissionPlan):
     """Bind saved admission execution without replaying its historical formulas."""
-
-    source_state: Dict[str, Any]
 
     def __init__(self, capture, facts, disposition, *, point_work=None, origins=None, origin_issue=None):
         super().__init__(capture, facts)

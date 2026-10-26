@@ -34,8 +34,6 @@ def auto_assign_attempt_from_result(
         return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_NO_FEASIBLE_PAIR)
     if not isinstance(result, (list, tuple)) or len(result) < 2:
         raise TypeError("auto_assign probe result is not a pair")
-    machine_id = str(result[0] or "").strip()
-    operator_id = str(result[1] or "").strip()
-    if machine_id and operator_id:
-        return AutoAssignAttempt(machine_id=machine_id, operator_id=operator_id)
-    return AutoAssignAttempt(machine_id=machine_id, operator_id=operator_id, reason=AUTO_ASSIGN_REASON_NO_FEASIBLE_PAIR)
+    # The pair form is only the same-round SGS handoff, recorded only when the probe chose both
+    # resources (sgs_score_cache records the pair only for a non-empty machine and operator).
+    return AutoAssignAttempt(machine_id=result[0], operator_id=result[1])

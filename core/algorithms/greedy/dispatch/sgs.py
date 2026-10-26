@@ -11,7 +11,7 @@ from core.algorithm_contracts.dispatch_rules import (
 )
 from core.algorithm_contracts.value_domains import EXTERNAL, INTERNAL
 from core.algorithm_runtime.internal_slot import estimate_internal_slot, validate_internal_hours_for_mode
-from core.algorithm_runtime.piece_input import operation_batch, operation_dispatch_state
+from core.algorithm_runtime.piece_input import operation_dispatch_state
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_estimate_reuse import sgs_handoff_scope
 from core.algorithm_runtime.slot_overlap_reuse import sgs_overlap_reuse
@@ -138,8 +138,7 @@ def _average_proc_hours(
     strict_mode: bool,
 ) -> Tuple[float, Dict[int, float]]:
     samples: List[float] = []
-    preparation = ctx.native_preparation
-    total_hours_by_op_id: Dict[int, float] = preparation.total_hours_by_op_id if preparation is not None else {}
+    total_hours_by_op_id: Dict[int, float] = ctx.native_preparation.total_hours_by_op_id
     # _group_sgs_ops only keeps batches that exist, so every grouped batch id resolves.
     for batch_id, operations in ops_by_batch.items():
         batch = batches[batch_id]
@@ -206,8 +205,6 @@ def _run_sgs_loop(
     score_cache = ctx.sgs_score_cache
     if score_cache is not None and score_cache.state is not state:
         raise RuntimeError("SGS 评分缓存绑定的运行状态与本次派工不一致")
-    if ctx.native_scoring is None:
-        ctx.native_scoring = native_score_functions_unchanged()
     pruning = (GraphPriorityPruning.for_cache(score_cache, graph_state, batches, total_hours_by_op_id, strict_mode=strict_mode)
                if ctx.native_scoring else None)
     acceleration = DecodeAcceleration(decode_checkpoints, graph_state, pruning, total_hours_by_op_id, ctx,
@@ -224,7 +221,6 @@ def _run_sgs_loop(
 
     with sgs_handoff_scope(score_cache):
         while True:
-            acceleration.before_pick(position)
             if score_cache is not None:
                 score_cache.next_round()
             scored = score_next_ready(acceleration.frontier, collect=collect, score=score, native=lambda: ctx.native_scoring,
@@ -343,8 +339,7 @@ def _score_candidates(
 
 
 def resolve_operation_batch(ctx: Any, op: OpForScheduleAlgo, batch: Batch) -> Batch:
-    preparation = ctx.native_preparation
-    return preparation.operation_batch(op, batch) if preparation is not None else operation_batch(op, batch)
+    return ctx.native_preparation.operation_batch(op, batch)
 
 
 def _score_candidate(
@@ -412,7 +407,7 @@ def _score_candidate(
 
 _NATIVE_SCORE_FUNCTIONS = {name: globals()[name] for name in (
     "_score_candidate", "_score_internal_candidate", "_score_internal_candidate_impl", "_score_external_candidate",
-    "estimate_internal_slot", "build_dispatch_key", "operation_batch", "operation_dispatch_state",
+    "estimate_internal_slot", "build_dispatch_key", "operation_dispatch_state",
 )}
 
 

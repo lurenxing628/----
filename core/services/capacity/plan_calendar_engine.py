@@ -1,6 +1,5 @@
-"""Reuse CalendarEngine and OperatorShiftCalendar with bounded in-memory readers."""
+"""Reuse CalendarEngine over calendar and shift facts read once into one bounded snapshot."""
 
-from collections import defaultdict
 from datetime import date
 
 from core.errors import ValidationError
@@ -8,29 +7,7 @@ from core.models.calendar import OperatorCalendar, WorkCalendar
 from core.models.calendar_periods import encode_periods
 from core.services.scheduler.calendar.defaults import default_periods_from_row
 from core.services.scheduler.calendar.engine import CalendarEngine
-
-
-class _ShiftRows:
-    """Connection-free stand-in for the two shift-repository reads used by apply_policy."""
-
-    def __init__(self, facts):
-        self.profiles = {row["operator_id"]: dict(row) for row in facts["profiles"]}
-        self.patterns = {(row["profile_id"], row["day_offset"]): row for row in facts["patterns"]}
-        offsets = defaultdict(list)
-        for row in facts["patterns"]:
-            offsets[row["profile_id"]].append(row["day_offset"])
-        for profile in self.profiles.values():
-            days = offsets[profile["profile_id"]]
-            profile.update(day_count=len(days), first_day=min(days) if days else None, last_day=max(days) if days else None)
-
-    def profile_for_operator(self, operator_id):
-        return self.profiles.get(operator_id)
-
-    def pattern_day(self, profile_id, offset):
-        row = self.patterns.get((profile_id, offset))
-        if row is not None and (type(row["is_rest"]) is not int or row["is_rest"] not in (0, 1)):
-            raise ValidationError("人员班表里的休息标记不合法。请到工作日历核对人员班表。", field="shift_profile")
-        return row
+from core.services.scheduler.calendar.operator_shift import index_shift_facts
 
 
 def _calendar_row(row, model):
@@ -79,8 +56,10 @@ def _deferred_index(rows, *, personal=False):
 
 class SnapshotCalendarEngine(CalendarEngine):
     def __init__(self, facts):
-        self._shift_rows = _ShiftRows(facts)
-        super().__init__(None, shift_repo=self._shift_rows)
+        shifts = index_shift_facts(facts["profiles"], facts["patterns"])
+        super().__init__(None, shift_facts=shifts)
+        # 人员 -> 班次档案（含轮换日范围）；投影按它分组共享同一班次的人员。
+        self.shift_profiles = shifts.profiles
         self._default_rows = tuple(facts.get("defaults", ()))
         self.legacy_defaults = facts.get("legacy_defaults", False)
         # 坏日历表的错误留给真正读它的策略抛出：个人日历表坏了不连累全局与设备日历，
@@ -123,4 +102,4 @@ class SnapshotCalendarEngine(CalendarEngine):
         if (operator_id, day) in self.personal_rows:
             return "personal_calendar"
         base = "work_calendar" if day in self.global_rows else "domain_default"
-        return base + "_operator_shift" if operator_id in self._shift_rows.profiles else base
+        return base + "_operator_shift" if operator_id in self.shift_profiles else base

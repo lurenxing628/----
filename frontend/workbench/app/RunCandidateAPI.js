@@ -207,11 +207,8 @@
       check(start === timeKey(d.task_span.start) && end === timeKey(d.task_span.end)
         && start >= timeKey(d.candidate_span.start) && end <= timeKey(d.candidate_span.end));
     }
-    if (d.unplanned_operations === null) check(d.unplanned_operation_count === null && d.data_gaps.some(g => g.field === 'unplanned_operations'));
-    else {
-      check(Array.isArray(d.unplanned_operations) && d.unplanned_operation_count === d.unplanned_operations.length);
-      d.unplanned_operations.forEach(t => { operation(t, false); check(!operationRefs.has(t.operation_ref) && (!q.batch_ref || t.batch_ref === q.batch_ref)); operationRefs.add(t.operation_ref); });
-    }
+    check(Array.isArray(d.unplanned_operations) && d.unplanned_operation_count === d.unplanned_operations.length);
+    d.unplanned_operations.forEach(t => { operation(t, false); check(!operationRefs.has(t.operation_ref) && (!q.batch_ref || t.batch_ref === q.batch_ref)); operationRefs.add(t.operation_ref); });
     const g = d.generation, G = window.RunGenerationContract;
     check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'data_gaps', 'baseline', 'algorithm'])
       && g.run_ref === d.candidate.run_ref && time(g.accepted_at) && (g.finished_at === null || time(g.finished_at))
@@ -243,8 +240,7 @@
     const d = result.data;
     check(value && value.blob instanceof Blob && value.blob.size > 0 && value.candidate_ref === d.candidate.candidate_ref
       && value.snapshot_ref === result.meta.snapshot_ref && value.task_count === d.task_count
-      // 未安排工序资料缺项时 unplanned_operation_count 为 null，导出与后端一样只算已安排行（candidate_export.py）。
-      && value.row_count === Math.max(1, d.task_count + (d.unplanned_operation_count === null ? 0 : d.unplanned_operation_count))
+      && value.row_count === Math.max(1, d.task_count + d.unplanned_operation_count)
       && text(value.filename) && !/[\\/\r\n]/.test(value.filename) && value.filename.endsWith('.' + fmt), '下载结果与当前完整范围不一致，没有保存文件。');
     return value;
   }

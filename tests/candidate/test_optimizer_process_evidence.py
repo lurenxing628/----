@@ -1,36 +1,40 @@
 """Solver process evidence retains late work and separates adoption from improvement."""
 
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from functools import partial
 from types import SimpleNamespace
-from typing import Dict, List, Set
 
 import pytest
 
-from core.algorithm_contracts.operation_effort import OperationEffort
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleSummary
 from core.algorithms.evaluation import ScheduleMetrics, objective_score
 from core.algorithms.evaluation_completion import BatchCompletion
 from core.algorithms.greedy.scheduler import GreedyScheduler
+from core.algorithms.ortools_bottleneck import OrtoolsWarmstartError
 from core.errors import ValidationError
 from core.models.objective import target_objectives_for
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.models.schedule_config_runtime_snapshot import snapshot_from_values
-from core.models.workbench_run_compute import CandidateRunComputation
 from core.services.scheduler.contracts.optimizer_public_search_report import project_search_report
 from core.services.scheduler.run import schedule_optimizer_steps, schedule_shared_optimizer
 from core.services.scheduler.run.optimizer.candidate_fingerprint import CandidateFingerprint
-from core.services.scheduler.run.optimizer.graph.candidates import evaluate_graph_ready_candidate
+from core.services.scheduler.run.optimizer.graph.candidates import (
+    PreparedDecisionFeatures,
+    evaluate_graph_ready_candidate,
+)
 from core.services.scheduler.run.optimizer.graph.iterated_greedy import _IteratedGreedySearch
 from core.services.scheduler.run.optimizer.graph.iterated_greedy_contract import (
     IteratedGreedyLimits,
     new_iterated_greedy_report,
 )
 from core.services.scheduler.run.optimizer.graph.iterated_greedy_moves import _parent_from_candidate
+from core.services.scheduler.run.optimizer.graph.repair_decisions import prepare_repair_parent
 from core.services.scheduler.run.optimizer.graph.reporting import append_graph_trace
 from core.services.scheduler.run.optimizer.graph.stages import _candidate_should_replace_best
+from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
+from core.services.scheduler.run.optimizer.graph.v2_ranks import build_v2_common_rank_cache
 from core.services.scheduler.run.optimizer.graph_ready_profiles import resolve_v2_profiles
 from core.services.scheduler.run.optimizer.grasp_ig_candidates import _append_trace
 from core.services.scheduler.run.optimizer.local_search_round import _record_improvement
@@ -43,10 +47,7 @@ from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudg
 from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 from core.services.scheduler.run.optimizer.shared_process import build_shared_process
 from core.services.scheduler.run.optimizer.step_report_hooks import _append_multi_start_trace, _append_ortools_trace
-from core.services.scheduler.run.schedule_candidate_plan import CandidateComparisonOutcome, CandidatePlan
-from core.services.scheduler.run.schedule_payload_contract import ValidatedSchedulePayload
 from core.services.scheduler.run.schedule_shared_search import GoalView, SharedSearch
-from core.services.workbench.run.result_preparation import _prepare_result_artifacts
 from tests._support.optimizer_graph_ready_benchmark import (
     START_DT,
     BenchmarkClock,
@@ -56,19 +57,6 @@ from tests._support.optimizer_graph_ready_benchmark import (
     graph_ready_benchmark_operations,
 )
 from tests._support.shared_schedule_archive import _observe_decoded, _register_decode
-from tests.workbench.legacy_run_archive_support import load_legacy_process_evidence
-
-
-@dataclass(frozen=True)
-class _FrozenScope:
-    frozen_op_ids: Set[int]
-    operation_efforts: List[OperationEffort]
-
-
-@dataclass(frozen=True)
-class _Orchestration:
-    candidate_comparison: CandidateComparisonOutcome
-    result_summary_obj: Dict[str, object]
 
 
 def _candidate(primary, *, complete=True, objective="min_tardiness"):
@@ -134,7 +122,8 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
     assert best["summary"].success and scheduler._decode_invocations == 1
     assert best["decode_receipt"]["execution_kind"] == "new_decision"
     assert best["runtime_ms"] == int(best["decode_receipt"]["original_decode_ms"])
-    solver_failure, observer_failure = RuntimeError("optional order unavailable"), RuntimeError("archive observer failed")
+    solver_failure = OrtoolsWarmstartError("optional order unavailable")
+    observer_failure = RuntimeError("archive observer failed")
     solver_results = [solver_failure, list(reversed(batches))]
     solver_calls = []
     solver_finished_at = None
@@ -262,7 +251,8 @@ def test_all_trace_producers_preserve_improvement_after_two_hundred_points():
         lambda trace: append_graph_trace(improvement_trace=trace, candidate=candidate, profile=profile, clock=clock,
                                         t_begin=0.0),
         lambda trace: _record_improvement(candidate=candidate, move=move, attempts=[], improvement_trace=trace,
-                                          clock=clock, t_begin=0.0, search_report_state=report),
+                                          clock=clock, t_begin=0.0, reference=candidate,
+                                          search_report_state=report),
         lambda trace: _append_trace(improvement_trace=trace, candidate=candidate, origin="grasp", index=210,
                                     now=clock, t_begin=0.0),
     )
@@ -429,7 +419,7 @@ def test_unknown_and_unverified_results_do_not_claim_valid_or_complete_milestone
     trial = archive_candidate([_result(1, 0), _result(2, 2), _result(3, 4)])
     clock.value = 0.2
     _observe_decoded(search, "min_tardiness", candidate=trial, origin="graph_ig", verified=False, elapsed_ms=200)
-    assert trial["_shared_entry_id"] not in archive
+    assert trial["archive_ref"].entry_id not in archive
     before_verified = build_shared_process(search, runtime_ms=200, stop_reason="completed", decode_stats={},
                                            budget_stats=budget.summary(finished_at=0.2))
     pending_points = before_verified["targets"]["min_tardiness"]["points"]
@@ -449,7 +439,7 @@ def test_unknown_and_unverified_results_do_not_claim_valid_or_complete_milestone
     assert first_scope["components_known"] is False and first_scope["is_complete"] is False
     assert first["score"] == [1.0, None, None, None, None, None]
     assert "first_valid" not in first["flags"] and "first_expected_complete" not in first["flags"]
-    assert evidence["events"][1]["entry_id"] == trial["_shared_entry_id"]
+    assert evidence["events"][1]["entry_id"] == trial["archive_ref"].entry_id
     assert evidence["events"][1]["verified"] is False
     assert all(point.get("source_event_id") != 2 for point in points)
     milestones = [point for point in points if "first_valid" in point["flags"]]
@@ -490,10 +480,17 @@ def test_unknown_and_unverified_results_do_not_claim_valid_or_complete_milestone
         ort_order=list(batches), dispatch_mode_cfg="sgs", dispatch_rule_cfg="slack", resource_pool=None,
         objective_name="min_tardiness", optimizer_algo_stats={}, readiness_gate_enabled=False,
         graph_ready_context=None, decode_session=session)
-    parent = _parent_from_candidate(baseline, operations=operations, graph_context=context)
+    parent = _parent_from_candidate(baseline, graph_context=context,
+                                    prepared=prepare_repair_parent(
+                                        baseline, operations, context,
+                                        resource_pairs_for=session.native_preparation.qualified_resource_pairs))
     assert parent is not None
-    evaluate = partial(evaluate_graph_ready_candidate, graph_ready_context=context,
-        metrics_by_op_id=context["node_metrics_by_op_id"], strict_mode=True, algo_ops_to_schedule=operations,
+    graph_metrics = enrich_graph_ready_v2_metrics(context["node_metrics_by_op_id"], operations=operations,
+                                                  batches=batches, start_dt=START_DT, graph_ready_context=context,
+                                                  calendar_service=scheduler.calendar, downtime_map={}, seed_results=[])
+    decision_features = PreparedDecisionFeatures(graph_metrics, build_v2_common_rank_cache(graph_metrics))
+    evaluate = partial(evaluate_graph_ready_candidate,
+        prepared_decision_features=decision_features, strict_mode=True,
         strategy=SortStrategy.PRIORITY_FIRST, params={}, start_dt=START_DT, end_date=None, dispatch_rule="slack",
         resource_pool=None, objective_name="min_tardiness", optimizer_algo_stats=None,
         readiness_gate_enabled=False, version=0, clock=clock)
@@ -506,94 +503,20 @@ def test_unknown_and_unverified_results_do_not_claim_valid_or_complete_milestone
     identity_by_id.update({id(original): _identity("original"), id(capture): _identity("original"),
                           id(improved): _identity("improved")})
     tracker.adopt_best(original)
-    search.capturing = original
     clock.value = 0.5
-    search._consider_for_incumbent(capture)
+    search._consider_for_incumbent(capture, capture_of=original)
     assert report["reference_captures"] == 1 and tracker.best is original
     row = search.attempts[-1]
     assert row["comparison"]["kind"] == "reference_capture" and row["accepted"] is False
     assert row["strict_improved"] is False and row["comparison"]["metric_deltas"]["total_tardiness_hours"] == 0.0
-    search.capturing = None
     clock.value = 0.75
-    search._consider_for_incumbent(improved)
+    search._consider_for_incumbent(improved, capture_of=None)
     row = search.attempts[-1]
     assert tracker.best is improved and search.improved_incumbent is True
     assert row["elapsed_ms"] == 750 and row["accepted"] is True and row["strict_improved"] is True
     assert row["comparison"]["kind"] == "incumbent"
     assert row["comparison"]["reference_score"] == list(original["score"])
     assert row["comparison"]["metric_deltas"]["total_tardiness_hours"] == -12.0
-
-
-def test_reuse_failure_skip_counts_and_persisted_source_reference_have_distinct_meanings():
-    empty = _candidate(0.0)
-    empty["metrics"].completion = BatchCompletion(expected_operation_count=0, missing_operation_count=0,
-        unexpected_result_count=0, complete_batch_count=0, incomplete_batch_ids=(), partial_batch_ids=(),
-        failure_detail_count=0, failure_batch_ids=())
-    empty["summary"] = ScheduleSummary(success=True, total_ops=0, scheduled_ops=0, failed_ops=0,
-                                      warnings=[], errors=[], duration_seconds=0.0)
-    empty["metrics"].makespan_hours = 0.0
-    empty["score"] = (0.0,) + objective_score("min_tardiness", empty["metrics"])
-    # Frozen legacy saved records keep zero work distinct from unavailable runtime history.
-    own = load_legacy_process_evidence("min_tardiness_own_empty")
-    reused = load_legacy_process_evidence("min_tardiness_reused", source_candidate_key="graph-source")
-    skipped = load_legacy_process_evidence("min_tardiness_not_started")
-    budget_stopped = load_legacy_process_evidence("min_tardiness_budget_skipped_11")
-    failed = load_legacy_process_evidence("min_tardiness_failed_17")
-    original_evidence = deepcopy((own, reused, skipped, budget_stopped, failed))
-    assert reused["state"] == skipped["state"] == "complete"
-    assert reused["elapsed_ms"] == skipped["elapsed_ms"] == 0
-    assert all(value == 0 for value in reused["counts"].values())
-    assert all(value == 0 for value in skipped["counts"].values())
-    assert budget_stopped["state"] == "unavailable" and budget_stopped["elapsed_ms"] == 11
-    assert all(value is None for value in budget_stopped["counts"].values())
-    assert budget_stopped["sampling"]["event_total_count"] is None
-    assert failed["state"] == "unavailable" and failed["elapsed_ms"] == 17
-    assert all(value is None for value in failed["counts"].values())
-    assert failed["sampling"]["event_total_count"] is None and failed["rejection_summary"] is None
-    assert reused["points"] == skipped["points"] == budget_stopped["points"] == failed["points"] == []
-
-    source_plan = CandidatePlan(sequence=1, candidate_key="graph-source", kind="critical_chain", label="来源方案",
-        status="completed", score=empty["score"], graph_critical_weight=500, graph_impact_weight=10,
-        graph_downstream_weight=1, metrics=empty["metrics"], summary=empty["summary"], objective="min_tardiness",
-        objective_name="min_tardiness", process_evidence=own)
-    reused_plan = replace(source_plan, sequence=2, candidate_key="graph-reused", label="复用方案",
-                          reused_from_candidate_key=source_plan.candidate_key, process_evidence=reused)
-    failed_plan = replace(source_plan, sequence=3, candidate_key="graph-failed", label="失败方案", status="failed",
-                          score=None, metrics=None, summary=None, process_evidence=failed)
-    skipped_plan = replace(source_plan, sequence=4, candidate_key="graph-skipped", label="跳过方案", status="skipped",
-                           score=None, metrics=None, summary=None, process_evidence=skipped)
-    plans = [source_plan, reused_plan, failed_plan, skipped_plan]
-    # Explicit saved legacy selection: historical projection never runs the retired selector.
-    saved_selection = {
-        "selected_candidate_key": "graph-source", "selected_kind": "critical_chain",
-        "selection_policy": "score_only", "reason_code": "score_only_raw_score_best",
-        "raw_score_best_key": "graph-source", "baseline_best_key": None,
-        "critical_best_key": "graph-source", "critical_health_best_key": None,
-        "selected_score": list(empty["score"]), "selection_policy_version": "candidate-selection-v1",
-        "tolerance_overdue_jobs": None, "tolerance_weighted_tardiness_pct": None,
-        "tolerance_makespan_pct": None, "tolerance_changeover_pct": None,
-    }
-    selection = SimpleNamespace(selected_plan=source_plan, selected_candidate_key="graph-source",
-                                to_dict=lambda: dict(saved_selection))
-    comparison = CandidateComparisonOutcome(candidates=plans, selection=selection,
-        planned_count=4, completed_count=2, failed_count=1, skipped_count=1, time_budget_reached=True,
-        selection_policy="score_only", run_time_budget_seconds=1.0, skipped_candidate_labels=["跳过方案"],
-        baseline_missing_or_failed=True, reused_count=1)
-    payload = ValidatedSchedulePayload(schedule_rows=[], scheduled_op_ids=set(), assigned_by_op_id={})
-    computation = CandidateRunComputation(schedule_input=_FrozenScope(frozen_op_ids=set(), operation_efforts=[]),
-        orchestration=_Orchestration(candidate_comparison=comparison, result_summary_obj={}),
-        candidate_payloads={source_plan.candidate_key: payload, reused_plan.candidate_key: payload}, dispositions=[], state="partial")
-    saved, receipt = _prepare_result_artifacts(computation, {}, run_ref="r" * 48, batch_refs={})
-    rows = {row["key"]: row for row in saved}
-    source_ref = rows[source_plan.candidate_key]["candidate_ref"]
-    mapped = rows[reused_plan.candidate_key]["artifact"]["process_evidence"]
-    assert mapped["source"]["reused_from_candidate_ref"] == source_ref
-    assert "reused_from_candidate_key" not in mapped["source"]
-    assert receipt["selection"]["selected_candidate_ref"] == source_ref
-    assert reused["source"]["reused_from_candidate_key"] == source_plan.candidate_key
-    assert rows[failed_plan.candidate_key]["artifact"]["process_evidence"]["counts"]["evaluated"] is None
-    assert rows[skipped_plan.candidate_key]["artifact"]["process_evidence"]["counts"]["evaluated"] == 0
-    assert (own, reused, skipped, budget_stopped, failed) == original_evidence
 
 
 def test_report_uses_archive_identity_and_evaluation_without_scanning_schedule_rows():
@@ -627,4 +550,4 @@ def test_report_uses_archive_identity_and_evaluation_without_scanning_schedule_r
     previous = set(report.candidate_fingerprints)
     report.mark_candidate_evaluated(trial_rows, origin="checkpoint_trial", remember_fingerprint=False)
     assert report.candidate_fingerprints == previous
-    assert trial_rows["_shared_entry_id"] not in archive
+    assert trial_rows["archive_ref"].entry_id not in archive

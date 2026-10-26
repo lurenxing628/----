@@ -34,7 +34,7 @@ from .piece_adoption_execution import _quantities, validate_piece_execution
 from .piece_adoption_facts import current_piece_scope
 
 
-def validate_piece_candidate(conn, *, prepared, payload, context=None):
+def validate_piece_candidate(conn, *, prepared, payload, context):
     """Validate a known payload for publication while retaining every protected seed.
 
     payload has already passed validate_candidate, which owns time representability,

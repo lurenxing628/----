@@ -21,28 +21,23 @@ def ensure_secret_key(app: Flask) -> None:
         app.config["SECRET_KEY"] = env_key
         return
 
-    log_dir = str(app.config.get("LOG_DIR") or "").strip()
-
-    secret_file = os.path.join(log_dir, "aps_secret_key.txt") if log_dir else ""
+    secret_file = os.path.join(app.config["LOG_DIR"], "aps_secret_key.txt")
     min_len = 32
 
-    if secret_file:
-        try:
-            # 拒绝软链接：与日志读取/诊断包同一道锁，挡「固定文件名指向任意文件」借壳；
-            # 是软链接则跳过读取、走下方重新生成（诚实降级，不跟随链接读到非预期内容）。
-            if is_regular_file(secret_file):
-                key0 = read_fixed_text(secret_file).strip()
-                if len(key0) >= min_len:
-                    app.config["SECRET_KEY"] = key0
-                    return
-        except Exception as e:
-            safe_log(app.logger, "warning", "读取 SECRET_KEY 文件失败（将尝试重新生成）：%s", e)
+    try:
+        # 拒绝软链接：与日志读取/诊断包同一道锁，挡「固定文件名指向任意文件」借壳；
+        # 是软链接则跳过读取、走下方重新生成（诚实降级，不跟随链接读到非预期内容）。
+        if is_regular_file(secret_file):
+            key0 = read_fixed_text(secret_file).strip()
+            if len(key0) >= min_len:
+                app.config["SECRET_KEY"] = key0
+                return
+    except Exception as e:
+        safe_log(app.logger, "warning", "读取 SECRET_KEY 文件失败（将尝试重新生成）：%s", e)
 
     key = secrets.token_urlsafe(32)
     app.config["SECRET_KEY"] = key
 
-    if not secret_file:
-        return
     try:
         write_fixed_text(secret_file, key + "\n", replace_symlink=True)
         app.logger.info("已生成 SECRET_KEY 并写入：%s", secret_file)

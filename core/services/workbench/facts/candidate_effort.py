@@ -8,10 +8,10 @@ from .preparation_projection import project_operation_effort
 
 
 def candidate_operation_effort_projection(source):
-    runtime = saved_operation_efforts((source.receipt or {}).get("operation_effort"), identities=source.facts.operations)
+    runtime = saved_operation_efforts(source.receipt.get("operation_effort"), identities=source.facts.operations)
     arranged = {row["operation_ref"]: row for row in source.tasks}
-    refs = set(arranged) | {row["operation_ref"] for row in source.unplanned or []}
-    deferred = material_deferred_ids((source.disposition or {}).values(), source.capture["input"])
+    refs = set(arranged) | {row["operation_ref"] for row in source.unplanned}
+    deferred = material_deferred_ids(source.disposition.values(), source.capture["input"])
     available = source.candidate["status"] == "completed"
     roles = {OperationRequirementRole.NEW_SCHEDULE.value, OperationRequirementRole.RETAINED.value,
              OperationRequirementRole.EXECUTION.value, OperationRequirementRole.COMPLETED.value}

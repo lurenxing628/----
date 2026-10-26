@@ -18,15 +18,16 @@ from .gantt_graph import candidate_gantt_graph
 class CandidateReadSource:
     run: dict
     candidate: dict
-    disposition: Optional[dict]
+    disposition: dict
     capture: dict
     facts: GenerationFacts
     raw_tasks: list
     tasks: list
-    unplanned: Optional[list]
+    unplanned: list
     catalog: list
     scheduled_op_ids: Optional[set]
-    receipt: Optional[dict] = None
+    # validate_manifest rejects a missing receipt whenever its candidate rows exist.
+    receipt: dict
 
     @property
     def snapshot_identity(self):
@@ -89,6 +90,9 @@ def read_candidate_source(store, candidate_ref, *, prepared=None):
             if tasks is not None:
                 corrupt()
             raw_tasks = store.tasks(candidate_ref)
+    if disposition is None:
+        # 有候选行的运行只能是已完成运行，它的回执必带 dispositions；缺了就是存档损坏。
+        corrupt()
     if tasks is None:
         if len(raw_tasks) != candidate["task_count"]:
             corrupt()

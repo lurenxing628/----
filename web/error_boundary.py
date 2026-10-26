@@ -32,8 +32,7 @@ def _normalized_reason(details: dict) -> str:
 
 
 def _looks_internal_message(message: str) -> bool:
-    text = str(message or "").strip()
-    return bool(text) and bool(_INTERNAL_ASCII_RE.search(text)) and not re.search(r"[\u4e00-\u9fff]", text)
+    return bool(_INTERNAL_ASCII_RE.search(message)) and not re.search(r"[\u4e00-\u9fff]", message)
 
 
 def _generic_app_error_message(code: ErrorCode) -> str:
@@ -49,36 +48,27 @@ def _generic_app_error_message(code: ErrorCode) -> str:
 
 
 def _looks_internal_non_validation_message(message: str) -> bool:
-    text = str(message or "").strip()
-    if not text:
-        return False
-    if _looks_internal_message(text):
-        return True
-    if _message_mentions_machine_key(text):
-        return True
-    if _message_mentions_path_like(text):
-        return True
-    return False
+    return (
+        _looks_internal_message(message)
+        or _message_mentions_machine_key(message)
+        or _message_mentions_path_like(message)
+    )
 
 
 def _message_mentions_internal_field(message: str, field: str) -> bool:
-    text = str(message or "").strip()
-    key = str(field or "").strip()
-    if not text or not key:
+    if field in _PUBLIC_LITERAL_MESSAGE_FIELDS:
         return False
-    if key in _PUBLIC_LITERAL_MESSAGE_FIELDS:
+    if not _MACHINE_FIELD_RE.match(field):
         return False
-    if not _MACHINE_FIELD_RE.match(key):
-        return False
-    return key in text
+    return field in message
 
 
 def _message_mentions_machine_key(message: str) -> bool:
-    return bool(_INTERNAL_KEY_RE.search(str(message or "")))
+    return bool(_INTERNAL_KEY_RE.search(message))
 
 
 def _message_mentions_path_like(message: str) -> bool:
-    return bool(_PATH_LIKE_RE.search(str(message or "")))
+    return bool(_PATH_LIKE_RE.search(message))
 
 
 def _validation_error_message(exc: AppError, details: dict) -> str:

@@ -86,10 +86,9 @@ def _same_dependency_ends(remaining, graph, progress):
 
 
 class DecodeTailReuse:
-    def __init__(self, checkpoints: Sequence[DecodeCheckpoint], *, check_budget=None):
+    def __init__(self, checkpoints: Sequence[DecodeCheckpoint]):
         self.checkpoints = {item.position: item for item in checkpoints}
         self.final = max(checkpoints, key=lambda item: item.position) if checkpoints else None
-        self.check_budget = check_budget
         self.checks = 0
         self.reused_picks = 0
         self.bulk_installs = 0
@@ -118,8 +117,7 @@ class DecodeTailReuse:
         suffix = self.final.state.results[len(checkpoint.state.results):]
         if len(suffix) != self.final.position - position or self.final.state.failed_count:
             return False
-        if not install_reconverged_tail(checkpoint, self.final, state=state, next_idx=next_idx,
-                                       graph_state=graph_state, check_budget=self.check_budget):
+        if not install_reconverged_tail(checkpoint, self.final, state=state, next_idx=next_idx, graph_state=graph_state):
             self.reason = "unsupported_native_tail_snapshot"
             return False
         self.reused_picks += len(suffix)

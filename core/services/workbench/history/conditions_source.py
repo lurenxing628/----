@@ -12,7 +12,7 @@ from core.services.workbench.facts.trial_origin import operation_contexts
 
 
 def _table_paths(rows, key, prefix):
-    return {row[key]: f"{prefix}[{index}]" for index, row in enumerate(rows or [])}
+    return {row[key]: f"{prefix}[{index}]" for index, row in enumerate(rows)}
 
 
 def _join_path(prefix, path):

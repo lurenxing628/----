@@ -5,13 +5,15 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Protocol, Sequence, Set
 
 from core.errors import AppError, ValidationError
-from core.models.resource_capabilities import machine_types, supports_source
+from core.models.resource_capabilities import supports_source
 from data.repositories.operator_machine_repo import OperatorMachineRepository
 from data.repositories.operator_qualification_repo import OperatorQualificationRepository
 
 
 class OperatorQualificationError(ValidationError):
     """Qualification failures must not fall back to an unfiltered resource pool."""
+
+    details: Dict[str, Any]  # every raise site records the failure ``reason``
 
 
 class MachineAuthorizations(Protocol):
@@ -40,12 +42,12 @@ def require_machine_authorization(authorizations: MachineAuthorizations, operato
         )
 
 
-def _require_explicit_auto_work_types(operations: Sequence[Any], rows: List[Dict[str, Any]],
-                                     qualifications: Dict[str, Optional[Set[str]]]) -> None:
+def require_explicit_auto_work_types(operations: Sequence[Any], rows: List[Dict[str, Any]],
+                                    qualifications: Dict[str, Optional[Set[str]]]) -> None:
     declared_machines = {row["machine_id"] for row in rows
                          if row["operator_id"] in qualifications and qualifications[row["operator_id"]] is not None}
     for op in operations:
-        if (op.source or "").strip().lower() != "internal" or op.operator_id:
+        if op.source != "internal" or op.operator_id:
             continue
         if op.machine_id in declared_machines:
             op_type_id = op.op_type_id
@@ -104,17 +106,16 @@ class OperatorQualificationService:
         return qualifications
 
     @staticmethod
-    def eligible_links(rows: List[Dict[str, Any]], machines: List[Any], operations: Sequence[Any], *,
+    def eligible_links(rows: List[Dict[str, Any]], machine_capabilities: Dict[str, Set[str]], *,
                        qualifications: Dict[str, Optional[Set[str]]]) -> List[Dict[str, Any]]:
-        _require_explicit_auto_work_types(operations, rows, qualifications)
-        capabilities = {machine.machine_id: set(machine_types(machine)) for machine in machines}
+        """Links whose machine is in ``machine_capabilities`` and whose operator is qualified for one of its work types."""
         result = []
         for row in rows:
             oid, mid = row["operator_id"], row["machine_id"]
-            if oid not in qualifications or mid not in capabilities:
+            if oid not in qualifications or mid not in machine_capabilities:
                 continue
             skills = qualifications[oid]
-            if skills is None or capabilities[mid] & skills:
+            if skills is None or machine_capabilities[mid] & skills:
                 result.append(row)
         return result
 

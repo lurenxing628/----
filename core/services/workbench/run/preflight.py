@@ -1,13 +1,12 @@
 """Business preflight, not a schedule, publication or worker admission."""
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional, cast
 
 from core.errors import AppError, ValidationError
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
 from core.models.workbench_preflight import issue, normalize_preflight_input
-from core.services.scheduler.repository_bundle import build_schedule_repository_bundle
 from core.services.workbench.facts.piece_scope import build_piece_adoption_scope
 from core.services.workbench.facts.preflight_checks import stored_date
 from core.services.workbench.facts.preflight_dependencies import link_predecessors
@@ -40,13 +39,12 @@ class PreparedPreflight:
     config_error: Optional[ValidationError] = None
     run_options: object = None
     held_arrangements: object = None
-    data_context_ref: str = field(init=False, repr=False, compare=False)
 
 
-def task_row(facts, batch, op, projection):
+def task_row(operation_ref, batch, op, projection):
     execution_keys = ("execution_state", "completion_basis", "first_actual_start", "confirmed_finish",
                       "remaining_quantity", "data_quality", "known_completed_quantity", "unknown_record_count")
-    return {"operation_ref": facts.operation_ref(op), "op_id": op["id"], "batch_ref": batch["ref"], "batch_id": batch["batch_id"],
+    return {"operation_ref": operation_ref, "op_id": op["id"], "batch_ref": batch["ref"], "batch_id": batch["batch_id"],
             "sequence": op["seq"], "piece_id": op["piece_id"], "label": op["op_type_name"], "source": op["source"],
             "status": "eligible", "issues": [], "predecessor_refs": [],
             "has_execution_facts": bool(projection.get("reports") or projection.get("legacy_facts")),
@@ -148,8 +146,9 @@ class PreflightService:
                     unready.append({"batch_ref": batch["ref"], "batch_id": batch["batch_id"]})
                 batch_rows = []
                 for op in ops:
-                    projection = projections[self.facts.operation_ref(op)]
-                    row = task_row(self.facts, batch, op, projection)
+                    operation_ref = self.facts.operation_ref(op)
+                    projection = projections[operation_ref]
+                    row = task_row(operation_ref, batch, op, projection)
                     op_ready, release_day = ([], None) if op["id"] in cycles else checks.operation_readiness(batch, op, settings)
                     row["material_ready_date"] = release_day if release_day != "1900-01-01" else None
                     row["status"], row["issues"] = classify(checks, batch, op, projection, settings, op_ready,
@@ -187,11 +186,10 @@ class PreflightService:
                              *, hold_window_bounds):
         """排产计算或采用才会发现、却在开始前就能看出的冲突：外协记录占了本厂资源，
         不重排时段保留的原安排按现在的资料已不成立。返回 (阻断原因, 提醒, {工序: 保留标记}, 保留安排结果)。"""
-        svc = build_schedule_repository_bundle(self.facts.conn)
         capture = cast("ProductionFactsCapture", self.facts.capture)
         version = max((row["version"] for row in capture.table("ScheduleHistory")), default=0)
         ledger_ready = not any(item["code"] == "execution_ledger_unavailable" for item in ledger_reasons)
-        reasons = external_resource_issues(self.facts, svc, operations, version) if ledger_ready else []
+        reasons = external_resource_issues(self.facts, operations, version) if ledger_ready else []
         # 与排产计算查不重排时段的范围一致：这次要重排的工序，加上合并外协组按实际周期派生保留的成员。
         held_ids = {row["op_id"] for row in rows if row["status"] in ("eligible", "auto_assign_required")} | set(cycles)
         held, notes, marks, held_obj = held_arrangement_reasons(

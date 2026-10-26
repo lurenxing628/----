@@ -78,9 +78,9 @@ class SystemMaintenanceService:
         db_path: str,
         backup_dir: str,
         backup_keep_days_default: int,
-        logger=None,
-        op_logger=None,
-        admission_window=None,
+        logger,
+        op_logger,
+        admission_window,
     ) -> None:
         if not MaintenanceThrottle.allow_run(cls.CHECK_THROTTLE_SECONDS):
             return
@@ -99,7 +99,7 @@ class SystemMaintenanceService:
                 if job_states is None:
                     job_states = {item.job_key: item for item in repo.list_all()}
                 captured = cls._is_due(job_states.get(job_key), current, interval_minutes)
-                if captured and admission_window is not None and not admitted:
+                if captured and not admitted:
                     ownership.enter_context(admission_window())
                     admitted = True
                 return captured

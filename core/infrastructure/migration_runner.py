@@ -11,7 +11,6 @@ from .migration_backup import restore_db_file_from_backup
 from .migration_common import MigrationOutcome, fallback_log
 from .migration_state import (
     CURRENT_SCHEMA_VERSION,
-    MigrationContractError,
     build_contract_error,
     ensure_current_schema_contract,
     ensure_schema_version,
@@ -55,7 +54,7 @@ def migrate_with_backup(
     to_version: int,
     backup_dir: Optional[str] = None,
     *,
-    schema_sql: Optional[str] = None,
+    schema_sql: str,
     logger=None,
     connection_factory: ConnectionFactory,
 ) -> None:
@@ -176,7 +175,7 @@ def _apply_migrations(
     db_path: str,
     *,
     to_version: int,
-    schema_sql: Optional[str],
+    schema_sql: str,
     logger=None,
     connection_factory: ConnectionFactory,
 ) -> None:
@@ -205,7 +204,7 @@ def _apply_version_range(
     *,
     current: int,
     to_version: int,
-    schema_sql: Optional[str],
+    schema_sql: str,
     logger=None,
 ) -> None:
     applied_upto = current
@@ -216,8 +215,9 @@ def _apply_version_range(
             applied_upto = version
             continue
         _log_incomplete_migration(version, applied_upto=applied_upto, outcome=outcome, logger=logger)
-        missing_tables = missing_schema_tables(conn, schema_sql) if schema_sql else None
-        raise build_contract_error(missing_tables=missing_tables, blocked_version=version, blocked_outcome=outcome)
+        raise build_contract_error(
+            missing_tables=missing_schema_tables(conn, schema_sql), blocked_version=version, blocked_outcome=outcome
+        )
 
 
 def _ensure_completed_event_migration_tables(conn: sqlite3.Connection, *, current: int) -> None:

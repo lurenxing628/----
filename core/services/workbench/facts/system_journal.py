@@ -1,11 +1,10 @@
 """External file-operation records survive database replacement; reads never replay work."""
 
-import json
 import os
 import re
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, NoReturn
 
 from core.infrastructure.safe_files import (
     create_fixed_file_exclusive,
@@ -19,6 +18,7 @@ from core.models.workbench_command import (
     validate_request_key,
 )
 from core.models.workbench_system import JOB_STATES, TERMINAL_STATES
+from core.shared.strict_json import load_strict_json
 
 _RESTORE_TERMINALS = {
     "succeeded": ("verified",),
@@ -28,6 +28,10 @@ _RESTORE_TERMINALS = {
 }
 _NOT_CAPTURED = object()
 _JOURNAL_LIMIT = 2000
+
+
+def _unreadable_record() -> NoReturn:
+    raise RuntimeError("维护记录不是严格的 UTF-8 JSON，须人工核查。")
 
 
 def file_content(path):
@@ -76,7 +80,7 @@ class SystemMaintenanceJournal:
             content = stream.read(limit + 1)
         if len(content) > limit:
             raise RuntimeError("维护记录超过允许大小，须人工核查。")
-        row = self._record_content(json.loads(content.decode("utf-8")))
+        row = self._record_content(load_strict_json(content, on_malformed=_unreadable_record))
         name = os.path.basename(path)
         if (row["version"] == 2 and os.path.abspath(path) != os.path.abspath(self._path(row["job_ref"]))
                 or row["version"] == 1 and re.fullmatch(r"[a-f0-9]{64}\.json", name) is None):

@@ -19,7 +19,7 @@ from flask import current_app, flash, redirect, render_template, request, send_f
 
 from core.services.workbench.messages import BEIJING
 from web.manual_src_security import normalize_manual_src_context
-from web.viewmodels.page_manuals_registry import manual_entry
+from web.viewmodels.page_manuals_registry import VIEW_MANUALS
 
 from .legacy_blueprints import scheduler_bp as bp
 from .legacy_presentation import manual_blocks
@@ -70,11 +70,11 @@ def _build_full_manual_section_url(link_src: str, anchor: str) -> str:
 
 
 def _normalize_scheduler_manual_args(
-    raw_src: Optional[str], raw_page: Optional[str]
+    raw_src: str, raw_page: str
 ) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, Any]], Optional[str]]:
     """返回 (安全的返回地址, 已登记的视图 id, 登记条目, 页面提示)；未登记的 page 不回显原文。"""
     safe_src = normalize_manual_src_context(raw_src)
-    entry = manual_entry(raw_page) if raw_page else None
+    entry = VIEW_MANUALS.get(raw_page)
     safe_page = entry["view"] if entry else None
     page_warning = None
     if raw_page and entry is None:
@@ -158,7 +158,7 @@ def _build_related_manual_links(
 ) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for view_id in entry.get("related", ()):
-        related = manual_entry(view_id)
+        related = VIEW_MANUALS.get(view_id)
         if related is None:
             raise ValueError(f"page_manuals_registry related view is not registered: {view_id!r}")
         section = sections.get(related["heading"])

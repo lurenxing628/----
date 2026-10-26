@@ -35,7 +35,7 @@
   }
   function recovery(adapters) {
     function readPending(adapter) {
-      try { return typeof adapter.readPending === 'function' && adapter.readPending(); }
+      try { return adapter.readPending(); }
       catch (error) { if (error.intent) return error.intent; throw error; }
     }
     const pending = [{ type: 'base', adapter: adapters.base }, ...fileKinds.map(kind => ({ type: 'file', kind, adapter: adapters.files[kind] })),

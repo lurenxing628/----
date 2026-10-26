@@ -52,14 +52,6 @@ class DashboardExternalHandling:
         self.repo = WorkbenchDashboardExternalRepository(conn)
 
     def read(self, summary, receipts):
-        state = self.repo.schema_state()
-        if state == "not_connected":
-            return [], {}, {}  # v30 remains explicitly unsupported until v31 installs the extension.
-        if state != "loaded" or summary["state"] not in ("loaded", "no_data"):
-            summary.update(handling_supported=False, handling_count=None, closed_count=None,
-                           handling_state="unavailable", handling_issues=[{"code": "dashboard_external_unavailable",
-                           "message": "外协处置记录不完整，请核对登记来源和处置历史。"}])
-            return [], {}, {"state": "unavailable"}
         refs = list(receipts)
         mappings = read_receipt_mappings(self.repo, refs)
         stored, _ = read_external_stored(self.repo, receipts)
@@ -73,4 +65,4 @@ class DashboardExternalHandling:
                 observations.append((dict(item, item_ref=mapped["item_ref"]), saved, mapped))
         summary.update(handling_supported=True, handling_count=len(stored),
                        closed_count=sum(row["handling"]["status"] == "closed" for row in stored.values()))
-        return bounded(observations), stored, {"mappings": mappings, "state": state}
+        return bounded(observations), stored, {"mappings": mappings}

@@ -23,7 +23,7 @@ from core.services.workbench.run.decision_impact import (
 )
 from core.services.workbench.run.decision_queries import read_decision_details
 from core.services.workbench.run.decision_resource_engine import DecisionResources
-from core.services.workbench.run.decision_source import DecisionSource
+from core.services.workbench.run.decision_source import DecisionSource, OfficialReading
 from core.services.workbench.run.decision_workspace import _reference_workspace
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_candidate_adoption_support import INTENT, preview, service
@@ -97,31 +97,31 @@ def test_resource_reference_gap_preserves_known_operation_change_subtotal():
     before = [dict(template, row_ref="before-a", operation_ref="op-a"), dict(template, row_ref="before-b", operation_ref="op-b")]
     after = [dict(template, row_ref="after-a", operation_ref="op-a", start="2026-09-09T09:00:00"),
              dict(template, row_ref="after-b", operation_ref="op-b", machine={"ref": None})]
-    values = operation_changes(after, before, ["op-a", "op-b"], True)
+    groups, original = by_operation(before), deepcopy((before, after))
+    before_times, after_times = ({row["row_ref"]: (datetime.fromisoformat(row["start"]), datetime.fromisoformat(row["end"]))
+                                 for row in rows} for rows in (before, after))
+    inputs = {"deferred_refs": set(), "reference_deferred_refs": set(),
+              "reference_groups": groups, "selected_groups": by_operation(after),
+              "task_intervals": after_times, "reference_task_intervals": before_times}
+    values = operation_changes(["op-a", "op-b"], True, selected_available=True, **inputs)
+    assert (before, after) == original
     assert values["changed_operation_count"]["value"] is None
     assert values["changed_operation_count"]["known_subtotal"] == 1
     assert values["machine_change_count"]["value"] is None
     assert values["machine_change_count"]["known_subtotal"] == 0
-    comparisons = dict(iter_operation_comparisons(after, before, ["op-a", "op-b"], True, display=True))
+    comparisons = dict(iter_operation_comparisons(["op-a", "op-b"], True, selected_available=True, display=True, **inputs))
     assert operation_change_metrics(comparisons.values(), ["op-a", "op-b"], True) == values
     unavailable = operation_change_metrics(comparisons.values(), ["op-a", "op-b"], False)
-    assert unavailable == operation_changes(after, before, ["op-a", "op-b"], False)
+    assert unavailable == operation_changes(["op-a", "op-b"], False, selected_available=True, **inputs)
     assert all(value["value"] is value["known_subtotal"] is None and value["unknown_count"] == 2
                and value["reason"]["code"] == "reference_required" for value in unavailable.values())
     unavailable = operation_change_metrics(comparisons.values(), ["op-a", "op-b"], True, selected_available=False)
-    assert unavailable == operation_changes(after, before, ["op-a", "op-b"], True, selected_available=False)
+    assert unavailable == operation_changes(["op-a", "op-b"], True, selected_available=False, **inputs)
     assert all(value["value"] is value["known_subtotal"] is None and value["unknown_count"] == 2
                and value["reason"]["code"] == "candidate_result_unavailable" for value in unavailable.values())
-    groups, original = by_operation(before), deepcopy((before, after))
-    repeated = operation_changes(after, before, ["op-a", "op-b"], True, reference_groups=groups)
-    assert repeated == values and (before, after) == original
-    before_times, after_times = ({row["row_ref"]: (datetime.fromisoformat(row["start"]), datetime.fromisoformat(row["end"]))
-                                 for row in rows} for rows in (before, after))
-    assert operation_changes(after, before, ["op-a", "op-b"], True, reference_groups=groups,
-                             task_intervals=after_times, reference_task_intervals=before_times) == values
-    first = next(iter_operation_comparisons(after, before, ["op-a"], True, reference_groups=groups))[1]
+    first = next(iter_operation_comparisons(["op-a"], True, selected_available=True, **inputs))[1]
     assert first["before"] is before[0] and first["after"] is after[0]
-    missing = list(iter_operation_comparisons(after, before, ["missing"], True, reference_groups=groups))
+    missing = list(iter_operation_comparisons(["missing"], True, selected_available=True, **inputs))
     assert missing[0][1]["change_kinds"] == ["unknown"] and set(groups) == {"op-a", "op-b"}
     source = object.__new__(DecisionSource)
     source.comparison_mode, source.reference_ref = "candidates", "candidate-a"
@@ -131,7 +131,8 @@ def test_resource_reference_gap_preserves_known_operation_change_subtotal():
     assert source.analysis_groups("reference") is source.analysis_groups("reference")
     source._task_intervals = {"candidate-a": before_times}
     assert source.task_intervals("reference") is source.task_intervals("candidate-a")
-    source.official = {"identity": {"state": "available"}, "tasks": before, "operation_refs": ["op-a", "op-b"]}
+    source._official_reading = OfficialReading(
+        {"identity": {"state": "available"}, "tasks": before, "operation_refs": ["op-a", "op-b"]}, False)
     source.memberships = Memberships({"operation_refs": [], "batch_refs": [], "operation_sets": [], "batch_sets": []})
     assert source.official_members == {"identity": {"state": "available"}, "operation_refs": ["op-a", "op-b"]}
     source.comparison_mode = "admission_official"
@@ -145,26 +146,30 @@ def test_unproven_official_point_keeps_time_difference_unknown():
                 "machine": {"ref": "machine-a"}, "operator": {"ref": "operator-a"}, "supplier": None, "locked": False, "data_gaps": []}
     before = dict(template, interval_comparable=False, data_gaps=[{"field": "point_evidence", "code": "source_missing"}])
     after = dict(template, start="2026-09-09T09:00:00", end="2026-09-09T10:00:00")
-    difference = operation_delta(arrangement_view([before]), arrangement_view([after]))
+    # Production intervals come from task_interval: the unproven point has none.
+    after_times = {"row-a": (datetime.fromisoformat(after["start"]), datetime.fromisoformat(after["end"]))}
+    difference = operation_delta(arrangement_view([before]), arrangement_view([after]),
+                                 task_intervals=after_times, reference_task_intervals={"row-a": None})
     assert difference["start_delta_hours"] is difference["end_delta_hours"] is None
     assert difference["change_kinds"] == ["unknown"]
-    values = operation_changes([after], [before], ["op-a"], True)
+    unchanged_scope = {"selected_available": True, "deferred_refs": set(), "reference_deferred_refs": set()}
+    values = operation_changes(["op-a"], True, reference_groups=by_operation([before]), selected_groups=by_operation([after]),
+                               task_intervals=after_times, reference_task_intervals={"row-a": None}, **unchanged_scope)
     assert values["changed_operation_count"]["value"] is None
     assert values["changed_operation_count"]["known_subtotal"] == 0
     assert values["machine_change_count"]["value"] == 0
-    point = operation_changes([template], [template], ["op-a"], True)
+    point_time = datetime.fromisoformat(template["start"])
+    point_times = {"row-a": (point_time, point_time), "row-b": (point_time, point_time)}
+    point = operation_changes(["op-a"], True, reference_groups=by_operation([template]), selected_groups=by_operation([template]),
+                              task_intervals=point_times, reference_task_intervals=point_times, **unchanged_scope)
     assert point["changed_operation_count"]["value"] == point["machine_change_count"]["value"] == 0
     assert point["changed_operation_count"]["unknown_count"] == 0
-    point_time = datetime.fromisoformat(template["start"])
-    assert operation_changes([template], [template], ["op-a"], True,
-        task_intervals={"row-a": (point_time, point_time)}, reference_task_intervals={"row-a": (point_time, point_time)}) == point
-    assert operation_changes([after], [before], ["op-a"], True,
-        task_intervals={"row-a": (datetime.fromisoformat(after["start"]), datetime.fromisoformat(after["end"]))},
-        reference_task_intervals={"row-a": None}) == values
     segments = [template, dict(template, row_ref="row-b")]
-    comparisons = dict(iter_operation_comparisons([after], segments, ["op-a"], True, display=True))
+    segment_inputs = {"reference_groups": by_operation(segments), "selected_groups": by_operation([after]),
+                      "task_intervals": after_times, "reference_task_intervals": point_times, **unchanged_scope}
+    comparisons = dict(iter_operation_comparisons(["op-a"], True, display=True, **segment_inputs))
     multiple = operation_change_metrics(comparisons.values(), ["op-a"], True)
-    assert multiple == operation_changes([after], segments, ["op-a"], True)
+    assert multiple == operation_changes(["op-a"], True, **segment_inputs)
     assert all(value["value"] is None and value["known_subtotal"] == 0 and value["unknown_count"] == 1
                for value in multiple.values())
     window = {"range_start": "2026-09-09T07:00:00", "range_end": template["start"]}

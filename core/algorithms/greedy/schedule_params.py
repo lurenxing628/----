@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 from core.algorithm_contracts.date_parsers import due_exclusive, parse_date, parse_datetime
 from core.algorithm_contracts.dispatch_rules import DispatchRule, DispatchRuleSpec, parse_dispatch_rule_token
 from core.algorithm_contracts.sort_strategies import SortStrategy
-from core.algorithm_runtime.algo_stats import ensure_algo_stats, increment_counter
+from core.algorithm_runtime.algo_stats import increment_counter, make_algo_stats
 from core.errors import ValidationError
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 from core.models.scheduler_degradation_messages import public_degradation_event_message
@@ -16,7 +16,6 @@ from core.shared.field_parse import parse_field_float
 from core.shared.strict_parse import parse_required_float
 
 _FIELD_LABELS = {
-    "config_snapshot": "运行期配置快照",
     "start_dt": "开始时间",
     "end_date": "截止日期",
     "sort_strategy": "排序策略",
@@ -38,10 +37,7 @@ def _public_field_degradation_message(*, code: str, field: str) -> str:
     message = public_degradation_event_message(code)
     if not message:
         return ""
-    field_key = str(field or "").strip()
-    if not field_key:
-        return message
-    return f"{_field_label(field_key)}：{message}"
+    return f"{_field_label(field)}：{message}"
 
 
 @dataclass
@@ -56,15 +52,6 @@ class ScheduleParams:
     auto_assign_enabled: bool
     warnings: List[str]
     param_fallbacks: Dict[str, int] = field(default_factory=dict)
-
-
-def _snapshot_attr(snapshot: Any, key: str) -> Any:
-    if snapshot is None:
-        raise ValidationError("缺少运行期配置快照。", field="config_snapshot")
-    try:
-        return getattr(snapshot, key)
-    except AttributeError as exc:
-        raise ValidationError(f"运行期配置缺少“{_field_label(key)}”字段。", field=key) from exc
 
 
 def _require_choice(raw_value: Any, *, field: str, valid_values: Set[str]) -> str:
@@ -93,55 +80,6 @@ def _config_default_for(key: str) -> Any:
     return default_for(key)
 
 
-def _build_runtime_snapshot(config: Any, *, strict_mode: bool) -> ScheduleConfigSnapshot:
-    if isinstance(config, ScheduleConfigSnapshot):
-        return config
-    from core.models.schedule_config_runtime_coercion import ensure_schedule_config_snapshot
-
-    return ensure_schedule_config_snapshot(
-        config,
-        strict_mode=bool(strict_mode),
-        source="schedule_params.runtime_config",
-    )
-
-
-def _validate_runtime_field(config: Any, field: str) -> None:
-    from core.models.schedule_config_runtime_coercion import coerce_runtime_config_field
-    from core.models.schedule_config_runtime_fields import MISSING_POLICY_ERROR
-
-    coerce_runtime_config_field(
-        config,
-        field,
-        strict_mode=True,
-        source="schedule_params.runtime_config",
-        collector=DegradationCollector(),
-        missing_policy=MISSING_POLICY_ERROR,
-    )
-
-
-def _validate_runtime_weight_triplet(config: Any) -> Tuple[float, float, float]:
-    from core.models.schedule_config_runtime_coercion import coerce_runtime_config_field
-    from core.models.schedule_config_runtime_fields import MISSING_POLICY_ERROR
-    from core.models.schedule_config_runtime_weights import normalize_weight_triplet
-
-    values = {
-        field: coerce_runtime_config_field(
-            config,
-            field,
-            strict_mode=True,
-            source="schedule_params.runtime_config",
-            collector=DegradationCollector(),
-            missing_policy=MISSING_POLICY_ERROR,
-        )
-        for field in ("priority_weight", "due_weight", "ready_weight")
-    }
-    return normalize_weight_triplet(
-        values["priority_weight"],
-        values["due_weight"],
-        values["ready_weight"],
-    )
-
-
 def _weighted_override_value(
     raw_value: Any,
     key: str,
@@ -163,8 +101,7 @@ def _weighted_override_value(
         field_label=_field_label(key),
     )
     for event in collector.to_list():
-        code = str(event.code or "").strip()
-        message = _public_field_degradation_message(code=code, field=key)
+        message = _public_field_degradation_message(code=event.code, field=key)
         if message:
             warnings.append(message)
         increment_counter(
@@ -259,54 +196,32 @@ def _resolve_end_dt_exclusive(
     return due_exclusive(end_d)
 
 
-def _resolve_strategy(
-    strategy: Optional[SortStrategy],
-    *,
-    snapshot_value: Callable[..., Any],
-) -> SortStrategy:
+def _resolve_strategy(strategy: Optional[SortStrategy], *, config: ScheduleConfigSnapshot) -> SortStrategy:
     if strategy is not None:
         return strategy
     strategy_key = _require_choice(
-        snapshot_value("sort_strategy", counter_key="sort_strategy_defaulted_count"),
+        config.sort_strategy,
         field="sort_strategy",
         valid_values={item.value for item in SortStrategy},
     )
     return SortStrategy(strategy_key)
 
 
-def _runtime_weighted_params(
-    config: Any,
-    *,
-    strict_mode: bool,
-    snapshot_value: Callable[..., Any],
-) -> Dict[str, Any]:
-    if strict_mode and not isinstance(config, ScheduleConfigSnapshot):
-        priority_weight, due_weight, _ready_weight = _validate_runtime_weight_triplet(config)
-        return {
-            "priority_weight": float(priority_weight),
-            "due_weight": float(due_weight),
-        }
+def _runtime_weighted_params(config: ScheduleConfigSnapshot) -> Dict[str, Any]:
     return {
-        "priority_weight": _require_weight(
-            snapshot_value("priority_weight", counter_key="weighted_priority_weight_defaulted_count"),
-            "priority_weight",
-        ),
-        "due_weight": _require_weight(
-            snapshot_value("due_weight", counter_key="weighted_due_weight_defaulted_count"),
-            "due_weight",
-        ),
+        "priority_weight": _require_weight(config.priority_weight, "priority_weight"),
+        "due_weight": _require_weight(config.due_weight, "due_weight"),
     }
 
 
 def _resolve_used_params(
     *,
-    config: Any,
+    config: ScheduleConfigSnapshot,
     strategy: SortStrategy,
     strategy_params: Optional[Dict[str, Any]],
     strict_mode: bool,
     warnings: List[str],
     algo_stats: Any,
-    snapshot_value: Callable[..., Any],
 ) -> Dict[str, Any]:
     if strategy != SortStrategy.WEIGHTED:
         return dict(strategy_params or {})
@@ -317,24 +232,19 @@ def _resolve_used_params(
             warnings=warnings,
             algo_stats=algo_stats,
         )
-    return _runtime_weighted_params(config, strict_mode=bool(strict_mode), snapshot_value=snapshot_value)
+    return _runtime_weighted_params(config)
 
 
-def _resolve_dispatch_mode_key(dispatch_mode: Optional[str], *, snapshot_value: Callable[..., Any]) -> str:
-    resolved_mode = dispatch_mode
-    if resolved_mode is None:
-        resolved_mode = snapshot_value("dispatch_mode", counter_key="dispatch_mode_defaulted_count")
+def _resolve_dispatch_mode_key(dispatch_mode: Optional[str], *, config: ScheduleConfigSnapshot) -> str:
     return _require_choice(
-        resolved_mode,
+        config.dispatch_mode if dispatch_mode is None else dispatch_mode,
         field="dispatch_mode",
         valid_values={"batch_order", "sgs"},
     )
 
 
-def _resolve_dispatch_rule_spec(dispatch_rule: Optional[str], *, snapshot_value: Callable[..., Any]) -> DispatchRuleSpec:
-    resolved_rule = dispatch_rule
-    if resolved_rule is None:
-        resolved_rule = snapshot_value("dispatch_rule", counter_key="dispatch_rule_defaulted_count")
+def _resolve_dispatch_rule_spec(dispatch_rule: Optional[str], *, config: ScheduleConfigSnapshot) -> DispatchRuleSpec:
+    resolved_rule = config.dispatch_rule if dispatch_rule is None else dispatch_rule
     label = _field_label("dispatch_rule")
     text = str("" if resolved_rule is None else resolved_rule).strip().lower()
     if not text:
@@ -346,19 +256,13 @@ def _resolve_dispatch_rule_spec(dispatch_rule: Optional[str], *, snapshot_value:
         raise ValidationError(f"“{label}”这项设置现在不能直接用，请返回排产参数页重新选择。", field="dispatch_rule") from None
 
 
-def _resolve_auto_assign_enabled(*, snapshot_value: Callable[..., Any]) -> bool:
-    return (
-        _require_yes_no(
-            snapshot_value("auto_assign_enabled", counter_key="auto_assign_enabled_defaulted_count"),
-            field="auto_assign_enabled",
-        )
-        == "yes"
-    )
+def _resolve_auto_assign_enabled(config: ScheduleConfigSnapshot) -> bool:
+    return _require_yes_no(config.auto_assign_enabled, field="auto_assign_enabled") == "yes"
 
 
 def resolve_schedule_params(
     *,
-    config: Any,
+    config: ScheduleConfigSnapshot,
     strategy: Optional[SortStrategy],
     strategy_params: Optional[Dict[str, Any]],
     start_dt: Any,
@@ -366,58 +270,10 @@ def resolve_schedule_params(
     dispatch_mode: Optional[str],
     dispatch_rule: Optional[str],
     resource_pool: Optional[Dict[str, Any]],
-    algo_stats: Any = None,
     strict_mode: bool = False,
 ) -> ScheduleParams:
-    algo_stats = ensure_algo_stats(algo_stats)
+    algo_stats = make_algo_stats()
     warnings: List[str] = []
-    runtime_snapshot = None
-    snapshot_degradation_seen = set()
-    events_by_field: Dict[str, List[Dict[str, Any]]] = {}
-
-    def _runtime_snapshot() -> Any:
-        nonlocal runtime_snapshot
-        if runtime_snapshot is None:
-            try:
-                runtime_snapshot = _build_runtime_snapshot(config, strict_mode=False)
-            except ValidationError:
-                raise
-            except Exception as exc:
-                raise ValidationError(
-                    "构建运行期配置快照失败，请检查排产参数配置。",
-                    field="config_snapshot",
-                ) from exc
-            for event in runtime_snapshot.degradation_events:
-                events_by_field.setdefault(event["field"], []).append(event)
-        return runtime_snapshot
-
-    def _record_snapshot_degradations(field: str, *, counter_key: str) -> None:
-        for event in events_by_field.get(field, ()):
-            code = str(event.get("code") or "").strip()
-            marker = (
-                code,
-                field,
-            )
-            if marker in snapshot_degradation_seen:
-                continue
-            snapshot_degradation_seen.add(marker)
-            message = _public_field_degradation_message(code=code, field=field)
-            if message:
-                warnings.append(message)
-            increment_counter(
-                algo_stats,
-                counter_key,
-                amount=int(event.get("count") or 1),
-                bucket="param_fallbacks",
-            )
-
-    def _snapshot_value(field: str, *, counter_key: str) -> Any:
-        snapshot = _runtime_snapshot()
-        if strict_mode and not isinstance(config, ScheduleConfigSnapshot):
-            _validate_runtime_field(config, field)
-        value = _snapshot_attr(snapshot, field)
-        _record_snapshot_degradations(field, counter_key=counter_key)
-        return value
 
     base_time = _resolve_base_time(
         start_dt,
@@ -431,7 +287,7 @@ def resolve_schedule_params(
         warnings=warnings,
         algo_stats=algo_stats,
     )
-    resolved_strategy = _resolve_strategy(strategy, snapshot_value=_snapshot_value)
+    resolved_strategy = _resolve_strategy(strategy, config=config)
     used_params = _resolve_used_params(
         config=config,
         strategy=resolved_strategy,
@@ -439,11 +295,10 @@ def resolve_schedule_params(
         strict_mode=bool(strict_mode),
         warnings=warnings,
         algo_stats=algo_stats,
-        snapshot_value=_snapshot_value,
     )
-    dispatch_mode_key = _resolve_dispatch_mode_key(dispatch_mode, snapshot_value=_snapshot_value)
-    dispatch_rule_spec = _resolve_dispatch_rule_spec(dispatch_rule, snapshot_value=_snapshot_value)
-    auto_assign_enabled = _resolve_auto_assign_enabled(snapshot_value=_snapshot_value)
+    dispatch_mode_key = _resolve_dispatch_mode_key(dispatch_mode, config=config)
+    dispatch_rule_spec = _resolve_dispatch_rule_spec(dispatch_rule, config=config)
+    auto_assign_enabled = _resolve_auto_assign_enabled(config)
 
     if auto_assign_enabled and resource_pool is None:
         warnings.append("自动分配已启用，但可用设备或人员资料缺失，自制工序无法自动分配设备或人员。")

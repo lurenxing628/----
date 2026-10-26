@@ -125,8 +125,8 @@ class WorkbenchRunCandidateBaselineQueryService:
         store = self.store
         with store.snapshot():
             source = read_candidate_source(store, scope.candidate_ref)
-            admission, rows = self._source(source)
-            return self._baseline(source, admission, rows, scope)
+            admission, rows, source_state = self._source(source)
+            return self._baseline(source, admission, rows, source_state, scope)
 
     def _source(self, source):
         from core.services.workbench.plan.point_evidence import official_point_work
@@ -137,21 +137,21 @@ class WorkbenchRunCandidateBaselineQueryService:
             admission = AdmissionBaseline(source.capture, source.facts, source.disposition,
                 point_work=lambda: official_point_work(conn, baseline["version"], evidence=evidence) if evidence is not None else {},
                 origins=origins, origin_issue=origin_issue)
-            admission.source_state = {"plan_ref": baseline["plan_ref"], "version": baseline["version"],
-                                      "available": evidence is not None,
-                                      "issue_code": origin_issue["code"] if origin_issue is not None else None}
+            source_state = {"plan_ref": baseline["plan_ref"], "version": baseline["version"],
+                            "available": evidence is not None,
+                            "issue_code": origin_issue["code"] if origin_issue is not None else None}
             # Workspace allows missing display metadata; comparison requires exact captured identity.
             for row in source.raw_tasks:
                 if source.facts.operations.get(row["operation_ref"]) != row["payload"].get("op_id"):
                     invalid_baseline()
-            return admission, _rows(source.tasks, admission, source.disposition)
+            return admission, _rows(source.tasks, admission, source.disposition), source_state
 
-    def _baseline(self, source, admission, all_rows, scope):
+    def _baseline(self, source, admission, all_rows, source_state, scope):
         rows = _scope_rows(all_rows, scope)
         data = self._dto(source.run, candidate_summary(source.candidate, source.disposition,
                                                        scheduled_op_ids=source.scheduled_op_ids),
                          admission, rows, len(all_rows), scope)
-        return data, {**source.snapshot_identity, "baseline_source": admission.source_state}
+        return data, {**source.snapshot_identity, "baseline_source": source_state}
 
     @staticmethod
     def _dto(run, candidate, admission, rows, count, scope):

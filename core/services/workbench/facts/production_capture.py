@@ -1,7 +1,6 @@
 """One transaction owns lossless production originals and their business views."""
 
-import json
-from typing import Any
+from typing import Any, NoReturn
 
 from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_run_read_model_schema import READ_MODEL_TABLES
@@ -9,6 +8,7 @@ from core.infrastructure.workbench_run_schema import RUN_TABLES
 from core.infrastructure.workbench_trial_schema import TRIAL_TABLES
 from core.models.content import content_text
 from core.models.workbench_preflight import SCHEDULING_PREFERENCES_ACTION, SCHEDULING_PREFERENCES_KEY
+from core.shared.strict_json import load_strict_json
 from data.repositories.workbench_preflight_facts_repo import WorkbenchPreflightFactsRepository
 
 NON_INPUT_TABLES = frozenset(("OperationLogs", "SystemJobState") + RUN_TABLES + TRIAL_TABLES + READ_MODEL_TABLES + (
@@ -16,6 +16,10 @@ NON_INPUT_TABLES = frozenset(("OperationLogs", "SystemJobState") + RUN_TABLES + 
     "WorkbenchDashboardExternalStates", "WorkbenchDashboardExternalHistory"))
 NON_INPUT_RECEIPT_ACTIONS = (SCHEDULING_PREFERENCES_ACTION, "scheduling.run")
 NON_INPUT_RECEIPT_PREFIXES = ("trial.", "dashboard.")
+
+
+def _unreadable_outcome() -> NoReturn:
+    raise ValueError("Receipt outcome is not strict JSON")
 
 
 def non_input_row(table, row, receipt_columns):
@@ -37,8 +41,9 @@ def non_input_row(table, row, receipt_columns):
     if type(text) is not str:
         return False
     try:
-        outcome = json.loads(text)
+        outcome = load_strict_json(text, on_malformed=_unreadable_outcome)
     except ValueError:
+        # 读不出的回执不算可省略的记账行，原样留在输入里。
         return False
     return type(outcome) is dict and outcome.get("result") == "unchanged"
 

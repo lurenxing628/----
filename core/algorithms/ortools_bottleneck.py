@@ -26,6 +26,8 @@ from core.errors import ValidationError
 from core.models.batch import Batch
 
 _LOGGER = logging.getLogger(__name__)
+# 规模过大时只对更紧急的这么多个批次求解瓶颈子问题。
+_MAX_BOTTLENECK_JOBS = 200
 
 
 class OrtoolsWarmstartError(RuntimeError):
@@ -55,7 +57,6 @@ def try_solve_bottleneck_batch_order(
     batches: Dict[str, Batch],
     start_dt: datetime,
     time_limit_seconds: int = 5,
-    max_jobs: int = 200,
 ) -> Optional[List[str]]:
     """
     返回一个 batch_id 列表（优先顺序），可直接作为 `batch_order_override` 传入启发式排产。
@@ -120,9 +121,9 @@ def try_solve_bottleneck_batch_order(
         return None
 
     # 若规模过大：只对“更紧急”的一部分求解（滚动窗口/瓶颈子问题）
-    if len(jobs) > int(max_jobs):
+    if len(jobs) > _MAX_BOTTLENECK_JOBS:
         jobs.sort(key=lambda x: (due_min_by_batch.get(x[0], 10**9), -x[2], x[0]))
-        keep = jobs[: int(max_jobs)]
+        keep = jobs[:_MAX_BOTTLENECK_JOBS]
         keep_ids = {bid for bid, _, _ in keep}
         jobs = keep
     else:

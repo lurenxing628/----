@@ -253,6 +253,6 @@ def workbench_metadata_contract_issues(conn, *, structure=None, allow_legacy=Tru
     for name, sql in metadata_objects().items():
         if name not in actual:
             issues.append("missing_workbench_metadata: " + name)
-        elif not schema_contract_matches(conn, actual[name] or "", sql, legacy[name], allow_legacy=allow_legacy):
+        elif not schema_contract_matches(conn, actual[name], sql, legacy[name], allow_legacy=allow_legacy):
             issues.append("bad_workbench_metadata: " + name)
     return issues

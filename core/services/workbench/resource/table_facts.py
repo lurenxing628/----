@@ -12,7 +12,7 @@ from core.services.workbench.facts.table_index import ResourceTableIndex
 from data.repositories.workbench_resource_dependencies import DEPENDENCIES
 from data.repositories.workbench_resource_table_repo import WorkbenchResourceTableRepository
 
-from .metrics import READ_FACTS, RESOURCE_KEYS, index_resource_rows
+from .metrics import READ_FACTS, RESOURCE_KEYS, WorkbenchResourceMetricsService, index_resource_rows
 
 OP_TYPE_DEPENDENCIES = {
     "machine_capabilities": "MachineOpTypes.op_type_id", "machines": "Machines.op_type_id",
@@ -52,10 +52,10 @@ def _related_change_codes(data, roots):
     return codes
 
 
-def capture_change_facts(metrics, *, refs, codes, selected_refs=(), selected_codes=None,
+def capture_change_facts(conn, logger, *, refs, codes, selected_refs=(), selected_codes=None,
                          machine_authorizations=False, known_identities=()):
     """Feed the same state projections with only this command's resource closure."""
-    repo = WorkbenchResourceTableRepository(metrics.conn, metrics.logger)
+    repo = WorkbenchResourceTableRepository(conn, logger)
     roots = {kind: set((codes or {}).get(kind, ())) for kind in RESOURCE_KEYS}
     known_by_ref = {row["ref"]: row for row in known_identities}
     missing_refs = [ref for ref in refs if ref not in known_by_ref]
@@ -89,7 +89,7 @@ def capture_change_facts(metrics, *, refs, codes, selected_refs=(), selected_cod
         missing = [code for code in values if (kind, code) not in identities]
         if missing:
             identities.update(((row["kind"], row["entity_key"]), row) for row in repo.identities_by_codes(kind, missing))
-    metrics.facts = {name: data.get(name, []) for name in READ_FACTS["op_type"]}
+    metrics = WorkbenchResourceMetricsService(conn, logger, facts={name: data.get(name, []) for name in READ_FACTS["op_type"]})
     return ResourceTableFacts(metrics, identities.values())
 
 

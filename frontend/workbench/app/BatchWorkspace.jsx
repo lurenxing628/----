@@ -40,8 +40,9 @@
     return JSON.parse(JSON.stringify(scope));
   }
   function readContext(context) {
-    if (context == null) return { scope: { ...defaults }, selected: [], opened: null, sort: null, sourceContext: null };
-    if (!C.object(context) || Object.keys(context).some(key => !['entity_ref', 'focus', 'batchIds', 'read_view', ...sourceKeys].includes(key))) throw C.failure('页面跳转带的信息里有不支持的项' + fallbackList);
+    // 侧栏直接进入时 main.jsx 传空对象，按默认范围显示。
+    if (!Object.keys(context).length) return { scope: { ...defaults }, selected: [], opened: null, sort: null, sourceContext: null };
+    if (Object.keys(context).some(key => !['entity_ref', 'focus', 'batchIds', 'read_view', ...sourceKeys].includes(key))) throw C.failure('页面跳转带的信息里有不支持的项' + fallbackList);
     if (context.entity_ref !== undefined && !B.ref(context.entity_ref)) throw C.failure('要打开的批次已失效' + fallbackList);
     const view = context.read_view;
     if (view !== undefined && (!C.object(view) || Object.keys(view).some(key => !['scope', 'selected_refs', 'entity_ref', 'sort_state', 'source_context'].includes(key))))
@@ -61,9 +62,9 @@
     return { scope, selected, opened, sort, sourceContext: origin };
   }
   function BatchWorkspace({ adapter, onCommitted, disabled = false, initialContext, onNav }) {
-    const [initial] = React.useState(() => { try { return readContext(initialContext); } catch (error) { return { ...readContext(null), error }; } });
+    const [initial] = React.useState(() => { try { return readContext(initialContext); } catch (error) { return { ...readContext({}), error }; } });
     const command = S.useCommand(adapter), alive = React.useRef(true), serial = React.useRef(0);
-    const [deferred, setDeferred] = React.useState(() => !!initialContext && command.phase !== 'idle');
+    const [deferred, setDeferred] = React.useState(() => Object.keys(initialContext).length > 0 && command.phase !== 'idle');
     const [scope, setScope] = React.useState(initial.scope);
     const [query, setQuery] = React.useState(initial.scope.query), [selected, setSelected] = React.useState(initial.selected);
     const [opened, setOpened] = React.useState(() => deferred ? null : initial.opened);

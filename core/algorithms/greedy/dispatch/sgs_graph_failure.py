@@ -43,7 +43,8 @@ def _block_graph_operation(graph_state: Dict[str, Any], op_id: int) -> Tuple[Lis
         blocked.add(current)
         graph_state["ready_op_ids"].discard(current)
         newly_blocked.append(current)
-        stack.extend(successors_by_op_id.get(current) or set())
+        # Both graph-state builders key every known operation (sgs_graph._validate_graph_ready_links / topology).
+        stack.extend(successors_by_op_id[current])
     return newly_blocked, sorted(set(fixed_conflicts))
 
 

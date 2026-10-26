@@ -16,6 +16,7 @@ from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Tup
 
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.algorithm_contracts.value_domains import INTERNAL
+from core.shared.strict_parse import finite_float, is_number
 
 _MAX_PROBES = 2048
 
@@ -147,9 +148,10 @@ def _observed_jobs(order: Tuple[int, ...], candidate: Dict[str, Any], metrics: D
 
 def _due_deadline(metrics: Dict[int, Dict[str, Any]], op_id: int) -> float:
     due = metrics[op_id]["due_deadline_hours"]
-    if not _finite_number(due):
+    hours = finite_float(due) if is_number(due) else None
+    if hours is None:
         raise _NotApplicable("missing_or_nonfinite_due_deadline_hours")
-    return float(due)
+    return hours
 
 
 def _resource_pair(row: ScheduleResult) -> Tuple[str, str]:
@@ -178,15 +180,6 @@ def _start_offset(starts: List[datetime], start_dt: datetime) -> float:
         return max((min(starts) - start_dt).total_seconds() / 3600.0, 0.0)
     except TypeError as exc:
         raise _NotApplicable("incompatible_start_timezones") from exc
-
-
-def _finite_number(value: Any) -> bool:
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
-        return False
-    try:
-        return math.isfinite(value)
-    except OverflowError:
-        return False
 
 
 def _moore_deferred(jobs: Tuple[_Job, ...], offset: float, budget: _Budget) -> FrozenSet[int]:

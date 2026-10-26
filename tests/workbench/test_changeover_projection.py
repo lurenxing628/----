@@ -103,7 +103,7 @@ def test_window_uses_next_start_and_retains_full_sequence_predecessor():
     assert event["previous_row_ref"] == "row:before" and event["next_row_ref"] == "row:inside"
     assert changeover_projection(rows, start=at("09:00:00"), end=at("10:00:00"))["count"] == 0
     subjects = {"operation:inside", "operation:right"}
-    assert subject_arrangements(rows, subjects) == rows[1:]
+    assert subject_arrangements(rows, subjects, task_intervals={row["row_ref"]: task_interval(row) for row in rows}) == rows[1:]
     missing = rows[2:]
     source = SimpleNamespace(computation_key=lambda key: key,
         analysis_tasks=lambda key: rows if key == "reference" else missing,

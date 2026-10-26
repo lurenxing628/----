@@ -41,7 +41,7 @@ def point_case(trial_case, tmp_path):
         yield case
     finally:
         assert runtime.shutdown(timeout=30), runtime.status
-        release_runtime_lock(runtime_dir, db_path=str(case.path))
+        release_runtime_lock(runtime_dir, db_path=str(case.path), expected_payload=ownership)
         case.conn.close()
 
 

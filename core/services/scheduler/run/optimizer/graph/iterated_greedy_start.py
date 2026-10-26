@@ -67,7 +67,7 @@ def _due_date_reference(search: Any, source: Any) -> Optional[PoolEntry]:
     if not search.limits.due_date_seed:
         seed.update(status="disabled", reason="disabled")
         return None
-    if search.report["objective_name"] != "min_overdue" or search.graph_context is None:
+    if search.report["objective_name"] != "min_overdue":
         seed.update(status="not_applicable", reason="objective_or_context")
         return None
     from .iterated_greedy_seed import build_due_date_seed

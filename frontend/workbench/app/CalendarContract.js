@@ -31,16 +31,9 @@
         && C.object(value.entity) && value.entity.ref === value.calendar_ref
       : value.calendar_ref === null && value.entity === null);
   }
-  function envelope(raw) {
-    if (raw && raw.ok === false) throw raw;
-    if (!C.object(raw) || raw.ok !== true || raw.schema_version !== 1 || !C.object(raw.data) || !C.object(raw.meta)
-        || !['production', 'demo'].includes(raw.meta.source) || raw.meta.time_basis !== 'factory_local'
-        || !raw.meta.snapshot_ref || !raw.meta.request_ref || !raw.meta.as_of || !Array.isArray(raw.warnings))
-      throw C.failure('读到的工作日历数据不完整，页面没有改动。请刷新后重试。');
-    return raw;
-  }
-  function month(raw, year, number) {
-    const result = envelope(raw), data = result.data;
+  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data。
+  function month(result, year, number) {
+    const data = result.data;
     const prefix = monthKey(year, number) + '-';
     if (data.year !== year || data.month !== number || data.time_basis !== 'factory_local' || !Array.isArray(data.days)
         || data.days.length !== monthDays(year, number) || !Array.isArray(data.cells) || data.cells.length % 7 !== 0
@@ -65,8 +58,8 @@
     }
     throw C.failure('日期范围超过 36500 天，没有查看变更。请缩小日期范围后重试。');
   }
-  function preview(raw) {
-    const result = envelope(raw), data = result.data;
+  function preview(result) {
+    const data = result.data;
     if (typeof data.preview_ref !== 'string' || !/^[0-9a-f]{32}$/.test(data.preview_ref) || !Array.isArray(data.days) || !Array.isArray(data.dates)
         || !C.object(data.counts) || data.counts.selected !== data.days.length || data.dates.length !== data.days.length
         || !C.object(data.request) || !isDate(data.request.start_date) || !isDate(data.request.end_date) || data.request.start_date > data.request.end_date

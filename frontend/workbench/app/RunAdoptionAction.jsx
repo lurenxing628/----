@@ -3,7 +3,7 @@
   const A = window.RunAdoptionAPI, U = window.RunAdoptionControls;
   // A fresh draft starts with the last handler typed on this machine; it is a typing convenience, never an identity.
   const empty = () => ({ reason: '', declared_operator: window.WorkbenchHandlerMemory.read().value });
-  function Session({ candidateRef, candidateDisplay, candidateCatalog = [], onNavigate, onAdopted, adapter }) {
+  function Session({ candidateRef, candidateDisplay, candidateCatalog = [], onNavigate, adapter }) {
     const api = React.useMemo(() => adapter || A.create(), [adapter]);
     const [initial] = React.useState(() => { try { return { intent: A.pending().read(), error: '' }; } catch (e) { return { intent: null, error: e.message }; } });
     const [intent, setIntent] = React.useState(initial.intent), [storageError, setStorageError] = React.useState(initial.error);
@@ -12,8 +12,8 @@
     const [busy, setBusy] = React.useState(false), [checking, setChecking] = React.useState(false), [error, setError] = React.useState(''), [notice, setNotice] = React.useState('');
     const [replacedInfo, setReplacedInfo] = React.useState(null);
     const [revision, refresh] = React.useReducer(v => v + 1, 0);
-    const alive = React.useRef(false), lock = React.useRef(false), previewRequest = React.useRef(null), active = React.useRef(intent), notified = React.useRef(null);
-    const callback = React.useRef(onAdopted); callback.current = onAdopted; active.current = intent;
+    const alive = React.useRef(false), lock = React.useRef(false), previewRequest = React.useRef(null), active = React.useRef(intent);
+    active.current = intent;
     React.useEffect(() => { alive.current = true; return () => { alive.current = false; if (previewRequest.current) previewRequest.current.abort(); }; }, []);
     function readStorage(event) {
       try {
@@ -34,13 +34,6 @@
       const receipt = A.receipt(value, original);
       if (!alive.current || !active.current || active.current.request_key !== original.request_key) return;
       setResult(receipt); setError(''); setNotice('');
-      if (notified.current !== receipt.receipt_ref) {
-        notified.current = receipt.receipt_ref;
-        if (typeof callback.current === 'function') {
-          const failed = () => { if (alive.current) setNotice('采用已确认，但关联页面没刷新成功，请重新打开正式计划。'); };
-          try { Promise.resolve(callback.current(receipt)).catch(failed); } catch (_) { failed(); }
-        }
-      }
     }
     React.useEffect(() => {
       setReplacedInfo(null);

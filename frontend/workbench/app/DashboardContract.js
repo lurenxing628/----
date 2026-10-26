@@ -5,7 +5,7 @@
   const laneId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
   const categories = { all: '全部风险', delivery: '交期风险', actual: '执行偏差', external: '外协回厂', downtime: '停机影响', material: '齐套缺口', candidate: '候选方案待确认' };
   const statuses = { new: '待分析', following: '跟进中', awaiting_verification: '待验证', closed: '已关闭' };
-  const states = { loaded: '已读取', no_data: '无数据', no_official_plan: '无正式计划', unavailable: '暂无数据', not_connected: '尚未开通', not_applicable: '未指定交期' };
+  const states = { loaded: '已读取', no_data: '无数据', no_official_plan: '无正式计划', unavailable: '暂无数据', not_applicable: '未指定交期' };
   const fields = ['owner', 'deadline', 'action', 'remark', 'completed_at', 'completion_evidence', 'evidence_reference_text', 'evidence_ref'];
   const labels = { status: '处置状态', owner: '责任人', deadline: '责任期限', action: '处置行动', remark: '原因说明', completed_at: '完成时间', completion_evidence: '具体完成结果', evidence_reference_text: '凭据说明', evidence_ref: '已核验附件编号' };
   const object = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -58,19 +58,15 @@
     return v.data;
   }
   function pagination(p, q) { check(object(p) && p.number === q.page && p.size === q.size && count(p.total) && p.pages === Math.max(1, Math.ceil(p.total / p.size))); }
+  // 外协表结构由启动合同保证，后端（dashboard/external.py、external_handling.py）恒读出登记与处置统计，没有未开通或读不到的降级状态。
   function external(s) {
-    const connected = ['loaded', 'no_data'].includes(s.state), keys = ['receipt_count', 'current_receipt_count', 'awaiting_return_count', 'overdue_count', 'returned_count', 'awaiting_confirmation_count', 'unregistered_count', 'source_gap_count'];
-    const legacyUnsupported = !Object.prototype.hasOwnProperty.call(s, 'handling_state') && !Object.prototype.hasOwnProperty.call(s, 'handling_issues')
-      && s.handling_count === 0 && s.closed_count === 0;
-    const explicitUnsupported = ['not_connected', 'unavailable'].includes(s.handling_state) && s.handling_count === null && s.closed_count === null
-      && Array.isArray(s.handling_issues) && s.handling_issues.length > 0 && s.handling_issues.every(i => object(i) && text(i.code) && text(i.message));
-    const supported = connected && s.handling_supported === true && count(s.handling_count) && s.handling_count <= s.receipt_count && count(s.closed_count) && s.closed_count <= s.handling_count
-      && (s.handling_state === undefined || s.handling_state === 'loaded') && (s.handling_issues === undefined || Array.isArray(s.handling_issues) && s.handling_issues.length === 0);
-    check(supported || s.handling_supported === false && (legacyUnsupported || explicitUnsupported), '外协处置统计读取失败，请刷新重试。');
+    const keys = ['receipt_count', 'current_receipt_count', 'awaiting_return_count', 'overdue_count', 'returned_count', 'awaiting_confirmation_count', 'unregistered_count', 'source_gap_count'];
+    check(['loaded', 'no_data'].includes(s.state) && count(s.handling_count) && s.handling_count <= s.receipt_count
+      && count(s.closed_count) && s.closed_count <= s.handling_count, '外协处置统计读取失败，请刷新重试。');
     check(s.kind === 'outsourcing_receipts' && s.tracking_basis === 'manual_receipt_facts'
-      && object(s.entry) && s.entry.view === 'outsourcing' && s.entry.target === '/api/workbench/v1/outsourcing/receipts' && s.entry.enabled === connected
-      && keys.every(k => connected ? count(s[k]) : s[k] === null), '外协汇总数据读不完整，请刷新后重试。');
-    if (connected) check(s.current_receipt_count <= s.receipt_count && s.awaiting_return_count + s.returned_count === s.current_receipt_count
+      && object(s.entry) && s.entry.view === 'outsourcing' && s.entry.target === '/api/workbench/v1/outsourcing/receipts' && s.entry.enabled === true
+      && keys.every(k => count(s[k])), '外协汇总数据读不完整，请刷新后重试。');
+    check(s.current_receipt_count <= s.receipt_count && s.awaiting_return_count + s.returned_count === s.current_receipt_count
       && s.overdue_count <= s.awaiting_return_count && s.awaiting_confirmation_count <= s.awaiting_return_count && s.known_risk_count <= s.awaiting_return_count
       && s.known_risk_count >= Math.max(s.overdue_count, s.awaiting_confirmation_count) && s.known_risk_count <= s.overdue_count + s.awaiting_confirmation_count
       && s.source_gap_count <= s.unknown_count && s.unregistered_count <= s.unknown_count);
@@ -84,7 +80,7 @@
       const s = d.categories[k]; check(object(s) && Object.keys(states).includes(s.state) && (s.risk_count === null || count(s.risk_count))
         && count(s.known_risk_count) && count(s.unknown_count) && Array.isArray(s.issues) && Array.isArray(s.evaluation_gaps)
         && (s.risk_count === null || s.risk_count === s.known_risk_count && s.unknown_count === 0));
-      if (['not_connected', 'unavailable', 'no_official_plan', 'not_applicable'].includes(s.state) || k === 'candidate') check(s.risk_count === null);
+      if (['unavailable', 'no_official_plan', 'not_applicable'].includes(s.state) || k === 'candidate') check(s.risk_count === null);
       if (k === 'delivery' && ['loaded', 'not_applicable'].includes(s.state)) check(['due_eligible_count', 'excluded_due_count',
         'invalid_due_count', 'due_evaluation_count', 'assessed_count'].every(key => count(s[key])));
       else check(s.state !== 'not_applicable');
@@ -94,7 +90,7 @@
         '工序明细不完整，请刷新重试。');
       });
     });
-    external(d.categories.external); check(d.categories.external.handling_supported || d.items.every(row => row.category !== 'external'), '外协风险处置尚未开通，这里不显示处置清单。');
+    external(d.categories.external);
     d.items.forEach(row => { item(row); check((q.category === 'all' || row.category === q.category) && (q.status === 'all' || q.status === 'open' && row.handling.status !== 'closed' || q.status === row.handling.status)); });
     check(new Set(d.items.map(r => r.item_ref)).size === d.items.length && object(d.resource_pressure) && object(d.candidate_catalog));
     const p = d.resource_pressure, c = d.candidate_catalog;

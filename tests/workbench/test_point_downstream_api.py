@@ -165,14 +165,14 @@ def test_held_adopted_point_carries_its_witness_into_runtime_seeds(trial_case):
     """不重排时段保留已采用的零工时安排：见证在冻结前缀校验时取得并随 seed 带出，不再事后补挂。"""
     from core.algorithm_contracts.schedule_point_evidence import PointSeedResult, SchedulePointEvidence
     from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_result_item
-    from core.services.workbench.run.compute import compute_candidate_run
+    from tests.workbench.run_compute_support import compute_run
 
     case = trial_case
     point = datetime.fromisoformat(adopted(case)['task']['start'])
     successor = case.operation(seq=2)
     window = {'start': point.isoformat(timespec='minutes'),
               'end': (point + timedelta(hours=1)).isoformat(timespec='minutes')}
-    result = compute_candidate_run(case.conn, case.settings(hold_window=window), case.projections())
+    result = compute_run(case.conn, case.settings(hold_window=window), case.projections())
     assert result.schedule_input.frozen_op_ids == {case.op_id}
     seed, = [row for row in result.schedule_input.seed_results if row['op_id'] == case.op_id]
     assert seed['seed_source'] == 'freeze_window' and seed['start_time'] == seed['end_time'] == point

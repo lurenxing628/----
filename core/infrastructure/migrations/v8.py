@@ -8,10 +8,10 @@ from ..migration_common import MigrationOutcome, merge_outcomes
 from ..schema_probe import table_exists
 
 
-def _update_if_table_exists(conn: sqlite3.Connection, table: str, sql: str, params: Tuple[Any, ...] = ()) -> MigrationOutcome:
+def _update_if_table_exists(conn: sqlite3.Connection, table: str, sql: str) -> MigrationOutcome:
     if not table_exists(conn, table):
         return MigrationOutcome.SKIPPED
-    conn.execute(sql, params)
+    conn.execute(sql)
     return MigrationOutcome.APPLIED
 
 

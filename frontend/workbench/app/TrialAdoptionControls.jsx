@@ -35,8 +35,7 @@
       footer={<><Button onClick={s.close}>{pending ? '关闭并保留这次操作' : s.result ? '关闭' : '取消'}</Button>
         {rejected && <Button disabled={s.busy || !!s.storageError} onClick={s.finish}>结束本次未采用</Button>}
         {s.result ? <><Button icon="refresh-cw" busy={s.busy} disabled={!!s.storageError} onClick={s.lookup}>查询结果</Button>
-          <Button icon="check" disabled={s.busy || !!s.storageError} onClick={s.finish}>完成</Button><Button icon="arrow-right" className="btn primary"
-            reason={typeof onNavigate === 'function' ? '' : window.WorkbenchTerms.outcomes.unavailable} onClick={() => onNavigate('analysis', { plan_ref: s.result.data.official_plan.plan_ref })}>进入正式计划</Button></>
+          <Button icon="check" disabled={s.busy || !!s.storageError} onClick={s.finish}>完成</Button><Button icon="arrow-right" className="btn primary" onClick={() => onNavigate('analysis', { plan_ref: s.result.data.official_plan.plan_ref })}>进入正式计划</Button></>
           : pending ? <Button icon="refresh-cw" busy={s.busy} disabled={!!s.storageError} onClick={s.lookup}>查询结果</Button>
             : <><Button icon="refresh-cw" busy={s.busy} disabled={blocked} onClick={s.inspect}>重新预检</Button>
               <Button icon="check" className="btn primary" busy={s.busy} disabled={!canConfirm} onClick={s.submit}>确认正式采用</Button></>}</>}>

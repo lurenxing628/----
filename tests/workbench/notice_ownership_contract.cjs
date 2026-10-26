@@ -237,13 +237,13 @@ async function contract(h, assert) {
   const dashboardRead = w.DashboardSession.useRead, dashboardCommand = w.DashboardSession.useCommand;
   w.DashboardSession.useCommand = () => ({ busy: false, saved: null, storageError: null });
   w.DashboardSession.useRead = (_load, _deps, enabled = true) => ({ result: null, loading: false, error: enabled ? new Error('值班台读取失败，请刷新重试。') : null });
-  once(h.render(w.WorkbenchDashboardWorkspace, {}), '值班台读取失败，请刷新重试。');
+  once(h.render(w.WorkbenchDashboardWorkspace, { initialContext: {} }), '值班台读取失败，请刷新重试。');
   w.DashboardSession.useRead = dashboardRead; w.DashboardSession.useCommand = dashboardCommand;
   const calibrationRead = w.CalibrationControls.useRead, adoption = w.CalibrationAdoptionAction, stale = w.WorkbenchTerms.outcomes.stale;
   w.CalibrationControls.useRead = () => ({ result: null, busy: false, error: null });
   w.CalibrationAdoptionAction = () => null;
   // Restored read state occupies slot 1; the selected record, error and stale flag follow it.
-  const staleTree = h.render(w.CalibrationWorkspace, {}, { Workspace: { 4: h.reference(1), 8: new Error(stale), 10: true } });
+  const staleTree = h.render(w.CalibrationWorkspace, { initialContext: {} }, { Workspace: { 4: h.reference(1), 8: new Error(stale), 10: true } });
   once(staleTree, stale);
   assert(visible(staleTree).includes('刷新所选记录'), 'The detail must retain its recovery action');
   once(h.render(w.CalibrationDetail, { selected: h.reference(1), error: new Error('历史报工与归档不一致，请核对来源后刷新。'), stale: true }),
@@ -260,7 +260,7 @@ async function contract(h, assert) {
   }
   w.crypto = { getRandomValues: values => { values.fill(1); return values; } };
   const staleResult = { ok: false, committed: false, error: { code: 'stale_write', message: stale, fields: [] } };
-  const staleCommand = await resourceCommand({ command: async () => staleResult },
+  const staleCommand = await resourceCommand({ command: async () => staleResult, savePending() {}, clearPending() {} },
     command => command.submit('calendar', 'upsert', day.date, { write_token: 'fixture' }, { date: day.date }));
   assert.strictEqual(staleCommand.phase, 'rejected');
   const staleCalendar = h.render(w.CalendarDayDialog, { adapter: {}, day, source: 'production', command: staleCommand });
@@ -277,7 +277,7 @@ async function contract(h, assert) {
   once(staleCatalog, stale, 1);
   assert(visible(staleCatalog).includes(w.WorkbenchTerms.refresh_latest), 'A stale catalog must retain its refresh action');
   w.APSResourceSession.useCommand = resourceUseCommand;
-  const restored = await resourceCommand({ readPending: () => ({ kind: 'machine_group', action: 'create', request_key: 'resource-' + '1'.repeat(48), input: {} }) });
+  const restored = await resourceCommand({ readPending: () => ({ kind: 'machine_group', action: 'create', request_key: 'resource-' + '1'.repeat(48), input: {} }), savePending() {}, clearPending() {} });
   assert.strictEqual(restored.phase, 'pending');
   assert.strictEqual(restored.locked, true);
   w.APSResourceSession.useCommand = () => restored;
@@ -289,9 +289,8 @@ async function contract(h, assert) {
   // catalogs retain their independent sources (analysis_projection.py / catalogs.py / external.py).
   const planIssue = { code: 'identity_missing', message: '批次编号缺失，无法评估交付风险。请到批次管理核对。' };
   const materialIssue = { code: 'identity_missing', message: '来源关联资料缺失，暂时无法评估，请联系维护人员核对。' };
-  const externalIssue = { code: 'outsourcing_unavailable', message: '真实外协登记结构尚未完整接入；未补表或改动原资料。' };
   const candidateIssue = { code: 'run_schema_unavailable', message: '排产记录结构不完整，请联系维护人员。' };
-  const summary = (state = 'no_data', issues = []) => ({ state, risk_count: ['unavailable', 'not_connected'].includes(state) ? null : 0,
+  const summary = (state = 'no_data', issues = []) => ({ state, risk_count: state === 'unavailable' ? null : 0,
     known_risk_count: 0, unknown_count: 0, closed_count: 0, handling_count: 0, issues, evaluation_gaps: [] });
   function dashboardFixture() {
     const categories = Object.fromEntries(Object.keys(w.DashboardContract.categories).filter(key => key !== 'all').map(key => [key, summary()]));
@@ -348,15 +347,11 @@ async function contract(h, assert) {
     return h.render(w.WorkbenchDashboardWorkspace, { initialContext: { scope: { category }, tab: 'analysis', ...(detail ? { item_ref: detail.data.item.item_ref } : {}) } }, states);
   }
   const unavailable = dashboardFixture();
-  // Run schema and outsourcing schema failures remain separate even when the formal-plan source fails.
-  Object.assign(unavailable.data.categories.external, summary('unavailable', [externalIssue]), { handling_supported: false,
-    ...Object.fromEntries(['receipt_count', 'current_receipt_count', 'awaiting_return_count', 'overdue_count', 'returned_count',
-      'awaiting_confirmation_count', 'unregistered_count', 'source_gap_count'].map(key => [key, null])),
-    entry: { view: 'outsourcing', target: '/api/workbench/v1/outsourcing/receipts', enabled: false } });
+  // Run schema failures remain separate even when the formal-plan source fails.
   unavailable.data.categories.candidate = summary('unavailable', [candidateIssue]);
   unavailable.data.candidate_catalog = { state: 'unavailable', runs: [], page: null, run_count: null, issues: [candidateIssue] };
   const unavailableTree = dashboardTree(await dashboardResult(unavailable, 'all'), 'all');
-  for (const issue of [planIssue, materialIssue, externalIssue, candidateIssue]) once(unavailableTree, issue.message);
+  for (const issue of [planIssue, materialIssue, candidateIssue]) once(unavailableTree, issue.message);
   const materialUnavailableTree = dashboardTree(await dashboardResult(dashboardFixture(), 'material'), 'material');
   once(materialUnavailableTree, materialIssue.message);
   const itemsOnly = h.render(w.DashboardPanels.Gaps, { categories: unavailable.data.categories, selected: 'delivery' });
@@ -456,7 +451,17 @@ async function contract(h, assert) {
   once({ ...resourceDetails, props: { ...resourceDetails.props, open: true } }, resourceIssue.message);
   const evidence = h.walk(independentTree).find(node => node.props['data-gap-source'] === gap.source_ref);
   assert(evidence && h.text(evidence).includes(gap.subject), 'Analysis ownership must retain category evaluation-gap evidence');
-  once(h.render(w.DashboardPanels.Pressure, { data: d, canNavigate: true }), pressureIssue.message);
+  once(h.render(w.DashboardPanels.Pressure, { data: d }), pressureIssue.message);
+  // A loaded run catalog renders each run's open action (a removed navigation flag must not stay referenced in the row).
+  const runRef = h.reference(24), runNavigations = [];
+  const candidatesTree = h.render(w.DashboardPanels.Candidates, { navigate: target => runNavigations.push(target), data: { candidate_catalog: {
+    state: 'loaded', run_count: 1, issues: [], page: { total: 1, has_more: false },
+    runs: [{ run_ref: runRef, accepted_at: '2026-01-05T08:00:00', state: 'completed', candidate_count: 2, scope_summary: { batch_count: 3 } }] } } });
+  const runRow = h.walk(candidatesTree).find(node => node.type === 'tr' && node.props['data-run-ref'] === runRef);
+  const openRun = runRow && h.walk(runRow).find(node => node.type === 'button' && visible(node) === '查看候选');
+  assert(openRun && !openRun.props.disabled && !openRun.props['aria-disabled'], 'Each listed run keeps an enabled open action');
+  openRun.props.onClick({ currentTarget: {}, preventDefault() {} });
+  assert.strictEqual(JSON.stringify(runNavigations), JSON.stringify([{ view: 'analysis', context: { run_ref: runRef }, enabled: true }]));
 
   // An unknown stored batch status is an independent pending-pool issue, not a material read failure.
   const pendingIssue = { code: 'batch_status_unknown', message: '有批次的状态填得不对，待排总数算不出来。' };

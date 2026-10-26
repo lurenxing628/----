@@ -22,7 +22,7 @@ def normalize_priority(value: Any, *, default: str = DEFAULT_PRIORITY) -> str:
     """
     if isinstance(value, str) and value in PRIORITY_RANK:
         return value
-    s = str(value or "").strip().lower()
+    s = str(value).strip().lower()
     if s in PRIORITY_RANK:
         return s
     d = str(default or DEFAULT_PRIORITY).strip().lower() or DEFAULT_PRIORITY

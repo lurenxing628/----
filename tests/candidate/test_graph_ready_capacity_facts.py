@@ -2,10 +2,14 @@
 
 from datetime import datetime, timedelta
 
+import pytest
+
+from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.graph import v2_capacity
 from core.services.scheduler.run.optimizer.graph.v2_features import enrich_graph_ready_v2_metrics
 from core.services.scheduler.run.optimizer.graph_ready_feature_basis import BASELINE_ORDERING_FIELD
 from tests._support.algo_operations import make_algo_op, make_batch, make_schedule_result
+from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar
 
 
 def test_pair_blocking_is_prepared_once_across_feature_bases_and_operation_windows(monkeypatch):
@@ -144,8 +148,17 @@ def test_multi_segment_seed_result_blocks_each_resource_only_during_its_segment(
         )
         cap = v2_capacity.residual_capacity_for_operation(
             op, batch=batch, start_dt=start, due_exclusive=at(8),
-            calendar_service=None, resource_pool=pool, prepared=prepared,
+            calendar_service=ContinuousCalendar(), resource_pool=pool, prepared=prepared,
         )
         assert cap["residual_capacity_window_hours"] == 8.0
         assert cap["residual_capacity_blocked_hours"] == 2.0
         assert cap["residual_capacity_hours"] == 6.0
+
+
+def test_v2_feature_numbers_reject_non_numbers_with_the_feature_field():
+    assert v2_capacity.non_negative_float("2.5", field="batch.quantity") == 2.5
+    for value, kind in ((None, "必须是数字"), ("abc", "必须是数字"), (True, "必须是数字"), (2 ** 1100, "必须是数字"),
+                        (float("nan"), "必须是有限数字"), (-1, "必须是非负数")):
+        with pytest.raises(ValidationError, match=f"batch.quantity {kind}。") as caught:
+            v2_capacity.non_negative_float(value, field="batch.quantity")
+        assert caught.value.field == "graph_ready_v2_features"

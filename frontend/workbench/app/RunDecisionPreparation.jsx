@@ -30,7 +30,8 @@
       return <div key={key}><strong>{def.label}</strong><div className="rd-effort-pair"><div><small>比较基准</small>{data.baseline.state !== 'available' ? <span>{D.referenceNotice(data)}</span> : <D.Metric metric={data.summary.before[key]} definition={def} />}</div>
         <div><small>当前方案</small><D.Metric metric={data.summary.after[key]} definition={def} delta={data.summary.deltas[key]} /></div></div></div>;
     })}</div><div className="rd-changeover-diagnostics">{['before', 'after'].map(side => {
-      const issues = data.summary[side].issues || [];
+      // 换型汇总两侧恒带 issues 列表（decision_changeovers.py public_summary ← changeover_events.py changeover_projection）。
+      const issues = data.summary[side].issues;
       return issues.length > 0 && (side !== 'before' || data.baseline.state === 'available') && <div key={side}><strong>{side === 'before' ? '基准' : '当前方案'}设备安排资料缺失</strong><C.Reasons rows={issues} /></div>;
     })}</div></>;
   }

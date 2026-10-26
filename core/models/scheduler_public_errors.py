@@ -6,6 +6,7 @@ from typing import Any, Dict, Iterable, List, Optional, Pattern, Tuple
 PUBLIC_ERROR_SCHEMA_VERSION = "1.0"
 GENERIC_PUBLIC_ERROR_MESSAGE = "排产执行遇到问题，请联系管理员查看日志。"
 
+_PUBLIC_FIELD_MAX_CHARS = 80
 _ALLOWED_IDENTIFIER_RE = re.compile(r"^[\w\u4e00-\u9fff./:-]{1,120}$")
 _PUBLIC_ID_PATTERN = r"[\w\u4e00-\u9fff][\w\u4e00-\u9fff./_:-]{0,119}"
 _PUBLIC_OPERATION_CODE_RE = re.compile(r"^[\w\u4e00-\u9fff./_:-]+(?: [\w\u4e00-\u9fff./_:-]+)*$")
@@ -146,17 +147,17 @@ def _clean_text(value: Any) -> str:
 
 
 def _contains_sensitive_marker(text: str) -> bool:
-    lower_text = str(text or "").lower()
+    lower_text = text.lower()
     if any(marker in lower_text for marker in _SENSITIVE_ERROR_MARKERS):
         return True
-    return bool(_PATH_LIKE_RE.search(str(text or "")))
+    return bool(_PATH_LIKE_RE.search(text))
 
 
-def public_safe_identifier(value: Any, *, max_chars: int = 80) -> str:
+def public_safe_identifier(value: Any) -> str:
     full_text = _clean_text(value)
     if not full_text or _contains_sensitive_marker(full_text):
         return ""
-    text = full_text[:max_chars]
+    text = full_text[:_PUBLIC_FIELD_MAX_CHARS]
     if text.startswith(("/", "\\")):
         return ""
     if not _ALLOWED_IDENTIFIER_RE.fullmatch(text):
@@ -164,11 +165,11 @@ def public_safe_identifier(value: Any, *, max_chars: int = 80) -> str:
     return text
 
 
-def public_safe_label(value: Any, *, max_chars: int = 80) -> str:
+def public_safe_label(value: Any) -> str:
     full_text = _clean_text(value)
     if not full_text or _contains_sensitive_marker(full_text):
         return ""
-    return full_text[:max_chars]
+    return full_text[:_PUBLIC_FIELD_MAX_CHARS]
 
 
 def make_public_error(
@@ -211,8 +212,8 @@ def make_public_error(
     return item
 
 
-def legacy_public_error_message(raw: Any) -> str:
-    text = str(raw or "").strip()
+def legacy_public_error_message(raw: str) -> str:
+    text = raw.strip()
     if not text or len(text) > 500:
         return ""
     if "\n" in text or "\r" in text:
@@ -237,7 +238,7 @@ def _legacy_operation_error_message(text: str) -> str:
 
 
 def _legacy_operation_error_op_code(tail: str, *, detail_markers: Tuple[str, ...]) -> str:
-    op_code = str(tail or "").strip()
+    op_code = tail.strip()
     for marker in detail_markers:
         if marker in op_code:
             op_code = op_code.split(marker, 1)[0].strip()
@@ -298,10 +299,8 @@ def _structured_failure_message(detail: Dict[str, Any]) -> str:
     return ""
 
 
-def _public_error_from_structured_failure(detail: Any) -> Optional[Dict[str, Any]]:
-    if not isinstance(detail, dict):
-        return None
-    code = str(detail.get("code") or "").strip()
+def _public_error_from_structured_failure(detail: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    code = detail["code"]
     if code not in _STRUCTURED_FAILURE_CODES:
         return None
     message = _structured_failure_message(detail)
@@ -318,10 +317,9 @@ def _public_error_from_structured_failure(detail: Any) -> Optional[Dict[str, Any
     )
 
 
-def infer_legacy_public_code(message: Any) -> str:
+def infer_legacy_public_code(text: str) -> str:
     # 故意用中文前缀/后缀反解旧错误码:旧链路没有结构化 code,只能从已渲染文案倒推。
     # 模板和上面的三张反解表必须同生共死,否则会静默归类成 scheduler_error。
-    text = str(message or "").strip()
     if text.startswith("批次 "):
         code = _code_from_suffixes(text, _SGS_RESOURCE_SUFFIX_CODES)
         if code:
@@ -357,7 +355,7 @@ def _normalize_error_list(raw_errors: Any) -> List[str]:
     return out
 
 
-def build_public_error_records(raw_errors: Any, structured_details: Any = None) -> List[Dict[str, Any]]:
+def build_public_error_records(raw_errors: Any, structured_details: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     records: List[Dict[str, Any]] = []
     seen = set()
     for raw in _normalize_error_list(raw_errors):
@@ -373,7 +371,7 @@ def build_public_error_records(raw_errors: Any, structured_details: Any = None) 
             continue
         seen.add(dedupe_key)
         records.append(make_public_error(code=code, message=public_message))
-    for detail in list(structured_details or []):
+    for detail in structured_details:
         record = _public_error_from_structured_failure(detail)
         if record is None:
             continue

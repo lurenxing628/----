@@ -51,21 +51,16 @@ class DashboardSourceRepository:
     def __init__(self, conn):
         self.conn = conn
         self.structure = schema_contract_memo(conn).structure
-        self.present = {name for name, (kind, _table, _sql) in self.structure.objects.items() if kind == "table"}
 
     def _select_list(self, name):
         columns = [row[1] for row in self.structure.table_info(name)]
         return ",".join('CASE WHEN 1 THEN "' + column + '" END AS "' + column + '"' for column in columns)
 
     def table(self, name):
-        if name not in self.present:
-            return None
         return bounded(rows(self.conn, "SELECT " + self._select_list(name) + _FROM[name] + " ORDER BY rowid LIMIT ?", (MAX_FACT_ROWS + 1,)), MAX_FACT_ROWS)
 
     def downtime_capture(self, *, machine_ids):
         """Keep raw rowid order and SQLite's time/status/order facts from one SELECT."""
-        if "MachineDowntimes" not in self.present:
-            return None, None
         wanted = frozenset(machine_ids)
         self.conn.create_function("aps_calendar_machine_selected", 1, lambda key: int(key in wanted))
         selected = "aps_calendar_machine_selected(md.machine_id) AND " + DOWNTIME_STATUS_SQL

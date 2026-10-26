@@ -15,19 +15,20 @@ No draft evaluation, scheduling, latest-plan fallback, or identity allocation.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Mapping, Sequence, Tuple
+from typing import Any, Dict, Tuple
 
 from core.models.schedule_plan_role import SOURCE_ADJUSTMENT_SCENARIO_ROWS
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import PlanReadScope
+from core.services.common.bounded_plan_query import PagePlanQueryService
 from core.services.scheduler.workbench_plan_catalog import PlanCatalogEntry, _role_entry
 from core.services.workbench.facts.adoption_baseline_values import REASONS as ADOPTION_REASONS
 from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable
 
 from .adoption_baseline import read_adoption_baseline
-from .projection import project_plan, public_time
-from .read_context import PlanReadContext, PlanReadQuery
+from .projection import project_plan
+from .read_context import PlanReadContext
 
 _CHANGE_FIELDS = ("start", "end", "machine_ref", "operator_ref")
 _REASONS = {
@@ -50,16 +51,6 @@ def _unavailable(code, facts):
 def _overlaps(start, end, scope):
     from core.services.workbench.facts.zero_duration_evidence import overlaps
     return scope.range_start is None or overlaps(start, end, scope.range_start, scope.range_end)
-
-
-def verify_selected_rows(rows, selected_rows, scope):
-    expected = {row["schedule_id"]: {key: value for key, value in row.items() if key != "_point_work"} for row in rows
-                if _overlaps(public_time(row["start_time"]), public_time(row["end_time"]), scope)}
-    supplied = {row["schedule_id"]: {key: value for key, value in row.items() if key != "_point_work"} for row in selected_rows}
-    if len(supplied) != len(selected_rows) or supplied != expected:
-        raise WorkbenchCommandRejected(
-            "invalid_input", "对比只能用同一个计划、同一次读取的完整时间范围，不能拿再筛过的一部分来比。请刷新后重试。", 400,
-        )
 
 
 def _by_operation(tasks):
@@ -131,7 +122,7 @@ class _BaselineReader:
         if base_entry is None or not base_entry.can_view:
             return _unavailable("baseline_unavailable", self.facts)
         current = self.context.detail_rows(self.entry)
-        after, after_facts, resources, state = self.context.projected_tasks(self.scope.plan_ref, self.entry, current)
+        after, after_facts, resources, state = self.context.projected_tasks(self.scope.plan_ref, current)
         self.facts["resource_directory"] = after_facts["resource_directory"]
         return self._comparison(base_entry, base["plan_ref"], evidence["tasks"], after, state, evidence["basis"])
 
@@ -143,7 +134,7 @@ class _BaselineReader:
         options = self.repo.list_plan_role_options(locator.version)
         self.facts["base_roles"] = options
         option = next((row for row in options if row["role"] == locator.plan_role), None)
-        query = PlanReadQuery(self.repo, self.repo.latest_version())
+        query = PagePlanQueryService(self.repo, self.repo.latest_version())
         return _role_entry(query, history, query.latest, locator.plan_role, option)
 
     def _project(self, base_entry, base_ref, base_rows, current_rows):
@@ -151,8 +142,8 @@ class _BaselineReader:
 
         resources, resource_state = self.context.resources(base_rows + current_rows, baseline=True)
         self.facts["resource_directory"] = resource_directory(base_rows + current_rows, resources)
-        before, _, _, _ = self.context.projected_tasks(base_ref, base_entry, base_rows)
-        after, _, _, _ = self.context.projected_tasks(self.scope.plan_ref, self.entry, current_rows)
+        before, _, _, _ = self.context.projected_tasks(base_ref, base_rows)
+        after, _, _, _ = self.context.projected_tasks(self.scope.plan_ref, current_rows)
         return self._comparison(base_entry, base_ref, before, after, resource_state, "scenario_base")
 
     def _comparison(self, base_entry, base_ref, before, after, resource_state, basis):
@@ -170,13 +161,11 @@ class _BaselineReader:
 
 
 def build_plan_baseline(
-    conn, *, entry: PlanCatalogEntry, scope: PlanReadScope,
-    selected_rows: Sequence[Mapping[str, Any]], context=None,
+    conn, *, entry: PlanCatalogEntry, scope: PlanReadScope, context: PlanReadContext,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Return (public DTO, PRIVATE snapshot facts), never a snapshot token itself.
 
-    entry and selected_rows must be resolved in this same caller-owned transaction;
-    selected_rows is exactly the time-scoped result, without resource/subset filters.
+    entry must be resolved by context in this same caller-owned transaction.
     Compare complete plans, then keep either-side overlap; there is no resource
     Scope today. Reference/data failures explicitly disable comparison. Storage/
     schema errors propagate. Complete sources are compared before the public
@@ -185,13 +174,9 @@ def build_plan_baseline(
     """
     if not conn.in_transaction:
         raise RuntimeError("Baseline reads require a caller-owned read transaction.")
-    owned = context is None
-    context = PlanReadContext(conn) if context is None else context
     reader = _BaselineReader(conn, entry, scope, context)
     try:
         with context.read_scope():
-            if owned:
-                context.admit_scope(entry, scope, selected_rows)
             return reader.read()
     except AdoptionBaselineUnavailable as exc:
         reader.facts["evidence_gap"] = exc.gap

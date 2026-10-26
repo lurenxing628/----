@@ -31,14 +31,14 @@ def plan_identity_write_guard_objects() -> Dict[str, str]:
     return result
 
 
-def plan_identity_write_guard_contract_issues(conn, *, structure=None) -> List[str]:
+def plan_identity_write_guard_contract_issues(conn, *, structure) -> List[str]:
     """SELECT-only contract for the coordinator's new schema-version gate."""
     issues = workbench_plan_identity_contract_issues(conn, structure=structure)
     actual = schema_objects(conn, structure=structure)
     for name, sql in plan_identity_write_guard_objects().items():
         if name not in actual:
             issues.append("missing_workbench_plan_write_guard: " + name)
-        elif canonical_sql(actual[name] or "") != canonical_sql(sql):
+        elif canonical_sql(actual[name]) != canonical_sql(sql):
             issues.append("bad_workbench_plan_write_guard: " + name)
     return issues
 

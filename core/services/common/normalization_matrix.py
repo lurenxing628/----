@@ -159,5 +159,6 @@ def normalize_skill_level_value(
 
 def skill_level_rank(value: Any) -> int:
     text = _text(value)
-    normalized = _lookup_alias(_SKILL_LEVEL_ALIAS_MAP, text) or ""
-    return _SKILL_LEVEL_RANK.get(normalized, 9)
+    normalized = _lookup_alias(_SKILL_LEVEL_ALIAS_MAP, text)
+    # 不认识的等级排在所有已知等级之后。
+    return 9 if normalized is None else _SKILL_LEVEL_RANK[normalized]

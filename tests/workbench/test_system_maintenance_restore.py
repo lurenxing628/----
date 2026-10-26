@@ -211,7 +211,8 @@ def test_verified_restore_uses_protection_external_result_and_new_connection(sys
     with closing(system_api.connect()) as conn:
         context = RunDataContext(conn, str(system_api.journal_dir))
         assert context.ref() != before_context
-        assert context.resolve_missing("run-before-restored-data", before_context) == "context_replaced"
+        assert context.resolve_missing("run-before-restored-data", before_context,
+                                       records=context.capture()) == "context_replaced"
     from core.models.workbench_system import query_input
     from web.routes.workbench.system_log_snapshots import resolve_log_snapshot
     scope = {"kind": "system.logs", **{key: value for key, value in query_input({}, "logs").items()
@@ -350,11 +351,15 @@ def test_legacy_journal_lookup_and_new_intent_replay_preserve_original_files(tmp
         journal._read(str(new_path))
     assert str(error.value) == "维护记录超过允许大小，须人工核查。"
     assert opened == [str(new_path)]
-    for content, origin in ((b"\xff", UnicodeDecodeError), (b"{", json.JSONDecodeError)):
+    # 本进程写下的维护记录走严格 JSON：重复键、NaN 与语法错误、非 UTF-8 一样按读不出处理。
+    for content, origin in ((b"\xff", UnicodeDecodeError), (b"{", json.JSONDecodeError),
+                            (b'{"version":2,' + saved[1:], None), (b'{"nan_probe":NaN,' + saved[1:], None)):
         new_path.write_bytes(content)
         with pytest.raises(WorkbenchCommandRejected) as error:
             SystemMaintenanceJournal(str(directory), str(database)).admission("malformed-maintenance-request")
-        assert error.value.code == "maintenance_unconfirmed" and isinstance(error.value.__cause__, origin)
+        cause = error.value.__cause__
+        assert error.value.code == "maintenance_unconfirmed" and str(cause) == "维护记录不是严格的 UTF-8 JSON，须人工核查。"
+        assert origin is None or isinstance(cause.__context__, origin)
     assert original_path.read_bytes() == original
 
 
@@ -426,7 +431,8 @@ def test_system_captures_once_and_tokens_keep_relocated_journal_scope(tmp_path, 
     with closing(api.connect()) as conn:
         context = RunDataContext(conn, str(api.journal_dir))
         assert counted("relocated_run_context", context.ref, 3) == empty_context
-        assert counted("recorded_missing_run", lambda: context.resolve_missing("missing-run-request"), 0, enumerations=0) == "unresolved"
+        assert counted("recorded_missing_run", lambda: context.resolve_missing("missing-run-request", records=context.capture()),
+                       0, enumerations=0) == "unresolved"
     admitted = counted("recorded_admission", lambda: api.journal().admission("captured-journal-request-0"), 3)
     assert admitted is not None
     assert admitted["database_scope"] == original_scope

@@ -6,10 +6,9 @@ from datetime import datetime
 import pytest
 
 from core.services.scheduler.calendar.service import CalendarService
-from core.services.workbench.run.compute import compute_candidate_run
 from tests.workbench.identity_metadata_support import insert_row
+from tests.workbench.run_compute_support import compute_run, unchanged
 from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
-from tests.workbench.run_compute_support import unchanged
 
 
 @pytest.mark.parametrize("hold", ["old_lock_mark", "window"])
@@ -24,7 +23,7 @@ def test_only_the_hold_window_keeps_an_original_arrangement(run_case, hold):
         case.conn.execute("UPDATE Schedule SET lock_status='locked'")
         settings = case.settings()
     case.conn.commit()
-    result = unchanged(case, lambda: compute_candidate_run(case.conn, settings, case.projections()))
+    result = unchanged(case, lambda: compute_run(case.conn, settings, case.projections()))
     held = hold == "window"
     assert result.schedule_input.frozen_op_ids == ({case.op_id} if held else set())
     expected = (datetime(2026, 9, 9, 8), datetime(2026, 9, 9, 10) if held else datetime(2026, 9, 9, 8, 45))
@@ -45,7 +44,7 @@ def test_night_operator_calendar_efficiency_and_downtime_are_real(run_case, quan
     insert_row(case.conn, "MachineDowntimes", dict(machine_id="M1", scope_type="machine", scope_value="M1",
                start_time="2026-09-09 22:00:00", end_time="2026-09-10 00:00:00", reason_code="maintenance", status="active"))
     case.conn.commit()
-    result = unchanged(case, lambda: compute_candidate_run(case.conn, case.settings(end_date="2026-09-10"), case.projections()))
+    result = unchanged(case, lambda: compute_run(case.conn, case.settings(end_date="2026-09-10"), case.projections()))
     for payload in result.candidate_payloads.values():
         row = payload.schedule_rows[0]
         assert row.start_time == datetime(2026, 9, 10)
@@ -70,7 +69,7 @@ def test_complex_merged_external_chain_and_shared_resource_competition(run_case)
     case.batch("B2", priority="urgent")
     competing = case.operation("B2", unit_hours=1)
     case.conn.commit()
-    result = unchanged(case, lambda: compute_candidate_run(case.conn, case.settings("B1", "B2"), case.projections()))
+    result = unchanged(case, lambda: compute_run(case.conn, case.settings("B1", "B2"), case.projections()))
     expected = {case.op_id, last, competing} | set(external_ids)
     for payload in result.candidate_payloads.values():
         assert payload.scheduled_op_ids == expected
@@ -106,7 +105,7 @@ def test_compute_consumes_captured_calendar_rows_once_and_next_run_sees_changes(
         statements = []
         conn.set_trace_callback(statements.append)
         try:
-            result = compute_candidate_run(conn, case.settings(), projections)
+            result = compute_run(conn, case.settings(), projections)
             signature = result.schedule_input.cal_svc.certified_decode_checkpoint_snapshot()
         finally:
             conn.set_trace_callback(None)

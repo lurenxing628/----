@@ -53,7 +53,7 @@ from ..operator_calendars import WorkbenchOperatorCalendarService, engine_read_r
 from ..queries import WorkbenchResourceQueryService
 from .file_codec import read_calendar_file, read_clock, read_date, read_number
 from .file_writer import check_capacity, number_text, percent_text, write_calendar_file
-from .files import DAY_TYPE_TEXT, YES_NO_TEXT, check_range, range_fingerprint, row_blocked
+from .files import DAY_TYPE_TEXT, YES_NO_TEXT, check_range, range_fingerprint, row_blocked, zero_hour_workday_note
 
 KIND = "operator_calendar"
 
@@ -311,19 +311,19 @@ class WorkbenchOperatorCalendarFileService:
             return
         # 要写入的每一行都要说明它会盖过班次轮换，不然用户看不出导进去的代价。
         row["notes"].append("这一天这个人整天按这里的安排排产，不再套用他的班次轮换，也不看全局工作日历。")
-        if after["day_type"] == "workday" and not after["shift_hours"] and after["periods_json"] in (None, "[]"):
-            # 工作时段数填 0 又把类型填成工作日，会存成 0 工时的工作日；与全局日历文件同样在预检里说清楚。
-            row["notes"].append("这一天是工作日，但可排工时是 0，排产时这个人一道工序也排不进来。"
-                                "要上班请填班次起止或工作时段；要休息请把类型填成「假期」。")
+        # 工作时段数填 0 又把类型填成工作日，会存成 0 工时的工作日；与全局日历文件同样在预检里说清楚。
+        zero_hours = zero_hour_workday_note(after, "这个人", "要上班请填班次起止或工作时段；要休息请把类型填成「假期」。")
+        if zero_hours is not None:
+            row["notes"].append(zero_hours)
         row["requires_confirmation"] = True
 
     @staticmethod
     def _field_of(field: Optional[str]) -> str:
-        mapping = {"fields.shiftStart": "shift_start", "fields.shiftEnd": "shift_end", "fields.eff": "efficiency",
+        mapping: Dict[Optional[str], str] = {"fields.shiftStart": "shift_start", "fields.shiftEnd": "shift_end", "fields.eff": "efficiency",
                    "fields.allowNormal": "allow_normal", "fields.allowUrgent": "allow_urgent",
                    "fields.periods": "period_count",
                    "班次开始": "shift_start", "班次结束": "shift_end", "效率": "efficiency", "可用工时": "shift_start"}
-        return mapping.get(field or "", "date")
+        return mapping.get(field, "date")
 
     def _public(self, row: Optional[Dict[str, Any]], label: Optional[str],
                 *, reading: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:

@@ -1,7 +1,7 @@
 """One request's archived run, candidate arrangements and fixed comparison scope."""
 
 from functools import cached_property
-from typing import Any, Dict, Optional, overload
+from typing import Any, Dict, NamedTuple, Optional, overload
 
 from core.models.workbench_preflight import preflight_window
 from core.models.workbench_run_candidate import local_time, reference, reject
@@ -21,6 +21,11 @@ from core.services.workbench.facts.operation_effort_evidence import saved_operat
 from core.services.workbench.facts.resource_intervals import task_interval
 from core.services.workbench.facts.resource_projection import resource_cohort
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
+
+
+class OfficialReading(NamedTuple):
+    model: Dict[str, Any]
+    changed: bool
 
 
 class DecisionSource:
@@ -298,7 +303,7 @@ class DecisionSource:
     @cached_property
     def operation_comparisons(self):
         from .decision_impact import operation_comparisons
-        return operation_comparisons(self.analysis_tasks(self.selected_ref), self.analysis_tasks("reference"), self.scope["operation_refs"],
+        return operation_comparisons(self.scope["operation_refs"],
             self.baseline["state"] == "available", selected_available=self.result_available(self.selected_ref),
             deferred_refs=self.deferred_refs, reference_deferred_refs=self.reference_deferred_refs,
             reference_groups=self.analysis_groups("reference"), selected_groups=self.analysis_groups(self.selected_ref),
@@ -327,32 +332,33 @@ class DecisionSource:
         return read_decision_baseline(self.capture, self.facts, self.disposition, source_resolver=resolver)
 
     @cached_property
-    def official(self):
+    def _official_reading(self):
+        """The admitted official model, re-read from its original sources when a dependency changed since admission."""
         model: Dict[str, Any] = self._active_decision["official"] if self.run["state"] in ("queued", "running") else decode_model(
             self.repo.decision_read_model(self.run["run_ref"], ("official",)), ("official",))["official"]
         if model.get("projection_state") == "disposition_not_recorded":
             invalid_baseline()
         if not self.repo.dependencies_match(model["dependencies"]):
-            self.__dict__["_official_changed"] = True
             value: Dict[str, Any] = dict(self.official_details)
             value["operation_refs"] = sorted({row["operation_ref"] for row in value["tasks"]})
             value["deferred_operation_refs"] = sorted(ref for ref, op in self.facts.operations.items()
                                                       if op in value["deferred_operation_ids"])
-            return value
+            return OfficialReading(value, True)
         value = dict(model)
         value["tasks"] = analysis_arrangements(model["arrangements"])
-        return value
+        return OfficialReading(value, False)
+
+    @property
+    def official(self):
+        return self._official_reading.model
 
     @property
     def official_changed(self):
-        if self.comparison_mode != "admission_official":
-            return False
-        _ = self.official
-        return self.__dict__.get("_official_changed", False)
+        return self.comparison_mode == "admission_official" and self._official_reading.changed
 
     @cached_property
     def official_members(self):
-        if "official" in self.__dict__:
+        if "_official_reading" in self.__dict__:
             return {"identity": dict(self.official["identity"]),
                     "operation_refs": self.memberships.refs(self.official["operation_refs"], "operation")}
         return self.memberships.expand(self.context["official_members"])

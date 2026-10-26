@@ -29,7 +29,7 @@ def build_graph_ready_candidate_payload(
         "strategy": used_strat,
         "params": public_params(used_params),
         "dispatch_mode": "sgs",
-        "dispatch_rule": str(dispatch_rule or ""),
+        "dispatch_rule": dispatch_rule,
         "order": result_order,
         "decoded_batch_order": decoded_order,
         "metrics": metrics,
@@ -56,12 +56,13 @@ def decoded_batch_order(results: List[ScheduleResult]) -> List[str]:
         key=lambda item: (
             item.start_time or datetime.max,
             item.end_time or datetime.max,
-            int(item.seq or 0),
-            int(item.op_id or 0),
+            item.seq,
+            item.op_id,
         ),
     ):
-        batch_id = str(result.batch_id or "").strip()
-        if not batch_id or batch_id in seen:
+        # ScheduleResult.op_id/batch_id/seq are required (core/algorithm_contracts/types.py).
+        batch_id = result.batch_id
+        if batch_id in seen:
             continue
         seen.add(batch_id)
         order.append(batch_id)
@@ -72,8 +73,7 @@ def _result_batch_order(decoded_batch_order: List[str], *, decision_order: List[
     out = list(decoded_batch_order)
     seen = set(out)
     for batch_id in decision_order:
-        text = str(batch_id or "").strip()
-        if text and text not in seen:
-            seen.add(text)
-            out.append(text)
+        if batch_id not in seen:
+            seen.add(batch_id)
+            out.append(batch_id)
     return out

@@ -11,7 +11,7 @@ from typing import Any, Optional, cast
 from flask import Flask, current_app, g, request
 from werkzeug.serving import ThreadedWSGIServer
 
-from core.infrastructure.backup import BackupManager, is_maintenance_window_active
+from core.infrastructure.backup import is_maintenance_window_active
 from core.infrastructure.database import ensure_schema, get_connection
 from core.infrastructure.logging import AppLogger, OperationLogger, safe_log
 from web.error_boundary import (
@@ -104,11 +104,9 @@ def should_own_runtime_resources(
     return str(marker or "").strip().lower() == "true"
 
 
-def _run_exit_backup(manager: Optional[BackupManager] = None) -> bool:
-    bm = manager or _EXIT_BACKUP_MANAGER
-    if bm is None:
-        return False
-    return run_exit_backup(bm, lambda target: read_exit_backup_enabled(target, get_connection))
+def _run_exit_backup() -> bool:
+    # 只由 _register_exit_backup 在赋值 _EXIT_BACKUP_MANAGER 之后注册到 atexit。
+    return run_exit_backup(_EXIT_BACKUP_MANAGER, lambda target: read_exit_backup_enabled(target, get_connection))
 
 
 def _maintenance_gate_response():
@@ -220,8 +218,9 @@ def create_app_core(
     app.config["APP_UI_MODE"] = ui_mode
     if prepare_system_restore_startup(app):
         return app
-    # 静态资源长缓存（配合 url_for('static', ...) 版本参数）
-    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = int(app.config.get("SEND_FILE_MAX_AGE_DEFAULT") or 43200)
+    # 静态资源长缓存（配合 url_for('static', ...) 版本参数）；只在没配置时给默认值，配成 0 就是不缓存。
+    static_max_age = app.config["SEND_FILE_MAX_AGE_DEFAULT"]
+    app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 43200 if static_max_age is None else int(static_max_age)
     install_versioned_url_for(app, static_dir)
 
     app_logger = AppLogger(
@@ -358,7 +357,7 @@ def create_app_core(
     _register_all_blueprints(app)
     _register_exit_backup(app)
 
-    if str(ui_mode or "").strip().lower() == "new_ui":
+    if ui_mode == "new_ui":
         app.logger.info("应用启动完成 (UI Test Mode)。")
     else:
         app.logger.info("应用启动完成。")

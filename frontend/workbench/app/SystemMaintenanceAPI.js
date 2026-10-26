@@ -169,7 +169,7 @@
     const selection = recordSelection(value.selection, kind), legacy = selection && /^[a-f0-9]{64}$/.test(selection.key);
     return { filters, page, selection: legacy ? null : selection, ...((legacy || value.migration_notice) ? { migration_notice: migrationNotice } : {}) };
   }
-  function pageContext(value = {}) {
+  function pageContext(value) {
     check(object(value) && Object.keys(value).every(key => ['source', 'tab', 'page_size', 'records'].includes(key)), '上次的页面状态无法恢复。请从侧栏重新打开系统管理。');
     // `sample` 是下线前唯一发布过的旧来源。只迁移这个精确值，并清空其样例记录状态；未知来源仍 fail closed。
     const legacySample = value.source === 'sample';

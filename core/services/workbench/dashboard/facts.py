@@ -125,11 +125,6 @@ class DashboardFacts:
         return self
 
     def _plan(self):
-        required = {"ScheduleHistory", "Schedule", "BatchOperations", "WorkbenchPlanSourceRefs", "WorkbenchTaskRefs"}
-        if not required <= self.repo.present:
-            self.plan_state = "unavailable"
-            self.plan_issues = [source_issue("source_not_read", "正式计划的数据还没读全，不能得出零风险的结论。")]
-            return
         context = PlanReadContext(self.conn, entities=_EntityRefs(self), captured_machines=self.raw["Machines"])
         with context.read_scope():
             self._captured_plan(context)
@@ -155,7 +150,7 @@ class DashboardFacts:
             original_rows = context.scoped_rows(entry, scope)
             self.task_rows = [dict(row, source=read_source_type(row["source"])) for row in original_rows]
             self.raw["plan_task_sources"] = [(row["schedule_id"], row["source"]) for row in original_rows]
-            self.tasks, _, resources, resource_state = context.projected_tasks(ref, entry, original_rows)
+            self.tasks, _, resources, resource_state = context.projected_tasks(ref, original_rows)
             self.raw["plan_resource_identities"] = resource_state
             self.raw["plan_identity_revision"] = context.references.read_revision()
             self.plan_state = "loaded"

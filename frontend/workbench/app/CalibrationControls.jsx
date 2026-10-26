@@ -49,7 +49,7 @@
           width={width(key, value)} onResize={value => onResize(key, Math.min(16384, value))} disabled={disabled} scopeTransform={window.CalibrationAPI.facetScope} />
       </th>)}<th scope="col" className="ca-action" style={{ width: actionWidth }}>详情</th>
     </tr></thead><tbody>{rows.map(row => <tr key={row.suggestion_ref} data-ref={row.suggestion_ref} data-selected={selected === row.suggestion_ref}>
-      <td><Button className="lnk" aria-label={'查看零件 ' + row.part_no} disabled={disabled || !canView || row.capabilities.view !== true || typeof onPart !== 'function'}
+      <td><Button className="lnk" aria-label={'查看零件 ' + row.part_no} disabled={disabled || !canView || row.capabilities.view !== true}
         onClick={() => onPart(row)}>{row.part_no}</Button><small>{row.part_name}</small></td><td>{row.sequence} · {row.operation_label}<small>{source(row.source)}</small></td>
       <td className="ca-number">{amount(row.old_unit_hours, '未填写')}</td><td className="ca-number">{amount(row.suggested_unit_hours, '暂无建议')}</td><td className="ca-number">{row.sample_count}</td>
       <td className={'ca-number ' + (row.over_20_percent ? 'ca-deviation-over' : 'ca-deviation-within')}>{percent(row.deviation_percent)}</td>

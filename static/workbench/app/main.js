@@ -2493,7 +2493,6 @@ function SMExport({
     return found.concat(Array.from(node.querySelectorAll(SELECTOR)));
   }
   function attach(container) {
-    if (!container || typeof container.querySelectorAll !== 'function') throw new TypeError('WorkbenchScrollShadows.attach needs a container element');
     const registered = new Map();
     const resize = new ResizeObserver(entries => {
       for (const entry of entries) update(entry.target.closest(SELECTOR));
@@ -3342,8 +3341,7 @@ function SMExport({
     externalPermit = null,
     nextPrompt = 0;
   function affected(options = {}) {
-    const excluded = options.excludeOwners || [];
-    return Array.from(entries.values()).filter(entry => (options.owner === undefined || entry.owner === options.owner) && !excluded.includes(entry.owner) && (entry.dirty || entry.locked));
+    return Array.from(entries.values()).filter(entry => (options.owner === undefined || entry.owner === options.owner) && (entry.dirty || entry.locked));
   }
   function hasDirty(options) {
     return affected(options).length > 0;
@@ -3451,7 +3449,6 @@ function SMExport({
     });
   }
   async function leaveExternal(navigate) {
-    if (typeof navigate !== 'function') throw new TypeError('leave_external_requires_navigate');
     if (!(await confirmLeave())) return false;
     const permit = {};
     externalPermit = permit;
@@ -3972,9 +3969,8 @@ function SMExport({
   function availability(value) {
     return object(value) && value.basis === 'enabled_authorized_matching' && count(value.machines) && count(value.operators);
   }
+  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data 形状。
   function query(result, shape) {
-    if (result && result.ok === false) throw result;
-    if (!object(result) || result.ok !== true || result.schema_version !== 1 || !object(result.meta) || !['production', 'demo'].includes(result.meta.source) || result.meta.time_basis !== 'factory_local' || !text(result.meta.snapshot_ref) || !result.meta.snapshot_ref || !text(result.meta.request_ref) || !text(result.meta.as_of) || !Array.isArray(result.warnings)) throw failure('读到的数据不完整，请刷新重试。');
     if (shape === 'entity') {
       if (!entity(result.data)) throw failure('读到的详情不完整，请刷新后重试。');
     } else if (shape === 'summary') {
@@ -4172,8 +4168,8 @@ function SMExport({
     if (result && result.state === 'not_recorded') return 'pending';
     if (result && result.ok === false) return result.committed === false ? 'rejected' : 'pending';
     if (!result || result.ok !== true) return 'pending';
-    if (['committed', 'unchanged', 'partial'].includes(result.result) && text(result.receipt_ref) && result.receipt_ref && object(result.data) && Array.isArray(result.warnings)) return 'terminal';
-    return 'pending';
+    // 命令结果已由 resource-api.js 的 terminal() 校验回执编号、data 与 warnings。
+    return ['committed', 'unchanged', 'partial'].includes(result.result) ? 'terminal' : 'pending';
   }
   // 只在命令已完成（receipt() 判为 terminal，data 已校验为对象）后调用。
   function resultRef(result, fallback) {
@@ -4608,18 +4604,16 @@ function SMExport({
     if (!entity(d) || d.ref !== expectedRef || !capabilities(d.capabilities) || !Array.isArray(d.operations) || !d.operations.every(operation) || !uniqueRefs(d.operations) || !Array.isArray(d.external_groups) || !d.external_groups.every(externalGroup) || !uniqueRefs(d.external_groups) || !cycleReferences(d)) throw C.failure('读到的工艺详情不完整或不是这个零件，请刷新后重试。');
     return result;
   }
+  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，下面两个预检只校验 data。
   function preview(result, expectedRef, body) {
-    if (result && result.ok === false) throw result;
-    if (!C.object(result) || result.ok !== true || result.schema_version !== 1 || !C.object(result.meta) || !['production', 'demo'].includes(result.meta.source) || result.meta.time_basis !== 'factory_local' || !token(result.meta.snapshot_ref) || !text(result.meta.request_ref) || !text(result.meta.as_of) || !Array.isArray(result.warnings)) throw C.failure('读到的路线预检结果不完整，请刷新重试。');
     const d = result.data;
-    if (!C.object(d) || d.part_ref !== expectedRef || d.mode !== body.mode || !text(d.route_raw) || !text(d.normalized_input) || !writeContext(d.write_context, d.can_confirm_route ? 'route_confirm' : null) || typeof d.can_confirm_route !== 'boolean' || !Array.isArray(d.operations) || !d.operations.every(row => C.object(row) && sequence(row.sequence) && text(row.op_type_name) && nullableRef(row.op_type_ref) && source(row.source_suggestion) && nullableRef(row.supplier_ref) && nullableText(row.supplier_label) && number(row.external_days) && (text(row.basis) || C.object(row.basis) || Array.isArray(row.basis)) && issues(row.issues)) || !Array.isArray(d.diagnostics) || !d.diagnostics.every(row => C.object(row) && text(row.code) && text(row.message) && ['error', 'warning'].includes(row.severity) && (!C.own(row, 'sequence') || sequence(row.sequence))) || !C.object(d.counts) || !['operations', 'recognized', 'unknown'].every(key => count(d.counts[key])) || d.counts.operations !== d.operations.length || d.counts.recognized + d.counts.unknown !== d.counts.operations || !C.object(d.baseline) || !count(d.baseline.operation_count) || !count(d.baseline.external_group_count) || typeof d.baseline.has_published_template !== 'boolean' || !C.object(d.changes) || !['added', 'removed', 'retained', 'same_sequence_changed'].every(key => Array.isArray(d.changes[key]) && d.changes[key].every(sequence)) || !Array.isArray(d.affected_groups) || !d.affected_groups.every(externalGroup) || !uniqueRefs(d.affected_groups)) throw C.failure('读到的路线预检结果不完整或不是这个零件，本次不作为有效输入。');
+    if (d.part_ref !== expectedRef || d.mode !== body.mode || !text(d.route_raw) || !text(d.normalized_input) || !writeContext(d.write_context, d.can_confirm_route ? 'route_confirm' : null) || typeof d.can_confirm_route !== 'boolean' || !Array.isArray(d.operations) || !d.operations.every(row => C.object(row) && sequence(row.sequence) && text(row.op_type_name) && nullableRef(row.op_type_ref) && source(row.source_suggestion) && nullableRef(row.supplier_ref) && nullableText(row.supplier_label) && number(row.external_days) && (text(row.basis) || C.object(row.basis) || Array.isArray(row.basis)) && issues(row.issues)) || !Array.isArray(d.diagnostics) || !d.diagnostics.every(row => C.object(row) && text(row.code) && text(row.message) && ['error', 'warning'].includes(row.severity) && (!C.own(row, 'sequence') || sequence(row.sequence))) || !C.object(d.counts) || !['operations', 'recognized', 'unknown'].every(key => count(d.counts[key])) || d.counts.operations !== d.operations.length || d.counts.recognized + d.counts.unknown !== d.counts.operations || !C.object(d.baseline) || !count(d.baseline.operation_count) || !count(d.baseline.external_group_count) || typeof d.baseline.has_published_template !== 'boolean' || !C.object(d.changes) || !['added', 'removed', 'retained', 'same_sequence_changed'].every(key => Array.isArray(d.changes[key]) && d.changes[key].every(sequence)) || !Array.isArray(d.affected_groups) || !d.affected_groups.every(externalGroup) || !uniqueRefs(d.affected_groups)) throw C.failure('读到的路线预检结果不完整或不是这个零件，本次不作为有效输入。');
     if (d.can_confirm_route && d.diagnostics.some(row => row.severity === 'error')) throw C.failure('路线预检的诊断与确认标记矛盾，请重试。');
     return result;
   }
   function stagePreview(result, expectedRef, action) {
-    if (!C.object(result) || result.ok !== true || result.schema_version !== 1 || !C.object(result.meta) || result.meta.source !== 'production' || result.meta.time_basis !== 'factory_local' || !token(result.meta.snapshot_ref) || !token(result.meta.request_ref) || !text(result.meta.as_of) || !Array.isArray(result.warnings)) throw C.failure('归属检查结果不完整，请重新检查。');
     const d = result.data;
-    if (!C.object(d) || !['source_confirm', 'groups_confirm'].includes(action) || d.action !== action || d.part_ref !== expectedRef || !writeContext(d.write_context, action) || !Array.isArray(d.affected_groups) || !d.affected_groups.every(externalGroup) || !uniqueRefs(d.affected_groups)) throw C.failure('归属检查与当前零件不一致，请重新检查。');
+    if (!['source_confirm', 'groups_confirm'].includes(action) || d.action !== action || d.part_ref !== expectedRef || !writeContext(d.write_context, action) || !Array.isArray(d.affected_groups) || !d.affected_groups.every(externalGroup) || !uniqueRefs(d.affected_groups)) throw C.failure('归属检查与当前零件不一致，请重新检查。');
     if (action === 'groups_confirm') {
       const facts = value => C.object(value) && Array.isArray(value.operation_refs) && value.operation_refs.every(ref) && Array.isArray(value.sequences) && value.sequences.every(sequence) && value.operation_refs.length === value.sequences.length && nullableText(value.supplier_id) && number(value.total_days) && nullableText(value.merge_mode);
       if (!Array.isArray(d.changes) || !d.changes.every(row => C.object(row) && nullableRef(row.ref) && ['create', 'update', 'discard'].includes(row.action) && (row.before === null || facts(row.before)) && (row.after === null || facts(row.after)))) throw C.failure('外协段预检结果不完整，请重新检查。');
@@ -5651,7 +5645,7 @@ function SMExport({
           input,
           category: listCategory
         };
-        if (typeof adapter.savePending === 'function') adapter.savePending(intent);
+        adapter.savePending(intent);
       } catch (error) {
         publish(store, {
           phase: 'rejected',
@@ -5687,7 +5681,7 @@ function SMExport({
       } finally {
         store.running = false;
       }
-      if (store.state.phase === 'rejected' && typeof adapter.clearPending === 'function') {
+      if (store.state.phase === 'rejected') {
         // 服务端已明确拒绝，没有回执可查；记录清不掉时保留拒绝态和意图，由 reset() 再清。
         try {
           adapter.clearPending();
@@ -5707,7 +5701,7 @@ function SMExport({
     }
     function reset() {
       if (store.running || ['sending', 'pending', 'checking'].includes(store.state.phase)) return false;
-      if (store.state.intent && typeof adapter.clearPending === 'function') {
+      if (store.state.intent) {
         try {
           adapter.clearPending();
         } catch (error) {
@@ -5825,7 +5819,8 @@ function SMExport({
     name,
     className
   }) {
-    const nodes = window.APSFieldReports && window.APSFieldReports.iconNodes[name];
+    // 图标表、SMIcon、Ico 都由同一个 main.js 的基础层（build-order.json foundation）先行定义。
+    const nodes = window.APSFieldReports.iconNodes[name];
     if (nodes) return /*#__PURE__*/React.createElement("svg", {
       className: className,
       "data-wb-icon": name,
@@ -5842,7 +5837,7 @@ function SMExport({
       ...attrs,
       key: index
     })));
-    if (name === 'refresh-cw' && typeof SMIcon === 'function') return /*#__PURE__*/React.createElement(SMIcon, {
+    if (name === 'refresh-cw') return /*#__PURE__*/React.createElement(SMIcon, {
       name: name
     });
     if (railPaths[name]) return /*#__PURE__*/React.createElement("svg", {
@@ -5869,9 +5864,9 @@ function SMExport({
       cy: "18",
       r: "1.9"
     })));
-    return typeof Ico === 'function' ? /*#__PURE__*/React.createElement(Ico, {
+    return /*#__PURE__*/React.createElement(Ico, {
       name: name
-    }) : null;
+    });
   }
   function Search({
     className = '',
@@ -6611,9 +6606,6 @@ function SMExport({
       setJumpError(false);
     }, [number]);
     if (!['pages', 'cursor'].includes(mode)) throw new TypeError('pager_mode_unknown: ' + mode);
-    if (onSize && (!Array.isArray(sizes) || !sizes.length || !sizes.every(value => Number.isSafeInteger(value) && value > 0))) {
-      throw new TypeError('pager_sizes_not_declared_by_domain_api');
-    }
     const locked = disabled || busy;
     const previous = mode === 'cursor' ? !!hasPrevious : number > 1;
     const next = mode === 'cursor' ? !!hasNext : pageCount != null ? number < pageCount : !!hasNext;
@@ -6933,7 +6925,8 @@ function SMExport({
   function describe(value) {
     return value.map(row => (row.day_offset ? '次日 ' : '') + row.start + '–' + (row.end <= row.start ? '次日 ' : '') + row.end).join('、') || '无工作时段';
   }
-  // 工作日却没有可排工时：全局日历和个人日历编辑这一天时都显示这一句，不拦保存；与日历文件导入预检的提醒同一口径。
+  // 工作日却没有可排工时：全局日历和个人日历编辑这一天时按草稿实时显示，不拦保存。事实句与日历文件导入预检
+  // （calendar_files/files.py 的 zero_hour_workday_note）相同，后半句的操作提示针对表单控件。
   const zeroHoursNote = '这一天是工作日，但可排工时是 0，排产时一道工序也排不进来。要上班请填写工作时间；要休息请改选休息。';
   window.APSWorkPeriods = {
     defaults,
@@ -7067,14 +7060,9 @@ function SMExport({
   function day(value) {
     return policy(value) && isDate(value.date) && (value.explicit ? typeof value.calendar_ref === 'string' && /^[0-9a-f]{48}$/.test(value.calendar_ref) && C.object(value.entity) && value.entity.ref === value.calendar_ref : value.calendar_ref === null && value.entity === null);
   }
-  function envelope(raw) {
-    if (raw && raw.ok === false) throw raw;
-    if (!C.object(raw) || raw.ok !== true || raw.schema_version !== 1 || !C.object(raw.data) || !C.object(raw.meta) || !['production', 'demo'].includes(raw.meta.source) || raw.meta.time_basis !== 'factory_local' || !raw.meta.snapshot_ref || !raw.meta.request_ref || !raw.meta.as_of || !Array.isArray(raw.warnings)) throw C.failure('读到的工作日历数据不完整，页面没有改动。请刷新后重试。');
-    return raw;
-  }
-  function month(raw, year, number) {
-    const result = envelope(raw),
-      data = result.data;
+  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data。
+  function month(result, year, number) {
+    const data = result.data;
     const prefix = monthKey(year, number) + '-';
     if (data.year !== year || data.month !== number || data.time_basis !== 'factory_local' || !Array.isArray(data.days) || data.days.length !== monthDays(year, number) || !Array.isArray(data.cells) || data.cells.length % 7 !== 0 || !data.days.every((row, index) => day(row) && row.date === prefix + String(index + 1).padStart(2, '0') && row.day === index + 1 && Number.isInteger(row.weekday) && row.weekday >= 0 && row.weekday <= 6 && typeof row.is_weekend === 'boolean' && typeof row.is_today === 'boolean') || data.cells.filter(Boolean).map(row => row.date).join() !== data.days.map(row => row.date).join() || data.cells.length !== Math.ceil((data.days[0].weekday + data.days.length) / 7) * 7 || data.cells.slice(0, data.days[0].weekday).some(Boolean) || !C.object(data.stats) || !['work_days', 'configured', 'overrides', 'weekend_rest'].every(key => Number.isSafeInteger(data.stats[key]) && data.stats[key] >= 0)) throw C.failure('读到的月份、日期或统计数据不完整，页面没有改动。请刷新后重试。');
     return result;
@@ -7091,9 +7079,8 @@ function SMExport({
     }
     throw C.failure('日期范围超过 36500 天，没有查看变更。请缩小日期范围后重试。');
   }
-  function preview(raw) {
-    const result = envelope(raw),
-      data = result.data;
+  function preview(result) {
+    const data = result.data;
     if (typeof data.preview_ref !== 'string' || !/^[0-9a-f]{32}$/.test(data.preview_ref) || !Array.isArray(data.days) || !Array.isArray(data.dates) || !C.object(data.counts) || data.counts.selected !== data.days.length || data.dates.length !== data.days.length || !C.object(data.request) || !isDate(data.request.start_date) || !isDate(data.request.end_date) || data.request.start_date > data.request.end_date || !['all', 'weekday', 'weekend'].includes(data.request.scope) || !['upsert', 'delete'].includes(data.request.operation) || typeof data.expires_at !== 'string' || new Set(data.dates).size !== data.dates.length || !data.days.every((row, index) => isDate(row.date) && row.date === data.dates[index] && day(row.before) && row.before.date === row.date && policy(row.after) && typeof row.changed === 'boolean') || data.counts.changed !== data.days.filter(row => row.changed).length || data.counts.unchanged !== data.days.length - data.counts.changed || data.dates.join() !== rangeDates(data.request).join()) throw C.failure('读到的变更清单不完整，没有写入。请点「重新预览变更」。');
     return result;
   }
@@ -7224,14 +7211,9 @@ function SMExport({
     if (!value.explicit) return FIELDS.every(key => value[key] === null) && value.calendar_ref === null;
     return ['workday', 'holiday'].includes(value.day_type) && isClock(value.shift_start) && (value.shift_end === null || isClock(value.shift_end)) && typeof value.shift_hours === 'number' && Number.isFinite(value.shift_hours) && value.shift_hours >= 0 && typeof value.efficiency === 'number' && Number.isFinite(value.efficiency) && value.efficiency > 0 && ['yes', 'no'].includes(value.allow_normal) && ['yes', 'no'].includes(value.allow_urgent) && (value.remark === null || typeof value.remark === 'string') && typeof value.calendar_ref === 'string' && /^[0-9a-f]{48}$/.test(value.calendar_ref);
   }
-  function envelope(raw) {
-    if (raw && raw.ok === false) throw raw;
-    if (!C.object(raw) || raw.ok !== true || raw.schema_version !== 1 || !C.object(raw.data) || !C.object(raw.meta) || !['production', 'demo'].includes(raw.meta.source) || raw.meta.time_basis !== 'factory_local' || !raw.meta.snapshot_ref || !raw.meta.request_ref || !raw.meta.as_of || !Array.isArray(raw.warnings)) throw C.failure('读到的个人日历数据不完整，页面没有改动。请刷新后重试。');
-    return raw;
-  }
-  function month(raw, expected) {
-    const result = envelope(raw),
-      data = result.data;
+  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data。
+  function month(result, expected) {
+    const data = result.data;
     if (data.year !== expected.year || data.month !== expected.month || data.operator_ref !== expected.ref) throw C.failure('读到的个人日历不是当前人员的这个月，请刷新后重试。');
     if (!Array.isArray(data.days) || !data.days.length || !data.days.every(item => day(item) && Number.isSafeInteger(item.day) && Number.isSafeInteger(item.weekday) && typeof item.is_weekend === 'boolean' && typeof item.is_today === 'boolean')) throw C.failure('个人日历的日期内容不完整，请刷新后重试。');
     if (!Array.isArray(data.cells) || data.cells.length % 7 !== 0 || data.cells.filter(cell => cell !== null).length !== data.days.length) throw C.failure('个人日历的月历格子不完整，请刷新后重试。');
@@ -7356,9 +7338,8 @@ function SMExport({
       end_date: range.end_date
     };
   }
-  function rangePreview(raw, expected) {
-    const result = envelope(raw),
-      data = result.data;
+  function rangePreview(result, expected) {
+    const data = result.data;
     if (!C.object(data.range) || data.range.start_date !== expected.start_date || data.range.end_date !== expected.end_date) throw C.failure('预检的日期范围和选的不一致，没有清除任何设置。请重新点「预检要清除的日期」。');
     if (!Number.isSafeInteger(data.count) || data.count < 0 || !Array.isArray(data.days) || data.days.length !== data.count || !data.days.every(item => day(item) && item.explicit)) throw C.failure('预检内容不完整，没有清除任何设置。');
     if (!C.object(data.write_context)) throw C.failure('清除能力没有声明，没有清除任何设置。');
@@ -8360,7 +8341,8 @@ function SMExport({
     React.useLayoutEffect(() => {
       const media = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
       function commit(value, synchronous) {
-        if (synchronous && window.ReactDOM && typeof window.ReactDOM.flushSync === 'function') window.ReactDOM.flushSync(() => setPrinting(value));else setPrinting(value);
+        // ReactDOM 由 build.py 锁定为 18.3.1，flushSync 恒在。
+        if (synchronous) window.ReactDOM.flushSync(() => setPrinting(value));else setPrinting(value);
       }
       function beforePrint() {
         commit(true, true);
@@ -8765,8 +8747,8 @@ function SMExport({
   function toggle(value, key, enabled) {
     return toggleKeys(value, [key], enabled);
   }
+  // changed 只来自 facets() 已校验的选项编号或 selection() 已校验的全部匹配编号。
   function toggleKeys(value, changed, enabled) {
-    if (!Array.isArray(changed) || !changed.every(key)) throw C.failure('列值编号无效，筛选没有改动。');
     const selected = rule(value),
       keys = new Set(selected.values);
     changed.forEach(key => {
@@ -8934,10 +8916,7 @@ function SMExport({
         result: null,
         error: null
       });
-      Promise.resolve().then(() => {
-        if (typeof service.current.facets !== 'function') throw C.failure('dependency not wired: adapter.facets');
-        return service.current.facets(kind, query, controller.signal);
-      }).then(raw => {
+      Promise.resolve().then(() => service.current.facets(kind, query, controller.signal)).then(raw => {
         if (live && !controller.signal.aborted) setReading({
           key: requestKey,
           loading: false,
@@ -8994,10 +8973,7 @@ function SMExport({
         key: keysKey,
         loading: true
       });
-      Promise.resolve().then(() => {
-        if (typeof service.current.facetSelection !== 'function') throw C.failure('dependency not wired: adapter.facetSelection');
-        return service.current.facetSelection(kind, query, controller.signal);
-      }).then(raw => {
+      Promise.resolve().then(() => service.current.facetSelection(kind, query, controller.signal)).then(raw => {
         if (!live || controller.signal.aborted) return;
         const result = M.selection(raw, {
             ...query,
@@ -9354,7 +9330,7 @@ function SMExport({
     }
     React.useEffect(() => () => finish(false), [columnKey, kind, scopeKey, disabled]);
     function start(event) {
-      if (disabled || typeof onResize !== 'function' || event.button !== 0 || drag.current) return;
+      if (disabled || event.button !== 0 || drag.current) return;
       event.preventDefault();
       event.stopPropagation();
       const node = event.currentTarget,
@@ -9413,7 +9389,7 @@ function SMExport({
       window.addEventListener('keydown', key, true);
     }
     function keyboard(event) {
-      if (disabled || typeof onResize !== 'function' || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (disabled || event.altKey || event.ctrlKey || event.metaKey) return;
       let next;
       if (event.key === 'Home') next = 56;else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') next = measure() + (event.key === 'ArrowLeft' ? -1 : 1) * (event.shiftKey ? 32 : 8);else return;
       event.preventDefault();
@@ -9502,7 +9478,7 @@ function SMExport({
       className: "wb-th-sort-shell"
     }, /*#__PURE__*/React.createElement(Button, {
       className: "wb-th-sort",
-      disabled: disabled || typeof onSort !== 'function',
+      disabled: disabled,
       title: column.title + '：' + (next === 'asc' ? '升序' : next === 'desc' ? '降序' : '恢复默认顺序'),
       "aria-label": column.title + '排序',
       style: {
@@ -9526,7 +9502,7 @@ function SMExport({
     }))))), /*#__PURE__*/React.createElement(Button, {
       className: "wb-th-filter",
       icon: "search",
-      disabled: disabled || typeof onFilter !== 'function',
+      disabled: disabled,
       "aria-label": '筛选' + column.title,
       "aria-haspopup": "dialog",
       "aria-expanded": !!current,
@@ -9546,8 +9522,8 @@ function SMExport({
       "aria-valuemin": 56,
       "aria-valuenow": resize.currentWidth,
       "aria-valuetext": resize.currentWidth + ' 像素',
-      "aria-disabled": disabled || typeof onResize !== 'function',
-      tabIndex: disabled || typeof onResize !== 'function' ? -1 : 0,
+      "aria-disabled": disabled,
+      tabIndex: disabled ? -1 : 0,
       className: "wb-th-resize",
       "data-dragging": resize.moving || undefined,
       onPointerDown: resize.start,
@@ -9596,12 +9572,12 @@ function SMExport({
   };
   const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
   const count = value => Number.isSafeInteger(value) && value >= 0;
+  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验关联记录与翻页。
   function query(result, parent, scope) {
-    if (result && result.ok === false) throw result;
-    const meta = result && result.meta,
-      data = result && result.data,
-      page = data && data.page;
-    if (!C.object(result) || result.ok !== true || result.schema_version !== 1 || !C.object(meta) || !['production', 'demo'].includes(meta.source) || meta.time_basis !== 'factory_local' || !['snapshot_ref', 'request_ref', 'as_of'].every(key => typeof meta[key] === 'string' && meta[key]) || !Array.isArray(result.warnings) || !C.object(data) || !C.object(data.basis) || typeof data.basis.code !== 'string' || !data.basis.code || typeof data.basis.message !== 'string' || !data.basis.message || !ref(parent) || data.parent_ref !== parent || data.parent_kind !== 'op_type' || data.relation !== scope.relation || !C.own(kinds, scope.relation) || !Array.isArray(data.entities) || !data.entities.every(item => C.object(item) && item.kind === kinds[scope.relation] && ref(item.ref) && typeof item.business_code === 'string' && typeof item.label === 'string' && (item.status === null || typeof item.status === 'string') && C.object(item.fields) && Array.isArray(item.issues) && item.write_context === null) || new Set(data.entities.map(item => item.ref)).size !== data.entities.length || !C.object(page) || page.number !== scope.page || page.size !== scope.size || !count(page.total) || !count(page.pages) || page.pages !== Math.max(1, Math.ceil(page.total / page.size)) || page.number < 1 || page.number > page.pages || data.entities.length !== Math.min(page.size, Math.max(0, page.total - (page.number - 1) * page.size)) || !Array.isArray(page.sort) || page.sort.length !== 1 || page.sort[0].field !== 'business_code' || page.sort[0].direction !== 'asc' || scope.snapshot_ref && meta.snapshot_ref !== scope.snapshot_ref) throw C.failure('读到的关联记录或翻页位置不对，请回到第 1 页重新查询。');
+    const meta = result.meta,
+      data = result.data,
+      page = data.page;
+    if (!C.object(data.basis) || typeof data.basis.code !== 'string' || !data.basis.code || typeof data.basis.message !== 'string' || !data.basis.message || !ref(parent) || data.parent_ref !== parent || data.parent_kind !== 'op_type' || data.relation !== scope.relation || !C.own(kinds, scope.relation) || !Array.isArray(data.entities) || !data.entities.every(item => C.object(item) && item.kind === kinds[scope.relation] && ref(item.ref) && typeof item.business_code === 'string' && typeof item.label === 'string' && (item.status === null || typeof item.status === 'string') && C.object(item.fields) && Array.isArray(item.issues) && item.write_context === null) || new Set(data.entities.map(item => item.ref)).size !== data.entities.length || !C.object(page) || page.number !== scope.page || page.size !== scope.size || !count(page.total) || !count(page.pages) || page.pages !== Math.max(1, Math.ceil(page.total / page.size)) || page.number < 1 || page.number > page.pages || data.entities.length !== Math.min(page.size, Math.max(0, page.total - (page.number - 1) * page.size)) || !Array.isArray(page.sort) || page.sort.length !== 1 || page.sort[0].field !== 'business_code' || page.sort[0].direction !== 'asc' || scope.snapshot_ref && meta.snapshot_ref !== scope.snapshot_ref) throw C.failure('读到的关联记录或翻页位置不对，请回到第 1 页重新查询。');
     return result;
   }
   function Association({
@@ -9617,10 +9593,7 @@ function SMExport({
       size: 5
     });
     const [search, setSearch] = React.useState('');
-    const read = S.useQuery(async signal => {
-      if (!adapter || typeof adapter.relations !== 'function') throw C.failure('dependency not wired: adapter.relations');
-      return query(await adapter.relations(entity.ref, scope, signal), entity.ref, scope);
-    }, [adapter, entity.ref, scope]);
+    const read = S.useQuery(async signal => query(await adapter.relations(entity.ref, scope, signal), entity.ref, scope), [adapter, entity.ref, scope]);
     const data = read.result && read.result.data,
       title = names[relation];
     function refresh() {
@@ -10399,13 +10372,10 @@ function SMExport({
     }, []);
     const done = command.phase === 'done',
       completedReceipt = done ? command.result.receipt_ref : null;
-    const request = S.useQuery(async signal => {
-      if (typeof adapter.query !== 'function') throw C.failure('dependency not wired: adapter.query');
-      return O.month(await adapter.query(PATH(ref) + '/month', month, signal), {
-        ...month,
-        ref
-      });
-    }, [adapter, ref, month.year, month.month, externalRevision, completedReceipt]);
+    const request = S.useQuery(async signal => O.month(await adapter.query(PATH(ref) + '/month', month, signal), {
+      ...month,
+      ref
+    }), [adapter, ref, month.year, month.month, externalRevision, completedReceipt]);
     const result = request.result,
       data = result && result.data;
     if (result) lastResult.current = result;
@@ -10567,7 +10537,7 @@ function SMExport({
     return /*#__PURE__*/React.createElement("div", {
       className: "plana resource-calendar wb-operator-calendar"
     }, /*#__PURE__*/React.createElement(Modal, {
-      title: (entity.business_code || '') + ' · ' + window.WorkbenchTerms.personal_calendar,
+      title: entity.business_code + ' · ' + window.WorkbenchTerms.personal_calendar,
       icon: "calendar-days",
       onClose: close,
       guardOwner: owner,
@@ -11705,7 +11675,7 @@ function SMExport({
       width: 160,
       sortable: true,
       render: entity => entity.label
-    }, ...(kind === 'op_type' ? opColumns(opCategory) : columns[kind] || []), ...(kind === 'op_type' ? [] : [{
+    }, ...(kind === 'op_type' ? opColumns(opCategory) : columns[kind]), ...(kind === 'op_type' ? [] : [{
       key: 'status',
       title: '状态',
       width: 145,
@@ -11728,7 +11698,8 @@ function SMExport({
         [key]: Math.max(56, width)
       });
     }
-    const filtered = !!(scope && (scope.query || scope.status || Object.keys(scope.column_filters || {}).length));
+    // 默认范围（ResourceWorkspace.jsx scopeFor）不带 column_filters，清空列筛选时也会删掉这个键。
+    const filtered = !!(scope.query || scope.status || Object.keys(scope.column_filters || {}).length);
     const tableWidth = widths ? Object.values(widths).reduce((sum, width) => sum + width, 0) : 44 + 216 + cols.reduce((sum, column) => sum + column.width, 0);
     return /*#__PURE__*/React.createElement("div", {
       className: "card"
@@ -11791,7 +11762,7 @@ function SMExport({
       direction: direction,
       sortActive: sortActive,
       onSort: onSort,
-      filter: scope && scope.column_filters && scope.column_filters[col.key] || null,
+      filter: scope.column_filters && scope.column_filters[col.key] || null,
       onFilter: rule => onColumnFilter(col.key, rule),
       width: widths ? widths[col.key] : col.width,
       onResize: width => resize(col.key, width),
@@ -12151,7 +12122,7 @@ function SMExport({
       const item = counts[key];
       return item && number(item.total) ? integer(item.total) + ' ' + C.nodes[key].unit : summary.loading ? '未读取' : '暂无数据';
     };
-    const notices = [...new Set([summary.error && C.message(summary.error), value.readiness_error, value.calendar_error, ...chipOrder.flatMap(key => (items[key] && items[key].issues || []).map(issue => C.nodes[key].label + '：' + issue.message)), ...(value.calendar ? [...(value.calendar.stats.issues || []).map(issue => '工作日历：' + issue.message), ...value.calendar.days.flatMap(day => day.issues.map(issue => day.date + '：' + issue.message)), ...value.calendar.holiday_default_efficiency.issues.map(issue => '假期默认效率：' + issue.message)] : [])].filter(Boolean))];
+    const notices = [...new Set([summary.error && C.message(summary.error), value.readiness_error, value.calendar_error, ...chipOrder.flatMap(key => (items[key] && items[key].issues || []).map(issue => C.nodes[key].label + '：' + issue.message)), ...(value.calendar ? [...value.calendar.stats.issues.map(issue => '工作日历：' + issue.message), ...value.calendar.days.flatMap(day => day.issues.map(issue => day.date + '：' + issue.message)), ...value.calendar.holiday_default_efficiency.issues.map(issue => '假期默认效率：' + issue.message)] : [])].filter(Boolean))];
     const tile = (key, tone) => {
       const item = items[key],
         text = countText(key),
@@ -12323,7 +12294,6 @@ function SMExport({
       className: "hb-r-next",
       icon: "arrow-right",
       disabled: disabled,
-      reason: typeof onNavigate !== 'function' ? '批次管理尚未开通。' : '',
       onClick: () => onNavigate('batches')
     }, "\u4E0B\u4E00\u6B65 \xB7 \u6279\u6B21\u7BA1\u7406")))));
   }
@@ -12415,7 +12385,8 @@ function SMExport({
   }
   const resourceReadView = (view, node) => restoreResourceReadView(view, node).view;
   function navigation(context) {
-    if (context === undefined || context === null) return {
+    // 侧栏直接进入时 main.jsx 传空对象；资料页内部没有定位目标时传 undefined 或 null。
+    if (context === undefined || context === null || !Object.keys(context).length) return {
       context: null
     };
     try {
@@ -14119,7 +14090,7 @@ function SMExport({
       } : {})
     }, rememberEnabled && !!data && !navigationError && !deferred && command.phase === 'idle' && source === 'production' && (!dialog || dialog.mode === 'view'));
     React.useEffect(() => {
-      if (onNavigationReady) onNavigationReady(!dialog && command.phase === 'idle');
+      onNavigationReady(!dialog && command.phase === 'idle');
     }, [dialog, command.phase, onNavigationReady]);
     React.useEffect(() => {
       if (!target.context || deferred || located.current || !data || command.phase !== 'idle') return;
@@ -14155,7 +14126,7 @@ function SMExport({
       if (command.phase !== 'done' || handled.current === command.result.receipt_ref) return;
       handled.current = command.result.receipt_ref;
       refresh(!summaryState);
-      if (typeof onCommitted === 'function') onCommitted(command.result);
+      onCommitted(command.result);
     }, [command.phase, command.result]);
     React.useEffect(() => {
       if (!awaitingRefresh.current || request.loading) return;
@@ -14293,7 +14264,7 @@ function SMExport({
       icon: "file-input",
       transfer: "import",
       disabled: blocked || !data || request.loading,
-      reason: typeof onOpenFile !== 'function' ? '日历文件导入尚未开通。' : source && source !== 'production' ? '当前不是生产数据，不能导入。' : '',
+      reason: source && source !== 'production' ? '当前不是生产数据，不能导入。' : '',
       onClick: () => onOpenFile('import', {
         source,
         month
@@ -14302,7 +14273,6 @@ function SMExport({
       icon: "file-output",
       transfer: "export",
       disabled: blocked || !data || request.loading,
-      reason: typeof onOpenFile !== 'function' ? '日历文件导出尚未开通。' : '',
       onClick: () => onOpenFile('export', {
         source,
         month
@@ -14403,8 +14373,6 @@ function SMExport({
       className: "modal-b form scroll"
     }, /*#__PURE__*/React.createElement(Policy, {
       value: dialog.day
-    }), /*#__PURE__*/React.createElement(Issues, {
-      issues: dialog.day.issues || []
     }))), dialog && dialog.mode === 'defaults' && /*#__PURE__*/React.createElement(window.CalendarDefaultsDialog, {
       adapter: adapter,
       command: command,
@@ -14486,14 +14454,9 @@ function SMExport({
       download: 'exports/' + kind,
       template: 'templates/' + kind
     };
-    function envelope(raw) {
-      if (raw && raw.ok === false) throw raw;
-      if (!C.object(raw) || raw.ok !== true || raw.schema_version !== 1 || !C.object(raw.data) || !C.object(raw.meta) || !['production', 'demo'].includes(raw.meta.source) || raw.meta.time_basis !== 'factory_local' || typeof raw.meta.snapshot_ref !== 'string' || !raw.meta.snapshot_ref || !Array.isArray(raw.warnings)) throw C.failure('读到的' + label + '数据不完整，请刷新重试。');
-      return raw;
-    }
-    function preview(raw, mode, expected) {
-      const result = envelope(raw),
-        data = result.data;
+    // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data。
+    function preview(result, mode, expected) {
+      const data = result.data;
       if (!token(data.preview_ref) || data.operation !== kind + (mode === 'import' ? '.import' : '.bulk_delete') || data.commit_policy !== 'atomic' || typeof data.can_confirm !== 'boolean' || !C.object(data.summary) || !Array.isArray(data.rows) || !C.object(data.write_context) || !C.object(data.write_context.capabilities) || !Array.isArray(data.write_context.blocked_reasons) || !token(data.write_context.write_token) || !Number.isFinite(Date.parse(data.expires_at))) throw C.failure('预检结果不完整，本批没有提交。请重新预检。');
       if (!Object.keys(results).every(key => count(data.summary[key])) || Object.keys(results).reduce((sum, key) => sum + data.summary[key], 0) !== data.rows.length) throw C.failure('预检统计与明细不一致，本批没有提交。');
       const validRow = row => C.object(row) && count(row.row) && row.row > 0 && C.own(results, row.result) && (row.business_code === null || typeof row.business_code === 'string') && (row.before === null || C.object(row.before)) && (row.after === null || C.object(row.after)) && C.object(row.changes) && Array.isArray(row.errors) && row.errors.every(error => C.object(error) && typeof error.message === 'string') && (row.reference_fields === undefined || Array.isArray(row.reference_fields) && row.reference_fields.every(key => typeof key === 'string' && (kind !== 'material' || key === 'created_at')) && new Set(row.reference_fields).size === row.reference_fields.length) && typeof row.requires_confirmation === 'boolean' && count(row.reference_count);
@@ -14513,9 +14476,8 @@ function SMExport({
       if (mode === 'bulk' && (!Array.isArray(expected) || data.rows.length !== expected.length || !data.rows.every((row, index) => row.entity_ref === expected[index]))) throw C.failure('删除预检与勾选的' + label + '不一致，本批没有提交。');
       return result;
     }
-    function exportPreview(raw, selection) {
-      const result = envelope(raw),
-        data = result.data;
+    function exportPreview(result, selection) {
+      const data = result.data;
       if (!token(data.export_ref) || data.selection !== selection || !count(data.row_count) || !Array.isArray(data.formats) || !data.formats.every(value => ['csv', 'xlsx'].includes(value)) || !Number.isFinite(Date.parse(data.expires_at))) throw C.failure('导出预检内容不完整，没有开始下载。');
       return result;
     }
@@ -14527,14 +14489,14 @@ function SMExport({
       return request.refs;
     }
     function listContext(request) {
-      const input = request.scope || {},
+      const input = request.scope,
         scope = {};
       ['query', 'status', 'sort', 'direction'].forEach(key => {
         if (C.own(input, key) && input[key] !== undefined && !(key === 'status' && (input[key] === '' || input[key] === null))) scope[key] = input[key];
       });
       if (C.own(input, 'column_filters')) {
         if (!C.object(input.column_filters)) throw C.failure('列筛选范围不完整，请刷新列表。');
-        if (Object.keys(input.column_filters).length) scope.column_filters = JSON.parse(JSON.stringify(input.column_filters));
+        if (Object.keys(input.column_filters).length) scope.column_filters = input.column_filters;
       }
       if (kind === 'op_type') {
         if (!['internal', 'external'].includes(input.category)) throw C.failure('缺少工种类别，请关闭向导，重新打开自制或外协工种。');
@@ -14566,7 +14528,7 @@ function SMExport({
     }
     function blocked(result, requestedSource) {
       if (!result) return '请先完成预检。';
-      if (requestedSource !== 'production' || result.meta.source !== 'production') return '当前不是生产数据，不能提交。';
+      if (requestedSource !== 'production') return '当前不是生产数据，不能提交。';
       const data = result.data,
         context = data.write_context;
       if (!data.can_confirm || data.summary.rejected) return '存在未通过检查的行，请修正后重新预检。';
@@ -14629,7 +14591,6 @@ function SMExport({
       fields,
       results,
       paths,
-      envelope,
       preview,
       exportPreview,
       source,
@@ -14929,9 +14890,8 @@ function SMExport({
         if (mode !== 'export') throw C.failure('日历文件只支持导入和按日期范围导出。');
         return exportBody(kind, shared, request, selected);
       },
-      exportPreview(raw, selected, request) {
-        const result = shared.envelope(raw),
-          data = result.data;
+      exportPreview(result, selected, request) {
+        const data = result.data;
         const body = exportBody(kind, shared, request, selected);
         if (!token(data.export_ref) || !count(data.row_count) || !Array.isArray(data.formats) || !data.formats.every(value => ['csv', 'xlsx'].includes(value)) || !C.object(data.range) || data.range.start_date !== body.range.start_date || data.range.end_date !== body.range.end_date || !Number.isFinite(Date.parse(data.expires_at))) throw C.failure('导出预检内容不完整，没有开始下载。');
         // 服务端把这次导出的人员范围原样回显在 range 里，对不上就不下载，免得导出的是别人的日历。
@@ -15210,13 +15170,8 @@ function SMExport({
     onCommitted,
     contract: M
   }) {
-    const [original] = React.useState(() => ({
-      ...request,
-      refs: Array.isArray(request.refs) ? request.refs.slice() : request.refs,
-      scope: {
-        ...request.scope
-      }
-    }));
+    // 宿主（ResourceLive 的恢复入口、ResourceWorkspace.openExternal、openCalendarFile）每次新建 request，refs 恒为数组、scope 恒为对象，无人原地改写。
+    const [original] = React.useState(request);
     const [format, setFormat] = React.useState('xlsx'),
       [file, setFile] = React.useState(null);
     // 导出范围默认是三档单选里的"还没选"；给了 ExportScope 的契约自己决定初值（日历用的是日期区间）。
@@ -15250,7 +15205,6 @@ function SMExport({
       message: label + (isExport ? '导出' : effectiveMode === 'bulk' ? '删除' : '导入') + '还没有完成，离开会放弃已选文件和预检结果。'
     });
     const query = S.useQuery(async signal => {
-      if (typeof adapter.preview !== 'function') throw C.failure('dependency not wired: adapter.preview');
       let body;
       if (effectiveMode === 'import') {
         await M.validateFile(job.file, job.format);
@@ -15374,10 +15328,6 @@ function SMExport({
     }
     async function downloadFile(template) {
       if (controlsDisabled || !template && (!data || expired)) return;
-      if (typeof adapter.download !== 'function') {
-        setError(C.failure('dependency not wired: adapter.download'));
-        return;
-      }
       if (!template && !data.formats.includes(format)) {
         setError(C.failure('这次导出预检不支持所选文件格式，请重新预检。'));
         return;
@@ -15421,7 +15371,6 @@ function SMExport({
       export: '批量导出',
       bulk: '批量删除'
     }[effectiveMode] || '操作') + ' · ' + label;
-    const refs = Array.isArray(original.refs) ? original.refs : [];
     return /*#__PURE__*/React.createElement("div", {
       className: 'plana rm-actions' + (data && !isExport ? ' rm-wide' : '')
     }, /*#__PURE__*/React.createElement(Modal, {
@@ -15454,9 +15403,7 @@ function SMExport({
       }, effectiveMode === 'bulk' ? '确认删除' : '确认导入'))
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-b scroll rm-body"
-    }, !recovery && !command.intent && M.source(original) === 'demo' && /*#__PURE__*/React.createElement("p", {
-      role: "status"
-    }, "\u5F53\u524D\u4E3A\u793A\u4F8B\u6570\u636E\uFF0C\u4E0D\u5141\u8BB8\u63D0\u4EA4", label, "\u53D8\u66F4\u3002"), !recovery && !command.intent && !M.source(original) && /*#__PURE__*/React.createElement("p", {
+    }, !recovery && !command.intent && !M.source(original) && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u5C1A\u672A\u8BFB\u53D6\u751F\u4EA7\u8D44\u6599\uFF0C\u4E0D\u80FD\u63D0\u4EA4", label, "\u53D8\u66F4\u3002"), recovery && !command.intent && !command.error && /*#__PURE__*/React.createElement("p", {
       role: "status"
@@ -15533,7 +15480,7 @@ function SMExport({
         setSelection(value);
       },
       disabled: controlsDisabled,
-      refs: refs,
+      refs: original.refs,
       error: error
     }) : /*#__PURE__*/React.createElement(ExportOptions, {
       selection: selection,
@@ -15541,7 +15488,7 @@ function SMExport({
         invalidate();
         setSelection(value);
       },
-      refs: refs,
+      refs: original.refs,
       disabled: controlsDisabled,
       label: label,
       scopeLabel: M.scopeLabel || label,
@@ -15550,7 +15497,7 @@ function SMExport({
       value: format,
       onChange: chooseFormat,
       disabled: controlsDisabled
-    })), !done && effectiveMode === 'bulk' && (!recovery || command.intent) && (recovery || command.intent && !job ? /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u67E5\u8BE2\u4E0A\u6B21\u6279\u91CF\u5220\u9664\u7684\u7ED3\u679C\uFF0C\u5F53\u524D\u5217\u8868\u91CC\u65B0\u52FE\u9009\u7684\u8FD8\u6CA1\u63D0\u4EA4\u3002") : /*#__PURE__*/React.createElement("p", null, "\u672C\u6B21\u52FE\u9009\u4E86 ", /*#__PURE__*/React.createElement("b", null, refs.length), " \u6761", label, "\uFF0C\u542B\u975E\u5F53\u524D\u9875\u548C\u5F53\u524D\u7B5B\u9009\u5916\u7684\u52FE\u9009\u9879\u3002")), activeRead && /*#__PURE__*/React.createElement("p", {
+    })), !done && effectiveMode === 'bulk' && (!recovery || command.intent) && (recovery || command.intent && !job ? /*#__PURE__*/React.createElement("p", null, "\u6B63\u5728\u67E5\u8BE2\u4E0A\u6B21\u6279\u91CF\u5220\u9664\u7684\u7ED3\u679C\uFF0C\u5F53\u524D\u5217\u8868\u91CC\u65B0\u52FE\u9009\u7684\u8FD8\u6CA1\u63D0\u4EA4\u3002") : /*#__PURE__*/React.createElement("p", null, "\u672C\u6B21\u52FE\u9009\u4E86 ", /*#__PURE__*/React.createElement("b", null, original.refs.length), " \u6761", label, "\uFF0C\u542B\u975E\u5F53\u524D\u9875\u548C\u5F53\u524D\u7B5B\u9009\u5916\u7684\u52FE\u9009\u9879\u3002")), activeRead && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u6B63\u5728\u8BFB\u53D6\u5B8C\u6574\u9884\u68C0\u7ED3\u679C\uFF0C\u5C1A\u672A\u5199\u5165\u6570\u636E\u2026"), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error,
@@ -15746,7 +15693,7 @@ function SMExport({
     request,
     ...props
   }) {
-    const refs = Array.isArray(request && request.refs) ? request.refs : [];
+    const refs = request.refs;
     const people = kind === window.APSCalendarFile.peopleKind;
     const contract = React.useMemo(() => ({
       ...window.APSCalendarFile.create(kind),
@@ -16127,7 +16074,7 @@ function SMExport({
       scope: "col"
     }, "\u5F00\u59CB"), /*#__PURE__*/React.createElement("th", {
       scope: "col"
-    }, "\u7ED3\u675F"))), /*#__PURE__*/React.createElement("tbody", null, (entity.fields.pattern || []).map(row => /*#__PURE__*/React.createElement("tr", {
+    }, "\u7ED3\u675F"))), /*#__PURE__*/React.createElement("tbody", null, entity.fields.pattern.map(row => /*#__PURE__*/React.createElement("tr", {
       key: row.day_offset
     }, /*#__PURE__*/React.createElement("td", {
       className: "wb-col-key"
@@ -16816,7 +16763,7 @@ function SMExport({
   }
   function selection(refs, allowEmpty = false) {
     if (!Array.isArray(refs) || !allowEmpty && !refs.length || !refs.every(ref) || new Set(refs).size !== refs.length) throw C.failure('请重新选择零件；不能用图号代替原零件记录。');
-    return refs.slice();
+    return refs;
   }
   function listContext(request) {
     if (!request || !token(request.snapshot_ref) || !Number.isSafeInteger(request.page_size) || request.page_size < 1 || request.page_size > 200) throw C.failure('请先刷新零件列表，再操作。');
@@ -16868,12 +16815,12 @@ function SMExport({
   }
   function blocked(result, source, capability) {
     if (!result) return '请先完成预检。';
-    if (source !== 'production' || result.meta.source !== 'production') return '尚未读取可保存的工艺资料。';
+    if (source !== 'production') return '尚未读取可保存的工艺资料。';
     const data = result.data;
     if (!data.can_confirm || data.summary.rejected) return '预检含有不能提交的行，本次全部不提交。';
     if (data.write_context.capabilities[capability] !== true) {
-      const reasons = data.write_context.blocked_reasons || [];
-      return (reasons.find(item => item.action === capability) || {}).message || '本次未取得确认许可，请重新预检。';
+      // 删除与文件预检都已在边界校验 write_context.blocked_reasons 为数组（ResourceMaterialContract / ProcessFileContract.preview）。
+      return (data.write_context.blocked_reasons.find(item => item.action === capability) || {}).message || '本次未取得确认许可，请重新预检。';
     }
     if (Date.now() >= Date.parse(data.expires_at)) return '预检已过期，请重新预检。';
     return '';
@@ -17079,8 +17026,7 @@ function SMExport({
 (function () {
   'use strict';
 
-  const C = window.APSResourceContract,
-    P = window.APSProcessContract,
+  const P = window.APSProcessContract,
     A = window.APSProcessActions,
     S = window.APSResourceSession;
   const {
@@ -17174,7 +17120,6 @@ function SMExport({
       setError(null);
       setAck(false);
       try {
-        if (typeof adapter.bulkPreview !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.bulkPreview');
         const body = A.deleteBody(original);
         setJob({
           body
@@ -17212,7 +17157,7 @@ function SMExport({
       }
     }
     async function openCreated() {
-      if (!saved || locked || controller.current || typeof onOpen !== 'function') return;
+      if (!saved || locked || controller.current) return;
       const abort = new AbortController();
       controller.current = abort;
       setOpening(true);
@@ -17243,7 +17188,7 @@ function SMExport({
       command.clearRejection();
     }
     function confirm(event) {
-      if (event && typeof event.preventDefault === 'function') event.preventDefault();
+      event.preventDefault();
       if (disabled || locked || done || reason || recovery) return;
       setError(null);
       try {
@@ -17377,11 +17322,7 @@ function SMExport({
   function operation(value) {
     return 'process_' + kind(value) + '_import.confirm';
   }
-  function envelope(raw) {
-    if (raw && raw.ok === false) throw raw;
-    if (!C.object(raw) || raw.ok !== true || raw.schema_version !== 1 || !C.object(raw.data) || !C.object(raw.meta) || !['production', 'demo'].includes(raw.meta.source) || raw.meta.time_basis !== 'factory_local' || !A.token(raw.meta.snapshot_ref) || !text(raw.meta.request_ref) || !text(raw.meta.as_of) || !Array.isArray(raw.warnings)) throw C.failure('工艺文件读取结果不完整，请重新预检。');
-    return raw;
-  }
+  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data。
   function columns(value) {
     return Array.isArray(value) && value.length > 0 && value.every(row => C.object(row) && text(row.key) && /^[a-z][a-z0-9_]*$/.test(row.key) && !['id', 'entity_key', 'entity_ref', 'write_token', 'revision'].includes(row.key) && text(row.label) && row.label.trim() && row.label !== row.key) && new Set(value.map(row => row.key)).size === value.length;
   }
@@ -17419,9 +17360,8 @@ function SMExport({
       rejected: data.summary.rejected
     };
   }
-  function preview(raw, requestedKind, format, request) {
-    const result = envelope(raw),
-      d = result.data;
+  function preview(result, requestedKind, format, request) {
+    const d = result.data;
     if (d.kind !== kind(requestedKind) || d.operation !== operation(requestedKind) || !A.token(d.preview_ref) || !Number.isFinite(Date.parse(d.expires_at)) || d.commit_policy !== 'atomic' || typeof d.can_confirm !== 'boolean' || d.format !== format || d.mode !== 'upsert' || d.template_version !== 1 || !text(d.instructions) || typeof d.zero_review_required !== 'boolean' || !C.object(d.scope) || !C.object(d.write_context) || !A.token(d.write_context.write_token) || !C.object(d.write_context.capabilities) || !Array.isArray(d.write_context.blocked_reasons) || !C.object(d.summary) || !results.every(key => count(d.summary[key])) || !Array.isArray(d.rows) || !d.rows.every(row => C.object(row) && count(row.row) && row.row > 0 && results.includes(row.result) && row.result !== 'delete' && (row.entity_ref === null || A.ref(row.entity_ref)) && (row.business_code === null || text(row.business_code)) && C.object(row.changes) && count(row.reference_count) && typeof row.requires_confirmation === 'boolean' && Array.isArray(row.errors) && row.errors.every(error => C.object(error) && text(error.message)) && routeSummary(row.route_summary) && (!C.own(row, 'sequence') || sequence(row.sequence))) || new Set(d.rows.map(row => row.row)).size !== d.rows.length || !results.every(key => d.summary[key] === d.rows.filter(row => row.result === key).length) || d.can_confirm && (d.summary.rejected !== 0 || d.rows.some(row => row.route_summary && !row.route_summary.can_confirm_route)) || !Array.isArray(d.affected_groups) || !d.affected_groups.every(group => P.externalGroup(group) && A.ref(group.part_ref) && text(group.business_code)) || new Set(d.affected_groups.map(group => group.ref)).size !== d.affected_groups.length) throw C.failure('文件预检内容、原记录或统计不完整，不能确认导入。');
     publicColumns(d);
     if (requestedKind === 'hours' && (d.summary.new !== 0 || d.summary.delete !== 0 || d.rows.some(row => row.result !== 'rejected' && !sequence(row.sequence)))) throw C.failure('工时文件包含无效的工序或新增行，请重新预检。');
@@ -17462,9 +17402,8 @@ function SMExport({
       } : {})
     };
   }
-  function exportPreview(raw, requestedKind, body) {
-    const result = envelope(raw),
-      d = result.data;
+  function exportPreview(result, requestedKind, body) {
+    const d = result.data;
     if (!A.token(d.export_ref) || d.selection !== body.selection || d.kind !== kind(requestedKind) || !count(d.row_count) || !count(d.part_count) || !Number.isFinite(Date.parse(d.expires_at)) || d.format !== body.format || !columns(d.columns) || !C.object(d.scope) || d.target_ref !== (body.target_ref ?? null) || body.target_ref && Object.keys(d.scope).length !== 0 || body.selection === 'filtered' && window.ResourceTableFilterModel.signature(A.scope(d.scope)) !== window.ResourceTableFilterModel.signature(A.scope(body.scope)) || body.selection === 'explicit' && d.part_count !== body.refs.length || requestedKind === 'route' && d.row_count !== d.part_count) throw C.failure('导出预检的类型、范围或数量不完整，未下载文件。');
     return result;
   }
@@ -17959,10 +17898,6 @@ function SMExport({
     function preflight() {
       if (controlsDisabled || recovery || !command.reset()) return;
       invalidate();
-      if (typeof adapter.filePreview !== 'function') {
-        setError(C.failure('dependency not wired: window.APSProcessAPI.filePreview'));
-        return;
-      }
       if (importing && !file) {
         setError(C.failure('请先选择文件。'));
         return;
@@ -17995,10 +17930,6 @@ function SMExport({
     }
     async function downloadFile(template) {
       if (controlsDisabled || !template && (!data || reason)) return;
-      if (typeof adapter.fileDownload !== 'function') {
-        setError(C.failure('dependency not wired: window.APSProcessAPI.fileDownload'));
-        return;
-      }
       if (!template && data.format !== format) {
         setError(C.failure('当前导出格式已变化，请重新预检。'));
         return;
@@ -18192,12 +18123,12 @@ function SMExport({
       key: kind
     }, /*#__PURE__*/React.createElement(Button, {
       transfer: "import",
-      reason: P.reason(capabilities, 'import', typeof onAction === 'function'),
+      reason: P.reason(capabilities, 'import', true),
       disabled: disabled,
       onClick: () => onAction(kind, 'import')
     }, '导入' + label), /*#__PURE__*/React.createElement(Button, {
       transfer: "export",
-      reason: P.reason(capabilities, 'export', typeof onAction === 'function'),
+      reason: P.reason(capabilities, 'export', true),
       disabled: disabled,
       onClick: () => onAction(kind, 'export')
     }, '导出' + label))));
@@ -18865,8 +18796,8 @@ function SMExport({
     const members = target.members || [target];
     const missing = members.filter(item => !item.op_type_ref);
     if (missing.length) return '请先为工序 ' + missing.map(item => item.sequence).join('、') + ' 选择外协工种。';
+    // 供应商实体恒带 op_type_refs / op_types 数组（core/services/workbench/resource/projection.py _supplier）。
     const refs = row.relationships.op_type_refs;
-    if (!Array.isArray(refs)) return '供应商承接工种资料未读取，暂时不能选择。';
     const unsupported = members.filter(item => !refs.includes(item.op_type_ref));
     return unsupported.length ? '不能承接：' + unsupported.map(item => '工序 ' + item.sequence + ' ' + item.op_type_label).join('、') + '。' : '';
   }
@@ -18915,15 +18846,12 @@ function SMExport({
         page: 1,
         size: 50
       });
-    const read = S.useQuery(async signal => {
-      if (typeof adapter.choices !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.choices');
-      return C.query(await adapter.choices(target.kind, {
-        ...scope,
-        ...(target.kind === 'op_type' ? {
-          category: target.source
-        } : {})
-      }, signal), 'choices');
-    }, [adapter, target.kind, target.source, scope]);
+    const read = S.useQuery(async signal => C.query(await adapter.choices(target.kind, {
+      ...scope,
+      ...(target.kind === 'op_type' ? {
+        category: target.source
+      } : {})
+    }, signal), 'choices'), [adapter, target.kind, target.source, scope]);
     const data = read.result && read.result.data,
       title = target.kind === 'op_type' ? P.sourceLabel(target.source) + '工种' : '供应商';
     const grouped = target.kind === 'supplier' && target.group;
@@ -18999,7 +18927,7 @@ function SMExport({
       const reason = target.kind === 'supplier' ? supplierReason(row, target) : '';
       return /*#__PURE__*/React.createElement("tr", {
         key: row.ref
-      }, /*#__PURE__*/React.createElement("td", null, row.business_code), /*#__PURE__*/React.createElement("td", null, row.label), target.kind === 'supplier' && /*#__PURE__*/React.createElement("td", null, (row.relationships.op_types || []).map(item => item.label).join('、') || '未登记承接工种'), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
+      }, /*#__PURE__*/React.createElement("td", null, row.business_code), /*#__PURE__*/React.createElement("td", null, row.label), target.kind === 'supplier' && /*#__PURE__*/React.createElement("td", null, row.relationships.op_types.map(item => item.label).join('、') || '未登记承接工种'), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
         icon: "check",
         reason: reason,
         disabled: disabled || !(row.status === 'active' || target.kind === 'op_type' && row.status === null) || target.kind === 'op_type' && ![target.source, "both"].includes(row.fields.category),
@@ -19157,7 +19085,6 @@ function SMExport({
       const controller = new AbortController();
       request.current = controller;
       try {
-        if (typeof adapter.stagePreview !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.stagePreview');
         const body = input(entity, draft, paging.page.size);
         setChecking(true);
         const response = P.stagePreview(await adapter.stagePreview(entity.ref, 'source_confirm', body, model.base.meta.snapshot_ref, controller.signal), entity.ref, 'source_confirm');
@@ -21042,9 +20969,8 @@ function SMExport({
     }), []);
     async function loadPart(signal) {
       if (target.error) throw target.error;
-      if (typeof adapter.detail !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.detail');
       const raw = await adapter.detail('part', partRef, signal);
-      if (raw && raw.data && raw.data.ref !== partRef) throw C.failure('返回的不是原零件记录，不能继续使用同图号的新零件。');
+      if (raw.data.ref !== partRef) throw C.failure('返回的不是原零件记录，不能继续使用同图号的新零件。');
       const value = P.detail(raw, partRef);
       if (value.meta.source !== 'production') throw C.failure('未取得原零件的生产详情，不能使用样例替代。');
       if (browsing) E.locate(value.data, target);
@@ -21134,7 +21060,7 @@ function SMExport({
       setEntryStarted(false);
     }
     function openFile(kind, mode, abandon = false) {
-      if (editingBlocked || !current || !['route', 'hours'].includes(kind) || !['import', 'export'].includes(mode) || typeof window.ProcessFileActions !== 'function' || P.reason(current.data.capabilities, mode, true)) return;
+      if (editingBlocked || !current || !['route', 'hours'].includes(kind) || !['import', 'export'].includes(mode) || P.reason(current.data.capabilities, mode, true)) return;
       if (!abandon) fileFocus.current = document.activeElement;
       if (hasDraft && !abandon) {
         setDiscard({
@@ -22085,7 +22011,7 @@ function SMExport({
   function recovery(adapters) {
     function readPending(adapter) {
       try {
-        return typeof adapter.readPending === 'function' && adapter.readPending();
+        return adapter.readPending();
       } catch (error) {
         if (error.intent) return error.intent;
         throw error;
@@ -22404,7 +22330,7 @@ function SMExport({
   function detail(result, expected) {
     C.query(result, 'entity');
     const d = result.data;
-    if (!entity(d) || d.ref !== expected || !object(d.materials) || !Array.isArray(d.materials.requirements) || !d.materials.requirements.every(row => object(row) && ref(row.material_ref) && finite(row.required_quantity) && finite(row.available_quantity)) || !object(d.template) || typeof d.template.complete !== 'boolean' || !count(d.template.operation_count) || !issueRows(d.template.diagnostics)) throw C.failure('读到的批次详情不完整或不是这个批次，请刷新后重试。');
+    if (!entity(d) || d.ref !== expected || !object(d.materials) || !Array.isArray(d.materials.requirements) || !d.materials.requirements.every(row => object(row) && ref(row.material_ref) && finite(row.required_quantity) && finite(row.available_quantity) && (row.operation_ref === null || ref(row.operation_ref)) && Array.isArray(row.arrivals)) || !object(d.template) || typeof d.template.complete !== 'boolean' || !count(d.template.operation_count) || !issueRows(d.template.diagnostics)) throw C.failure('读到的批次详情不完整或不是这个批次，请刷新后重试。');
     return result;
   }
   function receipt(result, action, expected) {
@@ -23302,8 +23228,6 @@ function SMExport({
   } = window.ResourceControls;
   const toRows = entity => entity.materials.requirements.map(row => ({
     ...row,
-    operation_ref: row.operation_ref || null,
-    arrivals: row.arrivals || [],
     required_quantity: row.required_quantity == null ? '' : String(row.required_quantity),
     available_quantity: row.available_quantity == null ? '' : String(row.available_quantity)
   }));
@@ -24443,7 +24367,8 @@ function SMExport({
     return JSON.parse(JSON.stringify(scope));
   }
   function readContext(context) {
-    if (context == null) return {
+    // 侧栏直接进入时 main.jsx 传空对象，按默认范围显示。
+    if (!Object.keys(context).length) return {
       scope: {
         ...defaults
       },
@@ -24452,7 +24377,7 @@ function SMExport({
       sort: null,
       sourceContext: null
     };
-    if (!C.object(context) || Object.keys(context).some(key => !['entity_ref', 'focus', 'batchIds', 'read_view', ...sourceKeys].includes(key))) throw C.failure('页面跳转带的信息里有不支持的项' + fallbackList);
+    if (Object.keys(context).some(key => !['entity_ref', 'focus', 'batchIds', 'read_view', ...sourceKeys].includes(key))) throw C.failure('页面跳转带的信息里有不支持的项' + fallbackList);
     if (context.entity_ref !== undefined && !B.ref(context.entity_ref)) throw C.failure('要打开的批次已失效' + fallbackList);
     const view = context.read_view;
     if (view !== undefined && (!C.object(view) || Object.keys(view).some(key => !['scope', 'selected_refs', 'entity_ref', 'sort_state', 'source_context'].includes(key)))) throw C.failure('上次的查看状态无法恢复' + fallbackList);
@@ -24491,7 +24416,7 @@ function SMExport({
         return readContext(initialContext);
       } catch (error) {
         return {
-          ...readContext(null),
+          ...readContext({}),
           error
         };
       }
@@ -24499,7 +24424,7 @@ function SMExport({
     const command = S.useCommand(adapter),
       alive = React.useRef(true),
       serial = React.useRef(0);
-    const [deferred, setDeferred] = React.useState(() => !!initialContext && command.phase !== 'idle');
+    const [deferred, setDeferred] = React.useState(() => Object.keys(initialContext).length > 0 && command.phase !== 'idle');
     const [scope, setScope] = React.useState(initial.scope);
     const [query, setQuery] = React.useState(initial.scope.query),
       [selected, setSelected] = React.useState(initial.selected);
@@ -25280,7 +25205,8 @@ function SMExport({
         end: instant(item.end)
       }))
     }]));
-    const deliveryRisks = data.projections.delivery_risks && Array.isArray(data.projections.delivery_risks.items) ? new Map(data.projections.delivery_risks.items.map(row => [row.batch_id, row])) : null;
+    // 计划工作区的 delivery_risks.items 已由 PlanContract 校验为数组；值班台时间轴的合成数据不带这一键。
+    const deliveryRisks = data.projections.delivery_risks ? new Map(data.projections.delivery_risks.items.map(row => [row.batch_id, row])) : null;
     return {
       labels,
       directory,
@@ -25472,8 +25398,8 @@ function SMExport({
       locations,
       baselineLocations,
       tasks,
-      shownRefs: shownRefs || new Set((tasks || []).map(task => task.task_ref)),
-      taskOrder: taskOrder || new Map((tasks || []).map((task, index) => [task.task_ref, index])),
+      shownRefs,
+      taskOrder,
       groupCount
     };
   }
@@ -26659,7 +26585,7 @@ function SMExport({
       setHover(null);
       onSelect(task, beforeTask);
     }
-    const currentIndex = selectedRef && model.taskOrder ? model.taskOrder.has(selectedRef) ? model.taskOrder.get(selectedRef) : -1 : model.tasks.findIndex(task => task.task_ref === selectedRef);
+    const currentIndex = model.taskOrder.has(selectedRef) ? model.taskOrder.get(selectedRef) : -1;
     function move(direction) {
       const tasks = model.tasks,
         index = currentIndex;
@@ -27028,9 +26954,7 @@ function SMExport({
     ErrorBox,
     Issues
   } = window.ResourceControls;
-  const C = window.APSResourceContract,
-    P = window.APSPlanContract,
-    S = window.APSResourceSession;
+  const S = window.APSResourceSession;
   function Identity({
     plan
   }) {
@@ -27063,10 +26987,7 @@ function SMExport({
       size: 20,
       ...pages[index]
     }), [collection, pages, index]);
-    const read = S.useQuery(async signal => {
-      if (typeof adapter.catalog !== 'function') throw C.failure('dependency not wired: PlanAPI.catalog');
-      return adapter.catalog(scope, signal);
-    }, [adapter, scope], !paused);
+    const read = S.useQuery(signal => adapter.catalog(scope, signal), [adapter, scope], !paused);
     const result = read.result,
       data = result && result.data;
     React.useEffect(() => {
@@ -27363,9 +27284,9 @@ function SMExport({
     onRelated,
     onCollapse,
     renderTrial,
-    scope = {},
-    query = '',
-    disabled = false
+    scope,
+    query,
+    disabled
   }) {
     const task = selected && selected.task,
       labels = prepared.labels;
@@ -27386,7 +27307,7 @@ function SMExport({
       }
       for (const [kind, label] of [['machine', '设备'], ['operator', '人员']]) if (comparison.before[kind + '_ref'] !== comparison.after[kind + '_ref']) changes.push([label + '变化', M.resourceLabel(comparison.before, kind, labels) + ' → ' + M.resourceLabel(comparison.after, kind, labels)]);
     }
-    const risk = task && (prepared.deliveryRisks ? prepared.deliveryRisks.get(task.batch_id) : data.projections.delivery_risks.items.find(row => row.batch_id === task.batch_id));
+    const risk = task && prepared.deliveryRisks.get(task.batch_id);
     const taskFact = task && (comparison ? comparison[selected.before ? 'beforeTime' : 'afterTime'] : prepared.taskIndex.get(task.task_ref));
     const resources = task ? [task.machine_ref, task.operator_ref].map(ref => prepared.occupancy.get(ref)).filter(Boolean).map(value => value.resource) : [];
     const compact = !!onCollapse,
@@ -27430,7 +27351,7 @@ function SMExport({
       })], ['安排时长', F.hours((taskFact.end - taskFact.start) / 3600000, 2)], ...(!task.supplier_ref ? [['设备', M.resourceLabel(task, 'machine', labels)], ['人员', M.resourceLabel(task, 'operator', labels)]] : []), ...(task.supplier_ref || !task.machine_ref && !task.operator_ref && !window.PointContract.isPoint(task) ? [['供应商', task.supplier_ref ? labels.get(task.supplier_ref) || '名称未填写' : data.provenance.state === 'unavailable' ? data.provenance.reason : '未记录']] : [])]
     }), /*#__PURE__*/React.createElement("div", {
       className: "plan-actions"
-    }, typeof renderTrial === 'function' ? renderTrial({
+    }, renderTrial({
       planRef: data.plan.plan_ref,
       scope,
       query,
@@ -27441,10 +27362,7 @@ function SMExport({
       },
       disabled: disabled || selected.before || task.plan_ref !== data.plan.plan_ref,
       label: '调整此工序'
-    }) : /*#__PURE__*/React.createElement(Button, {
-      icon: "square-pen",
-      reason: window.WorkbenchTerms.outcomes.unavailable
-    }, "\u8C03\u6574\u6B64\u5DE5\u5E8F")))), task && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Route, {
+    })))), task && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Route, {
       data: data,
       prepared: prepared,
       selected: selected,
@@ -27751,7 +27669,6 @@ function SMExport({
     ErrorBox
   } = window.ResourceControls;
   const C = window.APSResourceContract,
-    P = window.APSPlanContract,
     M = window.PlanGanttModel;
   function filename(disposition, format) {
     const unicode = /filename\*=UTF-8''([^;]+)/i.exec(disposition),
@@ -27775,7 +27692,7 @@ function SMExport({
     React.useEffect(() => () => {
       if (active.current) active.current.abort();
     }, [adapter, result]);
-    const reason = disabled || !result ? '先读取所选计划，才能导出当前内容。' : !result.data.plan.capabilities.export || typeof adapter.export !== 'function' ? '当前还不能导出所选计划。' : '';
+    const reason = disabled || !result ? '先读取所选计划，才能导出当前内容。' : !result.data.plan.capabilities.export ? '当前还不能导出所选计划。' : '';
     function cancel() {
       if (active.current) active.current.abort();
       active.current = null;
@@ -27798,10 +27715,9 @@ function SMExport({
           scope.range_start = result.data.scope.range_start;
           scope.range_end = result.data.scope.range_end;
         }
-        P.exportScope(result.data.plan.plan_ref, scope);
-        const output = P.download(await adapter.export(result.data.plan.plan_ref, scope, controller.signal), format);
+        // APSPlanAPI.export 校验导出范围与下载结果（PlanContract.exportScope / download）。
+        const output = await adapter.export(result.data.plan.plan_ref, scope, controller.signal);
         if (controller.signal.aborted || active.current !== controller) return;
-        if (!(output.blob instanceof Blob)) throw C.failure('导出附件不是有效文件。');
         const name = filename(output.disposition, format),
           url = URL.createObjectURL(output.blob),
           anchor = document.createElement('a');
@@ -27901,7 +27817,7 @@ function SMExport({
     adapter,
     view = 'analysis',
     planRef,
-    initialContext = {},
+    initialContext,
     disabled = false,
     renderTrial,
     navigation,
@@ -27934,11 +27850,8 @@ function SMExport({
       ref: initialContext.selected_task_ref,
       side: initialContext.selected_task_side === 'before' ? 'before' : 'current'
     } : null);
-    const read = S.useQuery(async signal => {
-      if (typeof adapter.workspace !== 'function') throw C.failure('暂时无法读取计划，请稍后重试。');
-      P.workspaceScope(selection.plan_ref, scope);
-      return adapter.workspace(selection.plan_ref, scope, signal);
-    }, [adapter, selection && selection.plan_ref, scope], !!selection && !paused);
+    // APSPlanAPI.workspace 自己校验读取范围（PlanContract.workspaceScope）。
+    const read = S.useQuery(signal => adapter.workspace(selection.plan_ref, scope, signal), [adapter, selection && selection.plan_ref, scope], !!selection && !paused);
     const result = read.result,
       data = result && result.data;
     const prepared = React.useMemo(() => {
@@ -28142,7 +28055,7 @@ function SMExport({
         "aria-expanded": rangeOpen,
         onClick: toggleRange,
         disabled: !selection
-      }, data ? F.compactRange(data.time_scope.range_start, data.time_scope.range_end) : '时间范围'), typeof renderTrial === 'function' && renderTrial({
+      }, data ? F.compactRange(data.time_scope.range_start, data.time_scope.range_end) : '时间范围'), renderTrial({
         planRef: selection && selection.plan_ref,
         scope,
         query,
@@ -28317,7 +28230,7 @@ function SMExport({
   }
   function PlanWorkspace(props) {
     const adapter = React.useMemo(() => window.APSPlanAPI.adapter(props.adapter || window.APSPlanAPI.create()), [props.adapter]);
-    const context = props.initialContext || {};
+    const context = props.initialContext;
     const navigation = [props.planRef || context.plan_ref, context.range_start, context.range_end, context.snapshot_ref];
     return /*#__PURE__*/React.createElement(WorkspaceSession, {
       key: adapterId(adapter) + ':' + JSON.stringify(navigation),
@@ -28376,15 +28289,15 @@ function SMExport({
   }
   function task(value) {
     const p = value && value.execution;
-    return C.object(value) && ref(value.task_ref) && ref(value.plan_ref) && planned(value) && planQuantity(value) && typeof value.batch_id === 'string' && typeof value.operation_label === 'string' && C.object(p) && ref(p.operation_ref) && p.operation_ref === value.operation_ref && (p.comparison_task_ref === null || p.comparison_task_ref === value.task_ref) && Object.hasOwnProperty.call(states, p.execution_state) && ['complete', 'incomplete', 'legacy_incomplete', 'invalid'].includes(p.data_quality) && nullable(p.target_quantity) && nullable(p.known_completed_quantity) && nullable(p.remaining_quantity) && typeof p.records_complete === 'boolean' && typeof p.quantity_complete === 'boolean' && Number.isInteger(p.unknown_record_count) && Array.isArray(p.data_gaps) && Array.isArray(p.reports) && p.reports.every(row => report(row) && row.operation_ref === p.operation_ref) && Array.isArray(p.legacy_facts) && C.object(p.write_context);
+    return C.object(value) && ref(value.task_ref) && ref(value.plan_ref) && planned(value) && planQuantity(value) && typeof value.batch_id === 'string' && typeof value.operation_label === 'string' && C.object(p) && ref(p.operation_ref) && p.operation_ref === value.operation_ref && (p.comparison_task_ref === null || p.comparison_task_ref === value.task_ref) && Object.hasOwnProperty.call(states, p.execution_state) && ['complete', 'incomplete', 'legacy_incomplete', 'invalid'].includes(p.data_quality) && nullable(p.target_quantity) && nullable(p.known_completed_quantity) && nullable(p.remaining_quantity) && typeof p.records_complete === 'boolean' && typeof p.quantity_complete === 'boolean' && Number.isInteger(p.unknown_record_count) && Array.isArray(p.data_gaps) && Array.isArray(p.reports) && p.reports.every(row => report(row) && row.operation_ref === p.operation_ref) && Array.isArray(p.legacy_facts) && Array.isArray(p.voided_reports) && C.object(p.write_context);
   }
+  // 信封（ok、schema_version、meta、data 对象）已由 resource-api.js 的 production() 校验，这里只校验 data。
   function query(result, mode, expected) {
-    if (!result || result.ok !== true || result.schema_version !== 1 || !result.meta || result.meta.source !== 'production' || result.meta.time_basis !== 'factory_local' || !result.meta.snapshot_ref || !result.meta.as_of || !C.object(result.data)) throw C.failure('读到的现场记录不完整，请刷新重试。');
     const d = result.data;
     if (mode === 'list' && (!Array.isArray(d.tasks) || !d.tasks.every(task) || !C.object(d.page) || !Number.isInteger(d.page.total) || !C.object(d.summary))) throw C.failure('读到的现场任务列表不完整，请刷新重试。');
     if (mode === 'list' && d.tasks.some(row => !d.plan || row.plan_ref !== d.plan.plan_ref)) throw C.failure('现场任务与所选计划不一致。');
     if (mode === 'detail' && (!task(d.task) || d.task.task_ref !== expected)) throw C.failure('现场任务详情不匹配，请刷新后重选。');
-    if (mode === 'preview' && (!/^[A-Za-z0-9_-]{32}$/.test(d.preview_ref) || typeof d.actual_source_ref !== 'string' || !/^[a-f0-9]{32}$/.test(d.actual_source_ref) || !Array.isArray(d.rows) || typeof d.can_confirm !== 'boolean' || d.commit_policy !== 'atomic' || !C.object(d.write_context))) throw C.failure('读到的文件预检结果不完整，请刷新重试。');
+    if (mode === 'preview' && (!/^[A-Za-z0-9_-]{32}$/.test(d.preview_ref) || typeof d.actual_source_ref !== 'string' || !/^[a-f0-9]{32}$/.test(d.actual_source_ref) || !Array.isArray(d.rows) || typeof d.can_confirm !== 'boolean' || d.commit_policy !== 'atomic' || !C.object(d.write_context) || !C.object(d.summary) || !['total', 'changed', 'unchanged', 'blank', 'rejected'].every(key => Number.isInteger(d.summary[key])))) throw C.failure('读到的文件预检结果不完整，请刷新重试。');
     return result;
   }
   // context 是已校验过的任务、记录或预检上下文；关闭的上下文没有 write_token、capabilities 为空，原因都在 blocked_reasons 里
@@ -28431,8 +28344,9 @@ function SMExport({
     return result;
   }
   function saveFile(file, fallback) {
-    if (!file || !(file.blob instanceof Blob) || !file.blob.size || !file.contentType.includes('spreadsheetml')) throw C.failure('下载不是有效 XLSX 文件。');
-    const match = /filename\*=UTF-8''([^;]+)/i.exec(file.disposition || '');
+    // resource-api.js 的二进制下载只在服务端回 JSON 成功信封时不带 blob；带 blob 时恒非空且 disposition 恒为字符串。
+    if (!(file.blob instanceof Blob) || !file.contentType.includes('spreadsheetml')) throw C.failure('下载不是有效 XLSX 文件。');
+    const match = /filename\*=UTF-8''([^;]+)/i.exec(file.disposition);
     const url = URL.createObjectURL(file.blob),
       link = document.createElement('a');
     link.href = url;
@@ -29152,7 +29066,7 @@ function SMExport({
     const changed = JSON.stringify(baseline) !== JSON.stringify(currentBaseline);
     const dirty = JSON.stringify(draft) !== JSON.stringify(initial.initialDraft);
     React.useLayoutEffect(() => {
-      if (typeof onDraft === 'function') onDraft({
+      onDraft({
         draft,
         baseline,
         initialDraft: initial.initialDraft,
@@ -29868,7 +29782,7 @@ function SMExport({
       onDraft: onDraft,
       onClose: onCloseEditor,
       onDone: onDone
-    }), (p.voided_reports || []).length > 0 && /*#__PURE__*/React.createElement("details", {
+    }), p.voided_reports.length > 0 && /*#__PURE__*/React.createElement("details", {
       className: "field-note"
     }, /*#__PURE__*/React.createElement("summary", null, "\u5DF2\u64A4\u9500\u62A5\u5DE5 \xB7 ", p.voided_reports.length, " \u6761"), p.voided_reports.map(item => /*#__PURE__*/React.createElement("section", {
       key: item.void_fact.void_fact_ref
@@ -30098,7 +30012,7 @@ function SMExport({
       className: "field-files-summary"
     }, [['total', '行数'], ['changed', '变更'], ['unchanged', '重复'], ['blank', '空白'], ['rejected', '问题']].map(([key, label]) => /*#__PURE__*/React.createElement("span", {
       key: key
-    }, label, " ", /*#__PURE__*/React.createElement("b", null, preview.summary[key] || 0)))), command.phase !== 'done' && command.phase !== 'rejected' && /*#__PURE__*/React.createElement("p", {
+    }, label, " ", /*#__PURE__*/React.createElement("b", null, preview.summary[key])))), command.phase !== 'done' && command.phase !== 'rejected' && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, preview.can_confirm ? '预检通过，尚未写入报工。' : preview.summary.rejected ? '预检未通过，未写入任何报工。' : '没有可导入的实际记录，未写入报工。'), /*#__PURE__*/React.createElement("div", {
       className: "field-scroll wb-table-frame",
@@ -30164,7 +30078,7 @@ function SMExport({
   function FieldWorkspace({
     adapter,
     onNavigate,
-    initialContext = {}
+    initialContext
   }) {
     const api = React.useMemo(() => adapter || productionAdapter || (productionAdapter = window.FieldAPI.create()), [adapter]);
     const [scope, setScope] = React.useState(() => window.FieldAPI.initial(initialContext));
@@ -30861,7 +30775,7 @@ function SMExport({
       taskIndex: prepared.taskIndex,
       dataRange: prepared.dataRange,
       items: prepared.items,
-      shownRefs: prepared.shownRefs || new Set((prepared.items || []).map(item => item.task.task_ref)),
+      shownRefs: prepared.shownRefs,
       groups: prepared.groups,
       rows,
       height: top,
@@ -31406,7 +31320,7 @@ function SMExport({
       className: "fg-icon-button",
       icon: "search",
       "aria-label": "\u5B9A\u4F4D\u9009\u4E2D\u5DE5\u5E8F",
-      disabled: !(model.shownRefs ? model.shownRefs.has(view.selected) : model.items.some(i => i.task.task_ref === view.selected)),
+      disabled: !model.shownRefs.has(view.selected),
       onClick: onLocate
     }))));
   }
@@ -31426,7 +31340,6 @@ function SMExport({
       } = index,
       locateRef = React.useRef(onLocate);
     locateRef.current = onLocate;
-    const visible = React.useMemo(() => model.shownRefs || new Set(model.items.map(item => item.task.task_ref)), [model.shownRefs, model.items]);
     const incoming = React.useMemo(() => new Map(graph.critical_edges.map(edge => [edge.to_task_ref, edge])), [graph.critical_edges]);
     const steps = React.useMemo(() => graph.critical_task_refs.map(ref => {
       const node = nodes.get(ref),
@@ -31446,9 +31359,9 @@ function SMExport({
         onClick: () => locateRef.current(ref)
       }, /*#__PURE__*/React.createElement("span", {
         className: "fg-chain-node-label"
-      }, /*#__PURE__*/React.createElement("span", null, node.batch_id, " \xB7 ", M.pieceLabel(node)), /*#__PURE__*/React.createElement("small", null, node.sequence, " ", node.process_label), /*#__PURE__*/React.createElement("small", null, M.time(node.start), " \u81F3 ", M.time(node.end), !visible.has(ref) && ' · 当前视图外'))));
-    }), [graph.critical_task_refs, nodes, incoming, visible]);
-    const shownCount = React.useMemo(() => graph.critical_task_refs.reduce((count, ref) => count + (visible.has(ref) ? 1 : 0), 0), [graph.critical_task_refs, visible]);
+      }, /*#__PURE__*/React.createElement("span", null, node.batch_id, " \xB7 ", M.pieceLabel(node)), /*#__PURE__*/React.createElement("small", null, node.sequence, " ", node.process_label), /*#__PURE__*/React.createElement("small", null, M.time(node.start), " \u81F3 ", M.time(node.end), !model.shownRefs.has(ref) && ' · 当前视图外'))));
+    }), [graph.critical_task_refs, nodes, incoming, model.shownRefs]);
+    const shownCount = React.useMemo(() => graph.critical_task_refs.reduce((count, ref) => count + (model.shownRefs.has(ref) ? 1 : 0), 0), [graph.critical_task_refs, model.shownRefs]);
     return /*#__PURE__*/React.createElement("div", {
       className: "fg-chain-strip",
       "aria-label": "\u6240\u9009\u8BA1\u5212\u5173\u952E\u94FE"
@@ -32079,7 +31992,7 @@ function SMExport({
   }
   function Content({
     onNavigate,
-    initialContext = {},
+    initialContext,
     adapter: supplied
   }) {
     const seed = React.useMemo(() => initial(initialContext), []),
@@ -32344,12 +32257,12 @@ function SMExport({
     }
     function locate(taskRef = view.selected) {
       if (!model) return;
-      if (!(taskIndex ? taskIndex.has(taskRef) : data.items.some(item => item.task.task_ref === taskRef))) {
+      if (!taskIndex.has(taskRef)) {
         setLocateNotice('这道工序不在当前日期、资源或批次范围内，请调整范围后定位。');
         return;
       }
       setLocateNotice('');
-      const hidden = !(model.shownRefs ? model.shownRefs.has(taskRef) : model.items.some(item => item.task.task_ref === taskRef));
+      const hidden = !model.shownRefs.has(taskRef);
       const collapsed = {
         ...view.collapsed
       };
@@ -32626,7 +32539,7 @@ function SMExport({
     }), locateNotice && /*#__PURE__*/React.createElement("p", {
       className: "fg-note",
       role: "status"
-    }, locateNotice), view.selected && !(model.shownRefs ? model.shownRefs.has(view.selected) : model.items.some(i => i.task.task_ref === view.selected)) && /*#__PURE__*/React.createElement("div", {
+    }, locateNotice), view.selected && !model.shownRefs.has(view.selected) && /*#__PURE__*/React.createElement("div", {
       role: "status",
       className: "fg-note"
     }, "\u9009\u4E2D\u5DE5\u5E8F\u5728\u5F53\u524D\u7B5B\u9009\u8303\u56F4\u5916\uFF0C\u8BF7\u8C03\u6574\u7B5B\u9009\u3002"), view.report && selected && !report && /*#__PURE__*/React.createElement("div", {
@@ -32812,9 +32725,9 @@ function SMExport({
       error: exportError
     }))));
   }
-  // 侧栏直接进入时 main.jsx 不带定位上下文（initialContext 为 undefined）。
+  // 侧栏直接进入时 main.jsx 传空对象作为定位上下文。
   function ActualGanttWorkspace({
-    initialContext = {},
+    initialContext,
     ...props
   }) {
     return /*#__PURE__*/React.createElement(Content, {
@@ -33330,7 +33243,7 @@ function SMExport({
       className: "pf-split-action"
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, "\u7269\u6599\u53EA\u591F\u505A\u4E00\u90E8\u5206\uFF1F"), /*#__PURE__*/React.createElement("p", null, "\u5148\u68C0\u67E5\u53EF\u505A\u6570\u91CF\uFF0C\u786E\u8BA4\u540E\u62C6\u6210\u4E24\u6279\u3002")), /*#__PURE__*/React.createElement(Button, {
       icon: splitExpanded ? 'chevron-up' : 'search',
-      disabled: disabled || !value.ready_check || !onInspectMaterials,
+      disabled: disabled || !value.ready_check,
       "aria-expanded": !!splitExpanded,
       "aria-controls": splitExpanded ? 'pf-material-split' : undefined,
       onClick: onInspectMaterials
@@ -33856,9 +33769,8 @@ function SMExport({
     protected: '已开工保护'
   };
   function resolveContext(initialContext, savedInput) {
-    const isObject = typeof initialContext === 'object' && initialContext !== null;
-    if (initialContext === undefined || isObject && Object.keys(initialContext).length === 0) return savedInput === null ? undefined : savedInput;
-    if (savedInput !== null && isObject && initialContext.start_date === undefined && (initialContext.scope !== undefined || initialContext.entity_ref !== undefined)) {
+    if (Object.keys(initialContext).length === 0) return savedInput === null ? undefined : savedInput;
+    if (savedInput !== null && initialContext.start_date === undefined && (initialContext.scope !== undefined || initialContext.entity_ref !== undefined)) {
       const merged = {
         ...savedInput,
         ...initialContext
@@ -34088,8 +34000,6 @@ function SMExport({
     const data = result && result.response.data,
       counts = data && data.counts,
       currentStep = window.RunPresentation.step(remembered, data);
-    const runBlocked = !data || data.write_context.capabilities['scheduling.run'] !== true || typeof adapter.run !== 'function';
-    const runReason = data && data.run_blocked_reasons[0].message || window.WorkbenchTerms.outcomes.unavailable;
     const inputDisabled = !!initial.error || busy || splitBusy;
     function inspectMaterials() {
       if (inputDisabled || !value.ready_check) return;
@@ -34099,7 +34009,7 @@ function SMExport({
       }
     }
     function navigate(kind) {
-      if (!onNavigate || !data) return;
+      if (!data) return;
       const rows = kind === 'unready' ? data.unready_batches : kind === 'resources' ? data.tasks.filter(row => row.issues.some(item => ['machine_missing', 'operator_missing', 'operator_skill_missing', 'machine_authorization_missing'].includes(item.code))) : data.tasks.filter(row => row.status === 'blocked').concat(data.no_route_batches);
       const ids = Array.from(new Set(rows.map(row => row.batch_id)));
       invalidate();
@@ -34190,9 +34100,9 @@ function SMExport({
       effective: effectiveHold,
       onChange: change,
       disabled: inputDisabled,
-      onInspectMaterials: window.BatchSplitPanel && inspectMaterials,
+      onInspectMaterials: inspectMaterials,
       splitExpanded: splitExpanded,
-      materialPanel: splitExpanded && window.BatchSplitPanel && /*#__PURE__*/React.createElement(window.BatchSplitPanel, {
+      materialPanel: splitExpanded && /*#__PURE__*/React.createElement(window.BatchSplitPanel, {
         refs: value.batch_refs,
         day: value.start_date,
         disabled: !!initial.error || busy || !value.ready_check,
@@ -34211,7 +34121,7 @@ function SMExport({
       className: "pf-check",
       key: title
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("strong", null, title), /*#__PURE__*/React.createElement("p", null, description)), kind && /*#__PURE__*/React.createElement(Button, {
-      disabled: !data || !onNavigate || busy || !(kind === 'resources' ? counts.missing_resource_tasks : kind === 'unready' ? counts.unready_batches : counts.blocked_tasks + counts.no_route_batches),
+      disabled: !data || busy || !(kind === 'resources' ? counts.missing_resource_tasks : kind === 'unready' ? counts.unready_batches : counts.blocked_tasks + counts.no_route_batches),
       onClick: () => navigate(kind)
     }, action)))))), /*#__PURE__*/React.createElement(ErrorBox, {
       error: error
@@ -34238,7 +34148,7 @@ function SMExport({
       className: "pf-footer"
     }, /*#__PURE__*/React.createElement("span", {
       className: "pf-muted"
-    }, data ? '排产检查不生成版本、不写入业务或审计数据。' : renderRunPanel ? '请先选择批次和排产日期范围，再点「开始排产检查」。' : window.WorkbenchTerms.outcomes.unavailable), /*#__PURE__*/React.createElement("div", {
+    }, data ? '排产检查不生成版本、不写入业务或审计数据。' : '请先选择批次和排产日期范围，再点「开始排产检查」。'), /*#__PURE__*/React.createElement("div", {
       className: "pf-tools"
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "search",
@@ -34248,12 +34158,7 @@ function SMExport({
       reason: !initial.error && !value.batch_refs.length ? '请先选择要排产的批次。' : '',
       reasonDisplay: "tooltip",
       onClick: check
-    }, data ? '重新检查' : '开始排产检查'), !renderRunPanel && /*#__PURE__*/React.createElement(Button, {
-      icon: "play",
-      className: currentStep === 3 ? 'btn primary' : 'btn',
-      disabled: runBlocked,
-      reason: runReason
-    }, "\u5F00\u59CB\u6392\u4EA7")))), renderRunPanel && renderRunPanel(data, {
+    }, data ? '重新检查' : '开始排产检查')))), renderRunPanel(data, {
       onRecheck: recheckForRun,
       confirmationOwner: result && result.confirmationOwner
     }));
@@ -34876,7 +34781,7 @@ function SMExport({
       effective: effective,
       operationCount: operationCount,
       timeBudget: timeBudget
-    }), checked.run_options && onBudgetChange && /*#__PURE__*/React.createElement(Budget, {
+    }), checked.run_options && /*#__PURE__*/React.createElement(Budget, {
       value: timeBudget,
       disabled: submitting,
       onChange: onBudgetChange,
@@ -34919,7 +34824,6 @@ function SMExport({
     resolution,
     checking,
     verified,
-    api,
     actions,
     navigation,
     title = '本次排产',
@@ -34928,7 +34832,6 @@ function SMExport({
     const replaced = resolution === 'context_replaced';
     const queryLabel = checking ? '正在查询结果' : replaced ? '数据库已恢复' : resolution === 'lookup_failed' ? '查询失败' : '暂未查到这次排产记录';
     const saved = run && run.result_persisted && run.candidates.some(row => row.status === 'completed');
-    const canOpen = typeof onNavigate === 'function' || typeof api.openCandidate === 'function';
     return /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u672C\u6B21\u6392\u4EA7\u8BB0\u5F55",
       className: "rj-record"
@@ -34959,15 +34862,13 @@ function SMExport({
       role: "alert"
     }, A.failure(run.error)), /*#__PURE__*/React.createElement("div", {
       className: "rj-tools"
-    }, saved && canOpen && /*#__PURE__*/React.createElement(Button, {
+    }, saved && /*#__PURE__*/React.createElement(Button, {
       icon: "chart",
       disabled: !verified,
-      onClick: () => typeof onNavigate === 'function' ? onNavigate('run', {
-        run_ref: run.run_ref
-      }) : api.openCandidate({
+      onClick: () => onNavigate('run', {
         run_ref: run.run_ref
       })
-    }, "\u67E5\u770B\u672C\u6B21\u6392\u4EA7\u7ED3\u679C"), A.terminal(run) && !saved && typeof onNavigate === 'function' && /*#__PURE__*/React.createElement(Button, {
+    }, "\u67E5\u770B\u672C\u6B21\u6392\u4EA7\u7ED3\u679C"), A.terminal(run) && !saved && /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-left",
       onClick: () => onNavigate('run', {})
     }, "\u8FD4\u56DE\u6392\u4EA7\u68C0\u67E5")), /*#__PURE__*/React.createElement("details", {
@@ -35209,7 +35110,7 @@ function SMExport({
               setStorageError(e.message);
               return;
             }
-            if (typeof onNavigate === 'function') onNavigate('run', {
+            onNavigate('run', {
               run_ref: result.run_ref
             });
           }
@@ -35307,7 +35208,7 @@ function SMExport({
     }
     async function recheckBudget(seconds) {
       const owner = confirmationSession.current;
-      if (locked.current || !owner || typeof onRecheck !== 'function' || !window.RunGenerationContract.budget(seconds) || pendingActive || storageError) return;
+      if (locked.current || !owner || !window.RunGenerationContract.budget(seconds) || pendingActive || storageError) return;
       owner.rechecking = true;
       setTimeBudget(seconds);
       const controller = beginPreviewRequest();
@@ -35491,7 +35392,6 @@ function SMExport({
       resolution: resolution,
       checking: checking,
       verified: verified,
-      api: api,
       onNavigate: onNavigate
     }), confirming && confirmationData && /*#__PURE__*/React.createElement(U.Confirmation, {
       preview: preview,
@@ -35500,7 +35400,7 @@ function SMExport({
       batches: confirmationData.included_batches.concat(confirmationData.excluded_batches),
       operationCount: confirmationData.counts.selected_tasks,
       timeBudget: timeBudget,
-      onBudgetChange: typeof onRecheck === 'function' ? recheckBudget : undefined,
+      onBudgetChange: recheckBudget,
       busy: busy,
       submitting: submitting,
       error: error,
@@ -35912,7 +35812,6 @@ function SMExport({
       }, "\u5B8C\u6210"), /*#__PURE__*/React.createElement(Button, {
         icon: "arrow-right",
         className: "btn primary",
-        reason: typeof onNavigate === 'function' ? '' : window.WorkbenchTerms.outcomes.unavailable,
         onClick: () => onNavigate('analysis', {
           plan_ref: result.data.official_plan.plan_ref
         })
@@ -35995,7 +35894,6 @@ function SMExport({
     candidateDisplay,
     candidateCatalog = [],
     onNavigate,
-    onAdopted,
     adapter
   }) {
     const api = React.useMemo(() => adapter || A.create(), [adapter]);
@@ -36028,10 +35926,7 @@ function SMExport({
     const alive = React.useRef(false),
       lock = React.useRef(false),
       previewRequest = React.useRef(null),
-      active = React.useRef(intent),
-      notified = React.useRef(null);
-    const callback = React.useRef(onAdopted);
-    callback.current = onAdopted;
+      active = React.useRef(intent);
     active.current = intent;
     React.useEffect(() => {
       alive.current = true;
@@ -36076,19 +35971,6 @@ function SMExport({
       setResult(receipt);
       setError('');
       setNotice('');
-      if (notified.current !== receipt.receipt_ref) {
-        notified.current = receipt.receipt_ref;
-        if (typeof callback.current === 'function') {
-          const failed = () => {
-            if (alive.current) setNotice('采用已确认，但关联页面没刷新成功，请重新打开正式计划。');
-          };
-          try {
-            Promise.resolve(callback.current(receipt)).catch(failed);
-          } catch (_) {
-            failed();
-          }
-        }
-      }
     }
     React.useEffect(() => {
       setReplacedInfo(null);
@@ -36478,14 +36360,12 @@ function SMExport({
     if (d.task_count) {
       check(start === timeKey(d.task_span.start) && end === timeKey(d.task_span.end) && start >= timeKey(d.candidate_span.start) && end <= timeKey(d.candidate_span.end));
     }
-    if (d.unplanned_operations === null) check(d.unplanned_operation_count === null && d.data_gaps.some(g => g.field === 'unplanned_operations'));else {
-      check(Array.isArray(d.unplanned_operations) && d.unplanned_operation_count === d.unplanned_operations.length);
-      d.unplanned_operations.forEach(t => {
-        operation(t, false);
-        check(!operationRefs.has(t.operation_ref) && (!q.batch_ref || t.batch_ref === q.batch_ref));
-        operationRefs.add(t.operation_ref);
-      });
-    }
+    check(Array.isArray(d.unplanned_operations) && d.unplanned_operation_count === d.unplanned_operations.length);
+    d.unplanned_operations.forEach(t => {
+      operation(t, false);
+      check(!operationRefs.has(t.operation_ref) && (!q.batch_ref || t.batch_ref === q.batch_ref));
+      operationRefs.add(t.operation_ref);
+    });
     const g = d.generation,
       G = window.RunGenerationContract;
     check(shape(g, ['run_ref', 'accepted_at', 'finished_at', 'metadata_basis', 'execution_basis', 'current_entities_consulted', 'formal_version_allocated', 'input', 'data_gaps', 'baseline', 'algorithm']) && g.run_ref === d.candidate.run_ref && time(g.accepted_at) && (g.finished_at === null || time(g.finished_at)) && g.metadata_basis === 'captured_at_run_admission' && g.execution_basis === 'captured_at_run_admission' && g.current_entities_consulted === false && g.formal_version_allocated === false && gaps(g.data_gaps) && shape(g.input, ['start_date', 'end_date', 'ready_check', 'missing_resource_policy', 'completed_policy'], ['material_strategy', 'hold_window', 'time_budget_seconds']) && (g.input.time_budget_seconds === undefined || G.budget(g.input.time_budget_seconds)) && (g.input.material_strategy === undefined || ['strict', 'stage', 'split'].includes(g.input.material_strategy) || g.input.material_strategy === null && g.data_gaps.some(gap => gap.field === 'input.material_strategy')) && holdWindow(g.input.hold_window) && (g.input.hold_window === null || !g.data_gaps.some(gap => gap.field === 'input.hold_window')) && ['start_date', 'end_date', 'missing_resource_policy', 'completed_policy'].every(k => nullableText(g.input[k])) && (g.input.ready_check === null || typeof g.input.ready_check === 'boolean') && window.RunGenerationContract.algorithm(g.algorithm, g.run_ref) && shape(g.baseline, ['baseline_ref', 'version', 'kind', 'captured_at', 'captured_task_count']) && g.baseline.kind === 'admission_official' && version(g.baseline.version) && time(g.baseline.captured_at) && (g.baseline.version === null ? g.baseline.baseline_ref === null : ref(g.baseline.baseline_ref)) && (g.baseline.captured_task_count === null || count(g.baseline.captured_task_count)));
@@ -36510,9 +36390,7 @@ function SMExport({
   }
   function download(value, result, fmt) {
     const d = result.data;
-    check(value && value.blob instanceof Blob && value.blob.size > 0 && value.candidate_ref === d.candidate.candidate_ref && value.snapshot_ref === result.meta.snapshot_ref && value.task_count === d.task_count
-    // 未安排工序资料缺项时 unplanned_operation_count 为 null，导出与后端一样只算已安排行（candidate_export.py）。
-    && value.row_count === Math.max(1, d.task_count + (d.unplanned_operation_count === null ? 0 : d.unplanned_operation_count)) && text(value.filename) && !/[\\/\r\n]/.test(value.filename) && value.filename.endsWith('.' + fmt), '下载结果与当前完整范围不一致，没有保存文件。');
+    check(value && value.blob instanceof Blob && value.blob.size > 0 && value.candidate_ref === d.candidate.candidate_ref && value.snapshot_ref === result.meta.snapshot_ref && value.task_count === d.task_count && value.row_count === Math.max(1, d.task_count + d.unplanned_operation_count) && text(value.filename) && !/[\\/\r\n]/.test(value.filename) && value.filename.endsWith('.' + fmt), '下载结果与当前完整范围不一致，没有保存文件。');
     return value;
   }
   function create(fetcher = window.fetch.bind(window)) {
@@ -36805,7 +36683,7 @@ function SMExport({
     const bounds = G.bounds(data.task_span ? instant(data.task_span.start) : null, data.task_span ? instant(data.task_span.end) : null, items.some(item => item.point));
     return {
       items,
-      unplanned: (data.unplanned_operations || []).map(task => ({
+      unplanned: data.unplanned_operations.map(task => ({
         task,
         search: searchText(task)
       })),
@@ -36910,36 +36788,6 @@ function SMExport({
     });
     return rows;
   }
-  function layoutPrepared(prepared, width = 1000) {
-    const rows = [],
-      locations = new Map();
-    let top = 0;
-    for (const group of prepared.groups.values()) for (const source of groupRows(group, prepared.start, prepared.end, width)) {
-      const row = {
-        ...source,
-        top
-      };
-      row.items.forEach(item => locations.set(item.task.row_ref, {
-        row: rows.length,
-        top,
-        item
-      }));
-      rows.push(row);
-      top += row.height;
-    }
-    return {
-      rows,
-      height: top,
-      locations,
-      tasks: prepared.tasks,
-      shownRefs: prepared.shownRefs || new Set((prepared.tasks || []).map(task => task.row_ref)),
-      taskOrder: prepared.taskOrder || new Map((prepared.tasks || []).map((task, index) => [task.row_ref, index])),
-      unplottableTasks: prepared.unplottableTasks,
-      groupCount: prepared.groupCount,
-      start: prepared.start,
-      end: prepared.end
-    };
-  }
   window.RunCandidateModel = {
     instant,
     timeLabel,
@@ -36953,7 +36801,6 @@ function SMExport({
     groupPrepared,
     selectPrepared,
     groupRows,
-    layoutPrepared,
     title,
     laneLabel,
     pieceLabel,
@@ -37781,7 +37628,7 @@ function SMExport({
       disabled: !onBatch,
       "aria-label": '查看批次甘特 ' + row.batch_id,
       onClick: () => onBatch(row)
-    }, "\u6279\u6B21\u7518\u7279"), (row.after.last_operations || []).map(task => /*#__PURE__*/React.createElement(C.Button, {
+    }, "\u6279\u6B21\u7518\u7279"), row.after.last_operations.map(task => /*#__PURE__*/React.createElement(C.Button, {
       key: task.row_ref,
       icon: "search",
       className: "mini",
@@ -40738,9 +40585,10 @@ function SMExport({
       return left.scope_ref === right.scope_ref && left.shared_scope && right.shared_scope && left.shared_scope.components_known && right.shared_scope.components_known;
     }
     const scopeKeys = ['source_candidate_ref', 'objective_scope'];
+    // 没有 scope_ref 的过程点都经 RunDecisionAPI.js point() 校验：evaluation_scope 缺省、为 null，或带 incomplete_batch_ids 数组。
     const before = left.evaluation_scope,
       after = right.evaluation_scope;
-    return !!(scopeKeys.every(key => knownDimension(left[key]) && left[key] === right[key]) && before && after && Array.isArray(before.incomplete_batch_ids) && Array.isArray(after.incomplete_batch_ids) && before.incomplete_batch_ids.length === after.incomplete_batch_ids.length && before.incomplete_batch_ids.every((batch, index) => batch === after.incomplete_batch_ids[index]) && completionKeys.every(key => known(left.completion[key]) && known(right.completion[key]) && left.completion[key] === right.completion[key]));
+    return !!(scopeKeys.every(key => knownDimension(left[key]) && left[key] === right[key]) && before && after && before.incomplete_batch_ids.length === after.incomplete_batch_ids.length && before.incomplete_batch_ids.every((batch, index) => batch === after.incomplete_batch_ids[index]) && completionKeys.every(key => known(left.completion[key]) && known(right.completion[key]) && left.completion[key] === right.completion[key]));
   }
   // Saved incumbent events stay continuous across search phases; evaluation coverage remains separate.
   function segments(progress, value = point => point.primary_value) {
@@ -44851,7 +44699,8 @@ function SMExport({
     })), /*#__PURE__*/React.createElement("div", {
       className: "rd-changeover-diagnostics"
     }, ['before', 'after'].map(side => {
-      const issues = data.summary[side].issues || [];
+      // 换型汇总两侧恒带 issues 列表（decision_changeovers.py public_summary ← changeover_events.py changeover_projection）。
+      const issues = data.summary[side].issues;
       return issues.length > 0 && (side !== 'before' || data.baseline.state === 'available') && /*#__PURE__*/React.createElement("div", {
         key: side
       }, /*#__PURE__*/React.createElement("strong", null, side === 'before' ? '基准' : '当前方案', "\u8BBE\u5907\u5B89\u6392\u8D44\u6599\u7F3A\u5931"), /*#__PURE__*/React.createElement(C.Reasons, {
@@ -45810,7 +45659,7 @@ function SMExport({
     issues,
     onInspect
   }) {
-    const labels = React.useMemo(() => new Map([...workspace.gantt_graph.nodes, ...workspace.tasks, ...(workspace.unplanned_operations || [])].map(row => [row.operation_ref, row])), [workspace]);
+    const labels = React.useMemo(() => new Map([...workspace.gantt_graph.nodes, ...workspace.tasks, ...workspace.unplanned_operations].map(row => [row.operation_ref, row])), [workspace]);
     if (!issues.length) return null;
     return /*#__PURE__*/React.createElement("details", {
       className: "rb-panel",
@@ -46518,7 +46367,7 @@ function SMExport({
       node.scrollTop = Math.max(0, loc.top - node.clientHeight / 3);
       pan((loc.item.start + loc.item.end - 2 * model.start) / 2 / (model.end - model.start) * width - viewport / 2);
     }
-    const currentIndex = selected && candidate.taskOrder ? candidate.taskOrder.has(selected.row_ref) ? candidate.taskOrder.get(selected.row_ref) : -1 : model.tasks.findIndex(task => selected && task.row_ref === selected.row_ref);
+    const currentIndex = selected && candidate.taskOrder.has(selected.row_ref) ? candidate.taskOrder.get(selected.row_ref) : -1;
     function move(direction) {
       const index = currentIndex;
       const task = model.tasks[Math.max(0, Math.min(model.tasks.length - 1, index < 0 ? 0 : index + direction))];
@@ -46860,7 +46709,7 @@ function SMExport({
         const file = A.download(await adapter.export(d.candidate.candidate_ref, scope, result.meta.snapshot_ref, fmt, controller.signal), result, fmt);
         if (controller.signal.aborted) return;
         window.APSWorkbenchTransport.saveBlob(file.filename, file.blob);
-        setDone(window.WorkbenchTerms.download_started(file.filename) + '，共 ' + file.row_count + ' 条记录（安排 ' + d.task_count + '，未安排 ' + (d.unplanned_operation_count === null ? '未知' : d.unplanned_operation_count) + '）。');
+        setDone(window.WorkbenchTerms.download_started(file.filename) + '，共 ' + file.row_count + ' 条记录（安排 ' + d.task_count + '，未安排 ' + d.unplanned_operation_count + '）。');
         setFormat(null);
       } catch (e) {
         if (!controller.signal.aborted) setError(e);
@@ -46912,7 +46761,7 @@ function SMExport({
       checked: format === key,
       disabled: busy,
       onChange: () => setFormat(key)
-    }), text))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, d.candidate.label || window.WorkbenchTerms.name_missing)), /*#__PURE__*/React.createElement("p", null, "\u5BFC\u51FA\u5F53\u524D\u8BFB\u53D6\u8303\u56F4\u5168\u90E8\u5B89\u6392\u4E0E\u672A\u5B89\u6392\u8BB0\u5F55\uFF1A\u5B89\u6392 ", d.task_count, " \u9053\uFF0C\u672A\u5B89\u6392 ", d.unplanned_operation_count === null ? '未知' : d.unplanned_operation_count + ' 道', "\u3002\u641C\u7D22\u4E0D\u6539\u53D8\u5BFC\u51FA\u8303\u56F4\u3002"), /*#__PURE__*/React.createElement(C.ErrorBox, {
+    }), text))), /*#__PURE__*/React.createElement("p", null, /*#__PURE__*/React.createElement("strong", null, d.candidate.label || window.WorkbenchTerms.name_missing)), /*#__PURE__*/React.createElement("p", null, "\u5BFC\u51FA\u5F53\u524D\u8BFB\u53D6\u8303\u56F4\u5168\u90E8\u5B89\u6392\u4E0E\u672A\u5B89\u6392\u8BB0\u5F55\uFF1A\u5B89\u6392 ", d.task_count, " \u9053\uFF0C\u672A\u5B89\u6392 ", d.unplanned_operation_count, " \u9053\u3002\u641C\u7D22\u4E0D\u6539\u53D8\u5BFC\u51FA\u8303\u56F4\u3002"), /*#__PURE__*/React.createElement(C.ErrorBox, {
       error: error
     }))));
   }
@@ -47010,7 +46859,7 @@ function SMExport({
       const pendingFact = pendingRow && prepared.taskIndex.get(pendingRow);
       const exact = pendingFact && (!pendingOperation || pendingFact.task.operation_ref === pendingOperation) && pendingFact.task;
       const task = exact || pendingOperation && shown.tasks.find(row => row.operation_ref === pendingOperation);
-      const unplannedTask = !task && pendingOperation && shown.unplanned_operations !== null && shown.unplanned_operations.find(row => row.operation_ref === pendingOperation);
+      const unplannedTask = !task && pendingOperation && shown.unplanned_operations.find(row => row.operation_ref === pendingOperation);
       if (task || unplannedTask) {
         setSelected({
           task: task || unplannedTask,
@@ -47304,7 +47153,7 @@ function SMExport({
       }
     }, "\u5B8C\u6574\u4FDD\u5B58\u8303\u56F4\u5B9A\u4F4D")), shown && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("details", {
       className: "rc-reasons"
-    }, /*#__PURE__*/React.createElement("summary", null, "\u8303\u56F4\u4E0E\u5BFC\u51FA\u8BF4\u660E"), /*#__PURE__*/React.createElement("div", null, "\u5168\u65B9\u6848\u5171 ", shown.candidate_task_count, " \u9053\u5B89\u6392\uFF1B\u5F53\u524D\u8BFB\u53D6\u8303\u56F4 ", shown.task_count, " \u9053\u5B89\u6392\u3002"), /*#__PURE__*/React.createElement("div", null, "\u672A\u5B89\u6392\u5DE5\u5E8F\uFF1A", shown.unplanned_operation_count === null ? '数量未保存，请查看原因' : shown.unplanned_operation_count + ' 道', "\u3002\u8FD9\u4E9B\u5DE5\u5E8F\u6CA1\u6709\u65F6\u95F4\u533A\u95F4\uFF0C\u6309\u6279\u6B21\u8303\u56F4\u8BFB\u53D6\uFF0C\u4FDD\u7559\u5728\u672A\u5B89\u6392\u660E\u7EC6\u3002"), /*#__PURE__*/React.createElement("div", null, "\u65F6\u95F4\u8FB9\u754C\uFF1A", scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束时刻）' : '全部保存时间', "\u3002\u65F6\u95F4\u7B5B\u9009\u4FDD\u7559\u76F8\u4EA4\u5B89\u6392\u7684\u5B8C\u6574\u8D77\u6B62\u3002\u96F6\u5DE5\u65F6\u5DE5\u5E8F\u6309\u53D1\u751F\u65F6\u523B\u7B5B\u9009\uFF0C\u7ED3\u675F\u8FB9\u754C\u4E0D\u5305\u542B\u3002"), scope.batch_ref && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
+    }, /*#__PURE__*/React.createElement("summary", null, "\u8303\u56F4\u4E0E\u5BFC\u51FA\u8BF4\u660E"), /*#__PURE__*/React.createElement("div", null, "\u5168\u65B9\u6848\u5171 ", shown.candidate_task_count, " \u9053\u5B89\u6392\uFF1B\u5F53\u524D\u8BFB\u53D6\u8303\u56F4 ", shown.task_count, " \u9053\u5B89\u6392\u3002"), /*#__PURE__*/React.createElement("div", null, "\u672A\u5B89\u6392\u5DE5\u5E8F\uFF1A", shown.unplanned_operation_count, " \u9053\u3002\u8FD9\u4E9B\u5DE5\u5E8F\u6CA1\u6709\u65F6\u95F4\u533A\u95F4\uFF0C\u6309\u6279\u6B21\u8303\u56F4\u8BFB\u53D6\uFF0C\u4FDD\u7559\u5728\u672A\u5B89\u6392\u660E\u7EC6\u3002"), /*#__PURE__*/React.createElement("div", null, "\u65F6\u95F4\u8FB9\u754C\uFF1A", scope.range_start ? M.timeLabel(scope.range_start) + ' 至 ' + M.timeLabel(scope.range_end) + '（不含结束时刻）' : '全部保存时间', "\u3002\u65F6\u95F4\u7B5B\u9009\u4FDD\u7559\u76F8\u4EA4\u5B89\u6392\u7684\u5B8C\u6574\u8D77\u6B62\u3002\u96F6\u5DE5\u65F6\u5DE5\u5E8F\u6309\u53D1\u751F\u65F6\u523B\u7B5B\u9009\uFF0C\u7ED3\u675F\u8FB9\u754C\u4E0D\u5305\u542B\u3002"), scope.batch_ref && /*#__PURE__*/React.createElement(window.WorkbenchReference, {
       entries: {
         '筛选批次编号': scope.batch_ref
       }
@@ -47828,8 +47677,7 @@ function SMExport({
   }
   function Table({
     runs,
-    onOpen,
-    canNavigate
+    onOpen
   }) {
     return /*#__PURE__*/React.createElement("div", {
       className: "rh-table wb-table-frame",
@@ -47885,7 +47733,6 @@ function SMExport({
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
       "aria-label": '查看 ' + timeLabel(run.accepted_at) + ' 提交的排产记录',
-      disabled: !canNavigate,
       onClick: () => onOpen(run)
     })))))));
   }
@@ -47926,7 +47773,7 @@ function SMExport({
   'use strict';
 
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-  const copy = value => JSON.parse(JSON.stringify(value));
+  // 返回位置与条件明细只读，并随 onNavigate 经 history.pushState 结构化克隆，不另做深拷贝。
   const states = ['all', 'queued', 'running', 'complete', 'partial', 'failed', 'interrupted', 'committed', 'success', 'unknown', 'available', 'current', 'historical', 'unavailable'];
   const queryKeys = ['timeline', 'date_from', 'date_to', 'metric_keys', 'comparison', 'reference_run_ref', 'selected_entry_ref', 'range_start', 'range_end', 'resource_window_days', 'state', 'sort', 'order', 'page', 'size', 'condition_page', 'condition_size', 'snapshot_ref'];
   // 默认指标列表直接放进每份默认查询，冻结后谁也不能原地改它；切换指标一律生成新数组。
@@ -48034,14 +47881,14 @@ function SMExport({
     const value = origin.return_decision_history_context || origin.return_decision_context && origin.return_decision_context.return_decision_history_context || origin.source === 'run_history' && origin.history_topic === 'decision_history' && origin.decision_history_context;
     if (!value) return null;
     check(object(value) && object(value.query), '历史返回条件无效，请重新打开排产记录。');
-    return copy(value);
+    return value;
   }
   function historyContext(origin = {}) {
     const value = returnState(origin);
     return {
       source: 'run_history',
       ...(origin.history_query ? {
-        history_query: copy(origin.history_query)
+        history_query: origin.history_query
       } : {}),
       ...(value ? {
         history_topic: 'decision_history',
@@ -48065,7 +47912,7 @@ function SMExport({
       selected_entry_ref: selected,
       reference_entry_ref: reference,
       metric_key: metric,
-      detail_queries: value.detail_queries === undefined ? {} : copy(value.detail_queries)
+      detail_queries: value.detail_queries === undefined ? {} : value.detail_queries
     };
   }
   function serialized(query) {
@@ -48393,7 +48240,7 @@ function SMExport({
     const selectedIndex = indexes.get(selectedEntryRef) ?? -1,
       selected = points[selectedIndex];
     function choose(index, reveal = false) {
-      if (!busy && typeof onSelect === 'function' && points[index]) onSelect(entries.get(points[index].entry_ref), reveal);
+      if (!busy && points[index]) onSelect(entries.get(points[index].entry_ref), reveal);
     }
     function keyboard(event) {
       if (event.defaultPrevented || busy || !points.length || event.altKey || event.ctrlKey || event.metaKey) return;
@@ -50128,7 +49975,6 @@ function SMExport({
       apply(A.scope(q));
     }
     function open(run) {
-      if (typeof onNavigate !== 'function') return;
       const context = {
         run_ref: run.run_ref,
         return_history_context: A.returnContext(query, start.returnPlan)
@@ -50146,7 +49992,7 @@ function SMExport({
       className: "rh-heading scheduling-page-tools"
     }, navigation, /*#__PURE__*/React.createElement("div", {
       className: "rh-tools"
-    }, typeof onNavigate === 'function' && /*#__PURE__*/React.createElement(C.Button, {
+    }, /*#__PURE__*/React.createElement(C.Button, {
       icon: "chevron-left",
       "aria-label": "\u8FD4\u56DE\u6B63\u5F0F\u8BA1\u5212",
       onClick: () => onNavigate('analysis', start.returnPlan)
@@ -50191,7 +50037,6 @@ function SMExport({
       role: "status"
     }, w.message)), data.runs.length ? /*#__PURE__*/React.createElement(C.Table, {
       runs: data.runs,
-      canNavigate: typeof onNavigate === 'function',
       onOpen: open
     }) : /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: data.run_count === 0 ? 'empty' : 'filtered',
@@ -50236,7 +50081,6 @@ function SMExport({
     let start;
     try {
       start = A.context(initialContext);
-      A.check(active && typeof active.catalog === 'function', 'dependency not wired: adapter.catalog');
     } catch (error) {
       return /*#__PURE__*/React.createElement("div", {
         className: "plana run-history-workspace",
@@ -50266,15 +50110,7 @@ function SMExport({
 
   const A = window.RunJobAPI,
     U = window.RunJobControls;
-  function useRunAdapter(onNavigate) {
-    const navigate = React.useRef(onNavigate);
-    navigate.current = onNavigate;
-    return React.useMemo(() => ({
-      ...A.create(),
-      openCandidate: value => navigate.current('analysis', value)
-    }), []);
-  }
-  function runHistoryDestination(context = {}) {
+  function runHistoryDestination(context) {
     const origin = context.return_decision_context || context;
     const saved = context.return_history_context || origin.return_history_context || context.history_query || origin.history_query || {};
     const returnPlan = context.return_plan_context || origin.return_plan_context || saved.return_plan_context;
@@ -50419,7 +50255,7 @@ function SMExport({
       };
     }, [runRef, api, revision]);
     const historyReturn = /*#__PURE__*/React.createElement(HistoryReturn, {
-      context: initialContext || {},
+      context: initialContext,
       onNavigate: onNavigate
     });
     const newRun = /*#__PURE__*/React.createElement(U.Button, {
@@ -50463,7 +50299,6 @@ function SMExport({
       verified: verified,
       retryPaused: retryPaused,
       retryHint: "\u8BF7\u70B9\u300C\u5237\u65B0\u672C\u6B21\u6392\u4EA7\u300D\u518D\u6B21\u6838\u5BF9\u3002",
-      api: api,
       onNavigate: onNavigate,
       navigation: navigation,
       actions: /*#__PURE__*/React.createElement(U.Button, {
@@ -50498,11 +50333,11 @@ function SMExport({
     onNavigate,
     initialContext
   }) {
-    const api = useRunAdapter(onNavigate),
-      specified = initialContext && Object.prototype.hasOwnProperty.call(initialContext, 'run_ref');
+    const api = React.useMemo(() => A.create(), []),
+      specified = Object.prototype.hasOwnProperty.call(initialContext, 'run_ref');
     const runHistoryReturn = runHistoryDestination(initialContext);
     const history = /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(HistoryReturn, {
-      context: initialContext || {},
+      context: initialContext,
       onNavigate: onNavigate
     }), /*#__PURE__*/React.createElement(U.Button, {
       icon: "history",
@@ -50533,7 +50368,7 @@ function SMExport({
     onNavigate,
     initialContext
   }) {
-    const context = initialContext || {},
+    const context = initialContext,
       candidate = Object.prototype.hasOwnProperty.call(context, 'run_ref') || Object.prototype.hasOwnProperty.call(context, 'candidate_ref');
     const history = !candidate && context.source === 'run_history';
     const runHistoryReturn = runHistoryDestination(context);
@@ -52933,7 +52768,7 @@ function SMExport({
   function openPlan(scenarioRef, planRef, navigate) {
     C.check(C.ref(scenarioRef) && C.ref(planRef));
     const entry = history.state && history.state.workbench;
-    C.check(entry && entry.view === 'trial' && entry.context && entry.context.scenario_ref === scenarioRef && typeof navigate === 'function', '无法打开正式计划，请刷新后重试。');
+    C.check(entry && entry.view === 'trial' && entry.context && entry.context.scenario_ref === scenarioRef, '无法打开正式计划，请刷新后重试。');
     return navigate('gantt', {
       plan_ref: planRef
     });
@@ -53629,7 +53464,6 @@ function SMExport({
     const [origin, setOrigin] = React.useState(initialTarget.task_origin || null),
       locatedOrigin = React.useRef(null);
     function notifyTarget(next) {
-      if (typeof onTargetChange !== 'function') return;
       const failed = () => setError(new Error('试调记录已定位，但页面地址更新失败。可从试调列表重新打开。'));
       try {
         Promise.resolve(onTargetChange({
@@ -53730,7 +53564,7 @@ function SMExport({
       }))) return false;
       setError(null);
       if (editing) {
-        if (commands.clearError) commands.clearError();
+        commands.clearError();
         setEditing(false);
         resetEditor();
       }
@@ -53759,7 +53593,7 @@ function SMExport({
         } : {
           draft_ref: next.draft_ref
         };
-        if (commands.clearError) commands.clearError();
+        commands.clearError();
         setTarget(canonical);
         stored.current = null;
         setSelected(null);
@@ -53934,7 +53768,7 @@ function SMExport({
       onClick: async () => {
         if (await guard()) setModal('save');
       }
-    }, "\u4FDD\u5B58\u8BD5\u8C03\u65B9\u6848"), data.scenario_ref && typeof renderAdoption === 'function' ? renderAdoption({
+    }, "\u4FDD\u5B58\u8BD5\u8C03\u65B9\u6848"), data.scenario_ref ? renderAdoption({
       scenarioRef: data.scenario_ref,
       data,
       onNavigate,
@@ -53945,7 +53779,7 @@ function SMExport({
       }
     }) : /*#__PURE__*/React.createElement(U.Button, {
       icon: "check",
-      reason: data.scenario_ref ? window.WorkbenchTerms.outcomes.unavailable : '请先保存试调方案，再做正式采用。'
+      reason: "\u8BF7\u5148\u4FDD\u5B58\u8BD5\u8C03\u65B9\u6848\uFF0C\u518D\u505A\u6B63\u5F0F\u91C7\u7528\u3002"
     }, "\u91C7\u7528\u65B9\u6848")))), modal === 'create' && /*#__PURE__*/React.createElement(window.TrialCatalog.Create, {
       initialBase: origin ? {
         plan_ref: origin.plan_ref
@@ -53953,13 +53787,13 @@ function SMExport({
       initialScope: initialTarget.base ? initialTarget.scope || {} : {},
       fixedBase: !!origin,
       onExisting: origin ? () => {
-        if (commands.clearError) commands.clearError();
+        commands.clearError();
         setModal(null);
         setDirectory(true);
       } : undefined,
       commands: commands,
       onClose: () => {
-        if (commands.clearError) commands.clearError();
+        commands.clearError();
         setModal(null);
       }
     }), finishing && /*#__PURE__*/React.createElement(Finish, {
@@ -53967,7 +53801,7 @@ function SMExport({
       kind: modal,
       commands: actions,
       onClose: () => {
-        if (commands.clearError) commands.clearError();
+        commands.clearError();
         setModal(null);
       },
       onRecheck: reload
@@ -53977,7 +53811,7 @@ function SMExport({
   // initialTarget: {} | {draft_ref} | {scenario_ref} | {base:{plan_ref|candidate_ref},scope?}.
   // task_origin stays in navigation only; saved scenarios clear the original-task focus.
   function WorkbenchTrialWorkspace({
-    initialTarget = {},
+    initialTarget,
     onNavigate,
     renderAdoption,
     onTargetChange
@@ -53991,12 +53825,12 @@ function SMExport({
         error: error
       }));
     }
-    const navigate = onNavigate && ((view, context = {}) => onNavigate(view, {
+    const navigate = (view, context = {}) => onNavigate(view, {
       ...context,
       ...(initialTarget.return_decision_history_context && context.source !== 'run_history' ? {
         return_decision_history_context: initialTarget.return_decision_history_context
       } : {})
-    }));
+    });
     return /*#__PURE__*/React.createElement(Session, {
       key: JSON.stringify(initialTarget),
       initialTarget: initialTarget,
@@ -54358,15 +54192,13 @@ function SMExport({
     React.useEffect(() => {
       if (!result || notified.current === result.receipt_ref) return;
       notified.current = result.receipt_ref;
-      if (typeof callback.current === 'function') {
-        const failed = () => {
-          if (mounted.current) setNotice('采用已确认，但相关页面没有更新成功。请重新打开正式计划。');
-        };
-        try {
-          Promise.resolve(callback.current(result)).catch(failed);
-        } catch (_) {
-          failed();
-        }
+      const failed = () => {
+        if (mounted.current) setNotice('采用已确认，但相关页面没有更新成功。请重新打开正式计划。');
+      };
+      try {
+        Promise.resolve(callback.current(result)).catch(failed);
+      } catch (_) {
+        failed();
       }
     }, [result]);
     function accept(value, intent) {
@@ -54688,7 +54520,6 @@ function SMExport({
       }, "\u5B8C\u6210"), /*#__PURE__*/React.createElement(Button, {
         icon: "arrow-right",
         className: "btn primary",
-        reason: typeof onNavigate === 'function' ? '' : window.WorkbenchTerms.outcomes.unavailable,
         onClick: () => onNavigate('analysis', {
           plan_ref: s.result.data.official_plan.plan_ref
         })
@@ -55865,7 +55696,7 @@ function SMExport({
         setSize(initialView ? initialView.size : 10);
       } else if (prev.snapshotRef !== input.snapshot_ref) {
         setPage(1);
-        if (onView) onView({
+        onView({
           page: 1,
           size
         });
@@ -55877,14 +55708,10 @@ function SMExport({
     }, /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
       disabled: !row || request.busy,
-      reasonDisplay: "inline",
-      reason: typeof onOpenOperation !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: () => onOpenOperation(operationRef, input, row, 'field')
     }, "\u67E5\u770B\u73B0\u573A\u8BB0\u5F55"), /*#__PURE__*/React.createElement(Button, {
       icon: "chart-gantt",
       disabled: !row || request.busy,
-      reasonDisplay: "inline",
-      reason: typeof onOpenOperation !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: () => onOpenOperation(operationRef, input, row, 'fieldgantt')
     }, "\u67E5\u770B\u73B0\u573A\u5B9E\u9645\u7518\u7279"));
     const pages = detail ? Math.max(1, Math.ceil(detail.records.length / size)) : 1,
@@ -55892,7 +55719,7 @@ function SMExport({
     React.useEffect(() => {
       if (detail && currentPage !== page) {
         setPage(currentPage);
-        if (onView) onView({
+        onView({
           page: currentPage,
           size
         });
@@ -55922,7 +55749,7 @@ function SMExport({
         title: '这道工序暂无报工记录',
         hint: ''
       },
-      onLocate: typeof onOpenOperation === 'function' ? record => onOpenOperation(operationRef, input, row, 'fieldgantt', record.report_ref) : undefined
+      onLocate: record => onOpenOperation(operationRef, input, row, 'fieldgantt', record.report_ref)
     }), records.map(record => /*#__PURE__*/React.createElement(Evidence, {
       key: record.record_kind + ':' + record.projection_index,
       record: record
@@ -55938,7 +55765,7 @@ function SMExport({
       onChange: patch => {
         setPage(patch.page);
         if (patch.size) setSize(patch.size);
-        if (onView) onView({
+        onView({
           page: patch.page,
           size: patch.size || size
         });
@@ -56502,7 +56329,7 @@ function SMExport({
   function Workspace({
     adapter,
     mode = 'reports',
-    initialContext = {},
+    initialContext,
     onNav
   }) {
     const {
@@ -56948,9 +56775,9 @@ function SMExport({
       snapshot: response.meta.snapshot_ref
     }))))));
   }
-  // 侧栏直接进入时 main.jsx 不带定位上下文（initialContext 为 undefined）。
+  // 侧栏直接进入时 main.jsx 传空对象作为定位上下文。
   function GuardedWorkspace({
-    initialContext = {},
+    initialContext,
     ...props
   }) {
     try {
@@ -57438,7 +57265,7 @@ function SMExport({
     }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
       className: "lnk",
       "aria-label": '查看零件 ' + row.part_no,
-      disabled: disabled || !canView || row.capabilities.view !== true || typeof onPart !== 'function',
+      disabled: disabled || !canView || row.capabilities.view !== true,
       onClick: () => onPart(row)
     }, row.part_no), /*#__PURE__*/React.createElement("small", null, row.part_name)), /*#__PURE__*/React.createElement("td", null, row.sequence, " \xB7 ", row.operation_label, /*#__PURE__*/React.createElement("small", null, source(row.source))), /*#__PURE__*/React.createElement("td", {
       className: "ca-number"
@@ -58050,7 +57877,7 @@ function SMExport({
     const refresh = () => {
       s.setConsent(false);
       s.change(s.draft);
-      if (typeof onRefresh === 'function') onRefresh();
+      onRefresh();
     };
     return /*#__PURE__*/React.createElement(Modal, {
       title: result ? '模板采用结果' : pending ? '查询上次采用结果' : '预检并采用模板定额',
@@ -58070,7 +57897,7 @@ function SMExport({
         onClick: s.finish
       }, "\u653E\u5F03\u4E0A\u6B21\u91C7\u7528\u8BB0\u5F55"), /*#__PURE__*/React.createElement(Button, {
         icon: "refresh-cw",
-        disabled: s.busy || typeof onRefresh !== 'function',
+        disabled: s.busy,
         onClick: refresh
       }, "\u5237\u65B0\u6240\u9009\u6A21\u677F"), /*#__PURE__*/React.createElement(Button, {
         icon: "search",
@@ -58444,7 +58271,7 @@ function SMExport({
   'use strict';
 
   function Workspace({
-    initialContext = {},
+    initialContext,
     onNavigate,
     adapter
   }) {
@@ -58581,11 +58408,11 @@ function SMExport({
       busy: request.busy,
       disabled: downloading,
       onClick: reload
-    }), window.CalibrationAdoptionAction && /*#__PURE__*/React.createElement(window.CalibrationAdoptionAction, {
+    }), /*#__PURE__*/React.createElement(window.CalibrationAdoptionAction, {
       detail: detail.result && detail.result.data,
       stale: stale || detail.busy,
       onRefresh: reload
-    }), typeof onNavigate === 'function' && /*#__PURE__*/React.createElement(Button, {
+    }), /*#__PURE__*/React.createElement(Button, {
       icon: "arrow-right",
       disabled: !data || disabled,
       onClick: () => onNavigate('review', {
@@ -58748,7 +58575,7 @@ function SMExport({
   function CalibrationWorkspace(props) {
     window.WorkbenchCaption.useCaption(null);
     try {
-      window.CalibrationAPI.initial(props.initialContext || {});
+      window.CalibrationAPI.initial(props.initialContext);
     } catch (error) {
       return /*#__PURE__*/React.createElement("section", {
         className: "calibration-live"
@@ -58759,7 +58586,7 @@ function SMExport({
       }));
     }
     return /*#__PURE__*/React.createElement(Workspace, {
-      key: JSON.stringify(props.initialContext || {}),
+      key: JSON.stringify(props.initialContext),
       ...props
     });
   }
@@ -59331,8 +59158,9 @@ function SMExport({
       detailPage: 1,
       notice: ''
     };
-    if (context == null) return empty;
-    if (!C.canonical(context) || typeof context !== 'object' || Array.isArray(context) || Object.keys(context).some(key => !['domain', 'entity_ref', 'read_view'].includes(key))) C.fail('跳转到基础资料的条件不支持，页面没有跳转。请刷新后重试。');
+    // 侧栏直接进入时 main.jsx 传空对象，按“无定位”处理。
+    if (!Object.keys(context).length) return empty;
+    if (Object.keys(context).some(key => !['domain', 'entity_ref', 'read_view'].includes(key))) C.fail('跳转到基础资料的条件不支持，页面没有跳转。请刷新后重试。');
     if (context.read_view === undefined) {
       if (!C.ref(context.entity_ref) || !C.domains.some(row => row[0] === context.domain)) C.fail('定位条件缺少资料类别或记录编号，页面没有跳转。请刷新后重试。');
       return {
@@ -59438,10 +59266,9 @@ function SMExport({
       values: [["issues", "待维护项", count('issues')], ["entities", "资料清单", count('entities')]]
     });
   }
-  // 侧栏直接进入时 main.jsx 不带定位上下文（initialContext 为 undefined），按“无定位”处理。
   function MasterOverviewWorkspace({
     onNavigate,
-    initialContext = null
+    initialContext
   }) {
     const api = useMemo(() => window.APSMasterOverviewAPI.create(), []);
     const contextKey = C.canonical(initialContext);
@@ -59450,7 +59277,7 @@ function SMExport({
         return readContext(initialContext);
       } catch (error) {
         return {
-          ...readContext(null),
+          ...readContext({}),
           error
         };
       }
@@ -60389,7 +60216,7 @@ function SMExport({
       } : {})
     };
   }
-  function pageContext(value = {}) {
+  function pageContext(value) {
     check(object(value) && Object.keys(value).every(key => ['source', 'tab', 'page_size', 'records'].includes(key)), '上次的页面状态无法恢复。请从侧栏重新打开系统管理。');
     // `sample` 是下线前唯一发布过的旧来源。只迁移这个精确值，并清空其样例记录状态；未知来源仍 fail closed。
     const legacySample = value.source === 'sample';
@@ -60751,7 +60578,6 @@ function SMExport({
       type: "radio",
       name: "system-maintenance-theme",
       checked: theme === value,
-      disabled: typeof onSetTheme !== 'function',
       onChange: () => onSetTheme(value)
     }), label))), /*#__PURE__*/React.createElement("label", {
       className: "sm-inline-label"
@@ -62412,14 +62238,14 @@ function SystemLiveOverview({
     return v;
   }
   function query(kind, value = {}) {
-    const allowed = ['page', 'size', 'snapshot_ref'].concat(['targets', 'receipts'].includes(kind) ? ['batch_ref'] : []).concat(kind === 'receipts' ? ['status'] : []);
+    const allowed = ['page', 'size', 'snapshot_ref'].concat(kind === 'receipts' ? ['status'] : []);
     if (kind === 'targets') allowed.push('query');
     const q = {
       page: 1,
       size: 10,
       ...value
     };
-    check(object(value) && Object.keys(q).every(k => allowed.includes(k)) && Number.isSafeInteger(q.page) && q.page >= 1 && q.page <= 1000000 && Number.isSafeInteger(q.size) && q.size >= 1 && q.size <= 100 && (q.batch_ref === undefined || ref(q.batch_ref)) && (q.status === undefined || ['all', 'awaiting', 'overdue', 'returned'].includes(q.status)) && (q.snapshot_ref === undefined || text(q.snapshot_ref)) && (q.query === undefined || typeof q.query === 'string' && q.query.length <= 200 && !q.query.includes('\0')) && (q.page === 1 || text(q.snapshot_ref)), '外协的筛选或翻页条件无效，当前范围没有变化。请重新选择。');
+    check(object(value) && Object.keys(q).every(k => allowed.includes(k)) && Number.isSafeInteger(q.page) && q.page >= 1 && q.page <= 1000000 && Number.isSafeInteger(q.size) && q.size >= 1 && q.size <= 100 && (q.status === undefined || ['all', 'awaiting', 'overdue', 'returned'].includes(q.status)) && (q.snapshot_ref === undefined || text(q.snapshot_ref)) && (q.query === undefined || typeof q.query === 'string' && q.query.length <= 200 && !q.query.includes('\0')) && (q.page === 1 || text(q.snapshot_ref)), '外协的筛选或翻页条件无效，当前范围没有变化。请重新选择。');
     return q;
   }
   function envelope(v, q, preview = false) {
@@ -62436,7 +62262,7 @@ function SystemLiveOverview({
       check(d.grouping_basis === 'explicit_receipt_membership' && d.dates_inferred === false);
       page(d.page, d.items, q);
       d.items.forEach(r => {
-        check(object(r) && ['operation_ref', 'batch_ref', 'supplier_ref', 'outsourcing_ref'].every(k => r[k] === null || ref(r[k])) && typeof r.can_register === 'boolean' && Array.isArray(r.issues) && (!r.can_register || r.outsourcing_ref === null && [r.operation_ref, r.batch_ref, r.supplier_ref].every(ref)) && (!q.batch_ref || r.batch_ref === q.batch_ref));
+        check(object(r) && ['operation_ref', 'batch_ref', 'supplier_ref', 'outsourcing_ref'].every(k => r[k] === null || ref(r[k])) && typeof r.can_register === 'boolean' && Array.isArray(r.issues) && (!r.can_register || r.outsourcing_ref === null && [r.operation_ref, r.batch_ref, r.supplier_ref].every(ref)));
         entityLabel(r.batch, r.batch_ref);
         entityLabel(r.supplier, r.supplier_ref);
         if (r.part !== undefined && r.part !== null) {
@@ -62452,7 +62278,6 @@ function SystemLiveOverview({
       page(d.page, d.items, q);
       d.items.forEach(r => {
         row(r);
-        check(!q.batch_ref || r.target.batch_ref === q.batch_ref);
         check(r.overdue === (r.returned === null && r.planned < v.meta.as_of));
         check(!q.status || q.status === 'all' || q.status === 'returned' && !r.awaiting_return || q.status === 'awaiting' && r.awaiting_return || q.status === 'overdue' && r.overdue);
       });
@@ -62933,15 +62758,11 @@ function SystemLiveOverview({
     onSelect,
     onMode,
     disabled,
-    onOpen,
-    batchRef
+    onOpen
   }) {
     const [q, setQuery] = React.useState(() => ({
       page: 1,
-      size: 10,
-      ...(batchRef ? {
-        batch_ref: batchRef
-      } : {})
+      size: 10
     }));
     const read = S.useRead(signal => api.read('targets', q, undefined, signal), [api, q]);
     const result = read.result,
@@ -63187,8 +63008,7 @@ function SystemLiveOverview({
     command,
     onClose,
     onFinish,
-    onOpen,
-    batchRef
+    onOpen
   }) {
     const [draft, setDraft] = React.useState(() => ({
       kind: 'single',
@@ -63335,8 +63155,7 @@ function SystemLiveOverview({
       onSelect: setSelected,
       onMode: v => update('kind', v),
       disabled: locked,
-      onOpen: openExisting,
-      batchRef: batchRef
+      onOpen: openExisting
     }), /*#__PURE__*/React.createElement(FormFields, {
       draft: draft,
       update: update,
@@ -63470,7 +63289,6 @@ function SystemLiveOverview({
     })));
   }
   function Content({
-    batchRef,
     outsourcingRef,
     onUpdated
   }) {
@@ -63479,10 +63297,7 @@ function SystemLiveOverview({
     const [q, setQuery] = React.useState(() => ({
       page: 1,
       size: 10,
-      status: 'all',
-      ...(batchRef ? {
-        batch_ref: batchRef
-      } : {})
+      status: 'all'
     }));
     const [selected, setSelected] = React.useState(outsourcingRef || null),
       [dialog, setDialog] = React.useState(null),
@@ -63524,7 +63339,7 @@ function SystemLiveOverview({
         setDialog(null);
         if (ref) setSelected(ref);
         reload();
-        if (typeof onUpdated === 'function') onUpdated();
+        onUpdated();
       }
     }
     return /*#__PURE__*/React.createElement("section", {
@@ -63659,7 +63474,6 @@ function SystemLiveOverview({
       key: dialog.item ? dialog.item.latest_fact_ref : 'create',
       api: api,
       item: dialog.item,
-      batchRef: batchRef,
       command: command,
       onClose: () => setDialog(null),
       onFinish: finish,
@@ -63667,16 +63481,14 @@ function SystemLiveOverview({
     }));
   }
   function OutsourcingWorkspace({
-    batchRef,
     outsourcingRef,
     onUpdated
   }) {
-    if (batchRef !== undefined && !C.ref(batchRef) || outsourcingRef !== undefined && !C.ref(outsourcingRef)) return /*#__PURE__*/React.createElement(ErrorBox, {
+    if (outsourcingRef !== undefined && !C.ref(outsourcingRef)) return /*#__PURE__*/React.createElement(ErrorBox, {
       error: new Error('本页数据已过期，请刷新后重试。')
     });
     return /*#__PURE__*/React.createElement(Content, {
-      key: (batchRef || '') + ':' + (outsourcingRef || ''),
-      batchRef: batchRef,
+      key: outsourcingRef || '',
       outsourcingRef: outsourcingRef,
       onUpdated: onUpdated
     });
@@ -63712,7 +63524,6 @@ function SystemLiveOverview({
     no_data: '无数据',
     no_official_plan: '无正式计划',
     unavailable: '暂无数据',
-    not_connected: '尚未开通',
     not_applicable: '未指定交期'
   };
   const fields = ['owner', 'deadline', 'action', 'remark', 'completed_at', 'completion_evidence', 'evidence_reference_text', 'evidence_ref'];
@@ -63796,15 +63607,12 @@ function SystemLiveOverview({
   function pagination(p, q) {
     check(object(p) && p.number === q.page && p.size === q.size && count(p.total) && p.pages === Math.max(1, Math.ceil(p.total / p.size)));
   }
+  // 外协表结构由启动合同保证，后端（dashboard/external.py、external_handling.py）恒读出登记与处置统计，没有未开通或读不到的降级状态。
   function external(s) {
-    const connected = ['loaded', 'no_data'].includes(s.state),
-      keys = ['receipt_count', 'current_receipt_count', 'awaiting_return_count', 'overdue_count', 'returned_count', 'awaiting_confirmation_count', 'unregistered_count', 'source_gap_count'];
-    const legacyUnsupported = !Object.prototype.hasOwnProperty.call(s, 'handling_state') && !Object.prototype.hasOwnProperty.call(s, 'handling_issues') && s.handling_count === 0 && s.closed_count === 0;
-    const explicitUnsupported = ['not_connected', 'unavailable'].includes(s.handling_state) && s.handling_count === null && s.closed_count === null && Array.isArray(s.handling_issues) && s.handling_issues.length > 0 && s.handling_issues.every(i => object(i) && text(i.code) && text(i.message));
-    const supported = connected && s.handling_supported === true && count(s.handling_count) && s.handling_count <= s.receipt_count && count(s.closed_count) && s.closed_count <= s.handling_count && (s.handling_state === undefined || s.handling_state === 'loaded') && (s.handling_issues === undefined || Array.isArray(s.handling_issues) && s.handling_issues.length === 0);
-    check(supported || s.handling_supported === false && (legacyUnsupported || explicitUnsupported), '外协处置统计读取失败，请刷新重试。');
-    check(s.kind === 'outsourcing_receipts' && s.tracking_basis === 'manual_receipt_facts' && object(s.entry) && s.entry.view === 'outsourcing' && s.entry.target === '/api/workbench/v1/outsourcing/receipts' && s.entry.enabled === connected && keys.every(k => connected ? count(s[k]) : s[k] === null), '外协汇总数据读不完整，请刷新后重试。');
-    if (connected) check(s.current_receipt_count <= s.receipt_count && s.awaiting_return_count + s.returned_count === s.current_receipt_count && s.overdue_count <= s.awaiting_return_count && s.awaiting_confirmation_count <= s.awaiting_return_count && s.known_risk_count <= s.awaiting_return_count && s.known_risk_count >= Math.max(s.overdue_count, s.awaiting_confirmation_count) && s.known_risk_count <= s.overdue_count + s.awaiting_confirmation_count && s.source_gap_count <= s.unknown_count && s.unregistered_count <= s.unknown_count);
+    const keys = ['receipt_count', 'current_receipt_count', 'awaiting_return_count', 'overdue_count', 'returned_count', 'awaiting_confirmation_count', 'unregistered_count', 'source_gap_count'];
+    check(['loaded', 'no_data'].includes(s.state) && count(s.handling_count) && s.handling_count <= s.receipt_count && count(s.closed_count) && s.closed_count <= s.handling_count, '外协处置统计读取失败，请刷新重试。');
+    check(s.kind === 'outsourcing_receipts' && s.tracking_basis === 'manual_receipt_facts' && object(s.entry) && s.entry.view === 'outsourcing' && s.entry.target === '/api/workbench/v1/outsourcing/receipts' && s.entry.enabled === true && keys.every(k => count(s[k])), '外协汇总数据读不完整，请刷新后重试。');
+    check(s.current_receipt_count <= s.receipt_count && s.awaiting_return_count + s.returned_count === s.current_receipt_count && s.overdue_count <= s.awaiting_return_count && s.awaiting_confirmation_count <= s.awaiting_return_count && s.known_risk_count <= s.awaiting_return_count && s.known_risk_count >= Math.max(s.overdue_count, s.awaiting_confirmation_count) && s.known_risk_count <= s.overdue_count + s.awaiting_confirmation_count && s.source_gap_count <= s.unknown_count && s.unregistered_count <= s.unknown_count);
     return s;
   }
   function catalog(v, query) {
@@ -63816,14 +63624,13 @@ function SystemLiveOverview({
     Object.keys(categories).slice(1).forEach(k => {
       const s = d.categories[k];
       check(object(s) && Object.keys(states).includes(s.state) && (s.risk_count === null || count(s.risk_count)) && count(s.known_risk_count) && count(s.unknown_count) && Array.isArray(s.issues) && Array.isArray(s.evaluation_gaps) && (s.risk_count === null || s.risk_count === s.known_risk_count && s.unknown_count === 0));
-      if (['not_connected', 'unavailable', 'no_official_plan', 'not_applicable'].includes(s.state) || k === 'candidate') check(s.risk_count === null);
+      if (['unavailable', 'no_official_plan', 'not_applicable'].includes(s.state) || k === 'candidate') check(s.risk_count === null);
       if (k === 'delivery' && ['loaded', 'not_applicable'].includes(s.state)) check(['due_eligible_count', 'excluded_due_count', 'invalid_due_count', 'due_evaluation_count', 'assessed_count'].every(key => count(s[key])));else check(s.state !== 'not_applicable');
       s.evaluation_gaps.forEach(gap => {
         if (Object.prototype.hasOwnProperty.call(gap, 'operation')) check(object(gap.operation) && ['code', 'name'].every(field => gap.operation[field] === null || text(gap.operation[field])), '工序明细不完整，请刷新重试。');
       });
     });
     external(d.categories.external);
-    check(d.categories.external.handling_supported || d.items.every(row => row.category !== 'external'), '外协风险处置尚未开通，这里不显示处置清单。');
     d.items.forEach(row => {
       item(row);
       check((q.category === 'all' || row.category === q.category) && (q.status === 'all' || q.status === 'open' && row.handling.status !== 'closed' || q.status === row.handling.status));
@@ -65142,8 +64949,7 @@ function SystemLiveOverview({
     selected,
     onSelect,
     onCompare,
-    navigate,
-    canNavigate
+    navigate
   }) {
     const planRef = data.plan && data.plan.plan_ref,
       section = ['actual', 'downtime', 'material'].includes(category) ? category : 'delivery';
@@ -65196,8 +65002,7 @@ function SystemLiveOverview({
           analysis
         },
         showIssues: false,
-        navigate: navigate,
-        canNavigate: canNavigate
+        navigate: navigate
       })
     }));
   }
@@ -66352,9 +66157,8 @@ function SystemLiveOverview({
     run: '执行排产',
     outsourcing: '外协物流登记'
   };
-  function navigationTarget(n, onNavigate) {
+  function navigationTarget(n) {
     C.check(C.object(n) && Object.prototype.hasOwnProperty.call(navigationLabels, n.view) && C.object(n.context) && typeof n.enabled === 'boolean', '这条记录的跳转目标不对，页面没有跳转。请刷新后重试。');
-    C.check(n.view === 'outsourcing' ? typeof window.OutsourcingWorkspace === 'function' : typeof onNavigate === 'function', 'dependency not wired: window.OutsourcingWorkspace / props.onNavigate');
     C.check(n.enabled || typeof n.reason === 'string' && n.reason.trim().length > 0, '这条记录暂时打不开，页面没有跳转。请刷新后重试。');
     return navigationLabels[n.view];
   }
@@ -66560,7 +66364,6 @@ function SystemLiveOverview({
     if (!data.items.length) return /*#__PURE__*/React.createElement(window.WorkbenchListControls.EmptyState, {
       kind: filtered ? 'filtered' : 'empty',
       title: data.page.total === 0 ? '当前筛选没有条目。' : '当前页没有条目。',
-      hint: data.categories.external.state === 'not_connected' ? '外协风险功能尚未开通。' : undefined,
       action: filtered ? /*#__PURE__*/React.createElement(Button, {
         reasonDisplay: "inline",
         icon: "x",
@@ -66726,7 +66529,6 @@ function SystemLiveOverview({
     onHandle,
     onHistory,
     navigate,
-    canNavigate,
     onClose
   }) {
     return /*#__PURE__*/React.createElement(window.WorkbenchDetailPanel, {
@@ -66768,7 +66570,6 @@ function SystemLiveOverview({
     }, navigationLabels[n.view])), item.category === 'actual' && item.navigation.some(n => n.enabled && n.command_context === 'read_execution_write_context') && /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       icon: "arrow-right",
-      reason: !canNavigate ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: () => navigate({
         ...item.navigation[0],
         view: 'field'
@@ -66840,7 +66641,6 @@ function SystemLiveOverview({
   function Pressure({
     data,
     navigate,
-    canNavigate,
     showIssues = true
   }) {
     const p = data.resource_pressure,
@@ -66853,7 +66653,6 @@ function SystemLiveOverview({
     }, /*#__PURE__*/React.createElement("h3", null, "\u6B63\u5F0F\u8BA1\u5212\u8D44\u6E90\u538B\u529B"), data.plan && /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       icon: "arrow-right",
-      reason: !canNavigate ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: () => navigate({
         view: 'gantt',
         context: {
@@ -66909,8 +66708,7 @@ function SystemLiveOverview({
   }
   function Candidates({
     data,
-    navigate,
-    canNavigate
+    navigate
   }) {
     const c = data.candidate_catalog,
       runStates = window.WorkbenchTerms.run_statuses;
@@ -66923,7 +66721,6 @@ function SystemLiveOverview({
     }, /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       icon: "history",
-      reason: !canNavigate ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: () => navigate({
         view: 'analysis',
         context: {
@@ -66934,7 +66731,6 @@ function SystemLiveOverview({
     }, "\u6392\u4EA7\u8BB0\u5F55"), /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       icon: "play",
-      reason: !canNavigate ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: () => navigate({
         view: 'run',
         context: {},
@@ -66969,7 +66765,6 @@ function SystemLiveOverview({
     }, /*#__PURE__*/React.createElement("td", null, window.WorkbenchFormat.dateTime(r.accepted_at)), /*#__PURE__*/React.createElement("td", null, runStates[r.state] || '状态未知'), /*#__PURE__*/React.createElement("td", null, r.candidate_count), /*#__PURE__*/React.createElement("td", null, r.scope_summary ? value(r.scope_summary.batch_count) + ' 个批次' : '范围未知'), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Button, {
       reasonDisplay: "inline",
       icon: "arrow-right",
-      reason: !canNavigate ? window.WorkbenchTerms.outcomes.unavailable : '',
       onClick: () => navigate({
         view: 'analysis',
         context: {
@@ -66995,26 +66790,18 @@ function SystemLiveOverview({
       "data-external-count": k
     }, summary[k] === null ? '未知' : summary[k])))), /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
-    }, "\u5DF2\u786E\u8BA4\u98CE\u9669 ", summary.known_risk_count, " \u9879", summary.risk_count === null ? ' · 总风险未知' : '')), typeof window.OutsourcingWorkspace === 'function' ? /*#__PURE__*/React.createElement(window.OutsourcingWorkspace, {
+    }, "\u5DF2\u786E\u8BA4\u98CE\u9669 ", summary.known_risk_count, " \u9879", summary.risk_count === null ? ' · 总风险未知' : '')), /*#__PURE__*/React.createElement(window.OutsourcingWorkspace, {
       onUpdated: onUpdated
-    }) : /*#__PURE__*/React.createElement("div", {
-      className: "dy-note warning",
-      role: "status"
-    }, window.WorkbenchTerms.outcomes.unavailable));
+    }));
   }
   function ExternalHandlingState({
     summary
   }) {
     return /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u5916\u534F\u98CE\u9669\u5904\u7F6E"
-    }, /*#__PURE__*/React.createElement("h3", null, "\u5916\u534F\u98CE\u9669\u5904\u7F6E"), summary.handling_supported ? /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("h3", null, "\u5916\u534F\u98CE\u9669\u5904\u7F6E"), /*#__PURE__*/React.createElement("div", {
       className: "dy-context"
-    }, "\u5DF2\u767B\u8BB0\u5904\u7F6E ", summary.handling_count, " \u9879 \xB7 \u5DF2\u5173\u95ED\u5904\u7F6E ", summary.closed_count, " \u9879") : /*#__PURE__*/React.createElement("div", {
-      className: "dy-note warning",
-      role: "status"
-    }, summary.handling_state === 'unavailable' ? '外协处置记录读不到' : '外协风险处置尚未开通'), /*#__PURE__*/React.createElement(Issues, {
-      issues: summary.handling_issues || []
-    }));
+    }, "\u5DF2\u767B\u8BB0\u5904\u7F6E ", summary.handling_count, " \u9879 \xB7 \u5DF2\u5173\u95ED\u5904\u7F6E ", summary.closed_count, " \u9879"));
   }
   window.DashboardPanels = {
     Overview,
@@ -67397,7 +67184,7 @@ function SystemLiveOverview({
       ...q,
       snapshot_ref: snapshot
     }), [q, snapshot]);
-    const handlingAvailable = q.category !== 'external' || !!data && data.categories.external.handling_supported === true;
+    const handlingAvailable = q.category !== 'external' || !!data;
     const history = S.useRead(signal => api.detail(selected, detailQuery, historyPage, signal), [api, selected, detailQuery, historyPage], handlingAvailable && tab === 'records' && !!selected && !!snapshot);
     const detail = S.useRead(signal => api.detail(selected, detailQuery, undefined, signal), [api, selected, detailQuery], handlingAvailable && tab !== 'records' && !!selected && !!snapshot && !history.result);
     const item = history.result ? history.result.data.item : detail.result && detail.result.data.item;
@@ -67464,7 +67251,7 @@ function SystemLiveOverview({
       };
     }
     function openTarget(n, current, overview = false) {
-      P.navigationTarget(n, onNavigate);
+      P.navigationTarget(n);
       const context = {
         ...(overview ? {} : n.context),
         return_to: {
@@ -67477,12 +67264,12 @@ function SystemLiveOverview({
         return;
       }
       if (n.view === 'batches' && context.batch_ref) context.entity_ref = context.batch_ref;
-      C.check(onNavigate(n.view, context) !== false, '目标页面未能打开，请刷新重试。');
+      onNavigate(n.view, context);
     }
     function navigate(n, origin) {
       try {
         setNavError(null);
-        const label = P.navigationTarget(n, onNavigate),
+        const label = P.navigationTarget(n),
           current = readContext();
         if (!n.enabled) {
           C.check(origin && origin === item && origin.item_ref === selected && origin.navigation.includes(n), '这条记录的来源和详情对不上，页面没有跳转。请刷新后重试。');
@@ -67550,13 +67337,10 @@ function SystemLiveOverview({
       entries: {
         '登记编号': outsourcing.outsourcing_ref
       }
-    }), typeof window.OutsourcingWorkspace === 'function' ? /*#__PURE__*/React.createElement(window.OutsourcingWorkspace, {
+    }), /*#__PURE__*/React.createElement(window.OutsourcingWorkspace, {
       outsourcingRef: outsourcing.outsourcing_ref,
       onUpdated: () => setRegistrationChanged(true)
-    }) : /*#__PURE__*/React.createElement("div", {
-      className: "dy-note warning",
-      role: "status"
-    }, window.WorkbenchTerms.outcomes.unavailable));
+    }));
     return /*#__PURE__*/React.createElement("div", {
       className: "plana dashboard-live",
       "data-dashboard-workspace": true,
@@ -67722,8 +67506,7 @@ function SystemLiveOverview({
       onClose: () => choose(null),
       onHandle: () => setDialog(true),
       onHistory: () => setTab('records'),
-      navigate: navigate,
-      canNavigate: typeof onNavigate === 'function'
+      navigate: navigate
     })), !external && tab === 'analysis' && /*#__PURE__*/React.createElement(React.Fragment, null, analysisRead.loading && /*#__PURE__*/React.createElement("p", {
       role: "status"
     }, "\u6B63\u5728\u8BFB\u53D6\u540C\u4E00\u6B63\u5F0F\u8BA1\u5212\u7684\u5206\u6790\u4F9D\u636E\u3002"), analysisRead.error && /*#__PURE__*/React.createElement(Button, {
@@ -67736,8 +67519,7 @@ function SystemLiveOverview({
       selected: analysisBatch,
       onSelect: setAnalysisBatch,
       onCompare: () => setTab('compare'),
-      navigate: navigate,
-      canNavigate: typeof onNavigate === 'function'
+      navigate: navigate
     })), !external && tab === 'compare' && (['candidate', 'delivery', 'all'].includes(q.category) ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(window.DashboardCandidates, {
       key: q.category,
       catalog: data.candidate_catalog,
@@ -67748,8 +67530,7 @@ function SystemLiveOverview({
       issueBatchRef: q.category === 'delivery' ? analysisBatch || item && item.source.batch_ref || null : null
     }), /*#__PURE__*/React.createElement(P.Candidates, {
       data: data,
-      navigate: navigate,
-      canNavigate: typeof onNavigate === 'function'
+      navigate: navigate
     })) : /*#__PURE__*/React.createElement("section", {
       "aria-label": "\u672C\u95EE\u9898\u5019\u9009\u72B6\u6001"
     }, /*#__PURE__*/React.createElement("h3", null, "\u8FD9\u4E2A\u95EE\u9898\u8FD8\u6CA1\u6709\u5355\u72EC\u7684\u5019\u9009\u65B9\u6848"), /*#__PURE__*/React.createElement(Button, {
@@ -67777,12 +67558,11 @@ function SystemLiveOverview({
     }));
   }
   function WorkbenchDashboardWorkspace({
-    initialContext = {},
+    initialContext,
     onNavigate
   }) {
     let start;
     try {
-      C.check(C.object(initialContext));
       const {
         analysis_batch_ref,
         comparison,
@@ -68596,7 +68376,8 @@ function SystemLiveOverview({
     fail('工作台返回的消息格式不正确。请刷新后核对上次操作的结果。');
     return;
   }
-  if (boot.schema_version !== 1 || !window.React || !window.ReactDOM || !window.APSWorkbenchUI || !window.APSWorkbenchTheme || !window.APSWorkbenchTransport || !window.APSWorkbenchSystemContract || typeof SystemLive !== 'function' || typeof window.ResourceLive !== 'function' || typeof window.WorkbenchControls !== 'function' || typeof window.WorkbenchControlStyles !== 'function' || typeof window.WorkbenchNumberControls !== 'function' || typeof window.PlanWorkspace !== 'function' || typeof window.ReportWorkspace !== 'function' || typeof window.ReviewWorkspace !== 'function' || typeof window.BatchWorkspace !== 'function' || typeof window.MasterOverviewWorkspace !== 'function' || typeof window.SystemMaintenanceWorkspace !== 'function' || typeof window.FieldWorkspace !== 'function' || typeof window.ActualGanttWorkspace !== 'function' || typeof window.PreflightWorkspace !== 'function' || typeof window.RunWorkspace !== 'function' || typeof window.PlanCenterWorkspace !== 'function' || typeof window.RunCandidateWorkspace !== 'function' || typeof window.RunHistoryWorkspace !== 'function' || typeof window.DecisionHistoryWorkspace !== 'function' || !window.DecisionHistoryAPI || typeof window.DecisionHistoryAPI.create !== 'function' || typeof window.CalibrationWorkspace !== 'function' || typeof window.RunAdoptionAction !== 'function' || typeof window.WorkbenchTrialWorkspace !== 'function' || typeof window.TrialAdoptionAction !== 'function' || typeof window.WorkbenchDashboardWorkspace !== 'function' || !window.WorkbenchNavigation || !window.WorkbenchCaption || !window.WorkbenchPageContext || !window.WorkbenchBoundary || !window.WorkbenchGuards || typeof window.WorkbenchGuardHost !== 'function' || !window.WorkbenchDensity || !window.WorkbenchScrollShadows) {
+  // React、ReactDOM、theme.js 是 asset-manifest 里单独加载的脚本；其余工作区都在本文件所在的同一个 main.js 里，先于本段定义。
+  if (boot.schema_version !== 1 || !window.React || !window.ReactDOM || !window.APSWorkbenchTheme) {
     fail('工作台资源未完整加载，请检查本机安装文件。');
     return;
   }
@@ -68815,7 +68596,6 @@ function SystemLiveOverview({
       view,
       context
     } = page;
-    const initialContext = Object.keys(context).length ? context : undefined;
     const batchAdapter = React.useMemo(() => window.APSBatchAPI.create(), []);
     const [preference, setPreference] = React.useState(() => window.APSWorkbenchTheme.get());
     const [density, setDensity] = React.useState(() => window.WorkbenchDensity.get());
@@ -69008,57 +68788,57 @@ function SystemLiveOverview({
     }, page.error) : view === 'dashboard' ? /*#__PURE__*/React.createElement(window.WorkbenchDashboardWorkspace, {
       key: view + ':' + page.key,
       onNavigate: navigate,
-      initialContext: initialContext
+      initialContext: context
     }) : view === 'system' ? /*#__PURE__*/React.createElement(SystemLive, {
       boot: boot,
       theme: preference.theme,
-      initialContext: initialContext
+      initialContext: context
     }) : view === 'process' ? /*#__PURE__*/React.createElement(window.ResourceLive, {
       key: view + ':' + page.key,
       onNavigate: navigate,
-      initialContext: initialContext
+      initialContext: context
     }) : view === 'batches' ? /*#__PURE__*/React.createElement(window.BatchWorkspace, {
       key: view + ':' + page.key,
       adapter: batchAdapter,
       onNav: navigate,
-      initialContext: initialContext
+      initialContext: context
     }) : view === 'analysis' || view === 'gantt' || view === 'delay' ? /*#__PURE__*/React.createElement(window.PlanCenterWorkspace, {
       key: view + ':' + page.key,
       view: view,
       onNavigate: navigate,
-      initialContext: initialContext
+      initialContext: context
     }) : view === 'reports' ? /*#__PURE__*/React.createElement(window.ReportWorkspace, {
       key: view + ':' + page.key,
       onNav: navigate,
-      initialContext: initialContext
+      initialContext: context
     }) : view === 'review' ? /*#__PURE__*/React.createElement(window.ReviewWorkspace, {
       key: view + ':' + page.key,
       onNav: navigate,
-      initialContext: initialContext
+      initialContext: context
     }) : view === 'calib' ? /*#__PURE__*/React.createElement(window.CalibrationWorkspace, {
       key: view + ':' + page.key,
       onNavigate: navigate,
-      initialContext: initialContext
+      initialContext: context
     }) : view === 'basedata' ? /*#__PURE__*/React.createElement(window.MasterOverviewWorkspace, {
       key: view + ':' + page.key,
       onNavigate: navigate,
-      initialContext: initialContext
+      initialContext: context
     }) : view === 'field' ? /*#__PURE__*/React.createElement(window.FieldWorkspace, {
       key: view + ':' + page.key,
       onNavigate: navigate,
-      initialContext: initialContext
+      initialContext: context
     }) : view === 'fieldgantt' ? /*#__PURE__*/React.createElement(window.ActualGanttWorkspace, {
       key: view + ':' + page.key,
       onNavigate: navigate,
-      initialContext: initialContext
+      initialContext: context
     }) : view === 'run' ? /*#__PURE__*/React.createElement(window.RunWorkspace, {
       key: view + ':' + page.key,
       onNavigate: navigate,
-      initialContext: initialContext
+      initialContext: context
     }) : view === 'trial' ? /*#__PURE__*/React.createElement(window.WorkbenchTrialWorkspace, {
       key: view + ':' + page.key,
       onNavigate: navigate,
-      initialTarget: initialContext,
+      initialTarget: context,
       onTargetChange: rememberTrialTarget,
       renderAdoption: props => /*#__PURE__*/React.createElement(window.TrialAdoptionAction, {
         ...props

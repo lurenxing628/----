@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-  const copy = value => JSON.parse(JSON.stringify(value));
+  // 返回位置与条件明细只读，并随 onNavigate 经 history.pushState 结构化克隆，不另做深拷贝。
   const states = ['all', 'queued', 'running', 'complete', 'partial', 'failed', 'interrupted', 'committed', 'success', 'unknown', 'available', 'current', 'historical', 'unavailable'];
   const queryKeys = ['timeline', 'date_from', 'date_to', 'metric_keys', 'comparison', 'reference_run_ref', 'selected_entry_ref', 'range_start', 'range_end', 'resource_window_days', 'state', 'sort', 'order', 'page', 'size', 'condition_page', 'condition_size', 'snapshot_ref'];
   // 默认指标列表直接放进每份默认查询，冻结后谁也不能原地改它；切换指标一律生成新数组。
@@ -112,11 +112,11 @@
       || origin.source === 'run_history' && origin.history_topic === 'decision_history' && origin.decision_history_context;
     if (!value) return null;
     check(object(value) && object(value.query), '历史返回条件无效，请重新打开排产记录。');
-    return copy(value);
+    return value;
   }
   function historyContext(origin = {}) {
     const value = returnState(origin);
-    return { source: 'run_history', ...(origin.history_query ? { history_query: copy(origin.history_query) } : {}),
+    return { source: 'run_history', ...(origin.history_query ? { history_query: origin.history_query } : {}),
       ...(value ? { history_topic: 'decision_history', decision_history_context: value } : {}) };
   }
   function context(value = {}) {
@@ -128,7 +128,7 @@
     check(selected === query.selected_entry_ref && reference === (query.reference_run_ref && 'run:' + query.reference_run_ref), '历史选择与查询条件不一致，请重新打开历史。');
     const metric = value.metric_key || query.metric_keys[0]; check(query.metric_keys.includes(metric), '趋势指标不在当前指标列表中。');
     check(value.detail_queries === undefined || object(value.detail_queries), '条件明细的返回位置无效。');
-    return { query, selected_entry_ref: selected, reference_entry_ref: reference, metric_key: metric, detail_queries: value.detail_queries === undefined ? {} : copy(value.detail_queries) };
+    return { query, selected_entry_ref: selected, reference_entry_ref: reference, metric_key: metric, detail_queries: value.detail_queries === undefined ? {} : value.detail_queries };
   }
   function serialized(query) {
     return new URLSearchParams(Object.fromEntries(Object.entries(query).filter(([, value]) => value !== null && value !== undefined).map(([key, value]) => [key, key === 'metric_keys' ? value.join(',') : value])));

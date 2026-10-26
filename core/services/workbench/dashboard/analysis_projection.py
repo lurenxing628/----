@@ -2,7 +2,7 @@
 
 from core.models.workbench_batch import STATUSES
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_dashboard import DashboardAnalysisQuery, page
+from core.models.workbench_dashboard import page
 from core.services.capacity.plan_calendar_intervals import instant, wire
 from core.services.workbench import messages
 from core.services.workbench.facts.resource_pressure import pressure_summary
@@ -27,7 +27,7 @@ def _stored_time(value):
 def _pending(facts, material):
     observations, state = material
     batches = facts.raw["Batches"]
-    if batches is None or state["state"] == "unavailable":
+    if state["state"] == "unavailable":
         return {"state": "unavailable", "count": None, "known_count": 0, "items": [],
                 "issues": state["issues"], "basis": "stored_pending_batch_pool"}, []
     rows = [row["source"] for row in observations if row["source"]["stored_status"] == "pending"]
@@ -98,9 +98,9 @@ def _downtimes(facts):
     machines = {str(raw["machine_id"]): task["machine_ref"] for task, raw in zip(facts.tasks, facts.task_rows)
                 if task["machine_ref"] is not None and raw["source"] == "internal"}
     labels = {str(row["machine_id"]): row["machine_name"] for row in facts.task_rows}
-    identities = {row["source_id"]: row["ref"] for row in facts.raw["WorkbenchDashboardDowntimeRefs"] or [] if row["active"] == 1}
+    identities = {row["source_id"]: row["ref"] for row in facts.raw["WorkbenchDashboardDowntimeRefs"] if row["active"] == 1}
     records, issues = [], []
-    for raw in facts.raw["MachineDowntimes"] or []:
+    for raw in facts.raw["MachineDowntimes"]:
         if raw["status"] == "cancelled" or str(raw["machine_id"]) not in machines:
             continue
         record = _downtime_record(raw, identities.get(raw["id"]), machines[str(raw["machine_id"])])
@@ -122,8 +122,7 @@ def _project_execution_slice(selected_execution, tasks):
              "batch_ref": by_ref[row["source"]["task_ref"]]["batch_ref"]} for row in selected_execution]
 
 
-def project_dashboard_analysis(facts, material, *, query=None):
-    query = query or DashboardAnalysisQuery("overview")
+def project_dashboard_analysis(facts, material, *, query):
     pending, pending_rows = _pending(facts, material)
     if facts.plan_state != "loaded":
         resources, downtimes, overlaps, deliveries, execution_obs = [], [], [], [], []

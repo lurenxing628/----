@@ -15,7 +15,7 @@ from core.shared.strict_parse import parse_optional_date
 def operation_workload_signals(
     operations: Dict[int, Any], *, batches: Dict[str, Any],
     start_dt: datetime, graph_ready_context: Any,
-    seed_results: List[Any], calendar_service: Optional[Any], work_buckets: Any,
+    seed_results: List[Any], calendar_service: Any, work_buckets: Any,
 ) -> Tuple[Dict[int, float], Dict[int, float]]:
     """Count each reachable work bucket once; release follows longest predecessor path.
 
@@ -161,13 +161,10 @@ def _topological_order(links):
     return ordered
 
 
-def _gross_finish(op: Any, batch: Any, start: datetime, hours: float, calendar: Optional[Any]) -> datetime:
-    if op.source == EXTERNAL or calendar is None:
+def _gross_finish(op: Any, batch: Any, start: datetime, hours: float, calendar: Any) -> datetime:
+    if op.source == EXTERNAL:
         return start + timedelta(hours=hours)
-    finish = calendar.add_working_hours(
-        start, hours, priority=batch.priority,
-        machine_id=op.machine_id, operator_id=op.operator_id,
-    )
+    finish = calendar.add_working_hours(start, hours, priority=batch.priority, operator_id=op.operator_id)
     if not isinstance(finish, datetime) or finish < start:
         _invalid("日历返回无效的工序完成时间。")
     return finish

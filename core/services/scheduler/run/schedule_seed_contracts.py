@@ -49,43 +49,21 @@ def _coerce_seed_time_range(item: Dict[str, Any], *, idx: int) -> Tuple[Any, Any
         raise TypeError(f"第 {idx + 1} 条已有排产记录缺少开始时间或结束时间。")
     if not isinstance(start_time, datetime) or not isinstance(end_time, datetime):
         raise TypeError(f"第 {idx + 1} 条已有排产记录的开始时间和结束时间必须是有效时间。")
-    try:
-        valid_time_range = start_time < end_time
-        evidence = item.get("_point_evidence")
-        if start_time == end_time and type(evidence) is SchedulePointEvidence:
-            valid_time_range = evidence.matches(arrangement_row(item))
-    except Exception as exc:
-        raise TypeError(f"第 {idx + 1} 条已有排产记录的时间区间不正确。") from exc
+    valid_time_range = start_time < end_time
+    evidence = item.get("_point_evidence")
+    if start_time == end_time and type(evidence) is SchedulePointEvidence:
+        valid_time_range = evidence.matches(arrangement_row(item))
     if not valid_time_range:
         raise TypeError(f"第 {idx + 1} 条已有排产记录的开始时间必须早于结束时间。")
     return start_time, end_time
 
 
-def _invalid_identity_supplied(value: Any) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, bool):
-        return True
-    if isinstance(value, int):
-        return value < 0
-    if isinstance(value, float):
-        return value < 0 or not value.is_integer()
-    text = str(value).strip()
-    if not text:
-        return False
-    if text.startswith("-"):
-        return True
-    digits = text[1:] if text.startswith("+") else text
-    return not digits.isdecimal()
-
-
-def _coerce_optional_seed_identity(value: Any, *, idx: int, field: str) -> int:
+def _required_seed_identity(value: Any, *, idx: int, field: str) -> int:
+    # 三处种子生产者都写本次输入工序的正整数编号和工序号；缺失、非正或不是整数都按无效种子停止排产。
     identity = identity_int(value)
-    if identity > 0:
-        return identity
-    if _invalid_identity_supplied(value):
+    if identity <= 0:
         raise TypeError(f"第 {idx + 1} 条已有排产记录的{field}必须是正整数。")
-    return 0
+    return identity
 
 
 def _optional_seed_text(item: Dict[str, Any], field: str) -> Optional[str]:
@@ -104,12 +82,14 @@ def coerce_seed_result_item(item: Any, *, idx: int) -> ScheduleResult:
     if not isinstance(item, dict):
         raise TypeError(f"第 {idx + 1} 条已有排产记录格式不正确。")
     start_time, end_time = _coerce_seed_time_range(item, idx=idx)
-    op_id = _coerce_optional_seed_identity(item.get("op_id"), idx=idx, field="工序编号")
-    seq = _coerce_optional_seed_identity(item.get("seq"), idx=idx, field="工序号")
+    op_id = _required_seed_identity(item.get("op_id"), idx=idx, field="工序编号")
+    seq = _required_seed_identity(item.get("seq"), idx=idx, field="工序号")
     result = ScheduleResult(
         op_id=op_id,
-        op_code=str(item.get("op_code") or ""),
-        batch_id=str(item.get("batch_id") or ""),
+        # All three seed producers write non-empty op_code/batch_id (freeze_window_seed_rows,
+        # schedule_execution_guardrails, schedule_input_seed_metadata).
+        op_code=item["op_code"],
+        batch_id=item["batch_id"],
         seq=seq,
         machine_id=_optional_seed_text(item, "machine_id"),
         operator_id=_optional_seed_text(item, "operator_id"),
@@ -138,7 +118,7 @@ def coerce_seed_results(
     seed_sr_list: List[ScheduleResult] = []
     invalid_seed_samples: List[Dict[str, Any]] = []
     invalid_seed_count = 0
-    for idx, item in enumerate(seed_results or []):
+    for idx, item in enumerate(seed_results):
         try:
             seed_sr_list.append(coerce_seed_result_item(item, idx=idx))
         except Exception as exc:

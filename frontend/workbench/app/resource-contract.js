@@ -103,13 +103,8 @@
   function availability(value) {
     return object(value) && value.basis === 'enabled_authorized_matching' && count(value.machines) && count(value.operators);
   }
+  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data 形状。
   function query(result, shape) {
-    if (result && result.ok === false) throw result;
-    if (!object(result) || result.ok !== true || result.schema_version !== 1 || !object(result.meta)
-        || !['production', 'demo'].includes(result.meta.source) || result.meta.time_basis !== 'factory_local'
-        || !text(result.meta.snapshot_ref) || !result.meta.snapshot_ref || !text(result.meta.request_ref)
-        || !text(result.meta.as_of) || !Array.isArray(result.warnings))
-      throw failure('读到的数据不完整，请刷新重试。');
     if (shape === 'entity') {
       if (!entity(result.data)) throw failure('读到的详情不完整，请刷新后重试。');
     } else if (shape === 'summary') {
@@ -259,9 +254,8 @@
     if (result && result.state === 'not_recorded') return 'pending';
     if (result && result.ok === false) return result.committed === false ? 'rejected' : 'pending';
     if (!result || result.ok !== true) return 'pending';
-    if (['committed', 'unchanged', 'partial'].includes(result.result) && text(result.receipt_ref)
-        && result.receipt_ref && object(result.data) && Array.isArray(result.warnings)) return 'terminal';
-    return 'pending';
+    // 命令结果已由 resource-api.js 的 terminal() 校验回执编号、data 与 warnings。
+    return ['committed', 'unchanged', 'partial'].includes(result.result) ? 'terminal' : 'pending';
   }
   // 只在命令已完成（receipt() 判为 terminal，data 已校验为对象）后调用。
   function resultRef(result, fallback) {

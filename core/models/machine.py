@@ -28,7 +28,7 @@ class Machine:
         team_id = row["team_id"]
         return cls(
             machine_id=str(row["machine_id"] or ""),
-            name=str(row["name"] or ""),
+            name=str(row["name"]),
             op_type_id=str(op_type_id) if op_type_id is not None and op_type_id != "" else None,
             category=str(category) if category is not None and category != "" else None,
             status=(

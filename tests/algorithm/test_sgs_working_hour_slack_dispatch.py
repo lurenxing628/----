@@ -22,7 +22,8 @@ from core.algorithms.greedy.dispatch.sgs_due_span import FAR_DUE_LOOKAHEAD, due_
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.services.scheduler.calendar.working_hours import WorkingHoursPrefix
 from tests._support.algo_operations import make_algo_op, make_batch
-from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar, _default_config
+from tests._support.optimizer_graph_ready_benchmark import ContinuousCalendar
+from tests._support.schedule_decode import config_snapshot, production_decode
 
 START = datetime(2026, 1, 9, 8, 0)  # Friday
 MONDAY_08 = datetime(2026, 1, 12, 8, 0)
@@ -114,12 +115,14 @@ def _case():
 
 def _pick_order(calendar, rule):
     operations, batches = _case()
-    scheduler = GreedyScheduler(calendar_service=calendar, config_service=_default_config())
-    results, summary, _strategy, _params = scheduler.schedule(
-        operations=operations, batches=batches, strategy=SortStrategy.PRIORITY_FIRST, start_dt=START,
+    scheduler = GreedyScheduler(calendar_service=calendar,
+                                config_service=config_snapshot(dispatch_mode="sgs", algo_mode="greedy", time_budget_seconds=1))
+    decoded = production_decode(
+        scheduler, operations=operations, batches=batches, strategy=SortStrategy.PRIORITY_FIRST, start_dt=START,
         machine_downtimes={"M2": [(START, MONDAY_08)]}, dispatch_mode="sgs", dispatch_rule=rule,
         seed_results=[], strict_mode=True,
     )
+    results, summary = decoded.results, decoded.summary
     assert summary.failed_ops == 0
     by_id = {row.op_id: row for row in results}
     assert (by_id[1].start_time, by_id[1].end_time) == (START, START + timedelta(hours=6))

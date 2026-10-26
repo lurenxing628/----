@@ -39,8 +39,8 @@ _MAINT_LOCK_STALE_SECONDS = 300
 
 class MaintenanceWindowError(RuntimeError):
     def __init__(self, code: str, message: str):
-        self.code = str(code or "").strip() or "maintenance_error"
-        self.message = str(message or "数据库正在维护/恢复中，请稍后重试。")
+        self.code = code
+        self.message = message
         super().__init__(self.message)
 
 
@@ -55,7 +55,7 @@ def _current_maintenance_state() -> Optional[dict]:
 
 def current_thread_holds_maintenance_window(db_path: str) -> bool:
     state = _current_maintenance_state()
-    return bool(state and state.get("db_path") == os.path.abspath(db_path) and int(state.get("depth") or 0) > 0)
+    return bool(state and state["db_path"] == os.path.abspath(db_path) and state["depth"] > 0)
 
 
 def _pid_exists(pid: int) -> bool:
@@ -70,7 +70,7 @@ def _pid_exists(pid: int) -> bool:
             if handle:
                 ctypes.windll.kernel32.CloseHandle(handle)
                 return True
-            err = int(ctypes.windll.kernel32.GetLastError() or 0)
+            err = ctypes.windll.kernel32.GetLastError()
             if err == 5:
                 return True
             return False
@@ -117,8 +117,8 @@ def _apply_maintenance_lock_token(state: dict, token: str) -> None:
     if "=" not in token:
         return
     key, value = token.split("=", 1)
-    key = str(key or "").strip().lower()
-    value = str(value or "").strip()
+    key = key.strip().lower()
+    value = value.strip()
     if key == "pid":
         try:
             state["pid"] = int(value)
@@ -200,7 +200,7 @@ def _log_stale_lock_kept_alive(state: dict, logger) -> None:
         "warning",
         "维护锁已超过陈旧阈值，但锁内 pid 判定为存活，继续按维护中处理："
         f"path={state.get('path')} pid={state.get('pid')} age_s={int(age_value)} "
-        f"age_source={state.get('age_source')} raw={str(state.get('raw') or '')!r}；"
+        f"age_source={state.get('age_source')} raw={state['raw']!r}；"
         "判定依据仅为 PID 存活（无法核对进程身份，PID 可能已被其它进程复用）。"
         "若确认维护进程已不存在，可手动删除该锁文件后重试。",
     )
@@ -229,8 +229,8 @@ def is_maintenance_window_active(db_path: str, *, logger=None) -> bool:
                         logger,
                         "warning",
                         f"检测到陈旧维护锁，已自动清理：{lock_path}（pid={current.get('pid')} "
-                        f"age_s={int(current.get('age_seconds') or 0)} age_source={current.get('age_source')} "
-                        f"raw={str(current.get('raw') or '')!r}）",
+                        f"age_s={int(current['age_seconds'])} age_source={current.get('age_source')} "
+                        f"raw={current['raw']!r}）",
                     )
                     return False
                 except Exception as e:
@@ -248,11 +248,11 @@ def is_maintenance_window_active(db_path: str, *, logger=None) -> bool:
 def _enter_nested_maintenance_window(state: dict, db_abs: str) -> None:
     if state.get("db_path") != db_abs:
         raise MaintenanceWindowError("busy", "当前线程已有其他维护任务在执行，暂不支持跨数据库嵌套维护。")
-    state["depth"] = int(state.get("depth") or 0) + 1
+    state["depth"] = state["depth"] + 1
 
 
 def _exit_nested_maintenance_window(state: dict) -> None:
-    state["depth"] = max(0, int(state.get("depth") or 1) - 1)
+    state["depth"] = max(0, state["depth"] - 1)
 
 
 def _acquire_maintenance_mutex() -> None:
@@ -261,13 +261,13 @@ def _acquire_maintenance_mutex() -> None:
 
 
 def _write_maintenance_lock_metadata(lock_fd: int, payload: str) -> None:
-    data = str(payload or "").encode("utf-8")
+    data = payload.encode("utf-8")
     written_total = 0
     while written_total < len(data):
         written = os.write(lock_fd, data[written_total:])
-        if int(written or 0) <= 0:
+        if written <= 0:
             raise OSError("维护锁文件 metadata 写入不完整。")
-        written_total += int(written)
+        written_total += written
 
 
 def _cleanup_failed_maintenance_lock(lock_fd: Optional[int], lock_path: str, *, logger=None) -> None:
@@ -332,7 +332,4 @@ def maintenance_window(db_path: str, *, logger=None, action: str = "maintenance"
                 remove_fixed_file(lock_path)
             except Exception as e:
                 fallback_log(logger, "warning", f"维护锁文件删除失败：{e}")
-        try:
-            _MAINT_MUTEX.release()
-        except Exception as e:
-            fallback_log(logger, "warning", f"维护互斥锁释放失败：{e}")
+        _MAINT_MUTEX.release()

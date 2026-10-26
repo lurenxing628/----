@@ -158,7 +158,7 @@
       located.current = selected; locate(selectedRef, selected.before);
     }, [selected, model]);
     function select(task, beforeTask) { setHover(null); onSelect(task, beforeTask); }
-    const currentIndex = selectedRef && model.taskOrder ? (model.taskOrder.has(selectedRef) ? model.taskOrder.get(selectedRef) : -1) : model.tasks.findIndex(task => task.task_ref === selectedRef);
+    const currentIndex = model.taskOrder.has(selectedRef) ? model.taskOrder.get(selectedRef) : -1;
     function move(direction) {
       const tasks = model.tasks, index = currentIndex;
       const next = tasks[Math.max(0, Math.min(tasks.length - 1, index < 0 ? 0 : index + direction))];

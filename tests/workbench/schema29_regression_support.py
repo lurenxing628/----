@@ -7,7 +7,7 @@ import pytest
 
 from core.infrastructure.migration_state import get_schema_version, set_schema_version
 from core.infrastructure.workbench_calibration_adoption_schema import objects as calibration_objects
-from core.infrastructure.workbench_dashboard_schema import objects as dashboard_objects
+from core.infrastructure.workbench_dashboard_schema import workbench_dashboard_objects
 
 V29_EMPTY_TABLES = (
     "WorkbenchCalibrationAdoptions",
@@ -19,7 +19,7 @@ V29_TABLES = V29_EMPTY_TABLES + V29_MAPPING_TABLES
 
 def missing_v29_issues():
     return ({"missing_calibration_adoption:" + name for name in calibration_objects()} |
-            {"missing_dashboard_schema:" + name for name in dashboard_objects()})
+            {"missing_dashboard_schema:" + name for name in workbench_dashboard_objects()})
 
 
 def assert_v29_source_maps_only(conn):
@@ -53,7 +53,7 @@ def frozen_v28_conn(mem_conn):
     mem_conn.executescript(source.read_text(encoding="utf-8"))
     set_schema_version(mem_conn, 28)
     assert get_schema_version(mem_conn) == 28
-    assert not (set(calibration_objects()) | set(dashboard_objects())) & {
+    assert not (set(calibration_objects()) | set(workbench_dashboard_objects())) & {
         row[0] for row in mem_conn.execute("SELECT name FROM sqlite_master")}
     seed_resources(mem_conn, relations=True)
     mem_conn.execute("INSERT INTO ScheduleHistory(version,strategy,result_status,result_summary) VALUES (7,'frozen-v28','success','{}')")

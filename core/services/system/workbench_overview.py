@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import math
 import os
 import sqlite3
 import stat
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, NoReturn
 
 from core.errors import AppError
 from core.infrastructure.safe_files import stat_regular_file
@@ -20,6 +19,7 @@ from core.services.system.runtime_log_reader import (
 )
 from core.services.system.system_config_service import SystemConfigService
 from core.services.system.system_maintenance_service import _parse_db_dt
+from core.shared.strict_json import load_strict_json
 from data.repositories.operation_log_repo import OperationLogRepository
 from data.repositories.system_job_state_repo import SystemJobStateRepository
 
@@ -200,12 +200,14 @@ def _result_text(detail: Dict[str, Any]) -> Dict[str, Any]:
     return values
 
 
+def _not_object() -> NoReturn:
+    raise ValueError("Task result must be a strict JSON object")
+
+
 def _result_values(raw: object) -> Dict[str, Any]:
     if not isinstance(raw, str) or len(raw) > _DETAIL_LIMIT:
         raise ValueError("Task result is not text or exceeds the metadata limit")
-    detail = json.loads(raw)
-    if not isinstance(detail, dict):
-        raise ValueError("Task result must be a JSON object")
+    detail = load_strict_json(raw, on_malformed=_not_object, expected=dict)
     values = _result_numbers(detail)
     values.update(_result_text(detail))
     if "skipped" in detail:

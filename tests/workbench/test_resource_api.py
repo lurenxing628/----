@@ -278,10 +278,12 @@ def test_resource_bulk_delete_prepares_one_current_set_and_keeps_rejected_select
         insert_row(conn, 'Machines', {'machine_id': code, 'name': code})
     conn.commit()
     service = WorkbenchResourceBulkService(conn, 'machine')
-    rejected = service.preview_delete(['f' * 48], scope={}).as_dict()
+    with service.reader.read_snapshot():
+        rejected = service.preview_delete(['f' * 48], scope={}).as_dict()
     assert rejected['summary']['rejected'] == 1 and rejected['rows'][0]['entity_ref'] == 'f' * 48
     refs = [ref(conn, 'machine', code) for code in ('DELETE-ONE', 'DELETE-TWO')]
-    preview = service.preview_delete(refs, scope={})
+    with service.reader.read_snapshot():
+        preview = service.preview_delete(refs, scope={})
     assert preview.as_dict()['summary']['rejected'] == 0
 
     result = confirm(conn, 'machine', preview)
@@ -410,7 +412,8 @@ def test_active_production_report_revision_blocks_resource_deletion_until_voided
             (void_ref, report_ref, revision_ref, req_void),
         )
 
-    preview_after_void = bulk_service.preview_delete([target.ref], scope={}).as_dict()
+    with reader.read_snapshot():
+        preview_after_void = bulk_service.preview_delete([target.ref], scope={}).as_dict()
     assert preview_after_void["summary"]["rejected"] == 0
     deleted = run_resource(conn, kind, "delete", {}, code=code)
     assert deleted["result"] == "committed"

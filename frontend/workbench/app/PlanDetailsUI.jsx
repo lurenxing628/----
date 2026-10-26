@@ -40,7 +40,7 @@
     if (selected.before) return <section><h3>完整工艺路线</h3><p className="plan-muted">切换到当前安排查看完整工艺路线。</p></section>;
     return <window.GanttRouteList index={prepared.graph} targetRef={selected.task.task_ref} loadedRefs={loadedRefs} onSelect={onRelated} disabled={disabled} collapsible={collapsible} />;
   }
-  function TaskDetail({ data, prepared, selected, onSelect, onRelated, onCollapse, renderTrial, scope = {}, query = '', disabled = false }) {
+  function TaskDetail({ data, prepared, selected, onSelect, onRelated, onCollapse, renderTrial, scope, query, disabled }) {
     const task = selected && selected.task, labels = prepared.labels;
     const baseline = data.projections.baseline;
     const comparison = task && baseline.state === 'available' && prepared.comparisons.get(task.operation_ref);
@@ -56,7 +56,7 @@
       for (const [kind, label] of [['machine', '设备'], ['operator', '人员']]) if (comparison.before[kind + '_ref'] !== comparison.after[kind + '_ref'])
         changes.push([label + '变化', M.resourceLabel(comparison.before, kind, labels) + ' → ' + M.resourceLabel(comparison.after, kind, labels)]);
     }
-    const risk = task && (prepared.deliveryRisks ? prepared.deliveryRisks.get(task.batch_id) : data.projections.delivery_risks.items.find(row => row.batch_id === task.batch_id));
+    const risk = task && prepared.deliveryRisks.get(task.batch_id);
     const taskFact = task && (comparison ? comparison[selected.before ? 'beforeTime' : 'afterTime'] : prepared.taskIndex.get(task.task_ref));
     const resources = task ? [task.machine_ref, task.operator_ref].map(ref => prepared.occupancy.get(ref)).filter(Boolean).map(value => value.resource) : [];
     const compact = !!onCollapse, panel = React.useRef(null);
@@ -77,10 +77,9 @@
           ...(task.supplier_ref || !task.machine_ref && !task.operator_ref && !window.PointContract.isPoint(task) ? [['供应商', task.supplier_ref ? labels.get(task.supplier_ref) || '名称未填写' :
             data.provenance.state === 'unavailable' ? data.provenance.reason : '未记录']] : [])
         ]} />
-        <div className="plan-actions">{typeof renderTrial === 'function' ? renderTrial({ planRef: data.plan.plan_ref, scope, query,
+        <div className="plan-actions">{renderTrial({ planRef: data.plan.plan_ref, scope, query,
           taskOrigin: { plan_ref: data.plan.plan_ref, operation_ref: task.operation_ref, task_ref: task.task_ref },
-          disabled: disabled || selected.before || task.plan_ref !== data.plan.plan_ref, label: '调整此工序' }) :
-          <Button icon="square-pen" reason={window.WorkbenchTerms.outcomes.unavailable}>调整此工序</Button>}</div>
+          disabled: disabled || selected.before || task.plan_ref !== data.plan.plan_ref, label: '调整此工序' })}</div>
       </>}</section>
       {task && <><Route data={data} prepared={prepared} selected={selected} onRelated={onRelated} disabled={disabled} collapsible={compact} />
       {compact && <DetailSection title="计划来源" collapsible><Facts items={[

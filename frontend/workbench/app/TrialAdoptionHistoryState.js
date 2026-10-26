@@ -18,8 +18,7 @@
   function openPlan(scenarioRef, planRef, navigate) {
     C.check(C.ref(scenarioRef) && C.ref(planRef));
     const entry = history.state && history.state.workbench;
-    C.check(entry && entry.view === 'trial' && entry.context && entry.context.scenario_ref === scenarioRef
-      && typeof navigate === 'function',
+    C.check(entry && entry.view === 'trial' && entry.context && entry.context.scenario_ref === scenarioRef,
       '无法打开正式计划，请刷新后重试。');
     return navigate('gantt', { plan_ref: planRef });
   }

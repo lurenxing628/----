@@ -6,7 +6,7 @@ from datetime import date, datetime, time, timedelta
 from core.errors import ValidationError
 from core.models.calendar_periods import period_hours
 from core.services.scheduler.calendar.service import CalendarService
-from core.services.scheduler.config.config_field_spec import MISSING_POLICY_ERROR, coerce_config_field
+from core.services.scheduler.config.config_field_spec import coerce_config_field
 from data.repositories.config_repo import ConfigRepository
 from data.repositories.workbench_resource_summary_repo import WorkbenchResourceSummaryRepository
 
@@ -19,8 +19,7 @@ def _holiday_efficiency(conn, logger):
     if raw_value is None:
         return result
     try:
-        value = coerce_config_field(key, raw_value, strict_mode=True, missing_policy=MISSING_POLICY_ERROR,
-                                    source="workbench.resource_calendar_summary")
+        value = coerce_config_field(key, raw_value)
     except ValidationError as exc:
         result.update(status="unavailable", issues=[{"code": "calendar_config_unavailable", "message": str(exc)}])
     else:

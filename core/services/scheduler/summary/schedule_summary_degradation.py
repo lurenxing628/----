@@ -4,22 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.models.enums import YesNo
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
-from core.models.scheduler_degradation_messages import public_degradation_event_message
 from core.shared.degradation import DegradationCollector, degradation_events_to_dicts
-
-
-def _add_existing_degradation_events(collector: DegradationCollector, events: Tuple[Dict[str, Any], ...]) -> None:
-    # 配置快照的降级事件由 DegradationCollector 产出并转成字典：code/scope/message 非空，
-    # field 是配置键，count 至少为 1。
-    for event in events:
-        collector.add(
-            code=event["code"],
-            scope=event["scope"],
-            field=event["field"],
-            message=public_degradation_event_message(event["code"]),
-            count=event["count"],
-            sample=None,
-        )
 
 
 def _add_counted_event(
@@ -37,39 +22,14 @@ def _add_counted_event(
     collector.add(code=code, scope=scope, field=field, message=message, count=count, sample=sample)
 
 
-def _add_state_event(
-    collector: DegradationCollector,
-    *,
-    enabled: bool,
-    code: str,
-    scope: str,
-    field: str,
-    message: Optional[str],
-    default_message: str,
-) -> None:
-    if not enabled:
-        return
-    collector.add(code=code, scope=scope, field=field, message=message or default_message)
-
-
 def _summary_degradation_state(
     *,
-    cfg: ScheduleConfigSnapshot,
     invalid_due_count: int,
     invalid_due_batch_ids_sample: List[str],
     ortools_warmstart_failed_count: int,
 ) -> Dict[str, Any]:
+    # 配置快照严格构建（build_schedule_config_snapshot），不会带降级事件进入摘要。
     collector = DegradationCollector()
-    _add_existing_degradation_events(collector, cfg.degradation_events)
-    _add_state_event(
-        collector,
-        enabled=bool(cfg.degradation_events),
-        code="config_fallback",
-        scope="schedule.summary.config_snapshot",
-        field="config_snapshot",
-        message=None,
-        default_message="配置中有填写不完整或不正确的设置，本次先按默认值生成摘要。",
-    )
     _add_counted_event(
         collector,
         count=invalid_due_count,

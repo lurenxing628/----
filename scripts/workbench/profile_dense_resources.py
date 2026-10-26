@@ -50,8 +50,8 @@ def seed(output, batches, operations):
 
 def worker(args):
     from core.models.workbench_run_job import durable_value
-    from core.services.workbench.run.compute import compute_candidate_run
     from tests.workbench.execution_ledger_support import all_rows
+    from tests.workbench.run_compute_support import compute_run
 
     output = Path(args.output)
     started = time.monotonic()
@@ -68,7 +68,7 @@ def worker(args):
         legacy = patch("core.algorithm_runtime.internal_slot.advance_busy_block",
                        lambda calendar, **kwargs: kwargs["shift_to"]) if args.legacy_busy_skip else nullcontext()
         with legacy:
-            result = compute_candidate_run(case.conn, case.settings(*codes), projections)
+            result = compute_run(case.conn, case.settings(*codes), projections)
     except BaseException as exc:
         failure = {"type": type(exc).__name__, "message": str(exc)}
         traceback.print_exc()

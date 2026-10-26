@@ -286,6 +286,7 @@ def _profile_route(conn, output, count, measure):
 
 def profile_stage_scale(count, output):
     from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, ensure_schema_version, get_schema_version
+    from core.infrastructure.schema_declaration import load_schema_sql
     from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
     from core.infrastructure.workbench_process_schema import workbench_process_contract_issues
     from core.services.process.workflow_state import workflow_snapshot
@@ -304,7 +305,7 @@ def profile_stage_scale(count, output):
 
     def initialize_version():
         with TransactionManager(conn).transaction(begin_immediate=True):
-            ensure_schema_version(conn)
+            ensure_schema_version(conn, schema_sql=load_schema_sql())
             assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION
         return get_schema_version(conn)
 
@@ -337,7 +338,8 @@ def profile_stage_scale(count, output):
         measure("hours_transaction", lambda: _profile_command(conn, "hours_confirm", normalized_hours))
         measure("hours_unchanged_transaction", lambda: _profile_command(conn, "hours_confirm", normalized_hours, "-unchanged"))
         assert conn.execute("SELECT COUNT(*) FROM PartOperations WHERE part_no='SCALE' AND unit_hours=2").fetchone()[0] == count
-        assert workflow_snapshot(conn)["SCALE"]["workflow"]["ready"]
+        with TransactionManager(conn).transaction():
+            assert workflow_snapshot(conn)["SCALE"]["workflow"]["ready"]
         return {"count": count, "schema_version": version, "plan_identity_contract_valid": True,
                 "process_trigger_contract_valid": True,
                 "trigger_manifest": str(manifest.resolve()), "phases": records}

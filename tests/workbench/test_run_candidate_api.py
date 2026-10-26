@@ -10,18 +10,22 @@ from urllib.request import url2pathname
 import pytest
 from flask import Blueprint
 
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_analysis import operation_metrics
 from core.models.workbench_run_baseline import RunCandidateBaselineScope, _resource_change
+from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_projection import algorithm_facts
-from core.services.workbench.facts.candidate_tasks import task_resource
+from core.services.workbench.facts.candidate_read_source import read_candidate_source
+from core.services.workbench.facts.candidate_store import CandidateStore
+from core.services.workbench.facts.candidate_tasks import filter_workspace, task_resource
 from core.services.workbench.run.candidate_analysis import read_candidate_analysis
 from core.services.workbench.run.candidate_baseline import WorkbenchRunCandidateBaselineQueryService
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests._support.excel_templates import point_env_at_shared
 from tests.workbench.run_candidate_adoption_support import INTENT, service
-from tests.workbench.run_candidate_support import BASE, compute, read, state
+from tests.workbench.run_candidate_support import BASE, compute, corrupt_update, read, state
 from tests.workbench.run_candidate_support import candidate_case as _candidate_case  # noqa: F401
 from tests.workbench.trial_adoption_support import saved_scenario
 from tests.workbench.trial_adoption_support import service as trial_adopter
@@ -216,3 +220,29 @@ def test_added_removed_and_absent_arrangements_are_known_without_counting_machin
     assert metrics["machine_change_count"]["value"] == 0
     assert operations["changed_operation_refs"] == ["added", "removed"]
     assert operations["unknown_operation_refs"] == operations["machine_unknown_operation_refs"] == []
+
+
+def test_arranged_and_unplanned_operations_share_one_sequence_order():
+    def row(ref, sequence):
+        return {"operation_ref": ref, "batch_ref": "b" * 48, "sequence": sequence}
+
+    tasks = [row("t-unknown", None), row("t-big", "9007199254740993"), row("t-two", 2), row("t-zero", 0)]
+    unplanned = [row("u-one", 1), row("u-unknown", None), row("u-zero", 0)]
+    for order, expected_tasks, expected_unplanned in (
+            ("asc", ["t-zero", "t-two", "t-big", "t-unknown"], ["u-zero", "u-one", "u-unknown"]),
+            ("desc", ["t-unknown", "t-big", "t-two", "t-zero"], ["u-unknown", "u-one", "u-zero"])):
+        arranged, pending = filter_workspace(tasks, unplanned, RunCandidateReadScope("c" * 48, order=order))
+        assert [item["operation_ref"] for item in arranged] == expected_tasks
+        assert [item["operation_ref"] for item in pending] == expected_unplanned
+
+
+def test_completed_candidate_receipt_without_dispositions_is_a_corrupt_record(candidate_case):
+    run_ref, refs = compute(candidate_case)
+    raw = candidate_case.conn.execute("SELECT result_json FROM WorkbenchRunReceipts WHERE run_ref=?", (run_ref,)).fetchone()[0]
+    receipt = json.loads(raw)
+    del receipt["dispositions"]
+    corrupt_update(candidate_case.conn, "WorkbenchRunReceipts", "UPDATE WorkbenchRunReceipts SET result_json=? WHERE run_ref=?",
+                   (json.dumps(receipt, ensure_ascii=False), run_ref))
+    with pytest.raises(WorkbenchCommandRejected) as rejected:
+        read_candidate_source(CandidateStore(candidate_case.conn), refs[0])
+    assert rejected.value.code == "candidate_artifact_invalid"

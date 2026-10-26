@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
 from datetime import datetime
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union, cast
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Union, cast
 
 from core.algorithm_contracts.schedule_point_evidence import verified_point
 from core.algorithm_contracts.types import ScheduleResult
@@ -37,6 +37,8 @@ def arrangement_row(values: Mapping[str, Any]) -> ValidatedScheduleRow:
 # （trial_scenario_archive.schedule_rows）重建的 ValidatedScheduleRow。两者共有工序编号、设备、人员、起止和来源；
 # 只有 ScheduleResult 另带工序代码、批次和工序号，供错误提示定位。
 ScheduleRowInput = Union[ScheduleResult, ValidatedScheduleRow]
+# 本次排产输入建好的零工时见证核对（workbench/facts/zero_duration.candidate_point_validator）。
+PointValidator = Callable[[ValidatedScheduleRow], Any]
 
 
 @dataclass(frozen=True)
@@ -140,9 +142,9 @@ def _build_validated_schedule_row(
     result: Optional[ScheduleRowInput],
     *,
     index: int,
-    allowed_op_ids: Optional[Set[int]],
+    allowed_op_ids: Set[int],
     op_source_by_id: Dict[int, str],
-    point_validator: Any = None,
+    point_validator: PointValidator,
 ) -> Tuple[Optional[ValidatedScheduleRow], Optional[int], Optional[str]]:
     identity = _result_identity(result, index=index)
     if result is None:
@@ -152,18 +154,14 @@ def _build_validated_schedule_row(
         op_id = parse_required_int(result.op_id, field="op_id", min_value=1, reject_integer_float=True)
     except ValidationError:
         return None, None, f"{identity}: 工序编号不合法"
-    if allowed_op_ids is not None and op_id not in allowed_op_ids:
+    if op_id not in allowed_op_ids:
         return None, op_id, None
 
     start_time = result.start_time
     end_time = result.end_time
     if not isinstance(start_time, datetime) or not isinstance(end_time, datetime):
         return None, None, f"{identity}: start_time/end_time 必须是有效时间"
-    try:
-        valid_time_range = start_time <= end_time
-    except Exception:
-        return None, None, f"{identity}: start_time/end_time are not comparable"
-    if not valid_time_range:
+    if start_time > end_time:
         return None, None, f"{identity}: start_time must be earlier than end_time"
 
     source, source_error = _resolve_schedule_row_source(
@@ -196,10 +194,10 @@ def build_validated_schedule_payload(
     *,
     operations: List[BatchOperation],
     operation_sources: Dict[int, str],
-    allowed_op_ids: Optional[Set[int]] = None,
-    missing_internal_resource_op_ids: Optional[Set[int]] = None,
-    schedule_errors: Optional[List[str]] = None,
-    point_validator: Any = None,
+    allowed_op_ids: Set[int],
+    missing_internal_resource_op_ids: Set[int],
+    schedule_errors: List[str],
+    point_validator: PointValidator,
 ) -> ValidatedSchedulePayload:
     schedule_rows: List[ValidatedScheduleRow] = []
     scheduled_op_ids: Set[int] = set()
@@ -207,7 +205,6 @@ def build_validated_schedule_payload(
     out_of_scope_op_ids: List[int] = []
     validation_errors: List[str] = []
     duplicate_op_ids: List[int] = []
-    no_actionable_errors = list(schedule_errors or [])
 
     for index, result in enumerate(results):
         row, out_of_scope_op_id, validation_error = _build_validated_schedule_row(
@@ -244,7 +241,7 @@ def build_validated_schedule_payload(
         _raise_invalid_schedule_rows_error(validation_errors)
     if not schedule_rows:
         raise_no_actionable_schedule_error(
-            list(validation_errors) + no_actionable_errors,
+            validation_errors + schedule_errors,
             operations=operations,
             missing_internal_resource_op_ids=missing_internal_resource_op_ids,
         )

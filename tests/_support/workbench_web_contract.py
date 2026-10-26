@@ -39,23 +39,13 @@ def canonical_boot(client, path, view, context):
     return boot
 
 
-def retired_response(response, *, post_result=False, no_context=False):
-    """Assert explicit retirement while retaining POST receipt visibility."""
+def retired_response(response):
+    """Assert explicit no-context retirement of a legacy page."""
     body = response.get_data(as_text=True)
     assert response.status_code == 410, body
     assert response.headers["Cache-Control"] == "no-store"
     assert "Location" not in response.headers
     assert 'data-workbench-legacy-response="true"' in body
     assert "旧入口已退役" in body and "原业务数据、保存的配置和历史记录仍保留" in body
-    if no_context:
-        assert "这个旧页面已退役，页面没有打开。原来的数据都还在" in body
-    else:
-        assert any(text in body for text in ("没有丢掉任何条件", "没有改用新报表的默认范围",
-                                         "没有改成已采用的正式计划", "原来的条件没有被改动",
-                                             "不会替你补编号", "没有改查公共班表或别人")), body
-    if post_result:
-        assert len(response.history) == 1
-        assert response.history[0].status_code == 302
-        assert response.history[0].request.method == "POST"
-        assert response.request.method == "GET"
+    assert "这个旧页面已退役，页面没有打开。原来的数据都还在" in body
     return body

@@ -51,7 +51,6 @@
     const [error, setError] = React.useState(null), [notice, setNotice] = React.useState(''), [directory, setDirectory] = React.useState(!initialTarget.draft_ref && !initialTarget.scenario_ref);
     const [origin, setOrigin] = React.useState(initialTarget.task_origin || null), locatedOrigin = React.useRef(null);
     function notifyTarget(next) {
-      if (typeof onTargetChange !== 'function') return;
       const failed = () => setError(new Error('试调记录已定位，但页面地址更新失败。可从试调列表重新打开。'));
       try { Promise.resolve(onTargetChange({ ...next, ...(initialTarget.return_decision_history_context ? { return_decision_history_context: initialTarget.return_decision_history_context } : {}), ...(origin && next.draft_ref ? { task_origin: origin } : {}) })).catch(failed); } catch (_) { failed(); }
     }
@@ -87,7 +86,7 @@
       message: '上次提交的结果还没查到，请先留在这个页面。' });
     async function guard() {
       if (!await window.WorkbenchGuards.confirmLeave({ owner: guardOwner })) return false;
-      setError(null); if (editing) { if (commands.clearError) commands.clearError(); setEditing(false); resetEditor(); } return true;
+      setError(null); if (editing) { commands.clearError(); setEditing(false); resetEditor(); } return true;
     }
     async function select(ref) { if (ref !== selected && !await guard()) return false; setSelected(ref); return true; }
     async function inspectTask(ref) {
@@ -103,7 +102,7 @@
       try {
         C.check(!origin || !!next.draft_ref, '原任务定位只能打开试调草稿，不能把已保存的试调方案当成草稿。');
         C.target(next); const canonical = next.scenario_ref ? { scenario_ref: next.scenario_ref } : { draft_ref: next.draft_ref };
-        if (commands.clearError) commands.clearError();
+        commands.clearError();
         setTarget(canonical); stored.current = null; setSelected(null); setDetailsOpen(false); locatedOrigin.current = null; setNotice(''); setDirectory(false); refresh(); notifyTarget(canonical);
       }
       catch (error) { setError(error); }
@@ -147,22 +146,22 @@
         <footer className="tt-footer">{data.validation.constraints_status !== 'valid' && <strong>约束检查：{U.statusLabel(data.validation.constraints_status)}</strong>}
           <div className="tt-tools"><U.Button icon="x" disabled={data.status !== 'editing' || actions.blocked || !data.write_context || data.write_context.capabilities['trial.discard'] !== true} onClick={async () => { if (await guard()) setModal('discard'); }}>放弃草稿</U.Button>
             <U.Button icon="check" className="btn primary" disabled={data.status !== 'editing' || actions.blocked || !data.write_context || data.write_context.capabilities['trial.save'] !== true} onClick={async () => { if (await guard()) setModal('save'); }}>保存试调方案</U.Button>
-            {data.scenario_ref && typeof renderAdoption === 'function' ? renderAdoption({ scenarioRef: data.scenario_ref, data, onNavigate, disabled: actions.blocked,
+            {data.scenario_ref ? renderAdoption({ scenarioRef: data.scenario_ref, data, onNavigate, disabled: actions.blocked,
               onAdopted: () => { setNotice('采用结果已更新，请在采用面板查看。'); refresh(); } }) :
-              <U.Button icon="check" reason={data.scenario_ref ? window.WorkbenchTerms.outcomes.unavailable : '请先保存试调方案，再做正式采用。'}>采用方案</U.Button>}</div></footer>
+              <U.Button icon="check" reason="请先保存试调方案，再做正式采用。">采用方案</U.Button>}</div></footer>
         </>}
       {modal === 'create' && <window.TrialCatalog.Create initialBase={origin ? { plan_ref: origin.plan_ref } : base} initialScope={initialTarget.base ? initialTarget.scope || {} : {}}
-        fixedBase={!!origin} onExisting={origin ? () => { if (commands.clearError) commands.clearError(); setModal(null); setDirectory(true); } : undefined} commands={commands} onClose={() => { if (commands.clearError) commands.clearError(); setModal(null); }} />}
-      {finishing && <Finish data={data} kind={modal} commands={actions} onClose={() => { if (commands.clearError) commands.clearError(); setModal(null); }} onRecheck={reload} />}
+        fixedBase={!!origin} onExisting={origin ? () => { commands.clearError(); setModal(null); setDirectory(true); } : undefined} commands={commands} onClose={() => { commands.clearError(); setModal(null); }} />}
+      {finishing && <Finish data={data} kind={modal} commands={actions} onClose={() => { commands.clearError(); setModal(null); }} onRecheck={reload} />}
     </div>;
   }
   // Load after TrialContract/API/Session/Controls/Catalog/Gantt/Details/Results.
   // initialTarget: {} | {draft_ref} | {scenario_ref} | {base:{plan_ref|candidate_ref},scope?}.
   // task_origin stays in navigation only; saved scenarios clear the original-task focus.
-  function WorkbenchTrialWorkspace({ initialTarget = {}, onNavigate, renderAdoption, onTargetChange }) {
+  function WorkbenchTrialWorkspace({ initialTarget, onNavigate, renderAdoption, onTargetChange }) {
     try { C.target(initialTarget); }
     catch (error) { return <div className="trial-workspace"><U.ErrorBox error={error} /></div>; }
-    const navigate = onNavigate && ((view, context = {}) => onNavigate(view, { ...context, ...(initialTarget.return_decision_history_context && context.source !== 'run_history' ? { return_decision_history_context: initialTarget.return_decision_history_context } : {}) }));
+    const navigate = (view, context = {}) => onNavigate(view, { ...context, ...(initialTarget.return_decision_history_context && context.source !== 'run_history' ? { return_decision_history_context: initialTarget.return_decision_history_context } : {}) });
     return <Session key={JSON.stringify(initialTarget)} initialTarget={initialTarget} onNavigate={navigate} renderAdoption={renderAdoption} onTargetChange={onTargetChange} />;
   }
   window.WorkbenchTrialWorkspace = WorkbenchTrialWorkspace;

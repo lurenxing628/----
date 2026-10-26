@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, Iterator, List, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, Iterator, List, Optional, Sequence, Tuple
 
 from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.candidate_comparison import candidate_is_preferred
@@ -35,6 +35,7 @@ from .reporting import append_graph_attempt, append_graph_trace, record_rejected
 from .v2_contract import is_graph_ready_v2_contract_error
 
 if TYPE_CHECKING:
+    from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
     from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
 
@@ -43,9 +44,8 @@ class EliteRepairPool:
 
     def __init__(self, *, limits: EliteRepairLimits, objective_name: str, operations: List[Any],
                  metrics_by_op_id: Dict[int, Dict[str, Any]], start_dt: Any, seed: int,
-                 best: Optional[Dict[str, Any]], report_state: Any,
-                 graph_context: Optional[Dict[str, Any]] = None,
-                 resource_pool: Optional[Dict[str, Any]] = None,
+                 best: Optional[Dict[str, Any]], report_state: OptimizationSearchReportState,
+                 graph_context: Dict[str, Any],
                  clock: Optional[Callable[[], float]] = None, deadline: Optional[float] = None,
                  decode_session: SharedDecodeSession) -> None:
         self.limits = limits
@@ -55,7 +55,6 @@ class EliteRepairPool:
         self.start_dt = start_dt
         self.seed = seed
         self.graph_context = graph_context
-        self.resource_pool = resource_pool
         self.clock = clock
         self.deadline = deadline
         self.decode_session = decode_session
@@ -65,14 +64,17 @@ class EliteRepairPool:
         self.profile_parent_sizes: Dict[int, int] = {}
         self._next_portfolio_id = 1
         self.report_state = report_state
-        self.seen_outputs = set(report_state.candidate_fingerprints) if report_state is not None else set()
+        self.seen_outputs = set(report_state.candidate_fingerprints)
         if best is not None:
             self.seen_outputs.add(self.fingerprint(best).output_key)
         self.seen_elites: set = set()
+        # Parent preparation is a pure function of the decoded candidate under this pool's fixed inputs; each
+        # candidate object is prepared once. The entry pins the candidate, so its ``id`` cannot be reused.
+        self._prepared_parents: Dict[int, Tuple[Dict[str, Any], RepairParentPreparation]] = {}
         self.report = new_repair_report(limits, objective_name=objective_name)
 
     def fingerprint(self, candidate: Dict[str, Any], parent: Any = None, *, identity: Any = None) -> Any:
-        if identity is None and self.report_state is not None:
+        if identity is None:
             identity = self.report_state.fingerprint_identity(candidate)
         if identity is None:
             identity = next((elite["fingerprint"] for elite in self.parents_by_fingerprint.values()
@@ -115,17 +117,18 @@ class EliteRepairPool:
         self._select_parent_elites()
 
     def prepare_parent(self, candidate: Dict[str, Any]) -> RepairParentPreparation:
-        prepared = candidate.get("_repair_parent_preparation")
-        if prepared is None:
-            prepared = prepare_repair_parent(candidate, self.operations, self.resource_pool, self.graph_context,
-                                             resource_moves=self.graph_context is not None,
-                                             resource_pairs_for=self.decode_session.native_preparation.qualified_resource_pairs)
-            candidate["_repair_parent_preparation"] = prepared
+        """A decoded parent's static facts, prepared once per candidate; an elite keeps them as ``prepared_parent``."""
+        known = self._prepared_parents.get(id(candidate))
+        if known is not None:
+            return known[1]
+        prepared = prepare_repair_parent(candidate, self.operations, self.graph_context,
+                                         resource_pairs_for=self.decode_session.native_preparation.qualified_resource_pairs)
+        self._prepared_parents[id(candidate)] = (candidate, prepared)
         return prepared
 
     def make_elite(self, candidate: Dict[str, Any], profile: GraphReadyWeightProfile, *, fingerprint: Any = None) -> Dict[str, Any]:
         prepared = self.prepare_parent(candidate)
-        neighborhood = ParentRepairPortfolio(((profile, self._build_variant(candidate, profile, prepared)),))
+        neighborhood = ParentRepairPortfolio(((profile, self._build_variant(profile, prepared)),))
         resolved_fingerprint = fingerprint if fingerprint is not None else self.fingerprint(candidate)
         elite = {"candidate": candidate, "profile": profile, "fingerprint": resolved_fingerprint,
                  "neighborhood": neighborhood, "decision_offset": 0, "stream_offsets": {}, "prepared_parent": prepared}
@@ -133,18 +136,16 @@ class EliteRepairPool:
         self._next_portfolio_id += 1
         return elite
 
-    def _build_variant(self, candidate: Dict[str, Any], profile: GraphReadyWeightProfile,
-                       prepared_parent: RepairParentPreparation) -> RepairPortfolio:
+    def _build_variant(self, profile: GraphReadyWeightProfile, prepared_parent: RepairParentPreparation) -> RepairPortfolio:
         return build_repair_portfolio(
-            candidate, operations=self.operations, metrics_by_op_id=select_profile_metrics(self.metrics_by_op_id, profile=profile),
-            start_dt=self.start_dt, seed=self.seed, objective_name=self.objective_name,
-            graph_context=self.graph_context, resource_pool=self.resource_pool, prepared_parent=prepared_parent)
+            operations=self.operations, metrics_by_op_id=select_profile_metrics(self.metrics_by_op_id, profile=profile),
+            start_dt=self.start_dt, seed=self.seed, objective_name=self.objective_name, prepared_parent=prepared_parent)
 
     def add_basis_variant(self, elite: Dict[str, Any], profile: GraphReadyWeightProfile) -> None:
         neighborhood = elite["neighborhood"]
         if profile.feature_basis not in neighborhood.feature_bases:
             updated = neighborhood.with_variant(
-                profile, self._build_variant(elite["candidate"], profile, elite["prepared_parent"]))
+                profile, self._build_variant(profile, elite["prepared_parent"]))
             elite["neighborhood"] = updated
             portfolio_id = elite.get("portfolio_id")
             if portfolio_id in self.profile_parent_sizes:
@@ -174,7 +175,8 @@ class EliteRepairRun:
 
     def __init__(self, pool: EliteRepairPool, *, state: Any, evaluate: Callable[..., Dict[str, Any]], budget: Any,
                  deadline: float, clock: Callable[[], float], t_begin: float, attempts: List[Dict[str, Any]],
-                 improvement_trace: List[Dict[str, Any]], report_state: Any, strict_mode: bool) -> None:
+                 improvement_trace: List[Dict[str, Any]], report_state: OptimizationSearchReportState,
+                 strict_mode: bool) -> None:
         self.pool = pool
         self.state = state
         self.evaluate = evaluate
@@ -279,8 +281,8 @@ class EliteRepairRun:
 
 def _repair_tasks(pool: EliteRepairPool, *, state: Any, evaluate: Callable[..., Dict[str, Any]], budget: Any,
                   repair_deadline: float, clock: Callable[[], float], t_begin: float, attempts: List[Dict[str, Any]],
-                  improvement_trace: List[Dict[str, Any]], report_state: Any, strict_mode: bool,
-                  accounting: RepairWorkAccounting, start_round: int) -> Generator[None, None, None]:
+                  improvement_trace: List[Dict[str, Any]], report_state: OptimizationSearchReportState,
+                  strict_mode: bool, accounting: RepairWorkAccounting, start_round: int) -> Generator[None, None, None]:
     try:
         report = pool.report
         pruning = report["repair_pruning_report"]
@@ -347,8 +349,8 @@ def _repair_tasks(pool: EliteRepairPool, *, state: Any, evaluate: Callable[..., 
 def _repair_one_elite(pool: EliteRepairPool, *, elite: Dict[str, Any], state: Any,
                       evaluate: Callable[..., Dict[str, Any]],
                       clock: Callable[[], float], t_begin: float, attempts: List[Dict[str, Any]],
-                      improvement_trace: List[Dict[str, Any]], report_state: Any, strict_mode: bool,
-                      before_decode: Callable[[], None],
+                      improvement_trace: List[Dict[str, Any]], report_state: OptimizationSearchReportState,
+                      strict_mode: bool, before_decode: Callable[[], None],
                       improved_elites: List[Dict[str, Any]],
                       accounting: RepairWorkAccounting,
                       active_groups: Sequence[List[Dict[str, Any]]] = ()) -> Iterator[None]:
@@ -398,9 +400,8 @@ def _repair_one_elite(pool: EliteRepairPool, *, elite: Dict[str, Any], state: An
             append_graph_attempt(attempts=attempts, candidate=candidate, profile=profile, reference=reference,
                                  accepted=accepted, search_report_state=report_state, clock=clock, t_begin=t_begin)
             if accepted:
-                if report_state is not None:
-                    report_state.mark_candidate_accepted(candidate, origin=GRAPH_READY_V2_REPAIRED_ORIGIN,
-                                                          fingerprint=fingerprint)
+                report_state.mark_candidate_accepted(candidate, origin=GRAPH_READY_V2_REPAIRED_ORIGIN,
+                                                     fingerprint=fingerprint)
                 append_graph_trace(improvement_trace=improvement_trace, candidate=candidate, profile=profile, clock=clock, t_begin=t_begin)
                 report["repair_accepted"] = True
                 report["repair_best_origin"] = GRAPH_READY_V2_REPAIRED_ORIGIN
@@ -423,8 +424,8 @@ def _evaluate_neighbor(evaluate: Callable[..., Dict[str, Any]], *, decision: Rep
                        pruning: Dict[str, Any], parent: Dict[str, Any], prepared_parent: RepairParentPreparation,
                        before_decode: Callable[[], None]) -> Optional[Dict[str, Any]]:
     try:
-        order = list(decision.batch_order)
-        return evaluate(profile=profile, order=order, repair_order=order, repair_decision=decision, repair_parent=prepared_parent, before_decode=before_decode)
+        return evaluate(profile=profile, order=list(decision.batch_order), repair=(decision, prepared_parent),
+                        before_decode=before_decode)
     except ValidationError as exc:
         if strict_mode or is_graph_ready_v2_contract_error(exc) or exc.field == "graph_ready_elite_repair":
             raise
@@ -436,12 +437,11 @@ def _evaluate_neighbor(evaluate: Callable[..., Dict[str, Any]], *, decision: Rep
 
 
 def _can_accept_neighbor(pool: EliteRepairPool, *, candidate: Dict[str, Any],
-                         best: Optional[Dict[str, Any]], report_state: Any, fingerprint: Any) -> bool:
+                         best: Optional[Dict[str, Any]], report_state: OptimizationSearchReportState,
+                         fingerprint: Any) -> bool:
     pruning = pool.report["repair_pruning_report"]
     pool.seen_outputs.add(fingerprint.output_key)
-    if report_state is not None:
-        report_state.mark_candidate_evaluated(candidate, origin=GRAPH_READY_V2_REPAIRED_ORIGIN,
-                                              fingerprint=fingerprint)
+    report_state.mark_candidate_evaluated(candidate, origin=GRAPH_READY_V2_REPAIRED_ORIGIN, fingerprint=fingerprint)
     if _reject_duplicate_output(pruning, fingerprint):
         return False
     if candidate["summary"].failed_ops or not candidate["summary"].success:
@@ -453,7 +453,7 @@ def _can_accept_neighbor(pool: EliteRepairPool, *, candidate: Dict[str, Any],
     if not candidate_is_preferred(candidate=candidate, incumbent=best, candidate_origin=GRAPH_READY_V2_REPAIRED_ORIGIN,
                                   incumbent_origin=str((best or {}).get("candidate_origin") or "baseline"),
                                   candidate_fingerprint=fingerprint,
-                                  incumbent_fingerprint_changed=bool(report_state and report_state.best_fingerprint_changed())):
+                                  incumbent_fingerprint_changed=report_state.best_fingerprint_changed()):
         _reject(pruning, "acceptance_rejected")
         return False
     return True

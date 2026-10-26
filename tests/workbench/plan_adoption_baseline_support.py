@@ -46,8 +46,7 @@ def read(case, official, start=None, end=None):
         context = PlanReadContext(conn, references=query.references, entities=query.entities)
         with context.read_scope():
             _, entry, _ = context.selected(scope.plan_ref)
-            return build_plan_baseline(conn, entry=entry, scope=scope,
-                                       selected_rows=context.scoped_rows(entry, scope), context=context)
+            return build_plan_baseline(conn, entry=entry, scope=scope, context=context)
 
 
 def two_versions(case, source="trial"):

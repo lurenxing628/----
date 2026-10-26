@@ -24,7 +24,6 @@ def iteration_for(search):
 class LargeIteratedGreedySearch(_IteratedGreedySearch):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._trial_reference = None
         self.checkpoints = TailCheckpointStore(self.limits.checkpoint_count)
         self.report["algorithm"] = "operation_destroy_queued_joint_insertion_v5"
         self.report["partial_evaluation"] = "checkpoint_prefix_and_reconverged_tail_exact"
@@ -48,29 +47,11 @@ class LargeIteratedGreedySearch(_IteratedGreedySearch):
     def _reference_for_iteration(self):
         return self.diversification.reference()
 
-    def _score_trial(self, order, reference):
-        previous = self._trial_reference
-        self._trial_reference = reference
-        try:
-            return super()._score_trial(order, reference)
-        finally:
-            self._trial_reference = previous
-
-    def _decode_entry(self, order, *, redecode_reason=None):
-        reference = self._trial_reference
-        self._trial_reference = None
-        try:
-            return super()._decode_entry(order, redecode_reason=redecode_reason)
-        finally:
-            self._trial_reference = reference
-
-    def _decode(self, order, *, resume=None, checkpoints=None, redecode_reason=None):
-        trial = self._trial_reference is not None and checkpoints is None
-        if trial and self.checkpoints.enabled:
-            checkpoints = trial_request(self._trial_reference, resume=resume)
+    def _decode_trial(self, order, *, resume, reference):
+        checkpoints = trial_request(reference, resume=resume) if self.checkpoints.enabled else None
         tail = checkpoints.tail_reuse if checkpoints is not None else None
-        result = super()._decode(order, resume=resume, checkpoints=checkpoints, redecode_reason=redecode_reason)
-        if trial and result is not None:
+        result = self._decode(order, resume=resume, checkpoints=checkpoints)
+        if result is not None:
             self._record_tail(tail)
         return result
 

@@ -10,12 +10,12 @@ def _missing(message):
     return {"data_gaps": [{"field": "saved_runtime_requirement", "code": "runtime_requirement_source_missing", "message": message}]}
 
 
-def saved_seed_efforts(svc, facts, seed_results, execution_facts):
+def saved_seed_efforts(conn, facts, seed_results, execution_facts):
     """Read original run/trial work once per actual official version, without math."""
     if not seed_results:
         return {}
     result, sources = {}, {}
-    with read_evidence_scope(svc.conn):
+    with read_evidence_scope(conn):
         for seed in seed_results:
             op_id = seed["op_id"]
             fact = execution_facts.get(op_id)

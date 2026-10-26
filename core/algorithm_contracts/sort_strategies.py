@@ -37,7 +37,7 @@ class BaseSortStrategy(ABC):
     """排序策略基类。"""
 
     @abstractmethod
-    def sort(self, batches: List[BatchForSort], *, base_date: Optional[date] = None) -> List[BatchForSort]:
+    def sort(self, batches: List[BatchForSort], *, base_date: date) -> List[BatchForSort]:
         raise NotImplementedError
 
     @abstractmethod
@@ -48,7 +48,7 @@ class BaseSortStrategy(ABC):
 class PriorityFirstStrategy(BaseSortStrategy):
     """优先级优先：critical > urgent > normal，同优先级按交期升序，同交期按批次号。"""
 
-    def sort(self, batches: List[BatchForSort], *, base_date: Optional[date] = None) -> List[BatchForSort]:
+    def sort(self, batches: List[BatchForSort], *, base_date: date) -> List[BatchForSort]:
         def sort_key(batch: BatchForSort):
             pr = normalize_priority(batch.priority, default="normal")
             priority_rank = PRIORITY_RANK[pr]
@@ -64,7 +64,7 @@ class PriorityFirstStrategy(BaseSortStrategy):
 class DueDateFirstStrategy(BaseSortStrategy):
     """交期优先：交期早的优先，无交期的排最后；同交期按优先级，同优先级按批次号。"""
 
-    def sort(self, batches: List[BatchForSort], *, base_date: Optional[date] = None) -> List[BatchForSort]:
+    def sort(self, batches: List[BatchForSort], *, base_date: date) -> List[BatchForSort]:
         def sort_key(batch: BatchForSort):
             has_due = 0 if batch.due_date else 1  # 无交期的排最后
             due_rank = batch.due_date if batch.due_date else date.max
@@ -92,15 +92,13 @@ score = priority_weight×priority_score + due_weight×due_score
         self.priority_weight = float(priority_weight)
         self.due_weight = float(due_weight)
 
-    def sort(self, batches: List[BatchForSort], *, base_date: Optional[date] = None) -> List[BatchForSort]:
-        today = base_date or date.today()
-
+    def sort(self, batches: List[BatchForSort], *, base_date: date) -> List[BatchForSort]:
         def calc_score(batch: BatchForSort) -> float:
             pr = normalize_priority(batch.priority, default="normal")
             priority_score = PRIORITY_SCORE[pr]
 
             if batch.due_date:
-                days_left = (batch.due_date - today).days
+                days_left = (batch.due_date - base_date).days
                 due_score = 100 - min(max(days_left, 0), 100)
             else:
                 due_score = 0
@@ -117,7 +115,7 @@ score = priority_weight×priority_score + due_weight×due_score
 class FIFOStrategy(BaseSortStrategy):
     """先进先出：按创建时间升序，同时间按批次号。"""
 
-    def sort(self, batches: List[BatchForSort], *, base_date: Optional[date] = None) -> List[BatchForSort]:
+    def sort(self, batches: List[BatchForSort], *, base_date: date) -> List[BatchForSort]:
         def sort_key(batch: BatchForSort):
             created = batch.created_at if batch.created_at else datetime.max
             return (created, batch.batch_id)

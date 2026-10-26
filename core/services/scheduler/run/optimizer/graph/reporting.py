@@ -15,10 +15,8 @@ if TYPE_CHECKING:
 
 def append_graph_attempt(
     *, attempts: List[Dict[str, Any]], candidate: Dict[str, Any], profile: GraphReadyWeightProfile,
-    reference: Optional[Dict[str, Any]] = None, accepted: Optional[bool] = None,
-    search_report_state: Optional[OptimizationSearchReportState] = None,
-    clock: Optional[Callable[[], float]] = None, t_begin: Optional[float] = None,
-    verified: bool = True, comparison_kind: str = "incumbent",
+    reference: Optional[Dict[str, Any]], accepted: bool, search_report_state: OptimizationSearchReportState,
+    clock: Callable[[], float], t_begin: float, verified: bool = True, comparison_kind: str = "incumbent",
 ) -> None:
     metrics = candidate["metrics"]
     attempts.append(

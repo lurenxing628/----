@@ -15,8 +15,7 @@ from web.bootstrap import factory, runtime_server
 windows_only = pytest.mark.skipif(os.name != "nt", reason="Windows exclusive listener semantics")
 
 
-@pytest.mark.parametrize("server_class", [runtime_server._WindowsRuntimeServer, runtime_server._WindowsSingleRuntimeServer])
-def test_windows_bind_publishes_reserved_endpoint_without_reverse_dns(monkeypatch, server_class):
+def test_windows_bind_publishes_reserved_endpoint_without_reverse_dns(monkeypatch):
     calls = []
 
     class Listener:
@@ -34,7 +33,7 @@ def test_windows_bind_publishes_reserved_endpoint_without_reverse_dns(monkeypatc
 
     monkeypatch.setattr(socket, "SO_EXCLUSIVEADDRUSE", -5, raising=False)
     monkeypatch.setattr(socket, "getfqdn", reject_reverse_dns)
-    server = object.__new__(server_class)
+    server = object.__new__(runtime_server._WindowsRuntimeServer)
     server.socket = Listener()
     server.server_address = ("127.0.0.1", 0)
     server.server_bind()

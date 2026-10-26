@@ -34,16 +34,16 @@ def _parse_key_value_lines(lines: List[str]) -> Tuple[Dict[str, Any], bool]:
     data: Dict[str, Any] = {}
     invalid_seen = False
     for raw in lines:
-        line = str(raw or "").strip()
+        line = raw.strip()
         if not line:
             continue
         if "=" not in line:
             invalid_seen = True
             continue
         key, value = line.split("=", 1)
-        key_s = str(key or "").strip()
+        key_s = key.strip()
         if key_s:
-            data[key_s] = str(value or "").strip()
+            data[key_s] = value.strip()
     return data, invalid_seen
 
 
@@ -108,8 +108,8 @@ def read_runtime_lock_result_from_path(path: str, *, state_dir: str = "") -> Run
         )
     payload = data
     try:
-        payload["pid"] = int(data.get("pid") or 0)
-    except (TypeError, ValueError) as exc:
+        payload["pid"] = int(data["pid"])
+    except ValueError as exc:
         return RuntimeLockReadResult(
             status=LOCK_STATUS_INVALID,
             payload=None,

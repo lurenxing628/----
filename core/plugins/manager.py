@@ -70,7 +70,7 @@ class PluginManager:
         config_reader: Optional[PluginConfigReader],
         enabled_source_map: Dict[str, str],
         default_enabled_source: str,
-        logger=None,
+        logger,
     ) -> Dict[str, Any]:
         base = os.path.abspath(base_dir or ".")
         vendor_paths = bootstrap_vendor_paths(base)
@@ -89,11 +89,7 @@ class PluginManager:
             try:
                 real = os.path.normcase(os.path.realpath(path0))
                 if not real.startswith(plugins_dir_real + os.sep):
-                    if logger:
-                        try:
-                            logger.error(f"插件路径非法（已跳过）：{path0}")
-                        except Exception:
-                            pass
+                    logger.error(f"插件路径非法（已跳过）：{path0}")
                     continue
                 if not os.path.isfile(real):
                     continue
@@ -121,11 +117,7 @@ class PluginManager:
                         raw_enabled = config_reader(plugin_id)
                     except Exception as exc:
                         raw_enabled = None
-                        if logger is not None:
-                            try:
-                                logger.error(f"读取插件配置失败：{plugin_id} err={exc}")
-                            except Exception:
-                                pass
+                        logger.error(f"读取插件配置失败：{plugin_id} err={exc}")
                     if raw_enabled is not None:
                         enabled = _normalize_yes_no(raw_enabled, default=default_enabled)
 
@@ -160,7 +152,7 @@ class PluginManager:
                             cap_keys = sorted(after - before)
                             new_conflicts = registry.conflicted_capabilities[before_conflicts:]
                             conflict_keys = [
-                                str(item.get("capability") or "")
+                                item["capability"]
                                 for item in new_conflicts
                                 if str(item.get("rejected_plugin_id") or "") == plugin_id
                             ]
@@ -169,11 +161,7 @@ class PluginManager:
                         loaded = "no"
                         tb = traceback.format_exc(limit=5)
                         err = f"{e}\n{tb}"
-                        if logger:
-                            try:
-                                logger.error(f"插件注册失败：{plugin_id} err={e}", exc_info=True)
-                            except Exception:
-                                pass
+                        logger.error(f"插件注册失败：{plugin_id} err={e}", exc_info=True)
 
                 statuses.append(
                     PluginStatus(
@@ -211,11 +199,7 @@ class PluginManager:
                         conflicted_capabilities=[],
                     )
                 )
-                if logger:
-                    try:
-                        logger.error(f"插件加载失败：{fn} err={e}", exc_info=True)
-                    except Exception:
-                        pass
+                logger.error(f"插件加载失败：{fn} err={e}", exc_info=True)
 
         registry_status = registry.to_dict()
         return {

@@ -1,7 +1,6 @@
 """Explicit-ref atomic deletion. Historical authorization/calendar rows block it."""
 
 from core.errors import ValidationError
-from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_resource_action import (
     ResourceActionPreview,
@@ -25,13 +24,10 @@ class WorkbenchResourceBulkService:
         self.reader = reader if reader is not None else WorkbenchResourceQueryService(conn, kind, logger)
         self.adapter = self.reader.domain
         self.repo = WorkbenchResourceFileRepository(conn, logger)
-        self.tx = TransactionManager(conn)
 
     def preview_delete(self, refs, *, scope):
-        if self.conn.in_transaction:
-            return self._prepare_delete(refs, scope)[0]
-        with self.tx.transaction():
-            return self._prepare_delete(refs, scope)[0]
+        """Preview inside the caller's read snapshot."""
+        return self._prepare_delete(refs, scope)[0]
 
     def _prepare_delete(self, refs, scope):
         request = {"refs": resource_refs(refs), "scope": resource_scope(self.kind, scope)}

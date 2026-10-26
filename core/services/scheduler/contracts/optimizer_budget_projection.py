@@ -1,7 +1,8 @@
 """Bounded diagnostic projection of assigned optimizer time budgets."""
 
-import math
 from typing import Any, Dict
+
+from core.shared.strict_parse import finite_float
 
 from .optimizer_public_safety import safe_attempt_text, safe_non_negative_int
 
@@ -65,8 +66,5 @@ def _project_allocation_feedback(value: Any) -> Dict[str, Any]:
 def _finite_non_negative_number(value: Any) -> Any:
     if type(value) not in (int, float):
         return None
-    try:
-        number = float(value)
-    except OverflowError:
-        return None
-    return number if math.isfinite(number) and number >= 0 else None
+    number = finite_float(value)
+    return number if number is not None and number >= 0 else None

@@ -92,7 +92,7 @@
       {!preview && !busy && onRetry && <Button icon="refresh-cw" disabled={editingBudget} onClick={onRetry}>重新核对</Button>}
       <Button icon="play" className="btn primary" busy={busy} disabled={!preview || editingBudget} onClick={onConfirm}>确认开始排产</Button></>}>
       <div className="modal-body run-job-panel rj-confirm"><Scope preview={checked} effective={effective} operationCount={operationCount} timeBudget={timeBudget} />
-        {checked.run_options && onBudgetChange && <Budget value={timeBudget} disabled={submitting} onChange={onBudgetChange} onEditing={setEditingBudget} />}
+        {checked.run_options && <Budget value={timeBudget} disabled={submitting} onChange={onBudgetChange} onEditing={setEditingBudget} />}
         {checked.run_options && <p className="rj-muted">预算用于一次共同优化；结果有 1—3 份，实际相同方案会合并。{checked.run_options.algo_mode === 'greedy' && '快速生成可能得到一份方案。'}</p>}
         {busy && !submitting && <p role="status">正在按本次预算重新检查并核对排产条件。</p>}
         {error && <div className="rj-notice" role="alert">{error}</div>}
@@ -103,11 +103,10 @@
         {!!warnings.length && <Reasons rows={warnings} />}</div>
     </Modal>;
   }
-  function Record({ run, paused, retryPaused, retryHint = '可点「查询结果」再次核对原记录。', lastChecked, resolution, checking, verified, api, actions, navigation, title = '本次排产', onNavigate }) {
+  function Record({ run, paused, retryPaused, retryHint = '可点「查询结果」再次核对原记录。', lastChecked, resolution, checking, verified, actions, navigation, title = '本次排产', onNavigate }) {
     const replaced = resolution === 'context_replaced';
     const queryLabel = checking ? '正在查询结果' : replaced ? '数据库已恢复' : resolution === 'lookup_failed' ? '查询失败' : '暂未查到这次排产记录';
     const saved = run && run.result_persisted && run.candidates.some(row => row.status === 'completed');
-    const canOpen = typeof onNavigate === 'function' || typeof api.openCandidate === 'function';
     return <section aria-label="本次排产记录" className="rj-record"><div className="rj-heading rj-business-heading"><h2>{title}</h2>{run ? <Status run={run} /> : <span role="status" data-query-state={checking ? 'querying' : resolution}>{queryLabel}</span>}
       <div className="rj-business-actions">{navigation}{actions}</div></div>
       {replaced && <p className="rj-muted" role="status">数据库已恢复，上次排产结果不在当前数据中。请重新检查当前批次后开始排产。</p>}
@@ -116,8 +115,8 @@
         {saved && window.RunGenerationContract.unified(run.scope_summary.run_options) && <p className="rj-muted">本次保存 {run.candidates.length} 份方案。</p>}
         {run.recovery_required && <p className="rj-notice">正在核对上次的排产记录，结果还没确认，没有重新计算。</p>}
         {run.error && <div className="rj-notice" role="alert">{A.failure(run.error)}</div>}
-        <div className="rj-tools">{saved && canOpen && <Button icon="chart" disabled={!verified} onClick={() => typeof onNavigate === 'function' ? onNavigate('run', { run_ref: run.run_ref }) : api.openCandidate({ run_ref: run.run_ref })}>查看本次排产结果</Button>}
-          {A.terminal(run) && !saved && typeof onNavigate === 'function' && <Button icon="arrow-left" onClick={() => onNavigate('run', {})}>返回排产检查</Button>}</div>
+        <div className="rj-tools">{saved && <Button icon="chart" disabled={!verified} onClick={() => onNavigate('run', { run_ref: run.run_ref })}>查看本次排产结果</Button>}
+          {A.terminal(run) && !saved && <Button icon="arrow-left" onClick={() => onNavigate('run', {})}>返回排产检查</Button>}</div>
         <details className="rj-record-details"><summary>排产记录详情</summary><dl className="rj-scope">
           {[['提交时间', run.accepted_at], ['开始处理', run.started_at], ['结束时间', run.finished_at]].filter(([, value]) => value).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{window.WorkbenchFormat.dateTime(value, { seconds: true, fractions: true })}</dd></div>)}
           <div><dt>保存的目标</dt><dd>{run.scope_summary.objective_label || run.scope_summary.objective || '未保存'}</dd></div>

@@ -16,8 +16,8 @@ _POWERSHELL_TIMEOUT_S = 8.0
 
 def set_process_log_context(*, state_dir: str = "", runtime_dir: str = "") -> None:
     global _PROCESS_LOG_STATE_DIR, _PROCESS_LOG_RUNTIME_DIR
-    _PROCESS_LOG_STATE_DIR = str(state_dir or "").strip()
-    _PROCESS_LOG_RUNTIME_DIR = str(runtime_dir or "").strip()
+    _PROCESS_LOG_STATE_DIR = state_dir
+    _PROCESS_LOG_RUNTIME_DIR = runtime_dir
 
 
 def _log_warning(logger: Optional[logging.Logger], message: str, *args) -> None:
@@ -28,14 +28,6 @@ def _log_warning(logger: Optional[logging.Logger], message: str, *args) -> None:
         state_dir=_PROCESS_LOG_STATE_DIR or None,
         runtime_dir=_PROCESS_LOG_RUNTIME_DIR or None,
     )
-
-
-def _parse_pid(pid: int) -> int:
-    try:
-        return int(pid)
-    except (TypeError, ValueError, OverflowError) as exc:
-        _log_warning(None, "解析运行时 pid 失败，已按不存在处理：pid=%r error=%s", pid, exc)
-        return 0
 
 
 def _windows_pid_state(pid_i: int) -> Optional[bool]:
@@ -56,17 +48,17 @@ def _windows_pid_state(pid_i: int) -> Optional[bool]:
     except Exception as exc:
         _log_warning(None, "枚举 Windows pid 失败，运行时身份状态未知：pid=%s error=%s", pid_i, exc)
         return None
-    if int(result.returncode or 0) != 0:
+    if result.returncode != 0:
         _log_warning(
             None,
             "枚举 Windows pid 返回失败，运行时身份状态未知：pid=%s rc=%s stderr=%s",
             pid_i,
             result.returncode,
-            (result.stderr or "").strip(),
+            result.stderr.strip(),
         )
         return None
-    for line in (result.stdout or "").splitlines():
-        line_s = str(line or "").strip()
+    for line in result.stdout.splitlines():
+        line_s = line.strip()
         if line_s.startswith('"') and f',"{pid_i}",' in line_s:
             return True
     return False
@@ -86,12 +78,11 @@ def _posix_pid_state(pid_i: int) -> Optional[bool]:
 
 
 def _pid_state(pid: int) -> Optional[bool]:
-    pid_i = _parse_pid(pid)
-    if pid_i <= 0:
+    if pid <= 0:
         return False
     if os.name == "nt":
-        return _windows_pid_state(pid_i)
-    return _posix_pid_state(pid_i)
+        return _windows_pid_state(pid)
+    return _posix_pid_state(pid)
 
 
 def run_powershell_text(script: str) -> Tuple[Optional[int], str]:
@@ -110,11 +101,11 @@ def run_powershell_text(script: str) -> Tuple[Optional[int], str]:
     except Exception as exc:
         _log_warning(None, "PowerShell 运行失败，相关运行时能力不可确认：%s", exc)
         return None, ""
-    output = (result.stdout or "").strip()
-    stderr_text = (result.stderr or "").strip()
+    output = result.stdout.strip()
+    stderr_text = result.stderr.strip()
     if stderr_text:
         output = output + ("\n" if output else "") + stderr_text
-    return int(result.returncode or 0), output
+    return result.returncode, output
 
 
 def _run_powershell_bytes(script: str) -> Tuple[Optional[int], bytes, bytes]:
@@ -138,7 +129,7 @@ def _run_powershell_bytes(script: str) -> Tuple[Optional[int], bytes, bytes]:
     except (OSError, subprocess.SubprocessError) as exc:
         _log_warning(None, "PowerShell 运行失败，相关运行时能力不可确认：%s", exc)
         return None, b"", b""
-    return int(result.returncode or 0), bytes(result.stdout or b""), bytes(result.stderr or b"")
+    return result.returncode, result.stdout, result.stderr
 
 
 def _decode_base64_path_output(output: bytes, pid_i: int) -> Optional[str]:
@@ -253,10 +244,7 @@ def _pid_matches_contract(pid: int, expected_exe_path: str) -> Optional[bool]:
         return None
     if actual == "":
         return False
-    expected = os.path.normcase(os.path.abspath(str(expected_exe_path or "").strip()))
-    if not expected:
-        return None
-    return actual == expected
+    return actual == os.path.normcase(os.path.abspath(expected_exe_path))
 
 
 def kill_runtime_pid(pid: int) -> bool:
@@ -272,14 +260,14 @@ def kill_runtime_pid(pid: int) -> bool:
         except Exception as exc:
             _log_warning(None, "强制停止运行时 pid 失败：pid=%s error=%s", pid, exc)
             return False
-        ok = int(result.returncode or 0) == 0
+        ok = result.returncode == 0
         if not ok:
             _log_warning(
                 None,
                 "强制停止运行时 pid 返回失败：pid=%s rc=%s stderr=%s",
                 pid,
                 result.returncode,
-                (result.stderr or "").strip(),
+                result.stderr.strip(),
             )
         return ok
     return False

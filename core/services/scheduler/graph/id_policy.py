@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import re
-from typing import Any, Optional
+from typing import Any
 
 OPERATION_NODE_PREFIX = "op:"
 MACHINE_NODE_PREFIX = "machine:"
 OPERATOR_NODE_PREFIX = "operator:"
-
-_ROW_ID_TEXT_PATTERN = re.compile(r"^0*[1-9][0-9]*(?:\.0+)?$")
 
 
 class GraphNodeIdError(ValueError):
@@ -29,27 +26,9 @@ def _require_text_component(value: Any, *, field_name: str) -> str:
     return text
 
 
-def normalize_operation_row_id(row_id: Any) -> Optional[int]:
-    """Return a positive integer operation row id, or None for unsafe/invalid values."""
-    if row_id is None or isinstance(row_id, bool) or isinstance(row_id, (bytes, bytearray)):
-        return None
-    text = str(row_id).strip()
-    if not text or not _ROW_ID_TEXT_PATTERN.fullmatch(text):
-        return None
-    return int(text.partition(".")[0])
-
-
-def make_operation_node_id(batch_id: Any, op_code: Any, row_id: Any = None) -> str:
-    if isinstance(row_id, (bytes, bytearray)):
-        raise GraphNodeIdError("row_id 不能是 bytes/bytearray。")
-
-    normalized_row_id = normalize_operation_row_id(row_id)
-    if normalized_row_id is not None:
-        return f"{OPERATION_NODE_PREFIX}{normalized_row_id}"
-
-    batch_text = _require_text_component(batch_id, field_name="batch_id")
-    op_text = _require_text_component(op_code, field_name="op_code")
-    return f"{OPERATION_NODE_PREFIX}{batch_text}:{op_text}"
+def make_operation_node_id(row_id: int) -> str:
+    """Operation nodes are keyed by the operation's positive row id (validated when the scheduling input is built)."""
+    return f"{OPERATION_NODE_PREFIX}{row_id}"
 
 
 def make_machine_node_id(machine_id: Any) -> str:
@@ -76,5 +55,4 @@ __all__ = [
     "display_id",
     "make_machine_node_id",
     "make_operation_node_id",
-    "normalize_operation_row_id",
 ]

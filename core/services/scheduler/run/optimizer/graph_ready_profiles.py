@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from itertools import zip_longest
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.errors import ValidationError
 from core.models.objective import normalize_objective_name
+from core.shared.strict_parse import finite_float
 
 from .graph_ready_feature_basis import BATCH_WORKLOAD_BASIS, SUCCESSOR_WORKLOAD_BASIS
 
@@ -92,24 +92,17 @@ def profile_payload(profile: GraphReadyWeightProfile, *, version: Optional[int])
 
 
 def finite_number(value: Any, *, field: str, reason: str = "graph_ready_bad_node_metrics") -> float:
-    if isinstance(value, bool):
-        raise ValidationError(f"图指标 {field} 必须是有限数字。", field="graph_ready_context", details={"reason": reason})
-    try:
-        number = float(value)
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise ValidationError(f"图指标 {field} 必须是有限数字。", field="graph_ready_context", details={"reason": reason}) from exc
-    if not math.isfinite(number):
+    number = finite_float(value)
+    if number is None:
         raise ValidationError(f"图指标 {field} 必须是有限数字。", field="graph_ready_context", details={"reason": reason})
     return number
 
 
 def _build_profile(index: int, raw: Dict[str, Any]) -> GraphReadyWeightProfile:
     raw_weights = {field: _finite_non_negative_weight(raw.get(field), field=field) for field in _weight_fields()}
-    slug = str(raw.get("slug") or "").strip()
-    if not slug:
-        raise ValidationError("图权重配置缺少 slug。", field="graph_ready_weight")
+    # raw comes only from this module's constant tables, each naming a literal slug.
     return GraphReadyWeightProfile(
-        slug=slug,
+        slug=raw["slug"],
         profile_order=index,
         raw_weights=raw_weights,
         effective_weights=dict(raw_weights),
@@ -135,7 +128,7 @@ def _weight_fields() -> Tuple[str, str, str, str]:
 
 
 def _graph_ready_v2_profile_specs(*, seed: int, objective_name: str) -> Tuple[Dict[str, Any], ...]:
-    v1 = tuple(dict(item) for item in GRAPH_READY_DEFAULT_WEIGHT_PROFILES)
+    v1 = GRAPH_READY_DEFAULT_WEIGHT_PROFILES
     base_specs = _v2_ordering_specs(seed)
     baseline = tuple(dict(item, feature_basis=BATCH_WORKLOAD_BASIS) for item in base_specs)
     objective_name = normalize_objective_name(objective_name)

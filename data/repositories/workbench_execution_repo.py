@@ -4,11 +4,12 @@ Judgement (missing schema, unknown refs, row caps, ref syntax) belongs to
 core.services.execution.ledger_reader; this module only returns what is stored.
 """
 
-import json
+from typing import NoReturn
 
 from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_contract_issues
 from core.infrastructure.workbench_execution_void_schema import execution_void_contract_issues
+from core.shared.strict_json import load_strict_json
 from data.repositories.base_repo import BaseRepository
 
 _TASK_ROWS_SQL = """SELECT t.ref AS task_ref, t.plan_ref, r.operation_ref,
@@ -22,9 +23,21 @@ _TASK_ROWS_SQL = """SELECT t.ref AS task_ref, t.plan_ref, r.operation_ref,
     WHERE r.active=1"""
 
 
-def chunks(values, size=300):
-    for start in range(0, len(values), size):
-        yield values[start:start + size]
+_CHUNK_SIZE = 300
+
+
+def _corrupt_report_values() -> NoReturn:
+    raise ValueError("已保存的报工内容无法读取。")
+
+
+def stored_report_values(text):
+    """One WorkbenchProductionReportRevisions.values_json, as canonical_json wrote it."""
+    return load_strict_json(text, on_malformed=_corrupt_report_values)
+
+
+def chunks(values):
+    for start in range(0, len(values), _CHUNK_SIZE):
+        yield values[start:start + _CHUNK_SIZE]
 
 
 class WorkbenchExecutionRepository(BaseRepository):
@@ -112,7 +125,7 @@ class WorkbenchExecutionRepository(BaseRepository):
                     previous_report_ref = row["report_ref"]
                 if row["revision_ref"] is None:
                     continue
-                row["values"] = json.loads(row.pop("values_json"))
+                row["values"] = stored_report_values(row.pop("values_json"))
                 result.setdefault(row["operation_ref"], {}).setdefault(row["report_ref"], []).append(row)
         return result, heads, count
 

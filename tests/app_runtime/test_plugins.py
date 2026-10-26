@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 
 import pytest
@@ -9,6 +10,8 @@ import pytest
 from core.infrastructure.database import get_connection
 from data.repositories import SystemConfigRepository
 from web.bootstrap import plugins
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def test_plugin_bootstrap_preserves_sources_and_public_failures(db_path, tmp_path):
@@ -33,7 +36,7 @@ def test_plugin_bootstrap_preserves_sources_and_public_failures(db_path, tmp_pat
     conn.commit()
     conn.close()
 
-    status = plugins.bootstrap_plugins(str(tmp_path), db_path)
+    status = plugins.bootstrap_plugins(str(tmp_path), db_path, logger=_LOGGER)
 
     rows = {row["plugin_id"]: row for row in status["statuses"]}
     assert rows["configured"]["enabled_source"] == "config"
@@ -54,7 +57,7 @@ def test_plugin_bootstrap_preserves_sources_and_public_failures(db_path, tmp_pat
     assert status["degradation_counters"] == {"plugin_bootstrap_load_failed": 1}
     assert status["telemetry_persisted"] is True
 
-    empty = plugins.bootstrap_plugins(str(tmp_path / "empty"), db_path)
+    empty = plugins.bootstrap_plugins(str(tmp_path / "empty"), db_path, logger=_LOGGER)
     assert empty["statuses"] == []
     assert empty["registry"]["capabilities"] == []
     assert empty["degraded"] is False
@@ -81,7 +84,7 @@ def test_plugin_config_failure_retains_default_source(db_path, tmp_path, monkeyp
     else:
         monkeypatch.setattr(SystemConfigRepository, "get_value", unavailable)
 
-    status = plugins.bootstrap_plugins(str(tmp_path), db_path)
+    status = plugins.bootstrap_plugins(str(tmp_path), db_path, logger=_LOGGER)
 
     assert status["statuses"][0]["enabled_source"] == source
     assert status["statuses"][0]["loaded"] == "yes"

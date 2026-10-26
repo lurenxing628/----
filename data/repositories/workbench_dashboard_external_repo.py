@@ -1,7 +1,5 @@
 """External identity mapping with the original Dashboard state/history storage; no rulings here."""
 
-from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.workbench_dashboard_external_schema import contract_issues, objects, orphaned_handling_receipts
 from data.repositories.workbench_dashboard_repo import WorkbenchDashboardRepository
 from data.repositories.workbench_dashboard_source_repo import rows
 
@@ -10,15 +8,6 @@ class WorkbenchDashboardExternalRepository(WorkbenchDashboardRepository):
     items_table = "WorkbenchDashboardExternalItems"
     states_table = "WorkbenchDashboardExternalStates"
     history_table = "WorkbenchDashboardExternalHistory"
-
-    def schema_state(self):
-        memo = schema_contract_memo(self.conn)
-        if not memo.structure.objects.keys() & objects().keys():
-            return "unavailable" if orphaned_handling_receipts(self.conn) else "not_connected"
-        return "unavailable" if memo.get_schema(contract_issues) else "loaded"
-
-    def schema_installed(self):
-        return self.schema_state() == "loaded"
 
     def external_items(self, limit):
         """All external item identities ordered by item_ref; reads limit+1 rows."""

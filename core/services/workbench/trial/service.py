@@ -173,7 +173,8 @@ class WorkbenchTrialService:
             old_to_new = {row["source_task_ref"]: row["task_ref"] for row in snapshot["tasks"]}
             for row in snapshot["tasks"]:
                 row["predecessor_refs"] = [old_to_new[ref] for ref in row["predecessor_refs"]]
-            _scenario_issue_refs(snapshot["validation"]["issues"], old_to_new)
+                row["issues"] = _scenario_issue_refs(row["issues"], old_to_new)
+            snapshot["validation"]["issues"] = _scenario_issue_refs(snapshot["validation"]["issues"], old_to_new)
             apply_changeovers(snapshot["comparison"], trial_changeovers(
                 [dict(row, row_ref=task["row_ref"]) for row, task in zip(rows, snapshot["tasks"])],
                 head["admission"], facts=source_prepared[0]))
@@ -240,7 +241,6 @@ class WorkbenchTrialService:
 
 
 def _scenario_issue_refs(issues, mapping):
-    for row in issues:
-        for key in ("task_ref", "related_task_ref"):
-            if row.get(key) in mapping:
-                row[key] = mapping[row[key]]
+    """Issue rows are shared with the draft admission and per-task lists; remapping builds new rows."""
+    return [dict(row, **{key: mapping[row[key]] for key in ("task_ref", "related_task_ref") if row.get(key) in mapping})
+            for row in issues]

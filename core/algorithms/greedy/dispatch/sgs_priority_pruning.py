@@ -17,12 +17,11 @@ fixed-resource proof (decode tail reuse) whether every operation names its machi
 
 import math
 from datetime import datetime
-from types import SimpleNamespace
+from types import MappingProxyType
 
 from core.algorithm_contracts.value_domains import EXTERNAL
 from core.algorithm_runtime.calendar_timing_memo import native_timing_calendar
 from core.algorithm_runtime.native_snapshot import UNSUPPORTED, scalar_snapshot
-from core.algorithm_runtime.run_state import ScheduleRunState
 from core.errors import ValidationError
 
 from .sgs_due_span import external_candidate_window
@@ -33,6 +32,7 @@ from .sgs_scoring import parse_due_date
 _FIELDS = ("id", "seq", "batch_id", "piece_id", "source", "machine_id", "operator_id", "op_type_name",
            "setup_hours", "unit_hours", "quantity", "priority", "due_date", "ready_date", "material_ready_date", "ready_status",
            "ext_merge_mode", "ext_group_id", "ext_group_total_days", "ext_days")
+_NO_PLACED_GROUPS = MappingProxyType({})
 
 
 def prepare_pruning_record(record, plain_classes):
@@ -53,7 +53,7 @@ class GraphPriorityPruning:
 
     def __init__(self, graph_state, batches, hours, *, strict_mode, eligible_resources=None, calendar=None, calendar_days=None, preparation=None):
         if preparation is None:
-            records = list(batches.values()) + [op for _batch_id, op in (graph_state or {}).get("op_by_id", {}).values()]
+            records = list(batches.values()) + [op for _batch_id, op in graph_state["op_by_id"].values()]
             self._plain_classes = {kind: plain_record_class(kind) for kind in {type(record) for record in records}}
             self._calendar_days = (calendar.add_calendar_days if calendar is not None
                                    and native_timing_calendar(calendar, include_calendar_days=True) else None)
@@ -123,10 +123,7 @@ class GraphPriorityPruning:
         # duration it cannot add. A native natural-day call is pure arithmetic; the earliest datetime
         # leaves room for every valid duration without depending on this operation's future progress.
         try:
-            external_candidate_window(
-                SimpleNamespace(calendar=self._calendar), ScheduleRunState(base_time=datetime.min),
-                op=op, prev_end=datetime.min,
-            )
+            external_candidate_window(self._calendar, _NO_PLACED_GROUPS, op=op, prev_end=datetime.min)
         except (ValidationError, ValueError, OverflowError):
             return False
         return True
@@ -142,7 +139,6 @@ class GraphPriorityPruning:
         one machine and one operator: the probe then always produces a feasibility penalty rather
         than a validation error, so an unscored group can never hide a static input error.
         """
-        # None and the empty string an optimizer resource variant may carry both leave the resource to auto-assign.
         if op.machine_id and op.operator_id:
             return True
         if self._eligible_resources is None:

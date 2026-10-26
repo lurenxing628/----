@@ -16,7 +16,6 @@ from core.services.scheduler.contracts.external_context import (
     member_index,
     merged_supplier_problem,
 )
-from core.services.scheduler.repository_bundle import build_schedule_repository_bundle
 from core.services.scheduler.run.schedule_execution_guardrails import build_execution_guardrails_from_projections
 from core.services.scheduler.run.schedule_execution_resource_facts import collect_resource_execution_facts
 from core.services.scheduler.run.schedule_input_seed_metadata import (
@@ -117,14 +116,13 @@ def preflight_external_cycles(facts, batches, operations, projections):
     if not any(op["source"] == "external" and (contexts.get(op["id"]) or {}).get("merge_mode") == "merged"
                and projections[facts.operation_ref(op)]["first_actual_start"] for op in operations):
         return {}, []
-    svc = build_schedule_repository_bundle(facts.conn)
     version = max((row["version"] for row in facts.capture.table("ScheduleHistory")), default=0)
     prior = prior_execution_projections(facts, version)
     models = [stored_batch_operation(op) for op in operations]
     batch_models = {batch["batch_id"]: stored_batch(batch) for batch in batches}
     groups = execution_groups(facts, batch_models, models)
     _, fixed, completed, seeds, _ = build_execution_guardrails_from_projections(
-        svc, models, prev_version=version, execution_projections=prior, facts=facts, external_groups=groups)
+        facts.conn, models, prev_version=version, execution_projections=prior, facts=facts, external_groups=groups)
     rows = {op["id"]: op for op in operations}
     periods, problems = _actual_periods(facts, groups, seeds, fixed | completed, rows, completed_ids=completed)
     cycles = _cycle_members(groups, periods, fixed | completed)
@@ -203,7 +201,7 @@ def _guard_verdict(guard_facts, op_id, selected):
     return None
 
 
-def external_resource_issues(facts, svc, operations, version):
+def external_resource_issues(facts, operations, version):
     """与排产守卫同一份执行事实核对外协记录里的本厂设备人员，先指出要更正的报工或要核对的旧记录。
 
     只先投影正式计划里的外协工序；有带资源的记录时才按守卫口径整体核对，平时不多读。
@@ -214,7 +212,7 @@ def external_resource_issues(facts, svc, operations, version):
     try:
         if version not in facts.resource_execution:
             facts.resource_execution[version] = collect_resource_execution_facts(
-                svc, prev_version=version, execution_projections=prior_execution_projections(facts, version),
+                facts.conn, prev_version=version, execution_projections=prior_execution_projections(facts, version),
                 capture=facts.capture, ledger=facts.execution_service)
         guard_facts, _, _ = facts.resource_execution[version]
     except AppError:

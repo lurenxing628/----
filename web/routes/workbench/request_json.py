@@ -1,12 +1,13 @@
-"""Strict JSON transport for workbench routes; each route keeps its own user-facing texts.
+"""Request transport for workbench routes: strict JSON and bounded file uploads.
 
 Bodies and JSON-valued arguments both decode through ``core.shared.strict_json``: duplicate keys and
-non-finite numbers are rejected. Codes and statuses are shared here, wording stays with the route.
+non-finite numbers are rejected. Uploaded import files share one byte limit. Codes and statuses are
+shared here, wording stays with the route.
 """
 
 from typing import Optional, Tuple
 
-from flask import request
+from flask import current_app, request
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.shared.strict_json import Reject, load_strict_json
@@ -16,6 +17,18 @@ def rejecter(message: str, code: str = "invalid_input", status: int = 400) -> Re
     def reject():
         raise WorkbenchCommandRejected(code, message, status)
     return reject
+
+
+def read_upload_file(too_large: str) -> bytes:
+    """The single multipart ``file`` within ``EXCEL_MAX_UPLOAD_BYTES``.
+
+    Reads at most one byte past the limit; a larger file is rejected whole (413), never imported in part.
+    """
+    limit = current_app.config["EXCEL_MAX_UPLOAD_BYTES"]
+    content = request.files["file"].read(limit + 1)
+    if len(content) > limit:
+        rejecter(too_large, "invalid_input", 413)()
+    return content
 
 
 def read_json_body(*, transport: str, malformed: str, incomplete: str, duplicate: Optional[str] = None,

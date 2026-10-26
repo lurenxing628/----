@@ -2,11 +2,13 @@
 
 import json
 from datetime import datetime
+from typing import NoReturn
 
 from core.models.workbench_command import canonical_json
 from core.services.workbench.facts.system_reads import backup_records
 from core.services.workbench.facts.system_redaction import public_system_text
 from core.services.workbench.messages import stored_utc_text
+from core.shared.strict_json import load_strict_json
 from data.repositories.system_job_state_repo import SystemJobStateRepository
 from data.repositories.workbench_system_maintenance_repo import WorkbenchSystemMaintenanceRepository
 
@@ -49,12 +51,15 @@ def _restore_records(journal, records):
     return rows
 
 
+def _not_object() -> NoReturn:
+    raise ValueError("Stored detail is not a strict JSON object")
+
+
 def _detail(value):
     try:
-        parsed = json.loads(value) if isinstance(value, str) else None
-    except (TypeError, ValueError):
-        parsed = None
-    return parsed if isinstance(parsed, dict) else {"unparsed_detail": public_system_text(str(value or ""), 8192)}
+        return load_strict_json(value, on_malformed=_not_object, expected=dict)
+    except ValueError:
+        return {"unparsed_detail": public_system_text(str(value or ""), 8192)}
 
 
 def _cleanup_audits(conn):
@@ -130,10 +135,8 @@ def _job_detail(job, label):
     if raw is None or raw == "":
         return {}, issues, timestamp
     try:
-        detail = json.loads(raw)
-    except (TypeError, ValueError):
-        detail = None
-    if not isinstance(detail, dict):
+        detail = load_strict_json(raw, on_malformed=_not_object, expected=dict)
+    except ValueError:
         message = "上次结果记录异常，详细内容请让维护人员查看日志。"
         issues.append({"code": "maintenance_last_detail_invalid", "job_key": job.job_key,
                        "message": label + "：" + message})

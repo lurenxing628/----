@@ -6,7 +6,6 @@ from .optimizer_budget_projection import project_optimizer_budget
 from .optimizer_public_safety import (
     project_attempt_score,
     safe_attempt_text,
-    safe_counter_dict,
     safe_non_negative_int,
     safe_public_text_list,
 )
@@ -281,10 +280,6 @@ def project_search_report(value: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     score = project_attempt_score(value.get("best_score"))
     if score:
         public["best_score"] = score
-
-    rejection_summary = safe_counter_dict(value.get("rejection_summary"))
-    if rejection_summary:
-        public["rejection_summary"] = rejection_summary
 
     skipped_phases = _project_skipped_phases(value.get("skipped_phases"))
     if skipped_phases:

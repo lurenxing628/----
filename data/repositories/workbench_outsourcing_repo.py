@@ -4,16 +4,20 @@ Judgement (missing schema, unknown receipt, member drift, row caps) belongs to
 core.services.workbench.outsourcing.service; this module only returns what is stored.
 """
 
-import json
 import secrets
-from typing import Any, Dict, Optional, TypedDict
+from typing import Any, Dict, NoReturn, Optional, TypedDict
 
 from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_metadata_schema import workbench_metadata_contract_issues
-from core.infrastructure.workbench_outsourcing_schema import contract_issues
-from core.infrastructure.workbench_outsourcing_source_schema import contract_issues as source_contract_issues
+from core.infrastructure.workbench_outsourcing_schema import workbench_outsourcing_contract_issues
+from core.infrastructure.workbench_outsourcing_source_schema import workbench_outsourcing_source_contract_issues
 from core.infrastructure.workbench_plan_identity_schema import workbench_plan_identity_contract_issues
 from core.models.workbench_outsourcing import document_text
+from core.shared.strict_json import load_strict_json
+
+
+def _corrupt_receipt() -> NoReturn:
+    raise ValueError("已保存的外协登记内容无法读取。")
 
 
 class RawReceiptFacts(TypedDict):
@@ -28,7 +32,7 @@ class WorkbenchOutsourcingRepository:
     def schema_issues(self):
         """Receipt, source-confirmation, metadata and plan-identity contract issues; empty when complete."""
         memo = schema_contract_memo(self.conn)
-        return (memo.get_schema(contract_issues) + memo.get_schema(source_contract_issues) +
+        return (memo.get_schema(workbench_outsourcing_contract_issues) + memo.get_schema(workbench_outsourcing_source_contract_issues) +
                 memo.get_schema(workbench_metadata_contract_issues) +
                 memo.get_schema(workbench_plan_identity_contract_issues))
 
@@ -47,8 +51,8 @@ class WorkbenchOutsourcingRepository:
     @staticmethod
     def _header(row, members):
         result = dict(row)
-        result["origin"] = json.loads(result.pop("origin_json"))
-        result["identity"] = json.loads(result.pop("identity_json"))
+        result["origin"] = load_strict_json(result.pop("origin_json"), on_malformed=_corrupt_receipt)
+        result["identity"] = load_strict_json(result.pop("identity_json"), on_malformed=_corrupt_receipt)
         result["target"] = {"kind": result["target_kind"], "batch_ref": result["batch_ref"],
                             "supplier_ref": result["supplier_ref"], "operation_refs": members}
         return result
@@ -86,10 +90,6 @@ class WorkbenchOutsourcingRepository:
         rows = self.conn.execute("SELECT outsourcing_ref FROM WorkbenchOutsourcingReceipts" + where +
                                  " ORDER BY outsourcing_ref LIMIT ?", params + (limit + 1,)).fetchall()
         return [row[0] for row in rows]
-
-    def has_confirm_receipts(self):
-        """是否已有任何 outsourcing.confirm 命令回执。"""
-        return self.conn.execute("SELECT 1 FROM WorkbenchCommandReceipts WHERE action='outsourcing.confirm' LIMIT 1").fetchone() is not None
 
     def history(self, ref, number, size):
         count = self.conn.execute("SELECT COUNT(*) FROM WorkbenchOutsourcingFacts WHERE outsourcing_ref=?", (ref,)).fetchone()[0]

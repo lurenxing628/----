@@ -21,7 +21,7 @@ def _foreign_key_groups(table_name: str, *, structure: SchemaStructure) -> List[
     grouped: Dict[int, List[Tuple[int, str, str, str, str]]] = {}
     for row in structure.foreign_keys(table_name):
         group_id = int(row[0])
-        item = (int(row[1]), str(row[3]), str(row[2]), str(row[4]), str(row[6] or "").upper())
+        item = (int(row[1]), str(row[3]), str(row[2]), str(row[4]), row[6].upper())
         grouped.setdefault(group_id, []).append(item)
     out: List[ForeignKeyGroup] = []
     for parts in grouped.values():
@@ -40,10 +40,9 @@ def _foreign_key_groups(table_name: str, *, structure: SchemaStructure) -> List[
 def _table_columns_info(table_name: str, *, structure: SchemaStructure) -> dict:
     return {
         str(row[1]): {
-            "type": str(row[2] or ""),
-            "notnull": int(row[3] or 0),
+            "notnull": row[3],
             "default": row[4],
-            "pk": int(row[5] or 0),
+            "pk": row[5],
         }
         for row in structure.table_info(table_name)
     }
@@ -145,7 +144,7 @@ def operation_execution_event_contract_issues(
 
 
 def _normalize_sql_contract_text(sql: str) -> str:
-    normalized = " ".join(str(sql or "").lower().split())
+    normalized = " ".join(sql.lower().split())
     replacements = (("( ", "("), (" )", ")"), (" ,", ","))
     for old, new in replacements:
         while old in normalized:
@@ -167,7 +166,7 @@ def _operation_execution_column_contract_issues(info: dict, normalized_sql: str,
         item = info.get(column)
         if not item:
             issues.append(f"missing_column: OperationExecutionEvents.{column}")
-        elif int(item.get("notnull") or 0) != 1:
+        elif item["notnull"] != 1:
             issues.append(f"nullable_column: OperationExecutionEvents.{column}")
     for column in ("remark", "reason_detail"):
         if column not in info:

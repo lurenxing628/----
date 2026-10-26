@@ -31,7 +31,7 @@ def normalize_week_offset_for_explicit_range(
 def get_plan_time_span_dates(
     plan_query_service,
     version: int,
-    plan_role: Optional[str] = None,
+    plan_role: str,
     scenario_id: Optional[str] = None,
 ) -> Optional[Dict[str, str]]:
     try:
@@ -65,7 +65,7 @@ def resolve_schedule_result_week_range(
     *,
     plan_query_service,
     version: Optional[int],
-    plan_role: Optional[str] = None,
+    plan_role: str,
     scenario_id: Optional[str] = None,
     week_start: Optional[str] = None,
     offset_weeks: Any = 0,

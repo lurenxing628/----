@@ -103,22 +103,21 @@ class ScheduleRunState:
         *,
         block: bool,
         remaining_failed: int = 0,
-        failed_op: Optional[OpForScheduleAlgo] = None,
+        failed_op: OpForScheduleAlgo,
         skipped_ops: Optional[List[OpForScheduleAlgo]] = None,
         error_message: str = "",
     ) -> None:
         self.failed_count += 1 + max(remaining_failed, 0)
-        if failed_op is not None:
-            detail = self._failure_detail(
-                "dispatch_operation_failed",
-                failed_op,
-                batch_id=batch_id,
-                extra={"error_message": error_message} if error_message else None,
-            )
-            self.failure_details.append(detail)
-            self._retire_resource_demand(detail["op_id"])
-            if batch_id:
-                self.batch_failure_sources[batch_id] = detail
+        detail = self._failure_detail(
+            "dispatch_operation_failed",
+            failed_op,
+            batch_id=batch_id,
+            extra={"error_message": error_message} if error_message else None,
+        )
+        self.failure_details.append(detail)
+        self._retire_resource_demand(detail["op_id"])
+        if batch_id:
+            self.batch_failure_sources[batch_id] = detail
         for skipped_op in skipped_ops or ():
             self.failure_details.append(
                 self._failure_detail(

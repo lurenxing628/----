@@ -38,7 +38,7 @@ def sample_runtime(tmp_path, monkeypatch):
         server.server_close()
         assert runtime.shutdown(timeout=30), runtime.status
         assert app.extensions["workbench_request_lifecycle"].shutdown(timeout=15)
-        release_runtime_lock(scope, db_path=str(database))
+        release_runtime_lock(scope, db_path=str(database), expected_payload=lock)
 
 
 def test_small_sample_exercises_real_worker_and_preserves_partial_actuals(sample_runtime, tmp_path):

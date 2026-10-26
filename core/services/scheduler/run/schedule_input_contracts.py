@@ -8,6 +8,7 @@ from core.algorithm_contracts.operation_effort import OperationEffort
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.models.batch import Batch
 from core.models.batch_operation import BatchOperation
+from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact
 
 
@@ -18,8 +19,7 @@ class ScheduleRunInput:
     end_date_norm: Optional[date]
     t0: float
     cal_svc: Any
-    cfg_svc: Any
-    cfg: Any
+    cfg: ScheduleConfigSnapshot
     readiness_gate_enabled: bool
     batches: Dict[str, Batch]
     operations: List[BatchOperation]
@@ -44,7 +44,6 @@ class ScheduleRunInput:
     downtime_map: Dict[str, Any]
     resource_pool: Any
     optimizer_seed_version: int
-    run_time_budget_seconds: Optional[float] = None
     operation_efforts: List[OperationEffort] = field(default_factory=list)
     operation_sources: Any = None
 

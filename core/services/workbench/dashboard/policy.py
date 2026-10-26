@@ -1,10 +1,9 @@
 """Service-side rulings over dashboard storage facts; the repositories only read and write rows."""
 
-import json
-
 from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import HANDLING_FIELDS, MAX_BYTES, MAX_ROWS, STATUSES, bounded, reference
+from core.shared.strict_json import load_strict_json
 
 
 def corrupt():
@@ -12,14 +11,8 @@ def corrupt():
 
 
 def _load_object(raw):
-    """存储边界只解码一次：不是合法 JSON 对象就按存储损坏拒绝。"""
-    try:
-        value = json.loads(raw)
-    except (TypeError, ValueError):
-        corrupt()
-    if type(value) is not dict:
-        corrupt()
-    return value
+    """存储边界只解码一次：不是严格 JSON 对象（含重复键、非有限数字）就按存储损坏拒绝。"""
+    return load_strict_json(raw, on_malformed=corrupt, expected=dict)
 
 
 def load_handling(raw):
@@ -28,16 +21,6 @@ def load_handling(raw):
             or any(value[key] is not None and type(value[key]) is not str for key in HANDLING_FIELDS)):
         corrupt()
     return value
-
-
-def require_dashboard_schema(repo):
-    if not repo.schema_installed():
-        raise WorkbenchCommandRejected("dashboard_unavailable", "值班台所需数据未准备完整，请联系维护人员处理。", 503)
-
-
-def require_external_schema(repo):
-    if not repo.schema_installed():
-        raise WorkbenchCommandRejected("dashboard_external_unavailable", "外协处置所需数据未准备完整，请联系维护人员处理。", 503)
 
 
 def mapped_anchors(loaded, refs):

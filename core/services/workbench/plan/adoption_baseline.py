@@ -152,10 +152,10 @@ def _read_adoption_source(conn, *, plan_ref, version, recorded, context):
             "provenance": {"state": "available", "reason": None, **origin, "adopted_at": audit.get("adopted_at")}}
 
 
-def read_adoption_baseline(conn, *, plan_ref, version, history, facts, point_annotator=None, context=None):
+def read_adoption_baseline(conn, *, plan_ref, version, history, facts, point_annotator, context):
     """Return captured tasks and locator, or raise a classified evidence gap."""
     try:
-        evidence = read_adoption_source(conn, plan_ref=plan_ref, version=version, history=history, context=context)
+        evidence = context.adoption_source(plan_ref, version, history, recorded=None)
         if evidence is None:
             return None
         basis, audit, receipt = (evidence[key] for key in ("basis", "audit", "receipt"))

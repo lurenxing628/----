@@ -40,6 +40,8 @@ function effort() { return { source: 'internal', quantity_basis: 'piece', target
 function drill(q, operation, side = 'selected') { const official = side === 'reference' && q.comparison_mode === 'admission_official'; return { run_ref: run, candidate_ref: side === 'reference' && !official ? baseline : chosen,
   operation_ref: operation, comparison_mode: q.comparison_mode || 'candidates', resource_view: q.resource_view || 'selected_batches', range_start: start, range_end: end,
   ...(official ? { reference_view: true, plan_ref: plan } : {}) }; }
+// 换型汇总两侧恒带投影事实（decision_changeovers.py public_summary）。
+const changeoverFacts = section => section === 'preparation' ? {} : { state: 'complete', conflict: false, conflict_count: 0, unknown_count: 0, issues: [] };
 function fixture(query = {}, section = 'preparation') {
   query = { ...common, ...query }; if (query.comparison_mode === 'admission_official') delete query.reference_candidate_ref; const q = A.preparationScope(run, query, section), official = q.comparison_mode === 'admission_official';
   const scope = { run_ref: run, selected_candidate_ref: chosen, comparison_mode: q.comparison_mode, resource_view: q.resource_view, range_start: start, range_end: end, batch_refs: [batch], operation_refs: Array.from({ length: 23 }, (_, i) => ref(100 + i)), resource_refs: { machine: [machine], operator: [] },
@@ -56,7 +58,7 @@ function fixture(query = {}, section = 'preparation') {
   return { ok: true, schema_version: 1, warnings: [], meta: { request_ref: '1'.repeat(32), source: 'production', time_basis: 'factory_local', snapshot_ref: token, as_of: end }, data: { run_ref: run, scope,
     candidate: { candidate_ref: chosen, label: '所选候选' }, baseline: official ? { kind: 'admission_official', baseline_ref: plan, label: '受理时正式计划 v2', state: 'available' } : { kind: 'candidate', candidate_ref: baseline, label: '候选基准', state: 'available' },
     filters, filter_options: { batches: [{ ref: batch, label: 'B-01' }], machines: [{ ref: machine, label: '车床01', kind: 'machine' }] }, items: items.slice((q.page - 1) * q.size, q.page * q.size), page: { number: q.page, size: q.size, total: items.length, has_more: q.page * q.size < items.length },
-    metric_version: 'decision-preparation-v4', summary: { scope: section === 'preparation' ? 'full_admission' : 'fixed_changeover_window', before: clone(values), after: clone(values), deltas: Object.fromEntries(Object.keys(values).map(key => [key, delta(0)])), ...(section === 'preparation' ? { role_totals: { before: clone(roles), after: clone(roles) } } : {}) } } };
+    metric_version: 'decision-preparation-v4', summary: { scope: section === 'preparation' ? 'full_admission' : 'fixed_changeover_window', before: { ...clone(values), ...changeoverFacts(section) }, after: { ...clone(values), ...changeoverFacts(section) }, deltas: Object.fromEntries(Object.keys(values).map(key => [key, delta(0)])), ...(section === 'preparation' ? { role_totals: { before: clone(roles), after: clone(roles) } } : {}) } } };
 }
 function identities() {
   const archive = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/decision_preparation_workspace.json'), 'utf8'));

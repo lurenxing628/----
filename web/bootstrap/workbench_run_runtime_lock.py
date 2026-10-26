@@ -7,11 +7,7 @@ import sys
 from web.runtime_host import normalize_runtime_db_path
 
 from .launcher_lock_result import read_runtime_lock_result_from_path
-from .launcher_paths import (
-    current_runtime_owner,
-    db_scope_lock_path,
-    runtime_lock_path,
-)
+from .launcher_paths import current_runtime_owner, db_scope_lock_path
 
 
 class RunRuntimeOwnershipError(RuntimeError):
@@ -19,8 +15,7 @@ class RunRuntimeOwnershipError(RuntimeError):
 
 
 def _identity(payload):
-    return tuple(str(payload.get(key) or "") for key in
-                 ("pid", "owner", "exe_path", "started_at", "db_path"))
+    return tuple(str(payload[key]) for key in ("pid", "owner", "exe_path", "started_at", "db_path"))
 
 
 def _read_owned(path, db_path):
@@ -52,12 +47,7 @@ class RunRuntimeLockProof:
         if not isinstance(runtime_lock, dict) or not self.db_path:
             raise RunRuntimeOwnershipError("runtime_lock_not_supplied")
         self.claim = dict(runtime_lock)
-        state_dir = str(self.claim.get("state_dir") or "")
-        self.shell_path = str(self.claim.get("path") or "")
-        if (not state_dir or not self.shell_path
-                or normalize_runtime_db_path(self.shell_path) !=
-                normalize_runtime_db_path(runtime_lock_path(state_dir))):
-            raise RunRuntimeOwnershipError("runtime_lock_shell_path_mismatch")
+        self.shell_path = self.claim["path"]
         self.db_lock_path = db_scope_lock_path(self.db_path)
         self._require_database()
         self.shell = _read_owned(self.shell_path, self.db_path)

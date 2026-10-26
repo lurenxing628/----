@@ -29,14 +29,16 @@ _EVENT_SEQUENCE_SQL = (
 
 _SEQUENCE_SCOPE_COLUMNS = ("schedule_version", "schedule_id", "op_id", "batch_id", "source_table",
                            "effective_plan_role", "scenario_id")
+_DATA_ISSUE_LIMIT = 8
+_SEQUENCE_ISSUE_LIMIT = 4
 
 
-def operation_execution_event_data_issues(conn: sqlite3.Connection, *, limit: int = 8) -> List[str]:
+def operation_execution_event_data_issues(conn: sqlite3.Connection) -> List[str]:
     issues: List[str] = []
-    issues.extend(_event_value_issues(conn, limit=limit))
-    if len(issues) < limit:
-        issues.extend(_foreign_key_data_issues(conn, limit=limit - len(issues)))
-    return issues[:limit]
+    issues.extend(_event_value_issues(conn, limit=_DATA_ISSUE_LIMIT))
+    if len(issues) < _DATA_ISSUE_LIMIT:
+        issues.extend(_foreign_key_data_issues(conn, limit=_DATA_ISSUE_LIMIT - len(issues)))
+    return issues[:_DATA_ISSUE_LIMIT]
 
 
 def _text(value: Any) -> str:
@@ -88,7 +90,6 @@ def _validate_event_contract_row(row: Any) -> OperationExecutionEvent:
     fingerprint = row["request_fingerprint"]
     if fingerprint is not None:
         _required_text(fingerprint, "request_fingerprint")
-    _required_text(row["previous_state_revision"], "previous_state_revision")
     normalize_operation_event_time(row["created_at"])
     return event
 
@@ -153,12 +154,12 @@ def _sequence_issue(events: Iterable[OperationExecutionEventSequenceEntry], *, e
     return ""
 
 
-def operation_execution_event_sequence_issues(conn: sqlite3.Connection, *, limit: int = 8) -> List[str]:
+def operation_execution_event_sequence_issues(conn: sqlite3.Connection) -> List[str]:
     return _collect_scoped_event_issues(
         conn,
         sql=_EVENT_SEQUENCE_SQL,
         error_prefix="bad_sequence_check_error",
-        limit=limit,
+        limit=_SEQUENCE_ISSUE_LIMIT,
         validate_row=False,
     )
 

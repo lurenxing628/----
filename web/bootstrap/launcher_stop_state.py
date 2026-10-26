@@ -43,7 +43,7 @@ def _runtime_state_name(
         return "blocked_contract"
     if endpoint_uncertain and has_artifacts:
         return "mixed" if endpoint_up else "blocked_endpoint"
-    contract_pid = int(identity.get("contract_pid") or 0)
+    contract_pid = identity["contract_pid"]
     if endpoint_up:
         return "mixed" if _contract_pid_mismatch(contract, contract_pid, identity) else "active"
     if _contract_pid_requires_mixed(contract_pid, identity):
@@ -56,7 +56,4 @@ def _runtime_state_name(
 
 
 def _runtime_stop_is_complete(status: Dict[str, Any]) -> bool:
-    state = str(status.get("state") or "").strip()
-    if state == "absent":
-        return True
-    return state == "stale"
+    return status["state"] in ("absent", "stale")

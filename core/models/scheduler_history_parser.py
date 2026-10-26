@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
 import math
 from dataclasses import dataclass
-from json import JSONDecodeError
-from typing import Any, Dict, Optional
+from typing import Any, Dict, NoReturn, Optional
+
+from core.shared.strict_json import load_strict_json
 
 
 class NonFiniteSummaryNumber(ValueError):
@@ -18,11 +18,17 @@ class ResultSummaryParseResult:
     reason: str
     raw_type: str
 
-def _reject_json_non_finite_constant(value: str) -> None:
-    raise NonFiniteSummaryNumber(f"排产摘要包含非有限数字：{value}")
+
+def _unreadable_summary() -> NoReturn:
+    raise ValueError("排产摘要不是严格的 JSON。")
+
+
+def _non_finite_summary() -> NoReturn:
+    raise NonFiniteSummaryNumber("排产摘要包含非有限数字。")
 
 
 def _has_non_finite_number(value: Any) -> bool:
+    # 只给已解码的 dict 用：unpacked 会把无损保存的 {"$sqlite_real": "inf"} 还原成真正的非有限数。
     if isinstance(value, float):
         return not math.isfinite(value)
     if isinstance(value, dict):
@@ -77,10 +83,11 @@ def parse_result_summary_payload(raw_summary: Any) -> ResultSummaryParseResult:
         )
 
     try:
-        parsed = json.loads(raw_summary, parse_constant=_reject_json_non_finite_constant)
+        # 重复键按解析失败计；非有限数字（含溢出成无穷的数字）单独记原因。
+        parsed = load_strict_json(raw_summary, on_malformed=_unreadable_summary, on_nonfinite=_non_finite_summary)
     except NonFiniteSummaryNumber:
         return _non_finite_result("str")
-    except JSONDecodeError:
+    except ValueError:
         return ResultSummaryParseResult(
             payload=None,
             parse_failed=True,
@@ -88,16 +95,13 @@ def parse_result_summary_payload(raw_summary: Any) -> ResultSummaryParseResult:
             raw_type="str",
         )
 
-    if not isinstance(parsed, dict):
+    if type(parsed) is not dict:
         return ResultSummaryParseResult(
             payload=None,
             parse_failed=True,
             reason="invalid_structure",
             raw_type=type(parsed).__name__,
         )
-
-    if _has_non_finite_number(parsed):
-        return _non_finite_result("str")
 
     return ResultSummaryParseResult(
         payload=parsed,

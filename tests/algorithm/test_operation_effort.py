@@ -190,7 +190,7 @@ def test_piece_operation_dispatch_state_prev_end_uses_operation_release_floor():
     assert state.prev_end("B1") == batch_end
 
 
-def _external_op(*, merged, total_days=3.0, material_ready_date="2026-10-16"):
+def _external_op(*, merged, total_days=3.0, material_ready_date=datetime(2026, 10, 16)):
     # 与排产输入构建一致：合并组只带整组周期，单道外协只带自己的周期。
     return make_algo_op(id=5, op_code="EXT", source="external", setup_hours=0.0, unit_hours=0.0,
                         material_ready_date=material_ready_date, ext_days=None if merged else 2.0,
@@ -213,7 +213,7 @@ def test_external_candidate_window_waits_for_material_like_the_placement(merged)
     base = datetime(2026, 10, 13, 8)
     op, calendar = _external_op(merged=merged), _NaturalDayCalendar()
     state = ScheduleRunState(base_time=base)
-    window = external_candidate_window(SimpleNamespace(calendar=calendar), state, op=op, prev_end=base)
+    window = external_candidate_window(calendar, state.external_group_cache, op=op, prev_end=base)
     result, blocked = schedule_external(calendar=calendar, op=op, batch_progress={},
                                         external_group_cache={}, base_time=base, errors=[], end_dt_exclusive=None)
     assert not blocked and window == (result.start_time, result.end_time)
@@ -222,7 +222,7 @@ def test_external_candidate_window_waits_for_material_like_the_placement(merged)
         # An already placed group block is shared as-is, even when it started before this member's material.
         placed = (base, base + timedelta(days=3))
         state.external_group_cache[external_group_key(op)] = placed
-        assert external_candidate_window(SimpleNamespace(calendar=calendar), state, op=op, prev_end=base) == placed
+        assert external_candidate_window(calendar, state.external_group_cache, op=op, prev_end=base) == placed
 
 
 def test_merged_external_group_is_cached_only_when_it_fits_the_window():

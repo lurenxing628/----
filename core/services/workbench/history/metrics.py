@@ -1,6 +1,5 @@
 """History values from the saved sources and the existing decision projections."""
 
-from types import SimpleNamespace
 from typing import List, Optional, Union, cast
 
 from core.services.capacity.plan_calendar_intervals import hours, instant
@@ -25,7 +24,7 @@ from core.services.workbench.facts.preparation_projection import (
 from core.services.workbench.facts.resource_intervals import task_interval
 from core.services.workbench.facts.resource_projection import resource_cohort
 from core.services.workbench.facts.trial_origin import delivery_origin as trial_delivery_origin
-from core.services.workbench.run.decision_resource_engine import DecisionResources
+from core.services.workbench.run.decision_resource_engine import ResourceWindowInput, ResourceWindowMetrics
 from core.services.workbench.run.preflight import batch_dependencies, classify, task_row
 from core.services.workbench.trial.capacity import capacity_tasks as trial_resource_tasks
 from core.services.workbench.trial.preparation import preparation_projection, trial_changeovers
@@ -103,7 +102,7 @@ def _scope(packet, batch_refs=None, operation_refs=None, *, batches=None, demand
             "operation_refs": sorted(operation_refs) if operation_refs is not None else None,
             "batch_count": len(batch_refs) if batch_refs is not None else None,
             "operation_count": len(operation_refs) if operation_refs is not None else None,
-            "demand_hours": demand, "batch_quantity": _quantity(packet, batch_refs, batches or {}),
+            "demand_hours": demand, "batch_quantity": _quantity(packet, batch_refs, batches),
             "reason": reason if reason else None if available else metric_reason(
                 "history_scope_not_recorded", "保存来源缺少可核对的批次与工序成员。")}
 
@@ -128,7 +127,6 @@ def _admission_count_values(packet, operation_refs, *, reader):
             try:
                 checks = PreflightChecks(tables)
                 reverse = {key: ref for ref, key in facts.operations.items()}
-                view = SimpleNamespace(operation_ref=lambda op: reverse[op["id"]])
                 rows = []
                 by_batch = {}
                 for ref in operation_refs:
@@ -139,8 +137,9 @@ def _admission_count_values(packet, operation_refs, *, reader):
                     ops = by_batch.get(batch["batch_id"], [])
                     batch_rows = []
                     for operation in ops:
-                        projection = facts.execution[reverse[operation["id"]]]
-                        row = task_row(view, batch, operation, projection)
+                        operation_ref = reverse[operation["id"]]
+                        projection = facts.execution[operation_ref]
+                        row = task_row(operation_ref, batch, operation, projection)
                         ready, _release = checks.operation_readiness(batch, operation, settings)
                         row["status"], row["issues"] = classify(checks, batch, operation, projection, settings, ready)
                         batch_rows.append(row)
@@ -221,20 +220,16 @@ def _trial_preparation(saved, head, projected):
 
 
 def _trial_resources(packet, projected, window, calendar):
-    admission = packet["head"]["admission"]
-    archive = admission["facts"]
     original, tasks = (trial_resource_tasks(projected, side) for side in ("original", "current"))
     intervals = {key: {row["row_ref"]: task_interval(row) for row in rows}
                  for key, rows in (("reference", original), (packet["ref"], tasks))}
     cohort = resource_cohort([original, tasks], task_intervals=[intervals["reference"], intervals[packet["ref"]]])
-    resources = [{"kind": kind, "ref": ref, "saved_id": saved_id}
-                 for (kind, ref), saved_id in calendar.bindings.items()]
-    view = SimpleNamespace(calendar_archive=archive, context={"resources": resources}, run={"run_ref": packet["ref"]},
-        scope={"range_start": window["start"], "range_end": window["end"]},
-        resource_cohort={"resources": cohort}, resource_before_tasks=original,
-        rows=[{"candidate_ref": packet["ref"], "status": "completed"}], baseline={"state": "available"},
-        resource_tasks=lambda _key: tasks, computation_key=lambda key: key, task_intervals=lambda key: intervals[key])
-    engine = DecisionResources(view, calendar=calendar)
+    engine = ResourceWindowMetrics(ResourceWindowInput(
+        window["start"], window["end"], calendar,
+        [{**item, "saved_id": calendar.bindings.get((item["kind"], item["ref"]))} for item in cohort],
+        {"reference": True, packet["ref"]: True},
+        side_tasks=lambda key: original if key == "reference" else tasks,
+        task_intervals=intervals.__getitem__, computation_key=lambda key: key))
     values = engine.metrics(packet["ref"])
     summaries = {kind: engine.summary(packet["ref"], kind) for kind in ("machine", "operator")}
     for kind, summary in summaries.items():

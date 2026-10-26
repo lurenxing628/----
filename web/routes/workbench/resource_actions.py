@@ -12,6 +12,7 @@ from web.api_responses import json_response, query_success
 
 from .api_responses import api_endpoint
 from .read_context import bind_read_snapshot
+from .request_json import read_upload_file
 from .resource_action_context import (
     confirm_body,
     issue_preview,
@@ -51,10 +52,7 @@ def _upload(kind):
     category = request.form.get("category")
     if fmt not in ("csv", "xlsx") or mode != "upsert" or (kind == "op_type" and category not in ("internal", "external")):
         raise WorkbenchCommandRejected("invalid_input", "只支持 CSV 或 XLSX 按编号增量导入，工种还要选自制或外协；数据没有改动。请换用正确的文件后点「开始预检」。", 400)
-    content = request.files["file"].read()
-    limit = int(current_app.config.get("EXCEL_MAX_UPLOAD_BYTES") or current_app.config.get("MAX_CONTENT_LENGTH") or 0)
-    if limit > 0 and len(content) > limit:
-        raise WorkbenchCommandRejected("invalid_input", "文件超过本机允许的大小，一行都没有导入。请缩小文件后重新点「开始预检」。", 413)
+    content = read_upload_file("文件超过本机允许的大小，一行都没有导入。请缩小文件后重新点「开始预检」。")
     return content, fmt, mode, {"category": category} if kind == "op_type" else {}
 
 

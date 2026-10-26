@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 VIEW_MANUALS: Dict[str, Dict[str, Any]] = {
     "dashboard": {
@@ -106,11 +106,3 @@ VIEW_MANUALS: Dict[str, Dict[str, Any]] = {
 }
 for _view_id, _entry in VIEW_MANUALS.items():
     _entry["view"] = _view_id
-
-
-def manual_entry(view_id: Optional[str]) -> Optional[Dict[str, Any]]:
-    """按视图 id 取“本页说明”登记；未登记或空值返回 None，不做别名猜测。"""
-    key = str(view_id or "").strip()
-    if not key:
-        return None
-    return VIEW_MANUALS.get(key)

@@ -33,7 +33,7 @@
         {intent && intent.phase === 'rejected' && <Button disabled={busy || !!storageError} onClick={onCancelRejected}>结束本次未采用</Button>}
         {pending && replacedInfo && <Button disabled={busy || !!storageError} onClick={onDismissReplaced}>结束旧来源待确认记录</Button>}
         {result ? <><Button icon="check" onClick={onFinish}>完成</Button><Button icon="arrow-right" className="btn primary"
-          reason={typeof onNavigate === 'function' ? '' : window.WorkbenchTerms.outcomes.unavailable} onClick={() => onNavigate('analysis', { plan_ref: result.data.official_plan.plan_ref })}>进入正式计划</Button></>
+          onClick={() => onNavigate('analysis', { plan_ref: result.data.official_plan.plan_ref })}>进入正式计划</Button></>
           : pending ? <Button icon="refresh-cw" busy={busy} onClick={onLookup}>{window.WorkbenchTerms.actions.query_result}</Button>
             : <><Button icon="refresh-cw" busy={busy} disabled={!!storageError} onClick={onPreview}>重新预检</Button><Button icon="check" className="btn primary" busy={busy}
               disabled={!canConfirm} onClick={onConfirm}>确认正式采用</Button></>}</>}>

@@ -197,7 +197,7 @@ async function main() {
   load(masterContext, 'MasterOverviewAPI.js'); load(masterContext, 'MasterOverviewWorkspace.jsx');
   let masterTree;
   async function settleMaster() {
-    for (let index = 0; index < 4; index++) { masterTree = masterHooks.render(() => masterWindow.MasterOverviewWorkspace({})); masterHooks.flush(); await turns(); }
+    for (let index = 0; index < 4; index++) { masterTree = masterHooks.render(() => masterWindow.MasterOverviewWorkspace({ initialContext: {} })); masterHooks.flush(); await turns(); }
   }
   const masterDetailReads = () => masterRequests.filter(url => url.pathname.includes('/entities/')).length;
   await settleMaster();
@@ -211,7 +211,7 @@ async function main() {
   assert.equal(find(masterTree, 'master-detail').result.data.rows[0].title, '捕获到料');
   find(masterTree, 'master-detail').onSection('fields'); await settleMaster();
   find(masterTree, 'master-table').onSelect(find(masterTree, 'master-table').data.rows[0], null);
-  masterTree = masterHooks.render(() => masterWindow.MasterOverviewWorkspace({}));
+  masterTree = masterHooks.render(() => masterWindow.MasterOverviewWorkspace({ initialContext: {} }));
   assert.equal(find(masterTree, 'master-detail').section, 'issues');
   assert.equal(find(masterTree, 'master-detail').result, null);
   assert.equal(find(masterTree, 'master-detail').loading, true);
@@ -219,7 +219,7 @@ async function main() {
   assert.equal(masterDetailReads(), 3); assert.equal(find(masterTree, 'master-detail').result.data.rows[0].title, '当前到料');
   find(masterTree, 'master-detail').onBack();
   masterListeners.focus();
-  masterTree = masterHooks.render(() => masterWindow.MasterOverviewWorkspace({}));
+  masterTree = masterHooks.render(() => masterWindow.MasterOverviewWorkspace({ initialContext: {} }));
   assert.equal(find(masterTree, 'master-detail').selected, null);
   find(masterTree, 'button', props => Array.isArray(props.children) && props.children.includes('刷新本页')).onClick();
   await settleMaster();
@@ -312,7 +312,7 @@ async function main() {
   const planContext = vm.createContext({ window: planWindow, React: planHooks.React });
   load(planContext, 'GanttGraph.js'); load(planContext, 'PlanGanttModel.js'); Object.assign(planWindow.PlanGanttModel, { names: () => new Map(), timeLabel: String, number: String });
   load(planContext, 'PlanWorkspace.jsx', source('PlanWorkspace.jsx').replace('window.PlanWorkspace = PlanWorkspace;', 'window.PlanWorkspaceSession = WorkspaceSession;'));
-  const renderPlan = () => planHooks.render(() => planWindow.PlanWorkspaceSession({ adapter: {}, planRef: planA, initialContext: { projection_page: 3 } }));
+  const renderPlan = () => planHooks.render(() => planWindow.PlanWorkspaceSession({ adapter: {}, planRef: planA, initialContext: { projection_page: 3 }, renderTrial: () => null }));
   let planTree = renderPlan(); assert.equal(find(planTree, 'projection-tables').page, 3);
   find(find(planTree, 'catalog').actions, 'button').onClick(); planTree = renderPlan();
   find(planTree, 'form').onSubmit({ preventDefault() {} }); planTree = renderPlan();
@@ -347,7 +347,7 @@ async function main() {
   const createRouteGraph = routeWindow.GanttGraph.create; let routeGraphBuilds = 0;
   routeWindow.GanttGraph.create = graph => { routeGraphBuilds++; return createRouteGraph(graph); };
   load(routeContext, 'PlanWorkspace.jsx', source('PlanWorkspace.jsx').replace('window.PlanWorkspace = PlanWorkspace;', 'window.PlanWorkspaceSession = WorkspaceSession;'));
-  const routeProps = { planRef: planA, view: 'gantt', initialContext: { selected_task_ref: tasks[0].task_ref, range_start: tasks[0].start, range_end: tasks[0].end },
+  const routeProps = { planRef: planA, view: 'gantt', renderTrial: () => null, initialContext: { selected_task_ref: tasks[0].task_ref, range_start: tasks[0].start, range_end: tasks[0].end },
     adapter: { async workspace(_plan, scope) {
       requests.push(JSON.parse(JSON.stringify(scope)));
       const task = tasks.find(task => task.start === scope.range_start);
@@ -391,7 +391,7 @@ async function main() {
   // Result/constraint/preparation task selection uses the same guarded detail-opening action.
   const trialHooks = hooks(), trialData = { draft_ref: 'draft', base: {}, base_identity: {}, name: '试调', status: 'editing',
     baseline: { version: null }, time_scope: { start: timeScope.range_start, end: timeScope.range_end }, comparison: {}, tasks: [], validation: { constraints_status: 'valid' } };
-  let mayLeave = true, guardCalls = 0, trialCommands = { blocked: false };
+  let mayLeave = true, guardCalls = 0, trialCommands = { blocked: false, clearError() {} };
   const trialWindow = { addEventListener() {}, removeEventListener() {}, TrialAPI: {}, TrialContract: {},
     TrialControls: { Button: 'button', ErrorBox: 'error', Modal: 'modal', Issues: 'issues', statusLabel: String, sourceLabel: () => '原安排' },
     TrialSession: { useRead: () => ({ result: { data: trialData, meta: {} }, busy: false, error: null }), useCommands: () => trialCommands },
@@ -401,7 +401,7 @@ async function main() {
   const trialSource = source('TrialWorkspace.jsx').replace('window.WorkbenchTrialWorkspace = WorkbenchTrialWorkspace;', 'window.TrialWorkspaceSession = Session; window.TrialFinish = Finish;');
   const trialContext = vm.createContext({ window: trialWindow, React: trialHooks.React, document: { documentElement: {} } });
   load(trialContext, 'TrialWorkspace.jsx', trialSource);
-  const renderTrial = () => trialHooks.render(() => trialWindow.TrialWorkspaceSession({ initialTarget: { draft_ref: 'draft' } }));
+  const renderTrial = () => trialHooks.render(() => trialWindow.TrialWorkspaceSession({ initialTarget: { draft_ref: 'draft' }, onTargetChange() {} }));
   let trialTree = renderTrial(); assert.equal(find(trialTree, 'trial-details'), null);
   await find(trialTree, 'trial-gantt').onSelect('task-one'); trialTree = renderTrial();
   assert.equal(find(trialTree, 'trial-details'), null, 'Ordinary Gantt selection keeps details collapsed');
@@ -415,7 +415,7 @@ async function main() {
 
   // A pending trial submission has one visible owner: the rendered dialog, otherwise the page notice.
   const pendingKey = 'trial-' + 'a'.repeat(48), commandError = new Error('上次试调提交结果还没查到');
-  trialCommands = { blocked: true, busy: false, key: pendingKey, note: '上次试调提交待确认。', error: commandError, lookup() {}, restore() {} };
+  trialCommands = { blocked: true, busy: false, key: pendingKey, note: '上次试调提交待确认。', error: commandError, lookup() {}, restore() {}, clearError() {} };
   const pendingNotice = tree => find(tree, 'section', props => props['aria-label'] === '待确认的试调提交');
   const commandErrorBox = tree => find(tree, 'error', props => props.error === commandError);
   trialTree = renderTrial(); assert(pendingNotice(trialTree) && commandErrorBox(trialTree), 'Without a dialog the page owns the pending submission');
@@ -483,6 +483,7 @@ async function main() {
     message: error => error.message, blocked: () => '', receipt: value => value && value.ok ? 'terminal' : 'pending',
     requestKey: () => 'related-resource-request', resultRef: (value, fallback) => value.data.entity_ref || fallback };
   const resourceAdapter = {
+    readPending() { return null; }, savePending() {}, clearPending() {},
     async list(kind, scope) {
       resourceRequests.push({ kind, ...scope });
       return { data: { entities: [], page: { number: scope.page, size: scope.size, total: kind === 'machine' ? 21 : 1 } },
@@ -814,7 +815,7 @@ async function main() {
   const CM = preparedContext.window.RunCandidateModel, BM = preparedContext.window.RunBaselineModel;
   const candidateTasks = [firstTask, secondTask].map(value => ({ ...value, row_ref: value.task_ref, batch_ref: value.batch_id,
     batch_label: value.batch_id, machine: { ref: 'machine', label: '设备' }, operator: null, data_gaps: [] }));
-  const candidateFacts = CM.prepare({ tasks: candidateTasks, gantt_graph: { ...unavailableGraph(), scope: 'full_candidate' }, task_span: { start: stamp(8), end: stamp(12) } });
+  const candidateFacts = CM.prepare({ tasks: candidateTasks, unplanned_operations: [], gantt_graph: { ...unavailableGraph(), scope: 'full_candidate' }, task_span: { start: stamp(8), end: stamp(12) } });
   const baselineFacts = BM.prepare({ comparisons: [{ ...candidateTasks[0], baseline_segments: [{ ...candidateTasks[0], row_ref: 'baseline-first', interval_comparable: true, start: stamp(7), end: stamp(9) }] }] });
   const candidateTimes = timeReads, candidateGroups = CM.groupPrepared(candidateFacts, 'machine'), baselineGroups = BM.groupPrepared(baselineFacts, 'machine');
   const selectedCandidate = CM.selectPrepared(candidateGroups, 'first'), withBaseline = BM.selectPrepared(selectedCandidate, baselineGroups, 'first');
@@ -1063,7 +1064,7 @@ async function main() {
   const planStart = overviewInstant(overviewTasks[0].start), planEnd = overviewInstant(overviewTasks[2].end);
   const planBoard = { scrollLeft: 0, scrollTop: 0, clientWidth: 1000, clientHeight: 440 };
   Object.assign(overviewWindow.PlanGanttModel, { prepare: () => ({ items: overviewTasks.map(task => ({ task, point: overviewWindow.PointContract.isPoint(task), start: overviewInstant(task.start), end: overviewInstant(task.end) })) }), groupPrepared: value => value, selectPrepared: value => value, layoutPrepared(_, width) { planWidths.push(width); return { start: planStart, end: planEnd, rows: [], tasks: [],
-    groupCount: 0, height: 0, locations: new Map(), baselineLocations: new Map(), conflicts: new Set(), labels: {} }; }, visibleRows: rows => rows });
+    groupCount: 0, height: 0, locations: new Map(), baselineLocations: new Map(), conflicts: new Set(), labels: {}, shownRefs: new Set(), taskOrder: new Map() }; }, visibleRows: rows => rows });
   Object.assign(overviewWindow, { ResourceControls: { Button: 'button', Icon: 'icon', TimelineZoom: 'plan-zoom', timelineZoomKey: () => null },
     WorkbenchFormat: { compactDateTime: String }, WorkbenchControls: { usePrintLayout: () => printing, EmptyState: 'empty' },
     GanttPresentationUI: { useExpanded: () => ({ expanded: false }), Axis: 'axis' }, GanttGraphLayer: { Controls: 'graph-controls', Lines: 'graph-lines' },
@@ -1325,7 +1326,7 @@ async function main() {
     ActualGanttModel: { ...modelContext.window.ActualGanttModel, deadlines(item) { deadlineVisits++; return modelContext.window.ActualGanttModel.deadlines(item); },
       wire() { assert.fail('Deadlines no longer convert an unused date'); }, tickStep: () => 1, tickLabel: String } };
   const toolbarContext = vm.createContext({ window: toolbarWindow, React: toolbarHooks.React }); load(toolbarContext, 'ActualGanttControls.jsx');
-  const toolbarProps = { data: toolbarData, model: { groups: [], items: toolbarData.items }, view: { mode: 'machine', query: '', late: 'all', collapsed: {}, selected: null }, width: 640, zoom: 1 };
+  const toolbarProps = { data: toolbarData, model: { groups: [], items: toolbarData.items, shownRefs: new Set(toolbarData.items.map(item => item.task.task_ref)) }, view: { mode: 'machine', query: '', late: 'all', collapsed: {}, selected: null }, width: 640, zoom: 1 };
   const toolbar = toolbarHooks.render(() => toolbarWindow.ActualGanttControls.Toolbar(toolbarProps));
   toolbarHooks.render(() => toolbarWindow.ActualGanttControls.Toolbar({ ...toolbarProps, width: 1000 })); assert.equal(deadlineVisits, 3);
   assert.deepEqual(find(toolbar, 'select').children.flat().map(option => option.props.children.join('')), ['全部工序 (3)', '已晚完成 (1)', '到期未确认完成 (2)', '剩余安排预计晚完成 (1)']);
@@ -1436,7 +1437,7 @@ async function main() {
   const prepareLegacyValues = field.legacyValues;
   field.legacyValues = (...args) => { legacyPreparations++; return prepareLegacyValues(...args); };
   legacyTask.execution.legacy_facts.filter = function (...args) { legacyScopeScans++; return Array.prototype.filter.apply(this, args); };
-  const editorProps = { task: legacyTask, record: null, legacy, action: 'create', adapter: {}, command: { phase: 'editing', locked: false, clearRejection: () => false } };
+  const editorProps = { task: legacyTask, record: null, legacy, action: 'create', adapter: {}, command: { phase: 'editing', locked: false, clearRejection: () => false }, onDraft: () => {} };
   const renderLegacyEditor = () => fieldHooks.render(() => fieldContext.window.FieldEditor(editorProps));
   const editorTree = renderLegacyEditor(), editorFields = find(editorTree, fieldContext.window.FieldEditorFields);
   find(editorTree, 'form').ref.current = { scrollIntoView() {}, querySelector: () => ({ focus() { editableFocuses++; } }) };

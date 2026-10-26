@@ -1,13 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 from core.models.objective import objective_choice_labels as _objective_choice_labels
-from core.models.schedule_config_runtime_coercion import (
-    MISSING_POLICY_ERROR,
-    MISSING_POLICY_FALLBACK_WITH_DEGRADATION,
-)
 from core.models.schedule_config_runtime_coercion import (
     coerce_config_field as coerce_runtime_value,
 )
@@ -17,7 +13,6 @@ from core.models.schedule_config_runtime_fields import (
 from core.models.schedule_config_runtime_fields import (
     get_field_spec as runtime_field_spec,
 )
-from core.shared.degradation import DegradationCollector
 
 
 @dataclass(frozen=True)
@@ -213,10 +208,9 @@ def list_config_fields() -> Tuple[ConfigFieldSpec, ...]:
 
 
 def get_field_spec(key: str) -> ConfigFieldSpec:
-    normalized_key = str(key or "").strip()
-    if not normalized_key or normalized_key not in _FIELD_SPEC_BY_KEY:
+    if key not in _FIELD_SPEC_BY_KEY:
         raise KeyError(f"未定义调度配置字段：{key!r}")
-    return _FIELD_SPEC_BY_KEY[normalized_key]
+    return _FIELD_SPEC_BY_KEY[key]
 
 
 def choices_for(key: str) -> Tuple[str, ...]:
@@ -231,26 +225,6 @@ def choice_label_map_for(key: str) -> Dict[str, str]:
     return {value: value for value in choices_for(key)}
 
 
-def coerce_config_field(
-    key: str,
-    value: Any,
-    *,
-    strict_mode: bool,
-    source: str,
-    collector: Optional[DegradationCollector] = None,
-    missing: bool = False,
-    fallback: Any = None,
-    missing_policy: str = MISSING_POLICY_FALLBACK_WITH_DEGRADATION,
-) -> Any:
-    spec = get_field_spec(key)
-    return coerce_runtime_value(
-        key,
-        value,
-        strict_mode=strict_mode,
-        source=source,
-        collector=collector,
-        missing=missing,
-        fallback=(spec.default if fallback is None else fallback),
-        missing_policy=missing_policy,
-        field_label=spec.label,
-    )
+def coerce_config_field(key: str, value: Any, *, missing: bool = False) -> Any:
+    """Strictly coerce a stored value; number errors use this page's field label."""
+    return coerce_runtime_value(key, value, missing=missing, field_label=get_field_spec(key).label)

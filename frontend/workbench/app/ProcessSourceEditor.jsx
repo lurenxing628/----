@@ -29,8 +29,8 @@
     const members = target.members || [target];
     const missing = members.filter(item => !item.op_type_ref);
     if (missing.length) return '请先为工序 ' + missing.map(item => item.sequence).join('、') + ' 选择外协工种。';
+    // 供应商实体恒带 op_type_refs / op_types 数组（core/services/workbench/resource/projection.py _supplier）。
     const refs = row.relationships.op_type_refs;
-    if (!Array.isArray(refs)) return '供应商承接工种资料未读取，暂时不能选择。';
     const unsupported = members.filter(item => !refs.includes(item.op_type_ref));
     return unsupported.length ? '不能承接：' + unsupported.map(item => '工序 ' + item.sequence + ' ' + item.op_type_label).join('、') + '。' : '';
   }
@@ -55,10 +55,8 @@
   }
   function Picker({ adapter, target, onSelect, onClose, disabled }) {
     const [search, setSearch] = React.useState(''), [scope, setScope] = React.useState({ query: '', page: 1, size: 50 });
-    const read = S.useQuery(async signal => {
-      if (typeof adapter.choices !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.choices');
-      return C.query(await adapter.choices(target.kind, { ...scope, ...(target.kind === 'op_type' ? { category: target.source } : {}) }, signal), 'choices');
-    }, [adapter, target.kind, target.source, scope]);
+    const read = S.useQuery(async signal => C.query(await adapter.choices(target.kind, { ...scope, ...(target.kind === 'op_type' ? { category: target.source } : {}) }, signal), 'choices'),
+      [adapter, target.kind, target.source, scope]);
     const data = read.result && read.result.data, title = target.kind === 'op_type' ? P.sourceLabel(target.source) + '工种' : '供应商';
     const grouped = target.kind === 'supplier' && target.group;
     const subject = grouped ? '外协段 ' + target.group.start_sequence + ' 至 ' + target.group.end_sequence : '工序 ' + target.sequence;
@@ -72,7 +70,7 @@
         {data && <><Issues issues={read.result.warnings} /><div className="wb-table-frame"><table className="tbl wb-table" aria-label={title + '选项'} style={{ width: '100%', tableLayout: 'fixed' }}><caption className="wb-visually-hidden">{title + '选项'}</caption><thead><tr><th scope="col">编号</th><th scope="col">名称</th>{target.kind === 'supplier' && <th scope="col">承接工种</th>}<th scope="col">选择</th></tr></thead>
           <tbody>{data.entities.map(row => {
             const reason = target.kind === 'supplier' ? supplierReason(row, target) : '';
-            return <tr key={row.ref}><td>{row.business_code}</td><td>{row.label}</td>{target.kind === 'supplier' && <td>{(row.relationships.op_types || []).map(item => item.label).join('、') || '未登记承接工种'}</td>}<td><Button icon="check" reason={reason} disabled={disabled || !(row.status === 'active' || target.kind === 'op_type' && row.status === null) || target.kind === 'op_type' && ![target.source, "both"].includes(row.fields.category)}
+            return <tr key={row.ref}><td>{row.business_code}</td><td>{row.label}</td>{target.kind === 'supplier' && <td>{row.relationships.op_types.map(item => item.label).join('、') || '未登记承接工种'}</td>}<td><Button icon="check" reason={reason} disabled={disabled || !(row.status === 'active' || target.kind === 'op_type' && row.status === null) || target.kind === 'op_type' && ![target.source, "both"].includes(row.fields.category)}
               aria-label={'采用 ' + row.label} onClick={() => onSelect(row)}>采用</Button></td></tr>;
           })}{!data.entities.length && <tr><td colSpan={target.kind === 'supplier' ? 4 : 3}>没有匹配选项。</td></tr>}</tbody></table></div>
           <window.ResourceTables.Pager page={data.page} disabled={disabled || read.loading} onPage={page => setScope(current => ({ ...current, page, snapshot_ref: read.result.meta.snapshot_ref }))}
@@ -127,7 +125,6 @@
       invalidate(); model.setError(null);
       const controller = new AbortController(); request.current = controller;
       try {
-        if (typeof adapter.stagePreview !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.stagePreview');
         const body = input(entity, draft, paging.page.size); setChecking(true);
         const response = P.stagePreview(await adapter.stagePreview(entity.ref, 'source_confirm', body, model.base.meta.snapshot_ref, controller.signal), entity.ref, 'source_confirm');
         if (!controller.signal.aborted && request.current === controller) {

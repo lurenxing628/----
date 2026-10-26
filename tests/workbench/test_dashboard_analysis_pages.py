@@ -136,21 +136,3 @@ def test_timeline_batch_locator_resolves_original_page_and_keeps_snapshot_scope(
                                   {"locate_batch_ref": "a" * 48}, {"section": "timeline", "locate_batch_ref": "invalid"}])
 def test_analysis_rejects_invalid_page_or_resource_scope(dashboard_case, monkeypatch, query):
     assert api(dashboard_case, monkeypatch).get(BASE + "/analysis", query_string=query).status_code in (400, 404)
-
-
-def test_material_section_handles_unavailable_batches_source(dashboard_case):
-    from core.models.workbench_dashboard import DashboardAnalysisQuery
-    from core.services.workbench.dashboard.analysis_projection import project_dashboard_analysis
-    from core.services.workbench.dashboard.facts import DashboardFacts
-    from core.services.workbench.dashboard.projection import safe_material
-    from core.services.workbench.dashboard.service import WorkbenchDashboardService
-    from tests.workbench.dashboard_support import NOW
-
-    with WorkbenchDashboardService(dashboard_case.conn).read_snapshot():
-        facts = DashboardFacts(dashboard_case.conn, NOW).load(include_candidates=False)
-        facts.raw["Batches"] = None
-        material = safe_material(facts)
-    data = project_dashboard_analysis(facts.project(), material, query=DashboardAnalysisQuery("material"))
-    assert data["pending"]["state"] == "unavailable"
-    assert data["pending"]["items"] == []
-    assert data["pagination"]["total"] == data["pagination"]["totals"]["pending"] == 0

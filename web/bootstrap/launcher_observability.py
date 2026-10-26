@@ -87,13 +87,12 @@ def _format_public_launch_error(public_message: Optional[str]) -> str:
     return text.rstrip() + "\n"
 
 
-def _format_file_line(text: str, *, level: str = "warning") -> str:
-    level_text = str(level or "warning").strip().upper() or "WARNING"
-    return "{} [{}] {}\n".format(time.strftime("%Y-%m-%d %H:%M:%S"), level_text, text)
+def _format_file_line(text: str, *, level: str) -> str:
+    return "{} [{}] {}\n".format(time.strftime("%Y-%m-%d %H:%M:%S"), level.upper(), text)
 
 
 def _write_logger(logger: Optional[Any], level: str, text: str, errors: List[str]) -> bool:
-    method = getattr(logger, str(level or "").strip(), None) if logger is not None else None
+    method = getattr(logger, level, None) if logger is not None else None
     if not callable(method):
         return False
     try:

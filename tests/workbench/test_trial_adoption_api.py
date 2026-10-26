@@ -87,6 +87,14 @@ def test_real_http_preview_confirm_and_receipt(trial_case):
     assert {issue["code"] for issue in entry["evidence_gaps"]} == {"audit_missing", "official_identity_unavailable"}
 
 
+def test_data_context_ref_argument_is_read_as_strict_json():
+    valid = restored_context_ref("another-database", [])
+    assert valid_data_context_ref(valid)
+    # 同一组键值再写一遍：宽松解析按后一个值读成同一个对象，严格读取按重复键拒绝。
+    assert not valid_data_context_ref(valid[:-1] + "," + valid[1:])
+    assert not valid_data_context_ref(valid[:-1] + ',"probe":NaN}')
+
+
 def test_http_adoption_recovery_distinguishes_replaced_context_and_replays_receipt(trial_case, monkeypatch):
     case = trial_case
     saved = saved_scenario(case)

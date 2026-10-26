@@ -3,8 +3,10 @@
 import json
 import re
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, NoReturn, overload
 
 from core.errors import ValidationError
+from core.shared.strict_json import load_strict_json
 
 MAX_WORK_PERIODS = 8
 DEFAULT_WORK_PERIODS = [{"start": "08:30", "end": "11:50", "day_offset": 0},
@@ -51,17 +53,31 @@ def _period_bounds(item, *, first):
     return {"start": item["start"], "end": item["end"], "day_offset": offset}, low, high
 
 
+@overload
+def decode_periods(raw: None) -> None: ...
+
+
+@overload
+def decode_periods(raw: Any) -> List[Dict[str, Any]]: ...
+
+
 def decode_periods(raw):
     if raw is None:
         return None
-    try:
-        value = json.loads(raw)
-    except (TypeError, ValueError):
-        raise ValidationError("已保存的工作时段损坏，请重新维护该日历或班次。", field="periods") from None
+    return normalize_periods(load_stored_periods(raw))
+
+
+def _corrupt_periods() -> NoReturn:
+    raise ValidationError("已保存的工作时段损坏，请重新维护该日历或班次。", field="periods") from None
+
+
+def load_stored_periods(raw):
+    """Strictly decode non-NULL stored periods text; the caller normalizes the list once."""
+    value = load_strict_json(raw, on_malformed=_corrupt_periods)
     # JSON null is not a valid stored alternative to legacy SQL NULL.
     if value is None:
         raise ValidationError("已保存的工作时段不能为空值。", field="periods")
-    return normalize_periods(value)
+    return value
 
 
 def encode_periods(periods):

@@ -63,14 +63,6 @@ class WorkbenchPlanBaselineRepository(BaseRepository):
         marks = ",".join("?" for _ in refs)
         return self._raw_rows(columns, select + " WHERE ref IN (" + marks + ") ORDER BY rowid", list(refs))
 
-    def raw_task_refs_by_plan(self, plan_ref: str) -> Optional[List[Dict[str, Any]]]:
-        """Whole WorkbenchTaskRefs rows of one plan in rowid order; None if the table is absent."""
-        selected = self._raw_select("WorkbenchTaskRefs")
-        if selected is None:
-            return None
-        columns, select = selected
-        return self._raw_rows(columns, select + " WHERE plan_ref=? ORDER BY rowid", (plan_ref,))
-
     # ---- adoption source and lineage facts ----
     def source_exists(self, table: str, field: str, ref: Any) -> bool:
         """Whether an adoption source row exists; (table, field) must be in the fixed allowlist."""
@@ -82,15 +74,9 @@ class WorkbenchPlanBaselineRepository(BaseRepository):
             "SELECT row_ref,task_ref,source_row_ref FROM WorkbenchTrialScenarioRows WHERE scenario_ref=?",
             (scenario_ref,))]
 
-    def history_version_exists(self, version: Any) -> bool:
-        return self.fetchone("SELECT 1 FROM ScheduleHistory WHERE version=?", (version,)) is not None
-
     def get_history_result_summary(self, version: Any) -> Optional[Dict[str, Any]]:
         """{"result_summary": ...} of the first ScheduleHistory row of ``version``, or None."""
         return self.fetchone("SELECT result_summary FROM ScheduleHistory WHERE version=?", (version,))
-
-    def list_task_refs_by_plan(self, plan_ref: str) -> List[Any]:
-        return [row[0] for row in self.execute("SELECT ref FROM WorkbenchTaskRefs WHERE plan_ref=?", (plan_ref,))]
 
     def list_schedule_identity_rows(self, version: Any) -> List[Dict[str, Any]]:
         """(schedule_id, op_id, version) of every Schedule row of ``version`` in id order."""

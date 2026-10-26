@@ -14,19 +14,24 @@ from core.algorithm_contracts.changeover_events import type_transition
 
 from .repair_decisions import RepairDecision, RepairParentPreparation
 
+# Operation moves offered per decoded parent.
+_OPERATION_DECISION_LIMIT = 8
+
 
 def operation_repair_decisions(
     *, metrics_by_op_id: Dict[int, Dict[str, Any]], batch_order: Tuple[str, ...],
-    start_dt: datetime, objective_name: str, prepared_parent: RepairParentPreparation, limit: int = 8,
+    start_dt: datetime, objective_name: str, prepared_parent: RepairParentPreparation,
 ) -> Iterator[Tuple[str, RepairDecision]]:
     if not prepared_parent.operation_order:
         return
+    # A non-empty decoded order has decoded rows, so the parent's latest end time is known.
     moves = _operation_moves(
         prepared_parent.resource_timelines, prepared_parent.decoded_rows, metrics_by_op_id, start_dt, objective_name,
-        latest_end_time=prepared_parent.latest_end_time)
+        latest=prepared_parent.latest_end_time)
     for kind, decision_order in _bounded_operation_orders(
-            prepared_parent.operation_order, prepared_parent.operation_ranks, prepared_parent.predecessors, moves, limit):
-        yield kind, RepairDecision._unvalidated(batch_order, decision_order, prepared_parent.inherited_resources)
+            prepared_parent.operation_order, prepared_parent.operation_ranks, prepared_parent.predecessors, moves,
+            _OPERATION_DECISION_LIMIT):
+        yield kind, RepairDecision(batch_order, decision_order, prepared_parent.inherited_resources)
 
 
 def _bounded_operation_orders(
@@ -71,9 +76,8 @@ def _bounded_operation_orders(
 
 
 def _operation_moves(timelines: List[List[Any]], rows: Dict[int, Any], metrics: Dict[int, Dict[str, Any]],
-                     start_dt: datetime, objective_name: str, *, latest_end_time: Optional[datetime] = None
+                     start_dt: datetime, objective_name: str, *, latest: Optional[datetime]
                      ) -> Iterator[Tuple[str, int, int]]:
-    latest = latest_end_time if latest_end_time is not None else max(row.end_time for row in rows.values())
     critical = chain.from_iterable(_critical_block_moves(timeline, rows, metrics, latest, objective_name)
                                   for timeline in timelines)
     inserts = chain.from_iterable(_time_insert_moves(timeline, rows, metrics, start_dt, objective_name)
@@ -86,7 +90,7 @@ def _operation_moves(timelines: List[List[Any]], rows: Dict[int, Any], metrics: 
 
 
 def _critical_block_moves(timeline: List[Any], rows: Dict[int, Any], metrics: Dict[int, Dict[str, Any]],
-                          latest: datetime, objective_name: str) -> Iterator[Tuple[str, int, int]]:
+                          latest: Optional[datetime], objective_name: str) -> Iterator[Tuple[str, int, int]]:
     for left, right in zip(timeline, timeline[1:]):
         left_id, right_id = left.op_id, right.op_id
         if left_id not in rows or right_id not in rows:
@@ -96,7 +100,7 @@ def _critical_block_moves(timeline: List[Any], rows: Dict[int, Any], metrics: Di
 
 
 def _is_critical_block_pair(left: Any, right: Any, ids: Tuple[int, int], metrics: Dict[int, Dict[str, Any]],
-                            latest: datetime, objective_name: str) -> bool:
+                            latest: Optional[datetime], objective_name: str) -> bool:
     touches = left.end_time == right.start_time
     critical_signal = any(bool(metrics[op_id].get("is_on_critical_path")) for op_id in ids)
     same_machine = left.machine_id is not None and left.machine_id == right.machine_id

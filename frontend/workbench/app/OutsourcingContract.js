@@ -54,11 +54,11 @@
     check(v.awaiting_return === (v.returned === null) && typeof v.overdue === 'boolean'); return v;
   }
   function query(kind, value = {}) {
-    const allowed = ['page', 'size', 'snapshot_ref'].concat(['targets', 'receipts'].includes(kind) ? ['batch_ref'] : []).concat(kind === 'receipts' ? ['status'] : []);
+    const allowed = ['page', 'size', 'snapshot_ref'].concat(kind === 'receipts' ? ['status'] : []);
     if (kind === 'targets') allowed.push('query');
     const q = { page: 1, size: 10, ...value };
     check(object(value) && Object.keys(q).every(k => allowed.includes(k)) && Number.isSafeInteger(q.page) && q.page >= 1 && q.page <= 1000000
-      && Number.isSafeInteger(q.size) && q.size >= 1 && q.size <= 100 && (q.batch_ref === undefined || ref(q.batch_ref))
+      && Number.isSafeInteger(q.size) && q.size >= 1 && q.size <= 100
       && (q.status === undefined || ['all', 'awaiting', 'overdue', 'returned'].includes(q.status)) && (q.snapshot_ref === undefined || text(q.snapshot_ref))
       && (q.query === undefined || typeof q.query === 'string' && q.query.length <= 200 && !q.query.includes('\0'))
       && (q.page === 1 || text(q.snapshot_ref)), '外协的筛选或翻页条件无效，当前范围没有变化。请重新选择。'); return q;
@@ -75,15 +75,14 @@
     if (kind === 'targets') {
       check(d.grouping_basis === 'explicit_receipt_membership' && d.dates_inferred === false); page(d.page, d.items, q);
       d.items.forEach(r => { check(object(r) && ['operation_ref', 'batch_ref', 'supplier_ref', 'outsourcing_ref'].every(k => r[k] === null || ref(r[k]))
-        && typeof r.can_register === 'boolean' && Array.isArray(r.issues) && (!r.can_register || r.outsourcing_ref === null && [r.operation_ref, r.batch_ref, r.supplier_ref].every(ref))
-        && (!q.batch_ref || r.batch_ref === q.batch_ref)); entityLabel(r.batch, r.batch_ref); entityLabel(r.supplier, r.supplier_ref);
+        && typeof r.can_register === 'boolean' && Array.isArray(r.issues) && (!r.can_register || r.outsourcing_ref === null && [r.operation_ref, r.batch_ref, r.supplier_ref].every(ref))); entityLabel(r.batch, r.batch_ref); entityLabel(r.supplier, r.supplier_ref);
         if (r.part !== undefined && r.part !== null) { check(object(r.part) && ref(r.part.ref)); entityLabel(r.part, r.part.ref); }
         if (r.source_resolution !== undefined && r.source_resolution !== null) resolution(r.source_resolution); });
       const operationRefs = d.items.map(r => r.operation_ref).filter(Boolean);
       check(new Set(operationRefs).size === operationRefs.length);
     } else if (kind === 'receipts') {
       check(d.as_of === v.meta.as_of && d.tracking_basis === 'manual_receipt_facts'); page(d.page, d.items, q);
-      d.items.forEach(r => { row(r); check(!q.batch_ref || r.target.batch_ref === q.batch_ref); check(r.overdue === (r.returned === null && r.planned < v.meta.as_of));
+      d.items.forEach(r => { row(r); check(r.overdue === (r.returned === null && r.planned < v.meta.as_of));
         check(!q.status || q.status === 'all' || q.status === 'returned' && !r.awaiting_return || q.status === 'awaiting' && r.awaiting_return || q.status === 'overdue' && r.overdue); });
       check(new Set(d.items.map(r => r.outsourcing_ref)).size === d.items.length);
     } else {

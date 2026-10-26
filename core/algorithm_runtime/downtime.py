@@ -50,8 +50,9 @@ class SegmentOverlapIndex:
 
     __slots__ = ("_segments", "_starts", "_prefix_max_ends", "_scanned_once", "_covered_starts", "_covered_ends", "_append_native", "_coverage_native")
 
-    def __init__(self, segments: Optional[Sequence[Tuple[datetime, datetime]]]) -> None:
-        self._segments = segments or ()
+    def __init__(self, segments: Sequence[Tuple[datetime, datetime]]) -> None:
+        # Every constructor passes a sequence (reuse snapshots are tuples; slot inputs are already lists).
+        self._segments = segments
         self._starts: Optional[Tuple[datetime, ...]] = None
         self._prefix_max_ends: Tuple[datetime, ...] = ()
         self._scanned_once = False
@@ -220,7 +221,7 @@ def find_overlap_shift_end(
     对同一段集反复查询的避让循环应改用 SegmentOverlapIndex，避免每次从头线性重扫。
     """
     shift: Optional[datetime] = None
-    for s, e in segments or []:
+    for s, e in segments:
         if e <= s:
             continue
         if s >= end:

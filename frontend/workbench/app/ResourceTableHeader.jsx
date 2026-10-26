@@ -23,7 +23,7 @@
     }
     React.useEffect(() => () => finish(false), [columnKey, kind, scopeKey, disabled]);
     function start(event) {
-      if (disabled || typeof onResize !== 'function' || event.button !== 0 || drag.current) return;
+      if (disabled || event.button !== 0 || drag.current) return;
       event.preventDefault(); event.stopPropagation();
       const node = event.currentTarget, startWidth = measure(), state = { node, pointerId: event.pointerId, startX: event.clientX,
         startWidth, columnKey, kind, resize: onResize, last: startWidth, cursor: document.body.style.cursor, userSelect: document.body.style.userSelect };
@@ -41,7 +41,7 @@
       node.addEventListener('pointermove', move); node.addEventListener('pointerup', end); node.addEventListener('pointercancel', end); node.addEventListener('lostpointercapture', end); window.addEventListener('keydown', key, true);
     }
     function keyboard(event) {
-      if (disabled || typeof onResize !== 'function' || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (disabled || event.altKey || event.ctrlKey || event.metaKey) return;
       let next;
       if (event.key === 'Home') next = 56;
       else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') next = measure() + (event.key === 'ArrowLeft' ? -1 : 1) * (event.shiftKey ? 32 : 8);
@@ -64,17 +64,17 @@
     const current = opened && opened.identity === identity && !disabled;
     return <span ref={holder} className="wb-resource-th" data-column-key={column.key} data-sort-direction={sorted ? direction : undefined}
       style={{ display: 'flex', alignItems: 'center', gap: 3, minWidth: 0, width: '100%', position: 'relative', paddingRight: 5, boxSizing: 'border-box' }}>
-      <span className="wb-th-sort-shell"><Button className="wb-th-sort" disabled={disabled || typeof onSort !== 'function'}
+      <span className="wb-th-sort-shell"><Button className="wb-th-sort" disabled={disabled}
         title={column.title + '：' + (next === 'asc' ? '升序' : next === 'desc' ? '降序' : '恢复默认顺序')} aria-label={column.title + '排序'}
         style={{ justifyContent: column.numeric ? 'flex-end' : 'flex-start' }} onClick={event => { event.stopPropagation(); onSort(column.key, next); }}>
         <span className="wb-th-title">{column.title}</span>{sorted && <span className="wb-th-sort-glyph" aria-hidden="true">
           <span style={direction === 'asc' ? { transform: 'rotate(180deg)' } : undefined}><Icon name="chevron-down" /></span></span>}
       </Button></span>
-      <Button className="wb-th-filter" icon="search" disabled={disabled || typeof onFilter !== 'function'} aria-label={'筛选' + column.title}
+      <Button className="wb-th-filter" icon="search" disabled={disabled} aria-label={'筛选' + column.title}
         aria-haspopup="dialog" aria-expanded={!!current} aria-pressed={filtered} title={'筛选' + column.title + (filtered ? '（已筛选）' : '')}
         onClick={event => { event.stopPropagation(); if (current) close(true); else setOpened({ owner: event.currentTarget, identity }); }} />
       <span role="separator" aria-orientation="vertical" aria-label={'调整' + column.title + '列宽'} aria-valuemin={56} aria-valuenow={resize.currentWidth}
-        aria-valuetext={resize.currentWidth + ' 像素'} aria-disabled={disabled || typeof onResize !== 'function'} tabIndex={disabled || typeof onResize !== 'function' ? -1 : 0}
+        aria-valuetext={resize.currentWidth + ' 像素'} aria-disabled={disabled} tabIndex={disabled ? -1 : 0}
         className="wb-th-resize" data-dragging={resize.moving || undefined} onPointerDown={resize.start} onKeyDown={resize.keyboard} onClick={event => event.stopPropagation()} />
       {current && <window.ResourceTableFilter key={identity} {...{ column, kind, adapter, filter, matchingCount, onFilter, scope, scopeTransform, pageSize }} owner={opened.owner} onClose={close} />}
     </span>;

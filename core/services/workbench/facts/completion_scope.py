@@ -27,7 +27,7 @@ def _scope_state(items, *, available):
 
 def _pending_operations(work_items, batch_refs, *, available):
     pending = [row for row in work_items if available and not row["arranged"] and row["batch_ref"] in batch_refs]
-    pending.sort(key=lambda row: (row["batch_ref"], row.get("sequence") is None, row.get("sequence") or 0, row["operation_ref"]))
+    pending.sort(key=lambda row: (row["batch_ref"], row.get("sequence") is None, row.get("sequence"), row["operation_ref"]))
     return pending
 
 

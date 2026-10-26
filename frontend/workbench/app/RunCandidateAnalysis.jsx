@@ -32,7 +32,7 @@
           <td>{row.batch_id}<small>{row.part_label || '名称未填写'}</small></td><td>{T.due_date(row.after.due_date, row.after.due_state, row.after.due_issue)}</td>
           <td>{data.baseline.available ? <Finish row={row.before} /> : '无原安排'}</td><td><Finish row={row.after} /></td><td>{!data.baseline.available || row.after.due_state === 'unspecified' ? '不适用' : row.delay_delta_hours === null ? '交付待确认' : M.signedChange(row.delay_delta_hours)}</td>
           <td><C.Button icon="chart-gantt" disabled={!onBatch} aria-label={'查看批次甘特 ' + row.batch_id} onClick={() => onBatch(row)}>批次甘特</C.Button>
-            {(row.after.last_operations || []).map(task => <C.Button key={task.row_ref} icon="search" className="mini" aria-label={'定位末端工序 ' + row.batch_id + ' ' + task.sequence + (task.piece_id ? ' ' + task.piece_id : '')}
+            {row.after.last_operations.map(task => <C.Button key={task.row_ref} icon="search" className="mini" aria-label={'定位末端工序 ' + row.batch_id + ' ' + task.sequence + (task.piece_id ? ' ' + task.piece_id : '')}
               onClick={() => onLast(task)}>{M.number(task.sequence)} {task.process_label || '工序未记录'}{task.piece_id && ' · ' + task.piece_id}</C.Button>)}</td>
         </tr>)}</tbody></table></div><C.Pager page={current} pages={pages} onPage={setPage} label="批次交付对照" /></section>;
   }

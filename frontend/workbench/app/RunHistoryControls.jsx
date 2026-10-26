@@ -56,7 +56,7 @@
       {!!value.data_gaps.length && <details><summary className="rh-warning">排产时资料缺项 {value.data_gaps.length}</summary>
         {value.data_gaps.map(g => <small key={g.field}>{fields[g.field]}：{g.message}</small>)}</details>}</div>;
   }
-  function Table({ runs, onOpen, canNavigate }) {
+  function Table({ runs, onOpen }) {
     return <div className="rh-table wb-table-frame" data-sticky-head data-sticky-actions tabIndex={0} aria-label="排产记录表格滚动区域"><table className="wb-table" aria-label="排产记录"><caption className="wb-visually-hidden">排产记录</caption>
       <colgroup>{['submitted', 'state', 'scope', 'times', 'candidates', 'tasks', 'actions'].map(key => <col key={key} className={'rh-col-' + key} />)}</colgroup>
       <thead><tr><th scope="col" className="wb-col-key">提交时间</th><th scope="col">排产状态</th><th scope="col">排产范围</th><th scope="col">开始 / 结束时间</th><th scope="col" className="rh-num">候选数</th><th scope="col" className="rh-num">安排数</th><th scope="col" className="wb-col-actions">操作</th></tr></thead>
@@ -66,7 +66,7 @@
           <small>{run.finished_at === null ? '尚未结束' : timeLabel(run.finished_at)}</small></td>
         <td className={'rh-num' + (run.counts_final && run.candidate_count > 0 ? ' rh-accent' : '')}>{number(run.candidate_count)}{!run.counts_final && <small>非最终</small>}</td>
         <td className="rh-num">{number(run.task_count)}{!run.counts_final && <small>非最终</small>}</td>
-        <td className="wb-col-actions"><Button icon="arrow-right" aria-label={'查看 ' + timeLabel(run.accepted_at) + ' 提交的排产记录'} disabled={!canNavigate} onClick={() => onOpen(run)} /></td>
+        <td className="wb-col-actions"><Button icon="arrow-right" aria-label={'查看 ' + timeLabel(run.accepted_at) + ' 提交的排产记录'} onClick={() => onOpen(run)} /></td>
       </tr>)}</tbody></table></div>;
   }
   function Pager({ page, busy, onChange }) {

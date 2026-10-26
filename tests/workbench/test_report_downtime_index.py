@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from core.models.workbench_report import ReportPage
+from core.models.workbench_report_catalog import ReportCatalogScope
 from core.services.capacity.plan_calendar_intervals import IntervalIndex
 from core.services.report.downtime_impact import compute_downtime_impact
 from core.services.report.report_degradation import (
@@ -18,6 +20,7 @@ from core.services.report.utilization_calendars import (
     resource_calendars_for_ids,
     resource_ids_from_groups,
 )
+from core.services.workbench.report.catalog import catalog_workspace
 from core.shared.degradation import DegradationCollector
 
 
@@ -332,3 +335,16 @@ def test_resource_calendars_only_project_resources_occupying_the_report_window(s
     assert machines[0]["capacity_hours"] is not None and operators[0]["capacity_hours"] is not None
     # 日历预算和占用率共用同一次分组，坏时间只报一次。
     assert collector.to_counters() == {"bad_time_row_skipped": 2}
+
+
+def test_catalog_search_matches_rows_only_reachable_through_zero_values():
+    def machine(key, name, hours, count):
+        return {"machine_id": key, "machine_name": name, "downtime_hours": hours, "downtime_count": count,
+                "schedule_overlap_hours": hours, "schedule_overlap_count": count}
+
+    facts = {"scope": ReportCatalogScope("downtime", query="0"), "plan": {}, "identities": {
+                 "machine": {"M-IDLE": {"ref": "a" * 48}, "M-BUSY": {"ref": "b" * 48}}},
+             "report": {"machines": [machine("M-IDLE", "idle", 0.0, 0), machine("M-BUSY", "busy", 1.5, 2)], "operators": []}}
+    data, ordered, selected = catalog_workspace(facts, ReportPage(sort="resource_label"), as_of=datetime(2026, 10, 17))
+    assert [row["resource_label"] for row in data["rows"]] == ["idle"]
+    assert [row["machine_id"] for row in selected] == ["M-IDLE"]

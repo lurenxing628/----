@@ -10,8 +10,10 @@ import pytest
 
 from core.models.workbench_command import WorkbenchCommandUncertain, canonical_json
 from core.services.workbench.facts.admission_scope import project_admitted_scope
+from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.decision_read_models import public_job_status
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
+from core.services.workbench.facts.run_history_projection import scope_summary
 from core.services.workbench.run import result_preparation
 from core.services.workbench.run import worker as worker_module
 from core.services.workbench.run.worker import WorkbenchRunWorker
@@ -202,7 +204,11 @@ def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkey
     legacy_facts = json.loads(legacy_row["facts_json"])
     legacy_facts["tables"].pop("ScheduleConfig")
     legacy_row["facts_json"] = canonical_json(legacy_facts)
-    legacy_scope = project_admitted_scope(json.loads(legacy_row["normalized_input_json"]), legacy_facts)
+    legacy_input = json.loads(legacy_row["normalized_input_json"])
+    legacy_scope = project_admitted_scope(
+        legacy_input, GenerationFacts({"facts_text": legacy_row["facts_json"],
+                                       "execution": json.loads(legacy_row["execution_json"])}),
+        summary=scope_summary(canonical_json(legacy_input)))
     assert legacy_scope["objective"] is None and legacy_scope["objective_label"] is None
     assert {"field": "objective", "code": "not_recorded", "message": "排产时没有记下这一项。"} in legacy_scope["data_gaps"]
     before = ProductionFactsCapture(case.conn).content()

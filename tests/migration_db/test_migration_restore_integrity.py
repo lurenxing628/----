@@ -65,7 +65,7 @@ def test_invalid_backup_leaves_database_and_all_sidecars_unchanged(tmp_path, mon
     monkeypatch.setattr(migration_mod, "cleanup_sqlite_sidecars", cleanup)
 
     with pytest.raises(BackupIntegrityError):
-        migration_mod.restore_db_file_from_backup(str(backup_path), str(db_path), retries=1)
+        migration_mod.restore_db_file_from_backup(str(backup_path), str(db_path))
 
     target_stat.assert_not_called()
     cleanup.assert_not_called()

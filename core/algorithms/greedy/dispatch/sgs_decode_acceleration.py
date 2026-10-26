@@ -1,4 +1,4 @@
-"""Per-decode acceleration state: priority frontier, budget checks and checkpoint replay."""
+"""Per-decode acceleration state: priority frontier, checkpoint capture and tail reuse."""
 
 from types import FunctionType, MethodType
 
@@ -36,23 +36,13 @@ class DecodeAcceleration:
     def __init__(self, request, graph, pruning, hours, context, *, resume):
         self.plan = plan_decode_checkpoints(request, graph_state=graph, resume=resume)
         self.frontier = make_priority_queue(graph, pruning)
-        # A decode without a checkpoint request has neither a tail to reuse nor a budget to check.
+        # A decode without a checkpoint request has no tail to reuse.
         self.tail = request.tail_reuse if request is not None else None
-        self.check = request.check_budget if request is not None else None
         self.dispatch_guard = context.checkpoint_dispatch_guard
         # Tail reuse compares run state only; the auto-assign demand window is not part of it, so
         # the suffix is only proved for decodes where every operation names its resources.
         self.tail_eligible = (self.tail is not None and pruning is not None and pruning.supported
                               and pruning.fixed_resources and all(value > 0 for value in hours.values()))
-
-    def before_pick(self, position):
-        # Once every pick finished, preserve the completed result for summary
-        # and formal validation even if the local slice just expired.
-        if self.check is not None:
-            if self.plan is None:
-                raise RuntimeError("解码预算检查只随已规划的断点计划出现，断点计划不能为空")
-            if position < self.plan.total_ops:
-                self.check(position)
 
     def record(self, op_id, position, *, state, next_idx, graph, native_dispatch):
         if self.frontier is not None:

@@ -45,11 +45,10 @@ def _comparison_snapshot(candidate: Dict[str, Any]) -> Dict[str, Any]:
             "context": context, "known": known}
 
 
-def _comparison_state(current: Dict[str, Any], previous: Dict[str, Any], *, verified: bool,
-                      objective_name: Optional[str]) -> str:
+def _comparison_state(current: Dict[str, Any], previous: Dict[str, Any], *, verified: bool) -> str:
     if not verified:
         return "unverified"
-    if not objective_name or not current["known"] or not previous["known"]:
+    if not current["known"] or not previous["known"]:
         return "unavailable"
     if current["context"] != previous["context"]:
         return "different_coverage"
@@ -60,25 +59,23 @@ def _comparison_state(current: Dict[str, Any], previous: Dict[str, Any], *, veri
 
 
 def attempt_decision_evidence(
-    *, candidate: Dict[str, Any], reference: Optional[Dict[str, Any]], accepted: Optional[bool],
-    search_report_state: Optional[OptimizationSearchReportState] = None,
-    clock: Optional[Callable[[], float]] = None, t_begin: Optional[float] = None,
+    *, candidate: Dict[str, Any], reference: Optional[Dict[str, Any]], accepted: bool,
+    search_report_state: OptimizationSearchReportState, clock: Callable[[], float], t_begin: float,
     verified: bool = True, comparison_kind: str = "incumbent",
 ) -> Dict[str, Any]:
     """Freeze the actual decision against its then-current reference, independently of representative rank."""
-    elapsed = max(int((clock() - t_begin) * 1000), 0) if clock is not None and t_begin is not None else None
+    elapsed = max(int((clock() - t_begin) * 1000), 0)
     current = _comparison_snapshot(candidate)
-    objective_name = search_report_state.objective_name if search_report_state is not None else None
     comparison: Dict[str, Any] = {
         "kind": "none", "state": "no_reference" if verified else "unverified",
-        "objective_name": objective_name, "objective_scope": current["scope"],
+        "objective_name": search_report_state.objective_name, "objective_scope": current["scope"],
         "reference_scope": None, "reference_score": None, "reference_metrics": None,
         "reference_completion": None, "metric_deltas": None,
     }
     strict_improved = None
     if reference is not None:
         previous = _comparison_snapshot(reference)
-        state = _comparison_state(current, previous, verified=verified, objective_name=objective_name)
+        state = _comparison_state(current, previous, verified=verified)
         comparison.update(kind=comparison_kind, state=state, reference_scope=previous["scope"],
                           reference_score=previous["score"], reference_metrics=previous["metrics"],
                           reference_completion=previous["completion"])

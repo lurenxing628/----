@@ -124,7 +124,7 @@ def _reject_incomplete_legacy_events(conn: sqlite3.Connection) -> None:
     bad_status_pair_ids = _legacy_event_ids(conn, _bad_event_status_pair_condition())
     if bad_status_pair_ids:
         blockers.append(f"事件类型和上报状态互相矛盾的事件 id={', '.join(bad_status_pair_ids)}")
-    bad_sequence_issues = operation_execution_event_sequence_issues(conn, limit=4)
+    bad_sequence_issues = operation_execution_event_sequence_issues(conn)
     if bad_sequence_issues:
         blockers.append(f"事件流顺序不合法：{'；'.join(bad_sequence_issues)}")
     if blockers:

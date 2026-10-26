@@ -15,6 +15,7 @@ from core.models.schedule_plan_role import (
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanLocator, WorkbenchPlanReferenceError
 from core.models.workbench_plan_scope import MAX_PLAN_TASKS
+from core.services.common.bounded_plan_query import PagePlanQueryService
 from core.services.common.plan_query import SchedulePlanResolution
 from core.services.scheduler.workbench_plan_catalog import PlanCatalogEntry, _role_entry, _scenario_entry
 from core.services.workbench.facts.candidate_tasks import task_span
@@ -28,13 +29,13 @@ from .projection import (
     project_unavailable_plan,
     public_time,
 )
-from .read_context import PlanReadContext, PlanReadQuery
+from .read_context import PlanReadContext
 from .workspace_dto import resource_directory, workspace_projections
 
 
 def selected_plan(context, locator):
     repo = context.repo
-    query = PlanReadQuery(repo, repo.latest_version())
+    query = PagePlanQueryService(repo, repo.latest_version())
     history = repo.get_history_identity_row(locator.version)
     if locator.scenario_id is not None:
         row = repo.get_scenario_context(locator.scenario_id)
@@ -60,10 +61,11 @@ def selected_plan(context, locator):
 
 
 class WorkbenchPlanQueryService:
-    def __init__(self, conn, logger=None):
+    def __init__(self, conn, logger=None, *, references=None):
+        """``references`` shares a caller's identity repository and its bound read caches."""
         self.conn = conn
         self.logger = logger
-        self.references = WorkbenchPlanIdentityRepository(conn, logger=logger)
+        self.references = references if references is not None else WorkbenchPlanIdentityRepository(conn, logger=logger)
         self.entities = WorkbenchIdentityRepository(conn, logger=logger)
 
     @contextmanager
@@ -99,7 +101,7 @@ class WorkbenchPlanQueryService:
             base_versions = [head["base_version"] for head in heads]
             self.references.role_rows(base_versions)
             repo.prefetch_history_rows(base_versions)
-        query = PlanReadQuery(repo, repo.latest_version() if heads else None)
+        query = PagePlanQueryService(repo, repo.latest_version() if heads else None)
         plans = []
         for head in heads:
             if scope.collection == "history":
@@ -115,9 +117,10 @@ class WorkbenchPlanQueryService:
         options = query.repo.list_plan_role_options(history["version"])
         adopted = next((row for row in options if row["role"] == ROLE_ADOPTED), None)
         roles = [(ROLE_ADOPTED, adopted)] + [(row["role"], row) for row in options if row["role"] != ROLE_ADOPTED]
-        return [self._catalog_role(query, history, role, option) for role, option in roles]
+        return [self.catalog_role(query, history, role, option) for role, option in roles]
 
-    def _catalog_role(self, query, history, role, option):
+    def catalog_role(self, query, history, role, option):
+        """某个版本某个角色的计划目录投影；采用历史也用它核对正式计划身份。"""
         locator = WorkbenchPlanLocator(history["version"], role)
         name = plan_candidate_label(option.get("candidate_label"), role=role, candidate_key=option.get("candidate_key")) if option is not None else plan_role_label(role)
         ref, blocked = self._catalog_reference(locator, name)
@@ -167,7 +170,7 @@ class WorkbenchPlanQueryService:
         with context.read_scope():
             _, entry, span = context.selected(scope.plan_ref)
             rows = context.scoped_rows(entry, scope)
-            tasks, _, _, resource_state = context.projected_tasks(scope.plan_ref, entry, rows)
+            tasks, _, _, resource_state = context.projected_tasks(scope.plan_ref, rows)
             data = {"plan": project_plan(entry, scope.plan_ref), "scope": scope.scope(),
                     "time_scope": scope.time_scope(span), "plan_span": span, "task_span": task_span(tasks),
                     "tasks": tasks, "task_count": len(tasks), "tasks_complete": True}
@@ -181,7 +184,7 @@ class WorkbenchPlanQueryService:
         rows = context.scoped_rows(entry, scope)
         if len(rows) > MAX_PLAN_TASKS:
             raise WorkbenchCommandRejected("query_too_large", "本次范围的安排超过 10000 条，请缩小时间范围后重试。", 413)
-        tasks, task_facts, resources, resource_state = context.projected_tasks(scope.plan_ref, entry, rows)
+        tasks, task_facts, resources, resource_state = context.projected_tasks(scope.plan_ref, rows)
         projections, facts, gantt_graph, provenance = workspace_projections(
             self.conn, entry=entry, scope=scope, rows=rows, resources=resources, plan_span=span, logger=self.logger, context=context,
         )

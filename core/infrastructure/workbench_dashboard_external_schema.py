@@ -64,7 +64,7 @@ def workbench_dashboard_external_contract_issues(conn, *, structure=None, allow_
     return [("missing_dashboard_external_schema:" if name not in actual else "invalid_dashboard_external_schema:") + name
             for name, sql in workbench_dashboard_external_objects().items()
             if name not in actual or not schema_contract_matches(
-                conn, actual[name] or "", sql, legacy[name], allow_legacy=allow_legacy)]
+                conn, actual[name], sql, legacy[name], allow_legacy=allow_legacy)]
 
 
 def orphaned_handling_receipts(conn):
@@ -95,7 +95,3 @@ def install(conn):
         conn.execute(sql)
     conn.execute("INSERT INTO WorkbenchDashboardExternalItems(item_ref,outsourcing_ref) "
                  "SELECT lower(hex(randomblob(24))),outsourcing_ref FROM WorkbenchOutsourcingReceipts")
-
-
-objects = workbench_dashboard_external_objects
-contract_issues = workbench_dashboard_external_contract_issues

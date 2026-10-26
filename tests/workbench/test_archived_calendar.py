@@ -330,8 +330,9 @@ def test_streaming_releases_person_groups_and_derived_facts_keeps_shared_shift(m
     assert engine is not None
     global_key = "2026-10-12"
     global_policy = engine._policy_for_date(global_key)
-    reads, pattern = [], engine.operator_shift_calendar.repo.pattern_day
-    monkeypatch.setattr(engine.operator_shift_calendar.repo, "pattern_day", lambda *args: (reads.append(args), pattern(*args))[1])
+    shifts = type(engine.operator_shift_calendar)
+    reads, read_pattern = [], shifts._read_pattern
+    monkeypatch.setattr(shifts, "_read_pattern", lambda self, *args: (reads.append(args), read_pattern(self, *args))[1])
     stream = factory.iter_resources([RESOURCES[1], {"kind": "operator", "ref": second_ref, "saved_id": "O2"}],
                                     "2026-10-12T08:00:00", "2026-10-14T17:00:00")
     _, first = next(stream)

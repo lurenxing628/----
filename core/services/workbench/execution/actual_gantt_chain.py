@@ -21,8 +21,8 @@ def _mixed_piece_groups(tasks):
     return any(len(values) > 1 for values in groups.values())
 
 
-def _bound_rows(plan_ref, entry, rows, *, context):
-    projected, _, _, _ = context.projected_tasks(plan_ref, entry, rows)
+def _bound_rows(plan_ref, rows, *, context):
+    projected, _, _, _ = context.projected_tasks(plan_ref, rows)
     mapping, bound = {}, []
     for original, task in zip(rows, projected):
         row = dict(original)
@@ -45,7 +45,7 @@ def plan_chain(plan_ref, visible_refs, *, target_task_ref, context):
         if _mixed_piece_groups(detail_rows):
             return unavailable(plan_ref, "engine_piece_precedence_unsupported",
                 "暂不支持共同工序与分件之间的跨组依赖，无法计算关键链。", **target)
-        rows, mapping = _bound_rows(plan_ref, entry, detail_rows, context=context)
+        rows, mapping = _bound_rows(plan_ref, detail_rows, context=context)
     if rows is None or mapping is None:
         return unavailable(plan_ref, "chain_plan_facts_mismatch",
             "关键链与计划明细不一致，请刷新重试。", **target)

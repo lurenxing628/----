@@ -1,7 +1,7 @@
 """The three graph phase stages as rotation units: weight profiles, elite repair, iterated greedy."""
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.errors import ValidationError
@@ -15,6 +15,10 @@ from .predecode import GraphReadyProfileSearch
 from .repair import EliteRepairPool, EliteRepairRun
 from .reporting import append_graph_attempt, append_graph_trace, record_rejected_attempt
 from .v2_contract import is_graph_ready_v2_contract_error
+
+if TYPE_CHECKING:
+    from core.services.scheduler.run.optimizer.candidate_fingerprint import CandidateFingerprint
+    from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
 
 
 class GraphSearchState:
@@ -30,7 +34,8 @@ class ProfileStage(SearchStage):
     def __init__(self, *, profiles: List[GraphReadyWeightProfile], search: GraphReadyProfileSearch, pool: EliteRepairPool,
                  state: GraphSearchState, order: List[str], strict_mode: bool, base_strategy: SortStrategy,
                  dispatch_rule_cfg: str, attempts: List[Dict[str, Any]], improvement_trace: List[Dict[str, Any]],
-                 search_report_state: Any, clock: Callable[[], float], t_begin: float) -> None:
+                 search_report_state: OptimizationSearchReportState, clock: Callable[[], float],
+                 t_begin: float) -> None:
         self.profiles = list(profiles)
         self.search = search
         self.pool = pool
@@ -70,9 +75,8 @@ class ProfileStage(SearchStage):
                                               search_report_state=self.search_report_state, fingerprint=fingerprint,
                                               clock=self.clock, t_begin=self.t_begin):
             return
-        if self.search_report_state is not None:
-            self.search_report_state.mark_candidate_accepted(candidate, origin=profile.candidate_origin,
-                                                             fingerprint=fingerprint)
+        self.search_report_state.mark_candidate_accepted(candidate, origin=profile.candidate_origin,
+                                                         fingerprint=fingerprint)
         append_graph_trace(improvement_trace=self.improvement_trace, candidate=candidate, profile=profile, clock=self.clock,
                            t_begin=self.t_begin)
         self.state.best = candidate
@@ -148,7 +152,7 @@ def iterated_greedy_parent_profile(best: Optional[Dict[str, Any]], *, pool: Elit
     elite = pool.parents_by_fingerprint.get(pool.fingerprint(best).output_key)
     if elite is not None:
         return elite["profile"]
-    return next((profile for profile in profiles if str(profile.formula_version or "").startswith("graph_ready_v2")), None)
+    return next((profile for profile in profiles if profile.formula_version.startswith("graph_ready_v2")), None)
 
 
 def _evaluate_profile(
@@ -190,34 +194,25 @@ def _candidate_should_replace_best(
     profile: GraphReadyWeightProfile,
     best: Optional[Dict[str, Any]],
     attempts: List[Dict[str, Any]],
-    search_report_state: Any,
-    fingerprint: Any = None,
-    clock: Optional[Callable[[], float]] = None,
-    t_begin: Optional[float] = None,
+    search_report_state: OptimizationSearchReportState,
+    fingerprint: CandidateFingerprint,
+    clock: Callable[[], float],
+    t_begin: float,
 ) -> bool:
-    if search_report_state is not None:
-        fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin=profile.candidate_origin,
-                                                                   fingerprint=fingerprint)
-    else:
-        fingerprint = None
-    duplicate = fingerprint is not None and (fingerprint.same_as_parent or fingerprint.same_as_seen)
+    fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin=profile.candidate_origin,
+                                                               fingerprint=fingerprint)
+    duplicate = fingerprint.same_as_parent or fingerprint.same_as_seen
     accepted = not duplicate and candidate_is_preferred(
         candidate=candidate,
         incumbent=best,
         candidate_origin=profile.candidate_origin,
-        incumbent_origin=_incumbent_origin(best, search_report_state),
+        incumbent_origin=str(search_report_state.best_origin or "baseline"),
         candidate_fingerprint=fingerprint,
-        incumbent_fingerprint_changed=bool(search_report_state and search_report_state.best_fingerprint_changed()),
+        incumbent_fingerprint_changed=search_report_state.best_fingerprint_changed(),
     )
     append_graph_attempt(attempts=attempts, candidate=candidate, profile=profile, reference=best, accepted=accepted,
                          search_report_state=search_report_state, clock=clock, t_begin=t_begin)
     return accepted
-
-
-def _incumbent_origin(best: Optional[Dict[str, Any]], search_report_state: Any) -> str:
-    if search_report_state is not None:
-        return str(search_report_state.best_origin or "baseline")
-    return str((best or {}).get("candidate_origin") or "baseline")
 
 
 __all__ = ["GraphSearchState", "IteratedGreedyStage", "ProfileStage", "RepairStage", "iterated_greedy_parent_profile"]

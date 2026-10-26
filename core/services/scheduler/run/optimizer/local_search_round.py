@@ -60,15 +60,15 @@ def _record_improvement(
     improvement_trace: List[Dict[str, Any]],
     clock: Callable[[], float],
     t_begin: float,
-    reference: Optional[Dict[str, Any]] = None,
+    reference: Dict[str, Any],
     search_report_state: OptimizationSearchReportState,
 ) -> None:
     metrics = candidate["metrics"]
     score = candidate["score"]
     used_strat = candidate["strategy"]
     used_params = candidate["params"]
-    dispatch_mode = str(candidate.get("dispatch_mode") or "")
-    dispatch_rule = str(candidate.get("dispatch_rule") or "")
+    dispatch_mode = candidate["dispatch_mode"]
+    dispatch_rule = candidate["dispatch_rule"]
     move_tag = f"local:{move.neighborhood_name}"
     improvement_trace.append(
         {
@@ -89,7 +89,7 @@ def _record_improvement(
         "strategy": used_strat.value,
         "dispatch_mode": dispatch_mode,
         "dispatch_rule": dispatch_rule,
-        "used_params": dict(used_params or {}),
+        "used_params": dict(used_params),
         "score": list(score),
         "failed_ops": int(candidate["summary"].failed_ops),
         "algo_stats": candidate["algo_stats"],
@@ -195,7 +195,7 @@ def run_local_search_candidate_round(
     move = build_neighborhood_move(
         vns_state.current_neighborhood(),
         order=local_state.current_order,
-        results=local_state.current.get("results") or [],
+        results=local_state.current["results"],
         batches=batches,
         resource_pool=local_state.current_resource_pool or resource_pool,
         rnd=rnd,

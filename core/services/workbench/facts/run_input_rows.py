@@ -76,11 +76,11 @@ def validate_single_chain(operations):
             fail("dependency_ambiguous", "这个批次里有重复的工序号，前后顺序算不出来，这次排产没有开始。请到批次管理去掉重复的工序号。", batch_id=batch_id)
 
 
-def classify_rows(facts, settings, raw_batches, operations, projections, guarded_ids, *, piece_scope=None, external_cycles=None):
+def classify_rows(facts, settings, raw_batches, operations, projections, guarded_ids, *, piece_scope=None, external_cycles):
     checks = facts.checks()
     raw_by_id = {row["id"]: row for row in facts.tables["BatchOperations"]}
     batches = {row["batch_id"]: row for row in raw_batches}
-    cycles = external_cycles or {}
+    cycles = external_cycles
     rows = []
     releases = {}
     for op in operations:

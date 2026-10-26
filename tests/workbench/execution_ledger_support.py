@@ -82,7 +82,8 @@ class LedgerCase:
         """按任务所属计划读出该工序的执行投影；生产只按工序批量读投影，没有按任务编号单读的入口。"""
         with self.ledger.read_snapshot():
             task = self.ledger.repo.task_headers([task_ref])[task_ref]
-            return self.ledger.project_operations([task["operation_ref"]], comparison_plan_ref=task["plan_ref"])[0]
+            facts = self.ledger.load_many([task["operation_ref"]], comparison_plan_ref=task["plan_ref"])
+            return self.ledger.project_loaded(facts)[0]
 
     def report_projection(self, report_ref):
         """从所属工序的执行投影里取出这条报工；生产只按工序批量读投影，没有按报工单号单读的入口。"""

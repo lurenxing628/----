@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Union
+from typing import Callable, Optional, Union
 
 from core.errors import ValidationError
 
@@ -16,10 +16,6 @@ class ScheduleResourceFilter:
     resource_id: str = ""
 
 
-def _text(value: Any) -> str:
-    return str(value or "").strip()
-
-
 def _message(template: _Message, resource_type: str, fallback: str) -> str:
     if callable(template):
         return str(template(resource_type))
@@ -29,15 +25,13 @@ def _message(template: _Message, resource_type: str, fallback: str) -> str:
 
 
 def normalize_schedule_resource_filter(
-    resource_type: Any = None,
-    resource_id: Any = None,
+    resource_type_text: str,
+    resource_id_text: str,
     *,
     missing_type_message: _Message = None,
     unsupported_message: _Message = None,
     missing_id_message: _Message = None,
 ) -> ScheduleResourceFilter:
-    resource_type_text = _text(resource_type).lower()
-    resource_id_text = _text(resource_id)
     if not resource_type_text and resource_id_text:
         raise ValidationError(
             _message(missing_type_message, resource_type_text, "资源筛选缺少资源类型。"),

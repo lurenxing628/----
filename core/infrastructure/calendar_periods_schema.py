@@ -29,7 +29,7 @@ def contract_issues(conn, *, structure=None):
     actual = structure.sql
     issues = [("missing_calendar_periods:" if name not in actual else "invalid_calendar_periods:") + name
               for name, sql in objects().items()
-              if name not in actual or canonical_sql(sql) != canonical_sql(actual[name] or "")]
+              if name not in actual or canonical_sql(sql) != canonical_sql(actual[name])]
     for table in ("WorkCalendar", "OperatorCalendar"):
         if "periods_json" not in {row[1] for row in structure.table_info(table)}:
             issues.append("missing_calendar_periods:" + table + ".periods_json")

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 import time
 from typing import Any, Dict, Optional, cast
 
@@ -28,8 +27,6 @@ from .launcher_lock_result import (
 from .launcher_observability import launcher_log_warning
 from .launcher_paths import (
     RUNTIME_CONTRACT_VERSION,
-    current_runtime_owner,
-    default_chrome_profile_dir,
     launch_error_path,
     resolve_runtime_state_dir,
     resolve_runtime_state_dir_for_read,
@@ -49,11 +46,8 @@ from .launcher_runtime_lock import (
 
 def _write_runtime_state_triplet(state_dir: str, host: str, port: int, db_for_runtime: str) -> None:
     host_file, port_file, db_file, _contract_file = state_contract_paths(state_dir)
-    write_fixed_text(port_file, str(int(port)) + "\n")
-    host_for_client = (str(host or "").strip() or "127.0.0.1")
-    if host_for_client == "0.0.0.0":
-        host_for_client = "127.0.0.1"
-    write_fixed_text(host_file, str(host_for_client) + "\n")
+    write_fixed_text(port_file, str(port) + "\n")
+    write_fixed_text(host_file, host + "\n")
     write_fixed_text(db_file, db_for_runtime + "\n")
 
 
@@ -80,32 +74,26 @@ def _runtime_contract_payload(
     log_dir: Optional[str],
     backup_dir: Optional[str],
     excel_template_dir: Optional[str],
-    exe_path: Optional[str] = None,
-    chrome_profile_dir: Optional[str] = None,
-    owner: Optional[str] = None,
+    exe_path: str,
+    chrome_profile_dir: str,
+    owner: str,
 ) -> Dict[str, Any]:
-    instance_id = str(instance_id or "").strip()
-    if not instance_id:
-        raise ValueError("runtime instance_id is required")
-    host_for_client = (str(host or "").strip() or "127.0.0.1")
-    if host_for_client == "0.0.0.0":
-        host_for_client = "127.0.0.1"
     runtime_dir_abs = os.path.abspath(str(runtime_dir))
     return {
         "contract_version": int(RUNTIME_CONTRACT_VERSION),
         "pid": int(os.getpid()),
-        "host": host_for_client,
+        "host": "127.0.0.1" if host == "0.0.0.0" else host,
         "port": int(port),
-        "ui_mode": str(ui_mode or "").strip() or "unknown",
+        "ui_mode": ui_mode,
         "runtime_dir": runtime_dir_abs,
-        "exe_path": os.path.abspath(str(exe_path or sys.executable or "")).strip(),
-        "owner": str(owner or current_runtime_owner()).strip() or "unknown",
+        "exe_path": os.path.abspath(exe_path),
+        "owner": owner,
         "instance_id": instance_id,
         "shutdown_path": "/system/runtime/shutdown",
-        "shutdown_token": str(shutdown_token or "").strip(),
+        "shutdown_token": shutdown_token,
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "db_path": normalize_runtime_db_path(db_path),
-        "chrome_profile_dir": os.path.abspath(str(chrome_profile_dir or default_chrome_profile_dir(runtime_dir_abs))),
+        "chrome_profile_dir": os.path.abspath(chrome_profile_dir),
         "data_dirs": {
             "log_dir": os.path.abspath(str(log_dir or runtime_log_dir(runtime_dir_abs))),
             "backup_dir": os.path.abspath(str(backup_dir or os.path.join(runtime_dir_abs, "backups"))),
@@ -128,18 +116,13 @@ def write_runtime_contract_file(
     log_dir: Optional[str],
     backup_dir: Optional[str],
     excel_template_dir: Optional[str],
-    exe_path: Optional[str] = None,
-    chrome_profile_dir: Optional[str] = None,
-    owner: Optional[str] = None,
-    logger: Optional[logging.Logger] = None,
+    exe_path: str,
+    chrome_profile_dir: str,
+    owner: str,
+    logger: logging.Logger,
     expected_lock: Dict[str, Any],
 ) -> Dict[str, Any]:
-    state_dir_s = str((expected_lock or {}).get("state_dir") or "").strip()
-    if not state_dir_s:
-        raise RuntimeLockError("缺少原壳锁目录，运行时契约发布已停止。")
-    state_dir = os.path.abspath(state_dir_s)
-    if normalize_runtime_db_path(expected_lock.get("path")) != normalize_runtime_db_path(runtime_lock_path(state_dir)):
-        raise RuntimeLockError("原壳锁路径与目录不一致，运行时契约发布已停止。")
+    state_dir = expected_lock["state_dir"]
     payload = _runtime_contract_payload(
         runtime_dir,
         host,
@@ -170,8 +153,7 @@ def write_runtime_contract_file(
             _publish_runtime_contract_directory(mirror_log_dir, payload, expected_lock, primary=False)
         except (RuntimeLockError, OSError, TypeError, ValueError) as exc:
             safe_log(logger, "warning", "写入运行时镜像契约失败，主契约已写入：dir=%s error=%s", mirror_log_dir, exc)
-    if logger is not None:
-        logger.info(f"运行时契约已写入：{contract_path}")
+    logger.info(f"运行时契约已写入：{contract_path}")
     return {"path": contract_path, "payload": payload}
 
 

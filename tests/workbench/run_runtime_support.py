@@ -41,7 +41,7 @@ def owned_case(job_case, tmp_path):
         runtime = case.app.extensions.get("workbench_run_runtime")
         if runtime is not None:
             assert runtime.shutdown(timeout=30), runtime.status
-        release_runtime_lock(case.runtime_dir, db_path=str(case.path))
+        release_runtime_lock(case.runtime_dir, db_path=str(case.path), expected_payload=case.lock_payload)
 
 
 def install(case):
@@ -88,12 +88,11 @@ def paused_compute(monkeypatch):
     calls = []
     original = run_worker.compute_candidate_run
 
-    def compute(conn, settings, projections, *, capture=None, validated_projections=None):
+    def compute(conn, settings, projections, *, capture):
         calls.append(threading.get_ident())
         entered.set()
         assert release.wait(timeout=20), "test did not release compute"
-        return original(conn, settings, projections, capture=capture,
-                        validated_projections=validated_projections)
+        return original(conn, settings, projections, capture=capture)
 
     monkeypatch.setattr(run_worker, "compute_candidate_run", compute)
     try:

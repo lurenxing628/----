@@ -8,8 +8,7 @@ _SENSITIVE = re.compile(r"(?i)(authorization|bearer\s|api[_-]?key|secret|passwor
 _PATH = re.compile(r"(?:[A-Za-z]:[\\/]|(?<![\w:])/(?!/)|\\\\)[^\s\"'<>，。；]*")
 
 
-def public_system_text(value, limit=8192):
-    text = str(value or "")
+def public_system_text(text, limit=8192):
     lines = []
     private_block = False
     for line in text.splitlines():

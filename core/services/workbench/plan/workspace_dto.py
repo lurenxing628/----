@@ -37,7 +37,7 @@ def resource_directory(rows, resources, *, tasks=None, baseline=None, archived=(
 
 
 def workspace_projections(conn, *, entry, scope, rows, resources, plan_span, logger, context):
-    baseline, baseline_facts = build_plan_baseline(conn, entry=entry, scope=scope, selected_rows=rows, context=context)
+    baseline, baseline_facts = build_plan_baseline(conn, entry=entry, scope=scope, context=context)
     selected = context.calendar_selection(entry, scope, resources, plan_span)
     calendar, calendar_facts = project_plan_calendar(conn, scope=scope, resources=resources, selected=selected)
     occupancy, occupancy_facts = project_plan_occupancy(

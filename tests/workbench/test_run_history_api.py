@@ -161,13 +161,14 @@ def test_new_process_reopens_history_without_browser_token_cache(history_case, m
     before = dump(case.conn)
     code = '''import json, sqlite3, sys
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, current_schema_contract_issues
+from core.infrastructure.schema_declaration import load_schema_sql
 from core.models.workbench_run_history import RunHistoryScope
 from core.services.workbench.run.history import WorkbenchRunHistoryQueryService
 conn = sqlite3.connect(sys.argv[1])
 conn.row_factory = sqlite3.Row
 conn.execute("PRAGMA foreign_keys=ON")
 assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == CURRENT_SCHEMA_VERSION
-assert current_schema_contract_issues(conn) == []
+assert current_schema_contract_issues(conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql()) == []
 conn.execute("PRAGMA query_only=ON")
 data, fingerprint = WorkbenchRunHistoryQueryService(conn).catalog(RunHistoryScope())
 print(json.dumps({"data": data, "fingerprint": fingerprint}))

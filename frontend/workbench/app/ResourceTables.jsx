@@ -54,7 +54,7 @@
     const cols = [
       { key: 'business_code', title: C.codeLabel(kind), width: 130, sortable: true, render: entity => <button type="button" className="lnk" disabled={disabled} onClick={() => onOpen(entity.ref)}>{entity.business_code}</button> },
       { key: 'label', title: C.nameLabel(kind), width: 160, sortable: true, render: entity => entity.label },
-      ...(kind === 'op_type' ? opColumns(opCategory) : columns[kind] || []),
+      ...(kind === 'op_type' ? opColumns(opCategory) : columns[kind]),
       ...(kind === 'op_type' ? [] : [{ key: 'status', title: '状态', width: 145, render: entity => <Status kind={kind} entity={entity} /> }])
     ].map(column => ({ width: 180, ...column }));
     function resize(key, width) {
@@ -63,7 +63,8 @@
       table.current.querySelectorAll('thead th[data-column]').forEach(cell => { current[cell.dataset.column] = cell.getBoundingClientRect().width; });
       setWidths({ ...current, [key]: Math.max(56, width) });
     }
-    const filtered = !!(scope && (scope.query || scope.status || Object.keys(scope.column_filters || {}).length));
+    // 默认范围（ResourceWorkspace.jsx scopeFor）不带 column_filters，清空列筛选时也会删掉这个键。
+    const filtered = !!(scope.query || scope.status || Object.keys(scope.column_filters || {}).length);
     const tableWidth = widths ? Object.values(widths).reduce((sum, width) => sum + width, 0)
       : 44 + 216 + cols.reduce((sum, column) => sum + column.width, 0);
     return <div className="card"><div className="wb-table-frame wb-table-shell" data-sticky-head data-sticky-actions style={{ '--wb-table-min': tableWidth + 'px' }}><table ref={table} className="tbl wb-table" aria-label={C.resourceName(kind, opCategory) + '列表'}
@@ -81,7 +82,7 @@
       }} /></th>
         {cols.map(col => <th key={col.key} scope="col" data-column={col.key} className={col.key === 'business_code' ? 'wb-col-key' : col.numeric ? 'r' : ''} style={{ width: widths ? widths[col.key] : col.width }} aria-sort={sortActive && sort === col.key ? direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
           <window.ResourceTableHeader column={col} kind={kind} scope={scope} adapter={adapter} matchingCount={matchingCount}
-            sort={sort} direction={direction} sortActive={sortActive} onSort={onSort} filter={scope && scope.column_filters && scope.column_filters[col.key] || null} onFilter={rule => onColumnFilter(col.key, rule)}
+            sort={sort} direction={direction} sortActive={sortActive} onSort={onSort} filter={scope.column_filters && scope.column_filters[col.key] || null} onFilter={rule => onColumnFilter(col.key, rule)}
             width={widths ? widths[col.key] : col.width} onResize={width => resize(col.key, width)} disabled={headerDisabled} />
         </th>)}
         <th scope="col" className="actcol wb-col-actions" data-column="__actions" style={{ width: widths ? widths.__actions : 216 }}>操作</th></tr></thead>

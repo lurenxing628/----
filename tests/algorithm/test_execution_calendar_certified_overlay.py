@@ -22,6 +22,7 @@ from core.services.scheduler.run.schedule_execution_reservations import (
 )
 from tests._support.algo_operations import make_algo_op, make_batch
 from tests._support.busy_block_case import BASE, at, native_calendar, run_estimate, slot_case, spans
+from tests._support.schedule_decode import config_snapshot, production_decode_in_session
 
 
 def _reservation(operator_id="O1", machine_id="M2", start=0.0, end=0.5):
@@ -40,9 +41,6 @@ def test_guard_certifies_overlay_only_over_a_certified_calendar_with_intact_meth
         shadowed = ExecutionResourceCalendar(calendar, [])
         shadowed.adjust_to_working_time = MethodType(lambda self, dt, **kw: dt, shadowed)
         assert not native_timing_calendar(shadowed)
-        bad_floor = ExecutionResourceCalendar(calendar, [])
-        bad_floor._release_by_operator["O1"] = "2026-09-08"
-        assert not native_timing_calendar(bad_floor)
         with patch.object(ExecutionResourceCalendar, "get_efficiency", lambda self, dt, **kw: 1.0):
             assert not native_timing_calendar(overlay)
         assert native_timing_calendar(overlay)
@@ -66,6 +64,16 @@ def test_certificate_is_absent_below_the_release_floor_and_clamped_at_or_after_i
         assert overlay.add_working_hours(at(7), 2.0, operator_id="O1") == calendar.add_working_hours(at(7), 2.0, operator_id="O1")
         assert overlay.get_efficiency(at(1), operator_id="O1") == calendar.get_efficiency(at(1), operator_id="O1")
         assert overlay.add_calendar_days(at(1), 2.0) == at(49)
+
+
+def test_release_floor_lookup_keeps_the_exact_operator_identity():
+    with native_calendar() as calendar:
+        overlay = ExecutionResourceCalendar(calendar, [_reservation(start=0.0, end=0.5)])
+        # 读取与写入同一口径：带空格的编号是另一个身份，不借用 "O1" 的释放下限。
+        assert overlay.adjust_to_working_time(at(0.25), operator_id=" O1 ") == at(0.25)
+        assert overlay.certified_slot_window(at(0.25), operator_id=" O1 ") == calendar.certified_slot_window(
+            at(0.25), operator_id=" O1 ")
+        assert overlay.adjust_to_working_time(at(0.25), operator_id="O1") == at(0.5)
 
 
 def test_busy_block_closure_engages_through_the_overlay_certificate():
@@ -114,9 +122,12 @@ def _payload(rows, summary):
 def _decode(calendar, case, *, cache_enabled):
     attach = scheduler_module.attach_sgs_score_cache if cache_enabled else (lambda *args, **kw: None)
     with patch.object(scheduler_module, "attach_sgs_score_cache", attach):
-        scheduler = scheduler_module.GreedyScheduler(calendar_service=calendar, config_service={"auto_assign_enabled": "no"})
-        rows, summary, _strategy, _params = scheduler.schedule(**case)
-    return _payload(rows, summary), scheduler._last_sgs_score_cache_stats
+        scheduler = scheduler_module.GreedyScheduler(calendar_service=calendar,
+                                                     config_service=config_snapshot(auto_assign_enabled="no"))
+        session, decoded = production_decode_in_session(scheduler, **case)
+    # The decode's own run context keeps the score cache it attached (None when the cache is off).
+    cache = session.native_preparation.run_context.sgs_score_cache
+    return _payload(decoded.results, decoded.summary), (cache.stats() if cache is not None else {})
 
 
 def _single_resource_case(count=40):

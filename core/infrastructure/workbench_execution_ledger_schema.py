@@ -127,7 +127,7 @@ def execution_ledger_contract_issues(conn, *, legacy_link_unique=False, structur
     for name, sql in declared.items():
         if name not in actual:
             issues.append("missing_execution_ledger:" + name)
-        elif canonical_sql(sql) != canonical_sql(actual[name] or ""):
+        elif canonical_sql(sql) != canonical_sql(actual[name]):
             issues.append("invalid_execution_ledger:" + name)
     if legacy_link_unique:
         current_only = _CURRENT_ONLY_OBJECTS.keys()
@@ -139,14 +139,13 @@ def execution_ledger_contract_issues(conn, *, legacy_link_unique=False, structur
     return issues
 
 
-def execution_ledger_migration_contract_issues(conn, *, structure=None):
+def execution_ledger_migration_contract_issues(conn, *, structure):
     """Historical installers accept complete pre-v37 or current ledger DDL.
 
     A real old database keeps its earlier contract until v37 changes it; a new
     migration chain may already have installed the current definition at v25.
     Runtime readers continue to require execution_ledger_contract_issues.
     """
-    structure = structure if structure is not None else SchemaStructure(conn)
     issues = execution_ledger_contract_issues(conn, structure=structure)
     if issues and not execution_ledger_contract_issues(conn, legacy_link_unique=True, structure=structure):
         return []

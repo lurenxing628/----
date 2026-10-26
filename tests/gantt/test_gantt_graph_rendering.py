@@ -9,7 +9,7 @@ const data=h.processFixture(), index=h.runtime.GanttGraph.create(data.gantt_grap
 const expected=data.gantt_graph.critical_task_refs.slice();
 Object.defineProperty(data.gantt_graph,'nodes',{get(){throw Error('Critical-chain rendering must consume the prepared node index');}});
 for (const items of [data.tasks.map(task=>({task})),[],data.tasks.slice(0,1).map(task=>({task}))]) {
-  const tree=h.render(h.runtime.ActualGanttControls.Chain,{index,model:{items},onLocate:ref=>located.push(ref)});
+  const tree=h.render(h.runtime.ActualGanttControls.Chain,{index,model:{shownRefs:new Set(items.map(item=>item.task.task_ref))},onLocate:ref=>located.push(ref)});
   const buttons=h.walk(tree).filter(node=>node.props['data-chain-node']);
   assert.deepEqual(buttons.map(node=>node.props['data-chain-node']),expected);
   for (const button of buttons) {
@@ -32,7 +32,7 @@ def test_shipped_gantts_highlight_complete_route_on_hover_and_keep_clicked_route
 const plan=h.processFixture();
 const candidate={tasks:plan.tasks.map(task=>({...task,row_ref:task.task_ref,batch_ref:h.reference(300),batch_label:task.batch_id,
   machine:{ref:task.machine_ref,label:'Machine 1'},operator:{ref:task.operator_ref,label:'Operator 1'},supplier:null,
-  source:'internal',data_gaps:[]})),task_count:plan.task_count,task_span:plan.plan_span,candidate_span:plan.plan_span,
+  source:'internal',data_gaps:[]})),task_count:plan.task_count,task_span:plan.plan_span,candidate_span:plan.plan_span,unplanned_operations:[],
   delivery_risks:{items:[]},candidate:{label:'测试候选'},
   generation:{algorithm:{mode_label:'测试算法',strategy_label:null},baseline:{version:1,captured_at:'2026-05-11T08:00:00'}},
   gantt_graph:{...plan.gantt_graph,scope:'full_candidate'}};
@@ -78,7 +78,7 @@ plan.tasks.forEach((task,index)=>task.machine_ref=h.reference(200+index));
 plan.resources=plan.tasks.map((task,index)=>({ref:task.machine_ref,label:'Machine '+index,business_code:'M'+index}));
 const candidate={tasks:plan.tasks.map(task=>({...task,row_ref:task.task_ref,batch_ref:h.reference(300),batch_label:task.batch_id,
   machine:{ref:task.machine_ref,label:'Machine'},operator:{ref:task.operator_ref,label:'Operator'},supplier:null,
-  source:'internal',data_gaps:[]})),task_count:plan.task_count,task_span:plan.plan_span,candidate_span:plan.plan_span,
+  source:'internal',data_gaps:[]})),task_count:plan.task_count,task_span:plan.plan_span,candidate_span:plan.plan_span,unplanned_operations:[],
   delivery_risks:{items:[]},candidate:{label:'测试候选'},
   generation:{algorithm:{mode_label:'测试算法',strategy_label:null},baseline:{version:1,captured_at:'2026-05-11T08:00:00'}},
   gantt_graph:{...plan.gantt_graph,scope:'full_candidate'}};
@@ -139,7 +139,7 @@ const ref=h.reference(100),task={task_ref:ref,plan_ref:ref,operation_ref:ref,
   piece_id:null,quantity:1,batch_quantity:1,quantity_basis:'run_admission',quantity_reason:null,batch_id:'B1',operation_label:'精加工',
   execution:{operation_ref:ref,comparison_task_ref:ref,execution_state:'unreported',data_quality:'complete',target_quantity:1,
     known_completed_quantity:0,remaining_quantity:1,records_complete:true,quantity_complete:false,unknown_record_count:0,
-    data_gaps:[],reports:[],legacy_facts:[],write_context:{write_token:null,capabilities:{},blocked_reasons:[]},completion_basis:null}};
+    data_gaps:[],reports:[],legacy_facts:[],voided_reports:[],write_context:{write_token:null,capabilities:{},blocked_reasons:[]},completion_basis:null}};
 const response={ok:true,schema_version:1,meta:{source:'production',time_basis:'factory_local',snapshot_ref:ref,as_of:'2026-10-12T08:00:00'},data:{task}};
 const query=h.runtime.APSResourceSession.useQuery;
 try {

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 from .impact_counts import compute_impact_counts_by_node as _compute_impact_counts_by_node
 from .nx_runtime import import_networkx
@@ -19,14 +19,6 @@ def node_sort_key(graph: Any, node_id: str) -> Tuple[str, int, str, str]:
     )
 
 
-def get_topological_order(graph: Any) -> List[str]:
-    return [
-        node_id
-        for group in get_topological_generations(graph)
-        for node_id in group
-    ]
-
-
 def get_topological_generations(graph: Any) -> List[List[str]]:
     nx = import_networkx()
     return [
@@ -42,11 +34,8 @@ def _duration_of(graph: Any, node_id: str) -> int:
 def get_critical_path(
     graph: Any,
     *,
-    topological_order: Optional[List[str]] = None,
+    topological_order: List[str],
 ) -> Tuple[List[str], int]:
-    if topological_order is None:
-        topological_order = get_topological_order(graph)
-
     # The former weighted copy inserted incoming edges by source-node order.
     # Keep that predecessor tie order while reading the original graph's edges.
     node_index = {node_id: index for index, node_id in enumerate(graph.nodes)}
@@ -94,11 +83,8 @@ def _build_downstream_critical_minutes_by_node(
 
 
 def _machine_ids_for_node(data: Dict[str, Any]) -> Tuple[str, ...]:
-    ids: List[str] = []
-    for raw in data.get("candidate_machine_ids") or ():
-        text = str(raw or "").strip()
-        if text:
-            ids.append(text)
+    # Candidate ids are already compact text (OperationGraphNode.__post_init__).
+    ids: List[str] = list(data["candidate_machine_ids"])
     machine_id = str(data.get("machine_id") or "").strip()
     if machine_id:
         ids.append(machine_id)
@@ -132,31 +118,10 @@ def _build_bottleneck_machine_score_by_node(graph: Any) -> Dict[str, float]:
 def build_node_metrics(
     graph: Any,
     *,
-    topological_order: Optional[List[str]] = None,
-    critical_path: Optional[List[str]] = None,
-    generation_index: Optional[Dict[str, int]] = None,
+    topological_order: List[str],
+    critical_path: List[str],
+    generation_index: Dict[str, int],
 ) -> Dict[str, Dict[str, Any]]:
-    if topological_order is None:
-        generations = get_topological_generations(graph)
-        topological_order = [node_id for group in generations for node_id in group]
-        if generation_index is None:
-            generation_index = {
-                node_id: index
-                for index, group in enumerate(generations)
-                for node_id in group
-            }
-    elif generation_index is None:
-        generation_index = {}
-        for node_id in topological_order:
-            generation_index[node_id] = max(
-                (generation_index[parent_id] + 1 for parent_id in graph.pred[node_id]),
-                default=0,
-            )
-    if critical_path is None:
-        critical_path, _critical_minutes = get_critical_path(
-            graph, topological_order=topological_order,
-        )
-
     critical_set = set(critical_path)
     critical_rank = {
         node_id: index
@@ -188,6 +153,5 @@ __all__ = [
     "build_node_metrics",
     "get_critical_path",
     "get_topological_generations",
-    "get_topological_order",
     "node_sort_key",
 ]

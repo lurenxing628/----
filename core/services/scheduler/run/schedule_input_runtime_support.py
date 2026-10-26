@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime
 from functools import partial
 from itertools import groupby
@@ -71,7 +72,7 @@ def _ensure_internal_runtime_hours(batches: Dict[str, Any], algo_ops: List[Any])
                     "reason": "invalid_internal_work_hours",
                     "op_id": int(op.id),
                     "batch_id": batch_id,
-                    "op_code": op.op_code or "",
+                    "op_code": op.op_code,
                 },
             ) from exc
 
@@ -108,7 +109,7 @@ def _load_runtime_resource_inputs(
 
 
 def prepare_runtime_seeds(
-    svc: Any,
+    conn: sqlite3.Connection,
     *,
     run_label: str,
     batches: Dict[str, Any],
@@ -151,7 +152,7 @@ def prepare_runtime_seeds(
         derived_group_op_ids=derived_group_ids,
     )
     _ensure_internal_runtime_hours(batches, algo_ops_to_schedule)
-    validate_fixed_operator_qualifications_fn(svc.conn, algo_ops_to_schedule)
+    validate_fixed_operator_qualifications_fn(conn, algo_ops_to_schedule)
     return frozen_op_ids, seed_results, algo_ops_to_schedule
 
 

@@ -243,7 +243,7 @@ def resource_matching_summary_to_diagnostics_dict(summary: ResourceMatchingSumma
         "bottleneck_machine_ids_sample": list(bottleneck_machine_ids[:_DIAGNOSTIC_SAMPLE_LIMIT]),
         "bottleneck_machine_count": len(bottleneck_machine_ids),
         "bottleneck_machine_ids_truncated": _truncated(bottleneck_machine_ids, _DIAGNOSTIC_SAMPLE_LIMIT),
-        "warnings_sample": [dict(warning) for warning in warnings[:_DIAGNOSTIC_SAMPLE_LIMIT]],
+        "warnings_sample": list(warnings[:_DIAGNOSTIC_SAMPLE_LIMIT]),
         "warning_count": len(warnings),
         "warnings_truncated": _truncated(warnings, _DIAGNOSTIC_SAMPLE_LIMIT),
     }

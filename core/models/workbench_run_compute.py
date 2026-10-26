@@ -4,7 +4,7 @@
 服务层的 CandidateRunInput / ScheduleOrchestrationOutcome 以结构满足这两个协议。
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Collection, Dict, List, Protocol
 
 
@@ -35,7 +35,6 @@ class CandidateRunComputation:
     candidate_payloads: Dict[str, Any]
     dispositions: List[Dict[str, Any]]
     state: str
-    result_persisted: bool = field(default=False, init=False)
 
 
 @dataclass(frozen=True)
@@ -49,8 +48,8 @@ class PreparedRunResult:
 
 
 class CandidateRunInputError(ValueError):
-    def __init__(self, reason: str, message: str, *, issues=None):
+    def __init__(self, reason: str, message: str, *, issues):
         super().__init__(message)
         self.code = reason
         self.reason = reason
-        self.issues = list(issues or [])
+        self.issues = list(issues)

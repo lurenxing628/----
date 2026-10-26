@@ -12,6 +12,7 @@ from core.infrastructure.database import CURRENT_SCHEMA_VERSION, ensure_schema, 
 from core.infrastructure.material_stages_schema import objects as material_objects
 from core.infrastructure.migration_state import detect_schema_is_current, set_schema_version
 from core.infrastructure.migrations.v15 import _EVENT_INDEX_SQL
+from core.infrastructure.schema_declaration import load_schema_sql
 from core.infrastructure.workbench_calibration_adoption_legacy_schema import objects as legacy_adoption_objects
 from core.infrastructure.workbench_calibration_adoption_schema import objects as adoption_objects
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
@@ -74,7 +75,7 @@ def test_fresh_schema_and_repeated_ensure_schema_are_current(tmp_path: Path, mon
     try:
         assert int(conn.execute("SELECT version FROM SchemaVersion WHERE id = 1").fetchone()["version"]) == CURRENT_SCHEMA_VERSION
         assert "OperationExecutionEvents" in _table_names(conn)
-        assert detect_schema_is_current(conn)
+        assert detect_schema_is_current(conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql())
     finally:
         conn.close()
 
@@ -145,7 +146,7 @@ def test_v14_database_migrates_operation_execution_events_without_losing_rows(tm
         assert int(conn.execute("SELECT version FROM SchemaVersion WHERE id = 1").fetchone()["version"]) == CURRENT_SCHEMA_VERSION
         assert "OperationExecutionEvents" in _table_names(conn)
         assert conn.execute("SELECT name FROM LegacyRows WHERE id = 1").fetchone()["name"] == "keep-me"
-        assert detect_schema_is_current(conn)
+        assert detect_schema_is_current(conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql())
     finally:
         conn.close()
 
@@ -265,7 +266,7 @@ def test_v36_upgrade_preserves_material_review_values_despite_reversed_columns(t
             "batch_quantity", "requirement_id"]
         ensure_schema(str(path), schema_path=str(SCHEMA_PATH), backup_dir=str(tmp_path / "backups"))
         assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == CURRENT_SCHEMA_VERSION
-        assert detect_schema_is_current(conn)
+        assert detect_schema_is_current(conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql())
         assert [tuple(row) for row in conn.execute(
             "SELECT requirement_id,batch_quantity FROM BatchMaterialReviews")] == [(10, 20)]
     finally:

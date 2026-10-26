@@ -11,10 +11,9 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.personnel.operator_qualification import OperatorQualificationError, OperatorQualificationService
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from core.services.workbench.batch.facts import BatchFacts
-from core.services.workbench.run.compute import compute_candidate_run
-from core.services.workbench.run.input import prepare_candidate_run_input
 from core.services.workbench.run.preflight import PreflightService
 from core.services.workbench.trial.constraints import _actual_reservations
+from tests.workbench.run_compute_support import compute_run, prepare_run_input
 from tests.workbench.trial_adoption_support import INTENT
 from tests.workbench.trial_adoption_support import service as adoption_service
 from tests.workbench.trial_support import change, create, service, snapshot
@@ -184,9 +183,9 @@ def test_confirmed_merged_return_replaces_legacy_estimate_in_real_trial_adoption
     settings = case.settings('B2')
     checked, _ = PreflightService(case.conn).evaluate(settings)
     assert checked['blockers'] == []
-    prepared = prepare_candidate_run_input(case.conn, settings, case.projections('B2'))
+    prepared = prepare_run_input(case.conn, settings, case.projections('B2'))
     assert prepared.normalized_batch_ids == ['B2'] and not prepared.execution_fixed_op_ids
-    assert compute_candidate_run(case.conn, settings, case.projections('B2')).state == 'complete'
+    assert compute_run(case.conn, settings, case.projections('B2')).state == 'complete'
     retained = {table: list(case.conn.execute('SELECT * FROM ' + table)) for table in
                 ('OperationExecutionEvents', 'WorkbenchProductionReports', 'WorkbenchProductionReportRevisions')}
     draft = create(case, {'base': {'plan_ref': case.plan_ref(1)}})
@@ -215,7 +214,7 @@ def test_confirmed_merged_return_replaces_legacy_estimate_in_real_trial_adoption
     projection = case.ledger.project_operations([ref])[0]
     assert projection.execution_state == 'started' and projection.confirmed_finish is None
     assert projection.known_completed_quantity == 0
-    refreshed = prepare_candidate_run_input(case.conn, case.settings('B1', 'B2'), case.projections())
+    refreshed = prepare_run_input(case.conn, case.settings('B1', 'B2'), case.projections())
     assert members[1] in refreshed.execution_fixed_op_ids
     assert members[0] in refreshed.execution_completed_op_ids and case.op_id in refreshed.execution_completed_op_ids
     assert refreshed.execution_facts[members[1]].actual_status == 'processing'
@@ -234,7 +233,7 @@ def test_unselected_external_orphan_resource_blocks_preflight_and_input(trial_ca
     checked, _ = PreflightService(case.conn).evaluate(settings)
     assert any(item['code'] == 'external_actual_resource_conflict' for item in checked['blockers'])
     with pytest.raises(AppError):
-        prepare_candidate_run_input(case.conn, settings, case.projections('B2'))
+        prepare_run_input(case.conn, settings, case.projections('B2'))
 
 
 def test_merged_external_cycle_preflight_reports_mismatched_started_member(trial_case):

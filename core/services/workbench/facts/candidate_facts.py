@@ -1,11 +1,12 @@
 """Interpret acceptance-time facts only; current replacement entities are irrelevant."""
 
 from collections import defaultdict
+from datetime import date
 from functools import cached_property
 
 from core.models.workbench_run_candidate import reference
 
-from .candidate_values import corrupt, gap, stored_json
+from .candidate_values import corrupt, gap, number, stored_json, text
 from .schema_compat import archived_columns
 
 _TABLES = {"BatchOperations": "id", "Batches": "batch_id", "Parts": "part_no",
@@ -51,10 +52,6 @@ def index_rows(rows, key):
             corrupt()
         result[value] = row
     return result
-
-
-def archived_entity_refs(facts):
-    return entity_ref_rows(archived_table(facts, "WorkbenchEntityRefs"))
 
 
 def entity_ref_rows(rows):
@@ -138,3 +135,70 @@ class GenerationFacts:
         if row is None:
             gaps.append(gap(field, "source_missing"))
         return row or {}
+
+    def base_operation_labels(self, ref, op, gaps):
+        """This operation's archived labels, built once per capture; the first build records its gaps in ``gaps``."""
+        if ref not in self._operation_labels:
+            self._operation_labels[ref] = self._operation_labels_from(ref, op, gaps)
+        return self._operation_labels[ref]
+
+    def _operation_labels_from(self, ref, op, gaps):
+        batch = self.related("Batches", op.get("batch_id"), "batch", gaps)
+        part = self.related("Parts", batch.get("part_no"), "part", gaps)
+        batch_key = op.get("batch_id")
+        batch_ref = self.entity_refs.get(("batch", batch_key)) if type(batch_key) is str else None
+        if batch_ref is None:
+            gaps.append(gap("batch_ref", "source_missing"))
+        piece_id = op.get("piece_id")
+        if piece_id is not None or "piece_id" not in op:
+            piece_id = text(piece_id, "piece_id", gaps)
+        execution = self._execution_at_generation(ref, gaps)
+        quantity = execution["target_quantity"] if execution is not None else None
+        if (any(item["field"] == "piece_id" for item in gaps) or execution is None
+                or execution["target_basis"] != ("piece" if piece_id is not None else "batch")):
+            quantity = None
+            gaps.append(gap("quantity", "source_missing"))
+        result = {"operation_ref": ref, "batch_ref": batch_ref,
+                  "batch_label": text(batch.get("batch_id"), "batch_label", gaps),
+                  "part_label": text(part.get("part_name"), "part_label", gaps),
+                  "sequence": number(op.get("seq"), "sequence", gaps, integer=True),
+                  "process_label": text(op.get("op_type_name"), "process_label", gaps),
+                  "piece_id": piece_id, "quantity": quantity,
+                  "batch_quantity": number(batch.get("quantity"), "batch_quantity", gaps, integer=True),
+                  "due_date": _stored_date(batch.get("due_date"), "due_date", gaps),
+                  "execution_at_generation": execution, "data_gaps": gaps}
+        result.update(self.operation_type_labels(op.get("op_type_id")))
+        return result
+
+    def _execution_at_generation(self, ref, gaps):
+        row = self.execution.get(ref)
+        if row is None:
+            gaps.append(gap("execution_at_generation", "source_missing"))
+            return None
+        values = {key: number(row.get(key), "execution_at_generation." + key, gaps, integer=True)
+                  for key in ("target_quantity", "known_completed_quantity", "remaining_quantity")}
+        domains = {"execution_state": ("complete", "paused", "exception", "partial", "started", "unreported"),
+                   "data_quality": ("invalid", "legacy_incomplete", "incomplete", "complete"), "target_basis": ("piece", "batch")}
+        for key, allowed in domains.items():
+            value = row.get(key)
+            values[key] = value if type(value) is str and value in allowed else None
+            if values[key] is None:
+                gaps.append(gap("execution_at_generation." + key, "invalid_stored_value"))
+        return values
+
+    def operation_type_labels(self, type_id):
+        ref = self.entity_refs.get(("op_type", type_id)) if type(type_id) is str else None
+        label = self.tables.get("OpTypes", {}).get(type_id, {}).get("name") if type(type_id) is str else None
+        return {"process_type_ref": ref, "process_type_label": label if type(label) is str else None}
+
+
+def _stored_date(value, field, gaps):
+    result = text(value, field, gaps)
+    if result is not None:
+        try:
+            if date.fromisoformat(result).isoformat() == result:
+                return result
+        except ValueError:
+            pass
+        gaps.append(gap(field, "invalid_stored_value"))
+    return None

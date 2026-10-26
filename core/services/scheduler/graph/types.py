@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Mapping, NoReturn, Optional, Tuple
 
+from core.shared.strict_parse import is_int
+
 
 class FrozenDict(dict):
     """JSON-serializable immutable dict used by graph value snapshots."""
@@ -44,7 +46,7 @@ def _freeze_json_like(value: Any) -> Any:
 
 def _compact_text_tuple(values: Any) -> Tuple[str, ...]:
     compact = []
-    for item in values or ():
+    for item in values:
         if item is None:
             continue
         text = str(item).strip()
@@ -54,13 +56,8 @@ def _compact_text_tuple(values: Any) -> Tuple[str, ...]:
     return tuple(compact)
 
 
-def _require_nonblank(value: Any, *, field_name: str) -> None:
-    if not str(value or "").strip():
-        raise ValueError(f"OperationGraphNode.{field_name} 不能为空。")
-
-
 def _require_int_value(value: Any, *, field_name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
+    if not is_int(value):
         raise ValueError(f"OperationGraphNode.{field_name} 必须是整数。")
     return value
 
@@ -93,9 +90,6 @@ class OperationGraphNode:
     raw: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        _require_nonblank(self.node_id, field_name="node_id")
-        _require_nonblank(self.batch_id, field_name="batch_id")
-        _require_nonblank(self.op_code, field_name="op_code")
         _require_int_value(self.seq, field_name="seq")
         _require_int_value(self.duration_minutes, field_name="duration_minutes")
         if self.duration_minutes < 0:

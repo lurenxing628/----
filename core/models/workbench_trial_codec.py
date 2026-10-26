@@ -1,9 +1,10 @@
 """Lossless SQLite snapshot encoding, including legacy BLOB and REAL values."""
 
-import json
+from typing import NoReturn
 
 from core.models.content import content_text, unpacked
 from core.models.workbench_trial import MAX_TRIAL_BYTES, reject
+from core.shared.strict_json import load_strict_json
 
 
 def encode_trial_text(value):
@@ -24,14 +25,20 @@ def dump_document(value):
     return text, None
 
 
+def _unreadable() -> NoReturn:
+    reject("trial_snapshot_invalid", "试调数据读不出来，这里不改用最新计划。请刷新后重试。")
+
+
 def _load_document(text):
     size = len(text.encode("utf-8")) if type(text) is str else 0
     if type(text) is not str or size > MAX_TRIAL_BYTES:
         reject("trial_snapshot_invalid", "试调数据读不到或超过上限。请刷新后重试。")
+    # 严格读取的拒绝是 WorkbenchCommandRejected（ValueError 子类），放在下面只管 unpacked 的 try 外面。
+    document = load_strict_json(text, on_malformed=_unreadable)
     try:
-        return unpacked(json.loads(text)), size
+        return unpacked(document), size
     except (ValueError, TypeError):
-        reject("trial_snapshot_invalid", "试调数据读不出来，这里不改用最新计划。请刷新后重试。")
+        _unreadable()
 
 
 def load_object_with_size(text):

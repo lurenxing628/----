@@ -215,7 +215,7 @@ def _structure_issues(*, structure: SchemaStructure) -> List[str]:
     for name, sql in plan_identity_objects().items():
         if name not in actual:
             issues.append("missing_workbench_plan_identity: " + name)
-        elif canonical_sql(actual[name] or "") != canonical_sql(sql):
+        elif canonical_sql(actual[name]) != canonical_sql(sql):
             issues.append("bad_workbench_plan_identity: " + name)
     return issues
 

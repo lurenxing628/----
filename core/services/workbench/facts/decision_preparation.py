@@ -65,7 +65,7 @@ def project_decision_preparation_row(facts, operation_ref, tasks, operation_effo
 
 
 def project_decision_preparation(facts, operation_refs, operation_efforts, tasks, *, run_ref,
-                                 available=True, deferred_refs=(), requirements_available=None,
+                                 available, deferred_refs, requirements_available,
                                  official=None, standards=None, task_groups=None):
     """Return the common per-operation rows and their full-admission summary."""
     refs, deferred = list(operation_refs), set(deferred_refs)

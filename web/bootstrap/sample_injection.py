@@ -151,7 +151,7 @@ class SampleInjector:
         return self.progress.report
 
 
-def inject_sample(base_url, output=None, batch_count=100, operation_count=50):
+def inject_sample(base_url, output, batch_count=100, operation_count=50):
     client = SampleClient(base_url)
     progress = SampleProgress(output, client)
     blueprint = sample_blueprint(batch_count, operation_count)

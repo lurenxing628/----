@@ -3,12 +3,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from itertools import zip_longest
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Tuple
 
 from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
 
 from .operation_neighbors import operation_repair_decisions
-from .repair_decisions import RepairDecision, RepairParentPreparation, iter_resource_decisions, prepare_repair_parent
+from .repair_decisions import RepairDecision, RepairParentPreparation, iter_resource_decisions
 from .repair_neighbors import RepairNeighborhood, build_repair_neighborhood
 
 
@@ -76,7 +76,7 @@ class RepairPortfolio:
             order[source], order[target] = order[target], order[source]
         else:
             order.insert(target, order.pop(source))
-        return kind, RepairDecision._unvalidated(tuple(order), resource_overrides=self.inherited_resources)
+        return kind, RepairDecision(tuple(order), resource_overrides=self.inherited_resources)
 
 
 @dataclass(frozen=True)
@@ -98,14 +98,13 @@ class ParentRepairPortfolio:
             return self
         return ParentRepairPortfolio(self.variants + ((profile, portfolio),))
 
-    def profiled_decisions(self, skip_by_basis: Optional[Dict[str, int]] = None
+    def profiled_decisions(self, skip_by_basis: Dict[str, int]
                            ) -> Iterator[Tuple[str, RepairDecision, GraphReadyWeightProfile]]:
         """Round-robin over the variants; each variant's stream resumes after its own consumed prefix.
 
         Resuming per basis keeps a variant added mid-visit from reshuffling what the other streams yield next.
         """
-        consumed = skip_by_basis or {}
-        streams = [portfolio.decisions(start=consumed.get(profile.feature_basis, 0))
+        streams = [portfolio.decisions(start=skip_by_basis.get(profile.feature_basis, 0))
                    for profile, portfolio in self.variants]
         for group in zip_longest(*streams):
             for (profile, _portfolio), item in zip(self.variants, group):
@@ -113,26 +112,23 @@ class ParentRepairPortfolio:
                     kind, decision = item
                     yield kind, decision, profile
 
-def build_repair_portfolio(candidate: Dict[str, Any], *, operations: List[Any], metrics_by_op_id: Dict[int, Dict[str, Any]],
-                           start_dt: Any, seed: int, objective_name: str, graph_context: Optional[Dict[str, Any]],
-                           resource_pool: Optional[Dict[str, Any]],
-                           prepared_parent: Optional[RepairParentPreparation] = None) -> RepairPortfolio:
+
+def build_repair_portfolio(*, operations: List[Any], metrics_by_op_id: Dict[int, Dict[str, Any]],
+                           start_dt: Any, seed: int, objective_name: str,
+                           prepared_parent: RepairParentPreparation) -> RepairPortfolio:
     """Neighbourhoods of one decoded parent: batch moves on its batch order, bounded operation moves on its
     start-time order, resource moves on its actual selections. The parent's own pick sequence is not used as a
-    basis on purpose (2026-09-18: it cost 6% weighted tardiness on medium_shift_pool and helped nowhere)."""
-    prepared = (prepared_parent if prepared_parent is not None else prepare_repair_parent(
-        candidate, operations, resource_pool, graph_context, resource_moves=graph_context is not None))
+    basis on purpose (2026-09-18: it cost 6% weighted tardiness on medium_shift_pool and helped nowhere).
+    ``prepared_parent`` is the parent's preparation (EliteRepairPool.prepare_parent), shared by its variants."""
     batches = build_repair_neighborhood(
         operations=operations, metrics_by_op_id=metrics_by_op_id, start_dt=start_dt, seed=seed,
-        objective_name=objective_name, prepared_parent=prepared)
-    inherited = prepared.inherited_resources
-    if graph_context is None:
-        return RepairPortfolio(batches, (), inherited)
+        objective_name=objective_name, prepared_parent=prepared_parent)
+    inherited = prepared_parent.inherited_resources
     operation_decisions = operation_repair_decisions(
         metrics_by_op_id=metrics_by_op_id, batch_order=batches.order, start_dt=start_dt, objective_name=objective_name,
-        prepared_parent=prepared)
+        prepared_parent=prepared_parent)
     resources = (("resource_alternative", decision) for decision in iter_resource_decisions(
-        operations=operations, resource_pool=resource_pool, batch_order=batches.order,
-        operation_order=prepared.operation_order, prepared_parent=prepared))
+        operations=operations, batch_order=batches.order, operation_order=prepared_parent.operation_order,
+        prepared_parent=prepared_parent))
     extras = tuple(item for group in zip_longest(operation_decisions, resources) for item in group if item is not None)
     return RepairPortfolio(batches, extras, inherited)

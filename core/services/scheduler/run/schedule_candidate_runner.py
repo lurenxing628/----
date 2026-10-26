@@ -1,12 +1,7 @@
 from __future__ import annotations
 
-import math
-from dataclasses import replace
 from time import monotonic
 from typing import Any, Callable, Optional
-
-from core.errors import ValidationError
-from core.models.schedule_config_runtime_coercion import ensure_schedule_config_snapshot
 
 from .optimizer.search_budget import SearchBudget, SearchBudgetExhausted
 from .optimizer.shared_process import numeric_score, score_scope_payload
@@ -17,37 +12,14 @@ from .schedule_input_contracts import ScheduleRunInput
 from .schedule_shared_optimizer import optimize_shared_schedule
 
 
-def _resolve_total_budget(run_time_budget_seconds: Optional[float], *, cfg: Any) -> float:
-    if run_time_budget_seconds is None:
-        return float(cfg.time_budget_seconds)
-    if isinstance(run_time_budget_seconds, bool):
-        raise ValidationError("这次找更好排法先试多久必须是数字。", field="run_time_budget_seconds")
-    try:
-        budget = float(run_time_budget_seconds)
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise ValidationError("这次找更好排法先试多久必须是数字。", field="run_time_budget_seconds") from exc
-    if math.isnan(budget) or budget <= 0:
-        raise ValidationError("这次找更好排法先试多久必须大于 0 秒。", field="run_time_budget_seconds")
-    return budget
-
-
-def _public_budget(total_budget: float) -> Optional[float]:
-    if not math.isfinite(total_budget):
-        return None
-    return total_budget
-
-
 def run_candidate_comparison(
     *, schedule_input: ScheduleRunInput,
     prepare_graph_fn: Optional[Callable[[Any], Any]] = None,
-    run_time_budget_seconds: Optional[float] = None,
     strict_mode: bool = False,
 ) -> CandidateComparisonOutcome:
     """Publish the actual business representatives from one shared search archive."""
-    cfg = ensure_schedule_config_snapshot(schedule_input.cfg, strict_mode=strict_mode)
-    total_budget = _resolve_total_budget(run_time_budget_seconds, cfg=cfg)
-    if math.isfinite(total_budget) and total_budget.is_integer() and total_budget >= 1:
-        cfg = replace(cfg, time_budget_seconds=int(total_budget))
+    cfg = schedule_input.cfg
+    total_budget = float(cfg.time_budget_seconds)
     started = monotonic()
     deadline = started + total_budget
     budget = SearchBudget(clock=monotonic, started_at=started, deadline=deadline,
@@ -57,11 +29,11 @@ def run_candidate_comparison(
 
     def graph_prepare():
         nonlocal preparation
-        preparation = prepare_graph(replace(schedule_input, cfg=cfg))
+        preparation = prepare_graph(schedule_input)
         return preparation
 
     shared = optimize_shared_schedule(
-        calendar_service=schedule_input.cal_svc, cfg_svc=schedule_input.cfg_svc, cfg=cfg,
+        calendar_service=schedule_input.cal_svc, cfg=cfg,
         algo_ops_to_schedule=schedule_input.algo_ops_to_schedule, batches=schedule_input.batches,
         start_dt=schedule_input.start_dt_norm, end_date=schedule_input.end_date_norm,
         downtime_map=schedule_input.downtime_map, seed_results=schedule_input.seed_results,
@@ -104,7 +76,7 @@ def run_candidate_comparison(
         candidates=candidates, selection=selection, planned_count=len(candidates), completed_count=len(candidates),
         failed_count=0, skipped_count=0, reused_count=0,
         time_budget_reached=shared.process_facts["stop_reason"] == "time_budget",
-        selection_policy="business_objectives_v1", run_time_budget_seconds=_public_budget(total_budget),
+        selection_policy="business_objectives_v1", run_time_budget_seconds=total_budget,
         skipped_candidate_labels=[], baseline_missing_or_failed=False,
         generation_policy_version="unified_search_v1", primary_objective=primary,
         target_objectives=list(targets), unified_process=shared.process_facts["unified_process"],
@@ -135,9 +107,10 @@ def _business_representative(shared, entry, *, sequence, primary, targets, cfg, 
         results=candidate["results"], summary=candidate["summary"], metrics=candidate["metrics"], health=None,
         graph_analysis_public=preparation.graph_analysis_public if preparation is not None else None,
         graph_analysis_diagnostics=preparation.graph_analysis_diagnostics if preparation is not None else None,
-        used_strategy=candidate["strategy"], used_params=params, best_order=candidate.get("order") or [],
+        # Every verified decode is observed before it can be selected, which merges its order (finish_observation).
+        used_strategy=candidate["strategy"], used_params=params, best_order=candidate["order"],
         algo_mode=cfg.algo_mode, objective_name=primary, objective=primary,
-        algo_stats=candidate.get("algo_stats") or {}, time_budget_seconds=total_budget,
+        algo_stats=candidate["algo_stats"], time_budget_seconds=total_budget,
         sort_strategy=candidate["strategy"].value,
         dispatch_mode=params["dispatch_mode"], dispatch_rule=params["dispatch_rule"],
         adopted_dispatch_rule=params["dispatch_rule"], generation_policy_version="unified_search_v1",

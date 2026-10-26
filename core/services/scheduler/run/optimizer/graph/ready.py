@@ -79,7 +79,6 @@ def prepare_shared_graph_features(
 
 def build_graph_search_stages(
     *,
-    algo_mode: str,
     best: Optional[Dict[str, Any]],
     version: int,
     algo_ops_to_schedule: List[OpForScheduleAlgo],
@@ -98,16 +97,13 @@ def build_graph_search_stages(
     t_begin: float,
     readiness_gate_enabled: bool,
     strict_mode: bool,
-    graph_ready_context: Optional[Any],
+    graph_ready_context: Dict[str, Any],
     clock: Callable[[], float],
-    search_report_state: Optional[OptimizationSearchReportState] = None,
+    search_report_state: OptimizationSearchReportState,
     prepared_features: SharedGraphFeatures,
     decode_session: SharedDecodeSession,
 ) -> GraphStageBundle:
-    skip_reason = _phase_skip_reason(algo_mode=algo_mode, graph_ready_context=graph_ready_context)
-    if skip_reason:
-        return GraphStageBundle(GraphSearchState(best), [])
-
+    """Graph stages exist only for an improve run with a prepared graph context (schedule_shared_optimizer)."""
     profiles = resolve_v2_profiles(seed=version, objective_name=objective_name)
     if clock() >= deadline:
         return GraphStageBundle(GraphSearchState(best), [])
@@ -141,14 +137,6 @@ def build_graph_search_stages(
     )
 
 
-def _phase_skip_reason(*, algo_mode: str, graph_ready_context: Optional[Any]) -> Optional[str]:
-    if graph_ready_context is None:
-        return "graph_ready_unavailable"
-    if algo_mode != "improve":
-        return "algo_mode_not_improve"
-    return None
-
-
 def _build_weight_profile_stages(
     *,
     profiles: List[GraphReadyWeightProfile],
@@ -169,34 +157,30 @@ def _build_weight_profile_stages(
     t_begin: float,
     readiness_gate_enabled: bool,
     strict_mode: bool,
-    graph_ready_context: Any,
+    graph_ready_context: Dict[str, Any],
     metrics_by_op_id: Dict[int, Dict[str, Any]],
     clock: Callable[[], float],
-    search_report_state: Optional[OptimizationSearchReportState],
+    search_report_state: OptimizationSearchReportState,
     order: List[str],
     prepared_features: SharedGraphFeatures,
     decode_session: SharedDecodeSession,
 ) -> GraphStageBundle:
     """Assemble resumable profile, repair and IG stages sharing one stable target view."""
     budget = GraphReadySearchBudget(deadline=deadline, clock=clock)
-    v2_common_rank_cache = prepared_features.v2_common_rank_cache
-    decision_features = prepared_features.decision_features
     evaluate = partial(
         evaluate_graph_ready_candidate,
-        graph_ready_context=graph_ready_context, metrics_by_op_id=metrics_by_op_id,
-        strict_mode=bool(strict_mode), algo_ops_to_schedule=algo_ops_to_schedule,
+        strict_mode=bool(strict_mode),
         strategy=base_strategy, params=base_params, start_dt=start_dt, end_date=end_date,
         dispatch_rule=dispatch_rule_cfg,
         resource_pool=resource_pool, objective_name=objective_name, optimizer_algo_stats=optimizer_algo_stats,
         readiness_gate_enabled=bool(readiness_gate_enabled), version=version,
-        clock=clock, v2_common_rank_cache=v2_common_rank_cache,
-        prepared_decision_features=decision_features,
+        clock=clock, prepared_decision_features=prepared_features.decision_features,
         decode_session=decode_session,
     )
     pool = EliteRepairPool(limits=EliteRepairLimits(), objective_name=objective_name, operations=algo_ops_to_schedule,
                            metrics_by_op_id=metrics_by_op_id, start_dt=start_dt, seed=version,
                            best=best, report_state=search_report_state, graph_context=graph_ready_context,
-                           resource_pool=resource_pool, clock=clock, deadline=deadline, decode_session=decode_session)
+                           clock=clock, deadline=deadline, decode_session=decode_session)
     search = GraphReadyProfileSearch(evaluate=evaluate, budget=budget, profile_count=len(profiles))
     state = GraphSearchState(best)
     stages: List[SearchStage] = [ProfileStage(

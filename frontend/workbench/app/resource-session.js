@@ -80,7 +80,7 @@
       try {
         // category keeps the source list; the entity's category belongs to input.fields.
         intent = { kind, action, ref, request_key: C.requestKey(), input, category: listCategory };
-        if (typeof adapter.savePending === 'function') adapter.savePending(intent);
+        adapter.savePending(intent);
       }
       catch (error) { publish(store, { phase: 'rejected', error }); return; }
       store.running = true; publish(store, { phase: 'sending', intent, error: null });
@@ -94,7 +94,7 @@
       } catch (error) {
         publish(store, { intent, phase: error && error.committed === false ? 'rejected' : 'pending', error });
       } finally { store.running = false; }
-      if (store.state.phase === 'rejected' && typeof adapter.clearPending === 'function') {
+      if (store.state.phase === 'rejected') {
         // 服务端已明确拒绝，没有回执可查；记录清不掉时保留拒绝态和意图，由 reset() 再清。
         try { adapter.clearPending(); }
         catch (error) { publish(store, { ...store.state, error }); return; }
@@ -104,7 +104,7 @@
     }
     function reset() {
       if (store.running || ['sending', 'pending', 'checking'].includes(store.state.phase)) return false;
-      if (store.state.intent && typeof adapter.clearPending === 'function') {
+      if (store.state.intent) {
         try { adapter.clearPending(); }
         catch (error) { publish(store, { ...store.state, error }); return false; }
       }

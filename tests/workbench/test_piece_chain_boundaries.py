@@ -135,24 +135,26 @@ def test_closed_partial_piece_publication_keeps_adoption_and_protection_boundari
     known = payload(prepared, rows)
     assert known.scheduled_op_ids < prepared.schedule_output_allowed_op_ids
 
+    def published(value):
+        # Publication form: compute prepares the shared proof once, then checks each candidate.
+        return lambda: piece_adoption.validate_piece_candidate(
+            case.conn, prepared=prepared, payload=value,
+            context=piece_adoption.prepare_piece_validation_context(case.conn, prepared))
+
     def publish(candidate_rows):
-        candidate = payload(prepared, candidate_rows)
-        return checked_read_only(case, lambda: piece_adoption.validate_piece_candidate(
-            case.conn, prepared=prepared, payload=candidate))
+        return checked_read_only(case, published(payload(prepared, candidate_rows)))
 
     def reject(candidate_rows, reason):
         with pytest.raises(PieceAdoptionBlocked) as caught:
             publish(candidate_rows)
         assert caught.value.code == reason
 
-    checked_read_only(case, lambda: piece_adoption.validate_piece_candidate(
-        case.conn, prepared=prepared, payload=known))
+    checked_read_only(case, published(known))
     with pytest.raises(PieceAdoptionBlocked) as caught:
         checked_read_only(case, lambda: piece_adoption.validate_piece_adoption(
             case.conn, prepared=prepared, payload=known))
     assert caught.value.code == "piece_scope_incomplete"
-    checked_read_only(case, lambda: piece_adoption.validate_piece_candidate(
-        case.conn, prepared=prepared, payload=full))
+    checked_read_only(case, published(full))
     with pytest.raises(PieceAdoptionBlocked) as caught:
         checked_read_only(case, lambda: piece_adoption.validate_piece_adoption(
             case.conn, prepared=prepared, payload=full))

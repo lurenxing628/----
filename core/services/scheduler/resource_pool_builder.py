@@ -12,6 +12,7 @@ from core.services.common.normalization_matrix import skill_level_rank
 from core.services.personnel.operator_machine_normalizers import normalize_yes_no_stored
 from core.services.personnel.operator_qualification import (
     OperatorQualificationService,
+    require_explicit_auto_work_types,
     require_machine_authorization,
 )
 from core.shared.boolean_normalize import to_yes_no
@@ -172,7 +173,9 @@ def build_resource_pool(*, cfg, algo_ops: List[OpForScheduleAlgo], resource_fact
     rows = _consumed_resource_links(resource_facts, algo_ops, machines_by_op_type, active_machines)
     consumed_ops = {row["operator_id"] for row in rows}
     qualifications = resource_facts.qualifications_for(consumed_ops)
-    rows = OperatorQualificationService.eligible_links(rows, machines, algo_ops, qualifications=qualifications)
+    require_explicit_auto_work_types(algo_ops, rows, qualifications)
+    rows = OperatorQualificationService.eligible_links(
+        rows, {machine.machine_id: set(machine_types(machine)) for machine in machines}, qualifications=qualifications)
     operators_by_machine, machines_by_operator, pair_rank = _build_operator_machine_maps(rows)
     pool = {"machines_by_op_type": machines_by_op_type, "operators_by_machine": operators_by_machine,
             "machines_by_operator": machines_by_operator, "pair_rank": pair_rank}

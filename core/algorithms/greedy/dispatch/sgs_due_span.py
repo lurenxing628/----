@@ -12,13 +12,12 @@ calendar call.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Mapping, Optional, Tuple
 
 from core.algorithm_contracts.date_parsers import due_exclusive
 from core.algorithm_contracts.material_release import released_start
 from core.algorithm_contracts.value_domains import MERGED
 from core.algorithm_runtime.piece_input import external_group_key
-from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_handoff
 
 if TYPE_CHECKING:
@@ -68,8 +67,8 @@ def due_span_inputs(
 
 
 def external_candidate_window(
-    ctx: Any,
-    state: ScheduleRunState,
+    calendar: Any,
+    group_cache: Mapping[Tuple[str, ...], Tuple[datetime, datetime]],
     *,
     op: OpForScheduleAlgo,
     prev_end: datetime,
@@ -78,15 +77,15 @@ def external_candidate_window(
 
     Same material-release lower bound and the same already-normalized durations: a merged group
     (the input builder always names its group) spans ext_group_total_days, any other external
-    operation advances by its own ext_days.
+    operation advances by its own ext_days. ``group_cache`` holds the already placed merged-group blocks.
     """
     prev_end = released_start(op, prev_end)
     if op.ext_merge_mode == MERGED:
-        cached = state.external_group_cache.get(external_group_key(op))
+        cached = group_cache.get(external_group_key(op))
         if cached:
             return cached
-        return prev_end, ctx.calendar.add_calendar_days(prev_end, op.ext_group_total_days)
-    return prev_end, ctx.calendar.add_calendar_days(prev_end, op.ext_days)
+        return prev_end, calendar.add_calendar_days(prev_end, op.ext_group_total_days)
+    return prev_end, calendar.add_calendar_days(prev_end, op.ext_days)
 
 
 __all__ = ["FAR_DUE_LOOKAHEAD", "due_span_inputs", "working_hour_span", "external_candidate_window"]

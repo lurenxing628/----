@@ -144,19 +144,18 @@ def test_candidate_preview_does_not_read_data_context_for_missing_candidate(cand
 
 @pytest.mark.parametrize("enabled", [True, False])
 def test_candidate_preview_maps_data_context_failure_to_storage_failure(candidate_case, monkeypatch, enabled):
+    from core.services.workbench.facts.run_data_context import RunDataContext
+
     case = candidate_case
     ref = candidate(case)
-    adopter = service(case.conn, enabled=enabled)
-    failure = RuntimeError("maintenance journal unavailable")
 
-    def unavailable_context():
-        raise failure
+    def unavailable_context(self, *args, **kwargs):
+        raise RuntimeError("maintenance journal unavailable")
 
-    monkeypatch.setattr(adopter.data_context, "ref", unavailable_context)
-    with pytest.raises(WorkbenchCommandRejected) as exc:
-        adopter.preview(ref)
-    assert exc.value.code == "storage_failure" and exc.value.status == 500
-    assert exc.value.__cause__ is failure
+    monkeypatch.setattr(RunDataContext, "ref", unavailable_context)
+    response = api(case, enabled=enabled).post(BASE + ref + "/adopt-preview", json={})
+    assert response.status_code == 500, response.get_data(as_text=True)
+    assert response.get_json()["error"]["code"] == "storage_failure"
 
 
 def test_recorded_adoption_replays_before_reading_the_data_context(candidate_case, monkeypatch):
@@ -217,10 +216,11 @@ def test_internal_adoption_proof_errors_remain_system_failures(candidate_case, m
     with pytest.raises(type(failure)) as raw:
         candidate_adoption_validation.validate_adoption(case.conn, ref)
     assert raw.value is failure
-    with pytest.raises(WorkbenchCommandRejected) as system:
+    with pytest.raises(type(failure)) as preview_failure:
         service(case.conn).preview(ref)
-    assert system.value.code == "storage_failure" and system.value.status == 500
-    assert system.value.__cause__ is failure
+    assert preview_failure.value is failure
+    response = api(case).post(BASE + ref + "/adopt-preview", json={})
+    assert response.status_code == 500 and response.get_json()["error"]["code"] == "storage_failure"
     assert case.conn.execute("SELECT COUNT(*) FROM Schedule").fetchone()[0] == 0
 
 

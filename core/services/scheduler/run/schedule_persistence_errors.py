@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Set
 
 from core.errors import ValidationError
 from core.models.batch_operation import BatchOperation
@@ -31,7 +31,7 @@ def _missing_internal_resource_sample(op: BatchOperation) -> Dict[str, Any]:
 
 def missing_internal_resource_samples(
     operations: List[BatchOperation],
-    missing_internal_resource_op_ids: Optional[Set[int]],
+    missing_internal_resource_op_ids: Set[int],
 ) -> List[Dict[str, Any]]:
     # 工序来自排产输入构造时已严格校验的 BatchOperation（workbench/facts/run_input_rows.operation_model），
     # 缺资源 id 集合也由这些工序 id 派生，这里直接使用。
@@ -57,10 +57,10 @@ def _format_missing_internal_resource_sample(samples: List[Dict[str, Any]]) -> s
 
 
 def raise_no_actionable_schedule_error(
-    validation_errors: Optional[List[str]] = None,
+    validation_errors: List[str],
     *,
     operations: List[BatchOperation],
-    missing_internal_resource_op_ids: Optional[Set[int]] = None,
+    missing_internal_resource_op_ids: Set[int],
 ) -> None:
     details: Dict[str, Any] = {"reason": "no_actionable_schedule_rows"}
     if validation_errors:

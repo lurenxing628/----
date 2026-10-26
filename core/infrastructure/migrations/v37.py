@@ -61,7 +61,7 @@ def _migrate_material_reviews(conn):
         "batch_quantity INTEGER CHECK", "batch_quantity INTEGER NOT NULL CHECK")
     actual = dict(conn.execute("SELECT name,sql FROM sqlite_master"))
     if "wb_material_quantity_basis" in actual or any(
-            name not in actual or canonical_sql(sql) != canonical_sql(actual[name] or "") for name, sql in legacy.items()):
+            name not in actual or canonical_sql(sql) != canonical_sql(actual[name]) for name, sql in legacy.items()):
         raise RuntimeError("Cannot migrate incomplete material review history.")
     # Accepted historical DDL can have a different physical column order.
     conn.execute("CREATE TEMP TABLE v37_BatchMaterialReviews AS "

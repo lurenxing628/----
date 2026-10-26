@@ -164,7 +164,6 @@ def build_available_graph_score_projection(
         nodes=nodes,
         topological_order=topological_order,
         schedulable_op_ids=schedulable_op_ids,
-        limit=_GRAPH_SCORE_SAMPLE_LIMIT,
     )
     try:
         graph_priority_key_by_op_id, score_bonus_by_op_id = build_graph_scores_by_op_id(
@@ -231,9 +230,9 @@ def ordered_schedulable_op_ids(
     nodes: List[Any],
     topological_order: List[str],
     schedulable_op_ids: Set[int],
-    limit: Optional[int] = None,
 ) -> List[int]:
-    if not schedulable_op_ids or (limit is not None and limit <= 0):
+    """The first _GRAPH_SCORE_SAMPLE_LIMIT schedulable operations in topological order."""
+    if not schedulable_op_ids:
         return []
     op_id_by_node_id = {str(node.node_id): node.raw["id"] for node in nodes}
     ordered_op_ids: List[int] = []
@@ -241,12 +240,11 @@ def ordered_schedulable_op_ids(
         op_id = op_id_by_node_id.get(node_id)
         if op_id is not None and op_id in schedulable_op_ids:
             ordered_op_ids.append(op_id)
-            if limit is not None and len(ordered_op_ids) >= limit:
+            if len(ordered_op_ids) >= _GRAPH_SCORE_SAMPLE_LIMIT:
                 return ordered_op_ids
     if ordered_op_ids:
         return ordered_op_ids
-    ordered_op_ids = sorted(schedulable_op_ids)
-    return ordered_op_ids[:limit] if limit is not None else ordered_op_ids
+    return sorted(schedulable_op_ids)[:_GRAPH_SCORE_SAMPLE_LIMIT]
 
 
 def build_graph_scores_by_op_id(
@@ -268,13 +266,13 @@ def build_graph_scores_by_op_id(
 def graph_score_sample(
     *,
     ordered_op_ids: List[int],
-    total_count: Optional[int] = None,
+    total_count: int,
     score_bonus_by_op_id: Dict[int, int],
     graph_priority_key_by_op_id: Dict[int, Tuple[float, ...]],
     node_metrics_by_op_id: Dict[int, Dict[str, Any]],
 ) -> Dict[str, Any]:
     sample_op_ids = ordered_op_ids[:_GRAPH_SCORE_SAMPLE_LIMIT]
-    count = int(len(ordered_op_ids) if total_count is None else total_count)
+    count = total_count
     return {
         "graph_score_sample": [
             _graph_score_sample_row(

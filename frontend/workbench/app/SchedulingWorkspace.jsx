@@ -1,11 +1,7 @@
 (function () {
   'use strict';
   const A = window.RunJobAPI, U = window.RunJobControls;
-  function useRunAdapter(onNavigate) {
-    const navigate = React.useRef(onNavigate); navigate.current = onNavigate;
-    return React.useMemo(() => ({ ...A.create(), openCandidate: value => navigate.current('analysis', value) }), []);
-  }
-  function runHistoryDestination(context = {}) {
+  function runHistoryDestination(context) {
     const origin = context.return_decision_context || context;
     const saved = context.return_history_context || origin.return_history_context || context.history_query || origin.history_query || {};
     const returnPlan = context.return_plan_context || origin.return_plan_context || saved.return_plan_context;
@@ -67,7 +63,7 @@
       document.addEventListener('visibilitychange', visibility); visibility();
       return () => { disposed = true; clearTimeout(timer); if (controller) controller.abort(); document.removeEventListener('visibilitychange', visibility); };
     }, [runRef, api, revision]);
-    const historyReturn = <HistoryReturn context={initialContext || {}} onNavigate={onNavigate} />;
+    const historyReturn = <HistoryReturn context={initialContext} onNavigate={onNavigate} />;
     const newRun = <U.Button icon="plus" onClick={() => onNavigate('run', {})}>新排产</U.Button>;
     const navigation = <Navigation>{historyReturn}<U.Button icon="history" onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>排产记录</U.Button>{newRun}</Navigation>;
     if (record && verified && record.result_persisted && record.candidates.some(row => row.status === 'completed')) return <window.RunCandidateWorkspace view="analysis"
@@ -76,7 +72,7 @@
       renderTrial={value => trialAction(onNavigate, value)} />;
     return <section className="plana run-job-panel rj-status-workspace" aria-label="本次排产">
       {!validRef ? <><div className="rj-heading rj-business-heading"><h2>本次排产</h2>{navigation}</div><p role="alert">这条排产记录已失效，请点「排产记录」重新选择。</p></> : <>
-        <U.Record run={record} paused={paused} checking={checking} verified={verified} retryPaused={retryPaused} retryHint="请点「刷新本次排产」再次核对。" api={api} onNavigate={onNavigate} navigation={navigation}
+        <U.Record run={record} paused={paused} checking={checking} verified={verified} retryPaused={retryPaused} retryHint="请点「刷新本次排产」再次核对。" onNavigate={onNavigate} navigation={navigation}
           actions={<U.Button icon="refresh-cw" aria-label="刷新本次排产" busy={checking} onClick={refresh} />} />
         {error && <div className="rj-notice" role="alert">{error}</div>}
       </>}
@@ -90,15 +86,15 @@
     return window.DecisionHistoryAPI.returnState(context) ? <U.Button icon="chevron-left" onClick={() => onNavigate('analysis', window.DecisionHistoryAPI.historyContext(context))}>返回历史走势</U.Button> : null;
   }
   function RunWorkspace({ onNavigate, initialContext }) {
-    const api = useRunAdapter(onNavigate), specified = initialContext && Object.prototype.hasOwnProperty.call(initialContext, 'run_ref');
+    const api = React.useMemo(() => A.create(), []), specified = Object.prototype.hasOwnProperty.call(initialContext, 'run_ref');
     const runHistoryReturn = runHistoryDestination(initialContext);
-    const history = <><HistoryReturn context={initialContext || {}} onNavigate={onNavigate} /><U.Button icon="history" onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>排产记录</U.Button></>;
+    const history = <><HistoryReturn context={initialContext} onNavigate={onNavigate} /><U.Button icon="history" onClick={() => onNavigate(runHistoryReturn.view, runHistoryReturn.context)}>排产记录</U.Button></>;
     return specified ? <ReadRun key={initialContext.run_ref} runRef={initialContext.run_ref} api={api} initialContext={initialContext} onNavigate={onNavigate} runHistoryReturn={runHistoryReturn} /> :
       <window.PreflightWorkspace initialContext={initialContext} onNavigate={onNavigate} actions={history}
         renderRunPanel={(data, continuation) => <window.RunJobPanel preflight={data} adapter={api} onNavigate={onNavigate} onRecheck={continuation.onRecheck} preflightOwner={continuation.confirmationOwner} />} />;
   }
   function PlanCenterWorkspace({ view, onNavigate, initialContext }) {
-    const context = initialContext || {}, candidate = Object.prototype.hasOwnProperty.call(context, 'run_ref') || Object.prototype.hasOwnProperty.call(context, 'candidate_ref');
+    const context = initialContext, candidate = Object.prototype.hasOwnProperty.call(context, 'run_ref') || Object.prototype.hasOwnProperty.call(context, 'candidate_ref');
     const history = !candidate && context.source === 'run_history';
     const runHistoryReturn = runHistoryDestination(context);
     function renderTrial(value) { return trialAction(onNavigate, { ...value, historyOrigin: window.DecisionHistoryAPI.returnState(context) }); }

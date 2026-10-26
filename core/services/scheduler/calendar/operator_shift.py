@@ -7,22 +7,53 @@ Like CalendarEngine's existing date cache, these reads live within one request
 or scheduling read snapshot; a subsequent request gets a new engine.
 """
 
+from collections import defaultdict
 from dataclasses import replace
 from datetime import date, datetime
+from typing import Any, Dict, NamedTuple, Optional, Tuple
 
 from core.errors import ValidationError
 from core.services.common.datetime_normalize import normalize_hhmm
 from data.repositories.operator_shift_repo import OperatorShiftRepository
 
 
+class ShiftFacts(NamedTuple):
+    """Shift rows read together by one snapshot, already indexed for lookup."""
+
+    profiles: Dict[Any, Dict[str, Any]]  # operator_id -> profile row with its pattern-day range
+    patterns: Dict[Tuple[Any, Any], Any]  # (profile_id, day_offset) -> pattern row
+
+
+def _pattern_index(rows):
+    """Pattern days by (profile, offset) plus each profile's recorded offsets."""
+    patterns, offsets = {}, defaultdict(list)
+    for row in rows:
+        patterns[row["profile_id"], row["day_offset"]] = row
+        offsets[row["profile_id"]].append(row["day_offset"])
+    return patterns, offsets
+
+
+def _with_pattern_range(profile, offsets) -> Dict[str, Any]:
+    days = offsets.get(profile["profile_id"], ())
+    return dict(profile, day_count=len(days), first_day=min(days) if days else None,
+                last_day=max(days) if days else None)
+
+
+def index_shift_facts(profile_rows, pattern_rows) -> ShiftFacts:
+    """Index one snapshot's operator profile rows and pattern-day rows."""
+    patterns, offsets = _pattern_index(pattern_rows)
+    return ShiftFacts({row["operator_id"]: _with_pattern_range(row, offsets) for row in profile_rows}, patterns)
+
+
 class OperatorShiftCalendar:
-    def __init__(self, conn, logger=None, *, capture=None, repo=None):
-        self.repo = OperatorShiftRepository(conn, logger=logger) if repo is None else repo
+    def __init__(self, conn, logger=None, *, capture=None, facts: Optional[ShiftFacts] = None):
+        # Three sources: a snapshot's indexed facts, a run capture's business tables, or live per-person reads.
+        self.repo = OperatorShiftRepository(conn, logger=logger)
         self.capture = capture
+        self.facts = facts
         self._profiles = {}
         self._patterns = {}
-        self._captured_patterns = None
-        self._captured_pattern_ranges = {}
+        self._captured_index = None
 
     def clear_cache(self):
         self._profiles.clear()
@@ -46,35 +77,34 @@ class OperatorShiftCalendar:
         return self._profiles[operator_id]
 
     def _read_profile(self, operator_id):
+        if self.facts is not None:
+            return self.facts.profiles.get(operator_id)
         if self.capture is None:
             return self.repo.profile_for_operator(operator_id)
         linked = self.capture.index("WorkbenchOperatorProfiles", "operator_id").get(operator_id)
         if linked is None or linked["shift_profile_id"] is None:
             return None
         profile = self.capture.index("WorkbenchShiftProfiles", "profile_id").get(linked["shift_profile_id"], {})
-        self._prepare_captured_patterns(self.capture)
-        count, first, last = self._captured_pattern_ranges.get(profile.get("profile_id"), (0, None, None))
-        return {"shift_profile_id": linked["shift_profile_id"],
-                **{key: profile.get(key) for key in ("profile_id", "anchor_date", "cycle_days", "status")},
-                "day_count": count, "first_day": first, "last_day": last}
+        _, offsets = self._captured_patterns(self.capture)
+        return _with_pattern_range({"shift_profile_id": linked["shift_profile_id"],
+                                    **{key: profile.get(key) for key in ("profile_id", "anchor_date", "cycle_days", "status")}},
+                                   offsets)
 
-    def _prepare_captured_patterns(self, capture):
-        if self._captured_patterns is None:
+    def _captured_patterns(self, capture):
+        if self._captured_index is None:
             periods = {(row["profile_id"], row["day_offset"]): row["periods_json"]
                        for row in capture.table("WorkbenchShiftDayPeriods")}
-            patterns, offsets = {}, {}
-            for row in capture.table("WorkbenchShiftPatternDays"):
-                key = row["profile_id"], row["day_offset"]
-                patterns[key] = dict(row, periods_json=periods.get(key))
-                offsets.setdefault(row["profile_id"], []).append(row["day_offset"])
-            self._captured_patterns = patterns
-            self._captured_pattern_ranges = {key: (len(days), min(days), max(days)) for key, days in offsets.items()}
-        return self._captured_patterns
+            self._captured_index = _pattern_index(
+                dict(row, periods_json=periods.get((row["profile_id"], row["day_offset"])))
+                for row in capture.table("WorkbenchShiftPatternDays"))
+        return self._captured_index
 
     def _read_pattern(self, profile_id, offset):
+        if self.facts is not None:
+            return self.facts.patterns.get((profile_id, offset))
         if self.capture is None:
             return self.repo.pattern_day(profile_id, offset)
-        patterns = self._prepare_captured_patterns(self.capture)
+        patterns, _ = self._captured_patterns(self.capture)
         return patterns.get((profile_id, offset))
 
     def apply_policy(self, policy, operator_id, *, prepare_periods):
@@ -95,6 +125,8 @@ class OperatorShiftCalendar:
         day = self._read_pattern(profile_id, offset)
         if day is None:
             raise ValidationError("人员班次缺少当天的轮换规则，不能回退到默认班次。", field="shift_profile")
+        if type(day["is_rest"]) is not int or day["is_rest"] not in (0, 1):
+            raise ValidationError("人员班表里的休息标记不合法。请到工作日历核对人员班表。", field="shift_profile")
         start = normalize_hhmm(day["shift_start"], field="班次开始")
         end = normalize_hhmm(day["shift_end"], field="班次结束")
         if start is None or end is None:

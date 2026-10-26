@@ -6,7 +6,7 @@ import sqlite3
 import tempfile
 from contextlib import closing, contextmanager
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Iterator
 
 from .migration_common import fallback_log
 from .safe_files import write_fixed_bytes
@@ -26,7 +26,7 @@ def run_sqlite_integrity_check(conn, *, logger, check_label: str, execute_failed
     except Exception as e:
         fallback_log(logger, "error", f"{check_label}执行失败：{e}")
         raise BackupIntegrityError(f"{check_label}执行失败（{execute_failed_hint}）：{e}") from e
-    msg0 = str((rows[0][0] if rows else "") or "").strip().lower()
+    msg0 = str(rows[0][0] if rows else "").strip().lower()
     if msg0 != "ok":
         fallback_log(logger, "error", f"{check_label}未通过：{rows}")
         raise BackupIntegrityError(f"{check_label}失败：{rows}")
@@ -37,7 +37,7 @@ def run_sqlite_integrity_check(conn, *, logger, check_label: str, execute_failed
 
 
 @contextmanager
-def validated_sqlite_backup_stage(payload: bytes, *, logger=None, directory: Optional[str] = None) -> Iterator[Path]:
+def validated_sqlite_backup_stage(payload: bytes, *, logger=None, directory: str) -> Iterator[Path]:
     """Yield the validated isolated file, closed and ready for same-filesystem replacement."""
     check_label = "迁移回滚备份完整性检查"
     # Empty files are valid to SQLite; require a complete header and whole pages.

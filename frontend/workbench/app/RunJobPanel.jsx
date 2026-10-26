@@ -90,7 +90,7 @@
           if (done && pendingActive) {
             try { A.pending().finish(activeIntent.current, 'found'); setPendingActive(false); }
             catch (e) { setStorageError(e.message); return; }
-            if (typeof onNavigate === 'function') onNavigate('run', { run_ref: result.run_ref });
+            onNavigate('run', { run_ref: result.run_ref });
           }
         } catch (e) { if (current() && !localController.signal.aborted) { setLastChecked(Date.now()); setResolution('lookup_failed'); setVerified(false); fail(e, e.code === 'run_result_inconsistent' ? A.message(e) : '查询暂未成功，请点「查询结果」重试。'); unresolved(started); } }
         finally {
@@ -152,7 +152,7 @@
     }
     async function recheckBudget(seconds) {
       const owner = confirmationSession.current;
-      if (locked.current || !owner || typeof onRecheck !== 'function' || !window.RunGenerationContract.budget(seconds) || pendingActive || storageError) return;
+      if (locked.current || !owner || !window.RunGenerationContract.budget(seconds) || pendingActive || storageError) return;
       owner.rechecking = true; setTimeBudget(seconds);
       const controller = beginPreviewRequest();
       try {
@@ -222,10 +222,10 @@
       {storageError && <div className="rj-notice" role="alert">{storageError}<div className="rj-tools"><U.Button icon="refresh-cw" disabled={busy} onClick={rereadStorage}>刷新上次操作记录</U.Button></div></div>}
       {error && <div className="rj-notice" role="alert">{error}{errorDetails && <window.WorkbenchReference entries={errorDetails} />}</div>}{notice && <div className="rj-notice" role="status">{notice}</div>}
       {preview && !confirming && <><U.Scope preview={preview} effective={effective} /><U.Reasons rows={preview.write_context.blocked_reasons} /></>}
-      {intent && <U.Record run={run} intent={intent} title={pendingActive ? '本次排产' : '上次排产'} paused={paused} retryPaused={retryPaused} lastChecked={lastChecked} resolution={resolution} checking={checking} verified={verified} api={api} onNavigate={onNavigate} />}
+      {intent && <U.Record run={run} intent={intent} title={pendingActive ? '本次排产' : '上次排产'} paused={paused} retryPaused={retryPaused} lastChecked={lastChecked} resolution={resolution} checking={checking} verified={verified} onNavigate={onNavigate} />}
       {confirming && confirmationData && <U.Confirmation preview={preview} preflight={confirmationData} effective={confirmationData.effective_config}
         batches={confirmationData.included_batches.concat(confirmationData.excluded_batches)} operationCount={confirmationData.counts.selected_tasks}
-        timeBudget={timeBudget} onBudgetChange={typeof onRecheck === 'function' ? recheckBudget : undefined} busy={busy} submitting={submitting} error={error}
+        timeBudget={timeBudget} onBudgetChange={recheckBudget} busy={busy} submitting={submitting} error={error}
         onConfirm={submit} onClose={closeConfirmation} onRetry={() => recheckBudget(timeBudget)} />}
     </section>;
   }

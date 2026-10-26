@@ -74,7 +74,7 @@
       <p>已关联{kind === 'machine_group' ? '设备' : '人员'}：{count === null ? '未读取' : count}</p>
       {kind === 'shift_profile' && <><p>周期起始日期：{window.WorkbenchFormat.date(entity.fields.anchor_date)} · 轮换天数：{entity.fields.cycle_days}</p>
         <div className="wb-table-frame rc-pattern-scroll" data-sticky-head data-sticky-actions><table className="tbl wb-table"><caption className="wb-visually-hidden">班次档现有逐日轮换规则</caption><thead><tr><th scope="col" className="wb-col-key">轮换日</th><th scope="col">工作 / 休息</th><th scope="col">开始</th><th scope="col">结束</th></tr></thead><tbody>
-          {(entity.fields.pattern || []).map(row => <tr key={row.day_offset}><td className="wb-col-key">第 {row.day_offset + 1} 天</td><td>{row.is_rest ? '休息' : '工作'}</td><td colSpan={2}>{row.periods != null ? window.APSWorkPeriods.describe(row.periods) : row.shift_start + "–" + row.shift_end}</td></tr>)}</tbody></table></div></>}
+          {entity.fields.pattern.map(row => <tr key={row.day_offset}><td className="wb-col-key">第 {row.day_offset + 1} 天</td><td>{row.is_rest ? '休息' : '工作'}</td><td colSpan={2}>{row.periods != null ? window.APSWorkPeriods.describe(row.periods) : row.shift_start + "–" + row.shift_end}</td></tr>)}</tbody></table></div></>}
       <p className="rc-wrap">备注：{entity.fields.remark || '未填写'}</p><Issues issues={entity.issues} /></section>;
   }
   function Editor({ kind, editor, disabled, error, onChange, onValidationError, onAcknowledge }) {

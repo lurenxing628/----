@@ -76,7 +76,7 @@ def workbench_run_contract_issues(conn, *, structure=None, allow_legacy=True):
     return [("missing_run_schema:" if name not in actual else "invalid_run_schema:") + name
             for name, sql in workbench_run_objects().items()
             if name not in actual or not schema_contract_matches(
-                conn, actual[name] or "", sql, legacy[name], allow_legacy=allow_legacy)]
+                conn, actual[name], sql, legacy[name], allow_legacy=allow_legacy)]
 
 
 def install_workbench_run_schema(conn):

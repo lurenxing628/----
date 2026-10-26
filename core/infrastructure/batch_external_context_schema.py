@@ -54,7 +54,7 @@ def contract_issues(conn, *, structure=None):
     actual = schema_objects(conn, structure=structure)
     issues = [("missing_batch_external_context:" if name not in actual else "invalid_batch_external_context:") + name
               for name, sql in objects().items()
-              if name not in actual or canonical_sql(sql) != canonical_sql(actual[name] or "")]
+              if name not in actual or canonical_sql(sql) != canonical_sql(actual[name])]
     if "BatchExternalContexts" in actual and "invalid_batch_external_context:BatchExternalContexts" not in issues:
         if tuple(col["name"] for col in structure.table_info("BatchExternalContexts")) != _COLUMNS:
             issues.append("invalid_batch_external_context:BatchExternalContexts")

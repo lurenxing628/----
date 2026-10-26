@@ -23,8 +23,8 @@ def project_resource(kind, identity, state, *, availability=None, availability_i
     {"op_type": _op_type, "machine": _machine, "operator": _operator,
      "machine_group": _machine_group, "shift_profile": _shift_profile}[kind](entity, raw, state)
     if kind == "op_type" and supports_source(raw["category"], "internal") and availability is not None:
-        entity["availability"] = dict(availability)
-    entity["issues"].extend(dict(issue) for issue in availability_issues)
+        entity["availability"] = availability
+    entity["issues"].extend(availability_issues)
     if entity["status"] == "unknown":
         entity["fields"]["legacy_status"] = raw.get("status")
         message = "这条记录停用了，但没登记停用原因，原值照样保留。" if raw.get("status") == "inactive" else "这条记录的状态看不懂，原值照样保留，系统不猜是启用还是停用。"

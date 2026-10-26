@@ -8,7 +8,8 @@ from core.algorithm_runtime.checkpoint_calendar import register_checkpoint_calen
 
 from .admin import CalendarAdmin
 from .checkpoint_certificate import calendar_checkpoint_snapshot
-from .engine import CalendarEngine, DayPolicy
+from .day_policy import DayPolicy
+from .engine import CalendarEngine
 from .native_timing import make_calendar_days_guard, make_native_method_guard, make_timing_memo_guard
 
 
@@ -34,46 +35,31 @@ class CalendarService:
     def policy_for_datetime(self, dt: datetime, operator_id: Optional[str] = None) -> DayPolicy:
         return self._engine.policy_for_datetime(dt, operator_id=operator_id)
 
-    def get_efficiency(self, dt: datetime, machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> float:
-        return self._engine.get_efficiency(dt, machine_id=machine_id, operator_id=operator_id)
+    def get_efficiency(self, dt: datetime, operator_id: Optional[str] = None) -> float:
+        return self._engine.get_efficiency(dt, operator_id=operator_id)
 
     def adjust_to_working_time(
-        self,
-        dt: datetime,
-        priority: Optional[str] = None,
-        machine_id: Optional[str] = None,
-        operator_id: Optional[str] = None,
+        self, dt: datetime, priority: Optional[str] = None, operator_id: Optional[str] = None,
     ) -> datetime:
-        return self._engine.adjust_to_working_time(dt, priority=priority, machine_id=machine_id, operator_id=operator_id)
+        return self._engine.adjust_to_working_time(dt, priority=priority, operator_id=operator_id)
 
     def add_working_hours(
-        self,
-        start: datetime,
-        hours: float,
-        priority: Optional[str] = None,
-        machine_id: Optional[str] = None,
-        operator_id: Optional[str] = None,
+        self, start: datetime, hours: float, priority: Optional[str] = None, operator_id: Optional[str] = None,
     ) -> datetime:
-        return self._engine.add_working_hours(start, hours, priority=priority, machine_id=machine_id, operator_id=operator_id)
+        return self._engine.add_working_hours(start, hours, priority=priority, operator_id=operator_id)
 
     def add_effective_hours(
-        self, start: datetime, hours: float, priority: Optional[str] = None,
-        machine_id: Optional[str] = None, operator_id: Optional[str] = None,
+        self, start: datetime, hours: float, priority: Optional[str] = None, operator_id: Optional[str] = None,
     ) -> datetime:
-        return self._engine.add_effective_hours(start, hours, priority=priority, machine_id=machine_id, operator_id=operator_id)
+        return self._engine.add_effective_hours(start, hours, priority=priority, operator_id=operator_id)
 
-    def add_calendar_days(self, start: datetime, days: Optional[float], machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> datetime:
-        return self._engine.add_calendar_days(start, days, machine_id=machine_id, operator_id=operator_id)
+    def add_calendar_days(self, start: datetime, days: Optional[float]) -> datetime:
+        return self._engine.add_calendar_days(start, days)
 
     def working_hours_between(
-        self,
-        start: datetime,
-        end: datetime,
-        priority: Optional[str] = None,
-        machine_id: Optional[str] = None,
-        operator_id: Optional[str] = None,
+        self, start: datetime, end: datetime, priority: Optional[str] = None, operator_id: Optional[str] = None,
     ) -> float:
-        return self._engine.working_hours_between(start, end, priority=priority, machine_id=machine_id, operator_id=operator_id)
+        return self._engine.working_hours_between(start, end, priority=priority, operator_id=operator_id)
 
     def certified_slot_window(self, dt: datetime, *, priority=None, operator_id=None):
         """Constant native policy span; adapted or instrumented timing stays legacy."""

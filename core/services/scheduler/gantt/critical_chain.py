@@ -11,10 +11,6 @@ from core.shared.local_datetime import parse_local_datetime
 from .task_labels import public_task_label as _public_task_label
 
 
-def _clean_text(value: Any) -> str:
-    return str(value or "").strip()
-
-
 def _identity_text(value: Any) -> str:
     if value is None:
         return ""
@@ -23,8 +19,8 @@ def _identity_text(value: Any) -> str:
 
 
 def _public_node_label(nodes: Dict[str, Dict[str, Any]], node_id: str) -> str:
-    node = nodes.get(str(node_id or "")) or {}
-    return _clean_text(node.get("label")) or "未命名工序"
+    # Callers pass control-edge endpoints, which are node keys; labels come from public_task_label (never empty).
+    return nodes[node_id]["label"]
 
 
 def _node_dt(node: Dict[str, Any], key: str) -> Optional[datetime]:
@@ -55,7 +51,7 @@ def _empty_result(*, dropped_count: int = 0) -> Dict[str, Any]:
 def _unavailable_result(reason: str) -> Dict[str, Any]:
     result = _empty_result()
     result["available"] = False
-    result["reason"] = str(reason or "").strip() or "unknown"
+    result["reason"] = reason
     result["reason_code"] = result["reason"]
     return result
 
@@ -102,11 +98,11 @@ def _build_process_prev(nodes: Dict[str, Dict[str, Any]]) -> Dict[str, List[str]
 
     proc_prev: Dict[str, List[str]] = {}
     for _, items in proc_groups.items():
-        items.sort(key=lambda x: (x["seq"], x.get("start"), str(x.get("id") or "")))
+        items.sort(key=lambda x: (x["seq"], x["start"], x["id"]))
         prev: Optional[Dict[str, Any]] = None
         for n in items:
             if prev:
-                proc_prev[str(n.get("id") or "")] = [str(prev.get("id") or "")]
+                proc_prev[n["id"]] = [prev["id"]]
             prev = n
 
     return proc_prev
@@ -124,11 +120,11 @@ def _build_prev_by_resource(nodes: Dict[str, Dict[str, Any]], *, resource_key: s
 
     prev_map: Dict[str, str] = {}
     for _, items in groups.items():
-        items.sort(key=lambda x: (x.get("start"), x.get("end"), int(x.get("order") or 0), str(x.get("id") or "")))
+        items.sort(key=lambda x: (x["start"], x["end"], int(x.get("order") or 0), x["id"]))
         prev: Optional[Dict[str, Any]] = None
         for n in items:
             if prev:
-                prev_map[str(n.get("id") or "")] = str(prev.get("id") or "")
+                prev_map[n["id"]] = prev["id"]
             prev = n
 
     return prev_map
@@ -172,8 +168,8 @@ def _choose_control_prev(
 
 
 def _sink_id(nodes: Dict[str, Dict[str, Any]]) -> str:
-    sink = max(nodes.values(), key=lambda x: (x.get("end"), int(x.get("order") or 0), str(x.get("id") or "")))
-    return str(sink.get("id") or "")
+    sink = max(nodes.values(), key=lambda x: (x["end"], int(x.get("order") or 0), x["id"]))
+    return sink["id"]
 
 
 def _backtrace_chain(
@@ -236,7 +232,8 @@ def _explicit_sink(rows: List[Dict[str, Any]], nodes: Dict[str, Dict[str, Any]],
     return target_id, ""
 
 
-def _compute_critical_chain_from_loaded_rows(rows: List[Dict[str, Any]], *, target_id: Optional[str] = None) -> Dict[str, Any]:
+def compute_critical_chain_from_rows(rows: List[Dict[str, Any]], *, target_id: Optional[str] = None) -> Dict[str, Any]:
+    """An explicit sink changes only backtracing, never the full input control graph."""
     nodes, dropped = _build_nodes(rows)
     sink_id = ""
     if target_id is not None:
@@ -307,8 +304,3 @@ def compute_critical_chain_from_dependencies(rows, predecessor_ids):
     if order != len(nodes):
         raise ValueError("工艺前后关系形成循环，无法计算关键链。")
     return _chain_result(nodes, previous, dropped_count=dropped)
-
-
-def compute_critical_chain_from_rows(rows: List[Dict[str, Any]], *, target_id: Optional[str] = None) -> Dict[str, Any]:
-    """An explicit sink changes only backtracing, never the full input control graph."""
-    return _compute_critical_chain_from_loaded_rows(list(rows or []), target_id=target_id)

@@ -26,7 +26,7 @@ _ALLOWED_SET = frozenset(ALLOWED_NEIGHBORHOODS)
 
 
 def validate_neighborhood_name(name: Any) -> str:
-    text = str(name or "").strip().lower()
+    text = str(name).strip().lower()
     if text not in _ALLOWED_SET:
         raise ValidationError(
             f"未知业务邻域“{name}”，本阶段只允许：{', '.join(ALLOWED_NEIGHBORHOODS)}。",

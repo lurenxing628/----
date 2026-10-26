@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from contextlib import contextmanager
-from typing import Any, Callable, Dict, Iterable, List, Mapping, NoReturn, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, NoReturn, Optional, Tuple
 
 from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.read_evidence import read_evidence_scope
@@ -52,10 +52,9 @@ def _catalog_identity_matches(record, locator, expected) -> bool:
             and all(record[column] == value for column, value in expected.items()))
 
 
-def _requested_task_ids(rows: Iterable[Mapping[str, Any]], target_version: int) -> Dict[int, int]:
+def _requested_task_ids(rows: Iterable[Tuple[Any, Any, Any]], target_version: int) -> Dict[int, int]:
     expected = {}
-    for row in rows:
-        row_id, op_id, version = row["schedule_id"], row["op_id"], row["version"]
+    for row_id, op_id, version in rows:
         if not all(is_exact_positive_int(value) for value in (row_id, op_id, version)) or version != target_version:
             _fail("task_binding_invalid")
         if row_id in expected and expected[row_id] != op_id:
@@ -443,7 +442,8 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
                 AND o.source_key = CAST(bo.id AS TEXT)
             WHERE r.kind = ? AND s.id IN ({marks}) AND {where}""", params)
 
-    def get_task_refs(self, plan_ref: str, rows: Iterable[Mapping[str, Any]]) -> Dict[int, str]:
+    def get_task_refs(self, plan_ref: str, rows: Iterable[Tuple[Any, Any, Any]]) -> Dict[int, str]:
+        """Task refs keyed by schedule id; ``rows`` are the arrangements' ``(schedule_id, op_id, version)``."""
         locator, record = self._resolved_record(plan_ref)
         expected = _requested_task_ids(rows, locator.version)
         ids, output = list(expected), {}

@@ -69,7 +69,7 @@ def workbench_process_contract_issues(conn, *, structure=None) -> List[str]:
     for name, sql in process_objects().items():
         if name not in actual:
             issues.append("missing_workbench_process: " + name)
-        elif canonical_sql(actual[name] or "") != canonical_sql(sql):
+        elif canonical_sql(actual[name]) != canonical_sql(sql):
             issues.append("bad_workbench_process: " + name)
     return issues
 

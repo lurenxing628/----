@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from core.infrastructure.database import get_connection
 from core.infrastructure.logging import OperationLogger, safe_log
@@ -31,7 +31,7 @@ def _config_source_summary(sources: List[str], default_source: str) -> str:
 def _build_plugin_config_reader(
     conn,
     *,
-    logger: Optional[logging.Logger] = None,
+    logger: logging.Logger,
     collector: DegradationCollector,
 ):
     enabled_source_map: Dict[str, str] = {}
@@ -63,7 +63,7 @@ def _build_plugin_config_reader(
     return _reader, enabled_source_map
 
 
-def bootstrap_plugins(base_dir: str, database_path: str, *, logger: Optional[logging.Logger] = None):
+def bootstrap_plugins(base_dir: str, database_path: str, *, logger: logging.Logger):
     """
     加载可选插件并记录运行留痕。
 

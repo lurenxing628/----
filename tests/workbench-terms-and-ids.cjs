@@ -171,7 +171,7 @@ context.window.WorkbenchPageContext = { useSnapshot: value => remembered.push(va
 context.window.RunPresentation = { step: () => 1 };
 context.window.BatchSplitPanel = 'SplitPanelFixture';
 load('PreflightWorkspace.jsx');
-const render = () => { stateCursor = 0; return context.window.PreflightWorkspace({ initialContext: input }); };
+const render = () => { stateCursor = 0; return context.window.PreflightWorkspace({ initialContext: input, renderRunPanel: () => null }); };
 let workspace = render();
 nodes(workspace, node => node.type === 'button' && text(node) === '检查物料可做数量')[0].props.onClick();
 workspace = render();

@@ -1,10 +1,15 @@
 """Previously adopted quota samples remain explicit dependencies of a report."""
 
-import json
+from typing import NoReturn
 
 from core.infrastructure.schema_probe import table_exists
 from core.models.workbench_execution_input import MAX_REPORT_BYTES, reject
+from core.shared.strict_json import load_strict_json
 from data.repositories.workbench_report_validation_repo import WorkbenchReportValidationRepository
+
+
+def _corrupt_evidence() -> NoReturn:
+    reject("关联的工时定额采用依据损坏，未执行撤销。", "storage_failure", 500)
 
 
 def adopted_quota_impacts(conn, report_ref, operation_ref):
@@ -19,17 +24,14 @@ def adopted_quota_impacts(conn, report_ref, operation_ref):
     for row in rows:
         text = row["evidence_json"]
         if not isinstance(text, str):
-            reject("关联的工时定额采用依据损坏，未执行撤销。", "storage_failure", 500)
+            _corrupt_evidence()
         total += len(text.encode("utf-8"))
         if total > MAX_REPORT_BYTES:
             reject("关联的定额依据超过读取上限，未执行撤销。", "query_too_large", 413)
-        try:
-            evidence = json.loads(text)
-            samples = evidence["samples"]
-            if not isinstance(samples, list) or any(not isinstance(sample, dict) or not isinstance(sample.get("report_refs"), list) for sample in samples):
-                raise ValueError("Invalid adopted sample list")
-        except (ValueError, TypeError, KeyError):
-            reject("关联的工时定额采用依据损坏，未执行撤销。", "storage_failure", 500)
+        evidence = load_strict_json(text, on_malformed=_corrupt_evidence, expected=dict)
+        samples = evidence.get("samples")
+        if not isinstance(samples, list) or any(not isinstance(sample, dict) or not isinstance(sample.get("report_refs"), list) for sample in samples):
+            _corrupt_evidence()
         if any(report_ref in sample["report_refs"] for sample in samples):
             impacts.append({"code": "adopted_quota_report_required", "operation_ref": operation_ref,
                             "adoption_ref": row["adoption_ref"], "template_operation_ref": row["template_operation_ref"],

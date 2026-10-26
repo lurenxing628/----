@@ -1,24 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional, Tuple
+from typing import Any, Optional
 
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
+from core.shared.strict_parse import is_int
 
 
 def parse_positive_execution_int(value: Any, field: str) -> int:
-    if isinstance(value, bool):
+    """Plan identity from a SQLite INTEGER column: an exact positive int; text, REAL or bool is corrupt."""
+    if not is_int(value) or value <= 0:
         raise ValueError(f"{field} must be a positive integer")
-    if isinstance(value, int):
-        parsed = value
-    else:
-        text = str(value or "").strip()
-        if not text.isdigit():
-            raise ValueError(f"{field} must be a positive integer")
-        parsed = int(text)
-    if parsed <= 0:
-        raise ValueError(f"{field} must be a positive integer")
-    return parsed
+    return value
 
 
 def _required_text(value: Any, field: str) -> str:
@@ -31,24 +24,6 @@ def _required_text(value: Any, field: str) -> str:
 def _optional_text(value: Any) -> Optional[str]:
     text = str(value or "").strip()
     return text or None
-
-
-def validate_current_official_execution_scope(
-    *,
-    source_table: Any,
-    effective_plan_role: Any,
-    scenario_id: Any = None,
-) -> Tuple[str, str, Optional[str]]:
-    source = _required_text(source_table, "source_table")
-    if source != SOURCE_SCHEDULE:
-        raise ValueError("operation execution events must belong to current official schedule rows")
-    role = _required_text(effective_plan_role, "effective_plan_role")
-    if role != ROLE_ADOPTED:
-        raise ValueError("operation execution events must belong to adopted plan")
-    scenario = _optional_text(scenario_id)
-    if scenario is not None:
-        raise ValueError("operation execution events cannot belong to scenario preview plans")
-    return source, role, scenario
 
 
 @dataclass(frozen=True)
@@ -82,6 +57,16 @@ class OperationExecutionScope:
             effective_plan_role=_required_text(effective_plan_role, "effective_plan_role"),
             scenario_id=_optional_text(scenario_id),
         )
+
+
+def validate_current_official_execution_scope(scope: OperationExecutionScope) -> None:
+    """Execution events belong only to the adopted official plan; from_values already normalized the fields."""
+    if scope.source_table != SOURCE_SCHEDULE:
+        raise ValueError("operation execution events must belong to current official schedule rows")
+    if scope.effective_plan_role != ROLE_ADOPTED:
+        raise ValueError("operation execution events must belong to adopted plan")
+    if scope.scenario_id is not None:
+        raise ValueError("operation execution events cannot belong to scenario preview plans")
 
 
 def operation_execution_scope_from_event(event: Any) -> OperationExecutionScope:

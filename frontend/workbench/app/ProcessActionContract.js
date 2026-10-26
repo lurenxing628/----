@@ -23,7 +23,7 @@
   function selection(refs, allowEmpty = false) {
     if (!Array.isArray(refs) || !allowEmpty && !refs.length || !refs.every(ref) || new Set(refs).size !== refs.length)
       throw C.failure('请重新选择零件；不能用图号代替原零件记录。');
-    return refs.slice();
+    return refs;
   }
   function listContext(request) {
     if (!request || !token(request.snapshot_ref) || !Number.isSafeInteger(request.page_size) || request.page_size < 1 || request.page_size > 200)
@@ -63,12 +63,12 @@
   }
   function blocked(result, source, capability) {
     if (!result) return '请先完成预检。';
-    if (source !== 'production' || result.meta.source !== 'production') return '尚未读取可保存的工艺资料。';
+    if (source !== 'production') return '尚未读取可保存的工艺资料。';
     const data = result.data;
     if (!data.can_confirm || data.summary.rejected) return '预检含有不能提交的行，本次全部不提交。';
     if (data.write_context.capabilities[capability] !== true) {
-      const reasons = data.write_context.blocked_reasons || [];
-      return (reasons.find(item => item.action === capability) || {}).message || '本次未取得确认许可，请重新预检。';
+      // 删除与文件预检都已在边界校验 write_context.blocked_reasons 为数组（ResourceMaterialContract / ProcessFileContract.preview）。
+      return (data.write_context.blocked_reasons.find(item => item.action === capability) || {}).message || '本次未取得确认许可，请重新预检。';
     }
     if (Date.now() >= Date.parse(data.expires_at)) return '预检已过期，请重新预检。';
     return '';

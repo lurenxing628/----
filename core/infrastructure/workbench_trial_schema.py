@@ -85,7 +85,7 @@ def workbench_trial_contract_issues(conn, *, structure=None, allow_legacy=True):
     return [("missing_trial_schema:" if name not in actual else "invalid_trial_schema:") + name
             for name, sql in workbench_trial_objects().items()
             if name not in actual or not schema_contract_matches(
-                conn, actual[name] or "", sql, legacy[name], allow_legacy=allow_legacy)]
+                conn, actual[name], sql, legacy[name], allow_legacy=allow_legacy)]
 
 
 def install_workbench_trial_schema(conn):

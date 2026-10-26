@@ -16,11 +16,8 @@ from .schedule_input_seed_metadata import merged_external_group_identity, protec
 from .schedule_payload_contract import ValidatedSchedulePayload, ValidatedScheduleRow
 
 
-def _execution_guard_conflict(message: str, *, reason: str, op_id: Optional[int] = None) -> AppError:
-    details: Dict[str, Any] = {"reason": reason}
-    if op_id is not None:
-        details["op_id"] = int(op_id)
-    return AppError(ErrorCode.SCHEDULE_CONFLICT, message, details=details)
+def _execution_guard_conflict(message: str, *, reason: str, op_id: int) -> AppError:
+    return AppError(ErrorCode.SCHEDULE_CONFLICT, message, details={"reason": reason, "op_id": op_id})
 
 
 def _time_equal(left: Any, right: Any) -> bool:

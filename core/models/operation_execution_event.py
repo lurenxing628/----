@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Iterable, Optional, Tuple
 
-from ._helpers import RowLike, parse_int
+from core.shared.strict_parse import integer_value, is_blank_input
+
+from ._helpers import RowLike
 from .operation_execution_scope import (
     OperationExecutionScope,
     operation_execution_scope_from_event,
@@ -114,23 +116,22 @@ def normalize_operation_execution_event_values(
 
 
 def _event_identity(event: OperationExecutionEventSequenceEntry) -> str:
-    if event.id not in (None, ""):
+    if event.id is not None:
         return f"id={event.id}"
     return f"type={event.event_type!r}"
 
 
-def _event_id_for_revision(event: Any) -> int:
-    raw = event.id
-    value = parse_int(raw, default=None)
-    if value is None or value <= 0:
+def _event_id_for_revision(event: OperationExecutionEventSequenceEntry) -> int:
+    # from_row 已把 id 读成整数或 None（非整数）；这里只判断能否作为状态版本里的事件编号。
+    if event.id is None or event.id <= 0:
         raise ValueError(f"id must be a positive integer at {_event_identity(event)}")
-    return value
+    return event.id
 
 
 def _optional_non_negative_int_field(value: Any, field_name: str) -> Optional[int]:
-    if value is None or (isinstance(value, str) and not value.strip()):
+    if is_blank_input(value):
         return None
-    parsed = parse_int(value, default=None)
+    parsed = integer_value(value)
     if parsed is None:
         raise ValueError(f"{field_name} must be an integer: {value!r}")
     if parsed < 0:
@@ -139,9 +140,9 @@ def _optional_non_negative_int_field(value: Any, field_name: str) -> Optional[in
 
 
 def _suggest_reschedule_field(value: Any) -> int:
-    if value is None or (isinstance(value, str) and not value.strip()):
+    if is_blank_input(value):
         return 0
-    parsed = parse_int(value, default=None)
+    parsed = integer_value(value)
     if parsed not in (0, 1):
         raise ValueError(f"suggest_reschedule must be 0 or 1: {value!r}")
     return int(parsed)
@@ -161,7 +162,7 @@ def validate_operation_execution_event_sequence(events: Iterable[OperationExecut
     previous_event_time: Optional[str] = None
     previous_event_id = 0
     sequence_scope: Optional[OperationExecutionScope] = None
-    for index, event in enumerate(events or (), start=1):
+    for index, event in enumerate(events, start=1):
         scope = operation_execution_scope_from_event(event)
         if sequence_scope is None:
             sequence_scope = scope
@@ -170,12 +171,8 @@ def validate_operation_execution_event_sequence(events: Iterable[OperationExecut
                 "operation execution event sequence is invalid: "
                 f"scope changed from {sequence_scope!r} to {scope!r} at {_event_identity(event)}"
             )
-        op_id = event.op_id
-        expected_previous_revision = f"{op_id}:{index - 1}:{previous_event_id}"
-        previous_revision = _required_contract_text(
-            event.previous_state_revision,
-            "previous_state_revision",
-        )
+        expected_previous_revision = f"{event.op_id}:{index - 1}:{previous_event_id}"
+        previous_revision = event.previous_state_revision
         if previous_revision != expected_previous_revision:
             raise ValueError(
                 "operation execution event sequence is invalid: "
@@ -244,24 +241,21 @@ def _sequence_values(row: RowLike) -> Dict[str, Any]:
         effective_plan_role=row["effective_plan_role"],
         scenario_id=row["scenario_id"],
     )
-    source_table, effective_plan_role, scenario_id = validate_current_official_execution_scope(
-        source_table=scope.source_table,
-        effective_plan_role=scope.effective_plan_role,
-        scenario_id=scope.scenario_id,
-    )
+    validate_current_official_execution_scope(scope)
     return {
-        "id": parse_int(row["id"], default=None),
+        # 非整数 id 读作 None，由顺序校验 _event_id_for_revision 按事件身份报错。
+        "id": integer_value(row["id"]),
         "schedule_version": scope.schedule_version,
         "schedule_id": scope.schedule_id,
         "op_id": scope.op_id,
         "batch_id": scope.batch_id,
-        "source_table": source_table,
-        "effective_plan_role": effective_plan_role,
-        "scenario_id": scenario_id,
+        "source_table": scope.source_table,
+        "effective_plan_role": scope.effective_plan_role,
+        "scenario_id": scope.scenario_id,
         "event_type": event_type,
         "reported_status": reported_status,
         "event_time": event_time,
-        "previous_state_revision": str(row["previous_state_revision"] or ""),
+        "previous_state_revision": _required_contract_text(row["previous_state_revision"], "previous_state_revision"),
     }
 
 

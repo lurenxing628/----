@@ -51,11 +51,10 @@ def _project_warning_data_value(value: Any) -> Tuple[Any, bool]:
     return {"unsupported_value_type": type(value).__name__}, True
 
 
-def _project_warning_message(message: Any) -> Tuple[str, bool]:
-    text = str(message or "")
-    if len(text) <= _GRAPH_WARNING_TEXT_SAMPLE_LIMIT:
-        return text, False
-    return text[:_GRAPH_WARNING_TEXT_SAMPLE_LIMIT], True
+def _project_warning_message(message: str) -> Tuple[str, bool]:
+    if len(message) <= _GRAPH_WARNING_TEXT_SAMPLE_LIMIT:
+        return message, False
+    return message[:_GRAPH_WARNING_TEXT_SAMPLE_LIMIT], True
 
 
 def _project_warning_data(raw_data: Any) -> Tuple[Dict[str, Any], bool]:
@@ -85,7 +84,8 @@ def _project_warning_data(raw_data: Any) -> Tuple[Dict[str, Any], bool]:
 
 def project_graph_warning(warning: Dict[str, Any]) -> Dict[str, Any]:
     data, warning_data_truncated = _project_warning_data(warning.get("data"))
-    raw_message = str(warning["message"] or "")
+    # GraphWarning.message is a required str (graph/types.py), exported via asdict.
+    raw_message = warning["message"]
     message, message_truncated = _project_warning_message(raw_message)
     return {
         "code": warning["code"],

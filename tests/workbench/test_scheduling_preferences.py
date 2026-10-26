@@ -8,7 +8,7 @@ import pytest
 from flask import Blueprint, g
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
+from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain, canonical_json
 from core.models.workbench_preflight import SCHEDULING_PREFERENCES_KEY, normalize_preflight_input
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.run.jobs_facts import production_facts_match
@@ -107,6 +107,19 @@ def test_corrupt_or_unknown_saved_document_is_an_explicit_failure(pf, stored):
     response = pf.get(ROOT)
     assert response.status_code == 409 and response.get_json()["error"]["code"] == "scheduling_preferences_invalid"
     assert SystemConfigRepository(pf.conn).get_value(SCHEDULING_PREFERENCES_KEY) == stored
+
+
+def test_saved_document_with_duplicate_key_is_an_explicit_failure(pf):
+    valid = canonical_json({"version": 1, "input": normalize_preflight_input(payload(pf))})
+    repo = SystemConfigRepository(pf.conn)
+    repo.set(SCHEDULING_PREFERENCES_KEY, valid)
+    pf.conn.commit()
+    assert pf.get(ROOT).status_code == 200
+    # 本进程写下的偏好文档走严格 JSON：同一文档多出一个重复键就按损坏拒绝，不按后一个值读。
+    repo.set(SCHEDULING_PREFERENCES_KEY, '{"version":1,' + valid[1:])
+    pf.conn.commit()
+    response = pf.get(ROOT)
+    assert response.status_code == 409 and response.get_json()["error"]["code"] == "scheduling_preferences_invalid"
 
 
 def _facts_content(conn):

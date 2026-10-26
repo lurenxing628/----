@@ -115,15 +115,16 @@ class ResourcePressureMetrics:
             calendars = (factory.iter_resources([dict(row, saved_id=factory.bindings.get((row["kind"], row["ref"])))
                                                  for row in needed], self.start, self.end)
                          if factory is not None else ((row["ref"], None) for row in needed))
-            index.retain_statistics_values = days_ref is not None
             for resource, (_, calendar) in zip(needed, calendars):
                 key = resource["kind"], resource["ref"]
-                if key not in summaries:
+                if resource["ref"] != days_ref:
                     summaries[key] = pressure_from_index(index, resource, calendar, include_days=False)
-                if resource["ref"] == days_ref:
+                elif key in summaries:
                     detailed[key] = dict(summaries[key], days=[legacy_day(day) for day in index.days(resource, calendar)])
+                else:
+                    detailed[key] = pressure_from_index(index, resource, calendar)
+                    summaries[key] = dict(detailed[key], days=[])
                 index.release(resource)
-            index.retain_statistics_values = False
         result = []
         for resource in self.cohort:
             key = resource["kind"], resource["ref"]

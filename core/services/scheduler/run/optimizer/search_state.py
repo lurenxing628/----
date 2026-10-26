@@ -17,7 +17,8 @@ def _attempt_dispatch_mode(item: Dict[str, Any]) -> str:
 
 
 def _attempt_tag(item: Dict[str, Any]) -> str:
-    return str(item.get("tag") or "")
+    # Every attempts.append construction point writes a non-empty tag.
+    return item["tag"]
 
 
 def is_candidate_rejected_attempt(item: Dict[str, Any]) -> bool:
@@ -26,16 +27,18 @@ def is_candidate_rejected_attempt(item: Dict[str, Any]) -> bool:
 
 def attempt_identity(item: Dict[str, Any]) -> Tuple[str, ...]:
     if is_candidate_rejected_attempt(item):
-        origin = item.get("origin") or {}
+        # Rejected attempts come only from attempt_records/grasp_ig_candidates with these fields filled;
+        # origin.field mirrors ValidationError.field, which may be None.
+        origin = item["origin"]
         return (
             "candidate_rejected",
-            str(item.get("tag") or ""),
-            str(item.get("strategy") or ""),
-            str(item.get("dispatch_mode") or ""),
-            str(item.get("dispatch_rule") or ""),
-            str(origin.get("type") or ""),
+            item["tag"],
+            item["strategy"],
+            item["dispatch_mode"],
+            item["dispatch_rule"],
+            origin["type"],
             str(origin.get("field") or ""),
-            str(origin.get("message") or ""),
+            origin["message"],
         )
     return ("scored", _attempt_tag(item))
 
@@ -49,7 +52,7 @@ def append_unique_rejected_attempt(attempts: List[Dict[str, Any]], attempt: Dict
 
 def _unique_rejected_attempts(attempts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     selected: List[Dict[str, Any]] = []
-    for item in attempts or []:
+    for item in attempts:
         if is_candidate_rejected_attempt(item):
             append_unique_rejected_attempt(selected, item)
     return selected
@@ -82,7 +85,7 @@ def _rejected_attempt_limit(*, scored_count: int, rejected_count: int, limit: in
 
 
 def compact_attempts(attempts: List[Dict[str, Any]], *, limit: int = 12) -> List[Dict[str, Any]]:
-    raw_attempts = list(attempts or [])
+    raw_attempts = list(attempts)
     if len(raw_attempts) <= limit:
         return raw_attempts
     scored_attempts = [item for item in raw_attempts if not is_candidate_rejected_attempt(item)]

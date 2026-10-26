@@ -67,7 +67,7 @@
     const id = React.useId(), prepared = React.useMemo(() => prepare(data, metricKey), [data, metricKey]);
     const { points, definition, entries, indexes, labels, plotted, missing, untimed, series, hasGaps } = prepared;
     const selectedIndex = indexes.get(selectedEntryRef) ?? -1, selected = points[selectedIndex];
-    function choose(index, reveal = false) { if (!busy && typeof onSelect === 'function' && points[index]) onSelect(entries.get(points[index].entry_ref), reveal); }
+    function choose(index, reveal = false) { if (!busy && points[index]) onSelect(entries.get(points[index].entry_ref), reveal); }
     function keyboard(event) {
       if (event.defaultPrevented || busy || !points.length || event.altKey || event.ctrlKey || event.metaKey) return;
       const button = event.target && event.target.closest && event.target.closest('[data-dh-chart-choice]');

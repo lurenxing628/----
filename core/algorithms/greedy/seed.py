@@ -4,7 +4,7 @@ from dataclasses import fields
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.algorithm_contracts.schedule_point_evidence import PointSeedResult
-from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
+from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import EXTERNAL
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.errors import ValidationError
@@ -77,94 +77,29 @@ def seed_result_for_output(result: ScheduleResult) -> ScheduleResult:
 
 def normalize_seed_results(
     *,
-    seed_results: Optional[List[ScheduleResult]],
-    operations: List[OpForScheduleAlgo],
-    algo_stats: Any = None,
+    seed_results: List[ScheduleResult],
+    algo_stats: Dict[str, Any],
 ) -> Tuple[List[ScheduleResult], Set[int], List[str]]:
-    warnings: List[str] = []
+    """Keep the first seed of each operation ID.
+
+    Every seed already carries a positive operation ID: the evaluation context built before the
+    decode session rejects seeds without one (``evaluation_completion._result_key``).
+    """
     seed_op_ids: Set[int] = set()
-    if not seed_results:
-        return [], seed_op_ids, warnings
-
-    lookup = (_build_operation_lookup(operations)
-              if any(identity_int(result.op_id) <= 0 for result in seed_results) else {})
-    counters = {
-        "backfilled": 0,
-        "dropped_invalid": 0,
-        "dropped_dup": 0,
-    }
-    dup_samples: List[str] = []
     normalized: List[ScheduleResult] = []
-
+    dup_samples: List[str] = []
+    dropped_dup = 0
     for seed_result in seed_results:
-        original_oid = identity_int(seed_result.op_id)
-        normalized_one = _normalize_one_seed_result(seed_result, original_oid=original_oid, lookup=lookup)
-        if normalized_one is None:
-            counters["dropped_invalid"] += 1
-            continue
-        result, oid = normalized_one
+        oid = seed_result.op_id
         if oid in seed_op_ids:
-            counters["dropped_dup"] += 1
+            dropped_dup += 1
             if len(dup_samples) < 5:
                 dup_samples.append(str(oid))
             continue
-        if original_oid <= 0:
-            counters["backfilled"] += 1
         seed_op_ids.add(oid)
-        normalized.append(result)
-
-    _record_seed_counters(algo_stats, counters)
-    warnings.extend(_seed_warnings(counters, dup_samples))
-    return normalized, seed_op_ids, warnings
-
-
-def _build_operation_lookup(operations: List[OpForScheduleAlgo]) -> Dict[str, Any]:
-    op_id_by_code: Dict[str, int] = {}
-    by_batch_seq: Dict[Tuple[str, int], int] = {}
-    duplicates: set = set()
-    for op in operations:
-        # 工序编号、工序代码、批次号、工序号都由排产输入构建给出规范非空值。
-        oid = op.id
-        if op.op_code not in op_id_by_code:
-            op_id_by_code[op.op_code] = oid
-        key = (op.batch_id, op.seq)
-        prev = by_batch_seq.get(key)
-        if prev is not None and prev != oid:
-            duplicates.add(key)
-        else:
-            by_batch_seq[key] = oid
-    for key in duplicates:
-        by_batch_seq.pop(key, None)
-    return {"op_id_by_code": op_id_by_code, "op_id_by_batch_seq": by_batch_seq}
-
-
-def _normalize_one_seed_result(
-    seed_result: ScheduleResult, *, original_oid: int, lookup: Dict[str, Any],
-) -> Optional[Tuple[ScheduleResult, int]]:
-    # 起止时间与工序编号/工序号的取值都已在唯一入口 coerce_seed_results 校验并拒绝（身份转成非负整数），
-    # 这里只按工序代码或批次号+工序号回填缺失的工序编号。
-    if original_oid > 0:
-        return seed_result, original_oid
-    new_oid = _resolve_seed_op_id(seed_result, lookup=lookup)
-    if new_oid <= 0:
-        return None
-    return _backfill_seed_op_id(seed_result, new_oid), new_oid
-
-
-def _resolve_seed_op_id(seed_result: ScheduleResult, *, lookup: Dict[str, Any]) -> int:
-    # 旧种子回填：存储边界可能给出空串或带空白的工序代码/批次号，只按已有资料匹配。
-    code = seed_result.op_code.strip()
-    if code:
-        return lookup["op_id_by_code"].get(code, 0)
-    bid, seq = seed_result.batch_id.strip(), identity_int(seed_result.seq)
-    if not bid or seq <= 0:
-        return 0
-    return lookup["op_id_by_batch_seq"].get((bid, seq), 0)
-
-
-def _backfill_seed_op_id(seed_result: ScheduleResult, op_id: int) -> ScheduleResult:
-    seed_result.op_id = op_id
-    return seed_result
+        normalized.append(seed_result)
+    increment_counter(algo_stats, "seed_duplicate_dropped_count", dropped_dup)
+    return normalized, seed_op_ids, _seed_warnings(dropped_dup, dup_samples)
 
 
 def identity_int(value: Any) -> int:
@@ -183,22 +118,11 @@ def identity_int(value: Any) -> int:
     return int(text)
 
 
-def _record_seed_counters(algo_stats: Any, counters: Dict[str, int]) -> None:
-    increment_counter(algo_stats, "seed_op_id_backfilled_count", counters["backfilled"])
-    increment_counter(algo_stats, "seed_invalid_dropped_count", counters["dropped_invalid"])
-    increment_counter(algo_stats, "seed_duplicate_dropped_count", counters["dropped_dup"])
-
-
-def _seed_warnings(counters: Dict[str, int], dup_samples: List[str]) -> List[str]:
-    warnings: List[str] = []
-    if counters["backfilled"]:
-        warnings.append(f"沿用旧排产结果时发现 {counters['backfilled']} 条工序编号缺失或不合法的记录，已按工序代码、批次号和工序号补回工序编号，避免重复排产。")
-    if counters["dropped_invalid"]:
-        warnings.append(f"沿用旧排产结果时发现 {counters['dropped_invalid']} 条工序编号缺失或不合法且无法匹配的记录，系统已忽略这些记录，避免重复统计或重复排产。")
-    if counters["dropped_dup"]:
-        sample = ", ".join([x for x in dup_samples if x][:5])
-        warnings.append(
-            f"沿用旧排产结果时发现 {counters['dropped_dup']} 条重复工序编号的记录，已按工序编号去重（保留首条）"
-            f"{('（示例工序编号：' + sample + '）') if sample else ''}。"
-        )
-    return warnings
+def _seed_warnings(dropped_dup: int, dup_samples: List[str]) -> List[str]:
+    if not dropped_dup:
+        return []
+    sample = ", ".join(dup_samples)
+    return [
+        f"沿用旧排产结果时发现 {dropped_dup} 条重复工序编号的记录，已按工序编号去重（保留首条）"
+        f"{('（示例工序编号：' + sample + '）') if sample else ''}。"
+    ]

@@ -1,7 +1,7 @@
 """Read-only planned batch delivery, designed for the workspace's read transaction.
 
-read_plan_delivery(conn, *, scope, identity, logger=None) -> (public, private_facts)
-The caller passes its exact resolved PlanIdentity and PlanReadScope. It owns the
+read_plan_delivery(conn, *, scope, identity, context, logger=None) -> (public, private_facts)
+The caller passes its exact resolved PlanIdentity, PlanReadScope and PlanReadContext. It owns the
 transaction and incorporates private_facts into its unified snapshot fingerprint;
 never serialize that second value. No clock, actual completion or shipment is
 inferred here. No current-official capability is assigned by this projection.
@@ -25,24 +25,22 @@ from core.services.workbench.facts.delivery_projection import (
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 
 from .delivery_repository import PlanDeliveryRepository
-from .point_evidence import annotate_plan_points
 from .read_context import PlanReadContext
 
 
 def read_plan_delivery(
-    conn, *, scope: PlanReadScope, identity: PlanIdentity, logger=None, context=None,
+    conn, *, scope: PlanReadScope, identity: PlanIdentity, context: PlanReadContext, logger=None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """Select task-overlap batches, calculate completion from their FULL plan rows.
 
     Every current BatchOperations row must be covered at least once. Segments and
     duplicates count once per operation but all affect the last planned finish.
     This is an operation-coverage check, not a historical frozen route or an
-    execution/quantity/actual-delivery certificate. Invalid-time rows participate
-    in every range, matching the existing task overlap-or-bad-time convention.
+    execution/quantity/actual-delivery certificate. Rows with invalid times never
+    reach here: plan admission (``context.selected``) rejects such a plan.
     """
     if not conn.in_transaction:
         raise RuntimeError("Delivery reads require a caller-owned read transaction.")
-    context = PlanReadContext(conn, logger) if context is None else context
     with context.read_scope():
         return _read_plan_delivery(conn, scope=scope, identity=identity, logger=logger, context=context)
 
@@ -50,11 +48,8 @@ def read_plan_delivery(
 def _read_plan_delivery(conn, *, scope, identity, logger, context):
     repo = PlanDeliveryRepository(conn, logger=logger)
     scenario = repo.validate_identity(scope, identity, context=context)
-    selected = context._selected.get(scope.plan_ref)
-    entry = selected[1] if selected is not None else None
-    rows = repo.task_rows(identity, context=context, entry=entry)
-    if entry is None:
-        rows = _delivery_rows(conn, rows, identity.source_table, context=context)
+    _, entry, _ = context.selected(scope.plan_ref)
+    rows = repo.task_rows(context=context, entry=entry)
     intervals = task_intervals(rows)
     keys = selected_batch_keys(rows, intervals, scope)
     record = repo.completion_record(identity, scenario, context=context)
@@ -83,17 +78,6 @@ def _read_plan_delivery(conn, *, scope, identity, logger, context):
              "completion_record": record,
              "batch_identities": [(key, references[key].ref, references[key].revision) for key in keys]}
     return public, facts
-
-
-def _delivery_rows(conn, rows, source_table, *, context):
-    try:
-        return annotate_plan_points(conn, rows, source_table=source_table, context=context)
-    except WorkbenchCommandRejected as exc:
-        if exc.code != "point_evidence_unproven":
-            raise
-        # Legacy delivery keeps bad rows visible and marks completion unknown.
-        # This is not permission to interpret an unproven equal row as a point.
-        return [dict(row, point_evidence_issue=exc.code) if row["start_time"] == row["end_time"] else row for row in rows]
 
 
 def _delivery_items(rows, operations, batches, intervals, references, record, deferred, deferred_issues):

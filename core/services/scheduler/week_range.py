@@ -26,13 +26,6 @@ def _monday_of(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
 
-def _normalize_offset_weeks(offset_weeks: int) -> int:
-    try:
-        return int(offset_weeks)
-    except Exception as e:
-        raise ValidationError("周偏移填写不对，请填写整数。", field="offset_weeks") from e
-
-
 def _date_arg_provided(value: Optional[str]) -> bool:
     return value is not None and str(value).strip() != ""
 
@@ -132,4 +125,4 @@ def resolve_week_range(
             start_date=start_date,
             end_date=end_date,
         )
-    return _resolve_week_mode_range(week_start=week_start, offset_weeks_int=_normalize_offset_weeks(offset_weeks))
+    return _resolve_week_mode_range(week_start=week_start, offset_weeks_int=offset_weeks)

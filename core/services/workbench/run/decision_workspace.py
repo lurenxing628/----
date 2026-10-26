@@ -44,9 +44,9 @@ def _reference_workspace(source, batch_ref):
         unplanned.append(item)
     batches = {batch_ref} if batch_ref is not None else set(batch_refs) | ({None} if full_view else set())
     tasks = scoped_rows(all_tasks, batches, source.scope["range_start"], source.scope["range_end"])
-    tasks.sort(key=lambda row: (row["start"] is None, row["start"] or "", row["operation_ref"], row["row_ref"]))
+    tasks.sort(key=lambda row: (row["start"] is None, row["start"], row["operation_ref"], row["row_ref"]))
     unplanned = [row for row in unplanned if row["batch_ref"] in batches]
-    unplanned.sort(key=lambda row: (row["sequence"] is None, row["sequence"] or 0, row["operation_ref"]))
+    unplanned.sort(key=lambda row: (row["sequence"] is None, row["sequence"], row["operation_ref"]))
     tasks = [dict(row, operation_effort=source.preparation.compact("reference", row["operation_ref"])) for row in tasks]
     unplanned = [dict(row, operation_effort=source.preparation.compact("reference", row["operation_ref"])) for row in unplanned]
     if full_view:

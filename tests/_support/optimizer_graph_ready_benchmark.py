@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_runtime.checkpoint_calendar import register_checkpoint_calendar
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from core.models.batch import Batch
-from core.models.schedule_config_runtime_fields import default_snapshot_values
-from core.services.scheduler.graph.metrics import build_node_metrics
-from core.services.scheduler.graph.precedence_builder import build_precedence_graph
+from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
+from core.services.scheduler.graph.analysis_service import ScheduleGraphAnalysisService
 from core.services.scheduler.graph.types import OperationGraphNode
 from tests._support.algo_operations import make_algo_op, make_batch
+from tests._support.schedule_decode import config_snapshot
 
 GRAPH_READY_FLEXIBLE_MACHINE_CASE_SLUG = "graph-ready-flexible-machine-bottleneck-metric"
 GRAPH_READY_FLEXIBLE_MACHINE_CASE_GROUP = "graph_ready_metric"
@@ -156,15 +155,14 @@ def graph_ready_benchmark_context(*, include_bottleneck: bool = True) -> Dict[st
 
 
 def flexible_machine_bottleneck_scores() -> Dict[str, float]:
-    graph = build_precedence_graph(
+    metrics = ScheduleGraphAnalysisService().analyze_precedence(
         [
             _metric_node("op:busy", seq=10, duration_minutes=120, machine_id="MC-B"),
             _metric_node("op:light", seq=20, duration_minutes=30, machine_id="MC-A"),
             _metric_node("op:flex", seq=30, duration_minutes=60, candidate_machine_ids=("MC-A", "MC-B")),
         ],
         [],
-    )
-    metrics = build_node_metrics(graph)
+    ).node_metrics
     return {
         "busy": float(metrics["op:busy"]["bottleneck_machine_score"]),
         "light": float(metrics["op:light"]["bottleneck_machine_score"]),
@@ -240,23 +238,12 @@ def _scheduler() -> GreedyScheduler:
     return GreedyScheduler(calendar_service=ContinuousCalendar(), config_service=_default_config())
 
 
-def _default_config() -> Any:
-    values = default_snapshot_values()
-    values.update(
-        {
-            "sort_strategy": "priority_first",
-            "dispatch_mode": "sgs",
-            "dispatch_rule": "slack",
-            "auto_assign_enabled": "no",
-            "objective": OBJECTIVE_NAME,
-            "algo_mode": "greedy",
-            "time_budget_seconds": 1,
-            "ortools_enabled": "no",
-            "freeze_window_enabled": "no",
-            "freeze_window_days": 0,
-        }
+def _default_config() -> ScheduleConfigSnapshot:
+    return config_snapshot(
+        sort_strategy="priority_first", dispatch_mode="sgs", dispatch_rule="slack", auto_assign_enabled="no",
+        objective=OBJECTIVE_NAME, algo_mode="greedy", time_budget_seconds=1, ortools_enabled="no",
+        freeze_window_enabled="no", freeze_window_days=0,
     )
-    return SimpleNamespace(**values)
 
 
 def _flexible_machine_metric_row_passes(row: Dict[str, Any]) -> bool:

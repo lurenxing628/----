@@ -86,7 +86,6 @@ FIELD_POLICIES_BY_FIELD: Dict[str, FieldPolicy] = {policy.field: policy for poli
 
 
 def get_field_policy(field: str) -> FieldPolicy:
-    key = str(field or "").strip()
-    if not key or key not in FIELD_POLICIES_BY_FIELD:
+    if field not in FIELD_POLICIES_BY_FIELD:
         raise KeyError(f"未定义字段策略：{field!r}")
-    return FIELD_POLICIES_BY_FIELD[key]
+    return FIELD_POLICIES_BY_FIELD[field]

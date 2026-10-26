@@ -83,7 +83,7 @@ async function main() {
       value: { version: 1, request_key: 'dashboard-' + 'a'.repeat(48), phase: 'pending', item_ref: ref(9), action: 'transition', input: { target_status: 'following' }, before: handling, source: {}, risk: {} } },
     { name: 'OutsourcingSession', contract: 'OutsourcingContract', leaf: 'facts', mount: module => module.useCommand({}),
       value: { version: 1, request_key: 'outsourcing-' + 'a'.repeat(48), phase: 'pending', input: { ...after, target: w.OutsourcingContract.target(target), declared_operator: values.declared_operator, reason: values.reason }, after, target } },
-    { name: 'TrialAdoptionState', contract: 'TrialAdoptionAPI', leaf: 'overview', mount: module => module.useSession({ disabled: true }),
+    { name: 'TrialAdoptionState', contract: 'TrialAdoptionAPI', leaf: 'overview', mount: module => module.useSession({ disabled: true, onAdopted() {} }),
       value: { schema_version: 1, request_key: 'trial-adoption-' + 'a'.repeat(48), phase: 'pending', scenario_ref: scope.scenario_ref, preview: scope, input: values } },
     { name: 'CalibrationAdoptionState', contract: 'CalibrationAdoptionAPI', leaf: 'binding', mount: module => module.useSession({ detail: null, stale: true, adapter: {} }),
       value: { version: 1, request_key: 'calibration-' + 'a'.repeat(48), phase: 'pending', baseline, input: values } }
@@ -129,7 +129,7 @@ async function main() {
   assert.equal(JSON.stringify(await trialTransport.lookup(trialIntent, undefined, { data_context_ref: dataContext })), JSON.stringify(trialStatus()));
 
   const originalFetch = w.fetch, trialOverview = trialAPI.overview, recoveryHost = hooks(); w.localStorage = storage(); w.fetch = trialFetch;
-  const recovery = recoveryHost.render(() => trialState.useSession({ disabled: true })); recoveryHost.flush();
+  const recovery = recoveryHost.render(() => trialState.useSession({ disabled: true, onAdopted() {} })); recoveryHost.flush();
   trialAPI.overview = (...args) => { counters.validations++; return trialOverview(...args); };
   trialState.save(trialIntent, null); const savedTrial = w.localStorage.data.get(trialState.KEY), savedEvents = events.length, savedWrites = w.localStorage.writes.length;
   mayBeInFlight = true; reset(); await recovery.lookup();
@@ -140,7 +140,7 @@ async function main() {
   mayBeInFlight = false; reset(); await recovery.lookup();
   assert.deepEqual(counters, { reads: 1, parses: 3, validations: 1 }, 'Clearing reads PENDING once; JSON parsing covers the outgoing context, stored intent, and stored context');
   assert.equal(w.localStorage.data.has(trialState.KEY), false); assert.equal(events.at(-1).detail, null);
-  assert.equal(recoveryHost.render(() => trialState.useSession({ disabled: true })).saved, null);
+  assert.equal(recoveryHost.render(() => trialState.useSession({ disabled: true, onAdopted() {} })).saved, null);
   reset(); w.dispatchEvent(events.at(-1)); assert.deepEqual(counters, { reads: 0, parses: 0, validations: 0 });
   recoveryHost.unmount(); trialAPI.overview = trialOverview; w.fetch = originalFetch;
 
@@ -188,7 +188,7 @@ async function main() {
       data: { ...scope, validation: { status: 'valid', can_adopt: true, issues: [] },
         write_context: { write_token: 'w'.repeat(32), expires_at: '2026-10-22T10:00:00', capabilities: { 'trial.scenario.adopt': true }, blocked_reasons: [] } } }) };
   };
-  const renderTrial = () => trialHost.render(() => w.TrialAdoptionState.useSession({ scenarioRef: scope.scenario_ref, data: trialData, disabled: false }));
+  const renderTrial = () => trialHost.render(() => w.TrialAdoptionState.useSession({ scenarioRef: scope.scenario_ref, data: trialData, disabled: false, onAdopted() {} }));
   renderTrial(); trialHost.flush(); renderTrial().change({ reason: values.reason, declared_operator: values.declared_operator });
   await renderTrial().inspect(); renderTrial().setConsent(true);
   await refused(renderTrial, noLocks, session => session.submit(), '当前浏览器不支持这项操作，请用 Chrome 打开。', trialAdopts);

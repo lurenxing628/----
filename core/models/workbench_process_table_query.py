@@ -73,7 +73,7 @@ class ProcessTablePageRequest:
 
     def ordering(self):
         """An empty list clears header sorting; the stable identity tie remains."""
-        return [dict(item) for item in self._ordering]
+        return self._ordering
 
     def scope(self):
         return {"kind": "part", "query": self.query, "stage": self.stage, "size": self.size,

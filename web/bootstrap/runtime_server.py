@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import os
 import socket
-from http.server import HTTPServer
 from socketserver import TCPServer
 from typing import cast
 
-from werkzeug.serving import BaseWSGIServer, ThreadedWSGIServer, make_server
+from werkzeug.serving import ThreadedWSGIServer, make_server
 
 from core.infrastructure.logging import safe_log
 
@@ -21,7 +20,7 @@ class RuntimeBindError(RuntimeError):
     """Keep Werkzeug from exiting before the launcher can record bind errors."""
 
 
-class _WindowsExclusiveBinding(HTTPServer):
+class _WindowsRuntimeServer(ThreadedWSGIServer):
     allow_reuse_address = False
 
     def server_bind(self):
@@ -42,31 +41,13 @@ class _WindowsExclusiveBinding(HTTPServer):
             raise RuntimeBindError(str(exc)) from exc
 
 
-class _WindowsRuntimeServer(_WindowsExclusiveBinding, ThreadedWSGIServer):
-    pass
-
-
-class _WindowsSingleRuntimeServer(_WindowsExclusiveBinding, BaseWSGIServer):
-    pass
-
-
-def make_runtime_server(host, port, app, threaded=False, processes=1, request_handler=None,
-                        passthrough_errors=False, ssl_context=None, fd=None):
-    if os.name != "nt":
-        return make_server(host, port, app, threaded=threaded, processes=processes, request_handler=request_handler,
-                           passthrough_errors=passthrough_errors, ssl_context=ssl_context, fd=fd)
-    if processes != 1:
-        raise ValueError("The Windows runtime requires one server process")
-    server_class = _WindowsRuntimeServer if threaded else _WindowsSingleRuntimeServer
-    return server_class(host, int(port), app, handler=request_handler, passthrough_errors=passthrough_errors,
-                        ssl_context=ssl_context, fd=fd)
-
-
 def create_runtime_server(app, host, port):
     transport = RuntimeHostStopTransport(app)
-    # threaded=True always builds a ThreadedWSGIServer: werkzeug's own or the Windows exclusive-binding subclass.
-    server = cast(ThreadedWSGIServer, make_runtime_server(host, int(port), transport, threaded=True,
-                                                          request_handler=WorkbenchRequestHandler))
+    if os.name == "nt":
+        server = _WindowsRuntimeServer(host, int(port), transport, handler=WorkbenchRequestHandler)
+    else:
+        server = cast(ThreadedWSGIServer, make_server(host, int(port), transport, threaded=True,
+                                                      request_handler=WorkbenchRequestHandler))
     transport.server = server
     server.daemon_threads = False
     return server

@@ -13,15 +13,12 @@ they never write times for mutable operations, and the adopted candidate is stil
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, FrozenSet, Iterable, List, NoReturn, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, FrozenSet, Iterable, List, NoReturn, Optional, Sequence, Tuple
 
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult, ScheduleSummary
 from core.algorithm_runtime.checkpoint_inputs import input_record, input_value
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.errors import ValidationError
-
-if TYPE_CHECKING:
-    from core.models.batch import Batch
 
 CHECKPOINT_FIELD = "decode_checkpoint"
 _PROGRESS_SETS = ("completed_or_fixed_op_ids", "blocked_op_ids", "ready_op_ids")
@@ -56,7 +53,7 @@ class DecodeCheckpointRequest:
     """Pick counts at which the loop must snapshot; captured checkpoints are handed to ``sink``."""
 
     def __init__(self, positions: Iterable[int], sink: Callable[[DecodeCheckpoint], None], *,
-                 tail_reuse: Optional[Any] = None, check_budget: Optional[Callable[[int], None]] = None) -> None:
+                 tail_reuse: Optional[Any] = None) -> None:
         cleaned = set()
         for value in positions:
             if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
@@ -66,15 +63,12 @@ class DecodeCheckpointRequest:
             _invalid("解码断点位置不能为空。", reason="decode_checkpoint_bad_position")
         if not callable(sink):
             _invalid("解码断点必须提供接收函数。", reason="decode_checkpoint_bad_sink")
-        if check_budget is not None and not callable(check_budget):
-            _invalid("解码预算检查必须是函数。", reason="decode_checkpoint_bad_budget_check")
         self.positions: FrozenSet[int] = frozenset(cleaned)
         self.sink = sink
         self.signature: Optional[Tuple[Any, ...]] = None
         self.warnings: Tuple[str, ...] = ()
         self.captured = 0
         self.tail_reuse = tail_reuse
-        self.check_budget = check_budget
 
     def arm(self, *, signature: Tuple[Any, ...], warnings: Sequence[str]) -> None:
         self.signature = signature
@@ -105,11 +99,9 @@ class CheckpointPlan:
             if not graph_state["score_enabled"] or not keys:
                 _invalid("解码断点只支持启用图评分键的图模式派工。", reason="decode_checkpoint_requires_graph_keys")
             self.order: List[int] = []
-            self.total_ops = len(keys)
             self.position_of: Dict[int, int] = {}
         else:
             self.order = graph_key_order(graph_state)
-            self.total_ops = len(self.order)
             self.position_of = {op_id: index for index, op_id in enumerate(self.order)}
         self.picked: List[int] = []
         self.furthest = -1
@@ -208,40 +200,34 @@ def resume_graph_progress(checkpoint: DecodeCheckpoint, *, graph_state: Optional
     return checkpoint.position
 
 
-def decode_input_signature(*, operations: Sequence[OpForScheduleAlgo], batches: Dict[str, Batch],
-                           batch_order: Dict[str, int], params: Any, machine_downtimes: Any, resource_pool: Any,
-                           seed_results: Optional[Sequence[ScheduleResult]],
-                           graph_ready_context: Any, readiness_gate_enabled: bool, strict_mode: bool,
-                           calendar_signature: Any, warnings: Sequence[str] = (),
-                           prepared_calendar_signature: Optional[Tuple[Any, ...]] = None,
-                           prepared_inputs: Any = None) -> Tuple[Any, ...]:
-    """Frozen decode inputs, except the graph priority keys a checkpoint reuse may change."""
-    fixed = prepared_inputs.checkpoint_fixed_parts() if prepared_inputs is not None else None
-    operation_parts = (fixed["operations"] if fixed is not None else {})
+def decode_input_signature(*, operations: Sequence[OpForScheduleAlgo], batch_order: Dict[str, int], params: Any,
+                           resource_pool: Any, graph_ready_context: Any, readiness_gate_enabled: bool,
+                           strict_mode: bool, warnings: Sequence[str], prepared_inputs: Any) -> Tuple[Any, ...]:
+    """Frozen decode inputs, except the graph priority keys a checkpoint reuse may change.
+
+    Batches, downtimes, seeds and the calendar are fixed by ``prepared_inputs`` and encoded once there.
+    """
+    fixed = prepared_inputs.checkpoint_fixed_parts()
+    operation_parts = fixed["operations"]
     encoded_operations = tuple(operation_parts[id(op)] if id(op) in operation_parts
                                else input_record(op, field="operations") for op in operations)
     context_key = (graph_ready_context is not None, bool(graph_ready_context and graph_ready_context.get("score_enabled")))
-    if fixed is not None:
-        if context_key not in fixed["contexts"]:
-            fixed["contexts"][context_key] = _context_signature(graph_ready_context)
-        context_part = fixed["contexts"][context_key]
-    else:
-        context_part = _context_signature(graph_ready_context)
+    if context_key not in fixed["contexts"]:
+        fixed["contexts"][context_key] = _context_signature(graph_ready_context)
     parts: List[Any] = [
         encoded_operations,
-        fixed["batches"] if fixed is not None else tuple((key, input_record(batch, field="batches")) for key, batch in batches.items()),
+        fixed["batches"],
         input_value(batch_order, field="batch_order"),
         input_value((params.dispatch_mode_key, params.dispatch_rule_spec.token, params.base_time,
                      params.end_dt_exclusive, params.strategy.value, params.auto_assign_enabled,
                      params.used_params), field="params"),
-        fixed["downtimes"] if fixed is not None else input_value(machine_downtimes, field="machine_downtimes"),
-        (fixed["resources"] if fixed is not None and resource_pool is prepared_inputs.resource_pool
+        fixed["downtimes"],
+        (fixed["resources"] if resource_pool is prepared_inputs.resource_pool
          else input_value(resource_pool, field="resource_pool")),
-        fixed["seeds"] if fixed is not None else tuple(seed_signature(result) for result in seed_results or ()),
-        context_part,
+        fixed["seeds"],
+        fixed["contexts"][context_key],
         readiness_gate_enabled, strict_mode,
-        (prepared_calendar_signature if prepared_calendar_signature is not None
-         else input_value(calendar_signature, field="calendar_signature")), tuple(warnings),
+        prepared_inputs.checkpoint_calendar_component(), tuple(warnings),
     ]
     return tuple(parts)
 

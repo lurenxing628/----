@@ -59,11 +59,11 @@ def _lineage(klass: type) -> Tuple[Tuple[type, ...], bool]:
     return lineage
 
 
-def static_attribute(obj: Any, name: str, default: Any = None) -> Any:
-    """``inspect.getattr_static(obj, name, default)`` for instances of plain-metaclass classes."""
+def static_attribute(obj: Any, name: str) -> Any:
+    """``inspect.getattr_static(obj, name, None)`` for instances of plain-metaclass classes."""
     klass = type(obj)
     if type(klass) is not type or isinstance(obj, type):
-        return inspect.getattr_static(obj, name, default)
+        return inspect.getattr_static(obj, name, None)
     mro, instance_dict_honoured = _lineage(klass)
     instance_result = _MISSING
     if instance_dict_honoured:
@@ -87,13 +87,13 @@ def static_attribute(obj: Any, name: str, default: Any = None) -> Any:
         return instance_result
     if klass_result is not _MISSING:
         return klass_result
-    return default
+    return None
 
 
-def static_class_attribute(klass: Any, name: str, default: Any = None) -> Any:
-    """``inspect.getattr_static(klass, name, default)`` for classes with the plain ``type`` metaclass."""
+def static_class_attribute(klass: Any, name: str) -> Any:
+    """``inspect.getattr_static(klass, name, None)`` for classes with the plain ``type`` metaclass."""
     if type(klass) is not type:
-        return inspect.getattr_static(klass, name, default)
+        return inspect.getattr_static(klass, name, None)
     for entry in klass.__mro__:
         entry_dict = entry.__dict__
         if name in entry_dict:
@@ -101,7 +101,7 @@ def static_class_attribute(klass: Any, name: str, default: Any = None) -> Any:
     for entry in cast(Tuple[type, ...], type.__mro__):
         if name in entry.__dict__:
             return entry.__dict__[name]
-    return default
+    return None
 
 
 __all__ = ["static_attribute", "static_class_attribute"]

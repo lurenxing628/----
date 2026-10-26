@@ -18,17 +18,16 @@ class ProjectionLimit(ValueError):
 class CapturedCalendarInputs:
     """Current dashboard source rows plus SQL-prepared downtime facts; no connection."""
 
-    def __init__(self, *, machines, downtimes, schema_version, downtime_machine_ids=None):
+    def __init__(self, *, machines, downtimes, schema_version, downtime_machine_ids):
         self.machine_rows, self.downtime_rows, self.schema_rows = machines, downtimes, schema_version
-        self.downtime_machine_ids = None if downtime_machine_ids is None else frozenset(downtime_machine_ids)
+        # Downtimes were prepared only for these machines; other machines' calendars are unavailable.
+        self.downtime_machine_ids = frozenset(downtime_machine_ids)
         self._machines, self._downtimes, self._downtime_order = None, None, {}
         self._version: Optional[int] = None
 
     def schema_version(self):
         if self._version is not None:
             return self._version
-        if self.schema_rows is None:
-            raise ProjectionLimit("calendar_unavailable")
         value = next((row["version"] for row in self.schema_rows if row["id"] == 1), None)
         if type(value) is not int:
             raise ValueError("Calendar schema version is missing or invalid")
@@ -36,8 +35,6 @@ class CapturedCalendarInputs:
         return value
 
     def _machine_rows(self, machine_ids, fields, limit):
-        if self.machine_rows is None:
-            raise ProjectionLimit("calendar_unavailable")
         if self._machines is None:
             self._machines = defaultdict(list)
             for row in self.machine_rows:
@@ -57,9 +54,7 @@ class CapturedCalendarInputs:
         return self._machine_rows(machine_ids, ("machine_id", "name", "status"), limit)
 
     def downtimes(self, machine_ids, end, start, *, limit):
-        if self.downtime_rows is None:
-            raise ProjectionLimit("calendar_unavailable")
-        if self.downtime_machine_ids is not None and not set(machine_ids) <= self.downtime_machine_ids:
+        if not set(machine_ids) <= self.downtime_machine_ids:
             raise ProjectionLimit("calendar_unavailable")
         if self._downtimes is None:
             self._downtimes = defaultdict(list)

@@ -15,6 +15,7 @@ from core.services.workbench.facts.decision_metrics import metric_definitions
 from core.services.workbench.facts.table_cells import number_text
 
 from .decision import decision_overview, decision_summary
+from .decision_export_cells import baseline_ref, boolean_text, issue_text
 from .decision_preparation_export import (
     CHANGEOVER_HEADERS,
     PREPARATION_HEADERS,
@@ -104,7 +105,7 @@ def _display_number(value, definition):
 
 def overview_rows(data):
     scope, baseline = data["scope"], data["baseline"]
-    common = [data["run"]["run_ref"], data["capture_ref"], _baseline_ref(baseline), baseline.get("label"),
+    common = [data["run"]["run_ref"], data["capture_ref"], baseline_ref(baseline), baseline.get("label"),
               scope["selected_candidate_ref"], data["recommendation"]["candidate_ref"], scope["range_start"], scope["range_end"]]
     for candidate in data["candidates"]:
         coverage = candidate["coverage"]
@@ -120,28 +121,16 @@ def overview_rows(data):
                 _label(delta["direction"]), (metric["reason"] or {}).get("message")]
 
 
-def _baseline_ref(baseline):
-    return baseline.get("candidate_ref") if baseline["kind"] == "candidate" else baseline.get("baseline_ref")
-
-
 def _detail_label(value: str) -> str:
     return _DETAIL_STATE.get(value, value)
 
 
-def _issues(value):
-    if isinstance(value, str):
-        return value
-    if isinstance(value, dict):
-        return value.get("message") or value.get("code")
-    return "；".join(str(item.get("message") or item.get("code")) if isinstance(item, dict) else str(item) for item in value or ()) or None
-
-
 def batch_rows(data):
-    common = [data["run_ref"], _baseline_ref(data["baseline"]), data["candidate"]["candidate_ref"]]
+    common = [data["run_ref"], baseline_ref(data["baseline"]), data["candidate"]["candidate_ref"]]
     for row in data["items"]:
         before, after = row["before"], row["after"]
         yield common + [row["batch_ref"], row["batch_id"], row["part_no"], row["part_label"], row["quantity"], row["priority"],
-            row["due_date"], _detail_label(row["due_state"]), _issues(row["due_issue"]),
+            row["due_date"], _detail_label(row["due_state"]), issue_text(row["due_issue"]),
             _detail_label(before["completion_state"]), _detail_label(after["completion_state"]), _detail_label(before["risk"]), _detail_label(after["risk"]),
             before["planned_finish"], after["planned_finish"], before["partial_planned_finish"], after["partial_planned_finish"], row["finish_delta_hours"],
             before["delay_hours"], after["delay_hours"], row["delay_delta_hours"], "、".join(_detail_label(kind) for kind in row["change_kinds"]),
@@ -149,21 +138,17 @@ def batch_rows(data):
             before["unscheduled_operation_count"], after["unscheduled_operation_count"], before["deferred_operation_count"], after["deferred_operation_count"],
             before["ordinary_unscheduled_operation_count"], after["ordinary_unscheduled_operation_count"],
             "、".join(row["deferred_operation_refs"] or ()) or None, "、".join(row["unplanned_operation_refs"] or ()) or None,
-            _issues(before["issues"]), _issues(after["issues"]),
+            issue_text(before["issues"]), issue_text(after["issues"]),
             "、".join(_detail_label(kind) for kind in row["attention_kinds"]) or None,
             row["operation_change_count"], row["operation_unknown_count"], _label(row["operation_changes_state"])]
 
 
 def _resource(side, kind, field):
-    return ((side or {}).get(kind) or {}).get(field)
-
-
-def _boolean(value):
-    return None if value is None else "是" if value else "否"
+    return (side.get(kind) or {}).get(field)
 
 
 def _segments(side):
-    segments = (side or {}).get("segments")
+    segments = side.get("segments")
     if not segments:
         return None
     # 多段事实单列保存，独立时间和资源差值继续为空。
@@ -171,26 +156,26 @@ def _segments(side):
 
 
 def operation_rows(data):
-    common = [data["run_ref"], _baseline_ref(data["baseline"]), data["candidate"]["candidate_ref"]]
+    common = [data["run_ref"], baseline_ref(data["baseline"]), data["candidate"]["candidate_ref"]]
     for row in data["items"]:
         before, after = row["before"] or {}, row["after"] or {}
         effort, constraints = row["effort"], row["constraints"]
         yield common + [row["batch_ref"], row["batch_label"], row["operation_ref"], row["part_label"], row["sequence"], row["process_label"], row["piece_id"], row["quantity"],
             before.get("start"), after.get("start"), row["start_delta_hours"], before.get("end"), after.get("end"), row["end_delta_hours"],
-            _resource(before, "machine", "ref"), _resource(before, "machine", "label"), _resource(after, "machine", "ref"), _resource(after, "machine", "label"), _boolean(row["machine_changed"]),
-            _resource(before, "operator", "ref"), _resource(before, "operator", "label"), _resource(after, "operator", "ref"), _resource(after, "operator", "label"), _boolean(row["operator_changed"]),
-            before.get("source"), after.get("source"), _boolean(row["source_changed"]), "、".join(_detail_label(kind) for kind in row["change_kinds"]),
+            _resource(before, "machine", "ref"), _resource(before, "machine", "label"), _resource(after, "machine", "ref"), _resource(after, "machine", "label"), boolean_text(row["machine_changed"]),
+            _resource(before, "operator", "ref"), _resource(before, "operator", "label"), _resource(after, "operator", "ref"), _resource(after, "operator", "label"), boolean_text(row["operator_changed"]),
+            before.get("source"), after.get("source"), boolean_text(row["source_changed"]), "、".join(_detail_label(kind) for kind in row["change_kinds"]),
             effort["setup_standard_hours"], effort["unit_standard_hours"], effort["target_quantity"], effort["remaining_quantity"], effort["standard_total_hours"],
-            "归档工序标准×归档执行目标量", _label(effort["state"]), _boolean(constraints["protected_at_admission"]),
-            _boolean(constraints["reference_locked"]), _boolean(constraints["selected_locked"]), constraints["execution_state"],
+            "归档工序标准×归档执行目标量", _label(effort["state"]), boolean_text(constraints["protected_at_admission"]),
+            boolean_text(constraints["reference_locked"]), boolean_text(constraints["selected_locked"]), constraints["execution_state"],
             constraints["known_completed_quantity"], constraints["first_actual_start"], constraints["confirmed_finish"],
-            _segments(before), _segments(after), _issues(before.get("data_gaps")), _issues(after.get("data_gaps"))] + runtime_operation_values(row) + [
-            _detail_label(row["before_state"]["status"]), _detail_label(row["after_state"]["status"]), _boolean(row["status_changed"]),
-            _issues(row["before_state"]["reason"]), _issues(row["after_state"]["reason"]),
+            _segments(before), _segments(after), issue_text(before.get("data_gaps")), issue_text(after.get("data_gaps"))] + runtime_operation_values(row) + [
+            _detail_label(row["before_state"]["status"]), _detail_label(row["after_state"]["status"]), boolean_text(row["status_changed"]),
+            issue_text(row["before_state"]["reason"]), issue_text(row["after_state"]["reason"]),
             "、".join({"start": "开工", "end": "完工", "machine": "设备", "operator": "人员", "supplier": "供方",
                       "source": "来源", "status": "排产状态"}[field] for field in row["changed_fields"]) or None,
             _resource(before, "supplier", "ref"), _resource(before, "supplier", "label"),
-            _resource(after, "supplier", "ref"), _resource(after, "supplier", "label"), _boolean(row["supplier_changed"])]
+            _resource(after, "supplier", "ref"), _resource(after, "supplier", "label"), boolean_text(row["supplier_changed"])]
 
 
 def read_decision_export(conn, run_ref, section, *, filter_section=None, **query):
@@ -382,7 +367,7 @@ def _xlsx(data, snapshot, tables):
         entries = [("排产编号", data["run"]["run_ref"]), ("归档编号", data["capture_ref"]),
                    ("读取编号", snapshot["snapshot_ref"]), ("读取时间", snapshot["as_of"]),
                    ("比较模式", "排产时的正式计划" if scope["comparison_mode"] == "admission_official" else "同次候选"),
-                   ("查看基准编号", _baseline_ref(data["baseline"])), ("查看基准状态", _label(data["baseline"]["state"])),
+                   ("查看基准编号", baseline_ref(data["baseline"])), ("查看基准状态", _label(data["baseline"]["state"])),
                    ("正式基准版本", data["baseline"].get("version")), ("正式来源候选编号", data["baseline"].get("source_candidate_ref")),
                    ("所选方案编号", scope["selected_candidate_ref"]),
                    ("推荐方案编号", data["recommendation"]["candidate_ref"]), ("范围起点（含）", scope["range_start"]),

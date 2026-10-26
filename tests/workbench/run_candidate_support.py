@@ -10,6 +10,7 @@ from flask import Blueprint, Flask, g
 
 from core.infrastructure.database import ensure_schema
 from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, current_schema_contract_issues
+from core.infrastructure.schema_declaration import load_schema_sql
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.run_jobs_support import JobCase
@@ -33,7 +34,7 @@ def candidate_case(tmp_path):
     ensure_schema(str(path), schema_path=str(Path(__file__).resolve().parents[2] / "schema.sql"), backup_dir=None)
     conn = connect(path)
     assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == CURRENT_SCHEMA_VERSION
-    assert current_schema_contract_issues(conn) == []
+    assert current_schema_contract_issues(conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql()) == []
     # Historical locked plans in this fixture were made for an explicit 08:00-16:00 shift.
     conn.execute("INSERT INTO WorkbenchCalendarDefaults(singleton,periods_json) VALUES (1,?)",
                  ('[{"start":"08:00","end":"16:00","day_offset":0}]',))

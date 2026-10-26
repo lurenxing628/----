@@ -6,6 +6,7 @@ from datetime import datetime
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_run_job import PROCESS_EXECUTOR_REF
 from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
+from core.services.workbench.facts.candidate_values import stored_json
 from core.services.workbench.facts.decision_read_model import build_failure_read_models
 from core.services.workbench.facts.decision_read_models import decode_model
 from core.services.workbench.facts.run_policy import require_admission, require_run_schema
@@ -74,7 +75,7 @@ def _reconcile_result(conn, repo, row):
     receipt = repo.receipt(row["run_ref"])
     if receipt is None:
         return None
-    result = json.loads(receipt["result_json"])
+    result = stored_json(receipt["result_json"])
     if result["state"] != receipt["state"] or not WorkbenchRunResultRepository(conn).consistent(row["run_ref"], result):
         repo.awaiting_reconciliation(row["run_ref"])
         return False

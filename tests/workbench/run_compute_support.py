@@ -10,6 +10,11 @@ from core.infrastructure.workbench_metadata_schema import install_metadata
 from core.infrastructure.workbench_plan_identity_schema import install_plan_identity
 from core.models.schedule_config_runtime_fields import default_snapshot_values
 from core.services.workbench.execution.ledger import ExecutionLedgerService
+from core.services.workbench.facts.production_capture import ProductionFactsCapture
+from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
+from core.services.workbench.run.compute import compute_candidate_run
+from core.services.workbench.run.input import prepare_candidate_run_input
+from core.services.workbench.run.preflight_facts import PreflightFacts
 from tests.workbench.execution_ledger_support import LedgerCase, all_rows
 from tests.workbench.identity_metadata_support import insert_row
 
@@ -76,6 +81,20 @@ def run_case(schema_conn):
     case.config(algo_mode="greedy", graph_candidate_weight_count=3, time_budget_seconds=60,
                 ortools_enabled="no", freeze_window_enabled="no")
     yield case
+
+
+def compute_run(conn, settings, projections):
+    """Worker form: one production capture and its projections in one read snapshot."""
+    with candidate_read_snapshot(conn):
+        return compute_candidate_run(conn, settings, projections, capture=ProductionFactsCapture(conn))
+
+
+def prepare_run_input(conn, settings, projections, **kwargs):
+    """Production preparation form: caller-owned facts bound to one capture."""
+    with candidate_read_snapshot(conn):
+        facts = PreflightFacts(conn)
+        with facts.snapshot(fingerprint=False):
+            return prepare_candidate_run_input(conn, settings, projections, facts=facts, **kwargs)
 
 
 def unchanged(case, action):

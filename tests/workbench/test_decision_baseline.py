@@ -156,6 +156,15 @@ def test_last_version_selection_keeps_segments_and_excludes_superseded_and_futur
     assert [row["id"] for row in _last_official_rows(rows, 2)] == [2, 3, 4]
 
 
+@pytest.mark.parametrize("raw, reason", [('{"source":"a","source":"a"}', "json_decode_error"),
+                                         ('{"source":NaN}', "non_finite_number"),
+                                         ('{"source":1e999}', "non_finite_number")])
+def test_saved_summary_is_read_as_strict_json(raw, reason):
+    assert parse_result_summary_payload('{"source":"a"}').payload == {"source": "a"}
+    parsed = parse_result_summary_payload(raw)
+    assert (parsed.payload, parsed.parse_failed, parsed.reason, parsed.raw_type) == (None, True, reason, "str")
+
+
 def test_immutable_zero_point_work_survives_current_operation_edits(candidate_case):
     case = candidate_case
     case.conn.execute("UPDATE BatchOperations SET unit_hours=0 WHERE id=?", (case.op_id,))

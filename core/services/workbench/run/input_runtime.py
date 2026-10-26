@@ -177,7 +177,7 @@ def runtime_resource_facts(facts):
     return capture.runtime_resources
 
 
-def build_runtime(svc, *, facts, cfg, prev_version, start_dt, batches, operations, mutable, algo_ops,
+def build_runtime(conn, *, facts, cfg, prev_version, start_dt, batches, operations, mutable, algo_ops,
                   fixed_ids, completed_ids, execution_seeds, reservations, hold_window, piece_scope,
                   for_adoption: bool, held):
     from .input_piece import validate_piece_seed_precedence
@@ -189,7 +189,7 @@ def build_runtime(svc, *, facts, cfg, prev_version, start_dt, batches, operation
             facts=facts, cfg=cfg, prev_version=prev_version, start_dt=start_dt,
             reschedulable_operations=mutable, hold_window=hold_window)
     frozen, seeds, to_schedule = prepare_runtime_seeds(
-        svc, run_label="排产计算", batches=batches, operations=operations, algo_ops=algo_ops,
+        conn, run_label="排产计算", batches=batches, operations=operations, algo_ops=algo_ops,
         frozen_op_ids=held.frozen_op_ids, freeze_seed_results=held.seed_results,
         execution_fixed_op_ids=fixed_ids, execution_completed_op_ids=completed_ids,
         execution_seed_results=execution_seeds,

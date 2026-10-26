@@ -14,7 +14,7 @@ def run(conn: sqlite3.Connection, logger=None) -> MigrationOutcome:
     try:
         # 表不存在时 sqlite 会抛错；这里不阻断迁移版本推进
         cur = conn.execute("UPDATE OperatorCalendar SET day_type='holiday' WHERE day_type='weekend'")
-        changed = int(getattr(cur, "rowcount", 0) or 0)
+        changed = cur.rowcount
         if changed and logger:
             fallback_log(logger, "warning", f"数据库迁移 v3：已将 OperatorCalendar.day_type 的 weekend 统一为 holiday（影响行数={changed}）。")
     except sqlite3.OperationalError as e:

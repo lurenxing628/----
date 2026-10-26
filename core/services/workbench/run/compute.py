@@ -19,34 +19,23 @@ from .piece_adoption import prepare_piece_validation_context, validate_piece_can
 from .preflight_facts import PreflightFacts
 
 
-def compute_candidate_run(conn, normalized_input, execution_projections, *, version_override=None,
-                          capture=None,
-                          validated_projections=None) -> CandidateRunComputation:
-    """Compute actual candidate rows under one read snapshot; worker owns run lock."""
+def compute_candidate_run(conn, normalized_input, execution_projections, *, capture) -> CandidateRunComputation:
+    """Compute actual candidate rows under one read snapshot; worker owns run lock.
+
+    capture is the worker's production facts capture; execution_projections are
+    the already validated projections restored from that run's admission.
+    """
     with candidate_read_snapshot(conn):
-        return _prepare_and_compute_in_snapshot(
-            conn, normalized_input, execution_projections, version_override, capture,
-            validated_projections=validated_projections)
-
-
-def _prepare_and_compute_in_snapshot(
-    conn, normalized_input, execution_projections, version_override,
-    capture, validated_projections,
-):
-    # The private continuation consumes this preparation in the same read snapshot.
-    facts = None
-    if capture is not None:
+        # The private continuation consumes this preparation in the same read snapshot.
         facts = PreflightFacts(conn, capture=capture)
         facts.bind_capture(capture)
-    prepared = prepare_candidate_run_input(
-        conn, normalized_input, execution_projections, facts=facts,
-        validated_projections=validated_projections)
-    version = _prepared_version(prepared, version_override)
-    return _compute_in_read_snapshot(conn, prepared, version)
+        prepared = prepare_candidate_run_input(conn, normalized_input, execution_projections, facts=facts)
+        return _compute_in_read_snapshot(conn, prepared, _prepared_version(prepared))
 
 
-def _prepared_version(schedule_input, version_override):
-    version = schedule_input.prev_version if version_override is None else version_override
+def _prepared_version(schedule_input):
+    # prev_version is read straight from the captured ScheduleHistory rows; this is its only check.
+    version = schedule_input.prev_version
     if type(version) is not int or version < 0:
         fail("invalid_version_context", "Version context must be an explicit non-negative integer.")
     return version
@@ -76,9 +65,9 @@ def _candidate_payloads(conn, schedule_input, comparison, *, selected_payload):
 def _computation_state(schedule_input, comparison, payloads):
     selected = comparison.selection.selected_plan
     selected_ids = payloads[selected.candidate_key].scheduled_op_ids
+    # The unified search returns only completed candidates; partial means the selected plan's scope.
     is_partial = (selected_ids != schedule_input.schedule_output_allowed_op_ids
-               or any(row["status"] == "skipped" for row in schedule_input.dispositions)
-               or comparison.failed_count > 0 or comparison.skipped_count > 0)
+                  or any(row["status"] == "skipped" for row in schedule_input.dispositions))
     return "partial" if is_partial else "complete"
 
 

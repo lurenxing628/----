@@ -80,16 +80,19 @@ def log_records(conn, log_dir, logger):
                             "truncated": False, "message": "日志文件读不到，请让维护人员检查日志文件。"})
     try:
         operations = OperationLogRepository(conn, logger=logger).list_recent(limit=501)
+        # 整个窗口投影成功后才发布：中途出错时不留半截日志行，与来源的 error 状态一致。
+        operation_rows = []
         for item in operations[:500]:
             summary = public_system_text(operation_log_summary(item.module, item.action), 1000)
             body = public_system_text(public_operation_log_detail_text(item.detail) + "\n" + str(item.error_message or ""))
-            rows.append({"key": canonical_json(["OperationLogs", str(item.id)]),
-                         "time": stored_utc_text(item.log_time).replace(" ", "T") if item.log_time else None,
-                         "type": "operation", "status": "recorded", "level": normalize_log_level(item.log_level),
-                         "file": "OperationLogs", "summary": summary, "body": body,
-                         "content_truncated": "展示长度已截断" in body})
+            operation_rows.append({"key": canonical_json(["OperationLogs", str(item.id)]),
+                                   "time": stored_utc_text(item.log_time).replace(" ", "T") if item.log_time else None,
+                                   "type": "operation", "status": "recorded", "level": normalize_log_level(item.log_level),
+                                   "file": "OperationLogs", "summary": summary, "body": body,
+                                   "content_truncated": "展示长度已截断" in body})
+        rows.extend(operation_rows)
         sources.append({"source": "OperationLogs", "state": "available" if operations else "empty",
-                        "window": 500, "count": min(len(operations), 500), "truncated": len(operations) > 500})
+                        "window": 500, "count": len(operation_rows), "truncated": len(operations) > 500})
     except Exception:
         logger.exception("系统工作区操作日志读取失败")
         sources.append({"source": "OperationLogs", "state": "error", "window": 500, "count": None,

@@ -3,23 +3,32 @@
 from __future__ import annotations
 
 import json
-import math
-from typing import Any, Dict, Optional
+from typing import Any, Dict, NoReturn, Optional
 
 from core.infrastructure.connection_guards import schema_contract_memo
 from core.models.content import content_text, unpacked
 from core.models.scheduler_history_parser import parse_result_summary_payload
 from core.models.workbench_command import WorkbenchCommandOutcome, canonical_json
+from core.shared.strict_json import load_strict_json
 
 from .base_repo import BaseRepository
 from .workbench_trial_repo import HISTORY_REFERENCE_FORMAT, WorkbenchTrialRepository
 
 
-def _finite_json_number(text):
-    value = float(text)
-    if not math.isfinite(value):
-        raise ValueError("已保存的命令回执包含非有限数字。")
-    return value
+def _corrupt_receipt() -> NoReturn:
+    raise ValueError("已保存的命令回执结构不完整。")
+
+
+def _nonfinite_receipt() -> NoReturn:
+    raise ValueError("已保存的命令回执包含非有限数字。")
+
+
+def _corrupt_input() -> NoReturn:
+    raise ValueError("已保存的命令原提交内容无法读取。")
+
+
+def _corrupt_admission() -> NoReturn:
+    raise ValueError("已保存的试调受理资料结构不完整。")
 
 
 class WorkbenchCommandRepository(BaseRepository):
@@ -56,7 +65,7 @@ class WorkbenchCommandRepository(BaseRepository):
         """Use saved intent, or exact original source fields for known old commands."""
         text = row["input_json"]
         if text is not None:
-            return content_text(unpacked(json.loads(text)))
+            return content_text(unpacked(load_strict_json(text, on_malformed=_corrupt_input)))
         action, key = row["action"], row["request_key"]
         if action not in {"scheduling.run", "trial.create", "trial.save", "trial.discard",
                           "scheduling.candidate.adopt", "trial.scenario.adopt"}:
@@ -74,9 +83,9 @@ class WorkbenchCommandRepository(BaseRepository):
             if action == "trial.create":
                 original = self.fetchone("SELECT admission_json FROM WorkbenchTrialDrafts WHERE request_key=?", (key,))
                 if original:
-                    document = unpacked(json.loads(original["admission_json"]))
+                    document = unpacked(load_strict_json(original["admission_json"], on_malformed=_corrupt_admission))
                     if not isinstance(document, dict):
-                        raise ValueError("已保存的试调受理资料结构不完整。")
+                        _corrupt_admission()
                     intent = document.get("input")
                     if type(intent) is dict:
                         return content_text(intent)
@@ -114,8 +123,9 @@ class WorkbenchCommandRepository(BaseRepository):
         return contents
 
     def public_result(self, row: Dict[str, Any], *, replayed: bool) -> Dict[str, Any]:
-        data = json.loads(row["outcome_json"], parse_float=_finite_json_number, parse_constant=_finite_json_number)
-        if not isinstance(data, dict) or set(data) != {"result", "data", "warnings"}:
-            raise ValueError("已保存的命令回执结构不完整。")
+        data = load_strict_json(row["outcome_json"], on_malformed=_corrupt_receipt, on_nonfinite=_nonfinite_receipt,
+                                expected=dict)
+        if set(data) != {"result", "data", "warnings"}:
+            _corrupt_receipt()
         outcome = self._public_payload(WorkbenchCommandOutcome(**data).payload(), row["action"])
         return {"ok": True, **outcome, "receipt_ref": row["receipt_ref"], "replayed": replayed}

@@ -121,8 +121,7 @@ class WorkbenchResourceQueryService:
             return ResourceChangePreparation(self._table_reader())
         repo = WorkbenchResourceTableRepository(self.conn, self.logger)
         if refs is not None or codes is not None:
-            metrics = WorkbenchResourceMetricsService(self.conn, self.logger)
-            facts = capture_change_facts(metrics, refs=refs or (), codes=codes,
+            facts = capture_change_facts(self.conn, self.logger, refs=refs or (), codes=codes,
                                          selected_refs=selected_refs, selected_codes=selected_codes,
                                          machine_authorizations=machine_authorizations,
                                          known_identities=known_identities)
@@ -141,20 +140,8 @@ class WorkbenchResourceQueryService:
             codes={self.kind: [payload["business_code"]]} if action == "create" else {},
             selected_refs=selected, names=names)
 
-    def summary(self):
-        return self.repo.summary()
-
-    def summary_metrics(self):
-        return self._metrics_reader().summary_metrics()
-
     def summary_projection(self):
-        if not self.conn.in_transaction:
-            with TransactionManager(self.conn).transaction():
-                return self._summary_projection()
-        return self._summary_projection()
-
-    def _summary_projection(self):
-        counts, metrics = self.summary(), self.summary_metrics()
+        counts, metrics = self.repo.summary(), self._metrics_reader().summary_metrics()
         calendar = resource_calendar_summary(self.conn, self.logger)
         process = process_readiness(self.conn, counts["part"], self.logger)
         return {"counts": counts, "metrics": metrics, "calendar": calendar,

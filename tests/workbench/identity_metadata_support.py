@@ -17,6 +17,8 @@ from core.infrastructure.migration_state import (
     set_schema_version,
 )
 from core.infrastructure.migrations import MIGRATIONS
+from core.infrastructure.schema_declaration import load_schema_sql
+from core.infrastructure.schema_structure import SchemaStructure
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.infrastructure.workbench_lineage_lookup_schema import lineage_lookup_contract_issues, lineage_lookup_objects
 from core.infrastructure.workbench_metadata_schema import metadata_objects
@@ -166,7 +168,7 @@ def remove_resources_for_v20(conn):
     lookup = lineage_lookup_objects()
     present = schema_snapshot(conn)
     if set(lookup) & present.keys():
-        assert lineage_lookup_contract_issues(conn) == []
+        assert lineage_lookup_contract_issues(SchemaStructure(conn)) == []
         for name in lookup:
             conn.execute('DROP INDEX "' + name + '"')
     for objects, contract in ((workbench_trial_objects(), workbench_trial_contract_issues),
@@ -230,7 +232,7 @@ def remove_metadata_for_v19(conn):
     }
     set_schema_version(conn, 19)
     conn.commit()
-    assert set(current_schema_contract_issues(conn)) == (
+    assert set(current_schema_contract_issues(conn, schema_version=19, schema_sql=load_schema_sql())) == (
         {"missing_workbench_metadata: " + name for name in names}
         | {"missing_workbench_resource: " + name for name in resource_objects()}
         | {"missing_workbench_process: " + name for name in process_objects()}
@@ -264,17 +266,19 @@ def identity_database(request):
             assert get_schema_version(schema_conn) == version - 1
             assert MIGRATIONS[version](schema_conn) == MigrationOutcome.APPLIED
             if version == CURRENT_SCHEMA_VERSION:
-                assert current_schema_contract_issues(schema_conn) == []
+                assert current_schema_contract_issues(
+                    schema_conn, schema_version=version - 1, schema_sql=load_schema_sql()) == []
             set_schema_version(schema_conn, version)
     else:
         schema_conn = request.getfixturevalue("schema_conn")
         assert get_schema_version(schema_conn) == 0 and is_truly_empty_db(schema_conn)
         assert table_rows(schema_conn, "WorkbenchPlanIdentityClock") == [(1, 1)]
         assert table_rows(schema_conn, "WorkbenchExecutionLedgerClock") == [(1, 1, 1)]
-        ensure_schema_version(schema_conn)
+        ensure_schema_version(schema_conn, schema_sql=load_schema_sql())
         assert get_schema_version(schema_conn) == CURRENT_SCHEMA_VERSION
         seed_resources(schema_conn)
-    assert current_schema_contract_issues(schema_conn) == []
+    assert current_schema_contract_issues(
+        schema_conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql()) == []
     assert all(not table_rows(schema_conn, table) for table in RUN_TABLES + V27_TABLES)
     schema_conn.commit()
     return schema_conn

@@ -96,7 +96,7 @@
         </tr>))}</tbody></table></div>{data.pagination.total === 0 && <window.WorkbenchListControls.EmptyState kind="empty" title="当前资源没有逐日资料。" />}
     </>} />;
   }
-  function Workspace({ data, category, selected, onSelect, onCompare, navigate, canNavigate }) {
+  function Workspace({ data, category, selected, onSelect, onCompare, navigate }) {
     const planRef = data.plan && data.plan.plan_ref, section = ['actual', 'downtime', 'material'].includes(category) ? category : 'delivery';
     const labels = { delivery: '批次交付明细', actual: '工序执行明细', downtime: '停机影响明细', material: '待排齐套明细' };
     return <>
@@ -107,7 +107,7 @@
       {section === 'delivery' && data.plan && <Section section="timeline" planRef={planRef} locateBatchRef={selected} label="计划时间轴工序" render={analysis =>
         <window.DashboardTimeline data={analysis} selectedBatch={selected} onSelect={onSelect} />} />}
       {!['material', 'actual'].includes(section) && <Section section="pressure" planRef={planRef} label="资源压力明细" render={analysis =>
-        <window.DashboardPanels.Pressure data={{ ...data, analysis }} showIssues={false} navigate={navigate} canNavigate={canNavigate} />} />}
+        <window.DashboardPanels.Pressure data={{ ...data, analysis }} showIssues={false} navigate={navigate} />} />}
     </>;
   }
   window.DashboardAnalysisPanels = { Delivery, Downtime, Material, Actual, Section, ResourceDays, Workspace, value, risk };

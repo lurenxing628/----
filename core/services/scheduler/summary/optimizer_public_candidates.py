@@ -10,7 +10,7 @@ from core.services.scheduler.contracts.optimizer_public_safety import (
 
 
 def public_candidate_label(value: Any) -> str:
-    raw_text = str(value or "").strip()
+    raw_text = str(value).strip()
     if raw_text == "baseline":
         return "原算法方案"
     if raw_text.startswith("graph_w") and "_of_" in raw_text:

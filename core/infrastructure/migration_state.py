@@ -17,7 +17,7 @@ from .migration_operation_execution_contract import operation_execution_event_co
 from .operation_execution_event_schema import operation_execution_event_objects
 from .schedule_business_roles_schema import contract_issues as schedule_business_roles_contract_issues
 from .schedule_business_roles_schema import objects as schedule_business_roles_objects
-from .schema_declaration import declared_columns, load_schema_sql
+from .schema_declaration import declared_columns
 from .schema_structure import SchemaStructure
 from .workbench_calibration_adoption_schema import contract_issues as calibration_adoption_contract_issues
 from .workbench_calibration_adoption_schema import objects as calibration_adoption_objects
@@ -58,7 +58,7 @@ class MigrationContractError(RuntimeError):
 
 def build_contract_error(
     *,
-    missing_tables: Optional[List[str]] = None,
+    missing_tables: List[str],
     blocked_version: Optional[int] = None,
     blocked_outcome: Optional[MigrationOutcome] = None,
 ) -> MigrationContractError:
@@ -116,7 +116,7 @@ def ensure_schema_version_not_newer(db_version: int, *, supported_version: int =
 
 
 def ensure_current_schema_contract(
-    conn: sqlite3.Connection, *, schema_version: int, schema_sql: Optional[str] = None, full_data: bool = False
+    conn: sqlite3.Connection, *, schema_version: int, schema_sql: str, full_data: bool = False
 ) -> None:
     version = int(schema_version)
     if version == CURRENT_SCHEMA_VERSION:
@@ -126,7 +126,7 @@ def ensure_current_schema_contract(
 
 
 def ensure_schema_version(
-    conn: sqlite3.Connection, logger=None, *, schema_sql: Optional[str] = None, full_data: bool = False
+    conn: sqlite3.Connection, logger=None, *, schema_sql: str, full_data: bool = False
 ) -> int:
     """
     确保 SchemaVersion 表存在，并写入/修正版本号。
@@ -215,7 +215,7 @@ def has_no_user_tables(conn: sqlite3.Connection) -> bool:
 
 
 def detect_schema_is_current(
-    conn: sqlite3.Connection, *, schema_version: Optional[int] = None, schema_sql: Optional[str] = None, full_data: bool = False
+    conn: sqlite3.Connection, *, schema_version: int, schema_sql: str, full_data: bool = False
 ) -> bool:
     return not current_schema_contract_issues(conn, schema_version=schema_version, schema_sql=schema_sql, full_data=full_data)
 
@@ -243,7 +243,7 @@ def _subsystem_owned_object_names() -> Set[str]:
 
 
 def current_schema_contract_issues(
-    conn: sqlite3.Connection, *, schema_version: Optional[int] = None, schema_sql: Optional[str] = None, full_data: bool = False
+    conn: sqlite3.Connection, *, schema_version: int, schema_sql: str, full_data: bool = False
 ) -> List[str]:
     """
     当前库是否满足当前版本的结构契约。
@@ -253,7 +253,7 @@ def current_schema_contract_issues(
     """
     issues = []
     structure = SchemaStructure(conn)
-    declared: Dict[str, List[str]] = declared_columns(load_schema_sql() if schema_sql is None else schema_sql)
+    declared: Dict[str, List[str]] = declared_columns(schema_sql)
     owned = _subsystem_owned_object_names()
     for table, columns in declared.items():
         if table == "SchemaVersion" or table in owned or table in _CORE_TABLES_WITH_DEDICATED_LABEL:
@@ -275,8 +275,7 @@ def current_schema_contract_issues(
     ):
         if not ok:
             issues.append(label)
-    version = get_schema_version(conn) if schema_version is None else schema_version
-    issues.extend(operation_execution_event_contract_issues(conn, structure=structure, full_data=full_data, schema_version=version))
+    issues.extend(operation_execution_event_contract_issues(conn, structure=structure, full_data=full_data, schema_version=schema_version))
     issues.extend(workbench_metadata_contract_issues(conn, structure=structure, allow_legacy=False))
     issues.extend(workbench_resource_contract_issues(conn, structure=structure))
     issues.extend(workbench_process_contract_issues(conn, structure=structure))
@@ -287,7 +286,7 @@ def current_schema_contract_issues(
     issues.extend(schedule_business_roles_contract_issues(conn, structure=structure))
     issues.extend(template_lineage_contract_issues(conn, structure=structure, allow_legacy=False))
     issues.extend(workbench_trial_contract_issues(conn, structure=structure, allow_legacy=False))
-    issues.extend(lineage_lookup_contract_issues(conn, structure=structure))
+    issues.extend(lineage_lookup_contract_issues(structure))
     issues.extend(calibration_adoption_contract_issues(conn, structure=structure))
     issues.extend(workbench_dashboard_contract_issues(conn, structure=structure, allow_legacy=False))
     # This contract already validates complete plan identities and their clock.
@@ -302,7 +301,7 @@ def current_schema_contract_issues(
     issues.extend(material_stages_contract_issues(conn, structure=structure))
     from .efficiency_indexes_schema import contract_issues as efficiency_index_contract_issues
     from .single_pass_indexes_schema import contract_issues as index_contract_issues
-    if version in (0, CURRENT_SCHEMA_VERSION):
+    if schema_version in (0, CURRENT_SCHEMA_VERSION):
         issues.extend(index_contract_issues(conn, structure=structure))
         issues.extend(efficiency_index_contract_issues(conn, structure=structure))
     if full_data and structure.has_table("Schedule") and structure.has_table("ScheduleHistory"):

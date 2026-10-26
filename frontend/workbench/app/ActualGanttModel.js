@@ -183,7 +183,7 @@
       }
     }
     return { labels: prepared.labels, taskIndex: prepared.taskIndex, dataRange: prepared.dataRange, items: prepared.items,
-      shownRefs: prepared.shownRefs || new Set((prepared.items || []).map(item => item.task.task_ref)),
+      shownRefs: prepared.shownRefs,
       groups: prepared.groups, rows, height: top, locations, reportLocations,
       executionAvailable: prepared.executionAvailable, start: prepared.start, end: prepared.end, asOf: prepared.asOf };
   }

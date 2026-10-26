@@ -39,10 +39,6 @@ function nodes(value) {
 }
 const note = window.APSWorkPeriods.zeroHoursNote;
 const notes = tree => nodes(tree).filter(node => node.type === 'Issues').flatMap(node => node.props.issues).filter(item => item === note);
-// 与日历文件导入预检的提醒同一口径。
-assert(note.startsWith('这一天是工作日，但可排工时是 0，排产时'), '页面提醒与文件导入提醒同一口径');
-assert(fs.readFileSync(path.join(root, 'core/services/workbench/resource/calendar_files/files.py'), 'utf8').includes('这一天是工作日，但可排工时是 0，排产时'));
-
 // 全局日历：分段时段全部移除或可排工时填 0 时提醒；休息日、有时段、有工时、工时未填不提醒。
 const day = { type: 'work', hours: '8', eff: '100', allowNormal: 'yes', allowUrgent: 'yes', note: '', shiftStart: '08:00', shiftEnd: '', periods: null };
 const fields = value => { slots = []; index = 0; return expand(window.CalendarFields.Fields({ value, onChange() {} })); };

@@ -185,7 +185,7 @@ def project_resource_calendars(engine, facts, ids, first, last, start, end, *, g
             if kind == "machine":
                 base = global_calendar
             elif engine._personal_error is None and key not in personal_operators:
-                profile = engine._shift_rows.profiles.get(key)
+                profile = engine.shift_profiles.get(key)
                 shift_key = None if profile is None else profile["shift_profile_id"]
                 if shift_key not in shift_bases:
                     shift_bases[shift_key] = (

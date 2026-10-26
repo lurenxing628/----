@@ -11,7 +11,7 @@ from .optimizer.local_search import LocalSearchStage
 from .optimizer.search_report import OptimizationSearchReportState
 from .optimizer.search_stage import SearchStage
 from .optimizer.search_state import OptimizerSearchState
-from .optimizer.shared_archive import ArchiveObservation, SharedScheduleArchive
+from .optimizer.shared_archive import ArchiveObservation, CandidateArchiveRef, SharedScheduleArchive
 from .optimizer.shared_budget import SharedSearchBudget, SharedSearchSkip
 from .optimizer.shared_decode import SharedDecodeSession
 
@@ -37,10 +37,11 @@ class SharedSearch:
     """Own archive observations and refresh stable target views only at action boundaries."""
 
     def __init__(self, *, archive: SharedScheduleArchive, clock: Callable[[], float], started_at: float,
-                 budget: Optional[SharedSearchBudget] = None) -> None:
+                 budget: SharedSearchBudget) -> None:
         self.archive, self.clock, self.started_at = archive, clock, started_at
         self.budget = budget
-        self.decode_session: Optional[SharedDecodeSession] = None
+        # The decode session records events through this search, so its owner attaches it right after construction.
+        self.decode_session: SharedDecodeSession
         self.views: Dict[str, GoalView] = {}
         self.revisions: Dict[int, int] = {}
         self.phase = "preparation"
@@ -77,12 +78,12 @@ class SharedSearch:
         if receipt is not None:
             source.update(request_id=receipt["request_id"], source_event_ref=receipt.get("source_event_ref"),
                           execution_kind=receipt["execution_kind"])
-        observed: Optional[ArchiveObservation] = candidate.pop("_archive_observation", None)
+        archive_ref: CandidateArchiveRef = candidate["archive_ref"]
+        observed: Optional[ArchiveObservation] = archive_ref.take_observation()
         if observed is None:
-            entry_id = candidate.get("_shared_entry_id")
-            if entry_id is None:
+            if archive_ref.entry_id is None:
                 raise ValueError("A decoded candidate must receive its archive identity before reporting.")
-            observed = ArchiveObservation(entry_id=entry_id, reused=True,
+            observed = ArchiveObservation(entry_id=archive_ref.entry_id, reused=True,
                                           reason=None if verified else "validation_unknown")
         entry_id = observed.entry_id
         retained = entry_id in self.archive
@@ -91,7 +92,7 @@ class SharedSearch:
         strict_improvements = (list(observed.improved_objectives)
                                if retained and entry_id is not None
                                and self.archive.entry(entry_id).score_scope.is_complete else [])
-        if self.decode_session is not None and receipt is not None and retained:
+        if receipt is not None and retained:
             self.decode_session.bind_observation(receipt, observed.entry_id, verified, candidate=candidate)
         event_source = {key: value for key, value in source.items() if key != "repair_decision"}
         event: Dict[str, Any] = dict(event_source, event_type="archive_observation", elapsed_ms=elapsed_ms,
@@ -106,7 +107,6 @@ class SharedSearch:
         event_id = self.record_event(event)
         event = self.events[-1]
         if retained and entry_id is not None and verified:
-            candidate["_shared_entry_id"] = entry_id
             entry = self.archive.entry(entry_id)
             event["evaluations"] = {target: {"field_order": list(evaluation.field_order),
                                               "score": list(evaluation.score)}
@@ -120,7 +120,7 @@ class SharedSearch:
                 self.evidence_event_ids[entry_id] = event_id
             if observed.evidence_updated:
                 self.revisions[entry_id] = self.revisions.get(entry_id, 0) + 1
-            candidate["_shared_evidence_revision"] = self.revisions.get(entry_id, 0)
+            archive_ref.evidence_revision = self.revisions.get(entry_id, 0)
             if entry.score_scope.is_complete and self.first_complete_elapsed_ms is None:
                 self.first_complete_elapsed_ms = elapsed_ms
             for target in self.archive.target_objectives:
@@ -148,14 +148,14 @@ class SharedSearch:
                         self.archive.accept_exploration(target, entry_id)
 
     def accept(self, objective: str, *, candidate: Dict[str, Any]) -> None:
-        entry_id = candidate.get("_shared_entry_id")
-        if entry_id is not None and entry_id in self.archive:
+        entry_id = candidate["archive_ref"].entry_id
+        if entry_id in self.archive:
             self.archive.accept_exploration(objective, entry_id)
 
     def capture(self, objective: str, *, before: Dict[str, Any], after: Optional[Dict[str, Any]],
                 started_at: float, finished_at: float, decoder_executed: bool, reference_kind: str) -> None:
-        before_id = before.get("_shared_entry_id")
-        after_id = after.get("_shared_entry_id") if after is not None else None
+        before_id = before["archive_ref"].entry_id
+        after_id = after["archive_ref"].entry_id if after is not None else None
         bridge = {
             "search_objective": objective, "phase": self.phase, "before_entry_id": before_id,
             "after_entry_id": after_id, "elapsed_ms": max((finished_at - started_at) * 1000.0, 0.0),
@@ -184,8 +184,7 @@ class SharedSearch:
         revision = self.revisions.get(entry_id, 0) if entry_id is not None else -1
         if entry_id is not None and (view.entry_id != entry_id or view.evidence_revision != revision):
             view.candidate = self.archive.view(entry_id, objective=view.objective)
-            view.candidate["_shared_entry_id"] = entry_id
-            view.candidate["_shared_evidence_revision"] = revision
+            view.candidate["archive_ref"] = CandidateArchiveRef(entry_id, evidence_revision=revision)
             view.entry_id, view.evidence_revision = entry_id, revision
         candidate = view.candidate
         if candidate is None or entry_id is None:
@@ -199,8 +198,8 @@ class SharedSearch:
                 if isinstance(stage, IteratedGreedyStage) and stage.run.search is not None:
                     search = stage.run.search
                     incumbent = search.best
-                    if (incumbent is not None and incumbent.get("_shared_entry_id") == entry_id
-                            and incumbent.get("_shared_evidence_revision") == revision):
+                    if (incumbent is not None and incumbent["archive_ref"].entry_id == entry_id
+                            and incumbent["archive_ref"].evidence_revision == revision):
                         # Its own improvement already has the right reference context. Align only
                         # the comparison pointer; a genuine new parent still uses pending_adoption.
                         search.best = candidate
@@ -210,8 +209,7 @@ class SharedSearch:
     def run_action(self, view: GoalView, stage: SearchStage, *, initial: bool = False) -> None:
         started_at, before_events = self.clock(), len(self.events)
         before_complete = self.first_complete_elapsed_ms
-        before_new = self.decode_session.new_decisions if self.decode_session is not None else 0
-        before_reused = self.decode_session.reused_decisions if self.decode_session is not None else 0
+        before_new, before_reused = self.decode_session.new_decisions, self.decode_session.reused_decisions
         self.search_objective, self.phase = view.objective, stage.name
         skip_reason = None
         with self.archive.retention_scope():
@@ -232,16 +230,13 @@ class SharedSearch:
             finished_at - started_at, 0.001)
         skip_reason = skip_reason or next((event.get("reason") for event in reversed(new_events)
             if event.get("execution_kind") == "request_skipped" or event.get("event_type") == "decode_skipped"), None)
-        new_decisions = (self.decode_session.new_decisions - before_new if self.decode_session is not None
-                         else sum(event["verified"] and not event.get("content_reused", False) for event in new_events))
-        reused_decisions = (self.decode_session.reused_decisions - before_reused
-                            if self.decode_session is not None else 0)
+        new_decisions = self.decode_session.new_decisions - before_new
+        reused_decisions = self.decode_session.reused_decisions - before_reused
         improvements = list(dict.fromkeys(target for event in new_events for target in event["improved_objectives"]))
-        if self.budget is not None:
-            self.budget.record_action(view.objective, stage.name, finished_at - started_at,
-                new_decisions=new_decisions, reused_decisions=reused_decisions, improved_objectives=improvements,
-                first_complete=before_complete is None and self.first_complete_elapsed_ms is not None,
-                initial=initial, skip_reason=skip_reason)
+        self.budget.record_action(view.objective, stage.name, finished_at - started_at,
+            new_decisions=new_decisions, reused_decisions=reused_decisions, improved_objectives=improvements,
+            first_complete=before_complete is None and self.first_complete_elapsed_ms is not None,
+            initial=initial, skip_reason=skip_reason)
         self.actions.append({
             "action_id": len(self.actions) + 1, "search_objective": view.objective,
             "phase": stage.name, "initial_construction": initial,
@@ -260,13 +255,14 @@ class SharedSearch:
         active = set()
 
         def retain(candidate: Optional[Dict[str, Any]]) -> Optional[int]:
-            entry_id = candidate.get("_shared_entry_id") if candidate is not None else None
+            entry_id = candidate["archive_ref"].entry_id if candidate is not None else None
             if entry_id in self.archive:
                 active.add(entry_id)
             return entry_id
 
         for view in self.views.values():
-            current_id = (view.state.best or {}).get("_shared_entry_id")
+            best = view.state.best
+            current_id = best["archive_ref"].entry_id if best is not None else None
             if view.local_stage is not None and view.local_stage.local_state is not None:
                 current_id = retain(view.local_stage.local_state.current)
             starts: List[int] = []

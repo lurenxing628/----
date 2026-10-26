@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, cast
 
 from core.errors import ValidationError
 
@@ -188,26 +188,16 @@ def _build_schedule_graph_analysis_projection(
     return public, diagnostics, projections.ready_context, _graph_dispatch_mode_override(public)
 
 
-def _format_cycle_error_message(diagnostics: Optional[Dict[str, Any]]) -> str:
-    sample = []
-    if isinstance(diagnostics, dict):
-        sample = list(diagnostics.get("cycle_edges_sample") or [])
-    if not sample:
-        return "工序图存在循环依赖，已按配置停止排产。请先检查工艺路线里的前后工序关系。"
-    return f"工序图存在循环依赖，已按配置停止排产。请先检查这些环边样本：{sample}"
-
-
-def _cycle_error_details(diagnostics: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    sample = []
-    count = 0
-    if isinstance(diagnostics, dict):
-        sample = list(diagnostics.get("cycle_edges_sample") or [])
-        count = int(diagnostics.get("cycle_edge_count") or len(sample))
-    return {
+def _cycle_error(diagnostics: Dict[str, Any]) -> ValidationError:
+    """An available analysis always carries its cycle sample and count (_project_graph_analysis_payload)."""
+    sample = list(diagnostics["cycle_edges_sample"])
+    message = (f"工序图存在循环依赖，已按配置停止排产。请先检查这些环边样本：{sample}" if sample
+               else "工序图存在循环依赖，已按配置停止排产。请先检查工艺路线里的前后工序关系。")
+    return ValidationError(message, field=_GRAPH_CYCLE_DISABLED_REASON, details={
         "reason": _GRAPH_CYCLE_DISABLED_REASON,
-        "cycle_edge_count": int(count),
+        "cycle_edge_count": diagnostics["cycle_edge_count"],
         "cycle_edges_sample": sample,
-    }
+    })
 
 
 def _enforce_graph_dispatch_policy(
@@ -219,7 +209,7 @@ def _enforce_graph_dispatch_policy(
 ) -> None:
     if mode != "on":
         return
-    status = str(public.get("status") or "")
+    status = public["status"]
     if status != "available":
         reason = str(public.get("reason") or "graph_enhancement_unavailable")
         message = str(public.get("message") or "工序图增强无法启用。")
@@ -231,11 +221,8 @@ def _enforce_graph_dispatch_policy(
     if bool(public.get("is_dag", False)):
         return
     if graph_block_on_cycle == "yes":
-        raise ValidationError(
-            _format_cycle_error_message(diagnostics),
-            field=_GRAPH_CYCLE_DISABLED_REASON,
-            details=_cycle_error_details(diagnostics),
-        )
+        # Only unavailable/error projections come without diagnostics, and they were rejected above.
+        raise _cycle_error(cast(Dict[str, Any], diagnostics))
 
 
 def _graph_unavailable_projection(
@@ -301,8 +288,8 @@ def _project_graph_analysis_payload(
     payload: Dict[str, Any],
     elapsed_ms: int,
     scope: Dict[str, Any],
-    score_public: Optional[Dict[str, Any]] = None,
-    score_diagnostics: Optional[Dict[str, Any]] = None,
+    score_public: Dict[str, Any],
+    score_diagnostics: Dict[str, Any],
     resource_matching_public: Optional[Dict[str, Any]] = None,
     resource_matching_diagnostics: Optional[Dict[str, Any]] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:

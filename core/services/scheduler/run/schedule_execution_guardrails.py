@@ -173,13 +173,13 @@ def _build_execution_seed_results(
                                              completed_op_ids=completed)
 
 
-def build_execution_guardrails_from_projections(svc, operations, *, prev_version, execution_projections, facts, external_groups):
+def build_execution_guardrails_from_projections(conn, operations, *, prev_version, execution_projections, facts, external_groups):
     """Consume an explicit AJ snapshot without reloading or reaggregating reports."""
     if execution_projections is None:
         raise ValueError("必须显式传入 AJ 执行投影；无事实时传空列表。")
     if prev_version not in facts.resource_execution:
         facts.resource_execution[prev_version] = collect_resource_execution_facts(
-            svc, prev_version=prev_version, execution_projections=execution_projections, capture=facts.capture,
+            conn, prev_version=prev_version, execution_projections=execution_projections, capture=facts.capture,
             ledger=facts.execution_service)
     execution_facts, plan_rows, execution_snapshot = facts.resource_execution[prev_version]
     return _execution_guardrail_tuple(operations, execution_facts, execution_snapshot,
@@ -194,7 +194,7 @@ def _execution_guardrail_tuple(operations, facts, execution_snapshot, *, plan_ro
     exception_op_ids: Set[int] = set()
     for op_id, fact in facts.items():
         op_id = int(op_id)
-        status = str(fact.actual_status or "").strip().lower()
+        status = fact.actual_status
         if status == EXECUTION_STATUS_EXCEPTION:
             exception_op_ids.add(op_id)
         elif op_id in op_by_id:

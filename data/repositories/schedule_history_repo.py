@@ -22,7 +22,7 @@ class ScheduleHistoryRepository(BaseRepository):
         try:
             val = self.fetchvalue("SELECT COALESCE(MAX(version), 0) FROM ScheduleHistory")
             latest = strict_non_negative_int(val, field="latest schedule version")
-        except (TypeError, ValueError) as exc:
+        except ValueError as exc:
             raise AppError(ErrorCode.DB_QUERY_ERROR, "读取最新排产版本失败，请查看日志。", cause=exc) from exc
         return latest
 

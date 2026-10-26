@@ -20,7 +20,7 @@ from .effort import operation_types, retained_role
 from .facts import entity_maps
 
 
-def _allocation(runtime, *, arranged, deferred=False, source=None):
+def _allocation(runtime, *, arranged, deferred=False, source):
     if source == "external":
         return "external"
     role = (runtime or {}).get("requirement_role")
@@ -31,7 +31,7 @@ def _allocation(runtime, *, arranged, deferred=False, source=None):
     return "new_schedule" if role == "new_schedule" else "unknown"
 
 
-def preparation_projection(rows, admission, current_ledger, *, current_evidence=None, contexts=None, before_efforts=None):
+def preparation_projection(rows, admission, current_ledger, *, current_evidence, contexts=None, before_efforts=None):
     """The immutable source and the explicit current ledger remain distinct."""
     source = admission["source"]
     before = saved_operation_efforts(source.get("operation_effort")) if before_efforts is None else before_efforts
@@ -42,9 +42,11 @@ def preparation_projection(rows, admission, current_ledger, *, current_evidence=
     for ref, context in contexts.items():
         op, execution = context["operation"], context["execution"]
         standard = archived_standard_effort(op, execution)
+        # 设计边界：admission["execution"] 只覆盖基础方案已排行、正式计划行和已有报工的工序（trial/facts.py
+        # execution_facts）；同批次没排上的其他工序没有当前执行行，三项执行数量按“未知”展示。
         current_execution = admission["execution"].get(ref, {})
         pair = {}
-        for name, records, evidence in (("before", before, origin), ("after", after, current_evidence or origin)):
+        for name, records, evidence in (("before", before, origin), ("after", after, current_evidence)):
             runtime = records.get(ref)
             if runtime is not None and runtime["op_id"] != op["id"]:
                 from core.services.workbench.facts.candidate_values import corrupt
@@ -57,10 +59,7 @@ def preparation_projection(rows, admission, current_ledger, *, current_evidence=
                 row = context["row"]
                 held = row["original"].get("execution_anchor") is not None or same_arrangement(row["current"], row["original"]["arrangement"])
                 role = retained_role(row, current_execution) if held else "new_schedule"
-                value.update(requirement_role=role, allocation_state="external" if op["source"] == "external" else role,
-                    execution_target_quantity=current_execution.get("target_quantity"),
-                    execution_quantity_basis=current_execution.get("target_basis", "unknown"),
-                    remaining_quantity=current_execution.get("remaining_quantity"))
+                value.update(requirement_role=role, allocation_state="external" if op["source"] == "external" else role)
             pair[name] = value
             summary_rows[name].append(dict(value, operation_ref=ref, arranged=context["arranged"]))
         pairs[ref] = pair

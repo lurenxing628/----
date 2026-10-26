@@ -70,7 +70,7 @@ def _periods(graph, entity, row):
         graph.issue(entity, "calendar.periods_invalid", "工作时段无效", exc.message)
         return
     label = "、".join(("次日 " if p["day_offset"] else "") + p["start"] + " 至 "
-                     + ("次日 " if p["end"] <= p["start"] else "") + p["end"] for p in (periods or []))
+                     + ("次日 " if p["end"] <= p["start"] else "") + p["end"] for p in periods)
     graph.field(entity, "实际工作时段", label or "无工作时段", "WorkCalendar.periods_json", required=False)
     hours = period_hours(periods)
     if number(row["shift_hours"]) and abs(hours - row["shift_hours"]) > 1e-9:

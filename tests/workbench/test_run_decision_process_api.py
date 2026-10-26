@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 from openpyxl import load_workbook
 
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
 from core.services.scheduler.summary.optimizer_public_attempts import COMPARISON_METRIC_KEYS, project_attempts
 from core.services.scheduler.summary.optimizer_public_summary import project_public_algo_summary
@@ -275,6 +276,18 @@ def test_real_shared_process_queries_and_exports_preserve_one_snapshot(candidate
         assert sum(row["record_kind"] == "search_action" for row in all_rows) == len(raw["actions"])
         check_scope_exports(all_rows, raw["scopes"], "xlsx")
         assert decision_summary(client, run_ref, **query)["data"]["selection_basis"] == overview["data"]["selection_basis"]
+
+
+@pytest.mark.parametrize("count", ["1", 1.5, True, -1, None])
+def test_saved_rejection_summary_with_a_non_integer_count_is_a_corrupt_record(count):
+    ref = "1" * 48
+    row = {"candidate_ref": ref, "status": "completed", "artifact": {
+        "label": "旧候选", "objective_name": "min_overdue",
+        "search_report": {"objective_name": "min_overdue", "rejection_summary": {"same_score": 1, "duplicate": count}},
+    }}
+    with pytest.raises(WorkbenchCommandRejected) as caught:
+        candidate_process(row, [row])
+    assert (caught.value.code, caught.value.status) == ("candidate_artifact_invalid", 500)
 
 
 def test_legacy_attempts_keep_saved_indices_nulls_and_safe_public_fields():

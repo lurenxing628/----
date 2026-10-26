@@ -78,13 +78,10 @@ def make_lineage_timing_guard(base: type, methods: Sequence[str]) -> Callable[[A
 
 
 def register_calendar_timing_guard(
-    calendar_type: type, guard: Callable[[Any], bool], *, calendar_days_guard: Optional[Callable[[Any], bool]] = None,
+    calendar_type: type, guard: Callable[[Any], bool], *, calendar_days_guard: Callable[[Any], bool],
 ) -> None:
     _GUARDS[calendar_type] = guard
-    if calendar_days_guard is None:
-        _CALENDAR_DAY_GUARDS.pop(calendar_type, None)
-    else:
-        _CALENDAR_DAY_GUARDS[calendar_type] = calendar_days_guard
+    _CALENDAR_DAY_GUARDS[calendar_type] = calendar_days_guard
 
 
 def native_timing_calendar(calendar: Any, *, include_calendar_days: bool = False) -> bool:
@@ -99,8 +96,7 @@ def native_timing_calendar(calendar: Any, *, include_calendar_days: bool = False
                 return False
             if not include_calendar_days:
                 return True
-            days_guard = _CALENDAR_DAY_GUARDS.get(entry)
-            return days_guard is not None and days_guard(calendar)
+            return _CALENDAR_DAY_GUARDS[entry](calendar)
     return False
 
 

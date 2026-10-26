@@ -65,7 +65,7 @@ def _build_operation_node(
     candidate_machine_ids, candidate_operator_ids = resource_pool.candidates_for(row)
     frozen = row.id in frozen_op_ids
     return OperationGraphNode(
-        node_id=make_operation_node_id(row.batch_id, row.op_code, row.id),
+        node_id=make_operation_node_id(row.id),
         batch_id=row.batch_id,
         piece_id=row.piece_id,
         op_code=row.op_code,
@@ -184,7 +184,7 @@ def _text_list(values: Any) -> List[str]:
     if isinstance(values, str):
         text = _optional_text(values)
         return [text] if text else []
-    return [text for text in (_optional_text(value) for value in values or []) if text]
+    return [text for text in (_optional_text(value) for value in values) if text]
 
 
 def _unique_text_tuple(values: Iterable[Any]) -> Tuple[str, ...]:

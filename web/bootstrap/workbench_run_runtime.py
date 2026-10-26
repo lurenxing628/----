@@ -181,8 +181,8 @@ class WorkbenchRunRuntime:
                 if original is None:
                     original = capture_claim_retry_state(conn, run_ref)
                 try:
-                    worker = WorkbenchRunWorker(conn, app_error_message=user_visible_app_error_message)
-                    worker.compute_runner = self._compute_runner
+                    worker = WorkbenchRunWorker(conn, compute_runner=self._compute_runner,
+                                                app_error_message=user_visible_app_error_message)
                     if claim_failures:
                         worker.execute(run_ref, retry_original=original)
                     else:

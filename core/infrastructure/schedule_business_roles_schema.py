@@ -74,6 +74,6 @@ def contract_issues(conn, *, structure=None, allow_legacy=False):
             issues.append("missing_schedule_business_roles:" + name)
             continue
         accepted = (canonical_sql(sql), canonical_sql(legacy[name])) if allow_legacy else (canonical_sql(sql),)
-        if canonical_sql(actual[name] or "") not in accepted:
+        if canonical_sql(actual[name]) not in accepted:
             issues.append("invalid_schedule_business_roles:" + name)
     return issues

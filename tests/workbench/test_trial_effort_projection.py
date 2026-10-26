@@ -116,7 +116,8 @@ def test_trial_retained_requirement_keeps_original_target_separate_from_creation
     assert context["operation"] is original["operation"] and context["execution"] is original["execution"]
     assert context["batch"] is original["batch"] and context["batch_ref"] == original["batch_ref"]
     assert context["row"] is rows[0] and context["arranged"] is True
-    pairs, retained = preparation_projection(rows, outside, draft["operation_effort"], contexts=contexts)
+    pairs, retained = preparation_projection(rows, outside, draft["operation_effort"], contexts=contexts,
+                                             current_evidence={"kind": "trial", "draft_ref": draft["draft_ref"]})
     assert set(pairs) == {row["operation_ref"] for row in rows}
     assert pairs[task["operation_ref"]]["after"]["required_standard_hours"] == 7
     assert retained["role_totals"]["after"]["retained"]["setup_standard_hours"]["value"] == 2

@@ -13,7 +13,7 @@ _ACTION_COUNTERS = ("evaluation_count", "verified_evaluation_count", "new_decisi
 
 
 def _candidate(row):
-    return {key: row.get(key) for key in PROCESS_CANDIDATE_FIELDS} if row is not None else None
+    return {key: row.get(key) for key in PROCESS_CANDIDATE_FIELDS}
 
 
 def _stages(actions, phase_seconds):
@@ -29,7 +29,7 @@ def _stages(actions, phase_seconds):
             for phase, rows in grouped.items()]
 
 
-def project_unified_process(process, *, objective=None, candidate=None, candidates=()):
+def project_unified_process(process, *, objective=None, candidate, candidates=()):
     """Consume parsed saved facts with permanent scope members; perform no reads."""
     if process["version"] != UNIFIED_PROCESS_VERSION:
         corrupt()
@@ -61,7 +61,7 @@ def project_unified_process(process, *, objective=None, candidate=None, candidat
                        "primary_value": point["score"][field_order.index(key)]})
     actions = [action for action in process["actions"] if action["search_objective"] == selected]
     current = _candidate(candidate)
-    evidence = current["search_evidence_ref"] if current is not None else None
+    evidence = current["search_evidence_ref"]
     source_event = events.get(evidence["source_event_id"]) if evidence is not None else None
     return {"process_version": UNIFIED_PROCESS_VERSION,
             "summary": {"elapsed_ms": process["elapsed_ms"],

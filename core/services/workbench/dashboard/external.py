@@ -8,7 +8,7 @@ An unregistered operation is unknown, not a dispatched shipment or zero risk.
 """
 
 from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.workbench_outsourcing_schema import objects
+from core.infrastructure.workbench_outsourcing_schema import workbench_outsourcing_objects
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import bounded
 from core.models.workbench_outsourcing import STATES
@@ -24,12 +24,11 @@ COUNTS = ("receipt_count", "current_receipt_count", "awaiting_return_count", "ov
           "returned_count", "awaiting_confirmation_count", "unregistered_count", "source_gap_count")
 
 
-def summary(state, issues=None):
-    connected = state in ("loaded", "no_data")
-    return {**category(state, issues=issues), **dict.fromkeys(COUNTS, 0 if connected else None),
+def summary():
+    return {**category("loaded"), **dict.fromkeys(COUNTS, 0),
             "kind": "outsourcing_receipts", "tracking_basis": "manual_receipt_facts",
             "handling_supported": False, "handling_count": 0, "closed_count": 0, "evaluation_gaps": [],
-            "entry": {"view": "outsourcing", "target": "/api/workbench/v1/outsourcing/receipts", "enabled": connected}}
+            "entry": {"view": "outsourcing", "target": "/api/workbench/v1/outsourcing/receipts", "enabled": True}}
 
 
 def _receipts(reader, now, result, facts, sources):
@@ -101,20 +100,11 @@ def load_external(conn, now):
     """Capture receipt facts once for the dashboard summary and handling projection."""
     if not conn.in_transaction:
         raise RuntimeError("External dashboard reads require a caller-owned snapshot")
-    definitions = objects()
+    definitions = workbench_outsourcing_objects()
     structure = schema_contract_memo(conn).structure
     schema = {name: stored[2] for name, stored in structure.objects.items() if name in definitions}
     reader = WorkbenchOutsourcingService(conn, clock=lambda: now)
-    try:
-        reader.require_schema()
-    except WorkbenchCommandRejected as exc:
-        if exc.code != "outsourcing_unavailable":
-            raise
-        recorded = reader.repo.has_confirm_receipts()
-        state = "unavailable" if schema or recorded else "not_connected"
-        result = summary(state, [source_issue(exc.code, str(exc))])
-        return result, {"schema": schema, "recorded": recorded, "summary": result}, {}
-    result = summary("loaded")
+    result = summary()
     receipt_facts = reader.capture_receipts()
     target_rows, entities = reader.sources.target_rows(unregistered_only=True)
     source_targets = [rows["header"]["target"] for rows in receipt_facts.values()]

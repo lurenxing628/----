@@ -36,9 +36,8 @@ class RunDataContext:
         records = self.capture() if records is None else records
         return restored_context_ref(self.journal.scope_from_records(records), records)
 
-    def resolve_missing(self, request_key, previous_context=None, *, records=None):
-        """Call only after current run and admission receipt have both been checked."""
-        records = self.capture() if records is None else records
+    def resolve_missing(self, request_key, previous_context=None, *, records):
+        """Call only after current run and admission receipt have both been checked; records come from capture()."""
         restores = [row for row in records if row["action"] == "restore"
                     and row["state"] == "succeeded" and row["code"] == "verified"]
         if not restores:

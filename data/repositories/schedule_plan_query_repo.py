@@ -76,10 +76,10 @@ def _require_candidate_id(candidate_id: Optional[int]) -> int:
 
 
 def _require_scenario_id(scenario_id: Optional[str]) -> str:
-    text = (scenario_id or "").strip()
-    if not text:
+    # 方案编号按库里原值查找（读取侧保真）。
+    if not scenario_id:
         raise ValueError("scenario_id is required for adjustment_scenario_rows plan")
-    return text
+    return scenario_id
 
 
 class SchedulePlanQueryRepository(BaseRepository):

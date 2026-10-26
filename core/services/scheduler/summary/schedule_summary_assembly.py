@@ -77,7 +77,7 @@ def _algo_freeze_window_dict(
     freeze_state = state.freeze_state
     freeze_window = {
         "enabled": YesNo.YES.value if bool(freeze_state.get("enabled")) else YesNo.NO.value,
-        "days": int(freeze_state.get("days") or 0),
+        "days": freeze_state["days"],
         "frozen_op_count": len(state.ctx.frozen_op_ids),
         "frozen_batch_count": len(state.frozen_batch_ids),
     }
@@ -86,7 +86,7 @@ def _algo_freeze_window_dict(
         freeze_window["freeze_applied"] = True
         freeze_window["freeze_application_status"] = freeze_state.get("freeze_application_status")
     if (
-        str(freeze_state.get("freeze_state") or "").strip().lower() == "disabled"
+        freeze_state["freeze_state"] == "disabled"
         and freeze_state.get("freeze_disabled_reason") is not None
     ):
         freeze_window["freeze_disabled_reason"] = freeze_state.get("freeze_disabled_reason")
@@ -170,7 +170,8 @@ def _apply_visible_degradations(
             count=1,
         )
         degraded_success = degraded_success or completion_status == "success"
-    dispatch_failure_count = _dispatch_failure_detail_count(failure_details)
+    # Every failure detail carries a literal code (run_state._failure_detail).
+    dispatch_failure_count = len(failure_details)
     if dispatch_failure_count:
         # 注意：这里不像上面 graph 分支那样抬 degraded_success——这是刻意的，不是漏写。
         # 有派工失败/跳过明细蕴含 failed_count>0，故 completion_status 必非 "success"，二者代码层面互斥；
@@ -189,17 +190,17 @@ def _apply_visible_degradations(
 
 
 def _graph_enhancement_degraded(graph_analysis_public: Optional[Dict[str, Any]]) -> bool:
-    public = graph_analysis_public if isinstance(graph_analysis_public, dict) else {}
+    # Every graph public projection carries literal status/mode (schedule_graph_report.py); a disallowed
+    # enhancement always names its literal disabled reason (schedule_graph_dispatch_context.py).
+    if graph_analysis_public is None:
+        return False
+    public = graph_analysis_public
     return bool(
-        str(public.get("status") or "").strip().lower() == "available"
-        and str(public.get("mode") or "").strip().lower() == "on"
+        public["status"] == "available"
+        and public["mode"] == "on"
         and public.get("graph_enhancement_allowed") is False
-        and str(public.get("graph_enhancement_disabled_reason") or "").strip() == "schedule_graph_cycle"
+        and public["graph_enhancement_disabled_reason"] == "schedule_graph_cycle"
     )
-
-
-def _dispatch_failure_detail_count(failure_details: List[Dict[str, Any]]) -> int:
-    return sum(1 for item in failure_details if str(item.get("code") or "").strip())
 
 
 def _build_result_summary_obj(
@@ -223,9 +224,9 @@ def _build_result_summary_obj(
     )
     public_algo, optimizer_diagnostics = project_public_algo_summary(_algo_dict(algorithm_state))
     warnings = warnings_with_graph(warnings, public_algo.get("graph_analysis"))
-    degradation_events = list(summary_degradation.get("events") or [])
-    degradation_counters = dict(summary_degradation.get("counters") or {})
-    result_degraded_causes = list(degraded_causes or [])
+    degradation_events = list(summary_degradation["events"])
+    degradation_counters = dict(summary_degradation["counters"])
+    result_degraded_causes = list(degraded_causes)
     result_degraded_success, op_count, scheduled_ops, failed_ops = _apply_visible_degradations(
         summary=ctx.summary,
         events=degradation_events,
@@ -293,11 +294,11 @@ def _build_result_summary_obj(
         "time_cost_ms": time_cost_ms,
     }
     if ctx.execution_snapshot_revision:
-        op_ids = list(ctx.execution_snapshot_op_ids or [])
+        op_ids = list(ctx.execution_snapshot_op_ids)
         result_summary["execution_snapshot"] = {
             "revision_kind": "content_v2",
             "execution_snapshot_op_ids": op_ids,
-            "execution_snapshot_op_count": int(ctx.execution_snapshot_op_count or len(op_ids)),
+            "execution_snapshot_op_count": ctx.execution_snapshot_op_count,
             "execution_snapshot_op_ids_sample": op_ids[:50],
             "execution_snapshot_op_ids_truncated": len(op_ids) > 50,
         }

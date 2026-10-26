@@ -75,13 +75,21 @@ def _operations(sources: Dict[int, str]) -> List[BatchOperation]:
     ]
 
 
+def _no_point_evidence(row: Any) -> None:
+    """这些工序都不是零工时工序：生产见证核对对它们给不出证据。"""
+    return None
+
+
 def _build_payload(results: List[Any], *, allowed_op_ids: Set[int], operations: List[BatchOperation]):
-    # 与生产 workbench/run/input 同口径：工序来源表由本次全部工序派生。
+    # 与生产 workbench/run/input 同口径：工序来源表由本次全部工序派生，本次输入没有缺资源工序、排产没有报错。
     return build_validated_schedule_payload(
         results,
         allowed_op_ids=allowed_op_ids,
         operations=operations,
         operation_sources={op.id: op.source for op in operations},
+        missing_internal_resource_op_ids=set(),
+        schedule_errors=[],
+        point_validator=_no_point_evidence,
     )
 
 

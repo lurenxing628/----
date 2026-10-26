@@ -34,7 +34,7 @@ def export_rows(data, snapshot):
               _text(CANDIDATE_STATUS, candidate["status"]), _text(COMPLETENESS, candidate["completeness"]),
               generation["accepted_at"], snapshot["snapshot_ref"], snapshot["as_of"],
               data["time_scope"]["range_start"], data["time_scope"]["range_end"]]
-    records = [("task", row) for row in data["tasks"]] + [("unplanned_operation", row) for row in data["unplanned_operations"] or []]
+    records = [("task", row) for row in data["tasks"]] + [("unplanned_operation", row) for row in data["unplanned_operations"]]
     if not records:
         records = [("candidate", {})]
     common_gaps = data["data_gaps"] + candidate["data_gaps"] + generation["data_gaps"]
@@ -61,7 +61,7 @@ def _cell(value):
 
 
 def write_run_candidate_export(data, snapshot, fmt):
-    count = max(1, len(data["tasks"]) + len(data["unplanned_operations"] or []))
+    count = max(1, len(data["tasks"]) + len(data["unplanned_operations"]))
     check_capacity(count, fmt)
     content = _csv(data, snapshot) if fmt == "csv" else _xlsx(data, snapshot)
     mime = "text/csv; charset=utf-8" if fmt == "csv" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

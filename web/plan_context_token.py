@@ -18,20 +18,14 @@ _PLAN_CONTEXT_TOKEN_SCOPE = "scheduler-plan-context-v1"
 _PLAN_CONTEXT_TOKEN_MESSAGE = "方案预览入口已失效，请刷新页面后重试。"
 
 
-def plan_context_token(scenario_id: Optional[str]) -> str:
-    text = str(scenario_id or "").strip()
-    if not text:
-        return ""
-    return issue_public_token(_PLAN_CONTEXT_TOKEN_SCOPE, text)
+def plan_context_token(scenario_id: str) -> str:
+    return issue_public_token(_PLAN_CONTEXT_TOKEN_SCOPE, scenario_id)
 
 
-def scenario_id_from_plan_context_token(token: Optional[str]) -> Optional[str]:
-    text = str(token or "").strip()
-    if not text:
-        return None
+def scenario_id_from_plan_context_token(token: str) -> Optional[str]:
     return resolve_public_token(
         _PLAN_CONTEXT_TOKEN_SCOPE,
-        text,
+        token,
         message=_PLAN_CONTEXT_TOKEN_MESSAGE,
         field="plan_context",
     )

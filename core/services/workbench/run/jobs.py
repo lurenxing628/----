@@ -1,7 +1,8 @@
 """Admission owns a short transaction. Query and restart recovery never rerun work."""
 
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
 from core.algorithm_contracts.operation_effort import RUNTIME_REQUIREMENT_BASIS
 from core.infrastructure.read_evidence import read_evidence_scope
@@ -26,6 +27,18 @@ from data.repositories.workbench_run_repo import WorkbenchRunRepository
 from .input_admission import candidate_admission_issues
 from .preflight import PreparedPreflight
 from .preflight_facts import PreflightFacts
+
+
+@dataclass(frozen=True)
+class AdmittedRun:
+    """What admission adds to one checked preflight: the new run's identity, head, capture and read models."""
+    prepared: PreparedPreflight
+    run_ref: str
+    accepted_at: str
+    data_context_ref: str
+    head: Dict[str, Any]
+    capture: Dict[str, Any]
+    read_models: Dict[str, Any]
 
 
 class WorkbenchRunService:
@@ -62,11 +75,11 @@ class WorkbenchRunService:
     def _used_input_reason():
         return {"code": "input_already_used", "message": "这份检查结果已经开始过排产，请重新检查后再开始下一次。"}
 
-    def _prepare_admission(self, prepared, input_ref, request_key):
+    def _prepare_admission(self, prepared, input_ref, request_key, data_context_ref):
         from core.services.workbench.facts.decision_read_model import prepare_admission_read_models
 
-        prepared.run_ref = new_run_ref()
-        prepared.accepted_at = self.clock().isoformat(timespec="microseconds")
+        run_ref = new_run_ref()
+        accepted_at = self.clock().isoformat(timespec="microseconds")
         facts_text = prepared.capture.content()
         capture = {"input": prepared.settings, "facts_text": facts_text, "facts_hash": None,
                    "execution": [row.to_dict() for row in prepared.execution_projections],
@@ -83,13 +96,12 @@ class WorkbenchRunService:
         dependencies = self.repo.dependency_heads(
             sorted({row["source_candidate_ref"] for row in states if row.get("source_candidate_ref") is not None}),
             sorted({row["source_scenario_ref"] for row in states if row.get("source_scenario_ref") is not None}))
-        prepared.head = {"run_ref": prepared.run_ref, "request_key": request_key, "input_ref": input_ref,
-                         "accepted_at": prepared.accepted_at, "state": "queued", "stage": "queued",
-                         "executor_ref": None, "started_at": None, "finished_at": None, "error_json": None}
-        prepared.read_models = prepare_admission_read_models(prepared.head, capture, official,
-                                                            facts=facts, receipt=receipt, dependencies=dependencies)
-        prepared.capture_payload = capture
-        return prepared
+        head = {"run_ref": run_ref, "request_key": request_key, "input_ref": input_ref,
+                "accepted_at": accepted_at, "state": "queued", "stage": "queued",
+                "executor_ref": None, "started_at": None, "finished_at": None, "error_json": None}
+        read_models = prepare_admission_read_models(head, capture, official,
+                                                    facts=facts, receipt=receipt, dependencies=dependencies)
+        return AdmittedRun(prepared, run_ref, accepted_at, data_context_ref, head, capture, read_models)
 
     def _reasons(self, data):
         reasons = list(data["blockers"])
@@ -143,16 +155,16 @@ class WorkbenchRunService:
                 if not callable(self.context_validator):
                     raise RuntimeError("Run authorization validator is not connected")
                 self.context_validator(write_token, input_ref, "scheduling.run", snapshot)
-                prepared.data_context_ref = snapshot["data_context_ref"]
-                return self._prepare_admission(prepared, input_ref, request_key)
+                return self._prepare_admission(prepared, input_ref, request_key, snapshot["data_context_ref"])
 
-        def mutate(prepared):
+        def mutate(admission):
+            prepared = admission.prepared
             ref = self.repo.insert(request_key=request_key, input_ref=input_ref, settings=prepared.settings,
-                facts_hash=None, facts_json=prepared.capture_payload["facts_text"],
+                facts_hash=None, facts_json=admission.capture["facts_text"],
                 projections=prepared.execution_projections, baseline=prepared.baseline,
-                now=prepared.accepted_at, run_ref=prepared.run_ref)
-            self.repo.insert_admission_read_model(ref, prepared.read_models["scope"], prepared.read_models["decision"])
-            admitted.append(prepared)
+                now=admission.accepted_at, run_ref=admission.run_ref)
+            self.repo.insert_admission_read_model(ref, admission.read_models["scope"], admission.read_models["decision"])
+            admitted.append(admission)
             return WorkbenchCommandOutcome("committed", {"run_ref": ref})
 
         result = WorkbenchCommandService(self.conn).execute(request_key=request_key, action="scheduling.run",

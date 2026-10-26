@@ -119,7 +119,7 @@ def test_runtime_contract_producer_and_health_share_instance_identity(health_ser
     response = client.get("/system/health")
     assert response.status_code == 200
     body = response.get_json()
-    probed = probe_runtime_health_result(f"http://127.0.0.1:{contract['port']}")
+    probed = probe_runtime_health_result(f"http://127.0.0.1:{contract['port']}", timeout_s=0.75)
     assert probed.ok and probed.status == 200
     assert probed.payload is not None
     for key in ("owner", "pid", "db_path", "instance_id"):

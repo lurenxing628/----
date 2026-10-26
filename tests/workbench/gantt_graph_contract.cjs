@@ -126,10 +126,14 @@ const occupancy = { resource_ref: ref(200), kind: 'machine', segments: [], utili
 data.projections.occupancy.resources.push(occupancy);
 assert.equal(window.PlanGanttModel.tone(tasks[0], new Map([['B1', 'on_time']])), 'primary', 'On-time tasks retain the normal pale-blue tone');
 assert.equal(window.PlanGanttModel.tone(tasks[0], new Map([['B1', 'overdue']])), 'critical');
-const candidateData = { gantt_graph: { ...graph, scope: 'full_candidate' }, task_span: data.task_span, tasks: candidateTasks.map(task => ({ ...task,
+const candidateData = { gantt_graph: { ...graph, scope: 'full_candidate' }, task_span: data.task_span, unplanned_operations: [], tasks: candidateTasks.map(task => ({ ...task,
   batch_ref: ref(task.batch_id === 'B1' ? 300 : 301), batch_label: task.batch_id, machine: { ref: task.machine_ref, label: 'Machine' } })) };
-const candidateLayout = (value, mode, query, width = 1000, operationRefs = null) => window.RunCandidateModel.layoutPrepared(
-  window.RunCandidateModel.selectPrepared(window.RunCandidateModel.groupPrepared(window.RunCandidateModel.prepare(value), mode), query, operationRefs), width);
+// Same chain as RunCandidateGantt without a loaded baseline.
+const candidateLayout = (value, mode, query, width = 1000, operationRefs = null) => {
+  const M = window.RunCandidateModel, B = window.RunBaselineModel;
+  const candidate = M.selectPrepared(M.groupPrepared(M.prepare(value), mode), query, operationRefs);
+  return B.layoutPrepared(B.selectPrepared(candidate, B.groupPrepared(B.prepare(null), mode), query, operationRefs, false), width);
+};
 const width = 1000;
 for (const candidate of [false, true]) {
   const layout = query => candidate ? candidateLayout(candidateData, 'machine', query, width)

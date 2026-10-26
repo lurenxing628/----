@@ -64,14 +64,7 @@ def _current_depth(conn) -> int:
 
 
 def _owns_transaction(conn, depth: int) -> bool:
-    if depth != 1:
-        return False
-    try:
-        return not bool(conn.in_transaction)
-    except AttributeError as exc:
-        raise RuntimeError("事务连接缺少 in_transaction，无法安全判断事务所有权。") from exc
-    except Exception as exc:
-        raise RuntimeError("读取事务状态失败，无法安全判断事务所有权。") from exc
+    return depth == 1 and not conn.in_transaction
 
 
 def _savepoint_name(conn, depth: int) -> str:

@@ -67,15 +67,12 @@ def _merge_warning_lists(primary: Any, extra: Any) -> List[str]:
     return merged
 
 
-def _dedupe_text_list(values: Any) -> List[str]:
+def _dedupe_text_list(values: List[str]) -> List[str]:
+    # The only caller passes whitelisted literal cause codes.
     out: List[str] = []
-    seen = set()
-    for item in values or []:
-        text = str(item or "").strip()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        out.append(text)
+    for item in values:
+        if item not in out:
+            out.append(item)
     return out
 
 
@@ -85,7 +82,7 @@ def _append_summary_warning(summary: Optional[ScheduleSummary], message: str) ->
 
 
 def _counter_dict(value: Any) -> Dict[str, int]:
-    # 计数桶只经 increment_counter / merge_algo_stats 写入，键非空、值是校验过的整数。
+    # 计数桶只经 increment_counter / merge_algo_stats 写入，键非空、值是解码自己的整数计数。
     if not isinstance(value, dict):
         return {}
     return {key: count for key, count in value.items() if count}
@@ -186,13 +183,10 @@ def _degraded_cause_codes(
     summary_degradation: Dict[str, Any],
 ) -> List[str]:
     causes: List[str] = []
-    summary_events = summary_degradation.get("events") if isinstance(summary_degradation, dict) else None
-    for raw_event in summary_events or ():
-        if not isinstance(raw_event, dict):
-            continue
-        code = str(raw_event.get("code") or "").strip()
+    # _summary_degradation_state always returns {"events": [...], "counters": {...}} with str codes.
+    for raw_event in summary_degradation["events"]:
+        code = raw_event["code"]
         if code in {
-            "config_fallback",
             "graph_enhancement_degraded",
             "dispatch_failure_details",
         }:

@@ -23,11 +23,10 @@ from .iterated_greedy_moves import _parent_from_candidate
 def seed_solution_pool(search: Any) -> None:
     """Offer the incumbent and every current elite to the bounded start pool (decision-key deduplicated)."""
     best = search._require_best()
-    sources = [best]
-    sources.extend(elite["candidate"] for elite in search.pool.elites)
-    for candidate in sources:
-        parent = _parent_from_candidate(candidate, operations=search.operations, graph_context=search.graph_context,
-                                        resource_pool=candidate.get("resource_pool"), prepared_parent=search.pool.prepare_parent(candidate))
+    sources = [(best, search.pool.prepare_parent(best))]
+    sources.extend((elite["candidate"], elite["prepared_parent"]) for elite in search.pool.elites)
+    for candidate, prepared in sources:
+        parent = _parent_from_candidate(candidate, graph_context=search.graph_context, prepared=prepared)
         if parent is None:
             continue
         search.solution_pool.add(PoolEntry(order=parent.order, score=tuple(candidate["score"]), candidate=candidate,
@@ -48,23 +47,23 @@ def capture_reference(search: Any, entry: PoolEntry) -> Optional[PoolEntry]:
     if entry.decoded_order and entry.checkpoints:
         search._record_local_reuse("reference_reused", entry.candidate)
         return entry
-    search.capturing = entry.candidate
-    try:
-        return decode_reference(search, entry.order, before=entry.candidate, reference_kind="parent_order")
-    finally:
-        search.capturing = None
+    return decode_reference(search, entry.order, before=entry.candidate, reference_kind="parent_order",
+                            capture_of=entry.candidate)
 
 
-def decode_reference(search: Any, order: Any, *, before: Dict[str, Any], reference_kind: str) -> Optional[PoolEntry]:
-    """Record a real SGS reference decode, including the due-date starting proposal."""
-    observer = search.report_state.reference_capture_observer if search.report_state is not None else None
+def decode_reference(search: Any, order: Any, *, before: Dict[str, Any], reference_kind: str,
+                     capture_of: Optional[Dict[str, Any]] = None) -> Optional[PoolEntry]:
+    """Record a real SGS reference decode, including the due-date starting proposal.
+
+    ``capture_of`` names the known solution whose order is only re-captured (None for a new proposal)."""
+    observer = search.report_state.reference_capture_observer
     started_at = search.clock() if observer is not None else None
     session = search.decode_session
     before_actual = session.actual_decoder_calls
     decoded = None
     try:
-        reason = "capture_checkpoints" if search.capturing is not None else None
-        decoded = search._decode_entry(order, redecode_reason=reason)
+        reason = "capture_checkpoints" if capture_of is not None else None
+        decoded = search._decode_entry(order, redecode_reason=reason, capture_of=capture_of)
         if search.last_decode_skip is not None:
             raise search.last_decode_skip
         return decoded
@@ -115,8 +114,8 @@ def restart_from_pool(search: Any, reference: PoolEntry) -> PoolEntry:
 def adopt_incumbent(search: Any, candidate: Dict[str, Any], profile: Optional[GraphReadyWeightProfile]) -> None:
     """Another stage improved the incumbent: base the walk on it, or keep the old walk when its capture fails."""
     search.best = candidate
-    parent = _parent_from_candidate(candidate, operations=search.operations, graph_context=search.graph_context,
-                                    resource_pool=candidate.get("resource_pool"), prepared_parent=search.pool.prepare_parent(candidate))
+    parent = _parent_from_candidate(candidate, graph_context=search.graph_context,
+                                    prepared=search.pool.prepare_parent(candidate))
     if parent is None:
         return
     search.report["incumbent_adoptions"] += 1

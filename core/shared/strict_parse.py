@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 
 from core.errors import ValidationError
@@ -17,6 +18,65 @@ def is_blank_input(value: Any) -> bool:
 def is_exact_positive_int(value: Any) -> bool:
     """Stored SQLite INTEGER / JSON integer identity: an exact int (no bool, text or float) in 1..2**63-1."""
     return type(value) is int and 0 < value <= _INT64_MAX
+
+
+# Shared numeric rules. Callers keep their own exception type, message and error code; these only decide
+# what counts as an integer or a finite number (a bool is neither).
+
+
+def is_int(value: Any) -> bool:
+    """An int that is not a bool."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def is_number(value: Any) -> bool:
+    """An int or float that is not a bool."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def finite_float(value: Any) -> Optional[float]:
+    """float(value) for anything float() accepts except a bool; None when refused or NaN/±Inf."""
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def is_non_finite_number(value: Any) -> bool:
+    """float() accepts value (not a bool) but gives NaN/±Inf: tells "not finite" apart from "not a number"."""
+    if isinstance(value, bool):
+        return False
+    try:
+        return not math.isfinite(float(value))
+    except (TypeError, ValueError, OverflowError):
+        return False
+
+
+def integer_value(value: Any) -> Optional[int]:
+    """A stored integer: an int (not bool) as is, an integral float, or UTF-8 bytes / text / other value whose
+    literal is an integer ('1', ' 1 ', '1.0', '1e3'); None for anything else, blank included."""
+    if is_int(value):
+        return value
+    if isinstance(value, float):
+        return int(value) if value.is_integer() else None
+    if isinstance(value, (bytes, bytearray)):
+        try:
+            value = value.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+    text = str(value).strip()
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        number = Decimal(text)
+    except InvalidOperation:
+        return None
+    return int(number) if number.is_finite() and number == number.to_integral_value() else None
 
 
 def _raise_blank_required(field: str) -> None:
@@ -38,15 +98,10 @@ def _ensure_min_int(value: int, *, field: str, min_value: Optional[int]) -> int:
 
 
 def _parse_finite_float(value: Any, *, field: str) -> float:
-    if isinstance(value, bool):
-        raise ValidationError(f"“{field}”必须是数字", field=field)
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise ValidationError(f"“{field}”必须是数字", field=field) from exc
-    if not math.isfinite(parsed):
-        raise ValidationError(f"“{field}”必须是有限数字", field=field)
-    return float(parsed)
+    number = finite_float(value)
+    if number is None:
+        raise ValidationError(f"“{field}”必须是{'有限数字' if is_non_finite_number(value) else '数字'}", field=field)
+    return number
 
 
 def _looks_like_integer_float(value: Any) -> bool:

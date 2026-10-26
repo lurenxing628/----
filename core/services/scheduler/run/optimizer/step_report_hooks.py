@@ -12,8 +12,7 @@ if TYPE_CHECKING:
 
 
 def _append_ortools_attempt(
-    *, attempts: List[Dict[str, Any]], candidate: Dict[str, Any],
-    decision_evidence: Optional[Dict[str, Any]] = None,
+    *, attempts: List[Dict[str, Any]], candidate: Dict[str, Any], decision_evidence: Dict[str, Any],
 ) -> None:
     metrics = candidate["metrics"]
     dispatch_mode = candidate["dispatch_mode"]
@@ -30,8 +29,7 @@ def _append_ortools_attempt(
         "metrics": metrics.to_dict(),
         "algo_stats": candidate["algo_stats"],
     }
-    if decision_evidence is not None:
-        attempt.update(decision_evidence)
+    attempt.update(decision_evidence)
     attempts.append(attempt)
 
 
@@ -85,13 +83,11 @@ def _record_ortools_candidate(
     candidate: Dict[str, Any],
     attempts: List[Dict[str, Any]],
     improvement_trace: List[Dict[str, Any]],
-    search_report_state: Optional[OptimizationSearchReportState],
+    search_report_state: OptimizationSearchReportState,
     now: Callable[[], float],
     t_begin: float,
 ) -> Optional[Dict[str, Any]]:
-    fingerprint = None
-    if search_report_state is not None:
-        fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin="ortools_warmstart")
+    fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin="ortools_warmstart")
     accepted = not (best is not None and candidate["score"] >= best["score"])
     _append_ortools_attempt(
         attempts=attempts, candidate=candidate,
@@ -102,8 +98,7 @@ def _record_ortools_candidate(
     )
     if not accepted:
         return best
-    if search_report_state is not None:
-        search_report_state.mark_candidate_accepted(candidate, origin="ortools_warmstart", fingerprint=fingerprint)
+    search_report_state.mark_candidate_accepted(candidate, origin="ortools_warmstart", fingerprint=fingerprint)
     _append_ortools_trace(improvement_trace=improvement_trace, candidate=candidate, now=now, t_begin=t_begin)
     return candidate
 
@@ -113,7 +108,7 @@ def _append_multi_start_attempt(
     attempts: List[Dict[str, Any]],
     candidate: Dict[str, Any],
     strategy_key: str,
-    decision_evidence: Optional[Dict[str, Any]] = None,
+    decision_evidence: Dict[str, Any],
 ) -> None:
     metrics = candidate["metrics"]
     dispatch_mode = candidate["dispatch_mode"]
@@ -130,8 +125,7 @@ def _append_multi_start_attempt(
         "metrics": metrics.to_dict(),
         "algo_stats": candidate["algo_stats"],
     }
-    if decision_evidence is not None:
-        attempt.update(decision_evidence)
+    attempt.update(decision_evidence)
     attempts.append(attempt)
 
 
@@ -166,13 +160,11 @@ def _record_multi_start_candidate(
     strategy_key: str,
     attempts: List[Dict[str, Any]],
     improvement_trace: List[Dict[str, Any]],
-    search_report_state: Optional[OptimizationSearchReportState],
+    search_report_state: OptimizationSearchReportState,
     now: Callable[[], float],
     t_begin: float,
 ) -> Optional[Dict[str, Any]]:
-    fingerprint = None
-    if search_report_state is not None:
-        fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin="multi_start")
+    fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin="multi_start")
     accepted = not (best is not None and candidate["score"] >= best["score"])
     _append_multi_start_attempt(
         attempts=attempts,
@@ -185,8 +177,7 @@ def _record_multi_start_candidate(
     )
     if not accepted:
         return best
-    if search_report_state is not None:
-        search_report_state.mark_candidate_accepted(candidate, origin="multi_start", fingerprint=fingerprint)
+    search_report_state.mark_candidate_accepted(candidate, origin="multi_start", fingerprint=fingerprint)
     _append_multi_start_trace(
         improvement_trace=improvement_trace,
         candidate=candidate,

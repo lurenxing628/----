@@ -1,6 +1,9 @@
 """Typed, lossless template-copy evidence. Business codes are never identities."""
 
 import json
+from typing import NoReturn
+
+from core.shared.strict_json import load_strict_json
 
 OPERATION_COLUMNS = (
     "id", "op_code", "batch_id", "piece_id", "seq", "op_type_id", "op_type_name", "source",
@@ -35,10 +38,12 @@ def snapshot(row):
                       ensure_ascii=True, allow_nan=False, sort_keys=True, separators=(",", ":"))
 
 
+def _not_typed_row() -> NoReturn:
+    raise ValueError("Lineage snapshot must be a typed row.")
+
+
 def restore_snapshot(text):
-    values = json.loads(text)
-    if not isinstance(values, dict):
-        raise ValueError("Lineage snapshot must be a typed row.")
+    values = load_strict_json(text, on_malformed=_not_typed_row, expected=dict)
     result = {}
     for key, (kind, value) in values.items():
         result[key] = _DECODERS[kind](value)

@@ -28,7 +28,6 @@ _METRIC_KEYS = {
     "min_changeover": ("changeover_count", "overdue_count", "total_tardiness_hours", "weighted_tardiness_hours", "makespan_hours"),
 }
 _PRIORITY_WEIGHTS = {"normal": 1, "urgent": 2, "critical": 3}
-SCOPE = "exact_within_single_fixed_resource_zero_release_continuous_calendar_domain"
 
 
 @dataclass(frozen=True)
@@ -58,14 +57,6 @@ class ScheduledOperation:
     end_minute: int
     machine_id: str = "M0"
     operator_id: str = "O0"
-
-
-@dataclass(frozen=True)
-class ExactResult:
-    best_score: Tuple[float, ...]
-    schedules: Tuple[Tuple[ScheduledOperation, ...], ...]
-    topological_orders: int
-    applicability: str = SCOPE
 
 
 def _integer(value, label, minimum=0):
@@ -172,11 +163,11 @@ def score_schedule(case, schedule, objective):
 
 
 def solve_exact(case, objective):
-    """Enumerate all topological orders and return all optimal packed schedules."""
+    """Enumerate all topological orders and return the lexicographic optimum score vector."""
     if objective not in OBJECTIVES:
         raise ValueError("unknown objective")
     by_id = _validate_case(case)
-    best_score, winners, count = None, [], 0
+    best_score = None
     for order in permutations(by_id):
         seen, rows, clock = set(), [], 0
         for op_id in order:
@@ -188,28 +179,10 @@ def solve_exact(case, objective):
             seen.add(op_id)
         if len(rows) != len(by_id):
             continue
-        count += 1
         score = _score(case, by_id, rows, objective)
         if best_score is None or score < best_score:
-            best_score, winners = score, [tuple(rows)]
-        elif score == best_score:
-            winners.append(tuple(rows))
-    return ExactResult(best_score, tuple(winners), count)
-
-
-def compare_to_exact(case, schedule, objective):
-    """Report a lexicographic gap, never a scalar/percentage quality claim."""
-    candidate = score_schedule(case, schedule, objective)
-    exact = solve_exact(case, objective)
-    keys = ("failed_ops",) + _METRIC_KEYS[objective]
-    gap = tuple(value - optimum for value, optimum in zip(candidate, exact.best_score))
-    return {
-        "score": candidate, "best_score": exact.best_score, "gap_vector": gap,
-        "first_differing_metric": next((key for key, delta in zip(keys, gap) if delta != 0), None),
-        "is_optimal": candidate == exact.best_score, "scope": exact.applicability,
-        "explanation": "Compare vectors lexicographically; later negative deltas do not cancel an earlier positive gap. "
-                       "Optimality covers this tiny fixed-resource zero-release case only.",
-    }
+            best_score = score
+    return best_score
 
 
 def improving_case():

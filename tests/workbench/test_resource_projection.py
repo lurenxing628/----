@@ -83,11 +83,11 @@ def test_operation_segments_merge_before_independent_demand_and_conflict_sweep(m
                                task("s2", "op:a", at("10:00:00"), end)], start, end)
     assert split.days(MACHINE, saved)[0]["operation_count"] == 1
     # Multiplicity changes leave adjacent overlap pieces; their span stays one union.
-    varied = ResourceUtilizationMetrics(
+    varied = ResourceUtilizationMetrics.from_normalized_availability(
         [(instant(start), instant(at("12:00:00"))), (instant(at("09:00:00")), instant(end)),
          (instant(at("10:00:00")), instant(at("13:00:00"))), (instant(at("09:00:00")), instant(at("09:00:00")))],
-        [(instant(at("12:00:00")), instant(at("13:00:00"))), (instant(start), instant(at("10:00:00"))),
-         (instant(at("09:00:00")), instant(at("12:00:00"))), (instant(start), instant(start))])
+        IntervalIndex([(instant(at("12:00:00")), instant(at("13:00:00"))), (instant(start), instant(at("10:00:00"))),
+                       (instant(at("09:00:00")), instant(at("12:00:00"))), (instant(start), instant(start))]).intervals)
     assert varied.span_overlap.intervals == [(instant(at("09:00:00")), instant(at("12:00:00")))]
     value = varied.window(instant(start), instant(at("13:00:00")))
     assert value["available_hours"] == value["occupied_hours"] == value["span_occupied_hours"] == 5
@@ -97,7 +97,6 @@ def test_operation_segments_merge_before_independent_demand_and_conflict_sweep(m
 def test_normalized_interval_index_reuses_union_and_preserves_half_open_finish_boundaries(monkeypatch):
     first, boundary, second, last = (instant(at(hour)) for hour in ("08:00:00", "09:00:00", "10:00:00", "11:00:00"))
     raw = IntervalIndex([(second, last), (first, boundary), (boundary, boundary)])
-    raw_usage = ResourceUtilizationMetrics([(first, last)], [(second, last), (first, boundary), (boundary, boundary)])
 
     def unexpected_union(_values):
         pytest.fail("规范化区间直接建索引，应复用原合并结果。")
@@ -109,11 +108,11 @@ def test_normalized_interval_index_reuses_union_and_preserves_half_open_finish_b
     assert normalized.hours_between(boundary, second) == normalized.hours_between(boundary, boundary) == 0
     assert [normalized.contains(at) for at in (first, boundary, second, last)] == [True, False, True, False]
     assert [normalized.contains(at, ending=True) for at in (first, boundary, second, last)] == [False, True, False, True]
-    normalized_usage = ResourceUtilizationMetrics.from_normalized_availability([(first, last)], raw_usage.calendar.available.intervals)
-    assert normalized_usage.window(first, last) == raw_usage.window(first, last)
-    unknown_usage = ResourceUtilizationMetrics([(first, last)], None).window(first, last)
+    normalized_usage = ResourceUtilizationMetrics.from_normalized_availability([(first, last)], raw.intervals).window(first, last)
+    assert normalized_usage["available_hours"] == normalized_usage["occupied_hours"] == 2
+    assert normalized_usage["outside_calendar_hours"] == 1
+    unknown_usage = ResourceUtilizationMetrics.from_normalized_availability([(first, last)], None).window(first, last)
     assert unknown_usage["available_hours"] is None and unknown_usage["reason"] == "calendar_unavailable"
-    assert ResourceUtilizationMetrics.from_normalized_availability([(first, last)], None).window(first, last) == unknown_usage
 
     from bisect import bisect_right
     from datetime import timedelta
@@ -142,13 +141,13 @@ def test_normalized_interval_index_reuses_union_and_preserves_half_open_finish_b
             assert index.hours_between(low, high) == (original_before(index, high) - original_before(index, low)) / 3600.0
 
     usage = ResourceUtilizationMetrics.from_normalized_availability(
-        [(fractional[0][0], fractional[1][1]), (points[2], fractional[0][1])], fractional, source="actual")
+        [(fractional[0][0], fractional[1][1]), (points[2], fractional[0][1])], fractional)
     unrounded = usage.window(first, points[-1], precision=None)
     with monkeypatch.context() as scoped:
         scoped.setattr(IntervalIndex, "_before", original_before)
         scoped.setattr(_WeightedIndex, "_before", original_before)
         assert unrounded == usage.window(first, points[-1], precision=None)
-    metadata = {"metric_version": METRIC_VERSION, "source": "actual", "reason": None}
+    metadata = {"metric_version": METRIC_VERSION, "source": "planned", "reason": None}
     fields = {"available_hours", "occupied_hours", "summed_load_hours", "overlap_hours", "outside_calendar_hours",
               "utilization_ratio", "span_occupied_hours", "span_summed_hours", "span_overlap_hours"}
     assert set(unrounded) == fields | set(metadata)
@@ -213,7 +212,7 @@ def test_partial_calendar_preserves_known_subtotals_and_does_not_label_unknown_d
     assert whole["high_pressure"] is True and whole["known_peak_utilization"] == 1
     assert whole["peak_utilization"] is None
     assert whole["zero_capacity_task"] is None
-    measurement = index._measurement(MACHINE, saved)
+    measurement = index._measurement(MACHINE, saved, retain_statistics_values=index.retain_statistics_values)
     point = instant(midnight)
     zero_days = measurement.calendar.days_in(point, point)
     assert zero_days == [day._replace(low=point, high=point) for day in measurement.days]
@@ -264,7 +263,8 @@ def test_partial_calendar_preserves_known_subtotals_and_does_not_label_unknown_d
     transient_minutes = ResourceTaskIndex(minute_rows, first, last, retain_statistics_values=False)
     assert transient_minutes.window(MACHINE, minute_calendar) == minute_window
     assert transient_minutes.day_filter_summary(MACHINE, minute_calendar) == minute_filter
-    transient_measurement = transient_minutes._measurement(MACHINE, minute_calendar)
+    transient_measurement = transient_minutes._measurement(
+        MACHINE, minute_calendar, retain_statistics_values=transient_minutes.retain_statistics_values)
     assert len(transient_measurement._value_cache) == 1
 
 
@@ -306,7 +306,8 @@ def test_unknown_workload_and_absent_arrangements_keep_capacity_and_idle_semanti
     assert partial["issues"] == [{"code": "task_time_unknown", "message": "保存任务的时间或点事件依据缺项，占用和负荷保留已知小计。", "field": "task_time"}]
     transient_single = ResourceTaskIndex(rows, start, end, task_intervals=parsed, retain_statistics_values=False)
     assert transient_single.window(MACHINE, saved) == partial
-    assert len(transient_single._measurement(MACHINE, saved)._value_cache) == 1
+    assert len(transient_single._measurement(
+        MACHINE, saved, retain_statistics_values=transient_single.retain_statistics_values)._value_cache) == 1
     details = ResourceTaskIndex(rows, start, end).periods(MACHINE, saved, details=True)[0]
     assert details["contribution_operation_count"] is None and details["known_contribution_operation_count"] == 1
     absent = ResourceTaskIndex([], start, end, work_available=False).window(MACHINE, saved)
@@ -332,7 +333,10 @@ def test_unknown_workload_and_absent_arrangements_keep_capacity_and_idle_semanti
     transient_zero = ResourceTaskIndex([task("clipped", "op:clipped", at("07:00:00"), at("09:00:00"))],
                                        start, start, retain_statistics_values=False)
     assert transient_zero.periods(MACHINE, zero_calendar, grain="week")[0] == zero_week
-    assert transient_zero._measurement(MACHINE, zero_calendar)._value_cache == zero_index._measurement(MACHINE, zero_calendar)._value_cache
+    transient_zero_values = transient_zero._measurement(
+        MACHINE, zero_calendar, retain_statistics_values=transient_zero.retain_statistics_values)._value_cache
+    assert transient_zero_values == zero_index._measurement(
+        MACHINE, zero_calendar, retain_statistics_values=zero_index.retain_statistics_values)._value_cache
     missing_identity = ResourceTaskIndex([task("lost", "op:lost", start, end, machine=None)], start, end)
     assert missing_identity.identity_issues == [{"code": "resource_identity_unknown",
                                                "message": "保存任务缺少永久资源身份，资源汇总保留覆盖缺口。",
@@ -400,7 +404,7 @@ def test_resource_grains_keep_actual_work_windows_weekly_weights_and_rest_span_e
     assert "day_filter_summary" not in window
     assert [{field: row[field] for field in fact} for row, fact in zip(days, day_facts)] == day_facts
     assert value_reads == window_reads
-    measurement = index._measurement(MACHINE, normalized)
+    measurement = index._measurement(MACHINE, normalized, retain_statistics_values=index.retain_statistics_values)
     for day in measurement.days:
         cached = measurement.values(day.low, day.high, [day])
         assert cached == original_values(measurement, day.low, day.high, [day])
@@ -443,7 +447,7 @@ def test_resource_grains_keep_actual_work_windows_weekly_weights_and_rest_span_e
     assert len(value_reads) == before_pressure
     transient = ResourceTaskIndex(rows, start, end, pressure_threshold=0.95, retain_statistics_values=False)
     assert transient.window(MACHINE, normalized) == window
-    transient_measurement = transient._measurement(MACHINE, normalized)
+    transient_measurement = transient._measurement(MACHINE, normalized, retain_statistics_values=transient.retain_statistics_values)
     assert transient_measurement.retain_statistics_values is False
     assert len(transient_measurement._value_cache) == 1
     assert transient.day_filter_summary(MACHINE, normalized) == index.day_filter_summary(MACHINE, normalized)

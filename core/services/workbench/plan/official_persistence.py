@@ -50,7 +50,8 @@ def persist_official_plan_in_tx(conn, *, prepared, payload, baseline, audit, app
     identities = WorkbenchPlanIdentityRepository(conn)
     plan_ref = identities.get_plan_ref(WorkbenchPlanLocator(version, "adopted"))
     persisted = WorkbenchPlanBaselineRepository(conn).list_schedule_identity_rows(version)
-    if len(identities.get_task_refs(plan_ref, persisted)) != len(rows):
+    persisted_tasks = identities.get_task_refs(plan_ref, ((row["schedule_id"], row["op_id"], row["version"]) for row in persisted))
+    if len(persisted_tasks) != len(rows):
         raise RuntimeError("New official task identities are incomplete")
     audit["plan_ref"] = plan_ref
     if not OperationLogger(conn).info("scheduler", action, target_type="schedule", target_id=plan_ref,

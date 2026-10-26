@@ -55,9 +55,8 @@
     const onDirty = React.useCallback((key, value) => setDirty(old => old[key] === value ? old : { ...old, [key]: value }), []);
     async function loadPart(signal) {
       if (target.error) throw target.error;
-      if (typeof adapter.detail !== 'function') throw C.failure('dependency not wired: window.APSProcessAPI.detail');
       const raw = await adapter.detail('part', partRef, signal);
-      if (raw && raw.data && raw.data.ref !== partRef) throw C.failure('返回的不是原零件记录，不能继续使用同图号的新零件。');
+      if (raw.data.ref !== partRef) throw C.failure('返回的不是原零件记录，不能继续使用同图号的新零件。');
       const value = P.detail(raw, partRef);
       if (value.meta.source !== 'production') throw C.failure('未取得原零件的生产详情，不能使用样例替代。');
       if (browsing) E.locate(value.data, target);
@@ -106,8 +105,7 @@
       setDirty({}); setEntry(false); setEntryStarted(false);
     }
     function openFile(kind, mode, abandon = false) {
-      if (editingBlocked || !current || !['route', 'hours'].includes(kind) || !['import', 'export'].includes(mode)
-          || typeof window.ProcessFileActions !== 'function' || P.reason(current.data.capabilities, mode, true)) return;
+      if (editingBlocked || !current || !['route', 'hours'].includes(kind) || !['import', 'export'].includes(mode) || P.reason(current.data.capabilities, mode, true)) return;
       if (!abandon) fileFocus.current = document.activeElement;
       if (hasDraft && !abandon) { setDiscard({ kind, mode }); return; }
       if (!command.reset()) return;

@@ -2,7 +2,7 @@
   'use strict';
   const S = window.APSResourceSession, { Button, ErrorBox, Feedback } = window.FieldControls;
   let productionAdapter;
-  function FieldWorkspace({ adapter, onNavigate, initialContext = {} }) {
+  function FieldWorkspace({ adapter, onNavigate, initialContext }) {
     const api = React.useMemo(() => adapter || (productionAdapter || (productionAdapter = window.FieldAPI.create())), [adapter]);
     const [scope, setScope] = React.useState(() => window.FieldAPI.initial(initialContext));
     const [opened, setOpened] = React.useState(initialContext.task_ref || initialContext.entity_ref || null), [editor, setEditor] = React.useState(null), [files, setFiles] = React.useState(false), [revision, setRevision] = React.useState(0);

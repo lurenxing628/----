@@ -46,7 +46,6 @@ def build_grasp_ig_candidate_specs(
     ig_restarts = ig_limits["effective_restarts"]
     rcl_size = grasp_limits["effective_rcl_size"]
     destruction_size = ig_limits["effective_destruction_size"]
-    rule = str(dispatch_rule_cfg or "").strip().lower()
     specs: List[Dict[str, Any]] = []
 
     for index in range(grasp_restarts):
@@ -56,7 +55,7 @@ def build_grasp_ig_candidate_specs(
                 "origin": GRASP_ORIGIN,
                 "restart_index": index,
                 "dispatch_mode": "batch_order",
-                "dispatch_rule": rule,
+                "dispatch_rule": dispatch_rule_cfg,
                 "order": _grasp_order(base_order, rnd=rnd, rcl_size=rcl_size),
             }
         )
@@ -68,7 +67,7 @@ def build_grasp_ig_candidate_specs(
                 "origin": IG_ORIGIN,
                 "restart_index": index,
                 "dispatch_mode": "batch_order",
-                "dispatch_rule": rule,
+                "dispatch_rule": dispatch_rule_cfg,
                 "order": _ig_order(parent_order, rnd=rnd, destruction_size=destruction_size),
             }
         )

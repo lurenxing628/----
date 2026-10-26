@@ -1,6 +1,6 @@
 """Exclusive route hook. Mainline owns registration, receipt endpoint and schema."""
 
-from flask import current_app, g, request
+from flask import g, request
 
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_dashboard import MAX_BYTES, DashboardQuery
@@ -59,9 +59,6 @@ def _read(item_ref=None, history=False):
                 analysis = reader.analysis(sources)
             except WorkbenchCommandRejected as exc:
                 analysis_error = str(exc)
-            except Exception:
-                current_app.logger.exception("Dashboard analysis failed after the list was read")
-                analysis_error = "分析数据没有读出来，请刷新重试。"
     snapshot = bind_read_snapshot(query.scope(), data["snapshot_contents"], token,
                                   as_of=data["as_of"], binding=binding)
     if item_ref is None:

@@ -54,7 +54,7 @@ def identity_issue(kind):
             "field": kind, "kind": kind}
 
 
-def resource_identity_issues(tasks, start, end, *, task_intervals=None):
+def resource_identity_issues(tasks, start, end, *, task_intervals):
     """One window's missing resource identities, read from its tasks without building calendar geometry."""
     return [identity_issue(kind)
             for task, _ in occupying_tasks(tasks, instant(start), instant(end), task_intervals=task_intervals)
@@ -88,7 +88,7 @@ class ResourceIntervals:
     """One resource's valid rows and independent operation demand segments."""
 
     def __init__(self, rows: List[Tuple[datetime, datetime, Dict[str, Any]]], unknown: List[Dict[str, Any]]):
-        self.rows = sorted(rows, key=lambda row: (row[0], row[1], row[2].get("row_ref") or ""))
+        self.rows = sorted(rows, key=lambda row: (row[0], row[1], row[2]["row_ref"]))
         self.unknown = unknown
         self.starts = [row[0] for row in self.rows]
         self.ends = sorted(row[1] for row in self.rows)

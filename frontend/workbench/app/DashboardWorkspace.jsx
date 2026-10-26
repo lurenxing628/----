@@ -17,7 +17,7 @@
     const analysisData = data && data.analysis;
     const analysisRead = { loading: list.loading, error: data && data.analysis_error ? new Error(data.analysis_error) : null };
     const detailQuery = React.useMemo(() => ({ ...q, snapshot_ref: snapshot }), [q, snapshot]);
-    const handlingAvailable = q.category !== 'external' || !!data && data.categories.external.handling_supported === true;
+    const handlingAvailable = q.category !== 'external' || !!data;
     const history = S.useRead(signal => api.detail(selected, detailQuery, historyPage, signal), [api, selected, detailQuery, historyPage], handlingAvailable && tab === 'records' && !!selected && !!snapshot);
     const detail = S.useRead(signal => api.detail(selected, detailQuery, undefined, signal), [api, selected, detailQuery], handlingAvailable && tab !== 'records' && !!selected && !!snapshot && !history.result);
     const item = history.result ? history.result.data.item : detail.result && detail.result.data.item;
@@ -35,16 +35,16 @@
       ...(selected ? { item_ref: selected, history_page: historyPage } : {}), ...(analysisBatch ? { analysis_batch_ref: analysisBatch } : {}),
       ...(Object.keys(comparisonState.context).length ? { comparison: comparisonState.context } : {}) }; }
     function openTarget(n, current, overview = false) {
-      P.navigationTarget(n, onNavigate);
+      P.navigationTarget(n);
       const context = { ...(overview ? {} : n.context), return_to: { view: 'dashboard', context: current } };
       if (n.view === 'outsourcing') { setOutsourcing(context); return; }
       if (n.view === 'batches' && context.batch_ref) context.entity_ref = context.batch_ref;
-      C.check(onNavigate(n.view, context) !== false, '目标页面未能打开，请刷新重试。');
+      onNavigate(n.view, context);
     }
     function navigate(n, origin) {
       try {
         setNavError(null);
-        const label = P.navigationTarget(n, onNavigate), current = readContext();
+        const label = P.navigationTarget(n), current = readContext();
         if (!n.enabled) {
           C.check(origin && origin === item && origin.item_ref === selected && origin.navigation.includes(n), '这条记录的来源和详情对不上，页面没有跳转。请刷新后重试。');
           setNavigationConfirmation({ navigation: n, item: origin, current, label });
@@ -72,7 +72,7 @@
     if (outsourcing) return <div className="plana dashboard-live" data-dashboard-outsourcing data-return-item={outsourcing.return_to.context.item_ref}>
       <header className="dy-heading"><h2>外协物流登记</h2><Button icon="arrow-left" onClick={() => setOutsourcing(null)}>返回值班台条目</Button></header>
       <div className="dy-note">外协物流登记概览</div><window.WorkbenchReference entries={{ '登记编号': outsourcing.outsourcing_ref }} />
-      {typeof window.OutsourcingWorkspace === 'function' ? <window.OutsourcingWorkspace outsourcingRef={outsourcing.outsourcing_ref} onUpdated={() => setRegistrationChanged(true)} /> : <div className="dy-note warning" role="status">{window.WorkbenchTerms.outcomes.unavailable}</div>}
+      <window.OutsourcingWorkspace outsourcingRef={outsourcing.outsourcing_ref} onUpdated={() => setRegistrationChanged(true)} />
     </div>;
     return <div className="plana dashboard-live" data-dashboard-workspace data-ready={!!data} data-analysis-ready={!!analysisData && !list.loading} aria-busy={list.loading}>
       <h2 className="wb-page-title">值班台</h2><header className="dy-page-toolbar"><div className="dy-tools"><Button icon="refresh-cw" aria-label="刷新值班台" busy={list.loading} disabled={command.busy} onClick={reload}>刷新</Button>
@@ -104,18 +104,18 @@
             {handlingAvailable && activeTab === 'items' && <div className={item ? 'wb-detail-layout dy-detail-layout' : ''}><div><P.Filters query={q} busy={list.loading} onChange={change} /><P.List data={data} selected={selected} onSelect={choose} query={q} onClear={() => change({ query: '', status: 'all' })} />
               <P.Pager page={data.page} busy={list.loading} onPage={page => change({ page }, true)} onSize={size => change({ size })} />
               <ErrorBox error={detail.error} />{detail.loading && <window.WorkbenchListControls.EmptyState kind="loading" title="正在读取这条记录的详情" />}
-              </div>{item && <P.Detail item={item} onClose={() => choose(null)} onHandle={() => setDialog(true)} onHistory={() => setTab('records')} navigate={navigate} canNavigate={typeof onNavigate === 'function'} />}</div>}
+              </div>{item && <P.Detail item={item} onClose={() => choose(null)} onHandle={() => setDialog(true)} onHistory={() => setTab('records')} navigate={navigate} />}</div>}
             {!external && tab === 'analysis' && <>
               {analysisRead.loading && <p role="status">正在读取同一正式计划的分析依据。</p>}
               {analysisRead.error && <Button icon="refresh-cw" onClick={reload}>刷新分析</Button>}
               {analysisData && <window.DashboardAnalysisPanels.Workspace key={(data.plan ? data.plan.plan_ref : 'no-plan') + q.category + revision}
                 data={data} category={q.category} selected={analysisBatch} onSelect={setAnalysisBatch} onCompare={() => setTab('compare')}
-                navigate={navigate} canNavigate={typeof onNavigate === 'function'} />}
+                navigate={navigate} />}
             </>}
             {!external && tab === 'compare' && (['candidate', 'delivery', 'all'].includes(q.category) ? <>
               <window.DashboardCandidates key={q.category} catalog={data.candidate_catalog} initialContext={comparisonState.context} onState={onComparisonState}
                 selectedBatch={analysisBatch} onSelectBatch={setAnalysisBatch} issueBatchRef={q.category === 'delivery' ? analysisBatch || item && item.source.batch_ref || null : null} />
-              <P.Candidates data={data} navigate={navigate} canNavigate={typeof onNavigate === 'function'} />
+              <P.Candidates data={data} navigate={navigate} />
             </> : <section aria-label="本问题候选状态"><h3>这个问题还没有单独的候选方案</h3>
               <Button icon="git-compare-arrows" onClick={() => category('candidate')}>查看现有候选方案</Button></section>)}
             {handlingAvailable && activeTab === 'records' && <window.DashboardHistory read={history} selected={selected} rows={data.items} historyPage={historyPage} onPage={setHistoryPage} onSelect={choose} onHandle={() => setDialog(true)} />}
@@ -126,9 +126,8 @@
         onClose={() => setNavigationConfirmation(null)} onConfirm={confirmNavigation} />}
     </div>;
   }
-  function WorkbenchDashboardWorkspace({ initialContext = {}, onNavigate }) {
+  function WorkbenchDashboardWorkspace({ initialContext, onNavigate }) {
     let start; try {
-      C.check(C.object(initialContext));
       const { analysis_batch_ref, comparison, ...base } = initialContext;
       C.check(analysis_batch_ref === undefined || C.ref(analysis_batch_ref));
       start = { ...S.context(base), analysisBatch: analysis_batch_ref || null,

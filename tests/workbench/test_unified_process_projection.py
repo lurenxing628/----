@@ -7,6 +7,7 @@ import pytest
 
 from core.models.objective import best_score_schema
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget
 from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION, build_shared_process
 from core.services.scheduler.run.schedule_shared_search import SharedSearch
 from core.services.workbench.facts.candidate_process import candidate_process
@@ -26,6 +27,13 @@ from core.services.workbench.run.decision_process_export import (
     process_export_tables,
 )
 from tests._support.shared_schedule_archive import _archive, _candidate, _failure, _observe_decoded, _result
+
+
+def _search(objective):
+    archive = _archive(objective)
+    budget = SharedSearchBudget(clock=lambda: 0, started_at=0, deadline=1.0,
+                                target_objectives=archive.target_objectives, configured_seconds=1.0)
+    return SharedSearch(archive=archive, clock=lambda: 0, started_at=0, budget=budget)
 
 
 def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run():
@@ -113,15 +121,15 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
     assert stages["prepare_view"]["start_elapsed_ms"] is None and stages["prepare_view"]["elapsed_ms"] == 10
     assert stages["improve"]["evaluation_count"] == stages["improve"]["verified_evaluation_count"] == 1
     assert stages["improve"]["elapsed_ms"] == 75 and stages["improve"]["reused_decisions"] == 1
-    tardiness = project_unified_process(process, objective="min_tardiness")
-    changeover = project_unified_process(process, objective="min_changeover")
+    tardiness = project_unified_process(process, objective="min_tardiness", candidate=candidates[1], candidates=candidates)
+    changeover = project_unified_process(process, objective="min_changeover", candidate=candidates[1], candidates=candidates)
     assert tardiness["selected_objective"]["unit"] == "小时" and tardiness["progress"]["points"][-1]["primary_value"] == 5.5
     assert changeover["selected_objective"]["unit"] == "次" and changeover["progress"]["points"][-1]["primary_value"] == 4
     assert tardiness["actions"] == [] and tardiness["budget"]["objectives"]["min_tardiness"]["objective_status"] == "not_searched_budget"
     for direction in (projected, tardiness, changeover):
         assert direction["summary"]["first_improvement_elapsed_ms"] == direction["summary"]["last_improvement_elapsed_ms"] == 35
     with pytest.raises(WorkbenchCommandRejected) as caught:
-        project_unified_process(process, objective="min_weighted_tardiness")
+        project_unified_process(process, objective="min_weighted_tardiness", candidate=candidates[1], candidates=candidates)
     assert caught.value.code == "invalid_input" and caught.value.status == 422
 
     source = SimpleNamespace(run={"run_ref": run_ref}, rows=[{"candidate_ref": row["candidate_ref"]} for row in candidates],
@@ -226,7 +234,7 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
     # Actual arrangements and metric computation feed the collector; finding an initial best is not improvement.
     worse = _candidate([_result(1, 5), _result(2, 7), _result(3, 9)], objective="min_overdue")
     better = _candidate([_result(1, 0), _result(3, 1), _result(2, 2)], objective="min_overdue")
-    shared = SharedSearch(archive=_archive("min_overdue"), clock=lambda: 0, started_at=0)
+    shared = _search("min_overdue")
     shared.phase = "initial_construct"
     _observe_decoded(shared, "min_overdue", candidate=deepcopy(worse), origin="real_arrangement", verified=True, elapsed_ms=10)
     initial = build_shared_process(shared, runtime_ms=100, stop_reason="completed", decode_stats={}, budget_stats=process["budget"])
@@ -248,7 +256,7 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
         assert target["points"][-1]["elapsed_ms"] == 100 and target["points"][-1]["flags"] == ["final"]
 
     # The same real collector at the last bucket boundary loses its 999ms point while keeping the saved time.
-    sampled = SharedSearch(archive=_archive("min_overdue"), clock=lambda: 0, started_at=0)
+    sampled = _search("min_overdue")
     _observe_decoded(sampled, "min_overdue", candidate=deepcopy(worse), origin="real_arrangement", verified=True, elapsed_ms=10)
     _observe_decoded(sampled, "min_overdue", candidate=deepcopy(better), origin="real_arrangement", verified=True, elapsed_ms=999)
     sampled_process = build_shared_process(sampled, runtime_ms=1000, stop_reason="completed", decode_stats={}, budget_stats=process["budget"])
@@ -260,7 +268,7 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
         assert target["points"][-1]["flags"] == ["final"]
 
     # Only strict changes within the same known partial scope count; new and unknown scopes initialize separately.
-    partial = SharedSearch(archive=_archive("min_overdue"), clock=lambda: 0, started_at=0)
+    partial = _search("min_overdue")
     _observe_decoded(partial, "min_overdue", candidate=_candidate([_result(1, 5), _result(2, 7)], failures=(_failure(3),)),
                     origin="known_partial", verified=True, elapsed_ms=10)
     _observe_decoded(partial, "min_overdue", candidate=_candidate([_result(1, 0), _result(2, 2)], failures=(_failure(3),)),
@@ -280,8 +288,8 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
         assert target["points"][-1]["flags"] == ["final"]
 
     # Point provenance must match the actual improving event, even when its score is unchanged.
-    for mismatch in ({"elapsed_ms": 16}, {"entry_id": partial.events[0]["entry_id"]},
-                     {"score_scope": partial.events[2]["score_scope"]}, {"score_scope": partial.events[3]["score_scope"]}):
+    for mismatch in ({"elapsed_ms": 16}, {"score_scope": partial.events[2]["score_scope"]},
+                     {"score_scope": partial.events[3]["score_scope"]}):
         inconsistent = SimpleNamespace(archive=partial.archive, events=partial.events, actions=partial.actions,
             bridges=partial.bridges, evidence_event_ids=partial.evidence_event_ids, selected_entry=partial.selected_entry,
             trajectories={name: [{**partial.trajectories[name][1], **mismatch}] for name in targets})

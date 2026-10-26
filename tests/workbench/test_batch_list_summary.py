@@ -65,6 +65,20 @@ def test_summary_keeps_complete_entity_values_and_whole_scope_pagination(batch_c
         assert expanded == [full["PAGE-B"]["operations"][0]["ref"]]
 
 
+def test_blank_stored_due_date_and_priority_sort_as_text_instead_of_failing(batch_client):
+    conn = batch_client.batch_conn
+    page_batches(conn)
+    insert_row(conn, "Batches", {"batch_id": "PAGE-E", "part_no": "P1", "part_name": "retained name",
+        "quantity": 1, "due_date": "", "priority": "", "ready_status": "yes", "status": "pending"})
+    conn.commit()
+    for field, expected in (("due_date", ["PAGE-E", "PAGE-D", "PAGE-B", "PAGE-C", "PAGE-A"]),
+                            ("priority", ["PAGE-E", "PAGE-A", "PAGE-B", "PAGE-C", "PAGE-D"])):
+        scope = batch_scope({"query": "PAGE-", "sort": field, "size": 10})
+        response = batch_client.post(BASE + "/query", json=scope)
+        assert response.status_code == 200, response.get_json()
+        assert [row["business_code"] for row in response.get_json()["data"]["entities"]] == expected
+
+
 def test_filtered_selection_facets_and_export_use_summaries(batch_client, monkeypatch):
     page_batches(batch_client.batch_conn)
 

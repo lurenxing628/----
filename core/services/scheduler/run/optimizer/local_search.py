@@ -34,7 +34,7 @@ __all__ = ["LocalSearchStage"]
 def _local_search_skip_reason(*, best: Optional[Dict[str, Any]]) -> Optional[str]:
     if best is None:
         return "best_missing"
-    if len(best.get("order") or []) < 2:
+    if len(best["order"]) < 2:
         return "order_too_short"
     return None
 
@@ -52,7 +52,7 @@ def _resolve_sgs_dispatch_rules(valid_dispatch_rules: Optional[List[str]], curre
     # The rule neighborhood searches the registry rules plus the ATC k ladder; the
     # current rule may already be a ladder token adopted by an earlier phase.
     out = list(dispatch_rule_search_pool(valid_dispatch_rules or DEFAULT_SGS_DISPATCH_RULES))
-    current = str(current_dispatch_rule or "").strip().lower()
+    current = current_dispatch_rule.strip().lower()
     if current and current not in out:
         out.insert(0, current)
     return out
@@ -62,7 +62,7 @@ class _LocalSearchRun:
     """One local search over the incumbent: the decode inputs shared by every round and restart."""
 
     def __init__(self, **decode_inputs: Any) -> None:
-        self.valid_dispatch_rules: List[str] = list(decode_inputs.pop("valid_dispatch_rules", None) or [])
+        self.valid_dispatch_rules: List[str] = decode_inputs.pop("valid_dispatch_rules")
         self.inputs = decode_inputs
 
     def round(self, *, local_state: LocalSearchState, vns_state: VnsState, strategy_state: Tuple[Any, Any, str, str],
@@ -197,7 +197,7 @@ class LocalSearchStage(SearchStage):
         if candidate is prev_best:
             return
         self.local_state.best = candidate
-        if (candidate.get("_shared_entry_id") != prev_best.get("_shared_entry_id")
+        if (candidate["archive_ref"].entry_id != prev_best["archive_ref"].entry_id
                 or candidate.get("order") != prev_best.get("order")):
             self._tried_sgs_rules.clear()
         if (self.stop_reason == "estimated_decode_cost"

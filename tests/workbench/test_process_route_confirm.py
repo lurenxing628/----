@@ -87,11 +87,13 @@ def test_catalog_workflow_reuses_operation_states_and_preserves_stage_results(st
 
 
 def test_master_workflow_reuses_catalog_identity_index(stage_conn, monkeypatch):
+    from core.infrastructure.transaction import TransactionManager
     from core.services.process.workflow_state import workflow_snapshot
     from core.services.workbench.master.overview_facts import MasterOverviewFacts
 
     prepare_stages(stage_conn)
-    expected = workflow_snapshot(stage_conn)
+    with TransactionManager(stage_conn).transaction():
+        expected = workflow_snapshot(stage_conn)
     facts, scans = MasterOverviewFacts(stage_conn), []
     original = facts.repo.overview_tables
 

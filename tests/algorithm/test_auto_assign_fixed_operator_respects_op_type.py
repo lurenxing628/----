@@ -7,6 +7,7 @@ from typing import Optional
 import pytest
 
 from tests._support.algo_operations import make_algo_op, make_batch
+from tests._support.schedule_decode import config_snapshot, production_decode
 
 
 @dataclass
@@ -22,11 +23,6 @@ class _StubCalendarService:
 
     def add_calendar_days(self, dt: datetime, days: float) -> datetime:
         return dt + timedelta(days=float(days or 0.0))
-
-
-@dataclass
-class _Cfg:
-    auto_assign_enabled: str = "yes"
 
 
 def test_auto_assign_fixed_operator_respects_op_type() -> None:
@@ -56,8 +52,9 @@ def test_auto_assign_fixed_operator_respects_op_type() -> None:
         "pair_rank": {},
     }
 
-    sched = GreedyScheduler(calendar_service=_StubCalendarService(), config_service=_Cfg())
-    results, summary, _strategy, used_params = sched.schedule(
+    sched = GreedyScheduler(calendar_service=_StubCalendarService(), config_service=config_snapshot(auto_assign_enabled="yes"))
+    decoded = production_decode(
+        sched,
         operations=[op],
         batches=batches,
         start_dt=datetime(2026, 1, 1, 8, 0, 0),
@@ -65,6 +62,7 @@ def test_auto_assign_fixed_operator_respects_op_type() -> None:
         dispatch_mode="batch_order",
         dispatch_rule="slack",
     )
+    results, summary, used_params = decoded.results, decoded.summary, decoded.used_params
 
     assert summary.success is True, f"排产应成功，summary={summary}"
     assert summary.failed_ops == 0, f"failed_ops 应为 0，summary={summary}"
@@ -93,9 +91,9 @@ def test_auto_assign_keeps_machine_hours_qualification_failure_order(failure):
     pool = {"machines_by_op_type": {"T1": [] if failure == "machine_and_hours" else ["M1"]},
             "operators_by_machine": {"M1": ["O1"]}, "machines_by_operator": {},
             "operator_skills": {}, "pair_rank": {}}
-    scheduler = GreedyScheduler(calendar_service=_StubCalendarService(), config_service=_Cfg())
-    preparation = prepare_native_schedule_inputs(None, scheduler=scheduler, operations=[op],
-                                                 batches={"B1": batch}, resource_pool=pool)
+    scheduler = GreedyScheduler(calendar_service=_StubCalendarService(), config_service=config_snapshot(auto_assign_enabled="yes"))
+    preparation = prepare_native_schedule_inputs({}, scheduler=scheduler, operations=[op], batches={"B1": batch},
+                                                 seed_results=[], resource_pool=pool, graph_ready_context=None)
     stats = make_algo_stats()
     kwargs = dict(calendar=scheduler.calendar, algo_stats=stats, op=op, batch=batch, batch_progress={},
                   machine_timeline={}, operator_timeline={}, base_time=datetime(2026, 1, 1, 8),

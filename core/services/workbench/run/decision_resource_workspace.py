@@ -12,7 +12,6 @@ from .decision_source import DecisionSource
 
 
 def _resource_view(query):
-    query = dict(query or {})
     fields = ("resource_kind", "resource_ref", "pressure_filter", "sort", "order", "grain",
               "pressure_threshold", "display_start", "display_end")
     filters = normalize_resource_filters("resources", **{key: query[key] for key in fields if key in query})
@@ -43,7 +42,7 @@ def normalize_saved_resource_view(query, scope):
     return value
 
 
-def read_resource_workspace(conn, run_ref, *, resource_query=None, **summary_query):
+def read_resource_workspace(conn, run_ref, *, resource_query, **summary_query):
     saved_view, filters = _resource_view(resource_query)
     store = CandidateStore(conn)
     with store.snapshot(), read_evidence_scope(conn):

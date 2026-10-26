@@ -12,13 +12,13 @@ from .decision_tradeoffs import aggregate_tradeoffs, tradeoff_entry
 RECOMMENDATION_VERSION = "decision-recommendation-v1"
 
 
-def detail_drill(source, candidate_ref, tab, query=None):
+def detail_drill(source, candidate_ref, tab, query):
     """Target the saved recommendation while retaining the original view context."""
     return {"run_ref": source.run["run_ref"], "candidate_ref": candidate_ref,
             "selected_candidate_ref": candidate_ref, "comparison_mode": source.comparison_mode,
             "reference_candidate_ref": source.reference_ref, "range_start": source.scope["range_start"],
             "range_end": source.scope["range_end"], "resource_view": source.resource_view,
-            "comparison_tab": tab, "detail_query": query or {}}
+            "comparison_tab": tab, "detail_query": query}
 
 
 def _support(source, candidate_ref, kind, ref, tab, query, *, tasks=None, operation_ref=None, batch_ref=None, before=False):
@@ -91,7 +91,7 @@ class RecommendationSupport:
         for resource in source.resources.resources:
             if resource["kind"] != kind:
                 continue
-            old, new = (source.resources._window_rows[source.computation_key(name), resource["ref"]] for name in ("reference", key))
+            old, new = (source.resources.window_row(name, resource["ref"]) for name in ("reference", key))
             name = flags.get(field, field)
             previous, selected = old.get(name), new.get(name)
             if type(previous) not in (int, float, bool) or type(selected) not in (int, float, bool):

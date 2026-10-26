@@ -13,12 +13,16 @@ def _list_exit_backups(backup_dir: str) -> list:
     return sorted([f for f in os.listdir(backup_dir) if f.startswith("aps_backup_") and f.endswith("_exit.db")])
 
 
-def test_exit_backup_maintenance(db_path, tmp_path) -> None:
+def test_exit_backup_maintenance(db_path, tmp_path, monkeypatch) -> None:
 
-    from core.infrastructure.backup import BackupManager, maintenance_window
+    from flask import Flask
+
+    from core.infrastructure.backup import maintenance_window
     from core.infrastructure.database import ensure_schema, get_connection
     from data.repositories.system_config_repo import SystemConfigRepository
     from web.bootstrap import factory as factory_mod
+    from web.bootstrap.launcher_shutdown import RuntimeExitBackupManager
+    from web.bootstrap.workbench_system_restore_recovery import system_journal_directory
 
     backup_dir = os.path.join(str(tmp_path), "backups")
     os.makedirs(backup_dir, exist_ok=True)
@@ -35,7 +39,10 @@ def test_exit_backup_maintenance(db_path, tmp_path) -> None:
     finally:
         conn.close()
 
-    bm = BackupManager(db_path=db_path, backup_dir=backup_dir, keep_days=7, logger=None)
+    app = Flask(__name__)
+    app.config.update(DATABASE_PATH=db_path, BACKUP_DIR=backup_dir, BACKUP_KEEP_DAYS=7,
+                      WORKBENCH_SYSTEM_JOURNAL_DIR=system_journal_directory(db_path))
+    monkeypatch.setattr(factory_mod, "_EXIT_BACKUP_MANAGER", RuntimeExitBackupManager(app))
 
     hold_started = threading.Event()
     hold_release = threading.Event()
@@ -52,7 +59,7 @@ def test_exit_backup_maintenance(db_path, tmp_path) -> None:
         raise RuntimeError("未能建立维护窗口，无法执行退出备份回归")
 
     t0 = time.perf_counter()
-    ran = factory_mod._run_exit_backup(bm)
+    ran = factory_mod._run_exit_backup()
     elapsed = time.perf_counter() - t0
 
     hold_release.set()
@@ -66,6 +73,59 @@ def test_exit_backup_maintenance(db_path, tmp_path) -> None:
         raise RuntimeError(f"_run_exit_backup 预期 fail-fast，不应长时间等待；实际耗时 {elapsed:.3f}s")
     if _list_exit_backups(backup_dir):
         raise RuntimeError("维护窗口期间不应生成 *_exit.db")
+
+
+def test_unconfirmed_config_connection_close_skips_exit_backup_with_its_own_reason(db_path, tmp_path, monkeypatch, caplog) -> None:
+    import logging
+    import sqlite3
+
+    from flask import Flask
+
+    from core.infrastructure.database import get_connection
+    from data.repositories.system_config_repo import SystemConfigRepository
+    from web.bootstrap.launcher_shutdown import RuntimeExitBackupManager, read_exit_backup_enabled, run_exit_backup
+    from web.bootstrap.workbench_system_restore_recovery import system_journal_directory
+
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            SystemConfigRepository(conn).set("auto_backup_enabled", "yes")
+    finally:
+        conn.close()
+    app = Flask(__name__)
+    app.config.update(DATABASE_PATH=db_path, BACKUP_DIR=os.path.join(str(tmp_path), "backups"), BACKUP_KEEP_DAYS=7,
+                      WORKBENCH_SYSTEM_JOURNAL_DIR=system_journal_directory(db_path))
+    manager = RuntimeExitBackupManager(app)
+    backups = []
+    monkeypatch.setattr(manager, "backup", lambda **kwargs: backups.append(kwargs))
+    opened = []
+
+    class CloseUnconfirmed:
+        def __init__(self, path):
+            self.conn = get_connection(path)
+            opened.append(self.conn)
+
+        def __getattr__(self, name):
+            return getattr(self.conn, name)
+
+        def close(self):
+            raise sqlite3.OperationalError("config connection close unconfirmed")
+
+    def read_enabled(target):
+        return read_exit_backup_enabled(target, CloseUnconfirmed)
+
+    try:
+        with caplog.at_level(logging.INFO):
+            assert read_enabled(manager) is None
+            caplog.clear()
+            assert run_exit_backup(manager, read_enabled) is False
+    finally:
+        for item in opened:
+            item.close()
+    assert backups == []
+    assert "关闭退出自动备份配置连接失败，本次不做退出备份：config connection close unconfirmed" in caplog.text
+    assert "退出自动备份已跳过：读取配置失败。" in caplog.text
+    assert "维护状态或停止屏障未核实" not in caplog.text
 
 
 def test_operation_log_cleanup_uses_utc_boundary_and_keeps_limits(schema_conn, tmp_path, monkeypatch):

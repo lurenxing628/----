@@ -9,13 +9,7 @@
     && (value.length < 19 || value.length === 19 && value <= '9223372036854775807');
   function kind(value) { if (!['route', 'hours'].includes(value)) throw C.failure('文件类型必须是工艺路线或工时定额。'); return value; }
   function operation(value) { return 'process_' + kind(value) + '_import.confirm'; }
-  function envelope(raw) {
-    if (raw && raw.ok === false) throw raw;
-    if (!C.object(raw) || raw.ok !== true || raw.schema_version !== 1 || !C.object(raw.data) || !C.object(raw.meta)
-        || !['production', 'demo'].includes(raw.meta.source) || raw.meta.time_basis !== 'factory_local' || !A.token(raw.meta.snapshot_ref)
-        || !text(raw.meta.request_ref) || !text(raw.meta.as_of) || !Array.isArray(raw.warnings)) throw C.failure('工艺文件读取结果不完整，请重新预检。');
-    return raw;
-  }
+  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，这里只校验 data。
   function columns(value) {
     return Array.isArray(value) && value.length > 0 && value.every(row => C.object(row) && text(row.key) && /^[a-z][a-z0-9_]*$/.test(row.key)
       && !['id', 'entity_key', 'entity_ref', 'write_token', 'revision'].includes(row.key) && text(row.label) && row.label.trim() && row.label !== row.key)
@@ -61,8 +55,8 @@
     return { changed: data.summary.new + data.summary.update,
       unchanged: data.summary.unchanged, rejected: data.summary.rejected };
   }
-  function preview(raw, requestedKind, format, request) {
-    const result = envelope(raw), d = result.data;
+  function preview(result, requestedKind, format, request) {
+    const d = result.data;
     if (d.kind !== kind(requestedKind) || d.operation !== operation(requestedKind) || !A.token(d.preview_ref)
         || !Number.isFinite(Date.parse(d.expires_at)) || d.commit_policy !== 'atomic' || typeof d.can_confirm !== 'boolean'
         || d.format !== format || d.mode !== 'upsert' || d.template_version !== 1
@@ -104,8 +98,8 @@
     }
     return { ...A.listContext(request), format, selection, ...(selection === 'explicit' ? { refs: A.selection(request.refs, true) } : {}) };
   }
-  function exportPreview(raw, requestedKind, body) {
-    const result = envelope(raw), d = result.data;
+  function exportPreview(result, requestedKind, body) {
+    const d = result.data;
     if (!A.token(d.export_ref) || d.selection !== body.selection || d.kind !== kind(requestedKind) || !count(d.row_count) || !count(d.part_count)
         || !Number.isFinite(Date.parse(d.expires_at)) || d.format !== body.format || !columns(d.columns) || !C.object(d.scope)
         || d.target_ref !== (body.target_ref ?? null) || body.target_ref && Object.keys(d.scope).length !== 0

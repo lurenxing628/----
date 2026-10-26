@@ -62,13 +62,14 @@ class EntryPointDeps:
     should_use_runtime_reloader: Callable[[bool], bool]
     should_own_runtime_resources: Callable[[bool], bool]
     atexit_register: Callable[..., Any]
-    # 锁先于 create_app 的归属判定所需（app 尚不存在时解析 DEBUG）；带默认值以兼容既有直接构造。
-    resolve_startup_debug_flag: Callable[[], bool] = resolve_startup_debug_flag
+    install_run_runtime: Callable[..., Any]
+    # 锁先于 create_app 的归属判定所需（app 尚不存在时解析 DEBUG）。
+    resolve_startup_debug_flag: Callable[[], bool]
     # B03 锁命名空间与 DB 绑定：db-scope 锁所需的 DB 路径解析（与 factory._apply_runtime_config
-    # 同源，合同测试锁定）；带默认值以兼容既有直接构造。
-    resolve_runtime_db_path: Callable[[str], str] = resolve_runtime_db_path
-    install_run_runtime: Optional[Callable[..., Any]] = None
-    prepare_runtime_server: Optional[Callable[..., Any]] = None
+    # 同源，合同测试锁定）。
+    resolve_runtime_db_path: Callable[[str], str]
+    # 仅 Windows 预先占住监听端口；其他平台为 None，走 pick_port。
+    prepare_runtime_server: Optional[Callable[..., Any]]
 
 
 def create_app_with_mode(ui_mode: str = "default") -> Flask:
@@ -195,13 +196,9 @@ def app_main(
         deps = _default_deps(ui_mode)
 
     args, _unknown = _parse_cli_args(argv or sys.argv[1:])
-    if str(args.runtime_stop or "").strip():
-        return int(
-            deps.stop_runtime_from_dir(
-                str(args.runtime_stop).strip(),
-                stop_aps_chrome=bool(args.stop_aps_chrome),
-            )
-        )
+    runtime_stop = args.runtime_stop.strip()
+    if runtime_stop:
+        return int(deps.stop_runtime_from_dir(runtime_stop, stop_aps_chrome=bool(args.stop_aps_chrome)))
 
     runtime_dir = runtime_base_dir(anchor_file=anchor_file)
     if args.sample_inject:
@@ -258,7 +255,7 @@ def _serve_created_app(deps, app, *, ui_mode, runtime_dir, prelaunch_log_dir,
     runtime = None
     prepared_server = None
     try:
-        if recovery_required and (not owns_runtime_resources or deps.install_run_runtime is None):
+        if recovery_required and not owns_runtime_resources:
             _write_launch_error_with_observability(
                 runtime_dir, "恢复宿主必须持有原数据库运行锁。", prelaunch_log_dir,
                 logger=app.logger, context="恢复宿主启动失败")
@@ -294,7 +291,7 @@ def _serve_created_app(deps, app, *, ui_mode, runtime_dir, prelaunch_log_dir,
                 return 16
         else:
             host, port = _resolve_listen_endpoint(deps, host, prelaunch_log_dir, runtime_dir, logger=app.logger)
-        _writeback_listen_env(host, port, logger=app.logger)
+        _writeback_listen_env(host, port)
 
         if owns_runtime_resources:
             rc = _publish_runtime_contract(
@@ -352,13 +349,10 @@ def _resolve_listen_endpoint(deps, host, prelaunch_log_dir, runtime_dir, *, logg
     return host, port
 
 
-def _writeback_listen_env(host, port, *, logger) -> None:
+def _writeback_listen_env(host, port) -> None:
     # 必须留 entrypoint 模块且走模块 os.environ（测试 monkeypatch entrypoint_mod.os.environ），禁子函数内 import os。
-    try:
-        os.environ["APS_HOST"] = str(host)
-        os.environ["APS_PORT"] = str(int(port))
-    except Exception as exc:
-        safe_log(logger, "warning", "回写 APS_HOST/APS_PORT 环境变量失败，开发重载子进程可能拿不到固定监听地址：%s", exc)
+    os.environ["APS_HOST"] = str(host)
+    os.environ["APS_PORT"] = str(port)
 
 
 def _acquire_runtime_lock_before_app(
@@ -392,8 +386,7 @@ def _acquire_runtime_lock_before_app(
         )
         return 13
     runtime_lock_state["payload"] = acquired
-    deps.atexit_register(release_runtime_after_jobs, deps, runtime_lock_state,
-                         lock_scope_target, os.getpid(), runtime_db_path)
+    deps.atexit_register(release_runtime_after_jobs, deps, runtime_lock_state, lock_scope_target, runtime_db_path)
     return None
 
 

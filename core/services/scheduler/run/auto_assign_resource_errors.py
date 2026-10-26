@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Set
 
 from core.models.scheduler_public_errors import infer_legacy_public_code, legacy_public_error_message
 
@@ -25,15 +25,15 @@ def is_auto_assign_resource_error(message: Any) -> bool:
     return text.startswith("批次 ") and infer_legacy_public_code(text) in SGS_AUTO_ASSIGN_RESOURCE_ERROR_CODES
 
 
-def public_auto_assign_resource_error_message(message: Any) -> str:
-    text = str(message or "").strip()
+def public_auto_assign_resource_error_message(message: str) -> str:
+    text = message.strip()
     if not is_auto_assign_resource_error(text):
         return ""
     return legacy_public_error_message(text)
 
 
-def first_public_auto_assign_resource_error(messages: Optional[List[str]]) -> str:
-    for item in messages or ():
+def first_public_auto_assign_resource_error(messages: List[str]) -> str:
+    for item in messages:
         public_message = public_auto_assign_resource_error_message(item)
         if public_message:
             return public_message

@@ -386,7 +386,7 @@ class ResourceTaskIndex:
         self._last_sweep = None
         self._measurements = {}
 
-    def _measurement(self, resource, calendar):
+    def _measurement(self, resource, calendar, *, retain_statistics_values):
         key = (resource["kind"], resource["ref"])
         current = self._measurements.get(key)
         if current is not None and current[0] is calendar:
@@ -395,7 +395,7 @@ class ResourceTaskIndex:
         intervals = self._resources.get(key, self._empty)
         measurement = _ResourceMeasurement(resource, intervals, calendar, self.low, self.high, self.work_available,
                                            self.source, self.pressure_threshold, self._unknown_issues.get(key, []),
-                                           retain_statistics_values=self.retain_statistics_values)
+                                           retain_statistics_values=retain_statistics_values)
         # Keep the current resource's sweep for an immediately requested legacy
         # segment DTO. Full-cohort summaries do not retain every resource sweep.
         self._last_sweep = key, measurement.metrics.segments
@@ -407,12 +407,17 @@ class ResourceTaskIndex:
         self._measurements.pop((resource["kind"], resource["ref"]))
 
     def window(self, resource, calendar, *, start=None, end=None):
-        return self._measurement(resource, calendar).window(instant(start) if start is not None else None,
-                                                            instant(end) if end is not None else None)
+        measurement = self._measurement(resource, calendar, retain_statistics_values=self.retain_statistics_values)
+        return measurement.window(instant(start) if start is not None else None, instant(end) if end is not None else None)
+
+    def window_with_days(self, resource, calendar):
+        """Whole-window fold and its day rows; this measurement keeps each day's values for the day rows."""
+        measurement = self._measurement(resource, calendar, retain_statistics_values=True)
+        return measurement.window(None, None), self.days(resource, calendar)
 
     def day_filter_summary(self, resource, calendar):
         """Return full natural-day filtering facts from the first window fold."""
-        return self._measurement(resource, calendar)._day_filter_summary
+        return self._measurement(resource, calendar, retain_statistics_values=self.retain_statistics_values)._day_filter_summary
 
     def segments(self, resource):
         """Known concurrency spans, reusing the same independent-operation sweep."""
@@ -447,14 +452,14 @@ class ResourceTaskIndex:
                 "date": group, "grain": grain, "start": first.isoformat(), "end": last.isoformat(), "placeholder": placeholder}
 
     def period_facts(self, resource, calendar, *, grain="day", start=None, end=None):
-        measurement = self._measurement(resource, calendar)
+        measurement = self._measurement(resource, calendar, retain_statistics_values=self.retain_statistics_values)
         return [{**self._period_identity(first, last, group, placeholder, grain),
                  **measurement.period_statistics(first, last, measurement.calendar.days_in(first, last), grain, group,
                     whole=grain == "week" and first == self.low and last == self.high)}
                 for first, last, group, placeholder in self._period_bounds(measurement, grain, start, end)]
 
     def periods(self, resource, calendar, *, grain="day", start=None, end=None, details=False, group_keys=None):
-        measurement = self._measurement(resource, calendar)
+        measurement = self._measurement(resource, calendar, retain_statistics_values=self.retain_statistics_values)
         result = []
         for first, last, group, placeholder in self._period_bounds(measurement, grain, start, end):
             identity = self._period_identity(first, last, group, placeholder, grain)

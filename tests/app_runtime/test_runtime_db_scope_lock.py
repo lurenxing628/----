@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import multiprocessing
 import os
 import sys
@@ -20,9 +21,11 @@ from web.bootstrap import launcher_contracts as contracts_mod
 from web.bootstrap import launcher_stop as stop_mod
 from web.bootstrap.entrypoint import EntryPointDeps
 from web.bootstrap.launcher_lock_result import read_runtime_lock_result
-from web.bootstrap.launcher_paths import db_scope_lock_path, resolve_runtime_db_path
+from web.bootstrap.launcher_paths import db_scope_lock_path, default_chrome_profile_dir, resolve_runtime_db_path
+from web.bootstrap.workbench_run_runtime import install_workbench_run_runtime
 
 _OWNER = "LOCALBOX\\tester"
+_LOGGER = logging.getLogger(__name__)
 
 
 def _acquire(runtime_dir: Path, log_dir: Path, db: Path) -> Dict[str, Any]:
@@ -41,7 +44,7 @@ def test_diverged_lock_namespace_same_db_second_instance_rejected(tmp_path: Path
     logs1 = tmp_path / "inst1-logs"
     logs2 = tmp_path / "inst2-logs"
 
-    _acquire(tmp_path / "inst1", logs1, db)
+    first = _acquire(tmp_path / "inst1", logs1, db)
     assert (logs1 / "aps_runtime.lock").exists()
     db_lock = Path(db_scope_lock_path(str(db)))
     assert db_lock.exists(), "db-scope 锁必须建立在 DB 同路径"
@@ -54,7 +57,7 @@ def test_diverged_lock_namespace_same_db_second_instance_rejected(tmp_path: Path
     assert (logs1 / "aps_runtime.lock").exists(), "第一实例的壳锁不受影响"
     assert f"pid={os.getpid()}" in db_lock.read_text(encoding="utf-8"), "db-scope 锁仍归第一实例"
 
-    lock_mod.release_runtime_lock(str(logs1), db_path=str(db))
+    lock_mod.release_runtime_lock(str(logs1), db_path=str(db), expected_payload=first)
 
 
 def _replace_stale_database_lock(runtime_dir, log_dir, database, entered, resume, installed, finish, results):
@@ -166,7 +169,7 @@ def _publish_claim(runtime_dir, logs, database, claim, instance_id):
         str(runtime_dir), "127.0.0.1", 6322, db_path=str(database), shutdown_token="isolated-test-token",
         instance_id=instance_id, ui_mode="new_ui", log_dir=str(logs), backup_dir=str(runtime_dir / "backups"),
         excel_template_dir=str(runtime_dir / "templates"), owner=_OWNER, exe_path=sys.executable,
-        expected_lock=claim,
+        chrome_profile_dir=default_chrome_profile_dir(str(runtime_dir)), logger=_LOGGER, expected_lock=claim,
     )
 
 
@@ -220,7 +223,7 @@ def test_unmanaged_exit_uses_original_three_identities_after_backup(tmp_path, mo
         callbacks.append((callback, args, kwargs))
         return callback
 
-    deps = replace(entrypoint_mod._default_deps("default"), atexit_register=register, install_run_runtime=None,
+    deps = replace(entrypoint_mod._default_deps("default"), atexit_register=register,
                    resolve_runtime_db_path=lambda directory: str(database))
     assert entrypoint_mod._acquire_runtime_lock_before_app(
         deps, runtime_dir=str(runtime_dir), lock_scope_target=str(runtime_dir), lock_scope_log_dir=None,
@@ -338,8 +341,10 @@ def _make_real_lock_deps(tmp_path: Path, events: List[str], state: Dict[str, Any
         should_use_runtime_reloader=lambda debug: False,
         should_own_runtime_resources=lambda debug: True,
         atexit_register=_atexit_register,
+        install_run_runtime=install_workbench_run_runtime,
         resolve_startup_debug_flag=lambda: False,
         resolve_runtime_db_path=resolve_runtime_db_path,
+        prepare_runtime_server=None,
     )
 
 
@@ -353,7 +358,7 @@ def test_app_main_rejects_second_instance_on_db_conflict_before_create_app(tmp_p
 
     # 第一实例：真实获取壳锁 + db-scope 锁（锁目录 logs1）
     logs1 = tmp_path / "inst1-logs"
-    lock_mod.acquire_runtime_lock(
+    first = lock_mod.acquire_runtime_lock(
         str(tmp_path / "inst1"),
         str(logs1),
         owner=_OWNER,
@@ -376,7 +381,7 @@ def test_app_main_rejects_second_instance_on_db_conflict_before_create_app(tmp_p
     assert not (inst2_dir / "logs" / "aps_runtime.lock").exists(), "第二实例的壳锁必须回滚"
     assert f"pid={os.getpid()}" in Path(db_scope_lock_path(str(db))).read_text(encoding="utf-8")
 
-    lock_mod.release_runtime_lock(str(logs1), db_path=str(db))
+    lock_mod.release_runtime_lock(str(logs1), db_path=str(db), expected_payload=first)
 
 
 def test_quality_gate_runtime_probe_does_not_let_stale_contract_mask_active_lock_or_endpoint(monkeypatch) -> None:

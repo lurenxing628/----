@@ -68,7 +68,6 @@ def validate_adoption(conn, candidate_ref):
             with facts.snapshot(fingerprint=False):
                 baseline, projections = check_admission_current(conn, capture, current_capture=current_capture)
                 prepared = prepare_candidate_run_input(conn, capture["input"], projections, facts=facts, baseline=baseline,
-                                                       validated_projections={row.operation_ref: row for row in projections},
                                                        for_adoption=True)
                 if not same({row["operation_ref"]: row for row in prepared.dispositions}, scope):
                     raise CandidateAdoptionBlocked("candidate_disposition_mismatch", "排产时的工序范围或前后顺序和现在的记录对不上，不能采用。请重新做排产检查。")

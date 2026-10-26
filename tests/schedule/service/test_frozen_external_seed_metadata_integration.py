@@ -10,9 +10,8 @@ from core.services.scheduler.run.schedule_input_contracts import ScheduleRunInpu
 from core.services.scheduler.run.schedule_orchestrator import ScheduleOrchestrationOutcome
 from core.services.scheduler.template_lineage import TemplateLineageWriter
 from core.services.workbench.batch.facts import BatchFacts
-from core.services.workbench.run.compute import compute_candidate_run
+from tests.workbench.run_compute_support import compute_run, unchanged
 from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
-from tests.workbench.run_compute_support import unchanged
 
 
 def _external_plan(case, with_execution):
@@ -56,7 +55,7 @@ def test_template_change_keeps_frozen_batch_cycles_and_execution_facts(run_case,
     original = [tuple(row) for row in case.conn.execute("SELECT * FROM Schedule ORDER BY id")]
     settings = case.settings(*(["EXT", "B1"] if with_execution else ["EXT"]),
         hold_window={"start": "2026-09-09T00:00", "end": "2026-09-09T01:00"})
-    result = unchanged(case, lambda: compute_candidate_run(case.conn, settings, case.projections("EXT", "B1") if with_execution else case.projections("EXT")))
+    result = unchanged(case, lambda: compute_run(case.conn, settings, case.projections("EXT", "B1") if with_execution else case.projections("EXT")))
     prepared = result.schedule_input
     assert isinstance(prepared, ScheduleRunInput)
     assert prepared.frozen_op_ids == {ids[0]}
@@ -93,6 +92,26 @@ def test_seed_contract_rejects_missing_or_irregular_source(source):
     details = exc_info.value.details or {}
     assert details["reason"] == "invalid_seed_results"
     assert details["invalid_seed_samples"][0]["error"] == "第 1 条已有排产记录的工序来源不正确。"
+
+
+@pytest.mark.parametrize(("field", "label"), [("op_id", "工序编号"), ("seq", "工序号")])
+@pytest.mark.parametrize("value", ["missing", None, "", 0, -1, True, 1.5, "1a"])
+def test_seed_contract_rejects_missing_or_non_positive_identity(field, label, value):
+    """种子的工序编号和工序号由生产者按本次工序写入正整数：缺失也整次拒绝，不再静默当作 0。"""
+    from core.errors import ValidationError
+    from core.services.scheduler.run.schedule_seed_contracts import coerce_seed_results
+
+    seed = {"op_id": 1, "op_code": "OP1", "batch_id": "B1", "seq": 1, "machine_id": "M1", "operator_id": "O1",
+            "start_time": datetime(2026, 9, 9, 8), "end_time": datetime(2026, 9, 9, 9), "source": "internal"}
+    if value == "missing":
+        del seed[field]
+    else:
+        seed[field] = value
+    with pytest.raises(ValidationError) as exc_info:
+        coerce_seed_results([seed], optimizer_algo_stats={"fallback_counts": {}, "param_fallbacks": {}})
+    details = exc_info.value.details or {}
+    assert details["reason"] == "invalid_seed_results"
+    assert details["invalid_seed_samples"][0]["error"] == "第 1 条已有排产记录的" + label + "必须是正整数。"
 
 
 _MISSING_TIME = "第 1 条已有排产记录缺少开始时间或结束时间。"

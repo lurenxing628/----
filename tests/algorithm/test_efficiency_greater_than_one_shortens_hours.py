@@ -4,6 +4,7 @@ from datetime import timedelta
 
 from tests._support.algo_operations import make_algo_op, make_batch
 from tests._support.busy_block_case import BASE, day_row, native_calendar
+from tests._support.schedule_decode import config_snapshot, production_decode
 
 
 def test_efficiency_greater_than_one_shortens_hours() -> None:
@@ -18,8 +19,9 @@ def test_efficiency_greater_than_one_shortens_hours() -> None:
                       op_type_id="OT01", op_type_name="车削")
 
     with native_calendar(rows=[day_row(0, efficiency=1.2)]) as calendar:
-        sched = GreedyScheduler(calendar_service=calendar)
-        results, summary, _strategy, _params = sched.schedule(operations=[op], batches=batches, start_dt=start, dispatch_mode="batch_order")
+        sched = GreedyScheduler(calendar_service=calendar, config_service=config_snapshot())
+        decoded = production_decode(sched, operations=[op], batches=batches, start_dt=start, dispatch_mode="batch_order")
+    results, summary = decoded.results, decoded.summary
     assert summary.total_ops == 1 and summary.scheduled_ops == 1 and summary.failed_ops == 0, f"排产摘要异常：{summary!r}"
     assert len(results) == 1, f"结果数量异常：{len(results)}"
 

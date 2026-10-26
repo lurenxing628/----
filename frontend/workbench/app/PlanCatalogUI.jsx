@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const { Button, ErrorBox, Issues } = window.ResourceControls;
-  const C = window.APSResourceContract, P = window.APSPlanContract, S = window.APSResourceSession;
+  const S = window.APSResourceSession;
   function Identity({ plan }) {
     const unavailable = !plan.capabilities.view;
     const T = window.WorkbenchTerms;
@@ -13,10 +13,7 @@
     const [paused, setPaused] = React.useState(false), [collapsed, setCollapsed] = React.useState(!!selectedRef);
     const attempted = React.useRef(false), section = React.useRef(null), restoreFocus = React.useRef(false);
     const scope = React.useMemo(() => ({ collection, size: 20, ...pages[index] }), [collection, pages, index]);
-    const read = S.useQuery(async signal => {
-      if (typeof adapter.catalog !== 'function') throw C.failure('dependency not wired: PlanAPI.catalog');
-      return adapter.catalog(scope, signal);
-    }, [adapter, scope], !paused);
+    const read = S.useQuery(signal => adapter.catalog(scope, signal), [adapter, scope], !paused);
     const result = read.result, data = result && result.data;
     React.useEffect(() => {
       if (attempted.current || !data || read.loading || read.error || collection !== 'history' || index !== 0) return;

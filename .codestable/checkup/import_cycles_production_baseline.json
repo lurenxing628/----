@@ -42,7 +42,7 @@
   }
  ],
  "unresolved_dynamic_imports": [
-  "core/plugins/manager.py|107|lazy|spec_from_file_location(module_name)",
+  "core/plugins/manager.py|103|lazy|spec_from_file_location(module_name)",
   "data/repositories/__init__.py|110|lazy|module_name"
  ]
 }

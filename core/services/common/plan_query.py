@@ -23,7 +23,7 @@ from data.repositories.schedule_rows import ScheduleDetailRow, ScheduleTimeSpanR
 from .plan_identity import build_plan_identity
 
 
-def _resolution_status(role: Optional[str], *, source_table: Optional[str]) -> str:
+def _resolution_status(role: str, *, source_table: str) -> str:
     if is_comparison_plan(role=role, source_table=source_table):
         return "resolved_comparison"
     return "resolved_adopted"
@@ -148,15 +148,12 @@ class SchedulePlanQueryService:
             available_roles=available_roles,
         ))
     def resolve_existing_plan(self, version: int, role: str) -> SchedulePlanResolution:
-        requested_role = str(role or "").strip()
-        if not requested_role:
-            raise ValueError("请选择要查看的方案。")
-        if requested_role not in VALID_PLAN_ROLES:
-            raise ValueError(f"未知的排产方案角色：{requested_role}")
+        if role not in VALID_PLAN_ROLES:
+            raise ValueError(f"未知的排产方案角色：{role}")
 
         available_roles = self.list_plan_roles(int(version))
         roles_by_name = {option.role: option for option in available_roles}
-        option = roles_by_name.get(requested_role)
+        option = roles_by_name.get(role)
         if option is None:
             raise ValueError("所选方案不存在。")
 
@@ -172,7 +169,7 @@ class SchedulePlanQueryService:
             raise ValueError("所选方案没有可查看的明细。")
         return self._with_plan_identity(SchedulePlanResolution(
             version=int(version),
-            requested_role=requested_role,
+            requested_role=role,
             selected_role=option.role,
             source_table=option.source_table,
             candidate_id=option.candidate_id,
@@ -187,10 +184,9 @@ class SchedulePlanQueryService:
         role: Optional[str],
         scenario_id: Optional[str] = None,
     ) -> SchedulePlanResolution:
-        scenario_key = str(scenario_id or "").strip()
-        if not scenario_key:
+        if not scenario_id:
             return self.resolve_plan(version, role)
-        return self._resolve_scenario_plan(version=int(version), role=role, scenario_id=scenario_key)
+        return self._resolve_scenario_plan(version=int(version), role=role, scenario_id=scenario_id)
     def get_plan_time_span(self, version: int, role: Optional[str]) -> Optional[ScheduleTimeSpanRow]:
         resolution = self.resolve_plan(version, role)
         return self.get_plan_time_span_for_resolution(
@@ -260,13 +256,13 @@ class SchedulePlanQueryService:
         )
     @staticmethod
     def _role_option_from_row(row: Dict[str, Any]) -> SchedulePlanRoleOption:
-        role = str(row.get("role") or "")
+        role = row["role"]
         candidate_key = str(row["candidate_key"]) if row.get("candidate_key") is not None else None
         selection_id = int(row["selection_candidate_id"]) if row.get("selection_candidate_id") is not None else None
         resolved_id = int(row["resolved_candidate_id"]) if row.get("resolved_candidate_id") is not None else None
         return SchedulePlanRoleOption(
             role=role,
-            source_table=str(row.get("source_table") or ""),
+            source_table=row["source_table"],
             candidate_id=resolved_id,
             candidate_key=candidate_key,
             candidate_label=plan_candidate_label(
@@ -298,7 +294,7 @@ class SchedulePlanQueryService:
             raise ValueError(f"未知的排产方案角色：{option.role}")
         if option.source_table not in (SOURCE_SCHEDULE, SOURCE_CANDIDATE_ROWS):
             raise ValueError(f"未知的排产方案数据来源：{option.source_table}")
-        if option.role != ROLE_ADOPTED and str(option.candidate_status or "").strip().lower() != "completed":
+        if option.role != ROLE_ADOPTED and option.candidate_status != "completed":
             raise ValueError("这套对比参考方案当前不是已完成状态，不能查看明细。")
         if option.source_table == SOURCE_CANDIDATE_ROWS:
             if option.candidate_id is None:
@@ -320,11 +316,11 @@ class SchedulePlanQueryService:
         row = self.repo.get_scenario_context(scenario_id)
         if row is None:
             raise ValueError("模拟方案不存在。")
-        if str(row.get("status") or "") != "active":
+        if row["status"] != "active":
             raise ValueError("模拟方案不是可预览状态。")
-        if int(row.get("base_version") or 0) != int(version):
+        if row["base_version"] != int(version):
             raise ValueError("模拟方案不属于当前排产版本。")
-        base_role = str(row.get("base_plan_role") or "").strip()
+        base_role = row["base_plan_role"]
         requested_role = str(role or "").strip() or base_role
         if requested_role != base_role:
             raise ValueError("模拟方案不属于当前排产方案。")

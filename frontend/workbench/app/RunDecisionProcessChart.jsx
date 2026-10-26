@@ -29,9 +29,10 @@
         && left.shared_scope.components_known && right.shared_scope.components_known;
     }
     const scopeKeys = ['source_candidate_ref', 'objective_scope'];
+    // 没有 scope_ref 的过程点都经 RunDecisionAPI.js point() 校验：evaluation_scope 缺省、为 null，或带 incomplete_batch_ids 数组。
     const before = left.evaluation_scope, after = right.evaluation_scope;
     return !!(scopeKeys.every(key => knownDimension(left[key]) && left[key] === right[key])
-      && before && after && Array.isArray(before.incomplete_batch_ids) && Array.isArray(after.incomplete_batch_ids)
+      && before && after
       && before.incomplete_batch_ids.length === after.incomplete_batch_ids.length
       && before.incomplete_batch_ids.every((batch, index) => batch === after.incomplete_batch_ids[index])
       && completionKeys.every(key => known(left.completion[key]) && known(right.completion[key])

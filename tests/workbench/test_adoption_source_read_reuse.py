@@ -162,7 +162,8 @@ def test_dashboard_has_one_complete_source_proof_and_frozen_quantity(adopted_ver
     case.conn.commit()
     before, changes = snapshot(case.conn), case.conn.total_changes
     calls = _track_sources(monkeypatch)
-    data, _ = read_dashboard_analysis(case.conn, second["plan_ref"], query=DashboardAnalysisQuery("timeline"))
+    data, _ = read_dashboard_analysis(case.conn, second["plan_ref"], query=DashboardAnalysisQuery("timeline"),
+                                      as_of=datetime.now().replace(microsecond=0))
     assert len(calls) == 1
     assert data["tasks"][0]["quantity"] == data["tasks"][0]["batch_quantity"] == 5
     assert data["tasks"][0]["quantity_basis"] == "run_admission"
@@ -174,10 +175,10 @@ def test_task_facts_without_reuse_scope_still_verify_source_once(adopted_version
     before, changes = snapshot(case.conn), case.conn.total_changes
     calls = _track_sources(monkeypatch)
     reader = WorkbenchPlanQueryService(case.conn)
-    # This standalone reader has a transaction but intentionally no evidence
-    # scope. It must use the facts returned with its proof, not reprove them.
+    # This reader has a transaction but intentionally no evidence scope. It
+    # must use the facts returned with its proof, not reprove them.
     with reader.read_snapshot():
-        quantities, reason, operations = projection._adopted_task_facts(case.conn, second["plan_ref"])
+        quantities, reason, operations = PlanReadContext(case.conn).adopted_task_facts(second["plan_ref"])
     assert reason is None and quantities is not None and quantities[case.op_id]["quantity"] == 5
     assert operations is not None and operations[case.op_id]["source"] == "internal"
     assert len(calls) == 1
@@ -272,17 +273,18 @@ def test_caller_version_and_history_cannot_reuse_another_adoption(adopted_versio
     before = snapshot(case.conn)
     assert history is not None
     with reader.read_snapshot(), read_evidence_scope(case.conn):
-        assert PlanReadContext(case.conn).adopted_source(second["plan_ref"]) is not None
+        context = PlanReadContext(case.conn)
+        assert context.adopted_source(second["plan_ref"]) is not None
         with pytest.raises(AdoptionBaselineUnavailable):
             adoption_baseline.read_adoption_baseline(case.conn, plan_ref=second["plan_ref"],
-                version=first["version"], history=history, facts={})
+                version=first["version"], history=history, facts={}, point_annotator=list, context=context)
         changed = dict(history)
         audit = json.loads(changed["result_summary"])
         audit["proof"]["run_ref"] = first["source_run_ref"]
         changed["result_summary"] = json.dumps(audit)
         with pytest.raises(AdoptionBaselineUnavailable):
             adoption_baseline.read_adoption_baseline(case.conn, plan_ref=second["plan_ref"],
-                version=second["version"], history=changed, facts={})
+                version=second["version"], history=changed, facts={}, point_annotator=list, context=context)
     assert snapshot(case.conn) == before
 
 
@@ -352,10 +354,10 @@ def test_source_programming_errors_escape_all_readers_and_are_not_cached(adopted
         with context.read_scope():
             history = context.history(second["version"])
             readers = (
-                lambda: projection._adopted_task_facts(case.conn, second["plan_ref"], context=context),
+                lambda: context.adopted_task_facts(second["plan_ref"]),
                 lambda: project_process_order(case.conn, plan_ref=second["plan_ref"], context=context),
                 lambda: adoption_baseline.read_adoption_baseline(case.conn, plan_ref=second["plan_ref"],
-                    version=second["version"], history=history, facts={}, context=context),
+                    version=second["version"], history=history, facts={}, point_annotator=list, context=context),
                 lambda: official_point_work(case.conn, second["version"], context=context),
             )
             for read in readers:

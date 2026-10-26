@@ -5,12 +5,7 @@ from core.services.material.stage_availability import MaterialAvailability, cove
 
 
 def current_material_views(raw, day):
-    names = ("BatchMaterialReviews", "BatchMaterialArrivals")
-    version = raw.get("SchemaVersion") or []
-    if not version or (version[0]["version"] >= 36 and any(raw.get(name) is None for name in names)):
-        return None
-    availability = MaterialAvailability({"BatchMaterials": raw["BatchMaterials"],
-        **{name: raw.get(name) or [] for name in names}})
+    availability = MaterialAvailability({name: raw[name] for name in ("BatchMaterials", "BatchMaterialReviews", "BatchMaterialArrivals")})
     batches, requirements = [], []
     for batch in raw["Batches"]:
         status, problems = availability.readiness_state(batch, day)

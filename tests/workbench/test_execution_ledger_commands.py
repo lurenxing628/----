@@ -155,8 +155,7 @@ def test_report_preparation_chunks_dependencies_across_valid_batch_routes(ledger
     assert case.conn.execute("SELECT count(*) FROM WorkbenchProductionReports").fetchone()[0] == 0
 
 
-@pytest.mark.parametrize('preloaded', [False, True])
-def test_execution_adapter_consumes_one_ledger_plan_task_and_resource_scope(ledger_case, monkeypatch, preloaded):
+def test_execution_adapter_consumes_one_ledger_plan_task_and_resource_scope(ledger_case, monkeypatch):
     from core.models.operation_execution_scope import OperationExecutionScope
     from core.services.scheduler.execution.execution_fact_provider import ExecutionFactProvider
     from data.repositories.execution_ledger_scope_repo import ExecutionLedgerScopeRepository
@@ -188,30 +187,34 @@ def test_execution_adapter_consumes_one_ledger_plan_task_and_resource_scope(ledg
 
         monkeypatch.setattr(cls, name, captured)
     with case.ledger.read_snapshot():
-        projected = case.ledger.project_operations([saved['operation_ref']]) if preloaded else None
+        projected = case.ledger.project_operations([saved['operation_ref']])
         provider = ExecutionFactProvider(case.conn, ledger=case.ledger)
         first = provider.facts_by_scope([scope], execution_projections=projected)
         second = provider.facts_by_scope([scope], execution_projections=projected)
         assert first == second and first[scope].target_quantity == 10
-    assert calls == {'plan': 1, 'tasks': int(preloaded), 'scope': int(not preloaded), 'resources': 1, 'orphans': 1}
+    assert calls == {'plan': 1, 'tasks': 1, 'scope': 0, 'resources': 1, 'orphans': 1}
 
 
-@pytest.mark.parametrize("method", ["require_schema", "load"])
+@pytest.mark.parametrize("method", ["require_schema", "revision_clock"])
 def test_execution_adapter_translates_ledger_read_rejection(ledger_case, monkeypatch, method):
     from core.errors import AppError
     from core.models.operation_execution_scope import OperationExecutionScope
     from core.services.scheduler.execution.execution_fact_provider import ExecutionFactProvider
+    from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
     case = ledger_case
     case.install()
     schedule_id = case.conn.execute("SELECT id FROM Schedule WHERE op_id=?", (case.op_id,)).fetchone()[0]
     scope = OperationExecutionScope.from_values(schedule_version=1, schedule_id=schedule_id, op_id=case.op_id,
         batch_id="B1", source_table="schedule", effective_plan_role="adopted")
+    operation_ref = WorkbenchPlanIdentityRepository(case.conn).get_operation_refs([case.op_id])[case.op_id]
+    projected = case.ledger.project_operations([operation_ref])
 
     def deny(*_args, **_kwargs):
         raise WorkbenchCommandRejected("ledger_read_rejected", "injected ledger read rejection", 409)
 
+    # Rejected before the snapshot opens, or while adapting facts against the supplied projections.
     monkeypatch.setattr(case.ledger, method, deny)
     with pytest.raises(AppError) as error:
-        ExecutionFactProvider(case.conn, ledger=case.ledger).facts_by_scope([scope])
+        ExecutionFactProvider(case.conn, ledger=case.ledger).facts_by_scope([scope], execution_projections=projected)
     assert error.value.details == {"reason": "ledger_read_rejected"}

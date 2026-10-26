@@ -4,14 +4,14 @@ This helper does not decide whether two scheduling states have the same future.
 The caller must establish that proof first. It prepares independent containers,
 preserves the trial's changed history, and only publishes after the final budget
 check. Timeline owners receive fresh identities; no live scoring cache is reused.
+Result rows and failure details are never mutated after they are recorded, so they
+are shared like in ``ScheduleRunState.clone``.
 """
 from bisect import bisect_left
 from collections import deque
-from copy import copy, deepcopy
-from datetime import datetime
+from copy import copy
 from typing import Any, Dict
 
-from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_runtime.native_snapshot import make_class_guard
 from core.algorithm_runtime.resource_demand import ResourceDemand
 from core.algorithm_runtime.resource_quality import MachineTypeState
@@ -20,8 +20,6 @@ from core.algorithm_runtime.run_state import ScheduleRunState
 _STATE_GUARD = make_class_guard(ScheduleRunState)
 _TYPES_GUARD = make_class_guard(MachineTypeState)
 _DEMAND_GUARD = make_class_guard(ResourceDemand)
-_RESULT_FIELDS = frozenset(ScheduleResult.__dataclass_fields__)
-_RESULT_SCALARS = (str, int, datetime, type(None))
 _GRAPH_SETS = ("completed_or_fixed_op_ids", "blocked_op_ids", "ready_op_ids")
 
 
@@ -36,16 +34,6 @@ def _supported(state, checkpoint, final):
     # an input signature shared by two different operation orders.
     return (final.picked_op_ids[:checkpoint.position] == checkpoint.picked_op_ids
             and final.state.results[:len(checkpoint.state.results)] == checkpoint.state.results)
-
-
-def _copy_result(result):
-    values = vars(result)
-    if (type(result) is ScheduleResult and values.keys() == _RESULT_FIELDS
-            and all(type(value) in _RESULT_SCALARS for value in values.values())):
-        return ScheduleResult(**values)
-    # Seed extensions may carry an extra witness. Preserve it without sharing
-    # mutable row payloads with the reference or an earlier checkpoint.
-    return deepcopy(result)
 
 
 def _replace_changed_type_rows(prepared, current, reference):
@@ -111,27 +99,19 @@ def _prepare_progress(final, graph, suffix):
     return progress
 
 
-def _prepare_results(state, checkpoint, final, check_budget):
-    cut = len(checkpoint.state.results)
-    results = [_copy_result(row) for row in state.results]
-    for offset, row in enumerate(final.state.results[cut:]):
-        if check_budget is not None and offset % 32 == 0:
-            check_budget(checkpoint.position + offset)
-        results.append(_copy_result(row))
-    return results
+def _prepare_results(state, checkpoint, final):
+    return state.results + final.state.results[len(checkpoint.state.results):]
 
 
-def install_reconverged_tail(checkpoint, final, *, state, next_idx, graph_state, check_budget=None):
+def install_reconverged_tail(checkpoint, final, *, state, next_idx, graph_state):
     """Return False for an unsupported native snapshot; never weaken its proof.
 
-    All work before the final updates is private. A budget callback may raise at
-    any preparation boundary without leaving a partly installed trial result.
-    The caller exits the dispatch loop immediately after a successful install.
+    All work before the final updates is private, so a rejected snapshot leaves no
+    partly installed trial result. The caller exits the dispatch loop immediately
+    after a successful install.
     """
     if not _supported(state, checkpoint, final):
         return False
-    if check_budget is not None:
-        check_budget(checkpoint.position)
     suffix = final.state.results[len(checkpoint.state.results):]
     progress = _prepare_progress(final, graph_state, suffix)
     if progress is None:
@@ -139,7 +119,7 @@ def install_reconverged_tail(checkpoint, final, *, state, next_idx, graph_state,
     prepared = final.state.clone()
     if not _prepare_types(state, checkpoint, prepared, suffix):
         return False
-    prepared.results = _prepare_results(state, checkpoint, final, check_budget)
+    prepared.results = _prepare_results(state, checkpoint, final)
     # Copy the final busy-hour totals bit for bit: the proof established equal
     # starting accumulators and identical future additions, including rounding.
     # Batch histories already complete at the join belong to the changed trial.
@@ -147,11 +127,9 @@ def install_reconverged_tail(checkpoint, final, *, state, next_idx, graph_state,
     for batch in {graph_state["op_by_id"][row.op_id][0] for row in suffix}:
         prepared.batch_progress[batch] = final.state.batch_progress[batch]
     prepared.errors = list(state.errors)
-    prepared.failure_details = deepcopy(state.failure_details)
-    prepared.batch_failure_sources = deepcopy(state.batch_failure_sources)
+    prepared.failure_details = list(state.failure_details)
+    prepared.batch_failure_sources = dict(state.batch_failure_sources)
     prepared_next = dict(final.next_idx)
-    if check_budget is not None:
-        check_budget(final.position - 1)
     # No callbacks or result publication can observe the intermediate updates.
     vars(state).update(vars(prepared))
     next_idx.clear()

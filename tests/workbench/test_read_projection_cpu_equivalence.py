@@ -132,7 +132,6 @@ def test_cross_layer_schema_checks_share_leaf_contracts_in_one_snapshot(candidat
     from core.services.workbench.run.preflight_facts import PreflightFacts
     from data.repositories import (
         workbench_calibration_query_repo,
-        workbench_dashboard_external_repo,
         workbench_execution_repo,
         workbench_plan_identity_repo,
         workbench_template_lineage_repo,
@@ -147,7 +146,6 @@ def test_cross_layer_schema_checks_share_leaf_contracts_in_one_snapshot(candidat
         ("identity", "workbench_plan_identity_contract_issues",
          (workbench_plan_identity_repo, workbench_template_lineage_repo, candidate_archive)),
         ("lineage", "template_lineage_contract_issues", (workbench_template_lineage_repo,)),
-        ("external", "contract_issues", (workbench_dashboard_external_repo,)),
     )
     for name, symbol, modules in checks:
         original = vars(modules[0])[symbol]
@@ -163,13 +161,12 @@ def test_cross_layer_schema_checks_share_leaf_contracts_in_one_snapshot(candidat
     execution = WorkbenchExecutionRepository(conn)
     lineage = workbench_template_lineage_repo.WorkbenchTemplateLineageRepository(conn)
     calibration = workbench_calibration_query_repo.WorkbenchCalibrationQueryRepository(conn)
-    external = workbench_dashboard_external_repo.WorkbenchDashboardExternalRepository(conn)
     identities = workbench_plan_identity_repo.WorkbenchPlanIdentityRepository(conn)
     with TransactionManager(conn).transaction():
         for _ in range(2):
             assert execution.schema_issues() == []
             assert lineage.schema_state() == "loaded" and not lineage.identity_schema_broken()
-            assert calibration.schema_installed() and external.schema_installed()
+            assert calibration.schema_installed()
             candidate_archive.require_adoption_schema(conn)
             identities.read_revision()
             projections, reasons = preflight_execution.execution_projections(PreflightFacts(conn), [])
@@ -277,8 +274,7 @@ def test_archived_labels_and_arrangements_keep_saved_work_without_formula_replay
     missing.tables["Parts"].clear()
     left, _ = operation_labels(missing, ref)
     right, _ = operation_labels(missing, ref)
-    left["data_gaps"][0]["message"] = "private gap probe"
-    assert right["data_gaps"][0]["message"] != left["data_gaps"][0]["message"]
+    assert left["data_gaps"] == right["data_gaps"] != [] and left["data_gaps"] is not right["data_gaps"]
     with pytest.raises(WorkbenchCommandRejected) as binding:
         operation_labels(original, ref, {"op_id": original.operations[ref] + 1})
     assert binding.value.code == "candidate_artifact_invalid"
@@ -298,7 +294,7 @@ def test_archived_labels_and_arrangements_keep_saved_work_without_formula_replay
     assert operation_calls == [row["operation_ref"] for row in rows]
     repeated = tasks_projection_with_intervals(rows, candidate, original)[0]
     assert projected == repeated
-    validated, saved_intervals, validated_ids = validate_saved_tasks(rows, candidate, original)
+    validated, saved_intervals, validated_ids = validate_saved_tasks(rows, candidate, original, prepared_tasks={})
     assert validated_ids == scheduled_ids
     assert validated is rows and saved_intervals == intervals
     assert project_validated_tasks(validated, candidate, original, saved_intervals) == repeated

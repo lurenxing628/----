@@ -98,30 +98,30 @@ async function contract(h, assert) {
   const nodes = tree => tree == null || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(nodes) : [tree, ...nodes(tree.props.children)];
   const text = tree => tree == null || typeof tree === 'boolean' ? '' : typeof tree !== 'object' ? String(tree) : Array.isArray(tree) ? tree.map(text).join('') : text(tree.props.children);
   w.WorkbenchPageContext.useSnapshot = () => {};
-  const workspace = hooks();
+  const workspace = hooks(), noRunPanel = () => null, preflightProps = { initialContext: {}, renderRunPanel: noRunPanel };
   route = request => request.path.endsWith('/preferences') ? request.method === 'GET' ? preferences(input) : receipt(request.body.input) : checked(request.body);
   requests.length = 0;
-  workspace.render(w.PreflightWorkspace, {}); workspace.flush(); await turns();
-  let tree = workspace.render(w.PreflightWorkspace, {});
+  workspace.render(w.PreflightWorkspace, preflightProps); workspace.flush(); await turns();
+  let tree = workspace.render(w.PreflightWorkspace, preflightProps);
   assert.deepStrictEqual(requests.map(row => [row.method, row.path]), [['GET', '/api/workbench/v1/scheduling/preferences'], ['POST', '/api/workbench/v1/scheduling/preflight']],
     'Opening restores saved input and only runs the read-only preflight');
   h.equal(requests[1].body, input);
   assert.strictEqual(nodes(tree).find(node => node.type === 'input' && node.props['aria-label'] === '计划开始日期').props.value, input.start_date);
   nodes(tree).find(node => node.type === 'input' && node.props['aria-label'] === '计划结束日期').props.onChange({ target: { value: '2026-10-18' } });
-  tree = workspace.render(w.PreflightWorkspace, {});
+  tree = workspace.render(w.PreflightWorkspace, preflightProps);
   const recheck = nodes(tree).find(node => node.type === w.PreflightControls.Button && ['重新检查', '开始排产检查'].includes(text(node)));
   requests.length = 0; await recheck.props.onClick();
   assert.deepStrictEqual(requests.map(row => [row.method, row.path]), [['GET', '/api/workbench/v1/scheduling/preferences'], ['POST', '/api/workbench/v1/scheduling/preferences'], ['POST', '/api/workbench/v1/scheduling/preflight']],
     'A changed selection is saved before the next check');
   h.equal(requests[1].body.input, requests[2].body);
   assert.strictEqual(requests[2].body.end_date, '2026-10-18');
-  tree = workspace.render(w.PreflightWorkspace, {});
+  tree = workspace.render(w.PreflightWorkspace, preflightProps);
   route = request => request.method === 'GET' ? preferences(input) : { ok: true, data: { input } };
   requests.length = 0;
   await nodes(tree).find(node => node.type === w.PreflightControls.Button && text(node) === '重新检查').props.onClick();
   assert.deepStrictEqual(requests.map(row => row.path), ['/api/workbench/v1/scheduling/preferences', '/api/workbench/v1/scheduling/preferences'],
     'A failed save must stop the next preflight');
-  assert(nodes(workspace.render(w.PreflightWorkspace, {})).some(node => node.type === w.PreflightControls.ErrorBox && node.props.error),
+  assert(nodes(workspace.render(w.PreflightWorkspace, preflightProps)).some(node => node.type === w.PreflightControls.ErrorBox && node.props.error),
     'The workspace must expose the save failure');
   workspace.unmount();
 
@@ -131,7 +131,7 @@ async function contract(h, assert) {
     const savedBefore = h.clone(saved);
     for (const [context, refs] of [[{}, saved.batch_refs], [{ scope: { source: 'production', batch_refs: [other] } }, [other]],
       [{ entity_ref: other }, [other]], [{ scope: { source: 'production', batch_refs: [] } }, []]]) {
-      const state = hooks(), props = { initialContext: context }, expected = C.input({ ...saved, batch_refs: refs });
+      const state = hooks(), props = { initialContext: context, renderRunPanel: noRunPanel }, expected = C.input({ ...saved, batch_refs: refs });
       route = request => request.path.endsWith('/preferences') ? preferences(saved) : checked(request.body);
       requests.length = 0;
       state.render(w.PreflightWorkspace, props); state.flush(); await turns();
@@ -145,19 +145,19 @@ async function contract(h, assert) {
       state.unmount();
     }
   }
-  for (const context of [null, { scope: { source: 'sample', batch_refs: [other] } }, { scope: { source: 'production', batch_refs: [other] }, unknown: true }]) {
-    const state = hooks(), props = { initialContext: context };
+  for (const context of [{ scope: { source: 'sample', batch_refs: [other] } }, { scope: { source: 'production', batch_refs: [other] }, unknown: true }]) {
+    const state = hooks(), props = { initialContext: context, renderRunPanel: noRunPanel };
     route = () => preferences(input); requests.length = 0;
     state.render(w.PreflightWorkspace, props); state.flush(); await turns();
     assert(nodes(state.render(w.PreflightWorkspace, props)).some(node => node.type === w.PreflightControls.ErrorBox && node.props.error),
       'An invalid explicit navigation remains invalid instead of restoring a wider saved scope');
     assert.equal(requests.length, 1); state.unmount();
   }
-  const explicitState = hooks(), explicitProps = { initialContext: C.input({ ...input, batch_refs: [other], start_date: '2026-10-12', hold_window: null }) };
+  const explicitState = hooks(), explicitProps = { initialContext: C.input({ ...input, batch_refs: [other], start_date: '2026-10-12', hold_window: null }), renderRunPanel: noRunPanel };
   route = request => request.path.endsWith('/preferences') ? preferences(input) : checked(request.body); requests.length = 0;
   explicitState.render(w.PreflightWorkspace, explicitProps); explicitState.flush(); await turns();
   h.equal(requests[1].body, explicitProps.initialContext); explicitState.unmount();
-  const emptyState = hooks(), emptyProps = { initialContext: {} };
+  const emptyState = hooks(), emptyProps = { initialContext: {}, renderRunPanel: noRunPanel };
   route = () => preferences(null); requests.length = 0;
   emptyState.render(w.PreflightWorkspace, emptyProps); emptyState.flush(); await turns();
   assert.equal(requests.length, 1, 'Without saved preferences, an empty fresh form does not check all batches'); emptyState.unmount();
@@ -197,7 +197,7 @@ async function contract(h, assert) {
       receipt_ref: 'a'.repeat(32), replayed: false, data: admitted, data_context_ref: dataContext };
   assert(w.RunJobAPI.validIntent({schema_version:2,input_ref:inputRef,request_key:'run-'+ 'b'.repeat(48),run_ref:null,data_context_ref:'d'.repeat(64)}), 'Legacy stored generation IDs remain readable');
   assert(!w.RunJobAPI.validIntent({schema_version:2,input_ref:inputRef,request_key:'run-'+ 'b'.repeat(48),run_ref:null,data_context_ref:JSON.stringify({database_scope:'/tmp/aps-context.db',successful_restores:[true]})}), 'Restore identities keep their actual type');
-  const panel = hooks(), props = { preflight: checked(input).data };
+  const panel = hooks(), props = { preflight: checked(input).data, onNavigate() {} };
   requests.length = 0;
   panel.render(w.RunJobPanel, props); panel.flush(); await turns();
   tree = panel.render(w.RunJobPanel, props);
@@ -305,8 +305,9 @@ async function contract(h, assert) {
       return { ok: true, result: 'accepted', job_ref: runRef, run_ref: runRef, status_target: '/api/workbench/v1/scheduling/runs/' + runRef,
         receipt_ref: 'a'.repeat(32), replayed: false, data: run, data_context_ref: dataContext };
     };
+    const pageContext = {};
     function render() {
-      const rootTree = rootFrame.render(w.RunWorkspace, { onNavigate() {} }); rootFrame.flush();
+      const rootTree = rootFrame.render(w.RunWorkspace, { onNavigate() {}, initialContext: pageContext }); rootFrame.flush();
       const parent = nodes(rootTree).find(node => node.type === w.PreflightWorkspace);
       parentTree = parentFrame.render(w.PreflightWorkspace, parent.props); parentFrame.flush();
       const child = nodes(parentTree).find(node => node.type === w.RunJobPanel);
@@ -420,7 +421,7 @@ async function contract(h, assert) {
         candidates: [{ candidate_ref: h.reference(5), label: '方案一', status: 'completed', task_count: 1, selected: true }] };
       return envelope({ found, run: found ? done ? complete : running : null, data_context_ref: dataContext, resolution: found ? 'found' : replaced ? 'context_replaced' : 'unresolved' });
     };
-    const state = hooks(), props = { preflight: null };
+    const state = hooks(), props = { preflight: null, onNavigate() {} };
     let view;
     const render = () => { view = state.render(w.RunJobPanel, props); state.flush(); };
     render(); await turns(); render();

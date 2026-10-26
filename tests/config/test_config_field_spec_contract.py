@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 
 import pytest
 
 from core.errors import ValidationError
 from core.infrastructure.database import ensure_schema, get_connection
-from core.models.schedule_config_runtime_coercion import ensure_schedule_config_snapshot
 from core.models.schedule_config_runtime_fields import RETIRED_CONFIG_FIELDS, list_runtime_config_fields
 from core.services.scheduler.calendar.service import CalendarService
 from core.services.scheduler.config.config_field_spec import list_config_fields
@@ -18,6 +18,7 @@ from tests._support.paths import REPO_ROOT
 from web.bootstrap.schedule_config import bootstrap_schedule_config
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
+_LOGGER = logging.getLogger(__name__)
 
 
 def _stored_snapshot(conn):
@@ -30,7 +31,7 @@ def _stored_snapshot(conn):
 def config_store(tmp_path):
     test_db = tmp_path / "aps_config_field_spec.db"
     ensure_schema(str(test_db), logger=None, schema_path=str(SCHEMA_PATH), backup_dir=None)
-    bootstrap_schedule_config(str(test_db))
+    bootstrap_schedule_config(str(test_db), logger=_LOGGER)
     conn = get_connection(str(test_db))
     try:
         yield conn, ConfigRepository(conn), test_db
@@ -74,9 +75,11 @@ def test_legacy_preset_keeps_budget_and_saved_rows_during_reads_and_restart(conf
     )
     conn.commit()
     rows_before = [tuple(row) for row in conn.execute("SELECT * FROM ScheduleConfig ORDER BY config_key")]
-    bootstrap_schedule_config(str(database))
+    bootstrap_schedule_config(str(database), logger=_LOGGER)
     assert _stored_snapshot(conn).time_budget_seconds == 75
-    adapted = ensure_schedule_config_snapshot(json.loads(repo.get_value(legacy_key)), strict_mode=True)
+    adapted = build_schedule_config_snapshot(
+        rows=[{"config_key": key, "config_value": value} for key, value in json.loads(repo.get_value(legacy_key)).items()]
+    )
     assert adapted.time_budget_seconds == 47 and not set(RETIRED_CONFIG_FIELDS) & set(adapted.to_dict())
     assert repo.get_value(legacy_key) == original_json
     assert [tuple(row) for row in conn.execute("SELECT * FROM ScheduleConfig ORDER BY config_key")] == rows_before

@@ -28,7 +28,7 @@ def test_http_transaction_and_close_finish_before_lock_release(request_case, tmp
     def shutdown():
         assert case.gate.shutdown(wait=True)
         assert case.counts() == ((0, 0) if rollback else (1, 1))
-        release_runtime_lock(scope, db_path=case.path)
+        release_runtime_lock(scope, db_path=case.path, expected_payload=payload)
         done.set()
 
     try:
@@ -63,7 +63,7 @@ def test_http_transaction_and_close_finish_before_lock_release(request_case, tmp
             drain.result(10)
         assert done.is_set() and not lock.exists() and case.gate.status["active"] == 0
     finally:
-        release_runtime_lock(scope, db_path=case.path)
+        release_runtime_lock(scope, db_path=case.path, expected_payload=payload)
 
 
 def test_close_failure_poison_survives_factory_logging_and_cleanup_retry(request_case):

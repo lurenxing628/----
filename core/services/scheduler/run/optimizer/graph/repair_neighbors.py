@@ -66,20 +66,6 @@ def _single_insert_moves(size: int, risky: List[int]) -> List[Tuple[str, int, in
             for j in sorted({0, max(i - 2, 0), min(i + 2, size - 1), size - 1}) if i != j]
 
 
-def repair_priority_context(context: Dict[str, Any], *, operations: List[Any], order: List[str]) -> Dict[str, Any]:
-    batches = {str(op.batch_id) for op in operations}
-    if len(order) != len(set(order)) or set(order) != batches:
-        raise ValidationError(
-            "GraphReady repair 优先决策必须覆盖且只覆盖可变批次。", field="graph_ready_elite_repair",
-            details={"reason": "graph_ready_repair_scope_mismatch"},
-        )
-    ranks = {batch: float(i) for i, batch in enumerate(order)}
-    out = dict(context)
-    # Only the ready priority changes; fixed IDs and precedence maps stay intact.
-    out["graph_priority_key_by_op_id"] = {int(op.id): (ranks[str(op.batch_id)],) for op in operations}
-    return out
-
-
 def _batch_signals(
     *, operations: List[Any], metrics_by_op_id: Dict[int, Dict[str, Any]], start_dt: datetime,
     prepared_parent: RepairParentPreparation,

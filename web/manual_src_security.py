@@ -49,8 +49,7 @@ def _compose_same_origin_candidate(parsed: Any, text: str) -> str:
     return candidate
 
 
-def normalize_manual_src(raw: Any = None) -> Optional[str]:
-    text = ("" if raw is None else str(raw)).strip()
+def normalize_manual_src(text: str) -> Optional[str]:
     if not text or text.startswith("//") or _has_forbidden_manual_chars(text):
         return None
     try:
@@ -89,7 +88,7 @@ def _rewrite_manual_src_query(parts: Any) -> Tuple[List[Tuple[str, str]], bool]:
     changed = False
     scenario_for_token = ""
     has_plan_context_token = False
-    supports_plan_context_token = (parts.path or "") in _PLAN_CONTEXT_TOKEN_PATHS
+    supports_plan_context_token = parts.path in _PLAN_CONTEXT_TOKEN_PATHS
     for key, value in parse_qsl(parts.query, keep_blank_values=True):
         query_item, item_changed, item_scenario, item_has_token = _rewrite_manual_src_query_item(
             key,
@@ -106,9 +105,7 @@ def _rewrite_manual_src_query(parts: Any) -> Tuple[List[Tuple[str, str]], bool]:
     if scenario_for_token and not has_plan_context_token:
         from web.plan_context_token import plan_context_token
 
-        token = plan_context_token(scenario_for_token)
-        if token:
-            query.append(("plan_context_token", token))
+        query.append(("plan_context_token", plan_context_token(scenario_for_token)))
     return query, changed
 
 
@@ -122,5 +119,5 @@ def _sanitize_manual_src_context(src: Optional[str]) -> Optional[str]:
     return urlunsplit(("", "", parts.path or "/", urlencode(query), parts.fragment))
 
 
-def normalize_manual_src_context(raw: Any = None) -> Optional[str]:
+def normalize_manual_src_context(raw: str) -> Optional[str]:
     return _sanitize_manual_src_context(normalize_manual_src(raw))

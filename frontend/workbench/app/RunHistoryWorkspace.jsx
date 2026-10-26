@@ -32,7 +32,6 @@
       apply(A.scope(q));
     }
     function open(run) {
-      if (typeof onNavigate !== 'function') return;
       const context = { run_ref: run.run_ref, return_history_context: A.returnContext(query, start.returnPlan) };
       if (Object.keys(start.returnPlan).length) context.return_plan_context = start.returnPlan;
       onNavigate('analysis', context);
@@ -40,7 +39,7 @@
     return <div className="plana run-history-workspace" data-run-history-workspace aria-busy={read.busy}>
       <h2 className="wb-page-title">排产记录</h2>
       <header className="rh-heading scheduling-page-tools">{navigation}<div className="rh-tools">
-        {typeof onNavigate === 'function' && <C.Button icon="chevron-left" aria-label="返回正式计划" onClick={() => onNavigate('analysis', start.returnPlan)}>返回正式计划</C.Button>}
+        <C.Button icon="chevron-left" aria-label="返回正式计划" onClick={() => onNavigate('analysis', start.returnPlan)}>返回正式计划</C.Button>
         <C.Button icon="refresh-cw" aria-label="刷新排产记录" busy={read.busy} onClick={reload} /></div></header>
       <TopicTabs value="run_catalog" onChange={topic => onNavigate('analysis', { ...remembered, history_topic: topic })} />
       <div id="dh-history-content" role="tabpanel" aria-labelledby="dh-topic-run_catalog"><C.Filters value={query} busy={read.busy} onApply={apply} />
@@ -50,7 +49,7 @@
       {data && <><div className="rh-source"><span>共 {window.WorkbenchFormat.number(data.run_count, { digits: 0 })} 次排产</span>
         <details><summary>查询说明</summary><div>本次刷新：{window.WorkbenchFormat.dateTime(result.meta.as_of, { seconds: true, fractions: true })}</div><div>提交日期包含起止日。安排数为各候选方案的安排条数合计；同一道工序在多个候选方案中会分别计数。</div><div>打开候选方案查看工序安排与交付风险。</div></details></div>
         {result.warnings.map((w, i) => <div key={i} className="rh-notice" role="status">{w.message}</div>)}
-        {data.runs.length ? <C.Table runs={data.runs} canNavigate={typeof onNavigate === 'function'} onOpen={open} /> : <window.WorkbenchListControls.EmptyState kind={data.run_count === 0 ? 'empty' : 'filtered'}
+        {data.runs.length ? <C.Table runs={data.runs} onOpen={open} /> : <window.WorkbenchListControls.EmptyState kind={data.run_count === 0 ? 'empty' : 'filtered'}
           title={data.run_count === 0 ? '尚无排产记录' : data.page.total === 0 ? '当前筛选没有匹配的排产记录' : '当前页没有排产记录'}
           hint={data.run_count === 0 ? '排产提交后会保留在这个列表里。' : data.page.total === 0 ? '其他排产没有包含在当前筛选里。' : '翻页位置已失效，请回到第 1 页重新查询。'}
           action={data.run_count > 0 && <C.Button icon="chevron-left" onClick={() => data.page.total > 0 ? change({ page: 1 }, true) : apply(A.scope({ size: query.size }))}>{data.page.total > 0 ? '返回第 1 页' : '清除全部筛选'}</C.Button>} />}
@@ -62,7 +61,7 @@
     if (pageContext.history_topic === 'decision_history') return <window.DecisionHistoryWorkspace initialContext={pageContext.decision_history_context || {}} pageContext={pageContext}
       onNavigate={onNavigate} navigation={navigation} renderTopics={context => <TopicTabs value="decision_history" onChange={topic => onNavigate('analysis', { ...context, history_topic: topic })} />} />;
     let start;
-    try { start = A.context(initialContext); A.check(active && typeof active.catalog === 'function', 'dependency not wired: adapter.catalog'); }
+    try { start = A.context(initialContext); }
     catch (error) { return <div className="plana run-history-workspace" data-run-history-workspace><h2 className="wb-page-title">排产记录</h2><C.ErrorBox error={error} /></div>; }
     if (!adapterIds.has(active)) adapterIds.set(active, ++nextAdapter);
     return <Session key={adapterIds.get(active) + ':' + JSON.stringify(start)} adapter={active} start={start} pageContext={pageContext} onNavigate={onNavigate} navigation={navigation} />;

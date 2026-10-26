@@ -6,7 +6,8 @@
     React.useLayoutEffect(() => {
       const media = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
       function commit(value, synchronous) {
-        if (synchronous && window.ReactDOM && typeof window.ReactDOM.flushSync === 'function') window.ReactDOM.flushSync(() => setPrinting(value));
+        // ReactDOM 由 build.py 锁定为 18.3.1，flushSync 恒在。
+        if (synchronous) window.ReactDOM.flushSync(() => setPrinting(value));
         else setPrinting(value);
       }
       function beforePrint() { commit(true, true); }

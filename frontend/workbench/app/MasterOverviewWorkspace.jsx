@@ -5,9 +5,9 @@
   const { useState, useEffect, useMemo, useRef } = React;
   function readContext(context) {
     const empty = { scope: C.scope({}), page: 1, selected: null, section: 'issues', detailPage: 1, notice: '' };
-    if (context == null) return empty;
-    if (!C.canonical(context) || typeof context !== 'object' || Array.isArray(context)
-        || Object.keys(context).some(key => !['domain', 'entity_ref', 'read_view'].includes(key))) C.fail('跳转到基础资料的条件不支持，页面没有跳转。请刷新后重试。');
+    // 侧栏直接进入时 main.jsx 传空对象，按“无定位”处理。
+    if (!Object.keys(context).length) return empty;
+    if (Object.keys(context).some(key => !['domain', 'entity_ref', 'read_view'].includes(key))) C.fail('跳转到基础资料的条件不支持，页面没有跳转。请刷新后重试。');
     if (context.read_view === undefined) {
       if (!C.ref(context.entity_ref) || !C.domains.some(row => row[0] === context.domain)) C.fail('定位条件缺少资料类别或记录编号，页面没有跳转。请刷新后重试。');
       return { ...empty, initial: { domain: context.domain, entity_ref: context.entity_ref } };
@@ -38,11 +38,10 @@
     const count = key => <MetricValue pending={!metrics && pending} error={!metrics && error} kind="count">{metrics ? metrics[key] : '未读取'}</MetricValue>;
     return <Tabs label="清单类型" value={scope.view} onChange={onChange} values={[["issues", "待维护项", count('issues')], ["entities", "资料清单", count('entities')]]} />;
   }
-  // 侧栏直接进入时 main.jsx 不带定位上下文（initialContext 为 undefined），按“无定位”处理。
-  function MasterOverviewWorkspace({ onNavigate, initialContext = null }) {
+  function MasterOverviewWorkspace({ onNavigate, initialContext }) {
     const api = useMemo(() => window.APSMasterOverviewAPI.create(), []);
     const contextKey = C.canonical(initialContext);
-    const initial = useMemo(() => { try { return readContext(initialContext); } catch (error) { return { ...readContext(null), error }; } }, [contextKey]);
+    const initial = useMemo(() => { try { return readContext(initialContext); } catch (error) { return { ...readContext({}), error }; } }, [contextKey]);
     const contextSeen = useRef(contextKey);
     const [request, setRequest] = useState(() => ({ scope: initial.scope, page: initial.page, initial: initial.initial, restore: initial }));
     const [result, setResult] = useState(null), [loading, setLoading] = useState(true), [error, setError] = useState(null);

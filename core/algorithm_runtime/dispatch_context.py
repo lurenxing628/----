@@ -24,7 +24,7 @@ _CALLBACK_CACHE_LIMIT = 256
 _CALL_SHAPE_CACHE_LIMIT = 128
 
 
-def dispatch_callback_binding(callback: Any, *, slot: str) -> _CallbackBinding:
+def dispatch_callback_binding(callback: Any) -> _CallbackBinding:
     bound = isinstance(callback, MethodType)
     function = callback.__func__ if bound else callback
     cache_key = None
@@ -40,11 +40,8 @@ def dispatch_callback_binding(callback: Any, *, slot: str) -> _CallbackBinding:
         cached = _CALLBACK_BINDING_CACHE.get(cache_key)
         if cached is not None and cached.version == version:
             return cached
-    try:
-        signature = inspect.signature(callback, follow_wrapped=False)
-    except (TypeError, ValueError) as exc:
-        raise DispatchContextContractError(f"dispatch callback cannot inspect signature ({slot})") from exc
-    binding = _CallbackBinding(signature, version)
+    # The callbacks are the scheduler's own bound methods (ScheduleRunContext.from_legacy_scheduler).
+    binding = _CallbackBinding(inspect.signature(callback, follow_wrapped=False), version)
     if cache_key is not None:
         if len(_CALLBACK_BINDING_CACHE) >= _CALLBACK_CACHE_LIMIT:
             _CALLBACK_BINDING_CACHE.clear()
@@ -52,8 +49,7 @@ def dispatch_callback_binding(callback: Any, *, slot: str) -> _CallbackBinding:
     return binding
 
 
-def check_dispatch_callback_binding(callback: Any, args: Tuple[Any, ...], kwargs: Dict[str, Any], *, slot: str, prepared_binding: Any = None) -> None:
-    binding = prepared_binding if prepared_binding is not None else dispatch_callback_binding(callback, slot=slot)
+def check_dispatch_callback_binding(binding: _CallbackBinding, args: Tuple[Any, ...], kwargs: Dict[str, Any], *, slot: str) -> None:
     shape = (len(args), frozenset(kwargs))
     if shape in binding.shapes:
         return

@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   let pendingViewFocus = null;
-  function Workspace({ adapter, mode = 'reports', initialContext = {}, onNav }) {
+  function Workspace({ adapter, mode = 'reports', initialContext, onNav }) {
     const { Scope, Tabs, Sort, Page, Button, ErrorBox, useRead } = window.ReportControls;
     const { Table, Metrics } = window.ReportTable;
     const api = React.useMemo(() => adapter || window.ReportAPI.create(), [adapter]);
@@ -154,8 +154,8 @@
       </div>
     </section>;
   }
-  // 侧栏直接进入时 main.jsx 不带定位上下文（initialContext 为 undefined）。
-  function GuardedWorkspace({ initialContext = {}, ...props }) {
+  // 侧栏直接进入时 main.jsx 传空对象作为定位上下文。
+  function GuardedWorkspace({ initialContext, ...props }) {
     try {
       window.ReportAPI.scope(initialContext.scope);
       const topic = props.mode === 'review' || initialContext.topic === undefined ? 'delivery' : initialContext.topic;

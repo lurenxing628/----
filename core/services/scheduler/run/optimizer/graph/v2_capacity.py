@@ -9,6 +9,7 @@ from core.algorithm_contracts.operator_eligibility import qualified_operators
 from core.algorithm_contracts.value_domains import INTERNAL
 from core.algorithms.greedy.seed import seed_resource_segments
 from core.errors import ValidationError
+from core.shared.strict_parse import finite_float, is_non_finite_number
 
 _RESIDUAL_CAPACITY_MAX_WINDOW_DAYS = 30
 
@@ -32,7 +33,8 @@ class FixedResourceBlockingFacts:
         return self._pool_view[1]
 
     def _resource_seeds(self, kind: str, resource_id: Optional[str]) -> List[Tuple[datetime, datetime]]:
-        return self._seed_results.get(kind, {}).get(resource_id or "") or []
+        # seed_results_by_resource_id always holds both kinds, keyed only by non-empty ids.
+        return self._seed_results[kind].get(resource_id or "", [])
 
     def segments_for(self, machine_id: str, operator_id: Optional[str]) -> List[Tuple[datetime, datetime]]:
         key = machine_id, operator_id
@@ -59,7 +61,7 @@ class FixedResourceBlockingFacts:
 
     def calendar_window_hours(
         self,
-        calendar_service: Optional[Any],
+        calendar_service: Any,
         start_dt: datetime,
         due_exclusive: datetime,
         *,
@@ -84,7 +86,7 @@ def residual_capacity_for_operation(
     batch: Any,
     start_dt: datetime,
     due_exclusive: datetime,
-    calendar_service: Optional[Any],
+    calendar_service: Any,
     resource_pool: Optional[Dict[str, Any]],
     prepared: FixedResourceBlockingFacts,
 ) -> Dict[str, float]:
@@ -139,7 +141,7 @@ def residual_capacity_for_operation(
 
 def seed_results_by_resource_id(seed_results: Iterable[Any]) -> Dict[str, Dict[str, List[Tuple[datetime, datetime]]]]:
     out: Dict[str, Dict[str, List[Tuple[datetime, datetime]]]] = {"machine": {}, "operator": {}}
-    for result in list(seed_results or []):
+    for result in seed_results:
         if str(result.source or INTERNAL).strip().lower() != INTERNAL:
             continue
         segments = seed_resource_segments(result)
@@ -190,7 +192,7 @@ def _machine_residual_capacity(
     start_dt: datetime,
     due_exclusive: datetime,
     priority: Any,
-    calendar_service: Optional[Any],
+    calendar_service: Any,
     prepared: FixedResourceBlockingFacts,
 ) -> Tuple[float, float, float]:
     operator_payloads = [
@@ -215,7 +217,7 @@ def _machine_operator_residual_capacity(
     start_dt: datetime,
     due_exclusive: datetime,
     priority: Any,
-    calendar_service: Optional[Any],
+    calendar_service: Any,
     prepared: FixedResourceBlockingFacts,
 ) -> Tuple[float, float, float]:
     cache_key = (machine_id, operator_id, priority, start_dt, due_exclusive)
@@ -377,7 +379,7 @@ def _machines_for_fixed_operator(fixed_operator: str, *, pool: _ResourcePoolView
 def _valid_segments(segments: Iterable[Tuple[datetime, datetime]]) -> List[Tuple[datetime, datetime]]:
     return [
         (start, end)
-        for start, end in list(segments or [])
+        for start, end in segments
         if isinstance(start, datetime) and isinstance(end, datetime) and end > start
     ]
 
@@ -397,7 +399,7 @@ def _merge_segments(segments: Iterable[Tuple[datetime, datetime]]) -> List[Tuple
 
 
 def _blocked_capacity_hours(
-    calendar_service: Optional[Any],
+    calendar_service: Any,
     start_dt: datetime,
     end_dt: datetime,
     segments: Iterable[Tuple[datetime, datetime]],
@@ -425,7 +427,7 @@ def _blocked_capacity_hours(
 
 
 def _calendar_capacity_hours(
-    calendar_service: Optional[Any],
+    calendar_service: Any,
     start_dt: datetime,
     end_dt: datetime,
     *,
@@ -434,16 +436,10 @@ def _calendar_capacity_hours(
 ) -> float:
     if end_dt <= start_dt:
         return 0.0
-    if calendar_service is not None:
-        return _non_negative_float(
-            calendar_service.capacity_hours_between(start_dt, end_dt, priority=priority, operator_id=operator_id),
-            field="calendar_capacity_hours",
-        )
-    return _wall_hours(start_dt, end_dt)
-
-
-def _wall_hours(start_dt: datetime, end_dt: datetime) -> float:
-    return max(0.0, float((end_dt - start_dt).total_seconds() / 3600.0))
+    return non_negative_float(
+        calendar_service.capacity_hours_between(start_dt, end_dt, priority=priority, operator_id=operator_id),
+        field="calendar_capacity_hours",
+    )
 
 
 def _text(value: Any) -> Optional[str]:
@@ -459,7 +455,7 @@ def _text_list(values: Any) -> List[str]:
     if isinstance(values, str):
         text = _text(values)
         return [text] if text else []
-    return [text for text in (_text(value) for value in list(values or [])) if text]
+    return [text for text in (_text(value) for value in values) if text]
 
 
 def _unique_text_tuple(values: Iterable[Any]) -> Tuple[str, ...]:
@@ -474,15 +470,12 @@ def _unique_text_tuple(values: Iterable[Any]) -> Tuple[str, ...]:
     return tuple(ordered)
 
 
-def _non_negative_float(value: Any, *, field: str) -> float:
-    if isinstance(value, bool):
-        raise ValidationError(f"{field} 必须是数字。", field="graph_ready_v2_features")
-    try:
-        number = float(value)
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise ValidationError(f"{field} 必须是数字。", field="graph_ready_v2_features") from exc
-    if not math.isfinite(number):
-        raise ValidationError(f"{field} 必须是有限数字。", field="graph_ready_v2_features")
+def non_negative_float(value: Any, *, field: str) -> float:
+    """GraphReady v2 feature input: a finite, non-negative number (errors name the feature field)."""
+    number = finite_float(value)
+    if number is None:
+        kind = "有限数字" if is_non_finite_number(value) else "数字"
+        raise ValidationError(f"{field} 必须是{kind}。", field="graph_ready_v2_features")
     if number < 0.0:
         raise ValidationError(f"{field} 必须是非负数。", field="graph_ready_v2_features")
     return number
@@ -490,6 +483,7 @@ def _non_negative_float(value: Any, *, field: str) -> float:
 
 __all__ = [
     "FixedResourceBlockingFacts",
+    "non_negative_float",
     "residual_capacity_window_end",
     "bottleneck_on",
     "residual_capacity_for_operation",

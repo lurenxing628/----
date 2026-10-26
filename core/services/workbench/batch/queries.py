@@ -37,7 +37,7 @@ class WorkbenchBatchQueryService(BatchFacts):
         for batch in facts["Batches"]:
             part = projection.parts.get(batch["part_no"])
             label = part["part_name"] if part else ""
-            if needle and not any(needle in str(value or "").casefold() for value in (batch["batch_id"], batch["part_no"], label)):
+            if needle and not any(needle in value.casefold() for value in (batch["batch_id"], batch["part_no"], label)):
                 continue
             if query["batch_ids"] is not None and batch["batch_id"] not in query["batch_ids"]:
                 continue
@@ -47,7 +47,7 @@ class WorkbenchBatchQueryService(BatchFacts):
 
         def sort_key(row):
             value = cell(row, query["sort"])
-            return value is None, value or 0
+            return value is None, value
 
         rows.sort(key=lambda row: row["business_code"])
         rows.sort(key=sort_key, reverse=query["direction"] == "desc")

@@ -292,7 +292,7 @@ REQUIRED_REGRESSION_GROUPS = (
         'calendar', 'Calendar, freeze windows, and exit backup', _CALENDAR_TESTS,
         (
             'tests/calendar_maintenance/**/*.py',
-            'core/services/calendar/**/*.py',
+            'core/services/scheduler/calendar/**/*.py',
             'core/services/maintenance/**/*.py',
             'core/services/common/**/*.py',
             'core/infrastructure/**/*.py',

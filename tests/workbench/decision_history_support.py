@@ -1,6 +1,7 @@
 """P7 histories in a controlled SQLite file, reusing the existing one-operation case."""
 
 import json
+from collections import OrderedDict
 from contextlib import contextmanager
 from copy import deepcopy
 
@@ -224,7 +225,8 @@ def _save_cloned_read_models(conn, run_ref):
     packet = _read_packet(store, run)
     for candidate in packet["rows"]:
         _prepare_candidate(store, packet, candidate)
-    resolver = decision_baseline_source_resolver(conn, candidate_provider=_candidate_provider(store, repo, packet))
+    resolver = decision_baseline_source_resolver(
+        conn, candidate_provider=_candidate_provider(store, repo, packet, source_cache=OrderedDict()))
     official = read_decision_baseline(packet["capture"], packet["facts"], packet["disposition"],
                                       source_resolver=resolver)
     states = official["source_states"]

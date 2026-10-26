@@ -23,9 +23,9 @@
       </div>}
     </section>;
   }
-  function Content({ batchRef, outsourcingRef, onUpdated }) {
+  function Content({ outsourcingRef, onUpdated }) {
     const api = React.useMemo(() => C.create(), []), command = S.useCommand(api);
-    const [q, setQuery] = React.useState(() => ({ page: 1, size: 10, status: 'all', ...(batchRef ? { batch_ref: batchRef } : {}) }));
+    const [q, setQuery] = React.useState(() => ({ page: 1, size: 10, status: 'all' }));
     const [selected, setSelected] = React.useState(outsourcingRef || null), [dialog, setDialog] = React.useState(null), [revision, refresh] = React.useReducer(n => n + 1, 0);
     const read = S.useRead(signal => api.read('receipts', q, undefined, signal), [api, q, revision]);
     const result = read.result, blocked = command.busy || !!command.saved || !!command.storageError;
@@ -39,7 +39,7 @@
     function open(ref) { setSelected(ref); setDialog(null); }
     function finish() {
       const ref = command.saved && command.saved.phase === 'confirmed' && command.saved.receipt.data.outsourcing_ref;
-      if (command.finish()) { setDialog(null); if (ref) setSelected(ref); reload(); if (typeof onUpdated === 'function') onUpdated(); }
+      if (command.finish()) { setDialog(null); if (ref) setSelected(ref); reload(); onUpdated(); }
     }
     return <section className="outsourcing-live" aria-label="外协登记" data-outsourcing-workspace data-ready={!!data}>
       <div className="os-heading"><h3>外协发出与回厂登记</h3><div className="os-tools"><label>登记筛选<select aria-label="外协登记筛选" value={q.status} disabled={read.loading} onChange={e => change({ status: e.target.value })}>
@@ -65,13 +65,13 @@
           action={q.status !== 'all' ? <Button disabled={read.loading} onClick={() => change({ status: 'all' })}>查看全部登记</Button> : undefined} />}
         <P.Pager page={data.page} label="外协登记" busy={read.loading} onPage={page => change({ page }, true)} onSize={size => change({ size })} /></>}
       {selected && <Records key={selected + ':' + revision} api={api} selected={selected} revision={revision} onEdit={item => setDialog({ item })} onClose={() => setSelected(null)} blocked={blocked} />}
-      {dialog && <P.Editor key={dialog.item ? dialog.item.latest_fact_ref : 'create'} api={api} item={dialog.item} batchRef={batchRef}
+      {dialog && <P.Editor key={dialog.item ? dialog.item.latest_fact_ref : 'create'} api={api} item={dialog.item}
         command={command} onClose={() => setDialog(null)} onFinish={finish} onOpen={open} />}
     </section>;
   }
-  function OutsourcingWorkspace({ batchRef, outsourcingRef, onUpdated }) {
-    if (batchRef !== undefined && !C.ref(batchRef) || outsourcingRef !== undefined && !C.ref(outsourcingRef)) return <ErrorBox error={new Error('本页数据已过期，请刷新后重试。')} />;
-    return <Content key={(batchRef || '') + ':' + (outsourcingRef || '')} batchRef={batchRef} outsourcingRef={outsourcingRef} onUpdated={onUpdated} />;
+  function OutsourcingWorkspace({ outsourcingRef, onUpdated }) {
+    if (outsourcingRef !== undefined && !C.ref(outsourcingRef)) return <ErrorBox error={new Error('本页数据已过期，请刷新后重试。')} />;
+    return <Content key={outsourcingRef || ''} outsourcingRef={outsourcingRef} onUpdated={onUpdated} />;
   }
   window.OutsourcingWorkspace = OutsourcingWorkspace;
 })();

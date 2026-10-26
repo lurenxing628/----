@@ -70,10 +70,8 @@ class OptimizationSearchReportState:
         candidate: Dict[str, Any],
         *,
         origin: str,
-        fingerprint: Optional[CandidateFingerprint],
+        fingerprint: CandidateFingerprint,
     ) -> CandidateFingerprint:
-        if fingerprint is None:
-            fingerprint = self._candidate_fingerprint(candidate, seen=self.candidate_fingerprints)
         if fingerprint.output_key not in self.candidate_fingerprints:
             self.candidate_fingerprints.add(fingerprint.output_key)
             self._observe_candidate(candidate, origin=origin, verified=True)
@@ -84,7 +82,7 @@ class OptimizationSearchReportState:
         candidate: Dict[str, Any],
         *,
         origin: str,
-        fingerprint: Optional[CandidateFingerprint] = None,
+        fingerprint: CandidateFingerprint,
     ) -> None:
         fingerprint = self._ensure_verified_fingerprint(candidate, origin=origin, fingerprint=fingerprint)
         if self.initial_fingerprint is None:
@@ -100,11 +98,12 @@ class OptimizationSearchReportState:
         candidate: Dict[str, Any],
         *,
         origin: str,
-        fingerprint: Optional[CandidateFingerprint] = None,
+        fingerprint: CandidateFingerprint,
     ) -> None:
         self._ensure_verified_fingerprint(candidate, origin=origin, fingerprint=fingerprint)
         if self.candidate_acceptance_observer is not None:
             self.candidate_acceptance_observer(candidate=candidate)
+
     def _candidate_fingerprint(self, candidate: Dict[str, Any], *, seen: Set[tuple],
                                identity: Optional[CandidateFingerprint] = None) -> CandidateFingerprint:
         return build_candidate_fingerprint(

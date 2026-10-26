@@ -64,8 +64,7 @@ class WorkbenchRunCandidateQueryService:
         tasks, unplanned = filter_workspace(source.tasks, source.unplanned, scope)
         effort = source.operation_effort_projection
         tasks = [dict(row, operation_effort=effort[row["operation_ref"]]) for row in tasks]
-        if unplanned is not None:
-            unplanned = [dict(row, operation_effort=effort[row["operation_ref"]]) for row in unplanned]
+        unplanned = [dict(row, operation_effort=effort[row["operation_ref"]]) for row in unplanned]
         delivery = candidate_delivery_risks(source.candidate, source.facts, source.tasks, source.disposition, scope,
                                             source.capture["input"], tasks, unplanned)
         data = {"candidate": candidate_summary(source.candidate, source.disposition,
@@ -75,13 +74,13 @@ class WorkbenchRunCandidateQueryService:
                 "tasks_complete": True, "candidate_task_count": source.candidate["task_count"],
                 "candidate_span": task_span(source.tasks), "task_span": task_span(tasks),
                 "unplanned_operations": unplanned,
-                "unplanned_operation_count": len(unplanned) if unplanned is not None else None,
+                "unplanned_operation_count": len(unplanned),
                 "time_scope": {"range_start": scope.range_start, "range_end": scope.range_end,
                                "interval": "half_open_overlap", "time_basis": "factory_local",
                                "unplanned_policy": "included_without_time_interval"},
                 "batch_ref": scope.batch_ref, "capabilities": read_capabilities(),
                 "blocked_reasons": blocked_reasons(),
-                "data_gaps": [] if unplanned is not None else [gap("unplanned_operations")], "delivery_risks": delivery}
+                "data_gaps": [], "delivery_risks": delivery}
         return data, source.snapshot_identity
 
 

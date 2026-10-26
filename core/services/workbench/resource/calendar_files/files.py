@@ -56,6 +56,16 @@ def row_blocked(row) -> bool:
     return bool(row["errors"])
 
 
+def zero_hour_workday_note(after: Dict[str, Any], subject: str, remedy: str) -> Optional[str]:
+    """工作日却没有可排工时时的预检提醒；全局与个人日历文件共用这句事实，各自补上本文件的列操作提示。
+
+    假期只把类型改成工作日、工时留空时沿用假期的 0 工时；日历页切换类型会自动填默认班次，文件不替用户补。
+    """
+    if after["day_type"] != "workday" or after["shift_hours"] or after["periods_json"] not in (None, "[]"):
+        return None
+    return "这一天是工作日，但可排工时是 0，排产时" + subject + "一道工序也排不进来。" + remedy
+
+
 def range_fingerprint(states: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     """日期范围的原读内容：已保存日期的行与修订号。"""
     return [{"date": day, "row": state["row"],
@@ -236,10 +246,9 @@ class WorkbenchCalendarFileService:
             row["notes"].append("这一天安排了工时，但普通件和急件都不可排产，实际一道工序也排不进来。"
                                 "这两列留空时，没配置过的周末按假期默认成「否」；要让这天能排产请把它们填成「是」。")
             row["requires_confirmation"] = True
-        if after["day_type"] == "workday" and not after["shift_hours"] and after["periods_json"] in (None, "[]"):
-            # 假期只把类型改成工作日、工时留空时沿用假期的 0 工时；日历页切换类型会自动填默认班次，文件不替用户补。
-            row["notes"].append("这一天是工作日，但可排工时是 0，排产时一道工序也排不进来。"
-                                "要上班请填可排工时；要休息请把类型填成「假期」。")
+        zero_hours = zero_hour_workday_note(after, "", "要上班请填可排工时；要休息请把类型填成「假期」。")
+        if zero_hours is not None:
+            row["notes"].append(zero_hours)
             row["requires_confirmation"] = True
 
     def _public(self, row: Optional[Dict[str, Any]], effective: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:

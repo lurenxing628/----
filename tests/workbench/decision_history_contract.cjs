@@ -86,18 +86,18 @@ function queryAndResponse() {
     completed_policy: 'preserve_actuals', batch_count: 1, selection: 'explicit_batches', basis: 'captured_at_run_admission', data_gaps: [] };
   const run = { run_ref: ref(1), state: 'complete', recovery_required: false, error: null, accepted_at: '2026-10-01T08:00:00',
     started_at: '2026-10-01T08:00:01', finished_at: '2026-10-01T08:00:11', candidate_count: 2, task_count: 1, counts_final: true, scope_summary: scope };
-  const oldScope = text(expand(h(historyControls.Table, { runs: [run], canNavigate: true, onOpen() {} })));
+  const oldScope = text(expand(h(historyControls.Table, { runs: [run], onOpen() {} })));
   assert(!oldScope.includes('主目标：') && !oldScope.includes('同时探索：') && !oldScope.includes('总计算预算：'), '旧范围不追加未保存的优化选项');
   for (const seconds of [10, 30]) {
     const options = { ...savedOptions, time_budget_seconds: seconds }, current = { ...run, scope_summary: { ...scope, run_options: options } }, saved = JSON.stringify(current);
     assert(window.RunGenerationContract.runOptions(options));
-    const shown = text(expand(h(historyControls.Table, { runs: [current], canNavigate: true, onOpen() {} }))).replace(/\s+/g, ' ');
+    const shown = text(expand(h(historyControls.Table, { runs: [current], onOpen() {} }))).replace(/\s+/g, ' ');
     assert(shown.includes('主目标： 加权拖期更轻') && shown.includes('同时探索： 加权拖期更轻 · 交期优先 · 切换更少'));
     assert(shown.includes('总计算预算： ' + seconds + ' 秒 · 共同优化') && shown.includes('unified_search_v1') && shown.includes('诊断报告'));
     assert.equal(JSON.stringify(current), saved, '范围展示使用实际保存选项，不改变原记录');
   }
   const quick = { ...run, scope_summary: { ...scope, run_options: { ...savedOptions, algo_mode: 'greedy' } } };
-  assert(text(expand(h(historyControls.Table, { runs: [quick], canNavigate: true, onOpen() {} }))).includes('快速生成'));
+  assert(text(expand(h(historyControls.Table, { runs: [quick], onOpen() {} }))).includes('快速生成'));
 }
 function chartAndDetails() {
   const value = payload(), before = JSON.stringify(value), selected = [], reveals = [], chart = window.DecisionHistoryChart.Chart({ data: value.data, metricKey: keys[1], selectedEntryRef: value.data.entries[0].entry_ref, onSelect: (row, reveal) => { selected.push(row); reveals.push(reveal); } });

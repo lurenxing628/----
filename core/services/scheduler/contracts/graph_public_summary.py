@@ -59,7 +59,7 @@ def _project_public_graph_value(value: Any) -> Any:
 def _project_public_graph_dict(value: Dict[Any, Any]) -> Dict[str, Any]:
     out: Dict[str, Any] = {}
     for key, child in value.items():
-        key_text = str(key or "").strip()
+        key_text = str(key).strip()
         if not is_forbidden_internal_key(key_text):
             out[key_text] = _project_public_graph_value(child)
     return out

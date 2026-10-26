@@ -1,7 +1,7 @@
 """The iterated greedy stage: start, bounded trial tasks, finish and publish."""
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
@@ -13,6 +13,9 @@ from .iterated_greedy_iteration import IGIteration
 from .iterated_greedy_large import iteration_for, search_type_for
 from .iterated_greedy_moves import _parent_from_candidate
 
+if TYPE_CHECKING:
+    from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
+
 
 class IteratedGreedyRun:
     """Yield between trials while retaining an iteration's parent context and partial reinsertion."""
@@ -22,7 +25,7 @@ class IteratedGreedyRun:
                  pool: Any, evaluate: Callable[..., Dict[str, Any]], operations: List[Any], graph_context: Dict[str, Any],
                  metrics_by_op_id: Dict[int, Dict[str, Any]], objective_name: str, start_dt: Any, seed: int, deadline: float,
                  clock: Callable[[], float], t_begin: float, attempts: List[Dict[str, Any]],
-                 improvement_trace: List[Dict[str, Any]], report_state: Any, strict_mode: bool,
+                 improvement_trace: List[Dict[str, Any]], report_state: OptimizationSearchReportState, strict_mode: bool,
                  decode_session: SharedDecodeSession) -> None:
         self.limits = limits
         self.state = state
@@ -83,9 +86,8 @@ class IteratedGreedyRun:
     def _start(self, started: float) -> None:
         self.started_at = started
         best = self.state.best
-        parent = _parent_from_candidate(best, operations=self.operations, graph_context=self.graph_context,
-                                        resource_pool=(best or {}).get("resource_pool"),
-                                        prepared_parent=self.pool.prepare_parent(best) if best is not None else None)
+        parent = (_parent_from_candidate(best, graph_context=self.graph_context, prepared=self.pool.prepare_parent(best))
+                  if best is not None else None)
         profile = self.parent_profile(best)
         if parent is None or profile is None:
             self.report["status"] = "skipped_no_parent"

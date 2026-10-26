@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Sequence, Tuple
+import sqlite3
+from typing import Any, Dict, Sequence, Tuple
 
 from core.errors import AppError, ErrorCode
 from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
@@ -10,7 +11,6 @@ from core.services.scheduler.execution.execution_snapshot import (
     ExecutionSnapshot,
     build_execution_snapshot,
 )
-from core.services.scheduler.repository_bundle import ScheduleRepositoryBundle
 
 
 def execution_conflict(reason: str) -> AppError:
@@ -34,26 +34,20 @@ def _validate_event_plan_identities(capture) -> None:
             raise execution_conflict("execution_scope_missing")
 
 
-def resource_execution_snapshot(
-    facts: Dict[int, ExecutionFact], plan_rows: Dict[int, Dict[str, Any]],
-) -> ExecutionSnapshot:
-    return build_execution_snapshot(facts, plan_rows=plan_rows)
-
-
 def collect_resource_execution_facts(
-    svc: ScheduleRepositoryBundle, *, prev_version: int,
-    execution_projections: Optional[Sequence[ExecutionProjection]] = None,
+    conn: sqlite3.Connection, *, prev_version: int,
+    execution_projections: Sequence[ExecutionProjection],
     capture, ledger=None,
 ) -> Tuple[Dict[int, ExecutionFact], Dict[int, Dict[str, Any]], ExecutionSnapshot]:
     try:
         _validate_event_plan_identities(capture)
         plan_rows = capture.latest_plan_rows(prev_version)
-        facts = ExecutionFactProvider(svc.conn, capture=capture, ledger=ledger).facts_by_op_id_for_plan_rows(
+        facts = ExecutionFactProvider(conn, capture=capture, ledger=ledger).facts_by_op_id_for_plan_rows(
             list(plan_rows.values()),
             {"source_table": SOURCE_SCHEDULE, "effective_plan_role": ROLE_ADOPTED, "scenario_id": None},
             execution_projections=execution_projections,
         )
-        snapshot = resource_execution_snapshot(facts, plan_rows)
+        snapshot = build_execution_snapshot(facts, plan_rows=plan_rows)
     except (ValueError, TypeError, OverflowError) as exc:
         raise execution_conflict("invalid_execution_fact") from exc
     return facts, plan_rows, snapshot

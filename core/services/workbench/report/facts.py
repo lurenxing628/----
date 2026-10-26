@@ -79,7 +79,8 @@ class WorkbenchReportFacts:
             raise WorkbenchCommandRejected("query_too_large", "这个范围的正式计划工序太多，一次读不完，没有生成结果。请缩小计划完工日期范围后重试。", 413)
         if len({row["op_id"] for row in rows}) != len(rows):
             raise WorkbenchCommandRejected("plan_unavailable", "正式计划里有重复的工序，完成率算不出来，没有生成结果。请联系维护人员核对这份计划。")
-        task_refs = self.plans.references.get_task_refs(scope.plan_ref, rows)
+        task_refs = self.plans.references.get_task_refs(
+            scope.plan_ref, ((row["schedule_id"], row["op_id"], row["version"]) for row in rows))
         operation_refs = self.plans.references.get_operation_refs(row["op_id"] for row in rows)
         tasks = [{"plan_ref": scope.plan_ref, "operation_ref": operation_refs[row["op_id"]],
                   "task_ref": task_refs[row["schedule_id"]]} for row in rows]

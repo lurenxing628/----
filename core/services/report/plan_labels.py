@@ -1,19 +1,18 @@
-"""Plan labels shared by execution feedback, ledger review and XLSX exports."""
+"""Planned labels of one report row (``WorkbenchReportFactsRepository.plan_rows``) for screen and exports.
+
+Rows come from ``Schedule s LEFT JOIN BatchOperations bo``: ``Schedule.op_id`` is a NOT NULL foreign key
+(enforced on every connection), so ``bo.op_code`` / ``bo.op_type_name`` / ``bo.batch_id`` are present
+NOT NULL text; legacy rows may still hold blank text. Planned machine and operator are nullable.
+"""
 
 from typing import Any, Dict
 
 from core.models.resource_identity import resource_display_label
 
 
-def _display_time(value: Any) -> str:
-    # Keep the same ISO text on screen and in exports.
-    text = str(value or "").strip()
-    return text or "未填写计划时间"
-
-
 def _operation_label(row: Dict[str, Any]) -> str:
-    op_name = str(row.get("op_type_name") or "").strip()
-    op_code = str(row.get("op_code") or "").strip()
+    op_name = row["op_type_name"].strip()
+    op_code = row["op_code"].strip()
     if op_name and op_code:
         return f"{op_code} / {op_name}"
     return op_name or op_code or "未命名工序"
@@ -31,12 +30,13 @@ def resource_pair_label(machine_display: str, operator_display: str, *, empty_la
 
 def planned_review_labels(row: Dict[str, Any]) -> Dict[str, Any]:
     """Render only planned facts; actual labels come from the relevant ledger."""
-    machine = resource_display_label(row.get("machine_id"), row.get("machine_name"))
-    operator = resource_display_label(row.get("operator_id"), row.get("operator_name"))
+    machine = resource_display_label(row["machine_id"], row["machine_name"])
+    operator = resource_display_label(row["operator_id"], row["operator_name"])
     return {
-        "batch_id_label": str(row.get("batch_id") or ""),
+        "batch_id_label": row["batch_id"],
         "operation_label": _operation_label(row),
-        "planned_start_time_label": _display_time(row.get("start_time")),
-        "planned_end_time_label": _display_time(row.get("end_time")),
+        # Schedule.start_time/end_time 是 NOT NULL 的 ISO 文本，屏幕与导出用同一原文。
+        "planned_start_time_label": row["start_time"],
+        "planned_end_time_label": row["end_time"],
         "planned_resource_label": resource_pair_label(machine, operator, empty_label="未安排计划资源"),
     }

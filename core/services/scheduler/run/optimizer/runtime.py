@@ -29,9 +29,6 @@ def _default_runtime() -> OptimizerRuntime:
     )
 
 
-def resolve_runtime(runtime: Optional[OptimizerRuntime], search_budget: Optional[SearchBudget]) -> OptimizerRuntime:
+def resolve_runtime(runtime: Optional[OptimizerRuntime], search_budget: SearchBudget) -> OptimizerRuntime:
     """Resolve one runtime and bind its clock to the owned search budget."""
-    resolved = runtime or _default_runtime()
-    if search_budget is not None:
-        resolved = replace(resolved, clock=search_budget.clock)
-    return resolved
+    return replace(runtime or _default_runtime(), clock=search_budget.clock)

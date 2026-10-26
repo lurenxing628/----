@@ -80,9 +80,10 @@ def build_shared_process(search: Any, *, runtime_ms: int, stop_reason: str,
             source = event_by_id.get(row["source_event_id"])
             improvement_key = "improved_objectives" if scope.is_complete else "partial_group_improved_objectives"
             scope_ref = scope_reference(scope)
-            if (source is not None and source["event_type"] == "archive_observation" and source["verified"] is True
-                    and source["entry_id"] == row["entry_id"] and source["elapsed_ms"] == row["elapsed_ms"]
-                    and source.get("scope_ref") == scope_ref and objective in source.get(improvement_key, ())):
+            # A source is the verified archive observation that holds this entry's evidence
+            # (SharedSearch.observe); only the observation that produced the row counts.
+            if (source is not None and source["elapsed_ms"] == row["elapsed_ms"]
+                    and source["scope_ref"] == scope_ref and objective in source[improvement_key]):
                 flags.append("strict_improvement")
             point = {key: value for key, value in row.items() if key not in ("score_scope", "score")}
             point.update(scope_ref=scope_ref,
@@ -106,7 +107,7 @@ def build_shared_process(search: Any, *, runtime_ms: int, stop_reason: str,
                 "field_order": list(evaluation.field_order), "scope_ref": scope_reference(scope),
                 "segment": segment, "flags": ["final"],
             })
-        sampled, sampling = sample_elapsed_points(points, elapsed_ms=runtime_ms, limit=200)
+        sampled, sampling = sample_elapsed_points(points, elapsed_ms=runtime_ms)
         targets[objective] = {
             **budget_stats["objectives"][objective],
             "archive_improvement_count": improvement_counts[objective],

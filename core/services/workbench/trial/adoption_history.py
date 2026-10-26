@@ -51,8 +51,7 @@ class WorkbenchTrialAdoptionHistoryService:
         # This is current-state evidence only. It never chooses the requested scene.
         current_version = catalog.latest_version()
         query = PagePlanQueryService(catalog, current_version)
-        reader = WorkbenchPlanQueryService(self.conn)
-        reader.references = refs
+        reader = WorkbenchPlanQueryService(self.conn, references=refs)
         rows, plans, all_items, seen = adoption_receipts(repo, scope["scenario_ref"]), [], [], set()
         for row in rows:
             plan = receipt_plan(row, saved)
@@ -110,7 +109,7 @@ class WorkbenchTrialAdoptionHistoryService:
             history = query.repo.get_history_identity_row(plan["version"])
             options = query.repo.list_plan_role_options(plan["version"])
             option = next((row for row in options if row["role"] == "adopted"), None)
-            identity = reader._catalog_role(query, history, "adopted", option)
+            identity = reader.catalog_role(query, history, "adopted", option)
             if identity["plan_ref"] != plan["plan_ref"]:
                 raise ValueError("Receipt plan ref mismatch")
             return identity, identity["blocked_reasons"]

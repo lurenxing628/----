@@ -119,14 +119,10 @@
       throw C.failure('读到的工艺详情不完整或不是这个零件，请刷新后重试。');
     return result;
   }
+  // 信封（ok、schema_version、meta、warnings）已由 resource-api.js 的 production() 校验，下面两个预检只校验 data。
   function preview(result, expectedRef, body) {
-    if (result && result.ok === false) throw result;
-    if (!C.object(result) || result.ok !== true || result.schema_version !== 1 || !C.object(result.meta)
-        || !['production', 'demo'].includes(result.meta.source) || result.meta.time_basis !== 'factory_local'
-        || !token(result.meta.snapshot_ref) || !text(result.meta.request_ref) || !text(result.meta.as_of) || !Array.isArray(result.warnings))
-      throw C.failure('读到的路线预检结果不完整，请刷新重试。');
     const d = result.data;
-    if (!C.object(d) || d.part_ref !== expectedRef || d.mode !== body.mode || !text(d.route_raw) || !text(d.normalized_input)
+    if (d.part_ref !== expectedRef || d.mode !== body.mode || !text(d.route_raw) || !text(d.normalized_input)
         || !writeContext(d.write_context, d.can_confirm_route ? 'route_confirm' : null) || typeof d.can_confirm_route !== 'boolean' || !Array.isArray(d.operations)
         || !d.operations.every(row => C.object(row) && sequence(row.sequence) && text(row.op_type_name)
           && nullableRef(row.op_type_ref) && source(row.source_suggestion) && nullableRef(row.supplier_ref)
@@ -144,11 +140,8 @@
     return result;
   }
   function stagePreview(result, expectedRef, action) {
-    if (!C.object(result) || result.ok !== true || result.schema_version !== 1 || !C.object(result.meta)
-        || result.meta.source !== 'production' || result.meta.time_basis !== 'factory_local' || !token(result.meta.snapshot_ref)
-        || !token(result.meta.request_ref) || !text(result.meta.as_of) || !Array.isArray(result.warnings)) throw C.failure('归属检查结果不完整，请重新检查。');
     const d = result.data;
-    if (!C.object(d) || !['source_confirm', 'groups_confirm'].includes(action) || d.action !== action || d.part_ref !== expectedRef
+    if (!['source_confirm', 'groups_confirm'].includes(action) || d.action !== action || d.part_ref !== expectedRef
         || !writeContext(d.write_context, action) || !Array.isArray(d.affected_groups) || !d.affected_groups.every(externalGroup) || !uniqueRefs(d.affected_groups))
       throw C.failure('归属检查与当前零件不一致，请重新检查。');
     if (action === 'groups_confirm') {

@@ -1,7 +1,6 @@
 """One wall-clock occupancy definition for reports and workbench projections.
 
-Inputs are already selected from one plan/source and one resource. Missing actual
-intervals stay missing: this calculator never substitutes planned timestamps.
+Inputs are planned intervals already selected from one plan/source and one resource.
 Efficiency-weighted processing hours are deliberately outside this definition.
 """
 
@@ -62,8 +61,8 @@ def _available_segments(swept, available):
 class _CalendarIndexes:
     """Calendar-bound views of one resource; they exist together or not at all."""
 
-    def __init__(self, available, occupied, swept, *, normalized_availability):
-        self.available = IntervalIndex.from_normalized(available) if normalized_availability else IntervalIndex(available)
+    def __init__(self, available, occupied, swept):
+        self.available = IntervalIndex.from_normalized(available)
         self.occupied = IntervalIndex.from_normalized(intersection(occupied, self.available.intervals))
         self.load = _WeightedIndex(_available_segments(swept, self.available.intervals))
 
@@ -74,25 +73,19 @@ class _CalendarIndexes:
 
 
 class ResourceUtilizationMetrics:
-    """Build once; whole-window and daily queries use the same indexed intervals."""
-
-    def __init__(self, intervals, available, *, source="planned"):
-        self._initialize(intervals, available, source=source, normalized_availability=False)
+    """Build once from normalized availability; whole-window and daily queries use the same indexed intervals."""
 
     @classmethod
-    def from_normalized_availability(cls, intervals, available, *, source="planned"):
+    def from_normalized_availability(cls, intervals, available):
         """Consume internal unioned availability directly; None keeps unknown capacity."""
         metrics = cls.__new__(cls)
-        metrics._initialize(intervals, available, source=source, normalized_availability=True)
+        metrics._initialize(intervals, available)
         return metrics
 
-    def _initialize(self, intervals, available, *, source, normalized_availability):
-        if source not in ("planned", "actual"):
-            raise ValueError("Utilization source must be planned or actual")
+    def _initialize(self, intervals, available):
         intervals = list(intervals)
         if any(start > end for start, end in intervals):
             raise ValueError("Invalid resource task interval")
-        self.source = source
         swept = segments(intervals)
         occupied = union_sorted((start, end) for start, end, _ in swept)
         self.segments = swept
@@ -101,8 +94,7 @@ class ResourceUtilizationMetrics:
         self.span_overlap = IntervalIndex.from_normalized(union_sorted(
             (start, end) for start, end, count in swept if count > 1))
         # None means the resource's calendar is unknown, never that it has zero capacity.
-        self.calendar = _CalendarIndexes(available, occupied, swept,
-                                         normalized_availability=normalized_availability) if available is not None else None
+        self.calendar = _CalendarIndexes(available, occupied, swept) if available is not None else None
 
     def window(self, start, end, *, precision: Optional[int] = 6):
         if start > end:
@@ -149,6 +141,6 @@ class ResourceUtilizationMetrics:
         }
         if precision is not None:
             result = {key: round(value, precision) if value is not None else value for key, value in result.items()}
-        result.update(metric_version=METRIC_VERSION, source=self.source,
+        result.update(metric_version=METRIC_VERSION, source="planned",
                       reason="calendar_unavailable" if capacity is None else "zero_available_capacity" if capacity == 0 else None)
         return result

@@ -10,6 +10,8 @@ from .safe_files import read_fixed_bytes, remove_fixed_file, stat_regular_file
 from .sqlite_integrity import validated_sqlite_backup_stage
 
 _LOGGER = logging.getLogger(__name__)
+_RESTORE_ATTEMPTS = 6
+_RESTORE_RETRY_BASE_DELAY_S = 0.2
 
 
 def is_windows_lock_error(exc: Exception) -> bool:
@@ -27,19 +29,12 @@ def cleanup_sqlite_sidecars(db_path: str, logger=None) -> None:
             raise
 
 
-def restore_db_file_from_backup(
-    backup_path: str,
-    db_path: str,
-    logger=None,
-    retries: int = 6,
-    base_delay_s: float = 0.2,
-) -> None:
+def restore_db_file_from_backup(backup_path: str, db_path: str, logger=None) -> None:
     backup_abs = os.path.abspath(backup_path)
     db_abs = os.path.abspath(db_path)
     # Old rollback versions could leave this fixed file behind; retain its safe cleanup.
     tmp_path = f"{db_abs}.rollback_tmp"
-    retry_count = max(1, retries)
-    for attempt in range(retry_count):
+    for attempt in range(_RESTORE_ATTEMPTS):
         try:
             _remove_tmp_file(tmp_path)
             backup_payload = read_fixed_bytes(backup_abs)
@@ -55,10 +50,10 @@ def restore_db_file_from_backup(
         except Exception as exc:
             _remove_tmp_file(tmp_path)
             gc.collect()
-            if is_windows_lock_error(exc) and attempt < retry_count - 1:
+            if is_windows_lock_error(exc) and attempt < _RESTORE_ATTEMPTS - 1:
                 if attempt == 0:
                     fallback_log(logger, "warning", f"数据库文件回滚遇到文件锁，准备重试：{exc}（db={db_abs}）")
-                time.sleep(base_delay_s * (attempt + 1))
+                time.sleep(_RESTORE_RETRY_BASE_DELAY_S * (attempt + 1))
                 continue
             raise
 

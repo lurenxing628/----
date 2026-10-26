@@ -224,9 +224,10 @@ def test_operation_supports_keep_known_changes_and_removed_reference_arrangement
     assert removed["drill"]["selected_row_ref"] == ref(202) and removed["drill"]["operation_ref"] == operation_refs["removed"]
     assert removed["drill"]["range_start"] == "2026-09-08T20:00:00" and removed["drill"]["drill_range_adjusted"] is True
     assert "comparison_tab" not in removed["drill"] and "reference_view" not in removed["drill"]
-    before_tasks = [row for rows in before.values() for row in rows]
-    after_tasks = [row for rows in after.values() for row in rows]
-    metrics = operation_changes(after_tasks, before_tasks, list(operation_refs.values()), True)
+    unchanged_scope = {"selected_available": True, "deferred_refs": set(), "reference_deferred_refs": set()}
+    metrics = operation_changes(list(operation_refs.values()), True, reference_groups=before, selected_groups=after,
+                                task_intervals=intervals[fixed_ref], reference_task_intervals=intervals["reference"],
+                                **unchanged_scope)
     assert metrics["changed_operation_count"]["value"] is None
     assert metrics["changed_operation_count"]["known_subtotal"] == 3 and metrics["changed_operation_count"]["unknown_count"] == 4
     assert metrics["machine_change_count"]["value"] is None
@@ -264,7 +265,9 @@ def test_operation_supports_keep_known_changes_and_removed_reference_arrangement
     assert own_entries[0]["candidate_ref"] == own_entries[0]["drill"]["selected_candidate_ref"] == fixed_ref
     assert own_entries[0]["drill"]["reference_candidate_ref"] == fixed_ref
     assert own_entries[0]["drill"]["comparison_tab"] == "operations" and own_entries[0]["drill"]["detail_query"] == {}
-    same_metrics = operation_changes(after_tasks, after_tasks, list(operation_refs.values()), True)
+    same_metrics = operation_changes(list(operation_refs.values()), True, reference_groups=after, selected_groups=after,
+                                     task_intervals=intervals[fixed_ref], reference_task_intervals=intervals[fixed_ref],
+                                     **unchanged_scope)
     assert same_metrics["changed_operation_count"]["value"] is None
     assert same_metrics["changed_operation_count"]["unknown_count"] > 0
 

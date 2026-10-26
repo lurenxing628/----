@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Dict, Tuple
+from dataclasses import dataclass
+from typing import Any, Dict
 
 from .schedule_config_runtime_fields import list_runtime_config_fields
 
@@ -30,11 +30,13 @@ class ScheduleConfigSnapshot:
     graph_block_on_cycle: str = "no"
     graph_critical_weight: int = 500
     graph_impact_weight: int = 10
-    graph_downstream_weight: int = 1
     graph_debug_export: str = "no"
     auto_assign_persist: str = "yes"
-    degradation_events: Tuple[Dict[str, Any], ...] = field(default_factory=tuple, repr=False)
-    degradation_counters: Dict[str, int] = field(default_factory=dict, repr=False)
+
+    @property
+    def graph_downstream_weight(self) -> int:
+        """沿用旧口径：重点工序与后续影响权重都为 0 时不按后续工时加分，否则固定为 1。"""
+        return 0 if self.graph_critical_weight == 0 and self.graph_impact_weight == 0 else 1
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -64,16 +66,11 @@ class ScheduleConfigSnapshot:
         }
 
 
-def snapshot_from_values(values, *, degradation_events=(), degradation_counters=None):
-    """Build the shared projection after field coercion, including legacy defaults."""
+def snapshot_from_values(values):
+    """Build the shared projection after field coercion."""
     convert = {"int": int, "float": float, "enum": str, "yes_no": str}
-    projected = {spec.key: convert[spec.field_type](values[spec.key]) for spec in list_runtime_config_fields()}
-    downstream = (0 if projected["graph_critical_weight"] == 0 and projected["graph_impact_weight"] == 0
-                  else ScheduleConfigSnapshot.graph_downstream_weight)
     return ScheduleConfigSnapshot(
-        **projected, graph_downstream_weight=downstream, degradation_events=tuple(degradation_events),
-        degradation_counters={} if degradation_counters is None else degradation_counters,
-    )
+        **{spec.key: convert[spec.field_type](values[spec.key]) for spec in list_runtime_config_fields()})
 
 
 __all__ = ["ScheduleConfigSnapshot", "snapshot_from_values"]

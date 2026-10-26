@@ -30,7 +30,8 @@
     return value.map(row => (row.day_offset ? '次日 ' : '') + row.start + '–'
       + (row.end <= row.start ? '次日 ' : '') + row.end).join('、') || '无工作时段';
   }
-  // 工作日却没有可排工时：全局日历和个人日历编辑这一天时都显示这一句，不拦保存；与日历文件导入预检的提醒同一口径。
+  // 工作日却没有可排工时：全局日历和个人日历编辑这一天时按草稿实时显示，不拦保存。事实句与日历文件导入预检
+  // （calendar_files/files.py 的 zero_hour_workday_note）相同，后半句的操作提示针对表单控件。
   const zeroHoursNote = '这一天是工作日，但可排工时是 0，排产时一道工序也排不进来。要上班请填写工作时间；要休息请改选休息。';
   window.APSWorkPeriods = { defaults, clone, validate, hours, describe, bounds, duration, zeroHoursNote };
 })();

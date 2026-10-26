@@ -3,7 +3,7 @@
 import pytest
 
 from core.infrastructure.database import get_connection
-from core.infrastructure.workbench_outsourcing_schema import install
+from core.infrastructure.workbench_outsourcing_schema import install_workbench_outsourcing_schema
 from core.infrastructure.workbench_outsourcing_source_schema import install as install_sources
 from core.infrastructure.workbench_process_schema import install_process
 from core.infrastructure.workbench_template_lineage_schema import install_template_lineage
@@ -43,7 +43,7 @@ def external_case(dashboard_case):
     conn.execute("BEGIN")
     install_process(conn)
     install_template_lineage(conn)
-    install(conn)
+    install_workbench_outsourcing_schema(conn)
     install_sources(conn)
     conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('XT1','Heat treatment','external')")
     conn.execute("INSERT INTO Suppliers(supplier_id,name,op_type_id,default_days) VALUES ('XS1','Supplier','XT1',2)")

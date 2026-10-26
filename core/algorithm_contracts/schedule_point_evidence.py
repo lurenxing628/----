@@ -35,8 +35,6 @@ class SchedulePointEvidence:
 
 
 def verified_point(row, validator):
-    if not callable(validator):
-        return False
     evidence = validator(row)
     return type(evidence) is SchedulePointEvidence and evidence.matches(row)
 

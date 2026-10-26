@@ -45,16 +45,16 @@
       && ['complete', 'incomplete', 'legacy_incomplete', 'invalid'].includes(p.data_quality) && nullable(p.target_quantity)
       && nullable(p.known_completed_quantity) && nullable(p.remaining_quantity) && typeof p.records_complete === 'boolean'
       && typeof p.quantity_complete === 'boolean' && Number.isInteger(p.unknown_record_count) && Array.isArray(p.data_gaps)
-      && Array.isArray(p.reports) && p.reports.every(row => report(row) && row.operation_ref === p.operation_ref) && Array.isArray(p.legacy_facts) && C.object(p.write_context);
+      && Array.isArray(p.reports) && p.reports.every(row => report(row) && row.operation_ref === p.operation_ref) && Array.isArray(p.legacy_facts) && Array.isArray(p.voided_reports) && C.object(p.write_context);
   }
+  // 信封（ok、schema_version、meta、data 对象）已由 resource-api.js 的 production() 校验，这里只校验 data。
   function query(result, mode, expected) {
-    if (!result || result.ok !== true || result.schema_version !== 1 || !result.meta || result.meta.source !== 'production' || result.meta.time_basis !== 'factory_local'
-      || !result.meta.snapshot_ref || !result.meta.as_of || !C.object(result.data)) throw C.failure('读到的现场记录不完整，请刷新重试。');
     const d = result.data;
     if (mode === 'list' && (!Array.isArray(d.tasks) || !d.tasks.every(task) || !C.object(d.page) || !Number.isInteger(d.page.total) || !C.object(d.summary))) throw C.failure('读到的现场任务列表不完整，请刷新重试。');
     if (mode === 'list' && d.tasks.some(row => !d.plan || row.plan_ref !== d.plan.plan_ref)) throw C.failure('现场任务与所选计划不一致。');
     if (mode === 'detail' && (!task(d.task) || d.task.task_ref !== expected)) throw C.failure('现场任务详情不匹配，请刷新后重选。');
-    if (mode === 'preview' && (!/^[A-Za-z0-9_-]{32}$/.test(d.preview_ref) || typeof d.actual_source_ref !== 'string' || !/^[a-f0-9]{32}$/.test(d.actual_source_ref) || !Array.isArray(d.rows) || typeof d.can_confirm !== 'boolean' || d.commit_policy !== 'atomic' || !C.object(d.write_context))) throw C.failure('读到的文件预检结果不完整，请刷新重试。');
+    if (mode === 'preview' && (!/^[A-Za-z0-9_-]{32}$/.test(d.preview_ref) || typeof d.actual_source_ref !== 'string' || !/^[a-f0-9]{32}$/.test(d.actual_source_ref) || !Array.isArray(d.rows) || typeof d.can_confirm !== 'boolean' || d.commit_policy !== 'atomic' || !C.object(d.write_context)
+      || !C.object(d.summary) || !['total', 'changed', 'unchanged', 'blank', 'rejected'].every(key => Number.isInteger(d.summary[key])))) throw C.failure('读到的文件预检结果不完整，请刷新重试。');
     return result;
   }
   // context 是已校验过的任务、记录或预检上下文；关闭的上下文没有 write_token、capabilities 为空，原因都在 blocked_reasons 里
@@ -97,8 +97,9 @@
     return result;
   }
   function saveFile(file, fallback) {
-    if (!file || !(file.blob instanceof Blob) || !file.blob.size || !file.contentType.includes('spreadsheetml')) throw C.failure('下载不是有效 XLSX 文件。');
-    const match = /filename\*=UTF-8''([^;]+)/i.exec(file.disposition || '');
+    // resource-api.js 的二进制下载只在服务端回 JSON 成功信封时不带 blob；带 blob 时恒非空且 disposition 恒为字符串。
+    if (!(file.blob instanceof Blob) || !file.contentType.includes('spreadsheetml')) throw C.failure('下载不是有效 XLSX 文件。');
+    const match = /filename\*=UTF-8''([^;]+)/i.exec(file.disposition);
     const url = URL.createObjectURL(file.blob), link = document.createElement('a');
     link.href = url; link.download = match ? decodeURIComponent(match[1]) : fallback;
     document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);

@@ -6,6 +6,8 @@ MAX_RECEIPTS = 1000
 MAX_DIRECTORY_BYTES = 8 * 1024 * 1024
 MAX_RECEIPT_BYTES = 64 * 1024
 MAX_SCENARIO_BYTES = 32 * 1024 * 1024
+# A trial.save outcome repeats the whole saved scenario, so it shares the scenario limit.
+MAX_SAVE_RECEIPT_BYTES = MAX_SCENARIO_BYTES
 
 
 def bound(size, limit, subject="历史内容"):
@@ -15,14 +17,14 @@ def bound(size, limit, subject="历史内容"):
         reject("query_too_large", subject + "超过单次读取上限，请联系维护人员核对数据。", 413)
 
 
-def load_receipt(repo, key, limit=MAX_SCENARIO_BYTES):
-    """One actual command body, with its UTF-8 limit enforced as it is consumed."""
+def load_receipt(repo, key):
+    """The scenario's trial.save command body, with its UTF-8 limit enforced as it is consumed."""
     row = repo.receipt_row(key)
     if row is None:
         reject("adoption_history_invalid", "原保存结果缺失，无法确认方案来源。请联系维护人员核对。")
     if type(row["outcome_json"]) is not str:
         reject("adoption_history_invalid", "采用结果记录格式有误，请联系维护人员核对。")
-    bound(len(row["outcome_json"].encode("utf-8")), limit, "保存结果")
+    bound(len(row["outcome_json"].encode("utf-8")), MAX_SAVE_RECEIPT_BYTES, "保存结果")
     return row
 
 

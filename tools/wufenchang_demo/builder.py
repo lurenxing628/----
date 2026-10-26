@@ -66,7 +66,7 @@ def _configure(database, values):
     from data.repositories.config_repo import ConfigRepository
 
     updates = [
-        (key, str(coerce_config_field(key, value, strict_mode=True, source="wufenchang_demo")),
+        (key, str(coerce_config_field(key, value)),
          get_field_spec(key).description)
         for key, value in values.items()
     ]

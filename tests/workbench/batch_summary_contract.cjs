@@ -230,7 +230,7 @@ async function main() {
   const workspace = environment(), adapter = {};
   workspace.window.APSResourceSession.useCommand = () => ({ phase: 'idle', locked: false });
   workspace.window.APSResourceSession.useQuery = () => ({ result: listPayload(summary), loading: false, error: null });
-  const workspaceNode = workspace.h.render(() => workspace.window.BatchWorkspace({ adapter }));
+  const workspaceNode = workspace.h.render(() => workspace.window.BatchWorkspace({ adapter, initialContext: {} }));
   assert.equal(find(workspaceNode, workspace.window.BatchTable).props.adapter, adapter);
   const links = [], bulkPatches = [], nextWorkspace = environment(), hiddenRef = 'd'.repeat(48);
   nextWorkspace.window.APSResourceSession.useCommand = () => ({ phase: 'idle', locked: false, reset: () => true });
@@ -242,7 +242,7 @@ async function main() {
     return envelope({ operation: 'batch.bulk_confirm', preview_ref: 'p'.repeat(32), write_context: clone(writeContext),
       commit_policy: 'atomic', action: input.action, count: input.refs.length,
       rows: input.refs.map(ref => ({ entity_ref: ref, before: { ...full, ref }, after: { ...full, ref } })) });
-  } }, onNav: (...args) => links.push(args) };
+  } }, onNav: (...args) => links.push(args), initialContext: {} };
   let nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));
   find(nextTree, nextWorkspace.window.BatchTable).props.setSelected([batchRef, hiddenRef]);
   nextTree = nextWorkspace.h.render(() => nextWorkspace.window.BatchWorkspace(nextProps));

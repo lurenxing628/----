@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 from dataclasses import dataclass
 from typing import List, Optional
@@ -21,7 +20,7 @@ class _StopChromeResult:
 
 
 def _chrome_pid_query_script(profile_dir: str) -> str:
-    marker = os.path.abspath(str(profile_dir or "").strip()).replace("'", "''").lower()
+    marker = profile_dir.replace("'", "''").lower()
     return (
         "$ErrorActionPreference='Stop';"
         f"$marker='{marker}';"
@@ -80,13 +79,13 @@ def _chrome_pid_query_script(profile_dir: str) -> str:
 
 def _parse_chrome_pid_output(output: str) -> List[int]:
     pids: List[int] = []
-    text = str(output or "")
+    text = output
     # Win7 PowerShell 2 emits a UTF-8 BOM before the first PID. Only the
     # stream-leading marker is encoding metadata; never strip markers in rows.
     if text.startswith("\ufeff"):
         text = text[1:]
     for line in text.splitlines():
-        value = str(line or "").strip()
+        value = line.strip()
         if not value:
             continue
         if value.startswith("ProcessId="):
@@ -99,21 +98,15 @@ def _parse_chrome_pid_output(output: str) -> List[int]:
 
 
 def _list_aps_chrome_pids(profile_dir: str) -> Optional[List[int]]:
-    target_profile = os.path.abspath(str(profile_dir or "").strip()) if str(profile_dir or "").strip() else ""
     if os.name != "nt":
         return []
-    if not target_profile:
-        return []
-    rc, output = run_powershell_text(_chrome_pid_query_script(target_profile))
+    rc, output = run_powershell_text(_chrome_pid_query_script(os.path.abspath(profile_dir)))
     if rc is None or rc != 0:
         return None
     return _parse_chrome_pid_output(output)
 
 
-def _stop_aps_chrome_with_result(profile_dir: Optional[str]) -> _StopChromeResult:
-    target_profile = str(profile_dir or "").strip()
-    if not target_profile:
-        return _StopChromeResult(True, "profile_missing", target_profile, [], [], [])
+def _stop_aps_chrome_with_result(target_profile: str) -> _StopChromeResult:
     pids = _list_aps_chrome_pids(target_profile)
     if pids is None:
         return _StopChromeResult(False, "process_list_unavailable", target_profile, [], [], [], "list_failed")
@@ -126,9 +119,9 @@ def _stop_aps_chrome_with_result(profile_dir: Optional[str]) -> _StopChromeResul
     return _StopChromeResult(True, "stopped", target_profile, pids, [], failed_pids)
 
 
-def _log_chrome_stop_failure(result: _StopChromeResult, *, logger: Optional[logging.Logger], state_dir: str = "") -> None:
+def _log_chrome_stop_failure(result: _StopChromeResult, *, state_dir: str) -> None:
     message = (
         f"chrome_stop_failed status={result.status} profile={result.profile_dir} "
         f"pids={result.pids} failed_pids={result.failed_pids} remaining_pids={result.remaining_pids}"
     )
-    launcher_log_warning(logger, message, state_dir=state_dir)
+    launcher_log_warning(None, message, state_dir=state_dir)

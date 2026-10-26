@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from functools import lru_cache
 from typing import Any, Dict, Optional, Tuple
@@ -13,13 +11,15 @@ from core.models.calendar_periods import (
     decode_periods,
     encode_periods,
 )
-from core.models.enums import BATCH_PRIORITY_VALUES, BatchPriority, CalendarDayType, YesNo
+from core.models.enums import BatchPriority, CalendarDayType, YesNo
 from core.services.common.datetime_normalize import normalize_hhmm
 from core.services.common.normalize import normalize_text
+from core.shared.strict_parse import finite_float, is_non_finite_number
 from data.repositories import CalendarRepository, OperatorCalendarRepository
 
+from .day_policy import DayPolicy, priority_class
 from .defaults import read_default_periods
-from .operator_shift import OperatorShiftCalendar
+from .operator_shift import OperatorShiftCalendar, ShiftFacts
 from .period_offsets import offset_hours, period_offsets
 from .working_hours import WorkingHoursPrefix
 
@@ -33,104 +33,11 @@ NATIVE_TIMING_METHODS = ("get_efficiency", "adjust_to_working_time", "add_workin
                          "_policy_for_date", "_effective_segments", "_allowed_segments",
                          "certified_slot_window", "working_hours_between", "default_periods")
 _NORMAL_PRIORITY = BatchPriority.NORMAL.value
-_ALLOWED_FLAG = YesNo.YES.value
-
-
-def _parse_finite_float_value(raw: Any, *, field: str, number_msg: str, finite_msg: str) -> float:
-    if isinstance(raw, bool):
-        raise ValidationError(number_msg, field=field)
-    try:
-        value = float(raw)
-    except (TypeError, ValueError, OverflowError):
-        raise ValidationError(number_msg, field=field) from None
-    if not math.isfinite(value):
-        raise ValidationError(finite_msg, field=field)
-    return value
 
 
 @lru_cache(maxsize=4096)
 def _native_date_isoformat(value: date) -> str:
     return value.isoformat()
-
-
-@lru_cache(maxsize=4096)
-def _dated_period_windows(date_str, offsets, hours):
-    base = datetime.combine(date.fromisoformat(date_str), time.min)
-    remaining, result = hours, []
-    for low, high in offsets:
-        if remaining <= 0:
-            break
-        start, end = base + timedelta(minutes=low), base + timedelta(minutes=high)
-        end = min(end, start + timedelta(hours=remaining))
-        result.append((start, end))
-        remaining -= (end - start).total_seconds() / 3600
-    return tuple(result)
-
-
-@dataclass
-class DayPolicy:
-    """
-    某天的排产策略（从 WorkCalendar/OperatorCalendar 推导）。
-
-    说明：
-    - shift_start 可配置（默认 08:00）
-    - shift_hours=0 视为不可排产日
-    - allow_normal/allow_urgent 控制普通/急件是否允许排在该日
-      - critical 视作 urgent（更严格时可单独扩展字段）
-    """
-
-    date_str: str  # YYYY-MM-DD
-    day_type: str
-    shift_hours: float
-    efficiency: float
-    allow_normal: str
-    allow_urgent: str
-    shift_start: time = time(8, 0, 0)
-    _window_start: datetime = field(init=False, repr=False)
-    _window_end: datetime = field(init=False, repr=False)
-    periods_json: Optional[str] = None
-    _period_offsets: Optional[tuple] = None
-
-    def __post_init__(self) -> None:
-        if self.periods_json is not None:
-            if self._period_offsets is None:
-                self._period_offsets = period_offsets(decode_periods(self.periods_json))
-            windows = self.work_windows()
-            if windows:
-                self._window_start, self._window_end = windows[0][0], windows[-1][1]
-            else:
-                d = date.fromisoformat(self.date_str)
-                self._window_start = self._window_end = datetime.combine(d, self.shift_start)
-        else:
-            d = date.fromisoformat(self.date_str)
-            self._window_start = datetime.combine(d, self.shift_start)
-            self._window_end = self._window_start + timedelta(hours=self.shift_hours)
-
-    def work_windows(self) -> tuple:
-        if self.periods_json is not None:
-            return _dated_period_windows(self.date_str, self._period_offsets, self.shift_hours)
-        start, end = self.work_window()
-        return ((start, end),) if start < end else ()
-
-    def is_priority_allowed(self, priority: Optional[str]) -> bool:
-        if priority is None or (type(priority) is str and priority == _NORMAL_PRIORITY):
-            return self.allow_normal == _ALLOWED_FLAG
-        if type(priority) is str and priority in ("urgent", "critical"):
-            return self.allow_urgent == _ALLOWED_FLAG
-        # 防御：priority 可能大小写不一致/非字符串/空值
-        p = str(priority or _NORMAL_PRIORITY).strip().lower()
-        if p not in BATCH_PRIORITY_VALUES:
-            p = _NORMAL_PRIORITY
-        if p == _NORMAL_PRIORITY:
-            return self.allow_normal == _ALLOWED_FLAG
-        # urgent / critical 归并到 allow_urgent
-        return self.allow_urgent == _ALLOWED_FLAG
-
-    def work_window(self) -> Tuple[datetime, datetime]:
-        return self._window_start, self._window_end
-
-    def is_working(self) -> bool:
-        return self.shift_hours > 0 and (self.is_priority_allowed(_NORMAL_PRIORITY) or self.is_priority_allowed("urgent"))
 
 
 class CalendarEngine:
@@ -142,13 +49,13 @@ class CalendarEngine:
     - 读取日历数据（WorkCalendar/OperatorCalendar）但不负责 CRUD/导入
     """
 
-    def __init__(self, conn, logger=None, *, capture=None, shift_repo=None):
+    def __init__(self, conn, logger=None, *, capture=None, shift_facts: Optional[ShiftFacts] = None):
         self.conn = conn
         self.logger = logger
         self.capture = capture
         self.repo = CalendarRepository(conn, logger=logger)
         self.operator_calendar_repo = OperatorCalendarRepository(conn, logger=logger)
-        self.operator_shift_calendar = OperatorShiftCalendar(conn, logger=logger, capture=capture, repo=shift_repo)
+        self.operator_shift_calendar = OperatorShiftCalendar(conn, logger=logger, capture=capture, facts=shift_facts)
         self._captured_global_rows = (None if capture is None else {
             str(row["date"]): row for row in capture.business_table("WorkCalendar")})
         self._captured_personal_rows = (None if capture is None else {
@@ -377,7 +284,7 @@ class CalendarEngine:
 
         return p_today
 
-    def get_efficiency(self, dt: datetime, machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> float:
+    def get_efficiency(self, dt: datetime, operator_id: Optional[str] = None) -> float:
         return self.policy_for_datetime(dt, operator_id=operator_id).efficiency
 
     def capacity_hours_between(self, start: datetime, end: datetime, *, priority=None, operator_id=None) -> float:
@@ -419,8 +326,7 @@ class CalendarEngine:
         return result
 
     def adjust_to_working_time(
-        self, dt: datetime, priority: Optional[str] = None,
-        machine_id: Optional[str] = None, operator_id: Optional[str] = None,
+        self, dt: datetime, priority: Optional[str] = None, operator_id: Optional[str] = None,
     ) -> datetime:
         """Advance to the earliest allowed segment, including today's later shift."""
         cur = dt
@@ -438,7 +344,6 @@ class CalendarEngine:
         start: datetime,
         hours: float,
         priority: Optional[str] = None,
-        machine_id: Optional[str] = None,
         operator_id: Optional[str] = None,
     ) -> datetime:
         """
@@ -453,7 +358,6 @@ class CalendarEngine:
         start: datetime,
         hours: float,
         priority: Optional[str] = None,
-        machine_id: Optional[str] = None,
         operator_id: Optional[str] = None,
     ) -> datetime:
         """消耗有效加工工时；每个实际工作班段按其自己的效率折算。"""
@@ -462,9 +366,9 @@ class CalendarEngine:
     def _add_hours(self, start, hours, priority, operator_id, *, efficiency_weighted):
         if hours is None:
             raise ValidationError("缺少工时参数", field="hours")
-        total = _parse_finite_float_value(
-            hours, field="hours", number_msg="工时必须是数字", finite_msg="工时必须是有限数字",
-        )
+        total = finite_float(hours)
+        if total is None:
+            raise ValidationError("工时必须是有限数字" if is_non_finite_number(hours) else "工时必须是数字", field="hours")
         if total < 0:
             raise ValidationError("工时不能为负数", field="hours")
         if total == 0:
@@ -494,12 +398,6 @@ class CalendarEngine:
 
         return cur
 
-    @staticmethod
-    def _priority_class(priority: Optional[str]) -> str:
-        # Mirrors DayPolicy.is_priority_allowed: urgent and critical share the urgent flag, everything else is normal.
-        text = str(priority or _NORMAL_PRIORITY).strip().lower()
-        return "urgent" if text in ("urgent", "critical") else _NORMAL_PRIORITY
-
     def _allowed_segments(self, day: date, *, priority: Optional[str], operator_id: Optional[str]) -> tuple:
         return tuple((start, end) for start, end, policy in self._effective_segments(day, operator_id)
                      if policy.is_priority_allowed(priority))
@@ -509,7 +407,6 @@ class CalendarEngine:
         start: datetime,
         end: datetime,
         priority: Optional[str] = None,
-        machine_id: Optional[str] = None,
         operator_id: Optional[str] = None,
     ) -> float:
         """
@@ -519,14 +416,14 @@ class CalendarEngine:
         跨午夜班次按“班次开始日”归属，最多延伸到次日。
         """
         op_id = self._normalize_text(operator_id) if operator_id is not None else None
-        key = ((op_id or ""), self._priority_class(priority))
+        key = ((op_id or ""), priority_class(priority))
         prefix = self._working_hours_prefix.get(key)
         if prefix is None:
             prefix = WorkingHoursPrefix(lambda day: self._allowed_segments(day, priority=priority, operator_id=op_id))
             self._working_hours_prefix[key] = prefix
         return prefix.between(start, end)
 
-    def add_calendar_days(self, start: datetime, days: Optional[float], machine_id: Optional[str] = None, operator_id: Optional[str] = None) -> datetime:
+    def add_calendar_days(self, start: datetime, days: Optional[float]) -> datetime:
         """
         自然日累加（外协周期使用）：不受工作日历影响。
         - days 支持小数
@@ -534,9 +431,9 @@ class CalendarEngine:
         """
         if days is None:
             raise ValidationError("缺少周期参数", field="days")
-        d = _parse_finite_float_value(
-            days, field="days", number_msg="周期必须是数字", finite_msg="周期必须是有限数字",
-        )
+        d = finite_float(days)
+        if d is None:
+            raise ValidationError("周期必须是有限数字" if is_non_finite_number(days) else "周期必须是数字", field="days")
         if d < 0:
             raise ValidationError("周期不能为负数", field="days")
         if d > MAX_CALENDAR_DAYS:

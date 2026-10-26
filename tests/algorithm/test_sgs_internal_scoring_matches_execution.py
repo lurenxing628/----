@@ -11,6 +11,7 @@ from core.algorithms.greedy.dispatch import sgs as sgs_module
 from core.algorithms.greedy.dispatch.sgs_scoring import with_graph_priority_key
 from core.algorithms.greedy.scheduler import GreedyScheduler
 from tests._support.algo_operations import make_algo_op, make_batch
+from tests._support.schedule_decode import config_snapshot, production_decode
 
 
 @dataclass
@@ -30,18 +31,13 @@ class _Calendar:
         return dt + timedelta(days=float(days or 0.0))
 
 
-@dataclass
-class _Config:
-    auto_assign_enabled: str = "no"
-
-
 def _batch(batch_id: str):
     return make_batch(batch_id=batch_id, due_date="2026-01-02")
 
 
 def test_sgs_internal_scoring_uses_shared_estimator_and_matches_execution_order():
     start_dt = datetime(2026, 1, 1, 8, 0, 0)
-    scheduler = GreedyScheduler(calendar_service=_Calendar(), config_service=_Config())
+    scheduler = GreedyScheduler(calendar_service=_Calendar(), config_service=config_snapshot(auto_assign_enabled="no"))
 
     batches = {"B_A": _batch("B_A"), "B_B": _batch("B_B")}
     operations = [
@@ -109,7 +105,8 @@ def test_sgs_internal_scoring_uses_shared_estimator_and_matches_execution_order(
         "build_dispatch_key",
         side_effect=_dispatch_key_by_end,
     ):
-        results, summary, _strategy, _used_params = scheduler.schedule(
+        decoded = production_decode(
+            scheduler,
             operations=operations,
             batches=batches,
             start_dt=start_dt,
@@ -118,6 +115,7 @@ def test_sgs_internal_scoring_uses_shared_estimator_and_matches_execution_order(
             batch_order_override=["B_A", "B_B"],
             seed_results=seed_results,
         )
+    results, summary = decoded.results, decoded.summary
 
     assert summary.failed_ops == 0
     assert wrapped.call_count >= 2, "SGS 评分阶段应调用统一估算器"
@@ -143,12 +141,13 @@ def test_sgs_native_order_keeps_seq_id_ties_and_missing_batch_with_raw_downtime(
     ]
     downtime = {" M1 ": [(start + timedelta(hours=3), start + timedelta(hours=4)),
                         (start + timedelta(hours=1), start + timedelta(hours=2))]}
-    scheduler = GreedyScheduler(calendar_service=_Calendar(), config_service=_Config())
-    results, summary, _strategy, _params = scheduler.schedule(
-        operations=operations, batches={"B_A": _batch("B_A"), "B_B": _batch("B_B")},
+    scheduler = GreedyScheduler(calendar_service=_Calendar(), config_service=config_snapshot(auto_assign_enabled="no"))
+    decoded = production_decode(
+        scheduler, operations=operations, batches={"B_A": _batch("B_A"), "B_B": _batch("B_B")},
         start_dt=start, dispatch_mode="sgs", dispatch_rule="slack",
         batch_order_override=["B_A", "B_B"], machine_downtimes=downtime,
     )
+    results, summary = decoded.results, decoded.summary
 
     assert [row.op_id for row in results] == [2, 3, 4, 1]
     assert [(row.start_time, row.end_time) for row in results] == [

@@ -35,7 +35,6 @@ from core.services.workbench.execution.production_report_validation import (
     execution_facts_changed,
 )
 from core.services.workbench.run.candidate_adoption_constraints import _resource_overlaps
-from core.services.workbench.run.input import prepare_candidate_run_input
 from core.services.workbench.run.preflight import PreflightService
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from data.repositories.operator_machine_repo import OperatorMachineRepository
@@ -45,6 +44,7 @@ from tests.workbench.field_workspace_support import FieldAPI
 from tests.workbench.run_candidate_adoption_support import INTENT, preview, service
 from tests.workbench.run_candidate_support import candidate_case as candidate_fixture  # noqa: F401
 from tests.workbench.run_candidate_support import compute
+from tests.workbench.run_compute_support import prepare_run_input
 from tests.workbench.scheduler_execution_ledger_support import (
     formal_rows,
     read_facts,
@@ -286,19 +286,20 @@ def test_segment_metadata_survives_seed_coercion_and_occupies_only_its_actual_re
     case.batch("B2")
     case.operation(batch="B2")
     case.conn.commit()
-    prepared = prepare_candidate_run_input(case.conn, case.settings("B1", "B2"), case.projections("B1", "B2"))
+    prepared = prepare_run_input(case.conn, case.settings("B1", "B2"), case.projections("B1", "B2"))
     seed = prepared.execution_seed_results[0]
     fact = prepared.execution_facts[case.op_id]
     segments: Tuple[Tuple[datetime, datetime, str, str], ...] = fact_resource_segments(fact)
     assert len(segments) == 3
     assert seed["_resource_segments"] == segments
     coerced = coerce_seed_result_item(seed, idx=0)
-    normalized, op_ids, warnings = normalize_seed_results(seed_results=[coerced], operations=prepared.algo_ops)
+    normalized, op_ids, warnings = normalize_seed_results(seed_results=[coerced], algo_stats={})
     assert op_ids == {case.op_id} and warnings == []
     assert seed_resource_segments(normalized[0]) == segments
     assert type(seed_result_for_output(normalized[0])) is ScheduleResult
-    native = prepare_native_schedule_inputs({}, scheduler=GreedyScheduler(prepared.cal_svc),
-        operations=prepared.algo_ops, batches=prepared.batches, seed_results=normalized)
+    native = prepare_native_schedule_inputs({}, scheduler=GreedyScheduler(prepared.cal_svc, prepared.cfg),
+        operations=prepared.algo_ops, batches=prepared.batches, seed_results=normalized, resource_pool=None,
+        graph_ready_context=None)
     state = prepare_run_state(prepared_inputs=native, params=SimpleNamespace(base_time=datetime(2026, 9, 9, 8)),
         warnings=[], algo_stats={}, readiness_gate_enabled=False, strict_mode=True)
     assert state.machine_timeline["M1"] == [segment[:2] for segment in segments]
@@ -461,7 +462,7 @@ def test_mixed_zero_and_positive_duration_point_reports_replan_and_adopt(candida
     fact_two = read_facts(case.conn, version)[case.op_id]
     assert (fact_two.actual_machine_id, fact_two.actual_operator_id) == ("M1", "O1")
     assert fact_resource_segments(fact_two) == ()
-    prepared_two = prepare_candidate_run_input(case.conn, case.settings("B1", "B2"), case.projections("B1", "B2"))
+    prepared_two = prepare_run_input(case.conn, case.settings("B1", "B2"), case.projections("B1", "B2"))
     assert "_resource_segments" not in prepared_two.execution_seed_results[0]
     accepted_two = case.accept(key="mixed-point-two-seg-replan", settings=case.settings("B1", "B2"))
     result_two = WorkbenchRunWorker(case.conn).execute(accepted_two["run_ref"])

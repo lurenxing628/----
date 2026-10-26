@@ -101,8 +101,11 @@ def catalog_workspace(facts, page, *, as_of: datetime):
     for public, raw in zip(rows, source_rows):
         source_by_key[public.get("batch_ref") or public["resource_ref"]] = raw
     query = scope.query.strip().casefold()
-    rows = [row for row in rows if query in " ".join(str(row.get(key) or "") for key, _ in CATALOG_COLUMNS[scope.kind]).casefold()]
-    ordered, visible, pagination = page.apply(rows, [key for key, _ in CATALOG_COLUMNS[scope.kind]])
+    columns = [key for key, _ in CATALOG_COLUMNS[scope.kind]]
+    # 数值列的 0 / 0.0 是合法值，也要能被搜到；只有缺值才算空。
+    rows = [row for row in rows
+            if query in " ".join("" if value is None else str(value) for value in (row[key] for key in columns)).casefold()]
+    ordered, visible, pagination = page.apply(rows, columns)
     selected = [source_by_key[row.get("batch_ref") or row["resource_ref"]] for row in ordered]
     provenance, gap = CATALOG_CONTEXT[scope.kind]
     data = {"plan": facts["plan"], "scope": scope.scope(), "topic": scope.kind,

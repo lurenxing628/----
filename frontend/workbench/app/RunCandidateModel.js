@@ -112,7 +112,7 @@
     const items = data.tasks.map(task => { const start = instant(task.start), end = instant(task.end);
       return { task, start, end, search: searchText(task), point: P.isPoint(task), plottable: Number.isFinite(start) && Number.isFinite(end) && end >= start }; });
     const bounds = G.bounds(data.task_span ? instant(data.task_span.start) : null, data.task_span ? instant(data.task_span.end) : null, items.some(item => item.point));
-    return { items, unplanned: (data.unplanned_operations || []).map(task => ({ task, search: searchText(task) })),
+    return { items, unplanned: data.unplanned_operations.map(task => ({ task, search: searchText(task) })),
       taskIndex: new Map(items.map(item => [item.task.row_ref, item])), loadedRefs: new Set(items.map(item => item.task.row_ref)), start: bounds.start, end: bounds.end };
   }
   function groupPrepared(prepared, mode) {
@@ -155,18 +155,5 @@
       laneCount: pointRows ? points.length : laneCount, normalLaneCount: group.normal.length, point: true }); });
     return rows;
   }
-  function layoutPrepared(prepared, width = 1000) {
-    const rows = [], locations = new Map(); let top = 0;
-    for (const group of prepared.groups.values()) for (const source of groupRows(group, prepared.start, prepared.end, width)) {
-      const row = { ...source, top };
-      row.items.forEach(item => locations.set(item.task.row_ref, { row: rows.length, top, item }));
-      rows.push(row); top += row.height;
-    }
-    return { rows, height: top, locations, tasks: prepared.tasks,
-      shownRefs: prepared.shownRefs || new Set((prepared.tasks || []).map(task => task.row_ref)),
-      taskOrder: prepared.taskOrder || new Map((prepared.tasks || []).map((task, index) => [task.row_ref, index])),
-      unplottableTasks: prepared.unplottableTasks,
-      groupCount: prepared.groupCount, start: prepared.start, end: prepared.end };
-  }
-  window.RunCandidateModel = { instant, timeLabel, number, percent, signedChange, visibleItems, visibleRows, matching, prepare, groupPrepared, selectPrepared, groupRows, layoutPrepared, title, laneLabel, pieceLabel, quantityLabel, resourceLabel, resourceMatches, kindLabels, executionLabels, executionValue, executionField };
+  window.RunCandidateModel = { instant, timeLabel, number, percent, signedChange, visibleItems, visibleRows, matching, prepare, groupPrepared, selectPrepared, groupRows, title, laneLabel, pieceLabel, quantityLabel, resourceLabel, resourceMatches, kindLabels, executionLabels, executionValue, executionField };
 })();

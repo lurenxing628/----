@@ -50,7 +50,6 @@ def _core_candidates(source):
 def _enriched_candidates(source, candidates, keys):
     names = {source.computation_key(key) for key in keys}
     source.resources.prepare_keys(keys)
-    before_tasks = source.analysis_tasks("reference")
     reference_deferred = source.reference_deferred_refs
     result = {}
     for candidate in candidates:
@@ -63,7 +62,7 @@ def _enriched_candidates(source, candidates, keys):
         candidate["metrics"].update(source.preparation.metrics(key))
         candidate["coverage"]["preparation"] = source.preparation.public_coverage(key)
         candidate["metrics"].update(source.changeovers.metrics(key))
-        candidate["metrics"].update(operation_changes(source.analysis_tasks(key), before_tasks,
+        candidate["metrics"].update(operation_changes(
             source.scope["operation_refs"], source.baseline["state"] == "available",
             selected_available=candidate["persisted_status"] == "completed", deferred_refs=source.deferred_refs,
             reference_deferred_refs=reference_deferred, reference_groups=source.analysis_groups("reference"),

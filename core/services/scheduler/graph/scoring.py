@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
 
+from core.shared.strict_parse import is_int
+
 _NON_CRITICAL_PATH_RANK = 1_000_000_000
 
 
@@ -28,7 +30,7 @@ def _require_bool(value: Any, *, field: str) -> bool:
 
 
 def _require_non_negative_int(value: Any, *, field: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+    if not is_int(value) or value < 0:
         raise GraphScoringContractError(f"图评分字段 {field} 必须是非负整数。")
     return value
 
@@ -40,7 +42,7 @@ def _require_optional_non_negative_int(value: Any, *, field: str) -> Optional[in
 
 
 def _require_weight(value: Any, *, field: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+    if not is_int(value) or value < 0:
         raise GraphScoringContractError(f"图评分权重 {field} 必须是非负整数。")
     return value
 

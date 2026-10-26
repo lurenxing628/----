@@ -6,7 +6,7 @@ from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.algorithms.evaluation import compute_metrics, objective_score
 from core.models.objective import target_objectives_for
-from core.services.scheduler.run.optimizer.shared_archive import SharedScheduleArchive
+from core.services.scheduler.run.optimizer.shared_archive import CandidateArchiveRef, SharedScheduleArchive
 from tests._support.algo_operations import make_algo_op, make_batch
 
 START = datetime(2026, 10, 13, 20)
@@ -59,7 +59,7 @@ def _archive(primary="min_tardiness", *, limit=64):
 
 def _register_decode(archive, candidate, *, verified=True, elapsed_ms=0):
     observed = archive.register_decode(candidate, verified=verified, elapsed_ms=elapsed_ms)
-    candidate.update(_shared_entry_id=observed.entry_id, _archive_observation=observed)
+    candidate["archive_ref"] = CandidateArchiveRef(observed.entry_id, observed)
     return candidate
 
 

@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const { Button, Modal, ErrorBox } = window.ResourceControls;
-  const C = window.APSResourceContract, P = window.APSPlanContract, M = window.PlanGanttModel;
+  const C = window.APSResourceContract, M = window.PlanGanttModel;
   function filename(disposition, format) {
     const unicode = /filename\*=UTF-8''([^;]+)/i.exec(disposition), plain = /filename="([^"\r\n]+)"|filename=([^;\s]+)/i.exec(disposition);
     const name = unicode ? decodeURIComponent(unicode[1]) : plain && (plain[1] || plain[2]);
@@ -12,7 +12,7 @@
     const [format, setFormat] = React.useState(null), [busy, setBusy] = React.useState(false), [error, setError] = React.useState(null), [notice, setNotice] = React.useState('');
     const active = React.useRef(null);
     React.useEffect(() => () => { if (active.current) active.current.abort(); }, [adapter, result]);
-    const reason = disabled || !result ? '先读取所选计划，才能导出当前内容。' : !result.data.plan.capabilities.export || typeof adapter.export !== 'function' ? '当前还不能导出所选计划。' : '';
+    const reason = disabled || !result ? '先读取所选计划，才能导出当前内容。' : !result.data.plan.capabilities.export ? '当前还不能导出所选计划。' : '';
     function cancel() { if (active.current) active.current.abort(); active.current = null; setBusy(false); setFormat(null); }
     async function download() {
       if (busy || reason) return;
@@ -20,10 +20,9 @@
       try {
         const scope = { format, snapshot_ref: result.meta.snapshot_ref };
         if (result.data.scope.range_start !== null) { scope.range_start = result.data.scope.range_start; scope.range_end = result.data.scope.range_end; }
-        P.exportScope(result.data.plan.plan_ref, scope);
-        const output = P.download(await adapter.export(result.data.plan.plan_ref, scope, controller.signal), format);
+        // APSPlanAPI.export 校验导出范围与下载结果（PlanContract.exportScope / download）。
+        const output = await adapter.export(result.data.plan.plan_ref, scope, controller.signal);
         if (controller.signal.aborted || active.current !== controller) return;
-        if (!(output.blob instanceof Blob)) throw C.failure('导出附件不是有效文件。');
         const name = filename(output.disposition, format), url = URL.createObjectURL(output.blob), anchor = document.createElement('a');
         try { anchor.href = url; anchor.download = name; document.body.appendChild(anchor); anchor.click(); }
         finally { anchor.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000); }

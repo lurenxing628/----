@@ -19,7 +19,6 @@
     return found.concat(Array.from(node.querySelectorAll(SELECTOR)));
   }
   function attach(container) {
-    if (!container || typeof container.querySelectorAll !== 'function') throw new TypeError('WorkbenchScrollShadows.attach needs a container element');
     const registered = new Map();
     const resize = new ResizeObserver(entries => {
       for (const entry of entries) update(entry.target.closest(SELECTOR));

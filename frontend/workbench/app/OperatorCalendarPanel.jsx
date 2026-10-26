@@ -114,10 +114,8 @@
     const mounted = React.useRef(true), lastResult = React.useRef(null);
     React.useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
     const done = command.phase === 'done', completedReceipt = done ? command.result.receipt_ref : null;
-    const request = S.useQuery(async signal => {
-      if (typeof adapter.query !== 'function') throw C.failure('dependency not wired: adapter.query');
-      return O.month(await adapter.query(PATH(ref) + '/month', month, signal), { ...month, ref });
-    }, [adapter, ref, month.year, month.month, externalRevision, completedReceipt]);
+    const request = S.useQuery(async signal => O.month(await adapter.query(PATH(ref) + '/month', month, signal), { ...month, ref }),
+      [adapter, ref, month.year, month.month, externalRevision, completedReceipt]);
     const result = request.result, data = result && result.data;
     if (result) lastResult.current = result;
     // 刷新本月时保留上一次读到的月历，不把整块清空闪烁；写入仍只认最新读到的 data。
@@ -227,7 +225,7 @@
       : current && draft && !(clearing && (current.explicit || done))
         ? [...(draft.type !== 'rest' && draft.periods == null ? ['fields.shiftStart', 'fields.shiftEnd'] : []), 'fields.eff', 'fields.note'] : [];
     return <div className="plana resource-calendar wb-operator-calendar">
-      <Modal title={(entity.business_code || '') + ' · ' + window.WorkbenchTerms.personal_calendar} icon="calendar-days" onClose={close} guardOwner={owner} locked={command.locked}
+      <Modal title={entity.business_code + ' · ' + window.WorkbenchTerms.personal_calendar} icon="calendar-days" onClose={close} guardOwner={owner} locked={command.locked}
         footer={<Button onClick={close} reason={command.locked ? '结果还没确认，暂时不能关闭。' : ''}>{done ? '完成' : '关闭'}</Button>}>
         <div className="modal-b scroll">
           <p className="iohint">{window.WorkbenchTerms.personal_calendar}只管这一个人。某一天设了{window.WorkbenchTerms.personal_calendar}，这一天就整天按这里的安排排产，

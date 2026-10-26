@@ -50,7 +50,7 @@ def _evaluate_candidate(
         optimizer_algo_stats=optimizer_algo_stats,
         strict_mode=bool(strict_mode),
         strategy=strategy,
-        strategy_params=dict(params or {}),
+        strategy_params=dict(params),
         start_dt=start_dt,
         end_date=end_date,
         batch_order_override=list(order),
@@ -74,16 +74,14 @@ def _evaluate_candidate(
         "algo_stats": decoded.algo_stats,
         "resource_pool": resource_pool or {},
     }
-    candidate["_shared_entry_id"] = decoded.entry_id
-    candidate["_archive_observation"] = decoded.archive_observation
-    if decoded.receipt is not None:
-        candidate["decode_receipt"] = decoded.receipt
-        if decoded.receipt["execution_kind"] == "decision_reused":
-            source_runtime = decoded.receipt["source_runtime_ms"]
-            source_initial = decoded.receipt["source_initial_decode_runtime_ms"]
-            candidate["runtime_ms"] = source_runtime if source_runtime is not None else decoded.receipt["original_decode_ms"]
-            candidate["initial_decode_runtime_ms"] = (
-                source_initial if source_initial is not None else decoded.receipt["original_decode_ms"])
+    candidate["archive_ref"] = decoded.archive_ref()
+    candidate["decode_receipt"] = decoded.receipt
+    if decoded.receipt["execution_kind"] == "decision_reused":
+        source_runtime = decoded.receipt["source_runtime_ms"]
+        source_initial = decoded.receipt["source_initial_decode_runtime_ms"]
+        candidate["runtime_ms"] = source_runtime if source_runtime is not None else decoded.receipt["original_decode_ms"]
+        candidate["initial_decode_runtime_ms"] = (
+            source_initial if source_initial is not None else decoded.receipt["original_decode_ms"])
     return candidate
 
 
@@ -166,21 +164,19 @@ def _record_candidate(
     index: int,
     attempts: List[Dict[str, Any]],
     improvement_trace: List[Dict[str, Any]],
-    search_report_state: Optional[OptimizationSearchReportState],
+    search_report_state: OptimizationSearchReportState,
     now: Callable[[], float],
     t_begin: float,
 ) -> Optional[Dict[str, Any]]:
-    fingerprint = None
-    if search_report_state is not None:
-        fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin=origin)
-    duplicate = bool(fingerprint is not None and (fingerprint.same_as_parent or fingerprint.same_as_seen))
+    fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin=origin)
+    duplicate = fingerprint.same_as_parent or fingerprint.same_as_seen
     accepted = not duplicate and candidate_is_preferred(
         candidate=candidate,
         incumbent=best,
         candidate_origin=origin,
-        incumbent_origin=_incumbent_origin(best, search_report_state),
+        incumbent_origin=str(search_report_state.best_origin or "baseline"),
         candidate_fingerprint=fingerprint,
-        incumbent_fingerprint_changed=bool(search_report_state and search_report_state.best_fingerprint_changed()),
+        incumbent_fingerprint_changed=search_report_state.best_fingerprint_changed(),
     )
     _append_attempt(
         attempts=attempts, candidate=candidate, origin=origin, index=index,
@@ -191,8 +187,7 @@ def _record_candidate(
     )
     if not accepted:
         return best
-    if search_report_state is not None:
-        search_report_state.mark_candidate_accepted(candidate, origin=origin, fingerprint=fingerprint)
+    search_report_state.mark_candidate_accepted(candidate, origin=origin, fingerprint=fingerprint)
     _append_trace(
         improvement_trace=improvement_trace,
         candidate=candidate,
@@ -202,15 +197,6 @@ def _record_candidate(
         t_begin=t_begin,
     )
     return candidate
-
-
-def _incumbent_origin(
-    best: Optional[Dict[str, Any]],
-    search_report_state: Optional[OptimizationSearchReportState],
-) -> str:
-    if search_report_state is not None:
-        return str(search_report_state.best_origin or "baseline")
-    return str((best or {}).get("candidate_origin") or "baseline")
 
 
 def _candidate_specs_for_run(
@@ -228,7 +214,7 @@ def _candidate_specs_for_run(
     if not bool(batch_order_enabled):
         return None
 
-    base_order = list(build_order(base_strategy, base_params or {}))
+    base_order = list(build_order(base_strategy, base_params))
     if len(base_order) < 2:
         return None
 
@@ -241,10 +227,10 @@ def _candidate_specs_for_run(
         dispatch_rule_cfg=dispatch_rule_cfg,
         rng_factory=rng_factory,
     )
-    rule = str(dispatch_rule_cfg or "").strip().lower()
+    # The configured rule is already a validated choice (optimizer/config.require_choice).
     initial_seen = {
-        ("batch_order", rule, tuple(base_order)),
-        ("batch_order", rule, tuple(parent_order)),
+        ("batch_order", dispatch_rule_cfg, tuple(base_order)),
+        ("batch_order", dispatch_rule_cfg, tuple(parent_order)),
     }
     return _dedupe_candidate_specs(specs, initial_seen=initial_seen)
 
@@ -252,9 +238,9 @@ def _candidate_specs_for_run(
 def _dedupe_candidate_specs(
     specs: List[Dict[str, Any]],
     *,
-    initial_seen: Optional[Set[Tuple[str, str, Tuple[Any, ...]]]] = None,
+    initial_seen: Set[Tuple[str, str, Tuple[Any, ...]]],
 ) -> List[Dict[str, Any]]:
-    seen = set(initial_seen) if initial_seen else set()
+    seen = set(initial_seen)
     out: List[Dict[str, Any]] = []
     for spec in specs:
         fingerprint = _spec_decision_key(spec)
@@ -264,9 +250,10 @@ def _dedupe_candidate_specs(
         out.append(spec)
     return out
 
+
 def _spec_decision_key(spec: Dict[str, Any]) -> Tuple[str, str, Tuple[Any, ...]]:
-    return (str(spec.get("dispatch_mode") or "batch_order"),
-            str(spec.get("dispatch_rule") or ""), tuple(spec.get("order") or []))
+    # Specs come only from build_grasp_ig_candidate_specs, which writes every key.
+    return spec["dispatch_mode"], spec["dispatch_rule"], tuple(spec["order"])
 
 
 def _run_candidate_spec(
@@ -284,14 +271,14 @@ def _run_candidate_spec(
     readiness_gate_enabled: bool,
     attempts: List[Dict[str, Any]],
     improvement_trace: List[Dict[str, Any]],
-    search_report_state: Optional[OptimizationSearchReportState],
+    search_report_state: OptimizationSearchReportState,
     clock: Callable[[], float],
     t_begin: float,
     decode_session: SharedDecodeSession,
 ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     origin = str(spec["origin"])
     index = int(spec["restart_index"])
-    dispatch_mode = str(spec.get("dispatch_mode") or "batch_order")
+    dispatch_mode = spec["dispatch_mode"]
     dispatch_rule = str(spec["dispatch_rule"])
     decode_started = clock()
     try:
@@ -334,7 +321,7 @@ def _run_candidate_spec(
     # Measured decode time travels with the candidate so a GRASP/IG incumbent can still budget
     # the local search and later guards (the key name is shared with multi-start starts); its
     # integer runtime_ms is the candidate's own cost for equal-score tie-breaks.
-    if (candidate.get("decode_receipt") or {}).get("execution_kind") != "decision_reused":
+    if candidate["decode_receipt"]["execution_kind"] != "decision_reused":
         decode_runtime_ms = max((clock() - decode_started) * 1000.0, 0.0)
         candidate["initial_decode_runtime_ms"] = decode_runtime_ms
         candidate["runtime_ms"] = int(decode_runtime_ms)
@@ -365,7 +352,7 @@ class GraspIGStage(SearchStage):
         readiness_gate_enabled: bool, strict_mode: bool,
         clock: Callable[[], float], rng_factory: Callable[[int], Any],
         batch_order_enabled: bool = True,
-        search_report_state: Optional[OptimizationSearchReportState] = None,
+        search_report_state: OptimizationSearchReportState,
         state: OptimizerSearchState,
         decode_session: SharedDecodeSession,
     ) -> None:

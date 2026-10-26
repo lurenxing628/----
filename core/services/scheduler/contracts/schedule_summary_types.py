@@ -9,6 +9,7 @@ from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
 from core.models.batch import Batch
 from core.models.batch_operation import BatchOperation
+from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 
 
 class SummaryMetrics(Protocol):
@@ -25,8 +26,7 @@ class ScheduleResultStatus(str, Enum):
 
 @dataclass(frozen=True)
 class SummaryBuildContext:
-    # Dict / attribute object / config-layer snapshot; normalized by build_result_summary.
-    cfg: Any
+    cfg: ScheduleConfigSnapshot
     version: int
     normalized_batch_ids: List[str]
     start_dt: datetime
@@ -58,7 +58,7 @@ class SummaryBuildContext:
     graph_analysis_diagnostics: Optional[Dict[str, Any]] = None
     candidate_comparison_public: Optional[Dict[str, Any]] = None
     execution_snapshot_revision: Optional[str] = None
-    execution_snapshot_op_ids: Optional[List[int]] = None
+    execution_snapshot_op_ids: List[int] = field(default_factory=list)
     execution_snapshot_op_count: int = 0
     simulate: bool = False
     t0: float = 0.0

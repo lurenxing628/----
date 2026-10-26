@@ -81,14 +81,6 @@ def attach_sgs_score_cache(ctx: Any, *, state: ScheduleRunState, params: Any, re
         )
 
 
-_STAT_NAMES = ("hits", "misses", "pair_hits", "pair_misses", "pair_revalidated", "calendar_hits", "calendar_misses",
-               "shared_slot_hits", "shared_slot_misses", "key_cache_disabled", "graph_candidates_pruned")
-
-
-def sgs_score_cache_stats(cache: Any) -> Dict[str, int]:
-    return cache.stats() if cache is not None else dict.fromkeys(_STAT_NAMES, 0)
-
-
 def plain_record_class(cls: Any) -> bool:
     """Instance attribute reads on ``cls`` are the builtin path: no accessor hooks, no field descriptors."""
     if type(cls) is not type:
@@ -180,7 +172,7 @@ class SgsScoreCache:
         self._entries: Dict[int, _Entry] = {}
         # Per operation: False when it can never be cached (external, hooked record classes, no native
         # pool), else its eligible auto-assign resources or None for fixed resources.
-        self._eligible: Dict[Tuple[int, str, str], Any] = {}
+        self._eligible: Dict[Tuple[int, Optional[str], Optional[str]], Any] = {}
         self._plain_classes: Dict[type, bool] = preparation.plain_classes
         self.round = 0
         self.pair_hits = 0
@@ -353,11 +345,11 @@ class SgsScoreCache:
 
     def remember_estimate(self, estimate: Any, inputs: Dict[str, Any]) -> None:
         """Scoring estimate of the candidate being scored, kept for same-round formal placement."""
-        if inputs.get("op") is not self._scoring_op:
+        if inputs["op"] is not self._scoring_op:
             return
         self._pending_estimate = (
-            estimate, inputs.get("total_hours_base"), inputs.get("machine_id"), inputs.get("operator_id"),
-            inputs.get("prev_end"), inputs.get("calendar"), inputs.get("end_dt_exclusive"),
+            estimate, inputs["total_hours_base"], inputs["machine_id"], inputs["operator_id"],
+            inputs["prev_end"], inputs["calendar"], inputs["end_dt_exclusive"],
         )
 
     def selected_estimate(self, inputs: Dict[str, Any]) -> Optional[Tuple[Any, float]]:
@@ -424,7 +416,7 @@ class SgsScoreCache:
     def _plain(self, record: Any) -> bool:
         return self._plain_classes.get(type(record), False)
 
-    def _classify(self, op: OpForScheduleAlgo, batch: Batch, machine_id: str, operator_id: str) -> Any:
+    def _classify(self, op: OpForScheduleAlgo, batch: Batch, machine_id: Optional[str], operator_id: Optional[str]) -> Any:
         if not self._plain(op) or not self._plain(batch):
             return False
         if op.source != INTERNAL:
@@ -439,9 +431,7 @@ class SgsScoreCache:
     def _witness(
         self, op: OpForScheduleAlgo, batch: Batch, batch_id: str, graph_state: Optional[Dict[str, Any]],
     ) -> Optional[Witness]:
-        # None (not specified) and the empty string an optimizer resource variant may carry both mean unassigned.
-        machine_id = op.machine_id or ""
-        operator_id = op.operator_id or ""
+        machine_id, operator_id = op.machine_id, op.operator_id
         memo_key = (id(op), machine_id, operator_id)
         eligible = self._eligible.get(memo_key, _UNCLASSIFIED)
         if eligible is _UNCLASSIFIED:
@@ -462,7 +452,7 @@ class SgsScoreCache:
         prev_end = (None if graph_state is not None and "end_time_by_op_id" in graph_state
                     else state.batch_progress.get(batch_id, state.base_time))
         types = state.last_op_type_by_machine
-        if eligible is None:
+        if machine_id and operator_id:  # classified None: the operation names both resources
             return (
                 _FIXED, prev_end, machine_id, operator_id,
                 _segments_witness(state.machine_timeline, machine_id),

@@ -17,7 +17,7 @@ def machine_types(machine: Any):
         additional = machine.get("op_type_ids") or ()
     else:
         primary = machine.op_type_id
-        additional = machine.op_type_ids or ()
+        additional = machine.op_type_ids
     return tuple(dict.fromkeys(([primary] if primary else []) + list(additional)))
 
 

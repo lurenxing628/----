@@ -109,7 +109,8 @@ def all_refs(conn):
     locators += [WorkbenchPlanLocator(2, "adopted"), WorkbenchPlanLocator(1, "adopted", "saved")]
     for locator in locators:
         ref = repo.get_plan_ref(locator)
-        result[locator] = ref, repo.get_task_refs(ref, plan_rows(conn, locator))
+        bindings = ((row["schedule_id"], row["op_id"], row["version"]) for row in plan_rows(conn, locator))
+        result[locator] = ref, repo.get_task_refs(ref, bindings)
     result["operations"] = repo.get_operation_refs([row[0] for row in conn.execute("SELECT id FROM BatchOperations")])
     return result
 

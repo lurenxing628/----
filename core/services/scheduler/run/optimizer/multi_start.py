@@ -12,7 +12,7 @@ from core.algorithms.evaluation import objective_score
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 
 from .attempt_records import candidate_tag, evaluate_optional_start_candidate
-from .config import ensure_optimizer_config_snapshot, weighted_strategy_params
+from .config import weighted_strategy_params
 from .search_stage import SearchStage
 from .search_state import OptimizerSearchState
 from .shared_budget import SharedSearchSkip
@@ -36,7 +36,7 @@ def _dispatch_rules_for_mode(dispatch_mode: str, dispatch_rule_cfg: str, valid_d
 def _resolve_multi_start_strategy_params(
     *,
     strategy: SortStrategy,
-    cfg: Any,
+    cfg: ScheduleConfigSnapshot,
 ) -> Dict[str, Any]:
     if strategy != SortStrategy.WEIGHTED:
         return {}
@@ -50,7 +50,7 @@ def _get_cached_multi_start_order(
     order_cache: Dict[Tuple[str, Tuple[Tuple[str, Any], ...]], List[str]],
     build_order: Any,
 ) -> List[str]:
-    cache_key = (str(strategy.value), tuple(sorted((str(key), value) for key, value in (params or {}).items())))
+    cache_key = (str(strategy.value), tuple(sorted((str(key), value) for key, value in params.items())))
     if cache_key not in order_cache:
         order_cache[cache_key] = list(build_order(strategy, params))
     return order_cache[cache_key]
@@ -103,35 +103,29 @@ def _evaluate_multi_start_candidate(
         "algo_stats": decoded.algo_stats,
         "resource_pool": resource_pool or {},
     }
-    candidate["_shared_entry_id"] = decoded.entry_id
-    candidate["_archive_observation"] = decoded.archive_observation
-    if decoded.receipt is not None:
-        candidate["decode_receipt"] = decoded.receipt
-        if decoded.receipt["execution_kind"] == "decision_reused":
-            source_runtime = decoded.receipt["source_runtime_ms"]
-            source_initial = decoded.receipt["source_initial_decode_runtime_ms"]
-            candidate["runtime_ms"] = source_runtime if source_runtime is not None else decoded.receipt["original_decode_ms"]
-            candidate["initial_decode_runtime_ms"] = (
-                source_initial if source_initial is not None else decoded.receipt["original_decode_ms"])
+    candidate["archive_ref"] = decoded.archive_ref()
+    candidate["decode_receipt"] = decoded.receipt
+    if decoded.receipt["execution_kind"] == "decision_reused":
+        source_runtime = decoded.receipt["source_runtime_ms"]
+        source_initial = decoded.receipt["source_initial_decode_runtime_ms"]
+        candidate["runtime_ms"] = source_runtime if source_runtime is not None else decoded.receipt["original_decode_ms"]
+        candidate["initial_decode_runtime_ms"] = (
+            source_initial if source_initial is not None else decoded.receipt["original_decode_ms"])
     return candidate
 
 
 def _iter_multi_start_specs(
-    *, keys: List[str], dispatch_modes: List[str], dispatch_rule_cfg: str, valid_dispatch_rules: List[str],
-    snapshot: Any, deadline_reached: Callable[[], bool],
-    rules_by_mode: Optional[Dict[str, List[str]]] = None,
-    order_cache: Optional[Dict[Tuple[str, Tuple[Tuple[str, Any], ...]], List[str]]] = None,
-    build_order: Optional[Callable[[SortStrategy, Dict[str, Any]], List[str]]] = None,
-    on_duplicate_order: Optional[Callable[[int], None]] = None,
+    *, keys: List[str], dispatch_modes: List[str], snapshot: ScheduleConfigSnapshot,
+    deadline_reached: Callable[[], bool], rules_by_mode: Dict[str, List[str]],
+    order_cache: Dict[Tuple[str, Tuple[Tuple[str, Any], ...]], List[str]],
+    build_order: Callable[[SortStrategy, Dict[str, Any]], List[str]],
+    on_duplicate_order: Callable[[int], None],
 ) -> Iterator[Tuple[str, str, str, SortStrategy, Dict[str, Any]]]:
     strategy_cache: Dict[str, Tuple[SortStrategy, Dict[str, Any]]] = {}
     for dm in dispatch_modes:
         if deadline_reached():
             break
-        dispatch_rules = (
-            rules_by_mode[dm] if rules_by_mode is not None else
-            _dispatch_rules_for_mode(dm, dispatch_rule_cfg, valid_dispatch_rules)
-        )
+        dispatch_rules = rules_by_mode[dm]
         seen_orders: Set[Tuple[str, ...]] = set()
         first_strategy: Optional[Tuple[SortStrategy, Dict[str, Any]]] = None
         for key in keys:
@@ -143,31 +137,29 @@ def _iter_multi_start_specs(
                     strategy, _resolve_multi_start_strategy_params(strategy=strategy, cfg=snapshot),
                 )
             strategy, params = strategy_cache[key]
-            if build_order is not None and order_cache is not None:
-                if first_strategy is None:
-                    first_strategy = (strategy, params)
-                else:
-                    if not seen_orders:
-                        seen_orders.add(
-                            tuple(
-                                _get_cached_multi_start_order(
-                                    strategy=first_strategy[0],
-                                    params=first_strategy[1],
-                                    order_cache=order_cache,
-                                    build_order=build_order,
-                                )
+            if first_strategy is None:
+                first_strategy = (strategy, params)
+            else:
+                if not seen_orders:
+                    seen_orders.add(
+                        tuple(
+                            _get_cached_multi_start_order(
+                                strategy=first_strategy[0],
+                                params=first_strategy[1],
+                                order_cache=order_cache,
+                                build_order=build_order,
                             )
                         )
-                    order_key = tuple(
-                        _get_cached_multi_start_order(
-                            strategy=strategy, params=params, order_cache=order_cache, build_order=build_order,
-                        )
                     )
-                    if order_key in seen_orders:
-                        if on_duplicate_order is not None:
-                            on_duplicate_order(len(dispatch_rules))
-                        continue
-                    seen_orders.add(order_key)
+                order_key = tuple(
+                    _get_cached_multi_start_order(
+                        strategy=strategy, params=params, order_cache=order_cache, build_order=build_order,
+                    )
+                )
+                if order_key in seen_orders:
+                    on_duplicate_order(len(dispatch_rules))
+                    continue
+                seen_orders.add(order_key)
             for rule in dispatch_rules:
                 if deadline_reached():
                     break
@@ -182,12 +174,12 @@ class MultiStartStage(SearchStage):
     def __init__(
         self, *, keys: List[str], dispatch_modes: List[str], dispatch_rule_cfg: str,
         valid_dispatch_rules: List[str], start_dt: datetime, end_date: Optional[date],
-        cfg: Any, resource_pool: Optional[Dict[str, Any]], objective_name: str, deadline: float,
+        cfg: ScheduleConfigSnapshot, resource_pool: Optional[Dict[str, Any]], objective_name: str, deadline: float,
         t_begin: float, build_order: Any,
         optimizer_algo_stats: Optional[Dict[str, Any]] = None, readiness_gate_enabled: bool = False,
         graph_ready_context: Optional[Any] = None, strict_mode: bool = False,
         clock: Optional[Callable[[], float]] = None,
-        search_report_state: Optional[OptimizationSearchReportState] = None,
+        search_report_state: OptimizationSearchReportState,
         state: OptimizerSearchState,
         decode_session: SharedDecodeSession,
     ) -> None:
@@ -214,11 +206,6 @@ class MultiStartStage(SearchStage):
             dm: _dispatch_rules_for_mode(dm, dispatch_rule_cfg, valid_dispatch_rules)
             for dm in dispatch_modes
         }
-        snapshot = (
-            cfg
-            if isinstance(cfg, ScheduleConfigSnapshot)
-            else ensure_optimizer_config_snapshot(cfg, strict_mode=self.strict_mode)
-        )
         self.efficiency: Dict[str, Any] = {
             "proof": "shared_decode_request",
             "configured_candidates": sum(len(keys) * len(rules_by_mode[dm]) for dm in dispatch_modes),
@@ -226,8 +213,7 @@ class MultiStartStage(SearchStage):
             "skipped_by_budget": 0, "reused_candidates": 0,
         }
         self.specs = _iter_multi_start_specs(
-            keys=keys, dispatch_modes=dispatch_modes, dispatch_rule_cfg=dispatch_rule_cfg,
-            valid_dispatch_rules=valid_dispatch_rules, snapshot=snapshot,
+            keys=keys, dispatch_modes=dispatch_modes, snapshot=cfg,
             deadline_reached=self._deadline_reached, rules_by_mode=rules_by_mode,
             order_cache=self.order_cache, build_order=self.build_order,
             on_duplicate_order=self._note_duplicate_order,
@@ -305,7 +291,7 @@ class MultiStartStage(SearchStage):
             return
         if candidate is None:
             return
-        if (candidate.get("decode_receipt") or {}).get("execution_kind") == "decision_reused":
+        if candidate["decode_receipt"]["execution_kind"] == "decision_reused":
             self.efficiency["reused_candidates"] += 1
         else:
             decode_runtime_ms = max((self.now() - decode_started) * 1000.0, 0.0)

@@ -46,21 +46,17 @@ def prepare_evaluation_context(
     *,
     batches: Dict[str, Batch],
     expected_operations: Iterable[OpForScheduleAlgo],
-    seed_results: Optional[Iterable[ScheduleResult]] = None,
+    seed_results: Iterable[ScheduleResult],
 ) -> PreparedEvaluationContext:
-    keys, expected_by_batch, batch_by_op_id = _prepare_expected_keys(expected_operations, seed_results or ())
+    keys, expected_by_batch, batch_by_op_id = _prepare_expected_keys(expected_operations, seed_results)
     priority_weights: Dict[str, float] = {}
     due_batches = []
-    for bid0, batch in batches.items():
-        bid = str(bid0 or "").strip()
-        if not bid:
-            continue
+    # Batch keys are database primary keys: non-empty and already trimmed.
+    for bid, batch in batches.items():
         priority = normalize_priority(batch.priority, default="normal")
         weight = float(PRIORITY_WEIGHT.get(priority, 1.0))
         priority_weights[bid] = weight
         due_datetime, due_text, due_invalid = parse_due_exclusive_datetime(batch.due_date)
-        # Due projection keeps each source row and its order, even when raw keys
-        # normalize to one ID. Completion weights retain the last such source.
         due_batches.append(PreparedBatchDue(
             batch_id=bid, priority_weight=weight, due_invalid=due_invalid,
             due_exclusive=due_datetime, due_text=due_text,
@@ -79,7 +75,7 @@ def _due_text(value: Any) -> str:
         return value.isoformat()
     if isinstance(value, datetime):
         return value.date().isoformat()
-    return str(value or "").strip()
+    return str(value).strip()
 
 
 def _parse_due_date_state(value: Any) -> Tuple[Optional[date], bool]:
@@ -89,7 +85,7 @@ def _parse_due_date_state(value: Any) -> Tuple[Optional[date], bool]:
         return value, False
     if isinstance(value, datetime):
         return value.date(), False
-    s = str(value or "").strip()
+    s = str(value).strip()
     if not s:
         return None, False
     parsed = parse_date(s)
@@ -166,11 +162,11 @@ def collect_batch_completion(
     results: Iterable[ScheduleResult],
     *,
     prepared: PreparedEvaluationContext,
-    failure_details: Optional[Iterable[Dict[str, Any]]] = None,
+    failure_details: Iterable[Dict[str, Any]],
 ) -> BatchCompletion:
     expected = prepared.expected_keys
     scheduled = {_result_key(item) for item in results if _has_time_range(item)}
-    failed = list(failure_details or ())
+    failed = list(failure_details)
     failure_batches = _failure_batches(failed, prepared.batch_by_op_id) if failed else set()
     unexpected = scheduled - expected
     missing_operation_count = len(expected - scheduled)
@@ -263,15 +259,10 @@ def _has_time_range(result: ScheduleResult) -> bool:
 def _failure_batches(details: Iterable[Dict[str, Any]], batch_by_op_id: Dict[int, str]) -> Set[str]:
     batches: Set[str] = set()
     for detail in details:
-        if not isinstance(detail, dict):
-            raise ValueError("Completion failure evidence must be a mapping.")
-        bid = str(detail.get("batch_id") or "").strip()
-        op_id = detail.get("op_id")
-        matched = batch_by_op_id.get(int(op_id)) if op_id is not None else None
-        if matched and bid and matched != bid:
+        # Failure details come only from ScheduleRunState._failure_detail: op_id and a non-empty batch_id.
+        bid = detail["batch_id"]
+        matched = batch_by_op_id.get(detail["op_id"])
+        if matched and matched != bid:
             raise ValueError("Failure evidence disagrees with the expected operation batch.")
-        bid = bid or matched or ""
-        if not bid:
-            raise ValueError("Failure evidence cannot be attributed to a batch.")
         batches.add(bid)
     return batches

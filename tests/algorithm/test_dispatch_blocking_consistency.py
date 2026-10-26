@@ -1,4 +1,4 @@
-"""回归测试：GreedyScheduler.schedule 失败阻断语义一致性——batch_order 模式下无效 batch_id 和缺资源工序都计入
+"""回归测试：生产解码入口的失败阻断语义一致性——batch_order 模式下无效 batch_id 和缺资源工序都计入
 failed_ops（不被静默过滤）且失败即阻断同批后续工序，scheduled+failed==total；sgs 模式缺资源应抛 ValidationError(field=resource)
 而非生成不可评分兜底 key。"""
 
@@ -7,12 +7,13 @@ from datetime import datetime, timedelta
 
 from core.algorithm_runtime.run_state import ScheduleRunState
 from tests._support.algo_operations import make_algo_op, make_batch
+from tests._support.schedule_decode import config_snapshot, production_decode
 
 
 @dataclass
 class _StubCalendarService:
     """
-    最小日历服务桩：满足 GreedyScheduler.schedule 所需接口。
+    最小日历服务桩：满足生产解码入口所需接口。
 
     说明：此回归用例只验证“失败阻断语义一致性”，不依赖真实工作日历逻辑。
     """
@@ -54,15 +55,16 @@ def _run(dispatch_mode: str):
     from core.algorithms.greedy.scheduler import GreedyScheduler
 
     operations, batches, start_dt = _build_case()
-    sched = GreedyScheduler(calendar_service=_StubCalendarService())
-    results, summary, _strategy, used_params = sched.schedule(
+    sched = GreedyScheduler(calendar_service=_StubCalendarService(), config_service=config_snapshot())
+    decoded = production_decode(
+        sched,
         operations=operations,
         batches=batches,
         start_dt=start_dt,
         dispatch_mode=dispatch_mode,
         dispatch_rule="slack",
     )
-    return results, summary, used_params
+    return decoded.results, decoded.summary, decoded.used_params
 
 
 def test_dispatch_blocking_consistency():
@@ -87,33 +89,18 @@ def test_dispatch_blocking_consistency():
 
 
 def test_dispatch_sgs_missing_batch_records_structured_failure_detail() -> None:
-    from core.algorithms.greedy.dispatch.sgs import dispatch_sgs
-    from core.algorithms.greedy.run_context import ScheduleRunContext
     from core.algorithms.greedy.scheduler import GreedyScheduler
 
     op_bad = make_algo_op(id=999, op_code="OP_BAD", batch_id="B_BAD", machine_id="M1", operator_id="O1",
                           setup_hours=1.0, unit_hours=0.0)
-    state = ScheduleRunState(base_time=datetime(2026, 1, 1, 8, 0, 0))
-    scheduler = GreedyScheduler(calendar_service=_StubCalendarService(), config_service={})
+    scheduler = GreedyScheduler(calendar_service=_StubCalendarService(), config_service=config_snapshot())
+    summary = production_decode(scheduler, operations=[op_bad], batches={}, start_dt=datetime(2026, 1, 1, 8, 0, 0),
+                                dispatch_mode="sgs", dispatch_rule="slack").summary
 
-    scheduled_count, failed_count = dispatch_sgs(
-        ScheduleRunContext.from_legacy_scheduler(scheduler),
-        sorted_ops=[op_bad],
-        batches={},
-        batch_order={},
-        dispatch_rule="slack",
-        end_dt_exclusive=None,
-        machine_downtimes={},
-        state=state,
-        auto_assign_enabled=False,
-        resource_pool=None,
-        strict_mode=False,
-    )
-
-    assert scheduled_count == 0
-    assert failed_count == 1
-    assert [item["code"] for item in state.failure_details] == ["missing_batch"]
-    assert state.failure_details[0]["op_code"] == "OP_BAD"
+    assert summary.scheduled_ops == 0
+    assert summary.failed_ops == 1
+    assert [item["code"] for item in summary.failure_details] == ["missing_batch"]
+    assert summary.failure_details[0]["op_code"] == "OP_BAD"
 
 
 def test_graph_blocked_ops_already_counted_by_batch_skip_do_not_duplicate_failure_details() -> None:
@@ -238,12 +225,14 @@ def test_graph_skipped_operation_blocks_its_cross_batch_successors_once() -> Non
         "graph_priority_key_by_op_id": {10: (2.0, 10.0), 1: (0.0, 1.0), 2: (5.0, 2.0), 3: (1.0, 3.0)},
     }
     with native_calendar() as calendar:
-        scheduler = GreedyScheduler(calendar_service=calendar, config_service={"auto_assign_enabled": "no"})
-        results, summary, _strategy, _params = scheduler.schedule(
+        scheduler = GreedyScheduler(calendar_service=calendar, config_service=config_snapshot(auto_assign_enabled="no"))
+        decoded = production_decode(
+            scheduler,
             operations=[op(10, "B0", 0, 80.0), op(1, "B1", 0, 80.0), op(2, "B1", 1, 1.0), op(3, "B2", 0, 1.0)],
             batches=batches, start_dt=BASE, end_date=(BASE + timedelta(days=2)).date(),
             dispatch_mode="sgs", dispatch_rule="atc", graph_ready_context=context,
         )
+    results, summary = decoded.results, decoded.summary
 
     assert results == []
     assert (summary.scheduled_ops, summary.failed_ops, summary.total_ops) == (0, 4, 4)

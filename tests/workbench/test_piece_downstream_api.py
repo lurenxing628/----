@@ -3,18 +3,35 @@
 import csv
 import io
 
-from tests.workbench.piece_chain_support import adopt_candidate
-from tests.workbench.piece_presentation_support import PIECES, real_case
+from tests.workbench.piece_chain_support import adopt_candidate, piece_layout
+from tests.workbench.plan_catalog_support import candidate, scenario
 from tests.workbench.point_downstream_support import ACTUAL, FIELD, app_for, read
+from tests.workbench.run_candidate_support import compute
 from tests.workbench.test_piece_chain_end_to_end import workspace
 from tests.workbench.trial_support import snapshot
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
 
 FIELDS = ('piece_id', 'quantity', 'batch_quantity', 'quantity_basis', 'quantity_reason')
+PIECES = ("第一件主体多字中文业务编号甲", "第二件主体多字中文业务编号乙", "第三件主体多字中文业务编号丙")
 
 
 def setup(case):
-    _, (_, refs) = real_case(case)
+    """Build real piece candidates, then adopt the first one."""
+    ids = piece_layout(case)
+    for old, new in zip(("item-A", "item-B", "item-C"), PIECES):
+        case.conn.execute("UPDATE BatchOperations SET piece_id=? WHERE piece_id=?", (new, old))
+    case.batch("B2", quantity=1)
+    case.operation(batch="B2", seq=10, unit_hours=.5)
+    case.conn.commit()
+    for version in (1, 2, 3, 4):
+        case.plan(version, [ids[None, 10]], end="2026-09-09T08:45:00")
+    candidate(case.conn, 3, "critical_best", op_id=ids[None, 10])
+    scenario(case.conn, "es-original-scene", 3, op_id=ids[None, 10])
+    case.conn.commit()
+    receipt = case.command("create", case.task(4, ids[None, 10]), case.values(
+        3, actual_end="2026-09-09T08:45:00", effective_processing_hours=.75))
+    assert receipt["ok"], receipt
+    _, refs = compute(case, case.settings("B1", "B2"))
     adopted = adopt_candidate(case, refs[0])
     plan = adopted['data']['official_plan']
     return app_for(case).test_client(), plan, adopted

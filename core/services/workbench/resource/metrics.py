@@ -2,7 +2,6 @@
 
 from collections import Counter, defaultdict
 from itertools import chain
-from types import SimpleNamespace
 from typing import Dict
 
 from core.models.resource_capabilities import OP_TYPE_CATEGORIES, machine_type_index, supports_source
@@ -62,10 +61,12 @@ def _relation(value, records, label, *, nullable=False):
 
 
 class WorkbenchResourceMetricsService:
-    def __init__(self, conn, logger=None):
+    def __init__(self, conn, logger=None, *, facts=None):
+        """``facts`` supplies a command's captured resource closure; otherwise facts load from SQLite on first use."""
         self.conn, self.logger = conn, logger
         self.repo = WorkbenchResourceMetricsRepository(conn, logger=logger)
-        self.facts, self.records, self.profiles, self.statuses = {}, {}, {}, {}
+        self.facts = facts if facts is not None else {}
+        self.records, self.profiles, self.statuses = {}, {}, {}
         self.policies, self.groups = {}, {}
         self._computed = set()
         self._failed = {}
@@ -146,17 +147,17 @@ class WorkbenchResourceMetricsService:
         for kind in ("op_type", "machine", "operator"):
             self.kind_records(kind)
         self._validate_internal()
-        machines = []
         capabilities = machine_type_index(self.records["machine"].values(), self.facts["machine_capabilities"])
+        active = {}
         for code, row in self.records["machine"].items():
             for work_type in capabilities[code]:
                 self.linked_machines[work_type].add(code)
                 if row["status"] == "active":
                     self.active_machines[work_type].add(code)
             if row["status"] == "active":
-                machines.append(SimpleNamespace(machine_id=code, op_type_id=row["op_type_id"], op_type_ids=tuple(capabilities[code])))
+                active[code] = capabilities[code]
         skills = self._active_qualifications()
-        links = OperatorQualificationService.eligible_links(self.facts["authorizations"], machines, [], qualifications=skills)
+        links = OperatorQualificationService.eligible_links(self.facts["authorizations"], active, qualifications=skills)
         for link in links:
             for work_type in capabilities[link["machine_id"]]:
                 if skills[link["operator_id"]] is None or work_type in skills[link["operator_id"]]:

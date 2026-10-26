@@ -24,4 +24,4 @@ _DECLARED = {name: canonical_sql(sql) for name, sql in ADDED.items()}
 def contract_issues(conn, *, structure=None):
     actual = schema_objects(conn, structure=structure)
     return ["bad_index: " + name for name, expected in _DECLARED.items()
-            if name not in actual or canonical_sql(actual[name] or "") != expected]
+            if name not in actual or canonical_sql(actual[name]) != expected]

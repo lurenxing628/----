@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 import time
 import urllib.error
@@ -60,14 +59,15 @@ from .launcher_stop_state import (
     _runtime_stop_is_complete,
 )
 
+_STOP_GRACE_SECONDS = 12.0
+
 
 def _contract_log_kwargs(contract: Dict[str, Any]) -> Dict[str, str]:
     data_dirs = contract.get("data_dirs") or {}
     state_dir = ""
     if isinstance(data_dirs, dict):
         state_dir = str(data_dirs.get("log_dir") or "").strip()
-    runtime_dir = str(contract.get("runtime_dir") or "").strip()
-    return {"state_dir": state_dir, "runtime_dir": runtime_dir}
+    return {"state_dir": state_dir, "runtime_dir": contract["runtime_dir"]}
 
 
 def _launcher_log_contract_warning(message: str, *args: Any, contract: Dict[str, Any]) -> None:
@@ -76,13 +76,13 @@ def _launcher_log_contract_warning(message: str, *args: Any, contract: Dict[str,
         None,
         message,
         *args,
-        state_dir=log_kwargs.get("state_dir") or None,
-        runtime_dir=log_kwargs.get("runtime_dir") or None,
+        state_dir=log_kwargs["state_dir"] or None,
+        runtime_dir=log_kwargs["runtime_dir"],
     )
 
 
 def _build_shutdown_url(contract: Dict[str, Any]) -> str:
-    host = str(contract.get("host") or "").strip() or "127.0.0.1"
+    host = contract["host"]
     port = contract["port"]
     shutdown_path = str(contract.get("shutdown_path") or RUNTIME_SHUTDOWN_PATH).strip() or RUNTIME_SHUTDOWN_PATH
     if not shutdown_path.startswith("/"):
@@ -92,11 +92,8 @@ def _build_shutdown_url(contract: Dict[str, Any]) -> str:
 
 def _request_runtime_shutdown(contract: Dict[str, Any], timeout_s: float = 3.0) -> bool:
     url = _build_shutdown_url(contract)
-    token = str(contract.get("shutdown_token") or "").strip()
-    if not url or not token:
-        return False
     req = urllib.request.Request(url, method="POST", data=b"")
-    req.add_header("X-APS-Shutdown-Token", token)
+    req.add_header("X-APS-Shutdown-Token", contract["shutdown_token"])
     req.add_header("Content-Type", "application/json")
     try:
         with urllib.request.urlopen(req, timeout=max(float(timeout_s), 0.5)) as resp:
@@ -115,18 +112,12 @@ def _request_runtime_shutdown(contract: Dict[str, Any], timeout_s: float = 3.0) 
         return False
 
 
-def _stop_aps_chrome_if_requested(
-    stop_aps_chrome: bool,
-    profile_dir: Optional[str],
-    *,
-    logger: Optional[logging.Logger] = None,
-    state_dir: str = "",
-) -> _StopChromeResult:
+def _stop_aps_chrome_if_requested(stop_aps_chrome: bool, profile_dir: str, *, state_dir: str) -> _StopChromeResult:
     if not stop_aps_chrome:
-        return _StopChromeResult(True, "not_requested", str(profile_dir or "").strip(), [], [], [])
+        return _StopChromeResult(True, "not_requested", profile_dir, [], [], [])
     result = _stop_aps_chrome_with_result(profile_dir)
     if not result.ok:
-        _log_chrome_stop_failure(result, logger=logger, state_dir=state_dir)
+        _log_chrome_stop_failure(result, state_dir=state_dir)
     return result
 
 
@@ -155,20 +146,18 @@ def _runtime_pid_match(contract_pid: int, lock_pid: int, expected_exe_path: str)
     return None
 
 
-def _endpoint_status(contract: Optional[Dict[str, Any]], endpoint_files: RuntimeEndpointReadResult, state_dir: str) -> Dict[str, Any]:
+def _endpoint_status(contract: Optional[Dict[str, Any]], endpoint_files: RuntimeEndpointReadResult) -> Dict[str, Any]:
     contract_host = str((contract or {}).get("host") or "").strip()
     contract_port = contract["port"] if contract else 0
     host = contract_host or endpoint_files.host or "127.0.0.1"
-    port = contract_port if contract_port > 0 else int(endpoint_files.port or 0)
-    if not host or int(port or 0) <= 0:
+    port = contract_port if contract_port > 0 else endpoint_files.port
+    if port <= 0:
         health_result = HealthProbeResult(False, "", "missing_endpoint")
     else:
-        health_result = probe_runtime_health_result(
-            f"http://{host}:{int(port)}", timeout_s=0.75, state_dir=state_dir
-        )
+        health_result = probe_runtime_health_result(f"http://{host}:{port}", timeout_s=0.75)
     return {
         "host": host,
-        "port": int(port or 0),
+        "port": port,
         "endpoint_up": bool(health_result.ok),
         "health_reason": health_result.reason,
         "health_error": health_result.error,
@@ -198,7 +187,7 @@ def _classify_runtime_state(runtime_dir_or_state_dir: str) -> Dict[str, Any]:
     lock_result = read_runtime_lock_result(state_dir)
     lock_payload = lock_result.payload if lock_result.ok else None
     identity = _runtime_identity(contract, lock_payload)
-    endpoint = _endpoint_status(contract, endpoint_files, state_dir)
+    endpoint = _endpoint_status(contract, endpoint_files)
     endpoint_uncertain = bool(endpoint_files.uncertain and not contract_result.ok)
     lock_unknown = lock_result.status not in {LOCK_STATUS_MISSING, LOCK_STATUS_VALID}
     lock_active = bool(lock_unknown or (lock_payload and is_runtime_lock_active(lock_payload, expected_exe_path=identity["expected_exe_path"])))
@@ -234,7 +223,7 @@ def _classify_runtime_state(runtime_dir_or_state_dir: str) -> Dict[str, Any]:
         "endpoint_host_error": endpoint_files.host_error,
         "endpoint_port_error": endpoint_files.port_error,
         "endpoint_uncertain": endpoint_uncertain,
-        "pid": int(identity["pid"] or 0),
+        "pid": identity["pid"],
         "pid_exists": identity["pid_exists"],
         "pid_match": identity["pid_match"],
         "lock_active": lock_active,
@@ -246,14 +235,14 @@ def _classify_runtime_state(runtime_dir_or_state_dir: str) -> Dict[str, Any]:
 
 
 def _runtime_stop_failure_reason(status: Dict[str, Any], *, shutdown_requested: bool) -> str:
-    contract_status = str(status.get("contract_status") or "")
+    contract_status = status["contract_status"]
     if contract_status in {CONTRACT_STATUS_INVALID, CONTRACT_STATUS_UNREADABLE}:
         return f"contract_{contract_status}"
     if status.get("pid_match") is False:
         return "pid_mismatch"
-    if str(status.get("state") or "") == "mixed":
+    if status["state"] == "mixed":
         return "mixed_state"
-    if str(status.get("state") or "") == "blocked_endpoint":
+    if status["state"] == "blocked_endpoint":
         return "endpoint_files_uncertain"
     if bool(status.get("endpoint_up")):
         if not shutdown_requested and isinstance(status.get("contract"), dict):
@@ -263,16 +252,19 @@ def _runtime_stop_failure_reason(status: Dict[str, Any], *, shutdown_requested: 
 
 
 def _finalize_stopped_runtime(
-    status: Dict[str, Any], runtime_dir_abs: str, *, stop_aps_chrome: bool, logger,
+    status: Dict[str, Any], runtime_dir_abs: str, *, stop_aps_chrome: bool,
     expected_lock: Optional[Dict[str, Any]], expected_contract: Optional[Dict[str, Any]],
-    expected_database_lock: Optional[Dict[str, Any]],
+    expected_database_lock: Optional[Dict[str, Any]], database: str,
 ) -> int:
-    state_dir = str(status.get("state_dir") or "")
+    state_dir = status["state_dir"]
     if status.get("db_lock_error"):
-        launcher_log_warning(logger, "原数据库运行锁归属无法确认，已保留当前锁：%s", status["db_lock_error"], state_dir=state_dir)
+        launcher_log_warning(None, "原数据库运行锁归属无法确认，已保留当前锁：%s", status["db_lock_error"], state_dir=state_dir)
         return 1
-    profile_dir = str((expected_contract or {}).get("chrome_profile_dir") or "").strip() or default_chrome_profile_dir(runtime_dir_abs)
-    chrome_result = _stop_aps_chrome_if_requested(stop_aps_chrome, profile_dir, logger=logger, state_dir=state_dir)
+    if expected_contract is None:
+        profile_dir = default_chrome_profile_dir(runtime_dir_abs)
+    else:
+        profile_dir = expected_contract["chrome_profile_dir"]
+    chrome_result = _stop_aps_chrome_if_requested(stop_aps_chrome, profile_dir, state_dir=state_dir)
     if not chrome_result.ok:
         return 1
     cleanup_result = delete_runtime_contract_files_result(
@@ -280,21 +272,19 @@ def _finalize_stopped_runtime(
     )
     if not cleanup_result.ok:
         launcher_log_warning(
-            logger,
+            None,
             "运行时契约相关文件未清理干净，停止命令按失败处理：failures=%s",
             [failure.path for failure in cleanup_result.failures],
             state_dir=state_dir,
         )
         return 1
-    return 0 if release_initial_runtime_locks(state_dir, expected_lock, expected_database_lock) else 1
+    return 0 if release_initial_runtime_locks(state_dir, expected_lock, expected_database_lock, database) else 1
 
 
 def stop_runtime_from_dir(
     runtime_dir: str,
     *,
     stop_aps_chrome: bool = False,
-    timeout_s: float = 15.0,
-    logger: Optional[logging.Logger] = None,
 ) -> int:
     status = _classify_runtime_state(runtime_dir)
     runtime_dir_abs = status["runtime_dir"]
@@ -302,17 +292,17 @@ def stop_runtime_from_dir(
     original_status = status
     expected = read_initial_runtime_claims(status)
     if _runtime_stop_is_complete(status):
-        return _finalize_stopped_runtime(original_status, runtime_dir_abs, stop_aps_chrome=stop_aps_chrome, logger=logger, **expected)
+        return _finalize_stopped_runtime(original_status, runtime_dir_abs, stop_aps_chrome=stop_aps_chrome, **expected)
 
-    grace_deadline = time.time() + max(min(float(timeout_s), 12.0), 2.0)
+    grace_deadline = time.time() + _STOP_GRACE_SECONDS
     shutdown_requested = _request_runtime_shutdown(status["contract"], timeout_s=3.0) if isinstance(status.get("contract"), dict) else False
     status = _wait_for_runtime_stop(state_dir, grace_deadline)
     if _runtime_stop_is_complete(status):
-        return _finalize_stopped_runtime(original_status, runtime_dir_abs, stop_aps_chrome=stop_aps_chrome, logger=logger, **expected)
+        return _finalize_stopped_runtime(original_status, runtime_dir_abs, stop_aps_chrome=stop_aps_chrome, **expected)
 
     # 关闭请求受理或 HTTP 不再响应，都不能证明后台计算、写入和退出备份已结束。
     # 普通 stop 到期只报告未退出，不能自动强杀或清理仍被占用的运行时。
-    _log_runtime_stop_failure(status, shutdown_requested=shutdown_requested, logger=logger)
+    _log_runtime_stop_failure(status, shutdown_requested=shutdown_requested)
     return 1
 
 
@@ -325,10 +315,10 @@ def _wait_for_runtime_stop(state_dir: str, deadline: float) -> Dict[str, Any]:
     return _classify_runtime_state(state_dir)
 
 
-def _log_runtime_stop_failure(status: Dict[str, Any], *, shutdown_requested: bool, logger: Optional[logging.Logger]) -> None:
+def _log_runtime_stop_failure(status: Dict[str, Any], *, shutdown_requested: bool) -> None:
     reason = _runtime_stop_failure_reason(status, shutdown_requested=shutdown_requested)
     launcher_log_warning(
-        logger,
+        None,
         "停止等待已结束，运行时尚未确认退出；未自动强制终止或清理。请稍后重试停止命令并查看运行时日志。"
         "runtime_stop_failed reason=%s state=%s shutdown_requested=%s pid=%s pid_exists=%s pid_match=%s host=%s port=%s endpoint_up=%s lock_active=%s",
         reason,
@@ -341,5 +331,5 @@ def _log_runtime_stop_failure(status: Dict[str, Any], *, shutdown_requested: boo
         status.get("port"),
         status.get("endpoint_up"),
         status.get("lock_active"),
-        state_dir=str(status.get("state_dir") or ""),
+        state_dir=status["state_dir"],
     )

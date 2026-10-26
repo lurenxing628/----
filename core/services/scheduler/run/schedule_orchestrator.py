@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from core.services.scheduler.contracts.schedule_summary_types import SummaryBuildContext
 
 from .schedule_candidate_plan import CandidateComparisonOutcome, CandidatePlan
-from .schedule_candidate_runner import run_candidate_comparison
 from .schedule_candidate_summary import candidate_comparison_public_summary
 from .schedule_input_contracts import ScheduleRunInput
-from .schedule_payload_contract import ValidatedSchedulePayload, build_validated_schedule_payload
+from .schedule_payload_contract import PointValidator, ValidatedSchedulePayload, build_validated_schedule_payload
 
 
 @dataclass
@@ -23,11 +22,10 @@ def _run_plan_selection(
     *,
     schedule_input: ScheduleRunInput,
     strict_mode: bool,
-    candidate_comparison_fn: Any = None,
+    candidate_comparison_fn: Callable[..., CandidateComparisonOutcome],
 ) -> Tuple[CandidatePlan, Optional[Dict[str, Any]], Optional[Dict[str, Any]], CandidateComparisonOutcome]:
-    candidate_comparison = (candidate_comparison_fn or run_candidate_comparison)(
+    candidate_comparison = candidate_comparison_fn(
         schedule_input=schedule_input,
-        run_time_budget_seconds=schedule_input.run_time_budget_seconds,
         strict_mode=strict_mode,
     )
     adopted_plan: CandidatePlan = candidate_comparison.selection.selected_plan
@@ -40,8 +38,8 @@ def orchestrate_schedule_run(
     version: int,
     strict_mode: bool,
     build_result_summary_fn: Any,
-    point_validator: Any = None,
-    candidate_comparison_fn: Any = None,
+    point_validator: PointValidator,
+    candidate_comparison_fn: Callable[..., CandidateComparisonOutcome],
 ) -> ScheduleOrchestrationOutcome:
     """Compute candidates and their summary using an already prepared run input."""
     adopted_plan, graph_analysis_public, graph_analysis_diagnostics, candidate_comparison = _run_plan_selection(

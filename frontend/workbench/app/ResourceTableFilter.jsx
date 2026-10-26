@@ -23,10 +23,7 @@
       const controller = new AbortController(); let live = true;
       const query = { scope: baseScope, column: column.key, ...request, query: queryText };
       setReading({ key: requestKey, loading: true, result: null, error: null });
-      Promise.resolve().then(() => {
-        if (typeof service.current.facets !== 'function') throw C.failure('dependency not wired: adapter.facets');
-        return service.current.facets(kind, query, controller.signal);
-      }).then(raw => {
+      Promise.resolve().then(() => service.current.facets(kind, query, controller.signal)).then(raw => {
         if (live && !controller.signal.aborted) setReading({ key: requestKey, loading: false, result: M.facets(raw, query), error: null });
       }).catch(error => { if (live && !controller.signal.aborted) setReading({ key: requestKey, loading: false, result: null, error }); });
       return () => { live = false; controller.abort(); };
@@ -44,10 +41,7 @@
       const controller = new AbortController(); let live = true;
       const query = { scope: baseScope, column: column.key, query: queryText, size: pageSize, snapshot_ref: snapshot };
       setKeysState({ key: keysKey, loading: true });
-      Promise.resolve().then(() => {
-        if (typeof service.current.facetSelection !== 'function') throw C.failure('dependency not wired: adapter.facetSelection');
-        return service.current.facetSelection(kind, query, controller.signal);
-      }).then(raw => {
+      Promise.resolve().then(() => service.current.facetSelection(kind, query, controller.signal)).then(raw => {
         if (!live || controller.signal.aborted) return;
         const result = M.selection(raw, { ...query, expected_total: data ? data.page.total : undefined }), state = { key: keysKey, loading: false, result };
         cache.current = state; setKeysState(state);

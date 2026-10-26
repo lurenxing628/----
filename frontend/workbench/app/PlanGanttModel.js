@@ -88,8 +88,8 @@
     const changed = new Set(comparison.state === 'available' ? comparison.items.filter(item => item.change !== 'unchanged').map(item => item.operation_ref) : []);
     const occupancy = new Map(data.projections.occupancy.resources.map(row => [row.resource_ref, { resource: row,
       segments: row.segments.filter(item => item.concurrent_operations > 1).map(item => ({ start: instant(item.start), end: instant(item.end) })) }]));
-    const deliveryRisks = data.projections.delivery_risks && Array.isArray(data.projections.delivery_risks.items)
-      ? new Map(data.projections.delivery_risks.items.map(row => [row.batch_id, row])) : null;
+    // 计划工作区的 delivery_risks.items 已由 PlanContract 校验为数组；值班台时间轴的合成数据不带这一键。
+    const deliveryRisks = data.projections.delivery_risks ? new Map(data.projections.delivery_risks.items.map(row => [row.batch_id, row])) : null;
     return { labels, directory, items, before, taskIndex, loadedRefs, beforeIndex, comparisons, changed, occupancy, deliveryRisks, resourceMembers,
       start: instant(data.plan_span.start), end: instant(data.plan_span.end) };
   }
@@ -164,10 +164,7 @@
         oldNormal.length + lane, oldPoints.length, lane + 1, currentCount + oldNormal.length + lane));
       if (rows.length > firstRow) groupCount++;
     }
-    return { mode, labels, rows, height: top, start, end, conflicts, locations, baselineLocations, tasks,
-      shownRefs: shownRefs || new Set((tasks || []).map(task => task.task_ref)),
-      taskOrder: taskOrder || new Map((tasks || []).map((task, index) => [task.task_ref, index])),
-      groupCount };
+    return { mode, labels, rows, height: top, start, end, conflicts, locations, baselineLocations, tasks, shownRefs, taskOrder, groupCount };
   }
   function firstIntersecting(items, start) {
     let low = 0, high = items.length;

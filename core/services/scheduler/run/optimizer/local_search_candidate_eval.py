@@ -26,7 +26,7 @@ def evaluate_local_search_candidate(
     optimizer_algo_stats: Optional[Dict[str, Any]],
     readiness_gate_enabled: bool,
     decode_session: SharedDecodeSession,
-    resource_pair_rank: Optional[Dict[Tuple[str, str], int]] = None,
+    resource_pair_rank: Dict[Tuple[str, str], int],
 ) -> Dict[str, Any]:
     decoded = decode_and_metrics(
         decode_session=decode_session,
@@ -60,14 +60,12 @@ def evaluate_local_search_candidate(
         "score": (float(summary.failed_ops),) + objective_score(objective_name, metrics),
         "resource_pool": resource_pool or {},
     }
-    candidate["resource_pair_rank"] = resource_pair_rank or {}
-    candidate["_shared_entry_id"] = decoded.entry_id
-    candidate["_archive_observation"] = decoded.archive_observation
-    if decoded.receipt is not None:
-        candidate["decode_receipt"] = decoded.receipt
-        source_runtime = decoded.receipt.get("source_runtime_ms")
-        if source_runtime is not None:
-            candidate["runtime_ms"] = source_runtime
+    candidate["resource_pair_rank"] = resource_pair_rank
+    candidate["archive_ref"] = decoded.archive_ref()
+    candidate["decode_receipt"] = decoded.receipt
+    source_runtime = decoded.receipt["source_runtime_ms"]
+    if source_runtime is not None:
+        candidate["runtime_ms"] = source_runtime
     return candidate
 
 

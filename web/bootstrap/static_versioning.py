@@ -27,18 +27,8 @@ def _warn_once(app: Flask, code: str, message: str) -> None:
     app.logger.warning(message)
 
 
-def _pick_fixed_version(app: Flask) -> str:
-    env_v = str(os.environ.get("APS_STATIC_VERSION") or "").strip()
-    if env_v:
-        return env_v
-    cfg_v = str(app.config.get("STATIC_ASSET_VERSION") or "").strip()
-    if cfg_v:
-        return cfg_v
-    return ""
-
-
 def build_versioned_url_for(app: Flask, static_dir: str) -> Callable[..., str]:
-    fixed_version = _pick_fixed_version(app)
+    fixed_version = os.environ.get("APS_STATIC_VERSION", "").strip()
     # 版本缓存：一个 key 一次性写入 (mtime, version) 元组。threaded=True 下所有请求
     # 线程无锁共享本缓存；拆成两个 dict「先写 mtime 再写 version」存在 check-then-act
     # 竞态窗口（读侧命中新 mtime 却读到空/旧 version，audit 2026-07-19 D05）。

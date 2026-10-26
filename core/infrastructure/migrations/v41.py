@@ -47,7 +47,7 @@ def _prepare_candidate(store, packet, candidate):
     return ready
 
 
-def _candidate_provider(store, repo, current, *, source_cache=None):
+def _candidate_provider(store, repo, current, *, source_cache):
     from core.services.workbench.facts.candidate_read_source import read_candidate_source
     from core.services.workbench.facts.candidate_tasks import project_validated_tasks
     from core.services.workbench.facts.candidate_values import corrupt
@@ -57,12 +57,11 @@ def _candidate_provider(store, repo, current, *, source_cache=None):
     # while this migration appends the derived read models.
     packets = {current["run"]["run_ref"]: current}
     owners = {row["candidate_ref"]: current for row in current["rows"]}
-    sources = OrderedDict() if source_cache is None else source_cache
 
     def load(candidate_ref):
-        if candidate_ref in sources:
-            sources.move_to_end(candidate_ref)
-            return sources[candidate_ref]
+        if candidate_ref in source_cache:
+            source_cache.move_to_end(candidate_ref)
+            return source_cache[candidate_ref]
         if candidate_ref not in owners:
             run_ref = store.candidate_run(candidate_ref)
             if run_ref not in packets:
@@ -82,9 +81,9 @@ def _candidate_provider(store, repo, current, *, source_cache=None):
         source = read_candidate_source(store, candidate_ref, prepared={
             **packet, "candidate": candidate, "raw_tasks": ready["raw_tasks"], "tasks": ready["tasks"],
             "scheduled_op_ids": ready["scheduled_op_ids"]})
-        sources[candidate_ref] = source
-        if len(sources) > _SOURCE_CACHE_SIZE:
-            sources.popitem(last=False)
+        source_cache[candidate_ref] = source
+        if len(source_cache) > _SOURCE_CACHE_SIZE:
+            source_cache.popitem(last=False)
         return source
 
     return load
@@ -147,7 +146,7 @@ def _backfill(conn):
         if terminal:
             models = build_decision_read_models(run, packet["capture"], packet["receipt"], packet["rows"],
                 packet["prepared_candidates"], facts=packet["facts"],
-                process=(packet["receipt"] or {}).get("unified_process"), admission=admission["decision"])
+                process=packet["receipt"].get("unified_process"), admission=admission["decision"])
             repo.insert_decision_read_models(run["run_ref"], models["run_model"], models["candidate_models"])
 
 

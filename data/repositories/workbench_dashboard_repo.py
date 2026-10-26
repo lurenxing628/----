@@ -2,8 +2,6 @@
 
 import uuid
 
-from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.workbench_dashboard_schema import contract_issues
 from core.models.content import content_text
 from core.models.workbench_command import canonical_json
 from core.models.workbench_dashboard import MAX_BYTES, bounded
@@ -17,9 +15,6 @@ class WorkbenchDashboardRepository:
 
     def __init__(self, conn):
         self.conn = conn
-
-    def schema_installed(self):
-        return not schema_contract_memo(self.conn).get_schema(contract_issues)
 
     def mappings(self, category, refs):
         """{anchor ref: item row} for the category; the service decides whether every ref is mapped."""

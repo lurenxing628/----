@@ -27,11 +27,11 @@ class ChangeoverArrangement:
     sort_key: Tuple[Any, ...] = ()
 
 
-def type_transition(previous_type_ref, next_type_ref, previous_operation_ref=None, next_operation_ref=None):
+def type_transition(previous_type_ref, next_type_ref, previous_operation_ref, next_operation_ref):
     """Known adjacent identity change; a missing actual identity stays unknown."""
     if not previous_type_ref or not next_type_ref:
         return None
-    if previous_operation_ref is not None and previous_operation_ref == next_operation_ref:
+    if previous_operation_ref == next_operation_ref:
         return 0
     return int(previous_type_ref != next_type_ref)
 

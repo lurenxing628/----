@@ -200,7 +200,7 @@ def resolve_public_token(scope: str, token: Any, *, message: str, field: str) ->
 
 
 def issue_public_token_with_expiry(scope: str, value: Any, *, ttl_seconds: int = _DEFAULT_TTL_SECONDS,
-                                   key: Any = None, group: Any = None) -> Tuple[str, float]:
+                                   key: Any, group: Any = None) -> Tuple[str, float]:
     """Return the actual expiry, including when idempotent issuance reuses a token."""
     return PublicTokenIssuer(scope, group=group, ttl_seconds=ttl_seconds).issue_with_expiry(value, key=key)
 

@@ -176,8 +176,8 @@ def test_unreported_stored_skipped_is_shared_by_preflight_input_and_partial_cand
 
 def test_corrupt_official_schedule_time_in_hold_window_blocks_strict_freeze(candidate_case):
     from core.errors import ValidationError
-    from core.services.workbench.run.input import prepare_candidate_run_input
     from core.services.workbench.run.preflight import PreflightService
+    from tests.workbench.run_compute_support import prepare_run_input
 
     case = candidate_case
     case.conn.execute("INSERT INTO ScheduleHistory(version,strategy) VALUES (1,'greedy')")
@@ -190,7 +190,7 @@ def test_corrupt_official_schedule_time_in_hold_window_blocks_strict_freeze(cand
     data, _fingerprint = PreflightService(case.conn).evaluate(settings)
     assert "freeze_window_unavailable" in {item["code"] for item in data["blockers"]}
     with pytest.raises(ValidationError) as exc:
-        prepare_candidate_run_input(case.conn, settings, execution_projections=case.projections())
+        prepare_run_input(case.conn, settings, case.projections())
     assert exc.value.field == "freeze_window"
 
 

@@ -8,7 +8,7 @@ from flask import Blueprint, Flask, g, jsonify
 
 from core.infrastructure.database import get_connection
 from core.infrastructure.migration_state import get_schema_version, set_schema_version
-from core.infrastructure.workbench_outsourcing_schema import install
+from core.infrastructure.workbench_outsourcing_schema import install_workbench_outsourcing_schema
 from core.infrastructure.workbench_outsourcing_source_schema import install as install_sources
 from core.models.workbench_outsourcing import raw_facts
 from core.services.workbench.commands import WorkbenchCommandService
@@ -95,7 +95,7 @@ def outsourcing_case(tmp_path):
     conn.commit()
     before = original_rows(conn)
     conn.execute("BEGIN")
-    install(conn)
+    install_workbench_outsourcing_schema(conn)
     install_sources(conn)
     conn.commit()
     assert original_rows(conn) == before

@@ -5,6 +5,7 @@ from __future__ import annotations
 from core.models.schedule_plan_role import ROLE_ADOPTED
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.zero_duration import point_event_dto
+from core.shared.strict_parse import is_exact_positive_int
 from data.repositories.schedule_time_sql import parse_dt_for_sql
 
 _REASONS = {
@@ -22,7 +23,7 @@ _REASONS = {
 
 
 def wire_positive_int64(value):
-    if type(value) is not int or not 0 < value <= (1 << 63) - 1:
+    if not is_exact_positive_int(value):
         return None
     return value if value <= (1 << 53) - 1 else str(value)
 
@@ -102,21 +103,13 @@ def _captured_quantities(operation, batch, execution, basis):
             "quantity_reason": None if valid and quantity is not None and not gaps else "plan_target_invalid"}
 
 
-def _adopted_task_facts(conn, plan_ref, *, context=None):
-    if context is not None:
-        if plan_ref not in context._task_work:
-            context._task_work[plan_ref] = _read_adopted_task_facts(conn, plan_ref, context=context)
-        return context._task_work[plan_ref]
-    return _read_adopted_task_facts(conn, plan_ref)
-
-
-def _read_adopted_task_facts(conn, plan_ref, *, context=None):
+def read_adopted_task_facts(conn, plan_ref, *, context):
     from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
     from core.services.workbench.facts.adoption_baseline_sources import read_adoption_operation_facts
     from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable, require
 
     try:
-        evidence = adopted_source_record(conn, plan_ref, context=context)
+        evidence = adopted_source_record(plan_ref, context=context)
         if evidence is None:
             return {}, "plan_target_not_recorded", None
         basis, arranged = evidence["basis"], evidence["arranged"]
@@ -132,17 +125,11 @@ def _read_adopted_task_facts(conn, plan_ref, *, context=None):
         return {}, "plan_target_unavailable", {}
 
 
-def adopted_source_record(conn, plan_ref, *, context=None):
-    from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
-    from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
-
-    from .adoption_baseline import read_adoption_source
-
-    locator = context.resolve(plan_ref) if context is not None else WorkbenchPlanIdentityRepository(conn).resolve_plan(plan_ref)
+def adopted_source_record(plan_ref, *, context):
+    locator = context.resolve(plan_ref)
     if locator.scenario_id is not None or locator.plan_role != ROLE_ADOPTED:
         return None
-    history = context.history(locator.version) if context is not None else WorkbenchPlanBaselineRepository(conn).get_history_result_summary(locator.version)
-    return read_adoption_source(conn, plan_ref=plan_ref, version=locator.version, history=history, context=context)
+    return context.adoption_source(plan_ref, locator.version, context.history(locator.version), recorded=None)
 
 
 def _source_quantities(basis, arranged, source):
@@ -162,14 +149,13 @@ def _source_quantities(basis, arranged, source):
         for row in saved}
 
 
-def project_tasks(plan_ref, rows, task_refs, operation_refs, resources, *, conn, facts, context):
+def project_tasks(plan_ref, rows, task_refs, operation_refs, resources, *, facts, context):
     tasks = []
-    quantities, quantity_reason, origins = _adopted_task_facts(conn, plan_ref, context=context) if rows else ({}, None, None)
+    quantities, quantity_reason, origins = context.adopted_task_facts(plan_ref) if rows else ({}, None, None)
     facts["resource_directory"] = [resource for row in rows for resource in
         (origins or {}).get(row["op_id"], {}).get("resource_directory", [])]
     for row in rows:
-        start, end = (tuple(value.replace(" ", "T") for value in context.row_times(plan_ref, row)) if context is not None else
-                      (public_time(row["start_time"]), public_time(row["end_time"])))
+        start, end = (value.replace(" ", "T") for value in context.row_times(plan_ref, row))
         if start > end or (start == end and not row.get("_point_work")):
             raise WorkbenchCommandRejected("plan_unavailable", "工序安排的起止时间无效，请核对计划资料。")
         if row["schedule_id"] not in task_refs or row["op_id"] not in operation_refs:

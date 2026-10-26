@@ -1,8 +1,8 @@
 """Carry the chosen material policy into trial moves and adoption."""
 
-import json
 from datetime import date, datetime, timedelta
 
+from core.models.scheduler_history_parser import parse_result_summary_payload
 from core.models.workbench_preflight import stored_hold_window_valid
 from core.models.workbench_trial import issue, reject
 from core.services.workbench.facts.preflight_checks import stored_date
@@ -15,14 +15,9 @@ def plan_material_policy(conn, version, *, history=None):
         raw = stored.result_summary if stored else None
     else:
         raw = history["result_summary"]
-    if not raw:
-        return {}
-    try:
-        summary = json.loads(raw)
-    except (ValueError, TypeError):
+    summary = parse_result_summary_payload(raw).payload
+    if summary is None or "material_policy" not in summary:
         # Legacy history summaries were plain display text, with no run settings.
-        return {}
-    if not isinstance(summary, dict) or "material_policy" not in summary:
         return {}
     policy = summary["material_policy"]
     if (not isinstance(policy, dict) or type(policy.get("ready_check")) is not bool

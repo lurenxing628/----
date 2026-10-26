@@ -49,7 +49,6 @@ class WorkbenchDashboardCommandService:
 
         def command(prefetched):
             def guard():
-                self.reader.require_schema()
                 now, data = prefetched.current(self._recompute)
                 item = self.reader.detail(data, item_ref)
                 validate_context(item_ref, action, item["_snapshot"])

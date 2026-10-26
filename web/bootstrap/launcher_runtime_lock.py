@@ -131,21 +131,16 @@ def _native_runtime_lock_active(pid: int, payload: Dict[str, Any], expected_exe_
         raise RuntimeLockError("本机原生进程探测失败，运行锁归属未知，请稍后重试。") from exc
 
 
-def _runtime_lock_payload(owner: Optional[str], exe_path: Optional[str], db_path: Optional[str] = None) -> Dict[str, Any]:
-    owner_s = str(owner or current_runtime_owner()).strip() or "unknown"
-    exe_path_s = os.path.abspath(str(exe_path or sys.executable or "")).strip()
-    payload: Dict[str, Any] = {
+def _runtime_lock_payload(owner_s: str, exe_path_s: str, database: str) -> Dict[str, Any]:
+    return {
         "pid": int(os.getpid()),
         "owner": owner_s,
         "exe_path": exe_path_s,
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-    }
-    db_path_s = normalize_runtime_db_path(db_path)
-    if db_path_s:
-        # B03 方案丙补充：锁 payload 记录被保护的 DB 身份，供诊断与读取端核对
+        # B03 方案丙补充：锁 payload 记录被保护的 DB 身份（入口归一后的路径），供诊断与读取端核对
         #（bat 的 :read_lock_file 只取 owner/pid，多余键按合同被忽略）。
-        payload["db_path"] = db_path_s
-    return payload
+        "db_path": database,
+    }
 
 
 def _create_new_runtime_lock(lock_path: str, payload: Dict[str, Any]) -> bool:
@@ -214,7 +209,7 @@ def lock_identity_fields(payload: Dict[str, Any]) -> Tuple[str, str, str, str, s
 
 def lock_process_identity_fields(payload: Dict[str, Any]) -> Tuple[str, str, str, str]:
     return (
-        str(payload.get("pid") or ""),
+        str(payload["pid"]),
         str(payload.get("owner") or "").strip(),
         normalize_runtime_db_path(payload.get("exe_path")),
         normalize_runtime_db_path(payload.get("db_path")),
@@ -245,18 +240,18 @@ def _acquire_lock_file(
     raise RuntimeLockError("创建运行时锁失败，请稍后重试。")
 
 
-def _acquire_db_scope_lock(db_path: str, *, owner_s: str, exe_path_s: str) -> Dict[str, Any]:
+def _acquire_db_scope_lock(db_path: str, database: str, *, owner_s: str, exe_path_s: str) -> Dict[str, Any]:
     lock_path = db_scope_lock_path(db_path)
     lock_dir = os.path.dirname(lock_path)
     os.makedirs(lock_dir, exist_ok=True)
-    payload = _runtime_lock_payload(owner_s, exe_path_s, db_path=db_path)
+    payload = _runtime_lock_payload(owner_s, exe_path_s, database)
     acquired = _acquire_lock_file(
         lock_path,
         payload,
         owner_s,
         exe_path_s,
         state_dir=lock_dir,
-        db_label=normalize_runtime_db_path(db_path),
+        db_label=database,
     )
     acquired["path"] = lock_path
     return acquired
@@ -297,36 +292,31 @@ def acquire_runtime_lock(
     *,
     owner: Optional[str] = None,
     exe_path: Optional[str] = None,
-    db_path: Optional[str] = None,
+    db_path: str,
 ) -> Dict[str, Any]:
     state_dir = resolve_runtime_state_dir(runtime_dir, cfg_log_dir)
     os.makedirs(state_dir, exist_ok=True)
     lock_path = runtime_lock_path(state_dir)
-    payload = _runtime_lock_payload(owner, exe_path, db_path=db_path)
-    owner_s = str(payload.get("owner") or "unknown")
-    exe_path_s = str(payload.get("exe_path") or "")
+    owner_s = str(owner or current_runtime_owner()).strip() or "unknown"
+    exe_path_s = os.path.abspath(str(exe_path or sys.executable or "")).strip()
+    db_path_s = str(db_path).strip()
+    # DB 身份只在入口归一一次，壳锁与 db-scope 锁的 payload、提示文案都用这一份。
+    database = normalize_runtime_db_path(db_path_s)
+    payload = _runtime_lock_payload(owner_s, exe_path_s, database)
     acquired = _acquire_lock_file(lock_path, payload, owner_s, exe_path_s, state_dir=state_dir)
     acquired["state_dir"] = state_dir
     acquired["path"] = lock_path
-    db_path_s = str(db_path or "").strip()
-    if not db_path_s:
-        return acquired
     # B03 锁命名空间与被保护资源绑定（方案乙）：壳锁位置不动（bat/stop 读取端合同不破），
     # 在解析后的 DB 同路径追加 db-scope 排他锁作为同库双开的真互斥防线。
     try:
-        acquired["db_lock"] = _acquire_db_scope_lock(db_path_s, owner_s=owner_s, exe_path_s=exe_path_s)
+        acquired["db_lock"] = _acquire_db_scope_lock(db_path_s, database, owner_s=owner_s, exe_path_s=exe_path_s)
     except Exception:
         _rollback_own_runtime_lock(lock_path, acquired)
         raise
     return acquired
 
 
-def _release_lock_from_result(
-    result: RuntimeLockReadResult,
-    expected_pid: Optional[int],
-    *,
-    expected_payload: Optional[Dict[str, Any]] = None,
-) -> bool:
+def _release_lock_from_result(result: RuntimeLockReadResult, expected_payload: Dict[str, Any]) -> bool:
     if result.status == LOCK_STATUS_MISSING:
         return True
     if not result.ok:
@@ -341,33 +331,11 @@ def _release_lock_from_result(
         )
         return False
     existing = cast(Dict[str, Any], result.payload)
-    if expected_payload is not None:
-        if lock_identity_fields(existing) != lock_identity_fields(expected_payload):
-            launcher_log_warning(None, "释放运行时锁时归属已变化，已保留当前实例锁：path=%s", result.path, state_dir=result.state_dir)
-            return False
-    pid0 = existing["pid"]
+    # 身份字段含 pid：只释放与原 claim 完全一致的锁。
+    if lock_identity_fields(existing) != lock_identity_fields(expected_payload):
+        launcher_log_warning(None, "释放运行时锁时归属已变化，已保留当前实例锁：path=%s", result.path, state_dir=result.state_dir)
+        return False
     state_dir = existing["state_dir"]
-    if expected_pid is None and expected_payload is not None:
-        expected_pid = expected_payload.get("pid")
-    if expected_pid is None:
-        pid_expected = int(os.getpid())
-    else:
-        try:
-            pid_expected = int(expected_pid)
-        except (TypeError, ValueError) as exc:
-            launcher_log_warning(
-                None,
-                "释放运行时锁时 expected_pid 非法，跳过释放以避免误删他人锁：expected_pid=%r error=%s",
-                expected_pid,
-                exc,
-                state_dir=state_dir,
-            )
-            return False
-    if pid_expected <= 0:
-        launcher_log_warning(None, "释放运行时锁时 expected_pid 非正，跳过释放：expected_pid=%s", pid_expected, state_dir=state_dir)
-        return False
-    if pid0 != pid_expected:
-        return False
     try:
         remove_fixed_file(existing["path"])
     except FileNotFoundError:
@@ -378,50 +346,32 @@ def _release_lock_from_result(
     return True
 
 
-def _release_lock_file(
-    lock_path: str,
-    expected_pid: Optional[int],
-    *,
-    state_dir: str,
-    expected_payload: Optional[Dict[str, Any]],
-) -> bool:
+def _release_lock_file(lock_path: str, *, state_dir: str, expected_payload: Dict[str, Any]) -> bool:
     try:
         with runtime_lock_mutation_guard(lock_path):
             return _release_lock_from_result(
                 read_runtime_lock_result_from_path(lock_path, state_dir=state_dir),
-                expected_pid,
-                expected_payload=expected_payload,
+                expected_payload,
             )
     except RuntimeLockError as exc:
         launcher_log_warning(None, "释放运行时锁失败：path=%s error=%s", lock_path, exc, state_dir=state_dir)
         return False
 
 
-def release_runtime_lock(
-    runtime_dir_or_state_dir: str,
-    expected_pid: Optional[int] = None,
-    db_path: Optional[str] = None,
-    *,
-    expected_payload: Optional[Dict[str, Any]] = None,
-) -> bool:
+def release_runtime_lock(runtime_dir_or_state_dir: str, db_path: str, *, expected_payload: Dict[str, Any]) -> bool:
     state_dir = resolve_runtime_state_dir_for_read(runtime_dir_or_state_dir)
-    db_path_s = str(db_path or "").strip()
-    db_lock_path = db_scope_lock_path(db_path_s) if db_path_s else ""
-    expected_database = expected_payload.get("db_lock") if expected_payload is not None else None
-    if db_path_s and expected_payload is not None and not isinstance(expected_database, dict):
+    shell_lock_path = runtime_lock_path(state_dir)
+    db_path_s = str(db_path).strip()
+    if not db_path_s:
+        return _release_lock_file(shell_lock_path, state_dir=state_dir, expected_payload=expected_payload)
+    db_lock_path = db_scope_lock_path(db_path_s)
+    expected_database = expected_payload.get("db_lock")
+    if not isinstance(expected_database, dict):
         launcher_log_warning(None, "缺少原数据库锁身份，已保留数据库运行锁：path=%s", db_lock_path, state_dir=state_dir)
         return False
-    shell_released = _release_lock_file(
-        runtime_lock_path(state_dir),
-        expected_pid,
-        state_dir=state_dir,
-        expected_payload=expected_payload,
-    )
-    if not db_path_s:
-        return shell_released
+    shell_released = _release_lock_file(shell_lock_path, state_dir=state_dir, expected_payload=expected_payload)
     database_released = _release_lock_file(
         db_lock_path,
-        expected_pid,
         state_dir=os.path.dirname(db_lock_path),
         expected_payload=expected_database,
     )

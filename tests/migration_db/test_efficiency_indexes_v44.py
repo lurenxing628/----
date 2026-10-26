@@ -9,7 +9,8 @@ import pytest
 from core.errors import AppError, ErrorCode
 from core.infrastructure import database
 from core.infrastructure.efficiency_indexes_schema import ADDED, contract_issues
-from core.infrastructure.migration_state import current_schema_contract_issues
+from core.infrastructure.migration_state import CURRENT_SCHEMA_VERSION, current_schema_contract_issues
+from core.infrastructure.schema_declaration import load_schema_sql
 from core.models.workbench_command import WorkbenchCommandOutcome
 from core.models.workbench_run_history import RunHistoryScope
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
@@ -144,7 +145,8 @@ def test_v43_to_v44_changes_only_declared_indexes_and_preserves_archives(indexed
 
     database.ensure_schema(path, backup_dir=str(tmp_path / "backups"))
     assert conn.execute("SELECT version FROM SchemaVersion WHERE id=1").fetchone()[0] == 44
-    assert contract_issues(conn) == current_schema_contract_issues(conn) == []
+    assert contract_issues(conn) == current_schema_contract_issues(
+        conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql()) == []
     after_rows, after_ddl = snapshot(conn), source_ddl(conn)
     assert {name: rows for name, rows in before_rows.items() if name != "SchemaVersion"} == {
         name: rows for name, rows in after_rows.items() if name != "SchemaVersion"}

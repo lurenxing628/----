@@ -26,7 +26,7 @@
   }
   function Problems({ workspace, issues, onInspect }) {
     const labels = React.useMemo(() => new Map([
-      ...workspace.gantt_graph.nodes, ...workspace.tasks, ...(workspace.unplanned_operations || [])
+      ...workspace.gantt_graph.nodes, ...workspace.tasks, ...workspace.unplanned_operations
     ].map(row => [row.operation_ref, row])), [workspace]);
     if (!issues.length) return null;
     return <details className="rb-panel" data-candidate-change-unknown><summary>查看无法对照工序（{issues.length} 道）</summary>

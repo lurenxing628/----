@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Literal, Tuple, Union, cast
 
 from core.infrastructure.read_evidence import read_evidence_scope
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.services.common.bounded_plan_query import PagePlanQueryService
 from core.services.workbench.facts.adoption_baseline_values import AdoptionBaselineUnavailable
 from core.services.workbench.facts.zero_duration_evidence import overlaps
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
@@ -17,14 +16,6 @@ from .point_query import PointPlanCatalogRepository
 
 if TYPE_CHECKING:
     from data.repositories.workbench_plan_baseline_repo import WorkbenchPlanBaselineRepository
-
-
-class PlanReadQuery(PagePlanQueryService):
-    """Permanent scenario keys reach the existing resolver exactly as stored."""
-    def resolve_plan_view(self, version, role, scenario_id=None):
-        if scenario_id is None:
-            return self.resolve_plan(version, role)
-        return self._resolve_scenario_plan(version=int(version), role=role, scenario_id=scenario_id)
 
 
 class PlanReadContext:
@@ -117,7 +108,14 @@ class PlanReadContext:
 
     def adopted_source(self, plan_ref):
         from .projection import adopted_source_record
-        return adopted_source_record(self.conn, plan_ref, context=self)
+        return adopted_source_record(plan_ref, context=self)
+
+    def adopted_task_facts(self, plan_ref):
+        """The adopted plan's audited target quantities and origins, read once per transaction."""
+        from .projection import read_adopted_task_facts
+        if plan_ref not in self._task_work:
+            self._task_work[plan_ref] = read_adopted_task_facts(self.conn, plan_ref, context=self)
+        return self._task_work[plan_ref]
 
     def adoption_source(self, plan_ref, version, history, *, recorded):
         """One exact snapshot retains available, absent and classified unavailable evidence."""
@@ -193,15 +191,6 @@ class PlanReadContext:
                 self._scoped[key] = selected if complete else self._enrich_rows(entry, selected)
         return self._scoped[key]
 
-    def admit_scope(self, entry, scope, rows):
-        """Standalone projection inputs are admitted against one captured scope."""
-        from .baseline import verify_selected_rows
-        _, current, _ = self.selected(scope.plan_ref)
-        if current.locator != entry.locator or current.plan_identity != entry.plan_identity:
-            raise WorkbenchCommandRejected("invalid_input", "所选计划已经变了，不能跨计划对比。请刷新计划列表后重新选择。", 400)
-        verify_selected_rows(self.detail_rows(current), rows, scope)
-        return self.scoped_rows(current, scope)
-
     def active_map(self, kind, keys):
         cache = self._entities.setdefault(kind, {})
         keys = list(dict.fromkeys(keys))
@@ -225,14 +214,13 @@ class PlanReadContext:
         return resources, state
 
     def task_refs(self, plan_ref, rows):
-        return self.references.get_task_refs(plan_ref, rows)
+        return self.references.get_task_refs(plan_ref, ((row["schedule_id"], row["op_id"], row["version"]) for row in rows))
 
     def operation_refs(self, ids):
         return self.references.get_operation_refs(ids)
 
-    def projected_tasks(self, plan_ref, entry, rows=None):
+    def projected_tasks(self, plan_ref, rows):
         from .projection import project_tasks
-        rows = self.detail_rows(entry) if rows is None else rows
         cache = self._tasks.setdefault(plan_ref, {})
         cached_resources = self._projected_resources.get(plan_ref)
         if cached_resources is not None and cached_resources[0] is rows:
@@ -245,7 +233,7 @@ class PlanReadContext:
             task_refs = self.task_refs(plan_ref, missing)
             operations = self.operation_refs(row["op_id"] for row in missing)
             facts = {}
-            tasks = project_tasks(plan_ref, missing, task_refs, operations, resources, conn=self.conn, facts=facts, context=self)
+            tasks = project_tasks(plan_ref, missing, task_refs, operations, resources, facts=facts, context=self)
             cache.update((row["schedule_id"], task) for row, task in zip(missing, tasks))
             self._task_resources.setdefault(plan_ref, []).extend(facts["resource_directory"])
         return [cache[row["schedule_id"]] for row in rows], {"resource_directory": list(self._task_resources.get(plan_ref, ()))}, resources, state

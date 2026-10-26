@@ -6,17 +6,16 @@ import math
 from copy import copy
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from core.algorithm_contracts.ordering import normalize_batch_order_override
 from core.algorithm_contracts.sort_strategies import SortStrategy
-from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_runtime.algo_stats import merge_algo_stats
 from core.algorithms.evaluation import compute_metrics, prepare_evaluation_context
 from core.algorithms.greedy.schedule_params import resolve_schedule_params
 from core.errors import ValidationError
 
-from .shared_archive import ArchiveObservation
+from .shared_archive import ArchiveObservation, CandidateArchiveRef
 from .shared_budget import SharedSearchSkip
 
 if TYPE_CHECKING:
@@ -55,9 +54,13 @@ class DecodedEvaluation:
     used_strategy: Any
     used_params: Dict[str, Any]
     algo_stats: Dict[str, Any]
-    receipt: Optional[Dict[str, Any]]
+    receipt: Dict[str, Any]
     entry_id: Optional[int] = None
     archive_observation: Any = None
+
+    def archive_ref(self) -> CandidateArchiveRef:
+        """The identity the candidate built from this decode carries; its observation is reported once."""
+        return CandidateArchiveRef(self.entry_id, self.archive_observation)
 
 
 @dataclass
@@ -95,12 +98,6 @@ def _immutable(value: Any) -> Tuple[Any, ...]:
     raise ValidationError("共享解码输入包含不支持的值。", field="shared_decode_request")
 
 
-def resource_pair(item: Union[OpForScheduleAlgo, ScheduleResult]) -> Tuple[str, str]:
-    """An unassigned machine or operator is spelled "" in request keys, variants and repair decisions."""
-    return ("" if item.machine_id is None else item.machine_id,
-            "" if item.operator_id is None else item.operator_id)
-
-
 class SharedDecodeSession:
     """Keep request identity and costs; completed schedules belong to the archive."""
 
@@ -133,7 +130,9 @@ class SharedDecodeSession:
             )
         )
         self._graph_context = self.native_preparation.graph_ready_context
-        self._base_operation_resources = {op.id: resource_pair(op) for op in operations}
+        # An unassigned machine or operator stays None, as in the input operation; changes name real pairs.
+        self._base_operation_resources: Dict[int, Tuple[Optional[str], Optional[str]]] = {
+            op.id: (op.machine_id, op.operator_id) for op in operations}
         self._operations_by_id = {op.id: op for op in operations}
         self._op_variant_cache: Dict[Tuple[int, str, str], Any] = {}
         self._last_resources_ops: Optional[Tuple[Tuple[Tuple[int, str, str], ...], List[Any]]] = None
@@ -228,7 +227,6 @@ class SharedDecodeSession:
         return self.scheduler.schedule_prepared(
             self.native_preparation, params=params, batch_order=batch_order,
             operations=operations, resource_pool=resource_pool, graph_ready_context=context,
-            graph_enabled=bool(kwargs.get("graph_enabled", False)),
             readiness_gate_enabled=bool(kwargs.get("readiness_gate_enabled", False)),
             strict_mode=bool(kwargs.get("strict_mode", False)), decode_resume=kwargs.get("decode_resume"),
             decode_checkpoints=kwargs.get("decode_checkpoints"),
@@ -293,10 +291,7 @@ class SharedDecodeSession:
             if record.entry_id in self.archive:
                 candidate = self.archive.view(record.entry_id, objective=objective_name)
                 summary = candidate["summary"]
-                source_receipt = candidate.get("decode_receipt") or {}
-                source_request_id: Optional[int] = source_receipt.get("request_id")
-                source_record = self._by_id.get(source_request_id) if source_request_id is not None else None
-                source_prefix = source_record.request.parameter_warnings if source_record is not None else ()
+                source_prefix = self._by_id[candidate["decode_receipt"]["request_id"]].request.parameter_warnings
                 if request.parameter_warnings != source_prefix:
                     # Content coalescing keeps the archive's first evidence. Parameter diagnostics
                     # belong to this request; replace only that native warning prefix on the owned copy.
@@ -306,7 +301,7 @@ class SharedDecodeSession:
                 receipt = self._receipt(record, "decision_reused", verified=True, calls=0,
                                         elapsed_ms=max((self.clock() - started) * 1000, 0))
                 self._event(record, receipt, objective_name=objective_name)
-                stats = dict(candidate.get("algo_stats") or {})
+                stats = dict(candidate["algo_stats"])
                 stats["param_fallbacks"] = param_fallbacks
                 return DecodedEvaluation(candidate["results"], summary, candidate["metrics"],
                                          params.strategy, dict(params.used_params), stats, receipt,
@@ -376,9 +371,9 @@ class SharedDecodeSession:
         return DecodedEvaluation(res, summ, metrics, used_strategy, used_params, algo_stats, receipt,
                                  entry_id, observation)
 
-    def bind_observation(self, receipt: Optional[Dict[str, Any]], entry_id: Optional[int], verified: bool,
-                         candidate: Optional[Dict[str, Any]] = None) -> None:
-        if receipt is None or entry_id is None or not verified or not receipt.get("verified"):
+    def bind_observation(self, receipt: Dict[str, Any], entry_id: Optional[int], verified: bool,
+                         candidate: Dict[str, Any]) -> None:
+        if entry_id is None or not verified or not receipt["verified"]:
             return
         record = self._by_id[receipt["request_id"]]
         record.entry_id, record.verified = entry_id, True
@@ -387,10 +382,9 @@ class SharedDecodeSession:
             record.new_decision_registered = True
             self.new_decisions += 1
         if record.source_runtime_ms is None:
-            value = candidate.get("runtime_ms") if candidate is not None else None
+            value = candidate.get("runtime_ms")
             record.source_runtime_ms = value if value is not None else record.original_decode_ms
-            record.source_initial_decode_runtime_ms = (candidate.get("initial_decode_runtime_ms")
-                                                      if candidate is not None else None)
+            record.source_initial_decode_runtime_ms = candidate.get("initial_decode_runtime_ms")
         receipt.update(entry_id=entry_id, observation_bound=True, new_decision_registered=new,
                        source_runtime_ms=record.source_runtime_ms,
                        source_initial_decode_runtime_ms=record.source_initial_decode_runtime_ms)
@@ -441,4 +435,4 @@ def decode_and_metrics(
     )
 
 
-__all__ = ["DecodeRequest", "DecodedEvaluation", "SharedDecodeSession", "decode_and_metrics", "resource_pair"]
+__all__ = ["DecodeRequest", "DecodedEvaluation", "SharedDecodeSession", "decode_and_metrics"]

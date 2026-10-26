@@ -35,7 +35,7 @@
       ...(dialog && dialog.mode === 'view' ? { date: dialog.day.date } : {}) },
       rememberEnabled && !!data && !navigationError && !deferred && command.phase === 'idle'
       && source === 'production' && (!dialog || dialog.mode === 'view'));
-    React.useEffect(() => { if (onNavigationReady) onNavigationReady(!dialog && command.phase === 'idle'); }, [dialog, command.phase, onNavigationReady]);
+    React.useEffect(() => { onNavigationReady(!dialog && command.phase === 'idle'); }, [dialog, command.phase, onNavigationReady]);
     React.useEffect(() => {
       if (!target.context || deferred || located.current || !data || command.phase !== 'idle') return;
       located.current = true;
@@ -50,7 +50,7 @@
     React.useEffect(() => {
       if (command.phase !== 'done' || handled.current === command.result.receipt_ref) return;
       handled.current = command.result.receipt_ref; refresh(!summaryState);
-      if (typeof onCommitted === 'function') onCommitted(command.result);
+      onCommitted(command.result);
     }, [command.phase, command.result]);
     React.useEffect(() => {
       if (!awaitingRefresh.current || request.loading) return;
@@ -84,10 +84,9 @@
             <Button icon="refresh-cw" aria-label="刷新本月" busy={request.loading} disabled={blocked} onClick={request.reload} />
             <span className="tb-spacer" style={{ flex: 1 }} />
             <Button icon="file-input" transfer="import" disabled={blocked || !data || request.loading}
-              reason={typeof onOpenFile !== 'function' ? '日历文件导入尚未开通。' : source && source !== 'production' ? '当前不是生产数据，不能导入。' : ''}
+              reason={source && source !== 'production' ? '当前不是生产数据，不能导入。' : ''}
               onClick={() => onOpenFile('import', { source, month })}>导入日历</Button>
             <Button icon="file-output" transfer="export" disabled={blocked || !data || request.loading}
-              reason={typeof onOpenFile !== 'function' ? '日历文件导出尚未开通。' : ''}
               onClick={() => onOpenFile('export', { source, month })}>导出日历</Button>
             <Button icon="calendar-days" className="btn cal-batch" disabled={blocked || !data || request.loading}
               reason={source && source !== 'production' ? '当前不是生产数据，不能维护。' : ''} onClick={() => open({ mode: 'range' })}>批量维护</Button>
@@ -120,7 +119,7 @@
       </div>
       {dialog && dialog.mode === 'view' && <Modal title={dialog.day.date + ' · 日历详情'} icon="calendar-days" onClose={close}
         footer={<><Button onClick={close}>关闭</Button><Button icon="square-pen" onClick={() => open({ ...dialog, mode: 'day' })}>维护此日</Button></>}>
-        <div className="modal-b form scroll"><Policy value={dialog.day} /><Issues issues={dialog.day.issues || []} /></div></Modal>}
+        <div className="modal-b form scroll"><Policy value={dialog.day} /></div></Modal>}
       {dialog && dialog.mode === 'defaults' && <window.CalendarDefaultsDialog adapter={adapter} command={command} onClose={close} refreshState={refreshState} onRefresh={refresh} />}
       {dialog && dialog.mode === 'day' && <window.CalendarDayDialog adapter={adapter} day={dialog.day} source={dialog.source} command={command} onClose={close} refreshState={refreshState} onRefresh={refresh} />}
       {dialog && dialog.mode === 'range' && <window.CalendarRangeDialog adapter={adapter} month={month} defaultPeriods={data && data.default_periods} source={source} command={command} onClose={close} refreshState={refreshState} onRefresh={refresh} />}

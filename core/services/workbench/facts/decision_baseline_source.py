@@ -133,7 +133,7 @@ def _operation_metadata(source, evidence):
                  for ref, operation in operations.items()}
         standards = {ref: _operation_standard(operation, source.facts.execution.get(ref))
                      for ref, operation in operations.items()}
-        return (source.receipt or {}).get("operation_effort"), types, standards
+        return source.receipt.get("operation_effort"), types, standards
     saved, head, rows = source
     original = head["admission"]["source"]
     prepared = evidence["trial_source"]

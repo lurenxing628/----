@@ -3,10 +3,9 @@
   const C = window.DashboardContract, T = window.WorkbenchTerms, { Button, Issues, MetricValue } = window.ResourceControls;
   // 跳转标签与侧栏视图标题保持同名（web/routes/workbench/navigation_metadata.py VIEW_TITLES）；outsourcing 是页内目标，侧栏没有对应条目。
   const navigationLabels = { gantt: '计划甘特', fieldgantt: '现场实际甘特', batches: '批次管理', analysis: '选择排产方案', field: '现场记录', run: '执行排产', outsourcing: '外协物流登记' };
-  function navigationTarget(n, onNavigate) {
+  function navigationTarget(n) {
     C.check(C.object(n) && Object.prototype.hasOwnProperty.call(navigationLabels, n.view)
       && C.object(n.context) && typeof n.enabled === 'boolean', '这条记录的跳转目标不对，页面没有跳转。请刷新后重试。');
-    C.check(n.view === 'outsourcing' ? typeof window.OutsourcingWorkspace === 'function' : typeof onNavigate === 'function', 'dependency not wired: window.OutsourcingWorkspace / props.onNavigate');
     C.check(n.enabled || typeof n.reason === 'string' && n.reason.trim().length > 0, '这条记录暂时打不开，页面没有跳转。请刷新后重试。');
     return navigationLabels[n.view];
   }
@@ -55,7 +54,7 @@
   function Pager({ page, busy, onPage, onSize, label = '清单' }) { return <window.WorkbenchListControls.Pager page={page} sizes={[10, 20, 50, 100].concat([page.size]).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b)} busy={busy} onPage={onPage} onSize={onSize} label={label} sizeLabel="每页条目数" unit="项" />; }
   function List({ data, selected, onSelect, query, onClear }) {
     const filtered = !!query && (query.query !== '' || query.status !== 'all');
-    if (!data.items.length) return <window.WorkbenchListControls.EmptyState kind={filtered ? 'filtered' : 'empty'} title={data.page.total === 0 ? '当前筛选没有条目。' : '当前页没有条目。'} hint={data.categories.external.state === 'not_connected' ? '外协风险功能尚未开通。' : undefined} action={filtered ? <Button reasonDisplay="inline" icon="x" onClick={onClear}>清除筛选并查看处置清单</Button> : null} />;
+    if (!data.items.length) return <window.WorkbenchListControls.EmptyState kind={filtered ? 'filtered' : 'empty'} title={data.page.total === 0 ? '当前筛选没有条目。' : '当前页没有条目。'} action={filtered ? <Button reasonDisplay="inline" icon="x" onClick={onClear}>清除筛选并查看处置清单</Button> : null} />;
     return <div className="wb-table-frame dy-scroll" data-sticky-head data-sticky-actions><table className="wb-table dy-table"><caption className="wb-sr-only">值班台风险与处置清单</caption><thead><tr><th scope="col" className="wb-col-key">涉及记录 / 类别</th><th scope="col">风险说明</th><th scope="col">处置状态</th><th scope="col">责任人 / 期限</th><th scope="col" className="wb-col-actions">操作</th></tr></thead><tbody>{data.items.map(row => <tr key={row.item_ref} data-item-ref={row.item_ref} data-category={row.category} data-selected={selected === row.item_ref}>
       <td className="wb-col-key"><b>{row.subject}</b><div className="dy-muted">{C.categories[row.category]}</div></td><td><Risk risk={row.risk} /><div>{row.risk.message}</div></td>
       <td><Status handling={row.handling} /><div className="dy-muted">历史 {row.handling.history_count} 条</div></td><td>{value(row.handling.owner)}<div className={row.handling.deadline_overdue ? 'dy-danger' : 'dy-muted'}>{dateOnly(row.handling.deadline)}{row.handling.deadline_overdue ? ' · 处置超期' : ''}</div></td>
@@ -101,12 +100,12 @@
   }
   function Facts({ handling }) { return <><dl className="dy-facts">{['status', ...C.fields.filter(k => k !== 'evidence_ref')].map(k => <div key={k}><dt>{C.labels[k]}</dt><dd>{k === 'status' ? C.statuses[handling.status] : k === 'completed_at' ? window.WorkbenchFormat.dateTime(handling[k]) : k === 'deadline' ? dateOnly(handling[k]) : value(handling[k])}</dd></div>)}</dl>{handling.evidence_ref ? <window.WorkbenchReference entries={{ '已核验附件编号': handling.evidence_ref }} /> : <p className="dy-muted">未关联已核验附件</p>}</>; }
   function Evidence({ source }) { return <window.DashboardEvidence.Evidence source={source} />; }
-  function Detail({ item, onHandle, onHistory, navigate, canNavigate, onClose }) { return <window.WorkbenchDetailPanel title="风险条目详情" subtitle={item.subject + ' · ' + C.categories[item.category]} detailKey={item.item_ref} onClose={onClose}><section className="dy-detail" aria-label="条目详情" data-detail-ref={item.item_ref}>
+  function Detail({ item, onHandle, onHistory, navigate, onClose }) { return <window.WorkbenchDetailPanel title="风险条目详情" subtitle={item.subject + ' · ' + C.categories[item.category]} detailKey={item.item_ref} onClose={onClose}><section className="dy-detail" aria-label="条目详情" data-detail-ref={item.item_ref}>
     <div className="dy-heading"><h3>{item.subject} · {C.categories[item.category]}</h3><div className="dy-tools"><Risk risk={item.risk} /><Status handling={item.handling} /></div></div>
     <p>{item.risk.message}</p><Facts handling={item.handling} /><Evidence source={item.source} /><div className="dy-tools">
       <Button reasonDisplay="inline" icon={item.handling.status === 'closed' ? 'refresh-cw' : 'square-pen'} onClick={onHandle}>{item.handling.status === 'closed' ? '重新打开处置' : '登记处置'}</Button>
       <Button reasonDisplay="inline" icon="history" onClick={onHistory}>查看处置历史</Button>{item.navigation.map((n, i) => <Button reasonDisplay="inline" key={i} icon="arrow-right" onClick={() => navigate(n, item)}>{navigationLabels[n.view]}</Button>)}
-      {item.category === 'actual' && item.navigation.some(n => n.enabled && n.command_context === 'read_execution_write_context') && <Button reasonDisplay="inline" icon="arrow-right" reason={!canNavigate ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={() => navigate({ ...item.navigation[0], view: 'field' })}>{navigationLabels.field}</Button>}
+      {item.category === 'actual' && item.navigation.some(n => n.enabled && n.command_context === 'read_execution_write_context') && <Button reasonDisplay="inline" icon="arrow-right" onClick={() => navigate({ ...item.navigation[0], view: 'field' })}>{navigationLabels.field}</Button>}
     </div></section></window.WorkbenchDetailPanel>; }
   function NavigationConfirmation({ entry, error, onClose, onConfirm }) {
     const { Modal, ErrorBox } = window.ResourceControls, { item, navigation, label } = entry;
@@ -124,9 +123,9 @@
       <div><dt>班内工序累计 / 可排时间</dt><dd>{window.WorkbenchFormat.percent(w.demand_ratio)}</dd></div><div><dt>资料状态</dt><dd>{T.resource_states[w.state]}{w.unknown_days > 0 && ' · ' + w.unknown_days + ' 天班表未记录'}</dd></div>
       </dl><Issues issues={w.issues} /><window.DashboardAnalysisPanels.ResourceDays planRef={planRef} resourceRef={resource.resource_ref} enabled={open} /></details>;
   }
-  function Pressure({ data, navigate, canNavigate, showIssues = true }) {
+  function Pressure({ data, navigate, showIssues = true }) {
     const p = data.resource_pressure, common = data.analysis && data.analysis.resource_common, rows = data.analysis && data.analysis.resources;
-    return <section aria-label="资源压力"><div className="dy-heading"><h3>正式计划资源压力</h3>{data.plan && <Button reasonDisplay="inline" icon="arrow-right" reason={!canNavigate ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={() => navigate({ view: 'gantt', context: { plan_ref: data.plan.plan_ref }, enabled: true })}>计划甘特</Button>}</div>
+    return <section aria-label="资源压力"><div className="dy-heading"><h3>正式计划资源压力</h3>{data.plan && <Button reasonDisplay="inline" icon="arrow-right" onClick={() => navigate({ view: 'gantt', context: { plan_ref: data.plan.plan_ref }, enabled: true })}>计划甘特</Button>}</div>
       {showIssues && <Issues issues={p.issues} />}
       {!rows || !rows.length ? <window.WorkbenchListControls.EmptyState kind="empty" title={!rows ? '资源压力暂时无法计算。' : '当前正式计划没有资源占用数据。'} /> : <div className="dy-scroll"><table className="dy-resource"><caption className="wb-sr-only">正式计划资源压力</caption><thead><tr><th scope="col">资源</th><th scope="col">可排总时长（小时）</th><th scope="col">班内已占（小时）</th><th scope="col">占用比例</th><th scope="col">重叠时长（小时）</th><th scope="col">班外占用（小时）</th><th scope="col">详情</th></tr></thead><tbody>{rows.map(r => { const w = r.window_metrics; return <tr key={r.kind + r.resource_ref} data-resource-ref={r.resource_ref}><td><b>{r.label || '名称未填写'}</b><div className="dy-muted">{T.resource_kinds[r.kind]} · {value(w.operation_count)} 道工序</div></td>
         <td>{hoursValue(w.available_hours)}</td><td>{hoursValue(w.occupied_hours)}</td><td>{window.WorkbenchFormat.percent(w.utilization_ratio)}</td>
@@ -137,12 +136,12 @@
 
     </section>;
   }
-  function Candidates({ data, navigate, canNavigate }) {
+  function Candidates({ data, navigate }) {
     const c = data.candidate_catalog, runStates = window.WorkbenchTerms.run_statuses;
-    return <section aria-label="候选方案列表"><div className="dy-heading"><h3>候选方案列表</h3><div className="dy-tools"><Button reasonDisplay="inline" icon="history" reason={!canNavigate ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={() => navigate({ view: 'analysis', context: { source: 'run_history' }, enabled: true })}>排产记录</Button>
-      <Button reasonDisplay="inline" icon="play" reason={!canNavigate ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={() => navigate({ view: 'run', context: {}, enabled: true })}>{navigationLabels.run}</Button></div></div>
+    return <section aria-label="候选方案列表"><div className="dy-heading"><h3>候选方案列表</h3><div className="dy-tools"><Button reasonDisplay="inline" icon="history" onClick={() => navigate({ view: 'analysis', context: { source: 'run_history' }, enabled: true })}>排产记录</Button>
+      <Button reasonDisplay="inline" icon="play" onClick={() => navigate({ view: 'run', context: {}, enabled: true })}>{navigationLabels.run}</Button></div></div>
       <Issues issues={c.issues} />
-      {c.state === 'unavailable' ? <window.WorkbenchListControls.EmptyState kind="empty" title="候选方案列表读不到。" hint="请点右上角的「刷新值班台」按钮重试。" /> : !c.runs.length ? <window.WorkbenchListControls.EmptyState kind="empty" title="还没有排产记录。" /> : <><div className="dy-scroll"><table><caption className="wb-sr-only">候选方案排产记录</caption><thead><tr><th scope="col">排产提交时间</th><th scope="col">计算状态</th><th scope="col">候选数量</th><th scope="col">范围</th><th scope="col">操作</th></tr></thead><tbody>{c.runs.map(r => <tr key={r.run_ref} data-run-ref={r.run_ref}><td>{window.WorkbenchFormat.dateTime(r.accepted_at)}</td><td>{runStates[r.state] || '状态未知'}</td><td>{r.candidate_count}</td><td>{r.scope_summary ? value(r.scope_summary.batch_count) + ' 个批次' : '范围未知'}</td><td><Button reasonDisplay="inline" icon="arrow-right" reason={!canNavigate ? window.WorkbenchTerms.outcomes.unavailable : ''} onClick={() => navigate({ view: 'analysis', context: { run_ref: r.run_ref }, enabled: true })}>查看候选</Button></td></tr>)}</tbody></table></div>
+      {c.state === 'unavailable' ? <window.WorkbenchListControls.EmptyState kind="empty" title="候选方案列表读不到。" hint="请点右上角的「刷新值班台」按钮重试。" /> : !c.runs.length ? <window.WorkbenchListControls.EmptyState kind="empty" title="还没有排产记录。" /> : <><div className="dy-scroll"><table><caption className="wb-sr-only">候选方案排产记录</caption><thead><tr><th scope="col">排产提交时间</th><th scope="col">计算状态</th><th scope="col">候选数量</th><th scope="col">范围</th><th scope="col">操作</th></tr></thead><tbody>{c.runs.map(r => <tr key={r.run_ref} data-run-ref={r.run_ref}><td>{window.WorkbenchFormat.dateTime(r.accepted_at)}</td><td>{runStates[r.state] || '状态未知'}</td><td>{r.candidate_count}</td><td>{r.scope_summary ? value(r.scope_summary.batch_count) + ' 个批次' : '范围未知'}</td><td><Button reasonDisplay="inline" icon="arrow-right" onClick={() => navigate({ view: 'analysis', context: { run_ref: r.run_ref }, enabled: true })}>查看候选</Button></td></tr>)}</tbody></table></div>
         <div className="dy-pager">排产记录 {c.page.total} 次 · 当前显示 {c.runs.length} 次{c.page.has_more ? ' · 还有更多，请点「排产记录」查看' : ''}</div></>}
     </section>;
   }
@@ -150,9 +149,8 @@
     {[['receipt_count', '全部登记'], ['current_receipt_count', '来源未失效的登记'], ['awaiting_return_count', '待回厂'], ['overdue_count', '超期未回'], ['returned_count', '已回厂'],
       ['awaiting_confirmation_count', '待确认'], ['unregistered_count', '未登记工序'], ['source_gap_count', '来源缺口']].map(([k, label]) => <div key={k}><dt>{label}</dt><dd data-external-count={k}>{summary[k] === null ? '未知' : summary[k]}</dd></div>)}
     </dl><div className="dy-context">已确认风险 {summary.known_risk_count} 项{summary.risk_count === null ? ' · 总风险未知' : ''}</div></section>}
-    {typeof window.OutsourcingWorkspace === 'function' ? <window.OutsourcingWorkspace onUpdated={onUpdated} /> : <div className="dy-note warning" role="status">{window.WorkbenchTerms.outcomes.unavailable}</div>}</>; }
+    <window.OutsourcingWorkspace onUpdated={onUpdated} /></>; }
   function ExternalHandlingState({ summary }) { return <section aria-label="外协风险处置"><h3>外协风险处置</h3>
-    {summary.handling_supported ? <div className="dy-context">已登记处置 {summary.handling_count} 项 · 已关闭处置 {summary.closed_count} 项</div> : <div className="dy-note warning" role="status">{summary.handling_state === 'unavailable' ? '外协处置记录读不到' : '外协风险处置尚未开通'}</div>}
-    <Issues issues={summary.handling_issues || []} /></section>; }
+    <div className="dy-context">已登记处置 {summary.handling_count} 项 · 已关闭处置 {summary.closed_count} 项</div></section>; }
   window.DashboardPanels = { Overview, Rail, Filters, Pager, List, Gaps, Facts, Evidence, Detail, NavigationConfirmation, navigationTarget, Pressure, Candidates, Risk, Status, CategoryState, value, ExternalRegistration, ExternalHandlingState };
 })();

@@ -33,7 +33,7 @@ def _selected_keys(settings, facts, by_batch, visible, unplanned, scope, uncerta
     if batch_ref:
         requested = [batch_ref]
     elif range_start:
-        requested = [row["batch_ref"] for row in visible + (unplanned or [])]
+        requested = [row["batch_ref"] for row in visible + unplanned]
     else:
         requested = settings.get("batch_refs")
         if type(requested) is not list:
@@ -106,8 +106,8 @@ def _project_items(candidate, facts, tasks, disposition, settings, *, scope=None
     return items, missing, uncertain, len(keys)
 
 
-def project_legacy_delivery_detail(candidate, facts, tasks, disposition, settings, *, intervals=None,
-                                   deferred_ids=None, precomputed_delivery=None):
+def project_legacy_delivery_detail(candidate, facts, tasks, disposition, settings, *, intervals,
+                                   deferred_ids, precomputed_delivery=None):
     """Keep all whole-candidate batch rows and every tied last operation for saved detail."""
     precomputed = (
         {row["batch_ref"]: row for row in precomputed_delivery}

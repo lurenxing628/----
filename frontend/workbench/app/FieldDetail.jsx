@@ -103,7 +103,7 @@
       {missingOriginal && <div className="field-note"><p role="alert">原记录已失效，暂存编辑无法保存。请刷新后重选。</p><Button onClick={onCloseEditor} disabled={command.locked}>取消暂存编辑</Button></div>}
       {editor && !missingOriginal && editor.action === 'report_void' && report && <window.FieldVoidEditor key={'void:' + editor.reportRef} task={task} record={report} adapter={adapter} command={command} retained={retained} onDraft={onDraft} onClose={onCloseEditor} onDone={onDone} />}
       {editor && editor.action !== 'report_void' && !missingOriginal && (editor.action === 'create' || report) && <window.FieldEditor key={editor.action + ':' + (editor.reportRef || editor.legacyRef || taskRef)} task={task} record={report} legacy={legacy} action={editor.action} adapter={adapter} command={command} retained={retained} onDraft={onDraft} onClose={onCloseEditor} onDone={onDone} />}
-      {(p.voided_reports || []).length > 0 && <details className="field-note"><summary>已撤销报工 · {p.voided_reports.length} 条</summary>{p.voided_reports.map(item => <section key={item.void_fact.void_fact_ref}>
+      {p.voided_reports.length > 0 && <details className="field-note"><summary>已撤销报工 · {p.voided_reports.length} 条</summary>{p.voided_reports.map(item => <section key={item.void_fact.void_fact_ref}>
         <h4>{item.report.report_no} · 已撤销</h4><p>{C.date(item.void_fact.recorded_at)} · {item.void_fact.local_operator}{item.void_fact.declared_operator ? ' · 经办人 ' + item.void_fact.declared_operator : ''} · {item.void_fact.reason}</p>
         <p>原数量 {C.display(item.report.completed_quantity)} 件 · 原有效工时 {C.hours(item.report.effective_processing_hours)} 小时</p>
         <div className="field-history"><dl><dt>原实际起止</dt><dd>{C.date(item.report.actual_start)} 至 {C.date(item.report.actual_end)}</dd>

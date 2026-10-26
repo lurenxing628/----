@@ -1,454 +1,66 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Tuple
 
 from core.errors import ValidationError
-from core.shared.boolean_normalize import normalize_yes_no_wide
-from core.shared.degradation import DegradationCollector, degradation_events_to_dicts
 from core.shared.field_labels import display_field_label
-from core.shared.field_parse import parse_field_float, parse_field_int
+from core.shared.strict_parse import parse_required_float, parse_required_int
 
-from .schedule_config_runtime_fields import (
-    MISSING_POLICY_ERROR,
-    MISSING_POLICY_FALLBACK_WITH_DEGRADATION,
-    get_field_spec,
-    list_runtime_config_fields,
-)
-from .schedule_config_runtime_read import (
-    merge_degradation_counters,
-    read_runtime_cfg_raw_value,
-    seed_snapshot_degradation_collector,
-)
-from .schedule_config_runtime_snapshot import ScheduleConfigSnapshot, snapshot_from_values
-from .schedule_config_runtime_weights import normalize_weight_triplet
+from .schedule_config_runtime_fields import RuntimeConfigFieldSpec, get_field_spec
 
-_UNSET = object()
-
-def _format_choice_allow_text(valid_values: Tuple[str, ...]) -> str:
-    return " / ".join(valid_values) if valid_values else "<empty>"
+_YES_TEXTS = {"yes", "y", "true", "1", "on"}
+_NO_TEXTS = {"no", "n", "false", "0", "off"}
 
 
-def float_matches_choice(value: float, choices: Tuple[str, ...]) -> bool:
-    if not choices:
-        return True
-    for raw_choice in choices:
-        try:
-            if abs(float(raw_choice) - float(value)) <= 1e-9:
-                return True
-        except Exception:
-            continue
-    return False
-
-
-def _int_matches_choice(value: int, choices: Tuple[str, ...]) -> bool:
-    if not choices:
-        return True
-    return str(int(value)) in normalize_choice_tokens(choices)
-
-
-def normalize_choice_tokens(values: Tuple[str, ...]) -> Tuple[str, ...]:
-    out = []
-    seen = set()
-    for item in values or ():
-        text = str(item).strip().lower()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        out.append(text)
-    return tuple(out)
-
-
-def _handle_missing_value(
-    collector: DegradationCollector,
-    *,
-    field_name: str,
-    fallback: Any,
-    scope: str,
-    missing_policy: str,
-) -> Any:
-    label = display_field_label(field_name, fallback="配置项")
-    policy = str(missing_policy or MISSING_POLICY_FALLBACK_WITH_DEGRADATION).strip().lower()
-    if policy == MISSING_POLICY_ERROR:
-        raise ValidationError(f"缺少“{label}”配置", field=field_name)
-    collector.add(
-        code="missing_required",
-        scope=scope,
-        field=field_name,
-        message=f"缺少“{label}”配置，本次先按默认值 {fallback} 处理。",
-        sample=None,
-    )
-    return fallback
-
-
-def _record_blank_choice_degradation(
-    collector: DegradationCollector,
-    *,
-    scope: str,
-    field_name: str,
-    fallback: str,
-) -> None:
-    label = display_field_label(field_name, fallback="配置项")
-    collector.add(
-        code="blank_required",
-        scope=scope,
-        field=field_name,
-        message=f"“{label}”没有填写，本次先按默认值 {fallback} 处理。",
-        sample=None,
-    )
-
-
-def _record_invalid_choice_degradation(
-    collector: DegradationCollector,
-    *,
-    scope: str,
-    field_name: str,
-    raw_value: Any,
-    fallback: str,
-    valid_values: Tuple[str, ...],
-) -> None:
-    label = display_field_label(field_name, fallback="配置项")
-    collector.add(
-        code="invalid_choice",
-        scope=scope,
-        field=field_name,
-        message=(
-            f"“{label}”填写不正确（当前值：{raw_value}，可选值：{_format_choice_allow_text(valid_values)}），"
-            f"本次先按默认值 {fallback} 处理。"
-        ),
-        sample=str(raw_value or ""),
-    )
-
-
-def _choice_with_degradation(
-    raw_value: Any,
-    *,
-    field_name: str,
-    fallback: str,
-    valid_values: Tuple[str, ...],
-    strict_mode: bool,
-    collector: DegradationCollector,
-    scope: str,
-    missing: bool,
-    missing_policy: str,
-) -> str:
-    normalized_valid = normalize_choice_tokens(valid_values)
-    fallback_text = str(fallback or "").strip().lower()
-    if normalized_valid and fallback_text not in normalized_valid:
-        fallback_text = normalized_valid[0]
-    if missing:
-        return str(
-            _handle_missing_value(
-                collector,
-                field_name=field_name,
-                fallback=fallback_text,
-                scope=scope,
-                missing_policy=missing_policy,
-            )
-        ).strip().lower()
-
+def _required_text(raw_value: Any, *, field_name: str) -> str:
     text = "" if raw_value is None else str(raw_value).strip().lower()
-    label = display_field_label(field_name, fallback="配置项")
-    if strict_mode and text == "":
-        raise ValidationError(f"“{label}”不能为空", field=field_name)
     if text == "":
-        _record_blank_choice_degradation(
-            collector,
-            scope=scope,
-            field_name=field_name,
-            fallback=fallback_text,
-        )
-        return fallback_text
-    if normalized_valid and text not in normalized_valid:
-        if strict_mode:
-            raise ValidationError(
-                f"“{label}”填写不正确：{raw_value}（可填写：{_format_choice_allow_text(normalized_valid)}）",
-                field=field_name,
-            )
-        _record_invalid_choice_degradation(
-            collector,
-            scope=scope,
-            field_name=field_name,
-            raw_value=raw_value,
-            fallback=fallback_text,
-            valid_values=normalized_valid,
-        )
-        return fallback_text
-    return text if normalized_valid else fallback_text
+        raise ValidationError(f"“{display_field_label(field_name, fallback='配置项')}”不能为空", field=field_name)
+    return text
 
 
-def _yes_no_with_degradation(
-    raw_value: Any,
-    *,
-    field_name: str,
-    fallback: str,
-    strict_mode: bool,
-    collector: DegradationCollector,
-    scope: str,
-    missing: bool,
-    missing_policy: str,
-) -> str:
-    normalized_default = normalize_yes_no_wide(fallback, default=fallback, unknown_policy="no")
-    if missing:
-        handled = _handle_missing_value(
-            collector,
-            field_name=field_name,
-            fallback=normalized_default,
-            scope=scope,
-            missing_policy=missing_policy,
-        )
-        return normalize_yes_no_wide(handled, default=normalized_default, unknown_policy="no")
+def _coerce_choice(raw_value: Any, *, field_name: str, choices: Tuple[str, ...]) -> str:
+    text = _required_text(raw_value, field_name=field_name)
+    if text not in choices:
+        label = display_field_label(field_name, fallback="配置项")
+        raise ValidationError(f"“{label}”填写不正确：{raw_value}（可填写：{' / '.join(choices)}）", field=field_name)
+    return text
 
-    text = "" if raw_value is None else str(raw_value).strip().lower()
+
+def _coerce_yes_no(raw_value: Any, *, field_name: str) -> str:
+    text = _required_text(raw_value, field_name=field_name)
+    if text in _YES_TEXTS:
+        return "yes"
+    if text in _NO_TEXTS:
+        return "no"
     label = display_field_label(field_name, fallback="配置项")
-    true_vals = {"yes", "y", "true", "1", "on"}
-    false_vals = {"no", "n", "false", "0", "off"}
-    if strict_mode and text == "":
-        raise ValidationError(f"“{label}”不能为空", field=field_name)
-    if text == "":
-        _record_blank_choice_degradation(
-            collector,
-            scope=scope,
-            field_name=field_name,
-            fallback=normalized_default,
-        )
-        return normalized_default
-    if text not in true_vals and text not in false_vals:
-        if strict_mode:
-            raise ValidationError(f"“{label}”填写不正确：{raw_value}（请填写：是 / 否）", field=field_name)
-        _record_invalid_choice_degradation(
-            collector,
-            scope=scope,
-            field_name=field_name,
-            raw_value=raw_value,
-            fallback=normalized_default,
-            valid_values=("yes", "no"),
-        )
-        return normalized_default
-    return normalize_yes_no_wide(raw_value, default=normalized_default, unknown_policy="no")
+    raise ValidationError(f"“{label}”填写不正确：{raw_value}（请填写：是 / 否）", field=field_name)
 
 
-def _coerce_float_field(
-    spec: Any,
-    value: Any,
-    *,
-    strict_mode: bool,
-    source: str,
-    active_collector: DegradationCollector,
-    effective_fallback: Any,
-    label: str,
-) -> float:
-    parsed_float = float(
-        parse_field_float(
-            value,
-            field=spec.key,
-            strict_mode=bool(strict_mode),
-            scope=source,
-            fallback=float(effective_fallback),
-            collector=active_collector,
-            min_value=spec.min_value,
-            min_inclusive=bool(spec.min_inclusive),
-            field_label=label,
-        )
-    )
-    if spec.choices and not float_matches_choice(parsed_float, spec.choices):
-        if strict_mode:
-            raise ValidationError(
-                f"“{label}”填写不正确：{value}（可填写：{_format_choice_allow_text(spec.choices)}）",
-                field=spec.key,
-            )
-        _record_invalid_choice_degradation(
-            active_collector,
-            scope=source,
-            field_name=spec.key,
-            raw_value=value,
-            fallback=str(effective_fallback),
-            valid_values=spec.choices,
-        )
-        return float(effective_fallback)
-    return parsed_float
+def _coerce_number(spec: RuntimeConfigFieldSpec, value: Any, *, label: str) -> Any:
+    # 解析提示用页面字段名，错误归属用配置键。
+    try:
+        if spec.field_type == "float":
+            return float(parse_required_float(value, field=label, min_value=spec.min_value,
+                                              min_inclusive=bool(spec.min_inclusive)))
+        return int(parse_required_int(value, field=label,
+                                      min_value=(None if spec.min_value is None else int(spec.min_value))))
+    except ValidationError as exc:
+        raise ValidationError(exc.message, field=spec.key) from exc
 
 
-def _coerce_int_field(
-    spec: Any,
-    value: Any,
-    *,
-    strict_mode: bool,
-    source: str,
-    active_collector: DegradationCollector,
-    effective_fallback: Any,
-    label: str,
-) -> int:
-    min_violation_fallback = int(effective_fallback)
-    if spec.min_value is not None:
-        min_violation_fallback = int(spec.min_value)
-    parsed_int = int(
-        parse_field_int(
-            value,
-            field=spec.key,
-            strict_mode=bool(strict_mode),
-            scope=source,
-            fallback=int(effective_fallback),
-            collector=active_collector,
-            min_value=(None if spec.min_value is None else int(spec.min_value)),
-            min_violation_fallback=min_violation_fallback,
-            field_label=label,
-        )
-    )
-    if spec.choices and not _int_matches_choice(parsed_int, spec.choices):
-        if strict_mode:
-            raise ValidationError(
-                f"“{label}”填写不正确：{value}（可填写：{_format_choice_allow_text(spec.choices)}）",
-                field=spec.key,
-            )
-        _record_invalid_choice_degradation(
-            active_collector,
-            scope=source,
-            field_name=spec.key,
-            raw_value=value,
-            fallback=str(effective_fallback),
-            valid_values=spec.choices,
-        )
-        return int(effective_fallback)
-    return parsed_int
-
-
-def coerce_config_field(
-    key: str,
-    value: Any,
-    *,
-    strict_mode: bool,
-    source: str,
-    collector: Optional[DegradationCollector] = None,
-    missing: bool = False,
-    fallback: Any = _UNSET,
-    missing_policy: str = MISSING_POLICY_FALLBACK_WITH_DEGRADATION,
-    field_label: str = "",
-) -> Any:
+def coerce_config_field(key: str, value: Any, *, missing: bool, field_label: str) -> Any:
+    """Strictly coerce one stored configuration value; a missing, blank or invalid value is an error."""
     spec = get_field_spec(key)
-    active_collector = collector if collector is not None else DegradationCollector()
-    effective_fallback = spec.default if fallback is _UNSET else fallback
-    label = field_label or display_field_label(spec.key, fallback="配置项")
-
-    if spec.field_type == "enum":
-        return _choice_with_degradation(
-            value,
-            field_name=spec.key,
-            fallback=str(effective_fallback or "").strip().lower(),
-            valid_values=spec.choices,
-            strict_mode=bool(strict_mode),
-            collector=active_collector,
-            scope=source,
-            missing=bool(missing),
-            missing_policy=missing_policy,
-        )
-    if spec.field_type == "yes_no":
-        return _yes_no_with_degradation(
-            value,
-            field_name=spec.key,
-            fallback=str(effective_fallback or "").strip().lower(),
-            strict_mode=bool(strict_mode),
-            collector=active_collector,
-            scope=source,
-            missing=bool(missing),
-            missing_policy=missing_policy,
-        )
     if missing:
-        return _handle_missing_value(
-            active_collector,
-            field_name=spec.key,
-            fallback=effective_fallback,
-            scope=source,
-            missing_policy=missing_policy,
-        )
-    if spec.field_type == "float":
-        return _coerce_float_field(
-            spec,
-            value,
-            strict_mode=bool(strict_mode),
-            source=source,
-            active_collector=active_collector,
-            effective_fallback=effective_fallback,
-            label=label,
-        )
-    if spec.field_type == "int":
-        return _coerce_int_field(
-            spec,
-            value,
-            strict_mode=bool(strict_mode),
-            source=source,
-            active_collector=active_collector,
-            effective_fallback=effective_fallback,
-            label=label,
-        )
+        raise ValidationError(f"缺少“{display_field_label(spec.key, fallback='配置项')}”配置", field=spec.key)
+    if spec.field_type == "enum":
+        return _coerce_choice(value, field_name=spec.key, choices=spec.choices)
+    if spec.field_type == "yes_no":
+        return _coerce_yes_no(value, field_name=spec.key)
+    if spec.field_type in ("float", "int"):
+        return _coerce_number(spec, value, label=field_label)
     raise TypeError(f"不支持的运行期配置字段类型：{spec.field_type!r}")
 
 
-def ensure_schedule_config_snapshot(
-    cfg: Any,
-    *,
-    strict_mode: bool = False,
-    source: str = "scheduler.runtime_config",
-) -> ScheduleConfigSnapshot:
-    strict = bool(strict_mode)
-    collector = seed_snapshot_degradation_collector(cfg)
-    values: Dict[str, Any] = {}
-    missing_keys = []
-    for spec in list_runtime_config_fields():
-        missing, raw = read_runtime_cfg_raw_value(cfg, spec.key)
-        if strict and missing:
-            missing_keys.append(spec.key)
-            continue
-        values[spec.key] = coerce_config_field(
-            spec.key,
-            raw,
-            strict_mode=strict,
-            source=source,
-            collector=collector,
-            missing=missing,
-            missing_policy=(MISSING_POLICY_ERROR if strict else MISSING_POLICY_FALLBACK_WITH_DEGRADATION),
-        )
-    if missing_keys:
-        _handle_missing_value(
-            collector,
-            field_name=missing_keys[0],
-            fallback=None,
-            scope=source,
-            missing_policy=MISSING_POLICY_ERROR,
-        )
-    if strict:
-        pw, dw, rw = values["priority_weight"], values["due_weight"], values["ready_weight"]
-        if abs(pw + dw + rw - 1.0) > 1e-6:
-            values["priority_weight"], values["due_weight"], values["ready_weight"] = normalize_weight_triplet(
-                pw,
-                dw,
-                rw,
-            )
-
-    return snapshot_from_values(
-        values, degradation_events=tuple(degradation_events_to_dicts(collector.to_list())),
-        degradation_counters=merge_degradation_counters(getattr(cfg, "degradation_counters", None), collector.to_counters()),
-    )
-
-
-def coerce_runtime_config_field(
-    cfg: Any,
-    key: str,
-    *,
-    strict_mode: bool,
-    source: str,
-    collector: Optional[DegradationCollector] = None,
-    missing_policy: str = MISSING_POLICY_FALLBACK_WITH_DEGRADATION,
-) -> Any:
-    missing, raw = read_runtime_cfg_raw_value(cfg, key)
-    return coerce_config_field(
-        key,
-        raw,
-        strict_mode=bool(strict_mode),
-        source=source,
-        collector=collector,
-        missing=missing,
-        missing_policy=missing_policy,
-    )
-
-
-__all__ = ["coerce_runtime_config_field", "ensure_schedule_config_snapshot"]
+__all__ = ["coerce_config_field"]

@@ -37,14 +37,14 @@ def schedule_internal_operation(
     base_time: datetime,
     errors: List[str],
     end_dt_exclusive: Optional[datetime],
-    machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]] = None,
-    auto_assign_enabled: bool = False,
-    resource_pool: Optional[Dict[str, Any]] = None,
-    last_op_type_by_machine: Optional[Dict[str, str]] = None,
-    machine_busy_hours: Optional[Dict[str, float]] = None,
-    operator_busy_hours: Optional[Dict[str, float]] = None,
-    strict_mode: bool = False,
-    total_hours_by_op_id: Optional[Dict[int, float]] = None,
+    machine_downtimes: Dict[str, List[Tuple[datetime, datetime]]],
+    auto_assign_enabled: bool,
+    resource_pool: Optional[Dict[str, Any]],
+    last_op_type_by_machine: Dict[str, str],
+    machine_busy_hours: Dict[str, float],
+    operator_busy_hours: Dict[str, float],
+    strict_mode: bool,
+    total_hours_by_op_id: Dict[int, float],
 ) -> Tuple[Optional[ScheduleResult], bool]:
     bid = op.batch_id
     machine_id, operator_id = _resolve_internal_resources(
@@ -60,9 +60,9 @@ def schedule_internal_operation(
         machine_downtimes=machine_downtimes,
         auto_assign_enabled=auto_assign_enabled,
         resource_pool=resource_pool,
-        last_op_type_by_machine=last_op_type_by_machine if last_op_type_by_machine is not None else {},
-        machine_busy_hours=machine_busy_hours or {},
-        operator_busy_hours=operator_busy_hours or {},
+        last_op_type_by_machine=last_op_type_by_machine,
+        machine_busy_hours=machine_busy_hours,
+        operator_busy_hours=operator_busy_hours,
         errors=errors,
     )
     if not machine_id or not operator_id:
@@ -84,7 +84,7 @@ def schedule_internal_operation(
         last_op_type_by_machine=last_op_type_by_machine,
         errors=errors,
         strict_mode=bool(strict_mode),
-        total_hours_base=(total_hours_by_op_id.get(op.id) if total_hours_by_op_id is not None else None),
+        total_hours_base=total_hours_by_op_id.get(op.id),
     )
     if estimate is None:
         return None, False
@@ -116,9 +116,8 @@ def _resolve_internal_resources(
     operator_busy_hours: Dict[str, float],
     errors: List[str],
 ) -> Tuple[str, str]:
-    # 未固定资源在原始输入里是 None，优化器派生的资源变体里是 ""，两者同义。
-    machine_id = normalize_text_id(op.machine_id)
-    operator_id = normalize_text_id(op.operator_id)
+    # 未指定的设备或人员只拼作 None；优化器的资源变体只写入资质合格的真实组合。
+    machine_id, operator_id = op.machine_id, op.operator_id
     if machine_id and operator_id:
         return machine_id, operator_id
     if not auto_assign_enabled or resource_pool is None:

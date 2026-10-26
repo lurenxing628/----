@@ -48,7 +48,7 @@
     return { scope, issue, persisted, query: typeof input.query === 'string' ? input.query : typeof context.query === 'string' ? context.query : '',
       selected: taskRef === undefined ? null : taskRef, report: context.report_ref === undefined ? null : context.report_ref };
   }
-  function Content({ onNavigate, initialContext = {}, adapter: supplied }) {
+  function Content({ onNavigate, initialContext, adapter: supplied }) {
     const seed = React.useMemo(() => initial(initialContext), []), key = JSON.stringify(initialContext), saved = sessions.get(key);
     const api = React.useMemo(() => window.ActualGanttAPI.adapter(supplied || window.ActualGanttAPI.create()), [supplied]);
     const [scope, setScope] = React.useState(saved ? saved.scope : seed.scope), [refresh, setRefresh] = React.useState(0);
@@ -184,11 +184,11 @@
     function pan(left) { if (board.current) { board.current.scrollLeft = Math.max(0, left); measure(); } }
     function locate(taskRef = view.selected) {
       if (!model) return;
-      if (!(taskIndex ? taskIndex.has(taskRef) : data.items.some(item => item.task.task_ref === taskRef))) {
+      if (!taskIndex.has(taskRef)) {
         setLocateNotice('这道工序不在当前日期、资源或批次范围内，请调整范围后定位。'); return;
       }
       setLocateNotice('');
-      const hidden = !(model.shownRefs ? model.shownRefs.has(taskRef) : model.items.some(item => item.task.task_ref === taskRef));
+      const hidden = !model.shownRefs.has(taskRef);
       const collapsed = { ...view.collapsed };
       model.groups.filter(g => g.members.has(taskRef)).forEach(g => delete collapsed[g.id]);
       pending.current = { task: taskRef }; patch({ selected: taskRef, report: taskRef === view.selected ? view.report : null, collapsed: hidden ? {} : collapsed,
@@ -275,7 +275,7 @@
           <window.GanttGraphLayer.Controls graph={data.gantt_graph} enabled={view.chain} onChange={chain => patch({ chain })}
             active={active} geometry={geometry} onClear={clearTarget} />
           {locateNotice && <p className="fg-note" role="status">{locateNotice}</p>}
-          {view.selected && !(model.shownRefs ? model.shownRefs.has(view.selected) : model.items.some(i => i.task.task_ref === view.selected)) && <div role="status" className="fg-note">选中工序在当前筛选范围外，请调整筛选。</div>}
+          {view.selected && !model.shownRefs.has(view.selected) && <div role="status" className="fg-note">选中工序在当前筛选范围外，请调整筛选。</div>}
           {view.report && selected && !report && <div role="alert" className="fg-note">原报工记录不在所选工序中，未改指其他记录。</div>}
           <div className="fg-board" ref={board} data-actual-scroll tabIndex={0} aria-label="分次报工甘特" style={{ '--fg-label': labelWidth + 'px' }} onScroll={() => { cancelAnimationFrame(frame.current); frame.current = requestAnimationFrame(measure); }}>
             <div className="fg-board-inner" style={{ width: labelWidth + width, height: model.height + 52 }}><div className="fg-axis"><div className="fg-corner">{M.views[view.mode]} / 工序<small className="fg-muted fg-corner-note">含夜间</small></div>
@@ -315,7 +315,7 @@
           <p>计划完工日期：{scope.plan_finish_date_from || '不限'} 至 {scope.plan_finish_date_to || '不限'}；数据截至 {M.time(result.meta.as_of)}。数据变化时下载会要求刷新。</p><ErrorBox error={exportError} /></div></Modal>}
     </div>;
   }
-  // 侧栏直接进入时 main.jsx 不带定位上下文（initialContext 为 undefined）。
-  function ActualGanttWorkspace({ initialContext = {}, ...props }) { return <Content key={JSON.stringify(initialContext)} {...props} initialContext={initialContext} />; }
+  // 侧栏直接进入时 main.jsx 传空对象作为定位上下文。
+  function ActualGanttWorkspace({ initialContext, ...props }) { return <Content key={JSON.stringify(initialContext)} {...props} initialContext={initialContext} />; }
   window.ActualGanttWorkspace = ActualGanttWorkspace;
 })();

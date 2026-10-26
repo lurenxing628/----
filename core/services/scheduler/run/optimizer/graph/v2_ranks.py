@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Tuple
 
 from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.graph_ready_feature_basis import (
@@ -77,33 +77,21 @@ def normalized_v2_metrics_by_op_id(
     metrics_by_op_id: Dict[int, Dict[str, Any]],
     *,
     profile: GraphReadyWeightProfile,
-    v2_common_rank_cache: Optional[Dict[str, Dict[int, float]]] = None,
-    normalized_metrics_cache: Optional[Dict[Tuple[str, int], Dict[int, Dict[str, Any]]]] = None,
+    v2_common_rank_cache: Dict[str, Dict[int, float]],
+    normalized_metrics_cache: Dict[Tuple[str, int], Dict[int, Dict[str, Any]]],
 ) -> Dict[int, Dict[str, Any]]:
+    """Rank-normalized metrics for one basis and jitter seed, built once into the owner's cache."""
     if not metrics_by_op_id:
         return {}
-    cache_key = (profile.feature_basis, int(profile.jitter_seed)) if normalized_metrics_cache is not None else None
-    base = normalized_metrics_cache.get(cache_key) if cache_key is not None and normalized_metrics_cache is not None else None
+    cache_key = (profile.feature_basis, int(profile.jitter_seed))
+    base = normalized_metrics_cache.get(cache_key)
     if base is None:
         base = {int(op_id): dict(metric) for op_id, metric in metrics_by_op_id.items()}
-        if v2_common_rank_cache is None:
-            for field, value_getter in V2_COMMON_RANK_FIELDS:
-                _attach_rank01(base, field=field, value_getter=value_getter)
-        else:
-            _attach_common_rank_cache(base, v2_common_rank_cache)
-        if profile.formula_slug == "graph_due_hybrid" and cache_key is None:
-            _attach_rank01(
-                base,
-                field="graph_bonus",
-                value_getter=lambda metric: v2_metric_bonus(metric, weights=profile.effective_weights),
-            )
+        _attach_common_rank_cache(base, v2_common_rank_cache)
         jitter_by_op_id = _jitter_by_op_id(tuple(base), int(profile.jitter_seed))
         for op_id, metric in base.items():
             metric["graph_ready_v2_jitter"] = jitter_by_op_id[op_id]
-        if cache_key is not None and normalized_metrics_cache is not None:
-            normalized_metrics_cache[cache_key] = base
-        elif profile.formula_slug == "graph_due_hybrid":
-            return base
+        normalized_metrics_cache[cache_key] = base
     if profile.formula_slug != "graph_due_hybrid":
         return base
     out = {op_id: dict(metric) for op_id, metric in base.items()}

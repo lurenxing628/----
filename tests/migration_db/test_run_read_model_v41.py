@@ -10,9 +10,10 @@ from core.infrastructure.migration_state import current_schema_contract_issues, 
 from core.infrastructure.migrations import run_migration
 from core.infrastructure.schedule_business_roles_schema import REBUILD_TABLES
 from core.infrastructure.schedule_business_roles_schema import contract_issues as business_role_contract_issues
+from core.infrastructure.schema_declaration import load_schema_sql
 from core.infrastructure.workbench_run_read_model_schema import READ_MODEL_TABLES, contract_issues
 from core.services.workbench.facts.admission_scope import project_admitted_scope
-from core.services.workbench.facts.candidate_values import stored_json
+from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 from core.services.workbench.facts.run_history_projection import scope_summary
 from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
@@ -48,7 +49,9 @@ def test_v40_archive_backfill_preserves_originals_budget_and_immutable_projectio
         original_job = dict(conn.execute("SELECT * FROM WorkbenchRunJobs WHERE run_ref=?", (run_ref,)).fetchone())
         original_scope = scope_summary(original_job["normalized_input_json"])
         original_workload = project_admitted_scope(
-            json.loads(original_job["normalized_input_json"]), stored_json(original_job["facts_json"]),
+            json.loads(original_job["normalized_input_json"]),
+            GenerationFacts({"facts_text": original_job["facts_json"],
+                             "execution": json.loads(original_job["execution_json"])}),
             summary=original_scope)
         original_receipt = json.loads(conn.execute(
             "SELECT result_json FROM WorkbenchRunReceipts WHERE run_ref=?", (run_ref,)).fetchone()[0])
@@ -78,7 +81,7 @@ def test_v40_archive_backfill_preserves_originals_budget_and_immutable_projectio
         conn.execute("BEGIN")
         try:
             set_schema_version(conn, 42)
-            assert set(current_schema_contract_issues(conn)) == {
+            assert set(current_schema_contract_issues(conn, schema_version=42, schema_sql=load_schema_sql())) == {
                 "invalid_schedule_business_roles:ScheduleCandidate", "invalid_schedule_business_roles:ScheduleCandidateSelection"}
         finally:
             conn.rollback()
@@ -91,7 +94,8 @@ def test_v40_archive_backfill_preserves_originals_budget_and_immutable_projectio
         assert get_schema_version(conn) == CURRENT_SCHEMA_VERSION == 44
         assert contract_issues(conn) == []
         assert business_role_contract_issues(conn) == []
-        assert current_schema_contract_issues(conn) == []
+        assert current_schema_contract_issues(
+            conn, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql()) == []
         after = snapshot(conn)
         assert {name: after[name] for name in before if name != "SchemaVersion"} == {
             name: rows for name, rows in before.items() if name != "SchemaVersion"}

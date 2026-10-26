@@ -35,10 +35,6 @@ class WorkbenchTrialAdoptionService(AdoptionCommandHost):
                     "validation": {"status": "blocked", "can_adopt": False, "issues": exc.issues},
                     "write_context": {"write_token": None, "expires_at": None,
                         "capabilities": {ADOPT_ACTION: False}, "blocked_reasons": exc.issues}}
-        except WorkbenchCommandRejected:
-            raise
-        except Exception as exc:
-            raise WorkbenchCommandRejected("storage_failure", "试调方案的采用预检没有完成，正式计划没有改变。请刷新重试；仍不行请联系维护人员。", 500) from exc
         return {"scenario_ref": scenario_ref, "draft_ref": evidence.draft_ref,
                 **self._preview_result(scenario_ref, evidence, context_factory, data_context_ref)}
 

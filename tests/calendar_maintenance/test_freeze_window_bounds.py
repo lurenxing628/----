@@ -4,9 +4,8 @@ from datetime import datetime
 
 import pytest
 
-from core.services.workbench.run.compute import compute_candidate_run
+from tests.workbench.run_compute_support import compute_run, unchanged
 from tests.workbench.run_compute_support import run_case as _run_case  # noqa: F401
-from tests.workbench.run_compute_support import unchanged
 
 
 def test_freeze_window_bounds(run_case):
@@ -24,7 +23,7 @@ def test_freeze_window_bounds(run_case):
         case.conn.execute("UPDATE Schedule SET start_time=?,end_time=? WHERE op_id=?", (start, end, ids[batch]))
     case.conn.commit()
     settings = case.settings("B1", "inside", "after", hold_window={"start": "2026-09-09T08:00", "end": "2026-09-10T08:00"})
-    result = unchanged(case, lambda: compute_candidate_run(case.conn, settings, case.projections()))
+    result = unchanged(case, lambda: compute_run(case.conn, settings, case.projections()))
     assert result.schedule_input.frozen_op_ids == {ids["inside"]}
     for payload in result.candidate_payloads.values():
         held = next(row for row in payload.schedule_rows if row.op_id == ids["inside"])

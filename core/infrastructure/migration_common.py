@@ -36,9 +36,9 @@ def column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
     return col in table_columns(conn, t)
 
 
-def _normalize_sqlite_identifier(value: object, *, kind: str) -> str:
-    text = str(value or "").strip()
-    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", text or ""):
+def _normalize_sqlite_identifier(value: str, *, kind: str) -> str:
+    text = value.strip()
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", text):
         raise ValueError(f"非法 SQLite {kind}：{value!r}")
     return text
 

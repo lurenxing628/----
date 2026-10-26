@@ -30,7 +30,8 @@ class OpForScheduleAlgo:
     ext_merge_mode: Optional[str]
     ext_group_total_days: Optional[float]
 
-    material_ready_date: Optional[str] = None
+    # 物料到齐当天 0 点；排产输入构建时由规范日期解析一次（workbench/run/input.py）。
+    material_ready_date: Optional[datetime] = None
 
 
 @dataclass

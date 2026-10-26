@@ -8,9 +8,11 @@ import pytest
 
 from core.errors import ValidationError
 from core.infrastructure.database import get_connection
+from core.services.scheduler.calendar import day_policy as day_policy_module
 from core.services.scheduler.calendar import engine as engine_module
 from core.services.scheduler.calendar.checkpoint_certificate import calendar_checkpoint_snapshot
-from core.services.scheduler.calendar.engine import CalendarEngine, DayPolicy
+from core.services.scheduler.calendar.day_policy import DayPolicy
+from core.services.scheduler.calendar.engine import CalendarEngine
 from core.services.scheduler.calendar.service import CalendarService
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
 
@@ -125,13 +127,13 @@ def test_people_share_public_dates_and_shift_facts_then_maintenance_reloads(sche
 
 
 def test_independent_day_policy_prepares_once_and_keeps_legacy_stop_and_night(monkeypatch):
-    decoded, decode = [], engine_module.decode_periods
+    decoded, decode = [], day_policy_module.decode_periods
 
     def parse(raw):
         decoded.append(raw)
         return decode(raw)
 
-    monkeypatch.setattr(engine_module, "decode_periods", parse)
+    monkeypatch.setattr(day_policy_module, "decode_periods", parse)
     common = {"date_str": "2026-10-12", "day_type": "workday", "shift_hours": 4,
               "efficiency": 1, "allow_normal": "no", "allow_urgent": "yes"}
     legacy = DayPolicy(**common)

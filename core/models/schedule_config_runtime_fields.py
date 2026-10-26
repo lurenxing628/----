@@ -5,9 +5,6 @@ from typing import Any, Dict, Optional, Tuple
 
 from core.models.objective import objective_choice_labels
 
-MISSING_POLICY_ERROR = "error"
-MISSING_POLICY_FALLBACK_WITH_DEGRADATION = "fallback_with_degradation"
-
 RETIRED_CONFIG_FIELDS: Tuple[str, ...] = (
     "graph_candidate_weight_count",
     "graph_selection_policy",
@@ -149,10 +146,9 @@ def list_runtime_config_fields() -> Tuple[RuntimeConfigFieldSpec, ...]:
 
 
 def get_field_spec(key: str) -> RuntimeConfigFieldSpec:
-    normalized_key = str(key or "").strip()
-    if normalized_key not in _FIELD_SPEC_BY_KEY:
+    if key not in _FIELD_SPEC_BY_KEY:
         raise KeyError(f"未定义运行期配置字段：{key!r}")
-    return _FIELD_SPEC_BY_KEY[normalized_key]
+    return _FIELD_SPEC_BY_KEY[key]
 
 
 def default_for(key: str) -> Any:
@@ -164,8 +160,6 @@ def default_snapshot_values() -> Dict[str, Any]:
 
 
 __all__ = [
-    "MISSING_POLICY_ERROR",
-    "MISSING_POLICY_FALLBACK_WITH_DEGRADATION",
     "RETIRED_CONFIG_FIELDS",
     "RuntimeConfigFieldSpec",
     "default_for",

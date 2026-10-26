@@ -1,10 +1,10 @@
 """Exact additive metadata allowed by historical-fixture upgrades to current."""
 
 from core.infrastructure.batch_external_context_schema import objects as external_context_objects
-from core.infrastructure.workbench_dashboard_external_schema import objects as dashboard_external_objects
+from core.infrastructure.workbench_dashboard_external_schema import workbench_dashboard_external_objects
 from core.infrastructure.workbench_execution_void_schema import execution_void_objects
 from core.infrastructure.workbench_outsourcing_schema import workbench_outsourcing_objects
-from core.infrastructure.workbench_outsourcing_source_schema import objects as source_objects
+from core.infrastructure.workbench_outsourcing_source_schema import workbench_outsourcing_source_objects
 from core.infrastructure.workbench_plan_identity_write_guard import plan_identity_write_guard_objects as guard_objects
 
 V30_EMPTY_TABLES = (
@@ -34,7 +34,7 @@ def assert_v33_contexts(conn):
 
 
 def missing_v32_issues():
-    return ({"missing_outsourcing_source_schema:" + name for name in source_objects()} |
+    return ({"missing_outsourcing_source_schema:" + name for name in workbench_outsourcing_source_objects()} |
             {"missing_execution_void:" + name for name in execution_void_objects()})
 
 
@@ -49,7 +49,7 @@ def missing_v30_issues():
 
 
 def missing_v31_issues():
-    return {"missing_dashboard_external_schema:" + name for name in dashboard_external_objects()}
+    return {"missing_dashboard_external_schema:" + name for name in workbench_dashboard_external_objects()}
 
 
 def assert_v31_receipt_maps_only(conn):

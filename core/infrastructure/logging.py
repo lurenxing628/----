@@ -29,7 +29,7 @@ def _format_log_message(message: Any, *args: Any) -> str:
 
 
 def safe_log(logger: Optional[Any], level: str, message: Any, *args: Any) -> None:
-    method = getattr(logger, str(level or "").strip(), None) if logger is not None else None
+    method = getattr(logger, level, None) if logger is not None else None
     if callable(method) and _invoke_safely(method, message, *args):
         return
     _invoke_safely(print, _format_log_message(message, *args), file=sys.stderr)

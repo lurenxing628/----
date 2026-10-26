@@ -3,7 +3,6 @@
 from core.models.workbench_command import WorkbenchCommandRejected, validate_request_key
 from core.models.workbench_run_adoption import ADOPT_ACTION, CandidateAdoptionBlocked, adoption_input
 from core.models.workbench_run_job import valid_data_context_ref, validate_run_ref
-from core.services.workbench import messages
 from core.services.workbench.facts.candidate_store import CandidateStore
 
 from .adoption_host import AdoptionCommandHost
@@ -26,18 +25,13 @@ class WorkbenchRunCandidateAdoptionService(AdoptionCommandHost):
         self._outer()
         validate_run_ref(candidate_ref)
         try:
-            try:
-                evidence, context_factory, data_context_ref = self._prepare_preview(candidate_ref, validate_adoption)
-            except CandidateAdoptionBlocked as exc:
-                reason = {"code": exc.code, "message": str(exc), "severity": "blocker"}
-                return {"candidate_ref": candidate_ref, "validation": {"status": "blocked", "can_adopt": False,
-                        "issues": [reason]}, "write_context": {"write_token": None, "expires_at": None,
-                        "capabilities": {ADOPT_ACTION: False}, "blocked_reasons": [reason]},
-                        "data_context_ref": self.data_context.ref()}
-        except WorkbenchCommandRejected:
-            raise
-        except Exception as exc:
-            raise WorkbenchCommandRejected("storage_failure", messages.FAILURE, 500) from exc
+            evidence, context_factory, data_context_ref = self._prepare_preview(candidate_ref, validate_adoption)
+        except CandidateAdoptionBlocked as exc:
+            reason = {"code": exc.code, "message": str(exc), "severity": "blocker"}
+            return {"candidate_ref": candidate_ref, "validation": {"status": "blocked", "can_adopt": False,
+                    "issues": [reason]}, "write_context": {"write_token": None, "expires_at": None,
+                    "capabilities": {ADOPT_ACTION: False}, "blocked_reasons": [reason]},
+                    "data_context_ref": self.data_context.ref()}
         return {"candidate_ref": candidate_ref, "run_ref": evidence.run_ref,
                 **self._preview_result(candidate_ref, evidence, context_factory, data_context_ref)}
 

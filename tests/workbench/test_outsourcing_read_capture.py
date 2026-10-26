@@ -4,7 +4,7 @@ from collections import Counter
 
 import pytest
 
-from core.infrastructure.workbench_outsourcing_schema import objects
+from core.infrastructure.workbench_outsourcing_schema import workbench_outsourcing_objects
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.dashboard.external import load_external
 from core.services.workbench.dashboard.external_handling import DashboardExternalHandling
@@ -61,7 +61,7 @@ def test_snapshot_capture_preserves_instance_rules_and_single_registered_evaluat
     conn.execute("DROP TRIGGER wb_outsourcing_operationorigins_no_update")
     for operation_ref in target["operation_refs"]:
         conn.execute("UPDATE WorkbenchOutsourcingOperationOrigins SET batch_ref=NULL WHERE operation_ref=?", (operation_ref,))
-    conn.execute(objects()["wb_outsourcing_operationorigins_no_update"])
+    conn.execute(workbench_outsourcing_objects()["wb_outsourcing_operationorigins_no_update"])
     conn.commit()
     with case.shipments.reader.read_snapshot():
         before = _same_sources(source, [target])
@@ -153,7 +153,7 @@ def test_snapshot_capture_preserves_instance_rules_and_single_registered_evaluat
     # A stored BLOB date remains a raw evaluation gap; handling consumes the already captured header.
     conn.execute("DROP TRIGGER wb_outsourcing_facts_no_update")
     conn.execute("UPDATE WorkbenchOutsourcingFacts SET planned=? WHERE outsourcing_ref=?", (b"bad-date", ref))
-    conn.execute(objects()["wb_outsourcing_facts_no_update"])
+    conn.execute(workbench_outsourcing_objects()["wb_outsourcing_facts_no_update"])
     conn.commit()
     with reader.read_snapshot():
         result, _, receipts = load_external(conn, NOW)

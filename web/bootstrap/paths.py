@@ -3,12 +3,11 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 from .launcher_observability import launcher_log_warning
 
 
-def runtime_base_dir(anchor_file: Optional[str] = None) -> str:
+def runtime_base_dir(anchor_file: str) -> str:
     """
     获取运行根目录：
     - 源码运行：入口锚点文件所在目录（通常为仓库根目录 app.py 所在目录）
@@ -17,16 +16,12 @@ def runtime_base_dir(anchor_file: Optional[str] = None) -> str:
     try:
         if getattr(sys, "frozen", False):
             return str(Path(sys.executable).resolve().parent)
-        if anchor_file:
-            return str(Path(anchor_file).resolve().parent)
-        return str(Path.cwd().resolve())
+        return str(Path(anchor_file).resolve().parent)
     except (OSError, RuntimeError) as exc:
         if getattr(sys, "frozen", False):
             fallback = os.path.abspath(os.path.dirname(sys.executable) or ".")
-        elif anchor_file:
-            fallback = os.path.abspath(os.path.dirname(anchor_file) or ".")
         else:
-            fallback = os.path.abspath(".")
+            fallback = os.path.abspath(os.path.dirname(anchor_file) or ".")
         launcher_log_warning(
             None,
             "运行根目录解析失败，已回退到绝对路径：fallback=%s anchor_file=%r error=%s",

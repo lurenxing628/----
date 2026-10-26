@@ -79,7 +79,7 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     """
     获取 SQLite 连接（每请求一个连接，避免跨线程问题）。
     """
-    is_memory_db = str(db_path or "").strip() == ":memory:"
+    is_memory_db = db_path.strip() == ":memory:"
     connect_target = db_path
     connect_kwargs = {}
     if not is_memory_db:

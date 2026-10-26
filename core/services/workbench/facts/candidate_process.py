@@ -6,7 +6,7 @@ from core.models.objective import best_score_schema, comparison_metric_key, obje
 from core.services.scheduler.contracts.optimizer_public_safety import (
     PUBLIC_ATTEMPT_METRIC_KEYS,
     project_attempt_metrics,
-    safe_counter_dict,
+    safe_attempt_text,
 )
 from core.services.scheduler.contracts.optimizer_public_search_report import project_search_report
 from core.services.scheduler.summary.optimizer_public_attempts import project_attempt_evaluation, project_attempts
@@ -36,6 +36,18 @@ def _dict(value):
     if type(value) is not dict:
         corrupt()
     return value
+
+
+def _rejection_summary(value):
+    """Saved rejection counts by reason: integer counts or a corrupt record; public reasons only, zeros omitted."""
+    counts = {}
+    for key, count in _dict(value).items():
+        if type(count) is not int or count < 0:
+            corrupt()
+        reason = safe_attempt_text(key)
+        if reason and count:
+            counts[reason] = count
+    return counts
 
 
 def _rows(value):
@@ -231,7 +243,7 @@ def candidate_process(row, rows):
     legacy_updates = None if evidence else _number(report.get("best_improved_candidates"), integer=True)
     profile, _ = project_search_report(report)
     rejected = evidence.get("rejection_summary") if evidence else report.get("rejection_summary")
-    rejection_summary = safe_counter_dict(_dict(rejected)) if rejected is not None else None
+    rejection_summary = _rejection_summary(rejected) if rejected is not None else None
     own_counts = {key: 0 for key in COUNT_KEYS} if reused else _counts(own_evidence, _dict(own.get("search_report")))
     elapsed = _number(own.get("elapsed_seconds"))
     own_elapsed = elapsed * 1000 if elapsed is not None else None

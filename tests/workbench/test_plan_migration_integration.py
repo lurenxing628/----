@@ -10,6 +10,7 @@ from core.infrastructure.migration_state import (
     get_schema_version,
     set_schema_version,
 )
+from core.infrastructure.schema_declaration import load_schema_sql
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_objects
 from core.infrastructure.workbench_plan_identity_schema import plan_identity_objects
 from core.infrastructure.workbench_run_read_model_schema import READ_MODEL_TABLES
@@ -17,15 +18,16 @@ from core.infrastructure.workbench_run_read_model_schema import objects as run_r
 from core.infrastructure.workbench_run_schema import RUN_TABLES, workbench_run_objects
 from core.infrastructure.workbench_template_lineage_schema import template_lineage_objects
 from core.infrastructure.workbench_trial_schema import workbench_trial_objects
-from tests.workbench.dashboard_external_migration_support import V31_TABLES, assert_v31_receipt_maps_only
 from tests.workbench.execution_ledger_migration_support import V27_TABLES
 from tests.workbench.flexible_migration_support import TABLES as FLEXIBLE_TABLES
 from tests.workbench.identity_metadata_support import connect_temp, copy_to_temp, table_rows
 from tests.workbench.legacy_migration_current_support import (
     V30_TABLES,
+    V31_TABLES,
     V32_TABLES,
     V33_TABLES,
     assert_v30_source_maps_only,
+    assert_v31_receipt_maps_only,
     assert_v32_empty,
     assert_v33_contexts,
 )
@@ -55,7 +57,9 @@ def test_real_v23_upgrade_backs_up_all_rows_and_keeps_plan_refs_across_restart(m
     copy_to_temp(conn, path)
     database.ensure_schema(str(path), schema_path=schema_path, backup_dir=str(backups))
     with connect_temp(path) as upgraded:
-        assert get_schema_version(upgraded) == CURRENT_SCHEMA_VERSION and current_schema_contract_issues(upgraded) == []
+        assert get_schema_version(upgraded) == CURRENT_SCHEMA_VERSION
+        assert current_schema_contract_issues(
+            upgraded, schema_version=CURRENT_SCHEMA_VERSION, schema_sql=load_schema_sql()) == []
         after = table_snapshot(upgraded, exclude=("SchemaVersion",))
         assert {name: after[name] for name in before} == before
         assert set(after) - set(before) == set(IDENTITY_TABLES + LEDGER_TABLES + RUN_TABLES + READ_MODEL_TABLES + V27_TABLES + V29_TABLES + V30_TABLES + V31_TABLES + V32_TABLES + V33_TABLES + FLEXIBLE_TABLES)

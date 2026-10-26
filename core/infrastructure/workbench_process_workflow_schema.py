@@ -61,7 +61,7 @@ def workbench_process_workflow_contract_issues(conn, *, structure=None, allow_le
     return [("missing_workbench_process_workflow: " if name not in actual else "bad_workbench_process_workflow: ") + name
             for name, sql in workflow_objects().items()
             if name not in actual or not schema_contract_matches(
-                conn, actual[name] or "", sql, legacy[name], allow_legacy=allow_legacy)]
+                conn, actual[name], sql, legacy[name], allow_legacy=allow_legacy)]
 
 
 def install_process_workflow(conn) -> None:

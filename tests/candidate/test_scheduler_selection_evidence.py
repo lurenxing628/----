@@ -1,6 +1,5 @@
 """Freeze the actual candidate decision and its permanent-reference evidence."""
 
-from copy import deepcopy
 from dataclasses import replace
 
 import pytest
@@ -15,14 +14,13 @@ from core.services.scheduler.run.schedule_candidate_selection import (
 )
 from core.services.workbench.facts.decision_selection import selection_basis, selection_roles
 from core.services.workbench.run.result_preparation import _selection_references
-from tests.workbench.legacy_run_archive_support import stored_legacy_selection
 
 COMPLETE = BatchCompletion(expected_operation_count=2, missing_operation_count=0, unexpected_result_count=0,
                            complete_batch_count=2, incomplete_batch_ids=(), partial_batch_ids=(),
                            failure_detail_count=0, failure_batch_ids=())
 
 
-def _candidate(key, *, sequence, overdue=2, weighted=10.0, tardiness=10.0, health_state="same"):
+def _candidate(key, *, sequence, overdue=2, weighted=10.0, tardiness=10.0):
     metrics = ScheduleMetrics(
         overdue_count=overdue,
         total_tardiness_hours=tardiness,
@@ -31,11 +29,6 @@ def _candidate(key, *, sequence, overdue=2, weighted=10.0, tardiness=10.0, healt
         changeover_count=1,
         completion=COMPLETE,
     )
-    health = {"state": health_state, "score": 2 if health_state == "better" else 0,
-        "reason_code": "critical_chain_" + health_state,
-        "critical_chain_finish_hours_delta": -1.0, "critical_chain_wait_hours_delta": -1.0,
-        "top_impact_ops_avg_start_hours_delta": None, "critical_chain_slack_hours_delta": None,
-        "critical_chain_node_count": 2, "top_impact_op_count": 0}
     return CandidatePlan(
         sequence=sequence,
         candidate_key=key,
@@ -47,89 +40,19 @@ def _candidate(key, *, sequence, overdue=2, weighted=10.0, tardiness=10.0, healt
         graph_impact_weight=0 if key == "baseline" else 10,
         graph_downstream_weight=0 if key == "baseline" else 1,
         metrics=metrics,
-        health=health,
         objective="min_overdue",
         objective_name="min_overdue",
     )
 
 
-def _evidence(selection):
-    evidence = selection.decision_evidence
-    assert evidence["version"] == "candidate-selection-evidence-v1"
-    assert evidence["state"] == "complete"
-    return evidence
-
-
-def test_nested_evidence_maps_permanent_references_and_keeps_fixed_anchors_and_legacy_default():
+def test_business_selection_maps_winners_and_scope_to_permanent_references():
     baseline = _candidate("baseline", sequence=0)
-    graph = _candidate("graph-first", sequence=1, weighted=11.0, tardiness=10.75, health_state="better")
+    graph = _candidate("graph-first", sequence=1, weighted=11.0, tardiness=10.75)
     third = _candidate("graph-third", sequence=2, overdue=4, weighted=30.0, tardiness=30.0)
-    # Explicit historical storage material; the retired selector is not executed.
-    baseline_snapshot = {"candidate_key": "baseline", "score": list(baseline.score),
-        "failed_ops": 0.0, "primary_score": 2.0, "overdue_count": 2.0, "total_tardiness_hours": 10.0}
-    selection = stored_legacy_selection({
-        "selected_candidate_key": "graph-first", "selected_kind": "critical_chain", "selection_policy": "balanced",
-        "reason_code": "balanced_critical_health_better", "raw_score_best_key": "baseline",
-        "baseline_best_key": "baseline", "critical_best_key": "graph-first", "critical_health_best_key": "graph-first",
-        "selected_score": list(graph.score), "selection_policy_version": "candidate-selection-v1",
-        "overdue_tolerance_count": 1, "tardiness_tolerance_ratio": 0.10,
-        "decision_evidence": {"version": "candidate-selection-evidence-v1", "state": "complete",
-            "anchors": {"raw_score_best": deepcopy(baseline_snapshot), "health_reference": deepcopy(baseline_snapshot)},
-            "selected": {"candidate_key": "graph-first", "score": list(graph.score),
-                "failed_ops": 0.0, "primary_score": 2.0, "overdue_count": 2.0, "total_tardiness_hours": 10.75},
-            "tiebreak": {"rule": "full_score_baseline_sequence_v1", "raw_score_best_candidate_key": "baseline",
-                "runner_up_candidate_key": "graph-first", "decisive_step": "secondary_score", "decisive_score_index": 2,
-                "primary_tied_candidate_keys": ["baseline", "graph-first"], "full_score_tied_candidate_keys": ["baseline"]},
-            "balanced_checks": {"eligible": True, "checked": True, "reason_code": None,
-                "candidate_key": "graph-first", "reference_candidate_key": "baseline", "health_reference_candidate_key": "baseline",
-                "health_state": "better", "checks": [
-                    {"key": "failed_ops", "candidate_value": 0.0, "reference_value": 0.0, "limit": 0.0, "passed": True, "tolerance": None},
-                    {"key": "objective_primary_score", "candidate_value": 2.0, "reference_value": 2.0, "limit": 2.0, "passed": True, "tolerance": None},
-                    {"key": "overdue_count", "candidate_value": 2.0, "reference_value": 2.0, "limit": 3.0, "passed": True, "tolerance": 1},
-                    {"key": "total_tardiness_hours", "candidate_value": 10.75, "reference_value": 10.0, "limit": 11.0, "passed": True, "tolerance": 0.10}],
-                "accepted": True, "override_applied": True}},
-    }, graph)
-    original_evidence = deepcopy(_evidence(selection))
     refs = {baseline.candidate_key: "ref-baseline", graph.candidate_key: "ref-graph", third.candidate_key: "ref-third"}
     rows = [{"key": candidate.candidate_key, "candidate_ref": refs[candidate.candidate_key],
              "artifact": {"objective_name": candidate.objective_name, "score": list(candidate.score)}}
             for candidate in (baseline, graph, third)]
-    baseline.metrics.overdue_count = 99
-    saved = _selection_references(selection, rows, identities={}, batch_refs={})
-    evidence = saved["decision_evidence"]
-    assert saved["selected_candidate_ref"] == refs[graph.candidate_key]
-    assert saved["raw_score_best_candidate_ref"] == saved["health_reference_candidate_ref"] == refs[baseline.candidate_key]
-    assert evidence["selected"]["candidate_ref"] == refs[graph.candidate_key]
-    assert evidence["anchors"]["raw_score_best"]["candidate_ref"] == refs[baseline.candidate_key]
-    assert evidence["anchors"]["health_reference"]["candidate_ref"] == refs[baseline.candidate_key]
-    assert evidence["anchors"]["raw_score_best"]["overdue_count"] == 2.0
-    assert evidence["anchors"]["health_reference"]["overdue_count"] == 2.0
-    tie = evidence["tiebreak"]
-    assert set(tie["primary_tied_candidate_refs"]) == {refs[baseline.candidate_key], refs[graph.candidate_key]}
-    assert tie["full_score_tied_candidate_refs"] == [refs[baseline.candidate_key]]
-    assert tie["raw_score_best_candidate_ref"] == refs[baseline.candidate_key]
-    assert tie["runner_up_candidate_ref"] == refs[graph.candidate_key]
-    checks = evidence["balanced_checks"]
-    assert checks["candidate_ref"] == refs[graph.candidate_key]
-    assert checks["reference_candidate_ref"] == checks["health_reference_candidate_ref"] == refs[baseline.candidate_key]
-    assert selection.decision_evidence == original_evidence
-
-    def fields(value):
-        if isinstance(value, dict):
-            for key, item in value.items():
-                yield key
-                yield from fields(item)
-        elif isinstance(value, list):
-            for item in value:
-                yield from fields(item)
-
-    assert not any(key.endswith(("candidate_key", "candidate_keys")) for key in fields(evidence))
-    legacy = stored_legacy_selection({**selection.to_dict(), "decision_evidence": None}, graph)
-    assert legacy.decision_evidence is None
-    legacy_saved = _selection_references(legacy, rows, identities={}, batch_refs={})
-    assert legacy_saved["selected_candidate_ref"] == refs[graph.candidate_key]
-    assert legacy_saved.get("decision_evidence") is None
-
 
     # The new persisted selector retains unknown positions and maps winners and scope by value.
     targets = target_objectives_for("min_overdue")

@@ -62,7 +62,6 @@
     function preflight() {
       if (controlsDisabled || recovery || !command.reset()) return;
       invalidate();
-      if (typeof adapter.filePreview !== 'function') { setError(C.failure('dependency not wired: window.APSProcessAPI.filePreview')); return; }
       if (importing && !file) { setError(C.failure('请先选择文件。')); return; }
       if (!importing && !selection) { setError(C.failure('请先选择导出范围。')); return; }
       setJob({ file, format, selection }); setNow(Date.now());
@@ -78,7 +77,6 @@
     }
     async function downloadFile(template) {
       if (controlsDisabled || !template && (!data || reason)) return;
-      if (typeof adapter.fileDownload !== 'function') { setError(C.failure('dependency not wired: window.APSProcessAPI.fileDownload')); return; }
       if (!template && data.format !== format) { setError(C.failure('当前导出格式已变化，请重新预检。')); return; }
       const controller = new AbortController(); abort.current = controller; setDownload({ busy: true }); setError(null);
       try {

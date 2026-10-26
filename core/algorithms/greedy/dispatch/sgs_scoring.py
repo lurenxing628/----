@@ -153,7 +153,7 @@ def _score_external_candidate(
     dispatch_key_builder: Callable[[DispatchInputs], Tuple[float, ...]] = build_dispatch_key,
 ) -> Tuple[float, ...]:
     meta = _candidate_meta(op=op, batch=batch, batch_id=batch_id, state=state, strict_mode=strict_mode)
-    window = external_candidate_window(ctx, state, op=op, prev_end=meta["prev_end"])
+    window = external_candidate_window(ctx.calendar, state.external_group_cache, op=op, prev_end=meta["prev_end"])
     est_start, est_end = window
     proc_hours = max((est_end - est_start).total_seconds() / 3600.0, 0.0)
     slack_hours, time_left_hours = due_span_inputs(
@@ -195,7 +195,7 @@ def _score_internal_candidate(
     resource_pool: Optional[Dict[str, Any]],
     avg_proc_hours: float,
     strict_mode: bool,
-    total_hours_by_op_id: Optional[Dict[int, float]] = None,
+    total_hours_by_op_id: Dict[int, float],
     estimate_slot: Callable[..., Any] = estimate_internal_slot,
     dispatch_key_builder: Callable[[DispatchInputs], Tuple[float, ...]] = build_dispatch_key,
     attempt_sink: Optional[Callable[[Any], None]] = None,
@@ -313,17 +313,16 @@ def _scoring_total_hours(
     op: OpForScheduleAlgo,
     batch: Batch,
     strict_mode: bool,
-    total_hours_by_op_id: Optional[Dict[int, float]] = None,
+    total_hours_by_op_id: Dict[int, float],
     op_id: int,
 ) -> float:
-    if total_hours_by_op_id is not None and op_id in total_hours_by_op_id:
+    if op_id in total_hours_by_op_id:
         return total_hours_by_op_id[op_id]
     try:
         total_hours = validate_internal_hours_for_mode(op, batch, strict_mode=strict_mode)
     except ValueError:
         raise_strict_internal_hours_validation(op, batch)
-    if total_hours_by_op_id is not None:
-        total_hours_by_op_id[op_id] = total_hours
+    total_hours_by_op_id[op_id] = total_hours
     return total_hours
 
 
@@ -339,9 +338,7 @@ def _scoring_resources(
     resource_pool: Optional[Dict[str, Any]],
     attempt_sink: Optional[Callable[[Any], None]] = None,
 ) -> _ScoringResources:
-    # None (not specified) and the empty string an optimizer resource variant may carry both mean unassigned.
-    machine_id = op.machine_id or ""
-    operator_id = op.operator_id or ""
+    machine_id, operator_id = op.machine_id, op.operator_id
     if machine_id and operator_id:
         return _ScoringResources(machine_id, operator_id, RESOURCE_REASON_FIXED, "")
     if not auto_assign_enabled or resource_pool is None:
@@ -445,13 +442,8 @@ def _estimate_scoring_slot(
         raise RuntimeError("SGS 评分不应命中 abort_after 早停")
     if current_sgs_handoff() is not None:
         remember_sgs_estimate(
-            estimate, calendar=ctx.calendar, op=op, batch=batch,
-            machine_id=machine_id, operator_id=operator_id, base_time=state.base_time, prev_end=meta["prev_end"],
-            machine_timeline=state.machine_timeline.get(machine_id) or [],
-            operator_timeline=state.operator_timeline.get(operator_id) or [],
-            machine_downtimes=(machine_downtimes.get(machine_id) or []) if machine_downtimes and machine_id else [],
-            end_dt_exclusive=end_dt_exclusive, last_op_type_by_machine=state.last_op_type_by_machine,
-            total_hours_base=total_hours,
+            estimate, calendar=ctx.calendar, op=op, machine_id=machine_id, operator_id=operator_id,
+            prev_end=meta["prev_end"], end_dt_exclusive=end_dt_exclusive, total_hours_base=total_hours,
         )
     return estimate
 

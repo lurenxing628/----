@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .neighborhood_move_support import (
-    batch_id,
     bottleneck_machine_rows,
     earliest_due_pressure_batch,
     finish_by_batch,
@@ -47,7 +46,7 @@ class NeighborhoodMove:
 def noop_move(name: str, *, order: List[str]) -> NeighborhoodMove:
     return NeighborhoodMove(
         neighborhood_name=str(name),
-        batch_order=tuple(order or []),
+        batch_order=tuple(order),
         noop=True,
     )
 
@@ -56,7 +55,7 @@ def critical_chain_move(order: List[str], results: List[Any]) -> NeighborhoodMov
     latest = latest_result(results)
     if latest is None:
         return noop_move(CRITICAL_CHAIN, order=order)
-    return _pull_batch_earlier(CRITICAL_CHAIN, order, batch_id=batch_id(latest))
+    return _pull_batch_earlier(CRITICAL_CHAIN, order, batch_id=latest.batch_id)
 
 
 def tardy_window_move(order: List[str], results: List[Any], batches: Dict[str, Any]) -> NeighborhoodMove:
@@ -74,7 +73,7 @@ def bottleneck_machine_move(order: List[str], results: List[Any]) -> Neighborhoo
     latest = latest_result(rows)
     if latest is None:
         return noop_move(BOTTLENECK_MACHINE, order=order)
-    return _pull_batch_earlier(BOTTLENECK_MACHINE, order, batch_id=batch_id(latest))
+    return _pull_batch_earlier(BOTTLENECK_MACHINE, order, batch_id=latest.batch_id)
 
 
 def changeover_block_move(order: List[str], results: List[Any]) -> NeighborhoodMove:
@@ -90,7 +89,7 @@ def changeover_block_move(order: List[str], results: List[Any]) -> NeighborhoodM
             dispatch_rule=fallback.dispatch_rule,
         )
     previous, current = pair
-    out = _move_before(order, batch_id(current), batch_id(previous))
+    out = _move_before(order, current.batch_id, previous.batch_id)
     return _order_move(CHANGEOVER_BLOCK, order, out)
 
 
@@ -102,7 +101,7 @@ def resource_alternative_move(order: List[str], resource_pool: Optional[Dict[str
     operator_id, machine_id, _old_rank = picked
     return NeighborhoodMove(
         neighborhood_name=RESOURCE_ALTERNATIVE,
-        batch_order=tuple(order or []),
+        batch_order=tuple(order),
         resource_pair_rank={(operator_id, machine_id): -1},
     )
 
@@ -118,11 +117,11 @@ def time_window_move(order: List[str], results: List[Any], batches: Dict[str, An
 def pick_sgs_dispatch_rule(
     current_rule: str,
     valid_dispatch_rules: List[str],
-    rnd: Any = None,
+    rnd: Any,
     *,
     tried_rules: Optional[Set[str]] = None,
 ) -> Optional[str]:
-    current = str(current_rule or "").strip().lower()
+    current = current_rule.strip().lower()
     candidates = [
         item for item in valid_dispatch_rules
         if item != current and (tried_rules is None or item not in tried_rules)
@@ -131,20 +130,20 @@ def pick_sgs_dispatch_rule(
         candidates = [item for item in valid_dispatch_rules if item != current]
     if not candidates:
         return None
-    index = int(rnd.randrange(len(candidates))) if rnd is not None and len(candidates) > 1 else 0
+    index = int(rnd.randrange(len(candidates))) if len(candidates) > 1 else 0
     picked = candidates[index]
     if tried_rules is not None:
         tried_rules.add(picked)
     return picked
 
 
-def sgs_dispatch_rule_move(order: List[str], current_rule: str, valid_dispatch_rules: List[str], rnd: Any = None) -> NeighborhoodMove:
+def sgs_dispatch_rule_move(order: List[str], current_rule: str, valid_dispatch_rules: List[str], rnd: Any) -> NeighborhoodMove:
     picked = pick_sgs_dispatch_rule(current_rule, valid_dispatch_rules, rnd)
     if picked is None:
         return noop_move(SGS_DISPATCH_RULE, order=order)
     return NeighborhoodMove(
         neighborhood_name=SGS_DISPATCH_RULE,
-        batch_order=tuple(order or []),
+        batch_order=tuple(order),
         dispatch_mode="sgs",
         dispatch_rule=picked,
     )
@@ -160,8 +159,7 @@ def _order_move(name: str, before: List[str], after: List[str]) -> NeighborhoodM
 
 
 def _pull_batch_earlier(name: str, order: List[str], *, batch_id: str) -> NeighborhoodMove:
-    batch_id = str(batch_id or "").strip()
-    if not batch_id or batch_id not in order:
+    if batch_id not in order:
         return noop_move(name, order=order)
     index = order.index(batch_id)
     if index <= 0:
@@ -173,10 +171,8 @@ def _pull_batch_earlier(name: str, order: List[str], *, batch_id: str) -> Neighb
 
 
 def _move_before(order: List[str], moving_batch: str, before_batch: str) -> List[str]:
-    moving_batch = str(moving_batch or "").strip()
-    before_batch = str(before_batch or "").strip()
-    out = list(order or [])
-    if not moving_batch or not before_batch or moving_batch == before_batch:
+    out = list(order)
+    if moving_batch == before_batch:
         return out
     try:
         moving_index = out.index(moving_batch)

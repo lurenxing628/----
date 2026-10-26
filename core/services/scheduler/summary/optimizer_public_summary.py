@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple, cast
+from typing import Any, Dict, Optional, Tuple
 
 from core.services.scheduler.contracts.graph_public_summary import project_public_graph_analysis
 from core.services.scheduler.contracts.optimizer_public_safety import (
     project_attempt_score,
     project_public_metrics,
+    public_counter_dict,
     safe_attempt_text,
-    safe_counter_dict,
     safe_metric_key,
     safe_non_negative_int,
     safe_public_text_list,
@@ -52,16 +52,7 @@ _PUBLIC_ALGO_KEYS = {
 def project_public_algo_summary(algo: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     raw_algo = algo if isinstance(algo, dict) else {}
     public_algo = {key: raw_algo[key] for key in _PUBLIC_ALGO_KEYS if key in raw_algo}
-    comparison = raw_algo.get("candidate_comparison")
-    unified = is_unified_generation(raw_algo) or is_unified_generation(comparison)
-    if unified:
-        policy = cast(Dict[str, Any], raw_algo if is_unified_generation(raw_algo) else comparison)
-        for key in ("generation_policy_version", "primary_objective", "target_objectives"):
-            if key in policy:
-                public_algo[key] = policy[key]
-        selection = (comparison or {}).get("selection") or {}
-        if "selected_score" in selection:
-            public_algo["best_score"] = list(selection["selected_score"])
+    unified = _project_unified_policy(public_algo, raw_algo.get("candidate_comparison"))
 
     _project_text_and_budget_fields(public_algo)
     _project_score_fields(public_algo, unified=unified)
@@ -76,6 +67,17 @@ def project_public_algo_summary(algo: Dict[str, Any]) -> Tuple[Dict[str, Any], D
         search_report_diagnostics=search_report_diagnostics,
     )
     return public_algo, diagnostics
+
+
+def _project_unified_policy(public_algo: Dict[str, Any], comparison: Optional[Dict[str, Any]]) -> bool:
+    # SummaryBuildContext.candidate_comparison_public is Optional; its only producer is
+    # candidate_comparison_public_summary (schedule_orchestrator.py), which always carries the selection.
+    if comparison is None or not is_unified_generation(comparison):
+        return False
+    for key in ("generation_policy_version", "primary_objective", "target_objectives"):
+        public_algo[key] = comparison[key]
+    public_algo["best_score"] = list(comparison["selection"]["selected_score"])
+    return True
 
 
 def _project_text_and_budget_fields(public_algo: Dict[str, Any]) -> None:
@@ -120,8 +122,8 @@ def _project_best_score_schema_field(public_algo: Dict[str, Any]) -> None:
 
 def _fill_comparison_metric_from_schema(public_algo: Dict[str, Any], schema: Any) -> None:
     for item in schema:
-        key = str((item or {}).get("key") or "").strip() if isinstance(item, dict) else ""
-        if key and key != "failed_ops":
+        key = item["key"]
+        if key != "failed_ops":
             public_algo["comparison_metric"] = key
             return
 
@@ -154,8 +156,8 @@ def _project_algo_context_fields(public_algo: Dict[str, Any]) -> None:
 
 
 def _project_auxiliary_fields(public_algo: Dict[str, Any]) -> None:
-    _replace_projected_or_drop(public_algo, "fallback_counts", safe_counter_dict)
-    _replace_projected_or_drop(public_algo, "param_fallbacks", safe_counter_dict)
+    _replace_projected_or_drop(public_algo, "fallback_counts", public_counter_dict)
+    _replace_projected_or_drop(public_algo, "param_fallbacks", public_counter_dict)
 
 
 def _project_nested_summary_fields(public_algo: Dict[str, Any]) -> None:
@@ -189,7 +191,7 @@ def _replace_projected_or_drop(data: Dict[str, Any], key: str, projector) -> Non
         data.pop(key, None)
 
 
-def _optimizer_diagnostics(diagnostic_attempts: Any, *, search_report_diagnostics: Any = None) -> Dict[str, Any]:
+def _optimizer_diagnostics(diagnostic_attempts: Any, *, search_report_diagnostics: Dict[str, Any]) -> Dict[str, Any]:
     optimizer: Dict[str, Any] = {}
     if diagnostic_attempts:
         optimizer["attempts"] = diagnostic_attempts

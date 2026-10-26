@@ -176,10 +176,9 @@ class TaskConstraints:
                                            qualifications=self.skills_cache[oid])
                 failure = None
             except OperatorQualificationError as exc:
-                reason = str((exc.details or {}).get("reason", ""))
                 failure = {"operator_machine_not_authorized": "assignment_not_authorized",
                            "operator_skill_not_qualified": "assignment_not_qualified"}.get(
-                               reason, "assignment_qualification_invalid")
+                               exc.details["reason"], "assignment_qualification_invalid")
             self.qualification_cache[cache_key] = failure
         if self.qualification_cache[cache_key] is not None:
             self._add(self.qualification_cache[cache_key], op_id)

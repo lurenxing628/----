@@ -116,7 +116,8 @@ def test_permission_replacement_reuses_capture_and_rejects_stale_before_writing(
     assert sum(statement.startswith("SELECT * FROM OperatorMachine WHERE operator_id IN") for statement in sql) == 1
     assert not any(statement == "SELECT * FROM OperatorMachine ORDER BY operator_id,machine_id" for statement in sql)
 
-    preview = service.preview(ref, desired)
+    with service.reader.read_snapshot():
+        preview = service.preview(ref, desired)
     conn.execute("UPDATE Machines SET name='changed' WHERE machine_id='M3'")
     conn.commit()
     written.clear()

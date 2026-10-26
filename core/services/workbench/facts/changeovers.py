@@ -6,14 +6,14 @@ from core.services.capacity.plan_calendar_intervals import instant
 from .resource_intervals import task_interval
 
 
-def subject_arrangements(tasks, operation_refs, *, task_intervals=None):
+def subject_arrangements(tasks, operation_refs, *, task_intervals):
     """Select the compared work without adding full-sequence predecessors."""
     selected = set(operation_refs)
     result = []
     for task in tasks:
         if task.get("source") != "internal" or task.get("operation_ref") not in selected:
             continue
-        interval = task_interval(task) if task_intervals is None else task_intervals[task["row_ref"]]
+        interval = task_intervals[task["row_ref"]]
         if interval is None or interval[0] != interval[1]:
             result.append(task)
     return result
@@ -30,11 +30,11 @@ def changeover_projection(tasks, *, start=None, end=None, work_available=True,
             machine = task.get("machine") or {}
             arrangements.append(ChangeoverArrangement(
                 machine_ref=machine.get("ref"), machine_label=machine.get("label"),
-                operation_ref=task.get("operation_ref"), row_ref=task.get("row_ref"),
+                operation_ref=task["operation_ref"], row_ref=task["row_ref"],
                 type_ref=task.get("process_type_ref"), type_label=task.get("process_type_label"),
                 start=interval[0] if interval is not None else None,
                 end=interval[1] if interval is not None else None,
                 source=task.get("source"), point_event=interval is not None and interval[0] == interval[1],
-                sort_key=(task.get("operation_ref") or "", task.get("row_ref") or "")))
+                sort_key=(task["operation_ref"], task["row_ref"])))
     return project_changeover_events(
         arrangements, start=low, end=high, work_available=work_available, next_operation_refs=next_operation_refs)

@@ -31,8 +31,8 @@ def update_machine_last_state(
     end_time: datetime,
     op_type_name: Optional[str],
     seed_mode: bool,
-    start_time: Optional[datetime] = None,
-    op_id: Optional[int] = None,
+    start_time: datetime,
+    op_id: int,
     op_type_id: Optional[str] = None,
 ) -> None:
     if not machine_id:

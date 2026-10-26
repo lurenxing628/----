@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.errors import ValidationError
 
-from .repair_decisions import RepairParentPreparation, prepare_repair_parent
+from .repair_decisions import RepairParentPreparation
 
 
 @dataclass(frozen=True)
@@ -25,14 +25,11 @@ class _Parent:
         return self.prepared.successors
 
 
-def _parent_from_candidate(candidate: Optional[Dict[str, Any]], *, operations: List[Any],
-                           graph_context: Dict[str, Any],
-                           resource_pool: Optional[Dict[str, Any]] = None,
-                           prepared_parent: Optional[RepairParentPreparation] = None) -> Optional[_Parent]:
-    if candidate is None or candidate["summary"].failed_ops or not candidate["summary"].success:
+def _parent_from_candidate(candidate: Dict[str, Any], *, graph_context: Dict[str, Any],
+                           prepared: RepairParentPreparation) -> Optional[_Parent]:
+    """``prepared`` is the candidate's parent preparation (EliteRepairPool.prepare_parent)."""
+    if candidate["summary"].failed_ops or not candidate["summary"].success:
         return None
-    prepared = (prepared_parent if prepared_parent is not None else
-                prepare_repair_parent(candidate, operations, resource_pool, graph_context))
     mutable = prepared.mutable_operation_ids
     if not mutable or set(prepared.decoded_rows) != mutable:
         return None

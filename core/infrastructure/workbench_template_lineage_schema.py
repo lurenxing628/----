@@ -115,7 +115,7 @@ def template_lineage_contract_issues(conn, *, structure=None, allow_legacy=True)
     return [("missing_template_lineage:" if name not in actual else "invalid_template_lineage:") + name
             for name, sql in template_lineage_objects().items()
             if name not in actual or not schema_contract_matches(
-                conn, actual[name] or "", sql, legacy[name], allow_legacy=allow_legacy)]
+                conn, actual[name], sql, legacy[name], allow_legacy=allow_legacy)]
 
 
 def _source_contract_issues(*, structure: SchemaStructure):

@@ -39,21 +39,21 @@
         setSize(initialView ? initialView.size : 10);
       } else if (prev.snapshotRef !== input.snapshot_ref) {
         setPage(1);
-        if (onView) onView({ page: 1, size });
+        onView({ page: 1, size });
       }
     }, [operationRef, input.snapshot_ref]);
     const row = detail && detail.operation;
     const actions = <div className="rw-actions">
-        <Button icon="arrow-right" disabled={!row || request.busy} reasonDisplay="inline" reason={typeof onOpenOperation !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : ''}
+        <Button icon="arrow-right" disabled={!row || request.busy}
           onClick={() => onOpenOperation(operationRef, input, row, 'field')}>查看现场记录</Button>
-        <Button icon="chart-gantt" disabled={!row || request.busy} reasonDisplay="inline" reason={typeof onOpenOperation !== 'function' ? window.WorkbenchTerms.outcomes.unavailable : ''}
+        <Button icon="chart-gantt" disabled={!row || request.busy}
           onClick={() => onOpenOperation(operationRef, input, row, 'fieldgantt')}>查看现场实际甘特</Button>
         </div>;
     const pages = detail ? Math.max(1, Math.ceil(detail.records.length / size)) : 1, currentPage = Math.min(page, pages);
     React.useEffect(() => {
       if (detail && currentPage !== page) {
         setPage(currentPage);
-        if (onView) onView({ page: currentPage, size });
+        onView({ page: currentPage, size });
       }
     }, [detail, currentPage, page, size]);
     const records = React.useMemo(() => detail ? detail.records.slice((currentPage - 1) * size, currentPage * size) : [], [detail, currentPage, size]);
@@ -63,10 +63,10 @@
       {row && <><dl className="rw-detail-facts"><div><dt>整道完成</dt><dd>{row.execution_label}</dd></div><div><dt>已确认完工时间</dt><dd>{time(row.confirmed_finish)}</dd></div><div><dt>已知累计数量</dt><dd>{text(row.known_completed_quantity)}；数量未知 {row.unknown_record_count} 条</dd></div><div><dt>有效加工工时</dt><dd>{hoursText(row.effective_processing_hours)}；已知小计 {hoursText(row.known_effective_processing_hours)}</dd></div></dl>
         <p>{window.WorkbenchTerms.legacy_field_records} {row.event_count} 条；逐次报工 {row.production_report_count} 条；全部记录 {row.record_count} 条。剩余数量：{text(row.remaining_quantity)}。</p>
         <p>{row.data_gaps.join(' ')}</p><Table data={{ topic: 'records', rows: records }} empty={{ title: '这道工序暂无报工记录', hint: '' }}
-          onLocate={typeof onOpenOperation === 'function' ? record => onOpenOperation(operationRef, input, row, 'fieldgantt', record.report_ref) : undefined} />
+          onLocate={record => onOpenOperation(operationRef, input, row, 'fieldgantt', record.report_ref)} />
         {records.map(record => <Evidence key={record.record_kind + ':' + record.projection_index} record={record} />)}
         <div className="rw-detail-pager"><window.ReportControls.Page page={{ number: currentPage, size, total: detail.records.length, pages }} onChange={patch => {
-          setPage(patch.page); if (patch.size) setSize(patch.size); if (onView) onView({ page: patch.page, size: patch.size || size });
+          setPage(patch.page); if (patch.size) setSize(patch.size); onView({ page: patch.page, size: patch.size || size });
         }} /></div></>}
     </window.WorkbenchDetailPanel>;
   }

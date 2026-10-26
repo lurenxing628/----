@@ -114,7 +114,7 @@
       summary.error && C.message(summary.error), value.readiness_error, value.calendar_error,
       ...chipOrder.flatMap(key => (items[key] && items[key].issues || []).map(issue => C.nodes[key].label + '：' + issue.message)),
       ...(value.calendar ? [
-        ...(value.calendar.stats.issues || []).map(issue => '工作日历：' + issue.message),
+        ...value.calendar.stats.issues.map(issue => '工作日历：' + issue.message),
         ...value.calendar.days.flatMap(day => day.issues.map(issue => day.date + '：' + issue.message)),
         ...value.calendar.holiday_default_efficiency.issues.map(issue => '假期默认效率：' + issue.message)
       ] : [])
@@ -164,7 +164,7 @@
             <p>假期录入默认效率：{value.calendar.holiday_default_efficiency.status === 'known' ? amount(value.calendar.holiday_default_efficiency.value * 100) + '%' : labels[value.calendar.holiday_default_efficiency.status]}。{value.calendar.holiday_default_efficiency.basis}</p></div>}
         </div></details>}
         <span className="hb-r-spacer" />
-        <Button className="hb-r-next" icon="arrow-right" disabled={disabled} reason={typeof onNavigate !== 'function' ? '批次管理尚未开通。' : ''} onClick={() => onNavigate('batches')}>下一步 · 批次管理</Button>
+        <Button className="hb-r-next" icon="arrow-right" disabled={disabled} onClick={() => onNavigate('batches')}>下一步 · 批次管理</Button>
       </div></div></>}
     </section>;
   }

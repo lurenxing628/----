@@ -106,7 +106,7 @@ def build_graph_ready_context(
     nodes: List[OperationGraphNode],
     edges: List[OperationGraphEdge],
     enabled: bool,
-    score_context: Optional[Dict[str, Any]] = None,
+    score_context: Dict[str, Any],
 ) -> Optional[Dict[str, Any]]:
     if not enabled:
         return None
@@ -122,6 +122,6 @@ def build_graph_ready_context(
         "sort_key_by_op_id": sort_key_by_op_id(nodes, schedulable_op_ids=schedulable_op_ids),
         "fixed_op_sources_by_op_id": {op_id: ("seed" if op_id in seed_op_ids else "frozen") for op_id in sorted(fixed_op_ids)},
     }
-    if score_context:
-        context.update(score_context)
+    # An enabled graph always has a score projection (available or disabled with its reason).
+    context.update(score_context)
     return context

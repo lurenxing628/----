@@ -2,7 +2,7 @@
   'use strict';
   const B = window.APSBatchContract, C = window.APSResourceContract, S = window.APSResourceSession;
   const { Button, Modal, ErrorBox } = window.ResourceControls;
-  const toRows = entity => entity.materials.requirements.map(row => ({ ...row, operation_ref: row.operation_ref || null, arrivals: row.arrivals || [],
+  const toRows = entity => entity.materials.requirements.map(row => ({ ...row,
     required_quantity: row.required_quantity == null ? '' : String(row.required_quantity),
     available_quantity: row.available_quantity == null ? '' : String(row.available_quantity) }));
   function BatchMaterialEditor({ adapter, entity: initial, command, onCommitted, onClose, disabled }) {

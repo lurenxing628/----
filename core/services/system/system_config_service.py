@@ -14,8 +14,8 @@ def _normalize_yes_no(value: Any) -> str:
     return normalize_yes_no_wide(value, default="no", unknown_policy="no")
 
 
-def _switch_value_label(value: Any) -> str:
-    return "启用" if str(value or "").strip().lower() == "yes" else "关闭"
+def _switch_value_label(value: str) -> str:
+    return "启用" if value == "yes" else "关闭"
 
 
 @dataclass

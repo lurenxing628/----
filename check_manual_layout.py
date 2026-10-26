@@ -76,7 +76,7 @@ def _resolve_base_url(explicit_base_url: Optional[str], runtime_dir: Path = REPO
     if not endpoint.uncertain and endpoint.port > 0:
         host = "127.0.0.1" if endpoint.host == "0.0.0.0" else endpoint.host
         base_url = f"http://{host}:{endpoint.port}"
-        if probe_runtime_health_result(base_url, timeout_s=2.0, log_failures=True, state_dir=state_dir).ok:
+        if probe_runtime_health_result(base_url, timeout_s=2.0, log_failures=True).ok:
             return base_url, "runtime_files"
     return _DEFAULT_BASE_URL, "default"
 

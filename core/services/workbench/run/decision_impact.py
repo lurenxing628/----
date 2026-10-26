@@ -118,7 +118,7 @@ def _resource_delta(before, after, kind):
 
 
 def operation_delta(before, after, *, before_status=None, after_status=None,
-                     task_intervals=None, reference_task_intervals=None):
+                     task_intervals, reference_task_intervals):
     status_changed = before_status != after_status if before_status not in (None, "unavailable") and after_status not in (None, "unavailable") else None
     delta = {"start_delta_hours": None, "end_delta_hours": None, "machine_changed": None, "operator_changed": None,
              "supplier_changed": None, "source_changed": None, "status_changed": status_changed}
@@ -132,12 +132,12 @@ def operation_delta(before, after, *, before_status=None, after_status=None,
             fields.extend(key for key in ("start", "end", "source") if side.get(key) is not None)
             fields.extend(key for key in ("machine", "operator", "supplier") if (side.get(key) or {}).get("ref") is not None)
         return {**delta, "change_kinds": kinds, "changed_fields": fields}
-    old_interval = reference_task_intervals[before["row_ref"]] if reference_task_intervals is not None and before.get("row_ref") is not None else None
-    new_interval = task_intervals[after["row_ref"]] if task_intervals is not None and after.get("row_ref") is not None else None
+    old_interval = reference_task_intervals[before["row_ref"]] if before.get("row_ref") is not None else None
+    new_interval = task_intervals[after["row_ref"]] if after.get("row_ref") is not None else None
     for index, field in enumerate(("start", "end")):
         if before.get("interval_comparable", True) and after.get("interval_comparable", True) and before[field] is not None and after[field] is not None:
-            old_time = local_time(before[field]) if reference_task_intervals is None else old_interval[index] if old_interval is not None else None
-            new_time = local_time(after[field]) if task_intervals is None else new_interval[index] if new_interval is not None else None
+            old_time = old_interval[index] if old_interval is not None else None
+            new_time = new_interval[index] if new_interval is not None else None
             if old_time is not None and new_time is not None:
                 delta[field + "_delta_hours"] = (new_time - old_time).total_seconds() / 3600.0
     for kind in ("machine", "operator", "supplier"):
@@ -165,32 +165,31 @@ def _operation_state(arrangement, *, available, deferred):
                        "message": "排产时因缺料保留为待料未排。" if deferred else "这份归档没有给该工序安排时间。"}}
 
 
-def operation_changes(tasks, reference_tasks, operation_refs, reference_available, *, selected_available=True,
-                      deferred_refs=(), reference_deferred_refs=(), reference_groups=None, selected_groups=None,
-                      task_intervals=None, reference_task_intervals=None):
-    comparisons = (row for _ref, row in iter_operation_comparisons(tasks, reference_tasks, operation_refs, reference_available,
+def operation_changes(operation_refs, reference_available, *, selected_available,
+                      deferred_refs, reference_deferred_refs, reference_groups, selected_groups,
+                      task_intervals, reference_task_intervals):
+    comparisons = (row for _ref, row in iter_operation_comparisons(operation_refs, reference_available,
         selected_available=selected_available, deferred_refs=deferred_refs, reference_deferred_refs=reference_deferred_refs,
         reference_groups=reference_groups, selected_groups=selected_groups, task_intervals=task_intervals,
         reference_task_intervals=reference_task_intervals))
     return operation_change_metrics(comparisons, operation_refs, reference_available, selected_available=selected_available)
 
 
-def operation_comparisons(tasks, reference_tasks, operation_refs, reference_available, *, selected_available,
+def operation_comparisons(operation_refs, reference_available, *, selected_available,
                           deferred_refs, reference_deferred_refs, reference_groups, selected_groups,
                           task_intervals, reference_task_intervals):
-    return dict(iter_operation_comparisons(tasks, reference_tasks, operation_refs, reference_available,
+    return dict(iter_operation_comparisons(operation_refs, reference_available,
         selected_available=selected_available, deferred_refs=deferred_refs, reference_deferred_refs=reference_deferred_refs,
         reference_groups=reference_groups, selected_groups=selected_groups, task_intervals=task_intervals,
         reference_task_intervals=reference_task_intervals, display=True))
 
 
-def iter_operation_comparisons(tasks, reference_tasks, operation_refs, reference_available, *, selected_available=True,
-                              deferred_refs=(), reference_deferred_refs=(), reference_groups=None, selected_groups=None,
-                              task_intervals=None, reference_task_intervals=None, display=False):
-    old = reference_groups if reference_groups is not None else by_operation(reference_tasks)
-    new = selected_groups if selected_groups is not None else by_operation(tasks)
+def iter_operation_comparisons(operation_refs, reference_available, *, selected_available,
+                              deferred_refs, reference_deferred_refs, reference_groups, selected_groups,
+                              task_intervals, reference_task_intervals, display=False):
     for ref in operation_refs:
-        before, after = arrangement_view(old.get(ref, ()), display=display), arrangement_view(new.get(ref, ()), display=display)
+        before = arrangement_view(reference_groups.get(ref, ()), display=display)
+        after = arrangement_view(selected_groups.get(ref, ()), display=display)
         previous = _operation_state(before, available=reference_available, deferred=ref in reference_deferred_refs)
         current = _operation_state(after, available=selected_available, deferred=ref in deferred_refs)
         delta = operation_delta(before, after, before_status=previous["status"], after_status=current["status"],
@@ -205,8 +204,8 @@ def iter_operation_comparisons(tasks, reference_tasks, operation_refs, reference
 def operation_impacts(source):
     old, new = source.analysis_groups("reference"), source.analysis_groups(source.selected_ref)
     comparisons = source.operation_comparisons
-    reasons = {row["operation_ref"]: row["reason"] for row in unplanned_projection(source.disposition, source.analysis_tasks(source.selected_ref), source.facts) or ()}
-    reference_reasons = ({row["operation_ref"]: row["reason"] for row in unplanned_projection(source.disposition, source.analysis_tasks("reference"), source.facts) or ()}
+    reasons = {row["operation_ref"]: row["reason"] for row in unplanned_projection(source.disposition, source.analysis_tasks(source.selected_ref), source.facts)}
+    reference_reasons = ({row["operation_ref"]: row["reason"] for row in unplanned_projection(source.disposition, source.analysis_tasks("reference"), source.facts)}
                         if source.comparison_mode == "candidates" else {})
     result = []
     for ref in source.scope["operation_refs"]:

@@ -30,9 +30,7 @@ class ExecutionResourceReservation:
 
 
 def build_execution_resource_reservations(
-    *, facts: Dict[int, ExecutionFact], selected_op_ids: Set[int],
-    start_dt: Optional[datetime] = None,
-    capture,
+    *, facts: Dict[int, ExecutionFact], selected_op_ids: Set[int], start_dt: datetime, capture,
 ) -> List[ExecutionResourceReservation]:
     reservations = []
     for op_id, fact in sorted(facts.items()):
@@ -62,7 +60,7 @@ def build_execution_resource_reservations(
             raise _execution_conflict("在制工序缺少实际开工时间，本次没有写入新排程。",
                                       reason="missing_actual_start_time", op_id=op_id)
         end_time = fact.actual_start_time + _planned_duration(saved, op_id=op_id)
-        if start_dt is not None and end_time <= start_dt:
+        if end_time <= start_dt:
             raise _execution_conflict(
                 "未选中的在制工序已超过预计结束时间，但还没有完工反馈，无法确认资源何时释放。本次没有写入新排程。",
                 reason="execution_resource_release_unknown", op_id=op_id,
@@ -114,38 +112,33 @@ class ExecutionResourceCalendar:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._calendar, name)
 
-    def _release(self, operator_id: Any) -> Optional[datetime]:
-        return self._release_by_operator.get(str(operator_id or "").strip())
-
-    def adjust_to_working_time(
-        self, dt: datetime, *, priority=None, machine_id=None, operator_id=None,
-    ) -> datetime:
-        release = self._release(operator_id)
+    def adjust_to_working_time(self, dt: datetime, *, priority=None, operator_id: Any = None) -> datetime:
+        # 与 __init__ 写入同一口径，按人员编号原值查找。
+        release = self._release_by_operator.get(operator_id)
         return self._calendar.adjust_to_working_time(
-            max(dt, release) if release is not None else dt,
-            priority=priority, machine_id=machine_id, operator_id=operator_id,
+            max(dt, release) if release is not None else dt, priority=priority, operator_id=operator_id,
         )
 
-    def add_working_hours(self, start: datetime, hours: Any, priority=None, machine_id=None, operator_id=None) -> datetime:
-        return self._calendar.add_working_hours(start, hours, priority=priority, machine_id=machine_id, operator_id=operator_id)
+    def add_working_hours(self, start: datetime, hours: Any, priority=None, operator_id=None) -> datetime:
+        return self._calendar.add_working_hours(start, hours, priority=priority, operator_id=operator_id)
 
-    def add_effective_hours(self, start: datetime, hours: Any, priority=None, machine_id=None, operator_id=None) -> datetime:
-        return self._calendar.add_effective_hours(start, hours, priority=priority, machine_id=machine_id, operator_id=operator_id)
+    def add_effective_hours(self, start: datetime, hours: Any, priority=None, operator_id=None) -> datetime:
+        return self._calendar.add_effective_hours(start, hours, priority=priority, operator_id=operator_id)
 
-    def add_calendar_days(self, *args, **kwargs) -> datetime:
-        return self._calendar.add_calendar_days(*args, **kwargs)
+    def add_calendar_days(self, start: datetime, days: Any) -> datetime:
+        return self._calendar.add_calendar_days(start, days)
 
-    def get_efficiency(self, dt: datetime, machine_id=None, operator_id=None) -> Any:
-        return self._calendar.get_efficiency(dt, machine_id=machine_id, operator_id=operator_id)
+    def get_efficiency(self, dt: datetime, operator_id=None) -> Any:
+        return self._calendar.get_efficiency(dt, operator_id=operator_id)
 
-    def certified_slot_window(self, dt: datetime, *, priority=None, operator_id=None) -> Optional[Tuple[datetime, datetime]]:
+    def certified_slot_window(self, dt: datetime, *, priority=None, operator_id: Any = None) -> Optional[Tuple[datetime, datetime]]:
         """The underlying constant work window, only where the overlay is the identity on ``adjust``.
 
         Below an operator's release floor ``adjust_to_working_time`` jumps forward, so no
         constant-window proof exists there; at or after the floor the overlay answers exactly
         like the underlying calendar, whose window is clamped to start no earlier than the floor.
         """
-        release = self._release(operator_id)
+        release = self._release_by_operator.get(operator_id)
         if release is not None and dt < release:
             return None
         if static_attribute(self._calendar, "certified_slot_window") is None:
@@ -159,15 +152,9 @@ class ExecutionResourceCalendar:
         return "execution-release-v1", checkpoint_calendar_signature(self._calendar), tuple(sorted(self._release_by_operator.items()))
 
 
-_OVERLAY_GUARDED_MEMBERS = TIMING_METHODS + ACCESSOR_HOOKS + ("__dict__", "_release")
+_OVERLAY_GUARDED_MEMBERS = TIMING_METHODS + ACCESSOR_HOOKS + ("__dict__",)
 _OVERLAY_CLASS_UNCHANGED = member_identity_guard(ExecutionResourceCalendar, _OVERLAY_GUARDED_MEMBERS)
 _OVERLAY_CALENDAR_DAYS_UNCHANGED = member_identity_guard(ExecutionResourceCalendar, ("add_calendar_days",))
-
-
-def _native_release_floors(releases: Any) -> bool:
-    if type(releases) is not dict:
-        return False
-    return all(type(key) is str and type(value) is datetime and value.tzinfo is None for key, value in releases.items())
 
 
 def native_execution_overlay_timing(overlay: Any) -> bool:
@@ -176,8 +163,6 @@ def native_execution_overlay_timing(overlay: Any) -> bool:
         return False
     fields = vars(overlay)
     if not fields.keys().isdisjoint(_OVERLAY_GUARDED_MEMBERS):
-        return False
-    if not _native_release_floors(fields.get("_release_by_operator")):
         return False
     return native_timing_calendar(fields.get("_calendar"))
 

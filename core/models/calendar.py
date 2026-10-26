@@ -122,7 +122,7 @@ class OperatorCalendar:
     @classmethod
     def from_row(cls, row: RowLike) -> OperatorCalendar:
         return cls(
-            operator_id=str(row["operator_id"] or ""),
+            operator_id=str(row["operator_id"]),
             **_parse_common_calendar_row(row, "OperatorCalendar"),
         )
 

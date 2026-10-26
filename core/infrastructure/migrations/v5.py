@@ -15,7 +15,7 @@ def _run_update(conn: sqlite3.Connection, sql: str, *, label: str, logger=None) 
                 fallback_log(logger, "warning", f"数据库迁移 v5：{label} 已跳过（{e}）。")
             return MigrationOutcome.SKIPPED
         raise
-    changed = int(getattr(cur, "rowcount", 0) or 0)
+    changed = cur.rowcount
     if changed and logger:
         fallback_log(logger, "warning", f"数据库迁移 v5：已修正 {label}（影响行数={changed}）。")
     return MigrationOutcome.APPLIED

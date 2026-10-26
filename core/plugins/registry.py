@@ -23,8 +23,8 @@ class PluginRegistry:
     conflict_policy: str = "first_loaded_wins"
     _active_plugin_id: Optional[str] = field(default=None, repr=False)
 
-    def bind_plugin(self, plugin_id: Optional[str]) -> None:
-        self._active_plugin_id = str(plugin_id or "").strip() or None
+    def bind_plugin(self, plugin_id: str) -> None:
+        self._active_plugin_id = plugin_id.strip() or None
 
     def clear_bound_plugin(self) -> None:
         self._active_plugin_id = None

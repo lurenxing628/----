@@ -36,12 +36,12 @@
     const other = saved && detail && saved.baseline.template_operation_ref !== detail.suggestion.template_operation_ref;
     const row = saved ? saved.baseline : detail && detail.suggestion;
     const blocked = stale || other || !!s.storageError || !detail;
-    const refresh = () => { s.setConsent(false); s.change(s.draft); if (typeof onRefresh === 'function') onRefresh(); };
+    const refresh = () => { s.setConsent(false); s.change(s.draft); onRefresh(); };
     return <Modal title={result ? '模板采用结果' : pending ? '查询上次采用结果' : '预检并采用模板定额'} icon="check" onClose={s.close}
       footer={<><Button onClick={s.close}>{pending ? '关闭并保留上次操作' : '关闭'}</Button>
         {result ? <Button icon="check" onClick={s.finish}>完成</Button> : pending ? <Button icon="refresh-cw" busy={s.busy} onClick={s.lookup}>{window.WorkbenchTerms.actions.query_result}</Button> : <>
           {saved && <Button disabled={s.busy || !!s.storageError} onClick={s.finish}>放弃上次采用记录</Button>}
-          <Button icon="refresh-cw" disabled={s.busy || typeof onRefresh !== 'function'} onClick={refresh}>刷新所选模板</Button>
+          <Button icon="refresh-cw" disabled={s.busy} onClick={refresh}>刷新所选模板</Button>
           <Button icon="search" busy={s.busy} disabled={blocked} onClick={s.inspect}>检查是否可采用</Button>
           <Button icon="check" className="btn primary" busy={s.busy} disabled={blocked || !preview || !preview.validation.can_adopt || !s.consent} onClick={s.submit}>确认采用</Button></>}</>}>
       <div className="modal-body cad-body">
