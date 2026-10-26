@@ -311,7 +311,8 @@ REQUIRED_REGRESSION_COMMON_SCOPES = {
     "input_file_scopes": (
         "tests/conftest.py", "conftest.py", "tests/_support/**/*.py",
         "schema.sql", "app.py", "app_new_ui.py", "core/errors.py",
-        "core/infrastructure/**/*.py", "core/services/common/**/*.py", "web/bootstrap/**/*.py",
+        "core/infrastructure/**/*.py", "core/services/common/**/*.py", "core/shared/**/*.py",
+        "web/bootstrap/**/*.py",
     ),
     "config_file_scopes": (
         "pyproject.toml", "pytest.ini", "setup.cfg", "tox.ini", ".gitignore",

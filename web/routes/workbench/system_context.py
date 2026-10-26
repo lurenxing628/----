@@ -39,7 +39,7 @@ def system_endpoint(function):
             request_ref = uuid4().hex
             current_app.logger.exception("系统工作区请求失败 endpoint=%s request_ref=%s", request.endpoint, request_ref)
             key = getattr(g, "system_request_key", None)
-            payload = failure_payload("storage_failure", messages.unknown("这次维护操作"), 500,
+            payload = failure_payload("storage_failure", messages.unknown("这次维护操作") if key else messages.FAILURE, 500,
                                       committed="unknown" if key else False, request_ref=request_ref)
             if key:
                 payload["error"].update({"request_key": key, "result_target": BASE + "/results/" + key})

@@ -17,6 +17,7 @@ from werkzeug.test import EnvironBuilder
 from core.infrastructure.backup import BackupManager
 from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.services.workbench import messages
 from core.services.workbench.facts.run_data_context import RunDataContext
 from core.services.workbench.facts.system_journal import SystemMaintenanceJournal, assert_system_maintenance_ready
 from core.services.workbench.facts.system_reads import backup_signature
@@ -743,7 +744,26 @@ def test_unexpected_system_failure_logs_the_request_ref_shown_to_the_user(tmp_pa
     result = response.get_json()
     error = result["error"]
     assert result["committed"] is False and "request_key" not in error
-    assert (error["code"], error["message"]) == ("storage_failure", "这次维护操作结果不确定，可能已经生效。请刷新后核对，不要重复提交。")
+    assert (error["code"], error["message"]) == ("storage_failure", messages.FAILURE)
     record, = [item for item in caplog.records if item.getMessage().startswith("系统工作区请求失败")]
     assert record.getMessage() == "系统工作区请求失败 endpoint=system_test.system_backups_read request_ref=" + error["request_ref"]
     assert isinstance(record.exc_info[1], RuntimeError)
+
+
+def test_unexpected_failure_after_command_registered_keeps_result_unknown(tmp_path, monkeypatch):
+    """命令编号已登记后的未预期错误：结果不确定，并给出查询结果的入口。"""
+    from web.routes.workbench import system_actions
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("file workspace broke")
+
+    api = SystemTestAPI(tmp_path)
+    monkeypatch.setattr(system_actions, "_file_service", broken)
+    response = api.file_action("create", key="system-test-request-0009")
+    assert response.status_code == 500, response.get_data(as_text=True)
+    result = response.get_json()
+    error = result["error"]
+    assert result["committed"] == "unknown"
+    assert (error["code"], error["message"]) == ("storage_failure", messages.unknown("这次维护操作"))
+    assert error["request_key"] == "system-test-request-0009"
+    assert error["result_target"] == "/api/workbench/v1/system/results/system-test-request-0009"
