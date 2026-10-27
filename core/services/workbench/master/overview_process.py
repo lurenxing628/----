@@ -2,8 +2,9 @@
 
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.services.process.template_source import SOURCE_MESSAGES, TemplateSourceFacts
+from core.shared.strict_parse import is_exact_non_negative_number
 
-from .overview_graph import number, text
+from .overview_graph import text
 
 PARSED_TEXT = {"yes": "已解析", "no": "未解析"}
 MERGE_TEXT = {"merged": "合并设置", "separate": "分别设置"}
@@ -122,8 +123,8 @@ def _operation(graph, route, op, ref, groups, state, sources):
     if source == "internal":
         for key, label in (("setup_hours", "换型工时"), ("unit_hours", "单件工时")):
             value = op[key]
-            graph.field(route, prefix + label + "（小时）", value, "PartOperations." + key, valid=number(value))
-            if not number(value):
+            graph.field(route, prefix + label + "（小时）", value, "PartOperations." + key, valid=is_exact_non_negative_number(value))
+            if not is_exact_non_negative_number(value):
                 issue("operation." + key, label + ("未填写" if value is None else "数值异常"),
                       label + "填的是" + text(value) + "，要填 0 或大于 0 的数字。", "hours")
         confirmation = state["operations"].get(ref) if state else None
@@ -139,8 +140,8 @@ def _external(graph, route, op, ref, groups, prefix, issue):
     merged = group and group["merge_mode"] == "merged"
     value = group["total_days"] if group is not None and merged else op["ext_days"]
     label = "整组周期" if merged else "逐序周期"
-    graph.field(route, prefix + label + "（天）", value, "ExternalGroups.total_days" if merged else "PartOperations.ext_days", valid=number(value, True))
-    if not number(value, True):
+    graph.field(route, prefix + label + "（天）", value, "ExternalGroups.total_days" if merged else "PartOperations.ext_days", valid=is_exact_non_negative_number(value, positive=True))
+    if not is_exact_non_negative_number(value, positive=True):
         issue("operation.days", "外协周期待维护", label + "填的是" + text(value) + "，请填写大于 0 的周期。", "hours")
     if merged:
         graph.field(route, prefix + "保留的逐序周期（天）", op["ext_days"], "PartOperations.ext_days", required=False)

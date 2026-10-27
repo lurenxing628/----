@@ -1,6 +1,5 @@
 """Read-only release dates shared by preview and candidate input admission."""
 
-import math
 import sys
 from bisect import bisect_right
 from collections import defaultdict
@@ -9,10 +8,11 @@ from decimal import ROUND_FLOOR, Decimal
 
 from core.models.batch_external_context import context_group_key
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.strict_parse import is_exact_non_negative_number
 
 
 def quantity(value, *, positive=False):
-    if type(value) not in (int, float) or not math.isfinite(value) or value < 0 or (positive and value == 0):
+    if not is_exact_non_negative_number(value, positive=positive):
         raise WorkbenchCommandRejected("material_unknown", "物料需求量或到料量无效，请先核对物料需求。")
     return Decimal(str(value))
 

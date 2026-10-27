@@ -120,7 +120,7 @@ def _pick_order(calendar, rule):
     decoded = production_decode(
         scheduler, operations=operations, batches=batches, strategy=SortStrategy.PRIORITY_FIRST, start_dt=START,
         machine_downtimes={"M2": [(START, MONDAY_08)]}, dispatch_mode="sgs", dispatch_rule=rule,
-        seed_results=[], strict_mode=True,
+        seed_results=[],
     )
     results, summary = decoded.results, decoded.summary
     assert summary.failed_ops == 0

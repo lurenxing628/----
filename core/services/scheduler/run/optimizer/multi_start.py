@@ -11,7 +11,7 @@ from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithms.evaluation import objective_score
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 
-from .attempt_records import candidate_tag, evaluate_optional_start_candidate
+from .attempt_records import candidate_tag
 from .config import weighted_strategy_params
 from .search_stage import SearchStage
 from .search_state import OptimizerSearchState
@@ -58,7 +58,6 @@ def _get_cached_multi_start_order(
 
 def _evaluate_multi_start_candidate(
     *,
-    strict_mode: bool,
     strategy: SortStrategy,
     params: Dict[str, Any],
     start_dt: datetime,
@@ -77,7 +76,6 @@ def _evaluate_multi_start_candidate(
     decoded = decode_and_metrics(
         decode_session=decode_session, objective_name=objective_name,
         optimizer_algo_stats=optimizer_algo_stats, before_decode=before_decode,
-        strict_mode=bool(strict_mode),
         strategy=strategy,
         strategy_params=params,
         start_dt=start_dt,
@@ -177,7 +175,7 @@ class MultiStartStage(SearchStage):
         cfg: ScheduleConfigSnapshot, resource_pool: Optional[Dict[str, Any]], objective_name: str, deadline: float,
         t_begin: float, build_order: Any,
         optimizer_algo_stats: Optional[Dict[str, Any]] = None, readiness_gate_enabled: bool = False,
-        graph_ready_context: Optional[Any] = None, strict_mode: bool = False,
+        graph_ready_context: Optional[Any] = None,
         clock: Optional[Callable[[], float]] = None,
         search_report_state: OptimizationSearchReportState,
         state: OptimizerSearchState,
@@ -189,15 +187,10 @@ class MultiStartStage(SearchStage):
         self.now = clock or time.time
         self.deadline = deadline
         self.search_report_state = search_report_state
-        self.strict_mode = bool(strict_mode)
         self.t_begin = t_begin
         self.decode_session = decode_session
-        self.primary = (
-            str(keys[0]) if keys else "", str(dispatch_modes[0]) if dispatch_modes else "", str(dispatch_rule_cfg),
-        )
         self.evaluate = partial(
-            _evaluate_multi_start_candidate, strict_mode=self.strict_mode,
-            start_dt=start_dt, end_date=end_date,
+            _evaluate_multi_start_candidate, start_dt=start_dt, end_date=end_date,
             resource_pool=resource_pool, objective_name=objective_name, optimizer_algo_stats=optimizer_algo_stats,
             readiness_gate_enabled=bool(readiness_gate_enabled), graph_ready_context=graph_ready_context,
             decode_session=decode_session, before_decode=self._note_decode,
@@ -270,12 +263,7 @@ class MultiStartStage(SearchStage):
             return
         decode_started = self.now()
         try:
-            candidate = evaluate_optional_start_candidate(
-                evaluate=partial(self.evaluate, strategy=strategy, params=params, order=order,
-                                 dispatch_mode=dm, dispatch_rule=rule),
-                attempts=self.state.attempts, strategy_key=key, dispatch_mode=dm, dispatch_rule=rule,
-                primary=self.primary, strict_mode=self.strict_mode,
-            )
+            candidate = self.evaluate(strategy=strategy, params=params, order=order, dispatch_mode=dm, dispatch_rule=rule)
         except SharedSearchSkip as exc:
             self.state.attempts.append({
                 "tag": candidate_tag(key, dm, rule), "candidate_status": "skipped", "reason": exc.reason,
@@ -288,8 +276,6 @@ class MultiStartStage(SearchStage):
             elif exc.reason == "time_budget":
                 self._stop_reason = exc.reason
                 self.exhausted = True
-            return
-        if candidate is None:
             return
         if candidate["decode_receipt"]["execution_kind"] == "decision_reused":
             self.efficiency["reused_candidates"] += 1

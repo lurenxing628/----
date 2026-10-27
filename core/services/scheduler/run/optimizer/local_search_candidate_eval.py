@@ -13,7 +13,6 @@ if TYPE_CHECKING:
 
 def evaluate_local_search_candidate(
     *,
-    strict_mode: bool,
     strategy: Any,
     params: Dict[str, Any],
     start_dt: datetime,
@@ -32,7 +31,6 @@ def evaluate_local_search_candidate(
         decode_session=decode_session,
         objective_name=objective_name,
         optimizer_algo_stats=optimizer_algo_stats,
-        strict_mode=bool(strict_mode),
         strategy=strategy,
         strategy_params=params,
         start_dt=start_dt,

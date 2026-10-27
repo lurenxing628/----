@@ -6,13 +6,12 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tupl
 
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithms.evaluation import objective_score
-from core.errors import ValidationError
 
-from .attempt_records import attempt_decision_evidence, validation_error_origin
+from .attempt_records import attempt_decision_evidence
 from .candidate_comparison import candidate_is_preferred
 from .grasp_ig_specs import build_grasp_ig_candidate_specs
 from .search_stage import SearchStage
-from .search_state import OptimizerSearchState, append_unique_rejected_attempt
+from .search_state import OptimizerSearchState
 from .shared_budget import SharedSearchSkip
 from .shared_decode import decode_and_metrics
 
@@ -31,7 +30,6 @@ def _candidate_tag(origin: str, index: int, dispatch_mode: str, dispatch_rule: s
 
 def _evaluate_candidate(
     *,
-    strict_mode: bool,
     strategy: SortStrategy,
     params: Dict[str, Any],
     start_dt: datetime,
@@ -48,7 +46,6 @@ def _evaluate_candidate(
     decoded = decode_and_metrics(
         decode_session=decode_session, objective_name=objective_name,
         optimizer_algo_stats=optimizer_algo_stats,
-        strict_mode=bool(strict_mode),
         strategy=strategy,
         strategy_params=dict(params),
         start_dt=start_dt,
@@ -130,29 +127,6 @@ def _append_trace(
             "score": list(candidate["score"]),
             "metrics": metrics.to_dict(),
         }
-    )
-
-
-def _append_rejected_attempt(
-    *,
-    attempts: List[Dict[str, Any]],
-    origin: str,
-    index: int,
-    strategy: SortStrategy,
-    dispatch_mode: str,
-    dispatch_rule: str,
-    exc: ValidationError,
-) -> None:
-    append_unique_rejected_attempt(
-        attempts,
-        {
-            "tag": _candidate_tag(origin, index, dispatch_mode, dispatch_rule),
-            "strategy": strategy.value,
-            "dispatch_mode": dispatch_mode,
-            "dispatch_rule": dispatch_rule,
-            "source": "candidate_rejected",
-            "origin": validation_error_origin(exc),
-        },
     )
 
 
@@ -260,7 +234,6 @@ def _run_candidate_spec(
     *,
     spec: Dict[str, Any],
     best: Optional[Dict[str, Any]],
-    strict_mode: bool,
     base_strategy: SortStrategy,
     base_params: Dict[str, Any],
     start_dt: datetime,
@@ -283,7 +256,6 @@ def _run_candidate_spec(
     decode_started = clock()
     try:
         candidate = _evaluate_candidate(
-            strict_mode=bool(strict_mode),
             strategy=base_strategy,
             params=base_params,
             start_dt=start_dt,
@@ -305,19 +277,6 @@ def _run_candidate_spec(
             "strategy": base_strategy.value, "dispatch_mode": dispatch_mode, "dispatch_rule": dispatch_rule,
         })
         return best, exc.reason
-    except ValidationError as exc:
-        if bool(strict_mode):
-            raise
-        _append_rejected_attempt(
-            attempts=attempts,
-            origin=origin,
-            index=index,
-            strategy=base_strategy,
-            dispatch_mode=dispatch_mode,
-            dispatch_rule=dispatch_rule,
-            exc=exc,
-        )
-        return best, None
     # Measured decode time travels with the candidate so a GRASP/IG incumbent can still budget
     # the local search and later guards (the key name is shared with multi-start starts); its
     # integer runtime_ms is the candidate's own cost for equal-score tie-breaks.
@@ -349,7 +308,7 @@ class GraspIGStage(SearchStage):
         build_order: Callable[[SortStrategy, Dict[str, Any]], List[str]], dispatch_rule_cfg: str,
         resource_pool: Optional[Dict[str, Any]], objective_name: str,
         deadline: float, optimizer_algo_stats: Optional[Dict[str, Any]], t_begin: float,
-        readiness_gate_enabled: bool, strict_mode: bool,
+        readiness_gate_enabled: bool,
         clock: Callable[[], float], rng_factory: Callable[[int], Any],
         batch_order_enabled: bool = True,
         search_report_state: OptimizationSearchReportState,
@@ -363,7 +322,7 @@ class GraspIGStage(SearchStage):
         self.finished = False
         self._stop_reason: Optional[str] = None
         self.run_spec = partial(
-            _run_candidate_spec, strict_mode=bool(strict_mode), base_strategy=base_strategy,
+            _run_candidate_spec, base_strategy=base_strategy,
             base_params=base_params, start_dt=start_dt, end_date=end_date,
             resource_pool=resource_pool, objective_name=objective_name,
             optimizer_algo_stats=optimizer_algo_stats, readiness_gate_enabled=bool(readiness_gate_enabled),

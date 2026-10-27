@@ -1,8 +1,9 @@
 """Resource fields follow existing explicit profiles, not inferred UI status."""
 
 from core.models.resource_capabilities import machine_type_index, supports_source
+from core.shared.strict_parse import is_exact_non_negative_number
 
-from .overview_graph import number, text
+from .overview_graph import text
 
 CATALOGS = (("opType", "OpTypes", "op_type_id"), ("equipment", "Machines", "machine_id"),
             ("personnel", "Operators", "operator_id"), ("material", "Materials", "material_id"),
@@ -33,8 +34,8 @@ def add_resources(graph):
                 _material(graph, entity, row)
             if domain == "supplier":
                 days = row["default_days"]
-                graph.field(entity, "默认周期（天）", days, "Suppliers.default_days", valid=number(days, True))
-                if not number(days, True):
+                graph.field(entity, "默认周期（天）", days, "Suppliers.default_days", valid=is_exact_non_negative_number(days, positive=True))
+                if not is_exact_non_negative_number(days, positive=True):
                     graph.issue(entity, "supplier.days", "供应商默认周期待核对", "默认周期现在是" + text(days) + "，应该填大于 0 的天数。")
 
 
@@ -92,8 +93,8 @@ def _material(graph, entity, row):
         if not isinstance(row[name], str) or not row[name].strip():
             graph.issue(entity, "material." + name, label + "未填写", "这条物料的" + label + "未填写，请补充。")
     value = row["stock_qty"]
-    graph.field(entity, "库存数量", value, "Materials.stock_qty", valid=number(value))
-    if not number(value):
+    graph.field(entity, "库存数量", value, "Materials.stock_qty", valid=is_exact_non_negative_number(value))
+    if not is_exact_non_negative_number(value):
         graph.issue(entity, "material.stock", "库存数量待核对", "库存数量现在是" + text(value) + "，请填写有效数量，可填 0。")
 
 

@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Dict, Optional, Tuple
 
 from ._helpers import RowLike, parse_float_or_default
-from .calendar_periods import decode_periods
+from .calendar_periods import decode_periods, encode_periods
 from .enums import CalendarDayType, YesNo
 
 
 @lru_cache(maxsize=256)
 def _canonical_periods_json(raw: str) -> str:
-    return json.dumps(decode_periods(raw), ensure_ascii=False, separators=(",", ":"))
+    return encode_periods(decode_periods(raw))
 
 
 def _decode_and_encode_periods(raw):
@@ -20,8 +19,7 @@ def _decode_and_encode_periods(raw):
         return None
     if isinstance(raw, str):
         return _canonical_periods_json(raw)
-    periods = decode_periods(raw)
-    return None if periods is None else json.dumps(periods, ensure_ascii=False, separators=(",", ":"))
+    return encode_periods(decode_periods(raw))
 
 
 def _validate_calendar_numbers(*, shift_hours: float, efficiency: float, scope: str) -> Tuple[float, float]:

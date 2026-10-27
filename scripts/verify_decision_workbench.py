@@ -1264,7 +1264,7 @@ def serve(args):
     payload = acquire_runtime_lock(str(root), db_path=str(database))
     deps = _default_deps("default")
     lock_state = {"payload": payload}
-    atexit.register(release_runtime_after_jobs, deps, lock_state, str(root), str(database))
+    atexit.register(release_runtime_after_jobs, deps, lock_state, str(root))
     runtime = app = server = None
     thread = None
     try:
@@ -1280,7 +1280,7 @@ def serve(args):
         install_workbench_system_restore_host(app, runtime=runtime)
         server = create_runtime_server(app, "127.0.0.1", 0)
         publication = configure_runtime_contract(app, str(root), "127.0.0.1", server.server_port, current_runtime_owner(),
-                                                 default_ui_mode="default", deps=deps, runtime_lock=payload)
+                                                 deps=deps, runtime_lock=payload)
         lock_state["contract"] = publication["payload"]
         lock_state["contract_cleanup_dir"] = str(Path(publication["path"]).parent)
         thread = threading.Thread(target=deps.serve_runtime_app, args=(app, "127.0.0.1", server.server_port),

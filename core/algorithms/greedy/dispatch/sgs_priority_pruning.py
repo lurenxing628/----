@@ -23,6 +23,7 @@ from core.algorithm_contracts.value_domains import EXTERNAL
 from core.algorithm_runtime.calendar_timing_memo import native_timing_calendar
 from core.algorithm_runtime.native_snapshot import UNSUPPORTED, scalar_snapshot
 from core.errors import ValidationError
+from core.shared.strict_parse import is_exact_finite_number
 
 from .sgs_due_span import external_candidate_window
 from .sgs_priority_keys import ValidatedGraphPriorityKeys
@@ -42,16 +43,16 @@ def prepare_pruning_record(record, plain_classes):
 
 class GraphPriorityPruning:
     @classmethod
-    def for_cache(cls, cache, graph_state, batches, hours, *, strict_mode):
+    def for_cache(cls, cache, graph_state, batches, hours):
         if cache is None or cache._timing is None:
             return None
         # The cache already certified the pool and the native probe; auto-assign operations
         # are admitted only through that same certification.
-        return cls(graph_state, batches, hours, strict_mode=strict_mode,
+        return cls(graph_state, batches, hours,
                    eligible_resources=cache.eligible_resources,
                    calendar=cache._timing.calendar, calendar_days=cache.calendar_days, preparation=cache.preparation)
 
-    def __init__(self, graph_state, batches, hours, *, strict_mode, eligible_resources=None, calendar=None, calendar_days=None, preparation=None):
+    def __init__(self, graph_state, batches, hours, *, eligible_resources=None, calendar=None, calendar_days=None, preparation=None):
         if preparation is None:
             records = list(batches.values()) + [op for _batch_id, op in graph_state["op_by_id"].values()]
             self._plain_classes = {kind: plain_record_class(kind) for kind in {type(record) for record in records}}
@@ -69,7 +70,7 @@ class GraphPriorityPruning:
         self._eligible_resources = eligible_resources
         self._calendar = calendar
         self._has_external = False
-        self.supported = self._prepare(graph_state, batches, hours, strict_mode)
+        self.supported = self._prepare(graph_state, batches, hours)
 
     def _record(self, record):
         token = id(record)
@@ -79,7 +80,7 @@ class GraphPriorityPruning:
             records[token] = prepare_pruning_record(record, self._plain_classes)
         return records[token]
 
-    def _prepare(self, graph, batches, hours, strict):
+    def _prepare(self, graph, batches, hours):
         if graph is None or not graph.get("score_enabled"):
             return False
         keys = graph["graph_priority_key_by_op_id"]
@@ -94,8 +95,8 @@ class GraphPriorityPruning:
             if not self._record(batch):
                 return False
             try:
-                parse_due_date(batch.due_date, strict_mode=strict)
-            except (ValidationError, ValueError, OverflowError):
+                parse_due_date(batch.due_date)
+            except ValidationError:
                 return False
         return self._certify_operations(graph, hours)
 
@@ -149,8 +150,7 @@ class GraphPriorityPruning:
         return False
 
     def _key_valid(self, key):
-        return (type(key) is tuple and len(key) == self.key_width
-                and all(type(value) in (int, float) and math.isfinite(value) for value in key))
+        return type(key) is tuple and len(key) == self.key_width and all(is_exact_finite_number(value) for value in key)
 
     def intact(self):
         """Both ready-set narrowing paths require the same current input and timing proof."""

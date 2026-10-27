@@ -13,7 +13,7 @@ from werkzeug.serving import ThreadedWSGIServer
 
 from core.infrastructure.backup import is_maintenance_window_active
 from core.infrastructure.database import ensure_schema, get_connection
-from core.infrastructure.logging import AppLogger, OperationLogger, safe_log
+from core.infrastructure.logging import AppLogger, safe_log
 from web.error_boundary import (
     render_error_template,
     wants_json_error_response,
@@ -269,7 +269,7 @@ def create_app_core(
         g._aps_req_started = time.perf_counter()
         req_path = request.path
         # 白名单短路路径只允许走“无业务依赖”的轻量请求：
-        # 不挂载 g.app_logger / g.db / g.op_logger，避免把静态资源与健康检查误带入请求级连接生命周期。
+        # 不挂载 g.app_logger / g.db，避免把静态资源与健康检查误带入请求级连接生命周期。
         # 若未来某个中间件需要这些请求级对象，则不应复用该白名单短路路径。
         if req_path.startswith("/static") or req_path in {"/system/health", "/system/runtime/shutdown"}:
             return
@@ -291,7 +291,6 @@ def create_app_core(
             try:
                 conn = get_connection(app.config["DATABASE_PATH"])
                 track_workbench_request_connection(conn)
-                op_logger = OperationLogger(conn, logger=current_app.logger)
             except Exception:
                 if conn is not None:
                     try:
@@ -307,7 +306,6 @@ def create_app_core(
                 raise
 
             g.db = conn
-            g.op_logger = op_logger
 
     @app.teardown_appcontext
     def _close_db(_exc):

@@ -1,6 +1,5 @@
 """Field/resource checks preserve NULL; exclusion never masks required fields."""
 
-import math
 from collections import defaultdict
 from datetime import date, datetime
 
@@ -14,10 +13,11 @@ from core.services.scheduler.contracts.external_context import (
     member_index,
     merged_supplier_problem,
 )
+from core.shared.strict_parse import is_exact_finite_number
 
 
 def number(value, *, integer=False, positive=False):
-    return (type(value) is int if integer else type(value) in (int, float)) and math.isfinite(value) and (
+    return (type(value) is int if integer else is_exact_finite_number(value)) and (
         0 < value <= 9007199254740991 if positive else 0 <= value <= 9007199254740991)
 
 

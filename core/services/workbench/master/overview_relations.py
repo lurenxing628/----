@@ -1,8 +1,9 @@
 """Batch requirements are explicit cross-page facts, never stock reservations."""
 
 from core.services.material.stage_availability import MaterialAvailability, covers_quantity
+from core.shared.strict_parse import is_exact_non_negative_number
 
-from .overview_graph import number, text
+from .overview_graph import text
 
 READY_TEXT = {"yes": "齐套", "no": "未齐套", "partial": "部分齐套"}
 MATERIAL_SOURCES = ("BatchMaterials", "BatchMaterialArrivals", "BatchMaterialReviews")
@@ -50,8 +51,8 @@ def _requirement_fields(graph, entity, row, batch, availability, readiness):
     evidence_key = batch["ref"] + ":" + str(row["id"])
     for key, label, positive in (("required_qty", "需求数量", True), ("available_qty", "已有到料数量", False)):
         value = row[key]
-        graph.field(entity, code + " " + label, value, "BatchMaterials." + key, valid=number(value, positive))
-        if availability is None and not number(value, positive):
+        graph.field(entity, code + " " + label, value, "BatchMaterials." + key, valid=is_exact_non_negative_number(value, positive=positive))
+        if availability is None and not is_exact_non_negative_number(value, positive=positive):
             item = graph.issue(entity, "batch_material." + key, "批次" + label + "待核对",
                                "批次 " + code + " 的" + label + "填的是" + text(value) + "。", action="核对批次物料需求", related_ref=evidence_key)
             item["target"] = batch["target"]

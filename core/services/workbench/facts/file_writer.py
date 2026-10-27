@@ -2,7 +2,6 @@
 
 import codecs
 import csv
-import math
 import re
 from tempfile import SpooledTemporaryFile
 
@@ -22,6 +21,7 @@ from core.services.common.excel_instruction_sheet import (
     append_instruction_sheet,
     close_write_only_sheets,
 )
+from core.shared.strict_parse import is_exact_finite_number
 
 from .file_codec import file_error
 from .file_lists import encode_code_list
@@ -53,7 +53,7 @@ def _value(value, field, row, fmt, kind=None):
     elif field in JSON_FIELDS:
         value = canonical_json(value)
     elif field in NUMERIC_FIELDS:
-        if type(value) not in (int, float) or not math.isfinite(value):
+        if not is_exact_finite_number(value):
             raise file_error("这个格子里存的数字不合法，没有导出，系统也没有替你改成 0。请到资料总览修正后重试。", row, field)
         return value
     elif type(value) is not str:

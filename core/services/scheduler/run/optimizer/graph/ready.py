@@ -96,7 +96,6 @@ def build_graph_search_stages(
     optimizer_algo_stats: Optional[Dict[str, Any]],
     t_begin: float,
     readiness_gate_enabled: bool,
-    strict_mode: bool,
     graph_ready_context: Dict[str, Any],
     clock: Callable[[], float],
     search_report_state: OptimizationSearchReportState,
@@ -126,7 +125,6 @@ def build_graph_search_stages(
         optimizer_algo_stats=optimizer_algo_stats,
         t_begin=t_begin,
         readiness_gate_enabled=readiness_gate_enabled,
-        strict_mode=strict_mode,
         graph_ready_context=graph_ready_context,
         metrics_by_op_id=prepared_features.metrics_by_op_id,
         clock=clock,
@@ -156,7 +154,6 @@ def _build_weight_profile_stages(
     optimizer_algo_stats: Optional[Dict[str, Any]],
     t_begin: float,
     readiness_gate_enabled: bool,
-    strict_mode: bool,
     graph_ready_context: Dict[str, Any],
     metrics_by_op_id: Dict[int, Dict[str, Any]],
     clock: Callable[[], float],
@@ -169,7 +166,6 @@ def _build_weight_profile_stages(
     budget = GraphReadySearchBudget(deadline=deadline, clock=clock)
     evaluate = partial(
         evaluate_graph_ready_candidate,
-        strict_mode=bool(strict_mode),
         strategy=base_strategy, params=base_params, start_dt=start_dt, end_date=end_date,
         dispatch_rule=dispatch_rule_cfg,
         resource_pool=resource_pool, objective_name=objective_name, optimizer_algo_stats=optimizer_algo_stats,
@@ -184,12 +180,11 @@ def _build_weight_profile_stages(
     search = GraphReadyProfileSearch(evaluate=evaluate, budget=budget, profile_count=len(profiles))
     state = GraphSearchState(best)
     stages: List[SearchStage] = [ProfileStage(
-        profiles=profiles, search=search, pool=pool, state=state, order=order, strict_mode=bool(strict_mode),
-        base_strategy=base_strategy, dispatch_rule_cfg=dispatch_rule_cfg, attempts=attempts,
+        profiles=profiles, search=search, pool=pool, state=state, order=order, attempts=attempts,
         improvement_trace=improvement_trace, search_report_state=search_report_state, clock=clock, t_begin=t_begin)]
     repair = EliteRepairRun(pool, state=state, evaluate=evaluate, budget=budget, deadline=deadline, clock=clock,
                             t_begin=t_begin, attempts=attempts, improvement_trace=improvement_trace,
-                            report_state=search_report_state, strict_mode=bool(strict_mode))
+                            report_state=search_report_state)
     stages.append(RepairStage(repair))
     greedy = IteratedGreedyRun(
         limits=IteratedGreedyLimits(), state=state,
@@ -197,7 +192,7 @@ def _build_weight_profile_stages(
         pool=pool, evaluate=evaluate, operations=algo_ops_to_schedule, graph_context=graph_ready_context,
         metrics_by_op_id=metrics_by_op_id, objective_name=objective_name, start_dt=start_dt, seed=version,
         deadline=deadline, clock=clock, t_begin=t_begin, attempts=attempts, improvement_trace=improvement_trace,
-        report_state=search_report_state, strict_mode=bool(strict_mode), decode_session=decode_session)
+        report_state=search_report_state, decode_session=decode_session)
     stages.append(IteratedGreedyStage(greedy, startup_ready=lambda: bool(pool.elites) or not stages[0].available()))
     return GraphStageBundle(state, stages)
 

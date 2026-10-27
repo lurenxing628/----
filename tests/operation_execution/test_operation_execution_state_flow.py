@@ -157,6 +157,8 @@ def _event_row(**values):
     ("source_table", "schedule_candidate", "current official schedule rows"),
     ("effective_plan_role", " baseline_best ", "adopted plan"),
     ("scenario_id", "s1", "scenario preview plans"),
+    # scenario_id 只许 NULL：空串也是“有值”，与 schema CHECK(scenario_id IS NULL) 同一口径。
+    ("scenario_id", "", "scenario preview plans"),
     # 前一状态版本在读取边界校验一次。
     ("previous_state_revision", "  ", "previous_state_revision is required"),
     # 计划身份是 SQLite INTEGER：文本、REAL 一律当损坏，不再按数字文本读通。

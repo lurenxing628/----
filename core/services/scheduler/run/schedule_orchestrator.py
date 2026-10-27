@@ -21,13 +21,9 @@ class ScheduleOrchestrationOutcome:
 def _run_plan_selection(
     *,
     schedule_input: ScheduleRunInput,
-    strict_mode: bool,
     candidate_comparison_fn: Callable[..., CandidateComparisonOutcome],
 ) -> Tuple[CandidatePlan, Optional[Dict[str, Any]], Optional[Dict[str, Any]], CandidateComparisonOutcome]:
-    candidate_comparison = candidate_comparison_fn(
-        schedule_input=schedule_input,
-        strict_mode=strict_mode,
-    )
+    candidate_comparison = candidate_comparison_fn(schedule_input=schedule_input)
     adopted_plan: CandidatePlan = candidate_comparison.selection.selected_plan
     return adopted_plan, adopted_plan.graph_analysis_public, adopted_plan.graph_analysis_diagnostics, candidate_comparison
 
@@ -36,7 +32,6 @@ def orchestrate_schedule_run(
     *,
     schedule_input: ScheduleRunInput,
     version: int,
-    strict_mode: bool,
     build_result_summary_fn: Any,
     point_validator: PointValidator,
     candidate_comparison_fn: Callable[..., CandidateComparisonOutcome],
@@ -44,7 +39,6 @@ def orchestrate_schedule_run(
     """Compute candidates and their summary using an already prepared run input."""
     adopted_plan, graph_analysis_public, graph_analysis_diagnostics, candidate_comparison = _run_plan_selection(
         schedule_input=schedule_input,
-        strict_mode=strict_mode,
         candidate_comparison_fn=candidate_comparison_fn,
     )
     validated_schedule_payload = build_validated_schedule_payload(

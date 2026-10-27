@@ -1,4 +1,4 @@
-"""数据库路径只准备一次，正常连接和首次入口拒绝行为保持一致。"""
+"""数据库路径只准备一次，正常连接和首次入口拒绝行为保持一致；固定 JSON 文件的写入与严格读取口径对称。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from core.infrastructure import database
-from core.infrastructure.safe_files import UnsafeFixedFileError
+from core.infrastructure.safe_files import UnsafeFixedFileError, read_fixed_json, write_fixed_json
 
 
 @contextmanager
@@ -116,3 +116,14 @@ def test_database_first_entry_rejects_symlink_and_nonregular_targets(tmp_path: P
     occupied.mkdir()
     with pytest.raises(UnsafeFixedFileError, match="非普通固定文件"):
         database.get_connection(str(occupied))
+
+
+@pytest.mark.parametrize("number", [float("nan"), float("inf"), float("-inf")])
+def test_fixed_json_write_rejects_non_finite_numbers_and_keeps_previous_file(tmp_path: Path, number) -> None:
+    target = tmp_path / "contract.json"
+    write_fixed_json(target, {"port": 5000, "ratio": 1.5, "名称": "主契约"})
+    previous = target.read_bytes()
+    with pytest.raises(ValueError, match="Out of range float values are not JSON compliant"):
+        write_fixed_json(target, {"port": 5000, "ratio": number})
+    assert target.read_bytes() == previous
+    assert read_fixed_json(target) == {"port": 5000, "ratio": 1.5, "名称": "主契约"}

@@ -1,10 +1,9 @@
 """Read saved runtime decomposition separately from archived work standards."""
 
-import math
-
 from core.algorithm_contracts.operation_effort import RUNTIME_REQUIREMENT_BASIS
 from core.models.enums import OperationQuantityBasis, OperationRequirementRole, OperationSetupState, SourceType
 from core.models.workbench_run_candidate import MAX_TASKS, reference
+from core.shared.strict_parse import is_exact_non_negative_number
 
 from .candidate_values import bounded_size, corrupt, number
 
@@ -36,7 +35,7 @@ def saved_operation_efforts(record, *, identities=None):
             corrupt()
         for field in _HOURS + _QUANTITIES:
             value = item.get(field)
-            if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or value < 0):
+            if value is not None and not is_exact_non_negative_number(value):
                 corrupt()
         gaps = item.get("data_gaps")
         if type(gaps) is not list or any(type(gap) is not dict for gap in gaps):

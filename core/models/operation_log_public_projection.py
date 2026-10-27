@@ -25,7 +25,7 @@ def _project_operation_log_value(value: Any) -> Any:
             if not is_forbidden_internal_key(key):
                 public[key] = _project_operation_log_value(child)
         return public
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list):
         return [_project_operation_log_value(item) for item in value]
     if isinstance(value, str):
         return redact_internal_text(value)

@@ -6,6 +6,19 @@ import os
 import threading
 import time
 
+import pytest
+
+_NOT_JSON = "Out of range float values are not JSON compliant"
+
+
+def _strict(text):
+    from core.shared.strict_json import load_strict_json
+
+    def malformed():
+        raise AssertionError(f"stored text is not strict JSON: {text!r}")
+
+    return load_strict_json(text, on_malformed=malformed)
+
 
 def _list_exit_backups(backup_dir: str) -> list:
     if not os.path.exists(backup_dir):
@@ -162,3 +175,53 @@ def test_operation_log_cleanup_uses_utc_boundary_and_keeps_limits(schema_conn, t
     _, backup_meta = cleanup_task.cleanup_backups_with_limit(str(tmp_path / "missing-backups"),
         keep_days=1, max_delete=10, fmt_db_dt_fn=_fmt_db_dt)
     assert backup_meta["cutoff"] == "2026-10-15 00:30:00"
+
+
+@pytest.mark.parametrize("number", [float("nan"), float("inf"), float("-inf")])
+def test_operation_log_detail_is_strict_json_and_rejects_non_finite_numbers(schema_conn, caplog, number):
+    import logging
+
+    from core.infrastructure.logging import OperationLogger
+    from core.models.workbench_command import canonical_json
+
+    logger = logging.getLogger("tests.operation_log_detail")
+    op_logger = OperationLogger(schema_conn, logger=logger)
+    # 普通审计按既有契约只记文件日志并返回 False；要求落库的调用方用 raise_on_fail 拿到原异常。
+    with caplog.at_level(logging.ERROR, logger=logger.name):
+        assert op_logger.info("system", "probe", detail={"value": number}) is False
+    assert "写入操作日志失败：" + _NOT_JSON in caplog.text
+    with pytest.raises(ValueError, match=_NOT_JSON):
+        op_logger.info("system", "probe", detail={"value": number}, raise_on_fail=True)
+    assert not schema_conn.in_transaction
+    assert op_logger.info("system", "probe", detail={"value": 1.5, "名称": "设备"}) is True
+    stored = [row[0] for row in schema_conn.execute("SELECT detail FROM OperationLogs")]
+    assert stored == [canonical_json({"value": 1.5, "名称": "设备"})]
+    assert _strict(stored[0]) == {"value": 1.5, "名称": "设备"}
+
+
+def test_maintenance_job_detail_never_stores_non_finite_numbers(schema_conn, monkeypatch):
+    import logging
+    from datetime import datetime
+
+    from core.infrastructure.logging import OperationLogger
+    from core.services.system.maintenance import cleanup_task
+    from core.services.system.system_maintenance_service import _fmt_db_dt
+    from data.repositories.system_job_state_repo import SystemJobStateRepository
+
+    # 生产结果只含整数和文本；这里把非有限数注入结果，锁定写端与严格读取口径对称。
+    monkeypatch.setattr(cleanup_task, "cleanup_operation_logs_with_limit",
+                        lambda conn, **kwargs: (0, {"total": 0, "skipped": True, "ratio": float("nan")}))
+    logger = logging.getLogger("tests.maintenance_job_detail")
+    ran = cleanup_task.maybe_run_auto_log_cleanup(
+        schema_conn, job_repo=SystemJobStateRepository(schema_conn), now=datetime(2026, 10, 26, 8, 0),
+        interval_minutes=60, keep_days=30, min_keep_logs=0, max_log_delete_per_run=10, job_key="auto_log_cleanup",
+        logger=logger, op_logger=OperationLogger(schema_conn, logger=logger),
+        is_due_fn=lambda *args: True, fmt_db_dt_fn=_fmt_db_dt)
+    assert ran is False
+    detail, = [row[0] for row in schema_conn.execute(
+        "SELECT last_run_detail FROM SystemJobState WHERE job_key='auto_log_cleanup'")]
+    job = _strict(detail)
+    assert set(job) == {"error", "time_cost_ms"} and job["error"].startswith(_NOT_JSON)
+    logs = schema_conn.execute("SELECT log_level, action, detail, error_message FROM OperationLogs").fetchall()
+    assert [(row[0], row[1]) for row in logs] == [("ERROR", "logs_cleanup")]
+    assert set(_strict(logs[0][2])) == {"mode", "time_cost_ms"} and logs[0][3].startswith(_NOT_JSON)

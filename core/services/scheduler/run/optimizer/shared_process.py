@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from math import isfinite
 from typing import Any, Dict, List
+
+from core.shared.strict_parse import is_exact_finite_number
 
 from .process_evidence import sample_elapsed_points
 
@@ -21,7 +22,7 @@ def score_scope_payload(scope: Any) -> Dict[str, Any]:
 
 
 def numeric_score(score: Any, *, components_known: bool) -> List[Any]:
-    values = [value if isinstance(value, (int, float)) and isfinite(value) else None for value in score]
+    values = [value if is_exact_finite_number(value) else None for value in score]
     if not components_known:
         values = values[:1] + [None] * max(len(values) - 1, 0)
     return values

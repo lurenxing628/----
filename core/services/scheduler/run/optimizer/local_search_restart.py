@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
-from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
-from .attempt_records import evaluate_optional_local_candidate
 from .local_search_candidate_eval import evaluate_local_search_candidate
 from .local_search_round import stamp_decode_runtime
 from .local_search_state import LocalSearchState, resolve_current_strategy_state
@@ -17,13 +15,7 @@ if TYPE_CHECKING:
     from .search_report import OptimizationSearchReportState
     from .shared_decode import SharedDecodeSession
 
-RESTART_SHAKE = "restart_shake"
-
-
-ShakenOrderEvaluator = Callable[
-    [List[str], Any, Dict[str, Any], str, str],
-    Optional[Dict[str, Any]],
-]
+ShakenOrderEvaluator = Callable[[List[str], Any, Dict[str, Any], str, str], Dict[str, Any]]
 
 
 @dataclass(frozen=True)
@@ -62,30 +54,25 @@ def _evaluate_restart_candidate(
     params: Dict[str, Any],
     dispatch_mode: str,
     dispatch_rule: str,
-    strict_mode: bool,
     start_dt: datetime,
     end_date: Optional[date],
     resource_pool: Optional[Dict[str, Any]],
     objective_name: str,
     optimizer_algo_stats: Optional[Dict[str, Any]],
     readiness_gate_enabled: bool,
-    attempts: List[Dict[str, Any]],
     search_report_state: OptimizationSearchReportState,
     decode_session: SharedDecodeSession,
-) -> Optional[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """Decode the shaken order once so current's order/score/results come from one evaluation.
 
-    Failures reuse the local candidate failure path: strict mode raises, otherwise a rejected
-    attempt is recorded and ``None`` returned. Common-session budget skips propagate to the
-    caller with their request receipt.
+    Evaluation failures propagate; common-session budget skips propagate to the caller with
+    their request receipt.
     """
     best_resource_pool = local_state.best.get("resource_pool")
     candidate_resource_pool = (
         best_resource_pool if isinstance(best_resource_pool, dict) else {}
     ) or resource_pool
-    evaluate = partial(
-        evaluate_local_search_candidate,
-        strict_mode=bool(strict_mode),
+    candidate = evaluate_local_search_candidate(
         strategy=strategy,
         params=params,
         start_dt=start_dt,
@@ -100,18 +87,8 @@ def _evaluate_restart_candidate(
         readiness_gate_enabled=bool(readiness_gate_enabled),
         decode_session=decode_session,
     )
-    candidate = evaluate_optional_local_candidate(
-        evaluate=evaluate,
-        attempts=attempts,
-        move=RESTART_SHAKE,
-        strategy=strategy,
-        dispatch_mode=dispatch_mode,
-        dispatch_rule=dispatch_rule,
-        strict_mode=bool(strict_mode),
-    )
     stamp_decode_runtime(candidate)
-    if candidate is not None:
-        search_report_state.mark_candidate_evaluated(candidate, origin="local_search_restart")
+    search_report_state.mark_candidate_evaluated(candidate, origin="local_search_restart")
     return candidate
 
 
@@ -134,7 +111,6 @@ def restart_after_stall(
     best_strat, best_params, best_dispatch_mode, best_dispatch_rule = resolve_current_strategy_state(
         local_state.best, dispatch_mode_cfg=dispatch_mode_cfg, dispatch_rule_cfg=dispatch_rule_cfg
     )
-    skipped = False
     stop_reason: Optional[str] = None
     rejected_mode: Optional[str] = None
     calls_before = decode_session.actual_decoder_calls
@@ -143,19 +119,13 @@ def restart_after_stall(
             shaken_order, best_strat, best_params, best_dispatch_mode, best_dispatch_rule,
         )
     except SharedSearchSkip as exc:
-        candidate = None
-        skipped = True
         if exc.reason in ("estimated_decode_cost", "time_budget"):
             stop_reason = exc.reason
             if stop_reason == "estimated_decode_cost":
                 rejected_mode = best_dispatch_mode
-    decode_attempted = decode_session.actual_decoder_calls > calls_before
-    if candidate is not None:
+    else:
         local_state.accept_current(candidate)
-    elif not skipped:
-        # Evaluation failed (strict already raised; non-strict recorded the rejection):
-        # drop the shake, current returns to best as one aligned triplet.
-        local_state.reset_current_to_best()
+    decode_attempted = decode_session.actual_decoder_calls > calls_before
     cur_strat, cur_params, cur_dispatch_mode, cur_dispatch_rule = resolve_current_strategy_state(
         local_state.current, dispatch_mode_cfg=dispatch_mode_cfg, dispatch_rule_cfg=dispatch_rule_cfg
     )
@@ -170,4 +140,4 @@ def restart_after_stall(
     )
 
 
-__all__ = ["RESTART_SHAKE", "RestartOutcome", "ShakenOrderEvaluator", "restart_after_stall"]
+__all__ = ["RestartOutcome", "ShakenOrderEvaluator", "restart_after_stall"]

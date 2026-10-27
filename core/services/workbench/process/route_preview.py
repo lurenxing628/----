@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import re
 from collections import defaultdict
 from contextlib import contextmanager
@@ -27,6 +26,7 @@ from core.services.process.route_parser_tokens import (
     route_format_errors,
     route_tokens,
 )
+from core.shared.strict_parse import is_exact_non_negative_number
 
 
 def _segment_ambiguities(segment):
@@ -131,13 +131,7 @@ def _persisted_refs(identities, keys):
 
 
 def _positive_days(value):
-    if isinstance(value, bool) or value is None:
-        return None
-    try:
-        days = float(value)
-    except (TypeError, ValueError, OverflowError):
-        return None
-    return days if math.isfinite(days) and days > 0 else None
+    return float(value) if is_exact_non_negative_number(value, positive=True) else None
 
 
 def _append_operation_diagnostics(operations, diagnostics):

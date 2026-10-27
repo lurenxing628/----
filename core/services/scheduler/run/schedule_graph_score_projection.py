@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
+
 from .schedule_graph_dispatch_context import (
     GRAPH_CYCLE_DISABLED_REASON,
     schedule_input_op_id_sets,
@@ -12,18 +14,12 @@ GRAPH_SCORE_WEIGHTS_ZERO_REASON = "score_weights_zero"
 _GRAPH_SCORE_SAMPLE_LIMIT = 10
 
 
-def graph_score_weight(cfg: Any, field: str) -> int:
-    value = getattr(cfg, field)
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(f"{field} 必须是非负整数：{value!r}")
-    return int(value)
-
-
-def graph_score_weights(cfg: Any) -> Dict[str, int]:
+def graph_score_weights(cfg: ScheduleConfigSnapshot) -> Dict[str, int]:
+    # 快照由 build_schedule_config_snapshot 严格构建，两项权重已是非负整数。
     return {
-        "critical_weight": graph_score_weight(cfg, "graph_critical_weight"),
-        "impact_weight": graph_score_weight(cfg, "graph_impact_weight"),
-        "downstream_minutes_weight": graph_score_weight(cfg, "graph_downstream_weight"),
+        "critical_weight": cfg.graph_critical_weight,
+        "impact_weight": cfg.graph_impact_weight,
+        "downstream_minutes_weight": cfg.graph_downstream_weight,
     }
 
 

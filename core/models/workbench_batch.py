@@ -1,11 +1,11 @@
 """Prototype batch fields; omission differs from an explicit empty value."""
 
-import math
 import re
 from datetime import date
 
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.strict_parse import is_exact_finite_number
 
 PRIORITIES = ("normal", "urgent", "critical")
 READY = ("yes", "partial", "no")
@@ -33,11 +33,8 @@ def public_ref(value):
 def number(value, field, *, integer=False, positive=False, nullable=False):
     if nullable and value is None:
         return None
-    valid = type(value) is int if integer else type(value) in (int, float)
-    if valid:
-        valid = 0 <= value <= MAX_INTEGER and (not positive or value > 0)
-    if valid:
-        valid = math.isfinite(value)
+    valid = (type(value) is int if integer else is_exact_finite_number(value)) and 0 <= value <= MAX_INTEGER and (
+        not positive or value > 0)
     if not valid:
         raise ValidationError("请输入有效的" + ("正整数。" if integer and positive else "非负有限数字。"), field=field)
     return value

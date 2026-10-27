@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import math
 from typing import Any, Dict, List
 
 from core.models.public_identifier_redaction import contains_internal_identifier
-from core.shared.strict_parse import is_int, is_number
+from core.shared.strict_parse import finite_float, is_int, is_number
 
 COMPARISON_METRIC_KEYS = (
     "failed_ops",
@@ -109,9 +108,10 @@ def _add_metric_completion(out: Dict[str, Any], metrics: Dict[str, Any]) -> None
     for key, labels in allowed_labels.items():
         if raw.get(key) in labels:
             completion[key] = raw[key]
-    weight = raw.get("incomplete_work_weight")
-    if isinstance(weight, (int, float)) and not isinstance(weight, bool) and math.isfinite(weight) and weight >= 0:
-        completion["incomplete_work_weight"] = float(weight)
+    raw_weight = raw.get("incomplete_work_weight")
+    weight = finite_float(raw_weight) if is_number(raw_weight) else None
+    if weight is not None and weight >= 0:
+        completion["incomplete_work_weight"] = weight
     if completion:
         out["completion"] = completion
 

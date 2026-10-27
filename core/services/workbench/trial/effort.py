@@ -9,22 +9,22 @@ from .arrangements import same_arrangement
 
 def retained_role(row, execution):
     anchor = (row["original"].get("execution_anchor") or {}).get("basis")
-    if anchor == "completed_actuals" or execution.get("execution_state") == "complete":
+    if anchor == "completed_actuals" or execution["execution_state"] == "complete":
         return "completed"
-    if anchor is not None or execution.get("first_actual_start") or execution.get("reports") or execution.get("legacy_facts"):
+    if anchor is not None or execution["first_actual_start"] or execution["reports"] or execution["legacy_facts"]:
         return "execution"
     return "retained"
 
 
 def _retained(value, row, admission):
-    execution = admission["execution"].get(row["operation_ref"], {})
+    execution = admission["execution"][row["operation_ref"]]
     role = retained_role(row, execution)
     state = ("external" if value["source"] == "external" else "already_completed" if role == "completed"
              else "retained_in_execution" if role == "execution" and value["setup_standard_hours"] is not None
              else value["setup_state"])
-    return dict(value, execution_target_quantity=execution.get("target_quantity"),
-                execution_quantity_basis=execution.get("target_basis", "unknown"),
-                remaining_quantity=execution.get("remaining_quantity"), requirement_role=role, setup_state=state)
+    return dict(value, execution_target_quantity=execution["target_quantity"],
+                execution_quantity_basis=execution["target_basis"],
+                remaining_quantity=execution["remaining_quantity"], requirement_role=role, setup_state=state)
 
 
 def operation_effort_ledger(rows, admission, *, before_efforts):

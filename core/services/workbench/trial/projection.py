@@ -63,7 +63,7 @@ def _task_projection(row, draft_ref, by_operation, protected_rows, by_task, live
         "changed": not same_arrangement(current, original["arrangement"]),
         "predecessor_refs": [by_operation[ref] for ref in original["predecessor_operation_refs"] if ref in by_operation],
         "predecessor_operation_refs": original["predecessor_operation_refs"],
-        "execution_at_creation": original["execution"], "execution": live["execution"].get(row["operation_ref"]),
+        "execution_at_creation": original["execution"], "execution": live["execution"][row["operation_ref"]],
         "edit_context": {"can_change": editable, "blocked_reasons": [value for value in (blocked, duration_reason) if value]},
         "issues": by_task[row["task_ref"]]}
     _display_fields(task)
@@ -267,7 +267,7 @@ def draft_projection(head, rows, checked, live, context_factory, protection, *, 
         current_evidence = {"kind": "scenario", "scenario_ref": scenario_ref}
     tasks = tasks_projection(rows, ref, checked, live, protection)
     facts, archive, origin, contexts = (
-        source_projection(rows, admission, facts=live.get("source_facts"))
+        source_projection(rows, admission, facts=live["source_facts"])
         if source_prepared is None
         else source_prepared
     )

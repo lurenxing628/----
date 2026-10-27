@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Any, Dict, List, Tuple
 
 from core.models.scheduler_public_errors import (
@@ -8,6 +7,7 @@ from core.models.scheduler_public_errors import (
     public_safe_identifier,
     public_safe_label,
 )
+from core.models.workbench_command import canonical_json
 from core.services.scheduler.contracts.optimizer_public_search_report import project_search_report
 from core.services.scheduler.run.schedule_candidate_summary import candidate_comparison_minimal_summary
 
@@ -16,7 +16,8 @@ _ALLOWED_MISSING_FIELDS = {"设备", "人员"}
 
 
 def summary_size_bytes(obj: Dict[str, Any]) -> int:
-    return len(json.dumps(obj, ensure_ascii=False).encode("utf-8"))
+    # Measured with the encoder that persists the summary (workbench_run_repo, official_persistence).
+    return len(canonical_json(obj).encode("utf-8"))
 
 
 def size_guard_scalar(value: Any, *, max_chars: int = 200) -> Any:

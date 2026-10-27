@@ -8,7 +8,7 @@ from core.models.workbench_run_candidate import reference
 
 from .candidate_effort import candidate_operation_effort_projection
 from .candidate_facts import GenerationFacts
-from .candidate_projection import dispositions, validate_manifest
+from .candidate_projection import completed_dispositions, validate_manifest
 from .candidate_tasks import tasks_projection_with_intervals, unplanned_projection
 from .candidate_values import corrupt
 from .gantt_graph import candidate_gantt_graph
@@ -49,23 +49,25 @@ def candidate_manifest(store, run_ref):
     receipt = store.receipt(run)
     rows = store.candidates(run_ref)
     validate_manifest(run, rows, receipt)
-    return run, rows, dispositions(receipt), receipt
+    return run, rows, receipt
 
 
 def read_candidate_source(store, candidate_ref, *, prepared=None):
     """Reuse the caller's verified packet, or load an independent source once.
 
     A prepared packet belongs to this caller's current SQLite snapshot. Its
-    run/catalog/receipt have already passed the common manifest check; raw and
-    projected tasks may also be handed over together after validation.
+    run/catalog/receipt have already passed the common manifest check and its
+    disposition was parsed from that receipt; raw and projected tasks may also
+    be handed over together after validation.
     """
     reference(candidate_ref)
     if prepared is None:
         run_ref = store.candidate_run(candidate_ref)
-        run, rows, disposition, receipt = candidate_manifest(store, run_ref)
+        run, rows, receipt = candidate_manifest(store, run_ref)
         candidate = next((row for row in rows if row["candidate_ref"] == candidate_ref), None)
         if candidate is None:
             corrupt()
+        disposition = completed_dispositions(receipt)
         capture = store.capture(run_ref)
         facts = GenerationFacts(capture)
         raw_tasks = store.tasks(candidate_ref)
@@ -90,9 +92,6 @@ def read_candidate_source(store, candidate_ref, *, prepared=None):
             if tasks is not None:
                 corrupt()
             raw_tasks = store.tasks(candidate_ref)
-    if disposition is None:
-        # 有候选行的运行只能是已完成运行，它的回执必带 dispositions；缺了就是存档损坏。
-        corrupt()
     if tasks is None:
         if len(raw_tasks) != candidate["task_count"]:
             corrupt()

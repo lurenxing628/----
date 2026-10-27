@@ -58,7 +58,7 @@ def project_decision_preparation_row(facts, operation_ref, tasks, operation_effo
         tasks[0]["source"] if formal and tasks else operation.get("source") if not formal else None)
     row = project_operation_effort(runtime, standard,
         allocation_state=_allocation_state(operation_ref, runtime, tasks, available=available, deferred_refs=deferred_refs),
-        source_available=available, source=original_source, execution=facts.execution.get(operation_ref, {}),
+        source_available=available, source=original_source, execution=facts.execution[operation_ref],
         evidence_source=evidence_source)
     row.update(operation_ref=operation_ref, arranged=bool(tasks))
     return row
@@ -91,5 +91,5 @@ def preparation_work_items(facts, rows, disposition, *, available=True, labels=N
             continue
         ref = row["operation_ref"]
         identity = labels[ref] if labels is not None else operation_labels(facts, ref)[0]
-        result.append({**identity, **row, "disposition": (disposition or {}).get(ref, {})})
+        result.append({**identity, **row, "disposition": disposition[ref]})
     return result

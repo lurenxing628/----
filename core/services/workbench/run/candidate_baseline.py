@@ -38,9 +38,7 @@ def _check_task_window(tasks, admission, disposition):
 
 def _comparison_labels(facts, ref):
     labels, _ = operation_labels(facts, ref)
-    execution = facts.execution.get(ref)
-    if execution is None:
-        return labels
+    execution = facts.execution[ref]
     labels["execution_at_generation"].update({key: execution[key] for key in (
         "first_actual_start", "confirmed_finish", "unknown_record_count", "records_complete", "quantity_complete", "completion_basis")})
     labels["execution_at_generation"].update(

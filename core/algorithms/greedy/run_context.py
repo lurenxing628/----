@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Optional
 
@@ -19,8 +18,6 @@ from core.algorithm_runtime.dispatch_context import (
 
 if TYPE_CHECKING:
     from .schedule_preparation import NativeSchedulePreparation
-
-_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -59,21 +56,15 @@ class ScheduleRunContext:
     def increment(self, key: str) -> None:
         increment_counter(self.algo_stats, key)
 
-    def log_exception(self, message: str) -> None:
-        _LOGGER.exception(message)
-
     def schedule_external(self, *args: Any, **kwargs: Any):
         self._check_callback(self.external_callback, args, kwargs, slot="schedule_external")
         return self.external_callback(*args, **kwargs)
 
     def schedule_internal(self, *args: Any, **kwargs: Any):
-        call_kwargs = dict(kwargs)
-        strict_mode = bool(call_kwargs.pop("strict_mode", False))
-        hours = self.native_preparation.total_hours_by_op_id
-        if "op" not in call_kwargs or call_kwargs["op"].id not in hours:
-            validate_dispatch_internal_input(call_kwargs, strict_mode=strict_mode)
-        self._check_callback(self.internal_callback, args, call_kwargs, slot="schedule_internal")
-        return self.internal_callback(*args, **call_kwargs)
+        if "op" not in kwargs or kwargs["op"].id not in self.native_preparation.total_hours_by_op_id:
+            validate_dispatch_internal_input(kwargs)
+        self._check_callback(self.internal_callback, args, kwargs, slot="schedule_internal")
+        return self.internal_callback(*args, **kwargs)
 
     def auto_assign_internal_resources_attempt(self, *args: Any, **kwargs: Any):
         self._check_callback(self.auto_assign_attempt_callback, args, kwargs, slot="auto_assign_internal_resources_attempt")

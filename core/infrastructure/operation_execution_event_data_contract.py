@@ -14,6 +14,7 @@ from core.models.operation_execution_event import (
     normalize_operation_event_time,
     validate_operation_execution_event_sequence,
 )
+from core.models.operation_execution_scope import required_execution_text
 
 _EVENT_ORDER_SQL = """
     ORDER BY schedule_version ASC, schedule_id ASC, op_id ASC, batch_id ASC,
@@ -45,13 +46,6 @@ def _text(value: Any) -> str:
     return str(value or "").strip()
 
 
-def _required_text(value: Any, field_name: str) -> str:
-    text = _text(value)
-    if not text:
-        raise ValueError(f"{field_name} is required")
-    return text
-
-
 def _optional_value(value: Any, allowed_values: Tuple[str, ...], field_name: str) -> str:
     text = _text(value)
     if not text:
@@ -62,8 +56,7 @@ def _optional_value(value: Any, allowed_values: Tuple[str, ...], field_name: str
 
 
 def _validate_event_contract_row(row: Any) -> OperationExecutionEvent:
-    if row["scenario_id"] is not None:
-        raise ValueError("scenario_id must be NULL")
+    # from_row 已校验计划身份（含 scenario_id 只许 NULL）与事件类型、状态、时间。
     event = OperationExecutionEvent.from_row(row)
     event_type = event.event_type
     reason_code = _optional_value(
@@ -85,11 +78,11 @@ def _validate_event_contract_row(row: Any) -> OperationExecutionEvent:
         ("new", "checking", "waiting", "handled"),
         "handling_status",
     )
-    _required_text(row["created_by"], "created_by")
-    _required_text(row["idempotency_key"], "idempotency_key")
+    required_execution_text(row["created_by"], "created_by")
+    required_execution_text(row["idempotency_key"], "idempotency_key")
     fingerprint = row["request_fingerprint"]
     if fingerprint is not None:
-        _required_text(fingerprint, "request_fingerprint")
+        required_execution_text(fingerprint, "request_fingerprint")
     normalize_operation_event_time(row["created_at"])
     return event
 

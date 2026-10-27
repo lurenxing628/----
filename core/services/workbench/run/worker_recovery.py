@@ -1,9 +1,9 @@
 """Reconcile commits and executor evidence; no time-based retry or lease expiry."""
 
-import json
 from datetime import datetime
 
 from core.infrastructure.transaction import TransactionManager
+from core.models.workbench_command import canonical_json
 from core.models.workbench_run_job import PROCESS_EXECUTOR_REF
 from core.services.scheduler.schedule_lock import RUN_SCHEDULE_LOCK
 from core.services.workbench.facts.candidate_values import stored_json
@@ -79,5 +79,5 @@ def _reconcile_result(conn, repo, row):
     if result["state"] != receipt["state"] or not WorkbenchRunResultRepository(conn).consistent(row["run_ref"], result):
         repo.awaiting_reconciliation(row["run_ref"])
         return False
-    repo.record_reconciled_finish(row["run_ref"], receipt["state"], receipt["recorded_at"], json.dumps(result.get("error")))
+    repo.record_reconciled_finish(row["run_ref"], receipt["state"], receipt["recorded_at"], canonical_json(result.get("error")))
     return True

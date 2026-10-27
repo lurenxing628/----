@@ -4,7 +4,7 @@ from core.errors import ValidationError
 
 
 def dispatch_run(ctx, *, state, sorted_ops, batches, batch_order, params, machine_downtimes,
-                 resource_pool, graph_ready_context, strict_mode, batch_dispatch, sgs_dispatch,
+                 resource_pool, graph_ready_context, batch_dispatch, sgs_dispatch,
                  decode_resume=None, decode_checkpoints=None):
     if graph_ready_context is not None and params.dispatch_mode_key != "sgs":
         raise ValidationError("图 ready 队列只能在 SGS 派工模式下启用。", field="graph_ready_context")
@@ -20,7 +20,6 @@ def dispatch_run(ctx, *, state, sorted_ops, batches, batch_order, params, machin
         state=state,
         auto_assign_enabled=params.auto_assign_enabled,
         resource_pool=resource_pool,
-        strict_mode=strict_mode,
     )
     if params.dispatch_mode_key != "sgs":
         return batch_dispatch(ctx, **common, base_time=params.base_time)

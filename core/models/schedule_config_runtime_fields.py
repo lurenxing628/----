@@ -151,10 +151,6 @@ def get_field_spec(key: str) -> RuntimeConfigFieldSpec:
     return _FIELD_SPEC_BY_KEY[key]
 
 
-def default_for(key: str) -> Any:
-    return get_field_spec(key).default
-
-
 def default_snapshot_values() -> Dict[str, Any]:
     return {spec.key: spec.default for spec in list_runtime_config_fields()}
 
@@ -162,7 +158,6 @@ def default_snapshot_values() -> Dict[str, Any]:
 __all__ = [
     "RETIRED_CONFIG_FIELDS",
     "RuntimeConfigFieldSpec",
-    "default_for",
     "default_snapshot_values",
     "get_field_spec",
     "list_runtime_config_fields",

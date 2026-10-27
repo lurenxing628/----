@@ -15,7 +15,11 @@ from core.services.scheduler.contracts.external_context import (
 )
 from core.services.workbench.facts.candidate_archive import require_candidate_scope
 from core.services.workbench.facts.candidate_facts import GenerationFacts, archived_table
-from core.services.workbench.facts.candidate_projection import candidate_summary, dispositions, validate_manifest
+from core.services.workbench.facts.candidate_projection import (
+    candidate_summary,
+    completed_dispositions,
+    validate_manifest,
+)
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import validate_saved_tasks
 from core.services.workbench.facts.decision_baseline import same_saved_arrangements
@@ -196,7 +200,7 @@ def _candidate(conn, ref):
             if result[-1]["current"]["start"] == result[-1]["current"]["end"]:
                 _attach_point_work(result[-1], prepared["point_work"])
             result[-1]["original"]["part"] = facts.tables["Parts"].get(batch["part_no"])
-        scope = dispositions(receipt)
+        scope = completed_dispositions(receipt)
         summary = candidate_summary(candidate, scope, scheduled_op_ids=scheduled_op_ids)
         issues = []
         try:
@@ -229,10 +233,9 @@ def prepare_base(conn, intent, *, execution_service):
         reject("query_too_large", "完整基础范围超过10000条，未按可见范围截断。", 413)
     issues.extend(_date_issues(rows))
     _predecessors(rows, all_ops, operation_refs, issues)
-    live = live_context(conn, [row["operation_ref"] for row in rows], capture, execution_service=execution_service)
-    live["source_facts"] = source_facts
-    admission = {"input": intent, "source": source, "facts": live["facts"],
-                 "baseline": live["baseline"], "execution": live["execution"], "base_issues": issues}
+    admission = {"input": intent, "source": source, "facts": capture.archive(named=True), "base_issues": issues}
+    live = live_context(conn, rows, admission, capture, execution_service=execution_service, source_facts=source_facts)
+    admission.update(baseline=live["baseline"], execution=live["execution"])
     _attach_original_context(rows, source, key, live, source_facts)
     issues.extend(attach_execution_anchors(conn, rows, live))
     return admission, rows, live

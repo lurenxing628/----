@@ -166,7 +166,6 @@ def _build_fallback_state(algo_stats: Optional[Dict[str, Any]]) -> FallbackState
     fallback_counts = _counter_dict(algo_stats_dict.get("fallback_counts"))
     return FallbackState(
         fallback_counts=fallback_counts,
-        param_fallbacks=_counter_dict(algo_stats_dict.get("param_fallbacks")),
         ortools_warmstart_failed_count=int(fallback_counts.get("ortools_warmstart_failed_count") or 0),
     )
 

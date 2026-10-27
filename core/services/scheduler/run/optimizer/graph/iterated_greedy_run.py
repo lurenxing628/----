@@ -25,7 +25,7 @@ class IteratedGreedyRun:
                  pool: Any, evaluate: Callable[..., Dict[str, Any]], operations: List[Any], graph_context: Dict[str, Any],
                  metrics_by_op_id: Dict[int, Dict[str, Any]], objective_name: str, start_dt: Any, seed: int, deadline: float,
                  clock: Callable[[], float], t_begin: float, attempts: List[Dict[str, Any]],
-                 improvement_trace: List[Dict[str, Any]], report_state: OptimizationSearchReportState, strict_mode: bool,
+                 improvement_trace: List[Dict[str, Any]], report_state: OptimizationSearchReportState,
                  decode_session: SharedDecodeSession) -> None:
         self.limits = limits
         self.state = state
@@ -44,7 +44,6 @@ class IteratedGreedyRun:
         self.attempts = attempts
         self.improvement_trace = improvement_trace
         self.report_state = report_state
-        self.strict_mode = strict_mode
         self.report = new_iterated_greedy_report(limits, objective_name=objective_name)
         self.search: Optional[_IteratedGreedySearch] = None
         self.stopped = False
@@ -98,7 +97,7 @@ class IteratedGreedyRun:
             metrics_by_op_id=self.metrics_by_op_id, start_dt=self.start_dt, seed=self.seed,
             deadline=self.deadline, clock=self.clock,
             t_begin=self.t_begin, attempts=self.attempts, improvement_trace=self.improvement_trace,
-            report_state=self.report_state, strict_mode=self.strict_mode, report=self.report,
+            report_state=self.report_state, report=self.report,
             operations=self.operations, graph_context=self.graph_context, decode_session=self.decode_session)
         self.search.best = best
         self.search._start_reference()

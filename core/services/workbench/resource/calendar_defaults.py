@@ -1,10 +1,8 @@
 """Editable factory defaults with the same guarded command and receipt contract."""
 
-import json
-
 from core.errors import ValidationError
 from core.infrastructure.transaction import in_transaction_context
-from core.models.calendar_periods import normalize_periods, period_hours
+from core.models.calendar_periods import encode_periods, normalize_periods, period_hours
 from core.models.workbench_command import WorkbenchCommandOutcome
 from core.services.scheduler.calendar.defaults import default_periods_from_row
 from data.repositories.calendar_defaults_repo import CalendarDefaultsRepository
@@ -34,5 +32,5 @@ class WorkbenchCalendarDefaultsService:
         periods = payload["periods"]
         if periods == current["periods"]:
             return WorkbenchCommandOutcome("unchanged", {"subject": "calendar-defaults"})
-        self.repo.set_periods(json.dumps(periods, ensure_ascii=False, separators=(",", ":")))
+        self.repo.set_periods(encode_periods(periods))
         return WorkbenchCommandOutcome("committed", {"subject": "calendar-defaults"})

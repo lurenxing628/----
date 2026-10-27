@@ -7,20 +7,20 @@ from core.algorithm_contracts.operation_effort import OperationEffort
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.models.batch import Batch
 from core.models.enums import MergeMode, OperationQuantityBasis, OperationSetupState, SourceType
+from core.shared.strict_parse import finite_float, is_non_finite_number
 
 from .piece_input import operation_batch
 
 
 def _coerce_hours_value(raw_value: Any, *, field: str) -> float:
+    number = finite_float(raw_value)
+    if number is not None and number >= 0:
+        return number
     if isinstance(raw_value, bool):
         raise ValueError(f"工时字段不能是布尔值：{field}={raw_value!r}")
-    try:
-        number = float(raw_value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"工时字段不合法：{field}={raw_value!r}") from exc
-    if not math.isfinite(number) or number < 0:
-        raise ValueError(f"工时字段必须是非负有限数字：{field}={raw_value!r}")
-    return number
+    if number is None and not is_non_finite_number(raw_value):
+        raise ValueError(f"工时字段不合法：{field}={raw_value!r}")
+    raise ValueError(f"工时字段必须是非负有限数字：{field}={raw_value!r}")
 
 
 def internal_requirement_parts(op: OpForScheduleAlgo, batch: Batch) -> Tuple[float, float, float, float]:

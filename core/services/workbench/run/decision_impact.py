@@ -215,8 +215,8 @@ def operation_impacts(source):
             if delta[side + "_state"]["status"] in ("deferred", "missing") and ref in saved:
                 delta[side + "_state"]["reason"] = saved[ref]
         before, after = delta["before"], delta["after"]
-        execution = source.facts.execution.get(ref) or {}
-        disposition = source.disposition.get(ref) or {}
+        execution = source.facts.execution[ref]
+        disposition = source.disposition[ref]
         constraints = {"protected_at_admission": disposition.get("status") == "protected",
                        "selected_locked": after["locked"] if after else None, "reference_locked": before["locked"] if before else None,
                        "lock_basis": "saved_arrangement_marker", "protection_basis": "admission_execution_and_dispositions",

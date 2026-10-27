@@ -18,7 +18,7 @@ def candidate_operation_effort_projection(source):
     result = {}
     for ref in sorted(refs):
         operation = source.facts.tables["BatchOperations"].get(source.facts.operations[ref], {})
-        execution = source.facts.execution.get(ref, {})
+        execution = source.facts.execution[ref]
         saved = runtime.get(ref)
         original_source = saved.get("source") if saved is not None else arranged.get(ref, operation).get("source")
         if not available:

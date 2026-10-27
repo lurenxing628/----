@@ -1,23 +1,23 @@
 """Pure immutable decision projections from the caller's prepared archive rows."""
 
 from copy import deepcopy
-from math import isfinite
 from typing import Any, Dict, List, Optional, overload
 
 from core.models.workbench_command import canonical_json
 from core.models.workbench_preflight import preflight_window
+from core.shared.strict_parse import finite_float
 
 from .admission_scope import project_admitted_scope
 from .candidate_delivery import project_legacy_delivery_detail
 from .candidate_process import PROCESS_VERSION, candidate_process
-from .candidate_projection import candidate_summary, dispositions
+from .candidate_projection import candidate_summary, completed_dispositions, dispositions
 from .candidate_tasks import project_validated_tasks
 from .candidate_values import text
 from .completion_scope import project_completion_summary
 from .decision_baseline import read_decision_baseline_members
 from .decision_candidate import project_candidate_summary
 from .decision_delivery import project_decision_delivery
-from .decision_metrics import admission_operations, project_official_core_metrics
+from .decision_metrics import admission_operation_refs, admission_operations, project_official_core_metrics
 from .decision_preparation import (
     admission_operation_standards,
     preparation_work_items,
@@ -117,18 +117,12 @@ def _configuration(facts, receipt):
 def _stored_number(value):
     if type(value) is int:
         return value
-    if type(value) is float:
-        return value if isfinite(value) else None
     if type(value) is str:
         try:
             return int(value)
         except ValueError:
-            try:
-                number = float(value)
-                return number if isfinite(number) else None
-            except ValueError:
-                pass
-    return None
+            return finite_float(value)
+    return finite_float(value) if type(value) is float else None
 
 
 def _run_options(capture, facts, receipt):
@@ -231,7 +225,7 @@ def _operation_batches(facts, members):
     return positions
 
 
-def _official_projection(run, facts, receipt, official, refs, batch_refs, dependencies):
+def _official_projection(run, facts, disposition, official, refs, batch_refs, dependencies):
     tasks = official["tasks"]
     scope_refs = set(refs)
     selected = [row for row in tasks if row["operation_ref"] in scope_refs]
@@ -244,7 +238,7 @@ def _official_projection(run, facts, receipt, official, refs, batch_refs, depend
     values, coverage = project_official_core_metrics(tasks, refs, official_deferred & scope_refs, available, delivery)
     prepared = project_decision_preparation(facts, refs, {}, selected, run_ref=run["run_ref"], available=available,
         deferred_refs=official_deferred, requirements_available=available, official=official)
-    work = preparation_work_items(facts, prepared["rows"], dispositions(receipt), available=available)
+    work = preparation_work_items(facts, prepared["rows"], disposition, available=available)
     completion = project_completion_summary(delivery, work, available=available, schedulable_coverage=coverage["schedulable"])
     return {"identity": dict(official["identity"]), "source_states": official["source_states"],
         "dependencies": dependencies or {"candidates": [], "scenarios": []},
@@ -266,9 +260,14 @@ def _missing_candidate_reference(run, facts, refs, deferred, batch_refs, receipt
 
 
 def build_admission_decision_read_model(run, capture, official, *, facts, receipt, dependencies):
-    """Project the actual admission baseline once; callers own source resolution."""
+    """Project the actual admission baseline once; callers own source resolution.
+
+    ``official`` and the receipt's dispositions are None only when the v41
+    migration backfills a run that saved no candidate results.
+    """
     disposition = dispositions(receipt)
-    refs, deferred, _ = admission_operations(facts, capture["input"], disposition)
+    refs, deferred, _ = (admission_operations(facts, capture["input"], disposition) if disposition is not None
+                         else (admission_operation_refs(facts, capture["input"]), set(), set()))
     refs, batch_refs = sorted(refs), sorted(capture["input"]["batch_refs"])
     members = _Members()
     for ref in refs:
@@ -277,7 +276,7 @@ def build_admission_decision_read_model(run, capture, official, *, facts, receip
         members.position(ref, "batch")
     saved_official = ({**read_decision_baseline_members(capture, facts), "projection_state": "disposition_not_recorded"}
                       if official is None else
-                      _official_projection(run, facts, receipt, official, refs, batch_refs, dependencies))
+                      _official_projection(run, facts, disposition, official, refs, batch_refs, dependencies))
     range_start, range_end = preflight_window(capture["input"])
     context = {"input": capture["input"], "run_options": _run_options(capture, facts, receipt),
         "range_start": range_start, "range_end": range_end,
@@ -338,11 +337,11 @@ def build_decision_read_models(run, capture, receipt, candidates, prepared_candi
     expanded = Memberships(admission["memberships"])
     refs = expanded.refs(context["admission_operation_refs"], "operation")
     deferred = set(expanded.refs(context["deferred_operation_refs"], "operation"))
-    batch_refs, disposition = sorted(capture["input"]["batch_refs"]), dispositions(receipt)
-    skipped = {ref for ref in refs if (disposition or {}).get(ref, {}).get("status") == "skipped"} - deferred
+    batch_refs, disposition = sorted(capture["input"]["batch_refs"]), completed_dispositions(receipt)
+    skipped = {ref for ref in refs if disposition[ref]["status"] == "skipped"} - deferred
     operation_scope = set(refs), deferred, skipped
     deferred_ids = {facts.operations[ref] for ref in deferred}
-    legacy_deferred_ids = material_deferred_ids((disposition or {}).values(), capture["input"])
+    legacy_deferred_ids = material_deferred_ids(disposition.values(), capture["input"])
     efforts = saved_operation_efforts(receipt.get("operation_effort"), identities=facts.operations)
     standards = admission_operation_standards(facts, refs, run["run_ref"])
     basis, candidate_models = selection_basis(receipt, candidates), []
@@ -378,7 +377,7 @@ def build_decision_read_models(run, capture, receipt, candidates, prepared_candi
         work = preparation_work_items(facts, prepared["rows"], disposition, available=available)
         completion = project_completion_summary(delivery, work, available=available, schedulable_coverage=summary["coverage"]["schedulable"])
         detail = project_legacy_delivery_detail(
-            candidate, facts, tasks, disposition, capture["input"], intervals=intervals,
+            candidate, facts, tasks, capture["input"], intervals=intervals,
             deferred_ids=legacy_deferred_ids,
             precomputed_delivery=delivery if available and deferred_ids == legacy_deferred_ids else None,
         )

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, AbstractSet, Any, Dict, FrozenSet, List, Mapping, Optional, Set, Tuple, cast
 
 from core.algorithm_runtime.graph_cycle import kahn_unreachable_op_ids
 from core.errors import ValidationError
-from core.shared.strict_parse import parse_required_int
+from core.shared.strict_parse import finite_float, is_number, parse_required_int
 
 from .sgs_priority_keys import ValidatedGraphPriorityKeys
 from .sgs_scoring import _collect_sgs_candidates
@@ -163,10 +162,10 @@ def graph_score_enabled(value: Any) -> bool:
 
 
 def _graph_priority_key_number(value: Any) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if not is_number(value):
         raise ValidationError("图评分 key 必须是数字 tuple。", field="graph_ready_context")
-    number = float(value)
-    if not math.isfinite(number):
+    number = finite_float(value)
+    if number is None:
         raise ValidationError("图评分 key 不能包含 NaN 或 Inf。", field="graph_ready_context")
     return number
 

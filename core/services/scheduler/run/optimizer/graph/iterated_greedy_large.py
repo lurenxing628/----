@@ -51,8 +51,7 @@ class LargeIteratedGreedySearch(_IteratedGreedySearch):
         checkpoints = trial_request(reference, resume=resume) if self.checkpoints.enabled else None
         tail = checkpoints.tail_reuse if checkpoints is not None else None
         result = self._decode(order, resume=resume, checkpoints=checkpoints)
-        if result is not None:
-            self._record_tail(tail)
+        self._record_tail(tail)
         return result
 
     def _record_tail(self, tail):

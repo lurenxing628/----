@@ -185,7 +185,6 @@ def _run_orchestrator_with_decoder(schedule_input: Any, *, decode_fn: Any) -> An
         return orchestrate_schedule_run(
             schedule_input=schedule_input,
             version=7,
-            strict_mode=True,
             candidate_comparison_fn=compare,
             build_result_summary_fn=_summary_from_ctx,
             point_validator=lambda _row: None,

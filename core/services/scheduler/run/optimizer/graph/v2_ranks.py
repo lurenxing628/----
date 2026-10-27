@@ -64,13 +64,8 @@ def v2_metric_bonus(metric: Dict[str, Any], *, weights: Dict[str, float]) -> flo
     try:
         return metric_bonus(metric, weights=weights)
     except ValidationError as exc:
-        raise ValidationError(exc.message, field="graph_ready_v2_features", details=_v2_feature_details(exc)) from exc
-
-
-def _v2_feature_details(exc: ValidationError) -> Dict[str, Any]:
-    details = dict(exc.details or {})
-    details["reason"] = "graph_ready_bad_v2_feature"
-    return details
+        # metric_bonus is shared with v1; relabel field and reason together so details.field matches exc.field.
+        raise ValidationError(exc.message, field="graph_ready_v2_features", details={"reason": "graph_ready_bad_v2_feature"}) from exc
 
 
 def normalized_v2_metrics_by_op_id(

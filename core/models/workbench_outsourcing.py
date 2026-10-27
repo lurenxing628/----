@@ -1,11 +1,11 @@
 """Receipt facts describe a shipment, never execution or supplier lead times."""
 
-import math
 import re
 from datetime import date, datetime
 from typing import NoReturn
 
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.shared.strict_parse import is_exact_finite_number
 
 FACT_FIELDS = ("sent", "planned", "returned", "confirmedState")
 STATES = {"in_transit": "在途", "returned": "已回厂", "awaiting_confirmation": "待确认"}
@@ -54,7 +54,7 @@ def document_text(value):
 def label(value):
     if value is None or type(value) in (str, bool):
         return value
-    if type(value) in (int, float) and math.isfinite(value):
+    if is_exact_finite_number(value):
         return value
     return raw_facts(value)
 

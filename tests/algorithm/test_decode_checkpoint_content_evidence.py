@@ -153,8 +153,8 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
             assert observe(original, 2) == entry_id
             assert len(first_capture) == 2 and metrics.call_count == 2
             assert certificate.call_count == calendar_encodings() == 1 and len(metadata) == 4
-            component = first_capture[0].signature[10]
-            assert component == checkpoint.signature[10]
+            component = first_capture[0].signature[9]
+            assert component == checkpoint.signature[9]
             assert component is session.native_preparation.checkpoint_calendar_component()
             first_found = archive.entry(entry_id).first_found_elapsed_ms
             cached_sink = []
@@ -173,7 +173,7 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
                            decode_checkpoints=DecodeCheckpointRequest([1, 2], trial_sink.append))
             assert trial.receipt["execution_kind"] == "trial_decode" and not trial.receipt["verified"]
             assert trial.receipt["actual_decoder_calls"] == 1 and metrics.call_count == 3
-            assert trial_sink and all(item.signature[10] is component for item in trial_sink)
+            assert trial_sink and all(item.signature[9] is component for item in trial_sink)
             recaptured_sink = []
             recaptured = decode(redecode_reason="capture_checkpoints",
                                 decode_checkpoints=DecodeCheckpointRequest([1, 2], recaptured_sink.append))
@@ -184,14 +184,14 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
             assert session.actual_decoder_calls == scheduler._decode_invocations - before_calls == 4
             assert session.new_decisions == session.reused_decisions == 1
             assert certificate.call_count == calendar_encodings() == 1 and len(metadata) == 4
-            assert all(item.signature[10] is component for item in recaptured_sink)
+            assert all(item.signature[9] is component for item in recaptured_sink)
 
             next_owner = new_session(scheduler)
             assert next_owner.native_preparation is not session.native_preparation
             next_capture = []
             decode(owner=next_owner, decode_checkpoints=DecodeCheckpointRequest([1], next_capture.append))
             assert certificate.call_count == calendar_encodings() == 2 and len(metadata) == 8
-            assert next_capture[0].signature[10] == component
+            assert next_capture[0].signature[9] == component
 
             release_components = []
             for release in (0.5, 1.5):
@@ -204,7 +204,7 @@ def test_checkpoint_resumes_same_inputs_and_rejects_changed_type_or_prefix():
                                  decode_checkpoints=DecodeCheckpointRequest([1], overlay_capture.append))
                 assert all(row.start_time >= at(release) for row in decoded.results
                            if row.operator_id == "O1" and row.op_id != 99)
-                release_components.append(overlay_capture[0].signature[10])
+                release_components.append(overlay_capture[0].signature[9])
             assert release_components[0] != release_components[1]
             assert certificate.call_count == calendar_encodings() == 4 and len(metadata) == 16
 
@@ -260,7 +260,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
     search.incumbent = SimpleNamespace(
         best={"score": (0.0,)}, observe_trial=lambda candidate: None,
         report_state=OptimizationSearchReportState(objective_name="min_overdue", started_at=0.0))
-    search.attempts, search.strict_mode = [], True
+    search.attempts = []
     accepted, evaluations = [], []
     search._consider_for_incumbent = lambda candidate, *, capture_of: accepted.append(candidate)
     original_append_graph_attempt = ig_module.append_graph_attempt
@@ -385,7 +385,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
                                       batches=batches, seed_results=case["seed_results"],
                                       downtime_map=case["machine_downtimes"], resource_pool=None,
                                       graph_ready_context=context,
-                                      start_dt=case["start_dt"], clock=clock, started_at=started, deadline=started + 10,
+                                      clock=clock, started_at=started, deadline=started + 10,
                                       event_sink=owner.record_event)
         owner.decode_session = session
         report = OptimizationSearchReportState(
@@ -399,7 +399,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
 
         def evaluate(**kwargs):
             return evaluate_graph_ready_candidate(
-                prepared_decision_features=features, strict_mode=True,
+                prepared_decision_features=features,
                 strategy=SortStrategy.PRIORITY_FIRST, params={}, start_dt=case["start_dt"],
                 end_date=None,
                 dispatch_rule="slack", resource_pool=None, objective_name="min_overdue", optimizer_algo_stats=None,
@@ -427,7 +427,7 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         search = ig_module._IteratedGreedySearch(
             limits=limits, parent=parent, profile=decode_profile, pool=pool, evaluate=evaluate,
             metrics_by_op_id=metrics, start_dt=case["start_dt"], seed=0, deadline=started + 10,
-            clock=clock, t_begin=started, attempts=[], improvement_trace=[], report_state=report, strict_mode=True,
+            clock=clock, t_begin=started, attempts=[], improvement_trace=[], report_state=report,
             report=new_iterated_greedy_report(limits, objective_name="min_overdue"), operations=operations,
             graph_context=context, decode_session=session)
         search.best = source
@@ -562,10 +562,10 @@ def test_shared_preparation_reuses_seed_resource_hours_and_checkpoint_records():
         session = SharedDecodeSession(
             archive=archive, budget=budget, scheduler=scheduler, operations=operations, batches=batches,
             seed_results=seeds, downtime_map={}, resource_pool=pool, graph_ready_context=case["graph_ready_context"],
-            clock=lambda: 0.0, started_at=0.0, deadline=100.0, start_dt=case["start_dt"],
+            clock=lambda: 0.0, started_at=0.0, deadline=100.0,
         )
         changes = dict(objective_name="min_overdue", strategy=SortStrategy.FIFO, strategy_params={},
-                       dispatch_mode="sgs", strict_mode=True, graph_enabled=True, graph_score_enabled=True,
+                       start_dt=case["start_dt"], dispatch_mode="sgs", graph_enabled=True, graph_score_enabled=True,
                        batch_order_override=list(batches),
                        graph_priority_key_by_op_id=case["graph_ready_context"]["graph_priority_key_by_op_id"])
         first = decode_and_metrics(decode_session=session, dispatch_rule="slack",

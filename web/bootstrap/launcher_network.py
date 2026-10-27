@@ -18,7 +18,7 @@ class BindProbeResult:
     error: str = ""
 
 
-def pick_bind_host(raw_host: Optional[str], *, logger: Optional[logging.Logger] = None) -> str:
+def pick_bind_host(raw_host: Optional[str], *, logger: logging.Logger) -> str:
     host = (raw_host or "").strip() or "127.0.0.1"
     try:
         ip = ipaddress.ip_address(host)

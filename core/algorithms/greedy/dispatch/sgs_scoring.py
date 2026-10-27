@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, NamedTuple, Optional, Tuple, Union
 
-from core.algorithm_contracts.date_parsers import parse_date
 from core.algorithm_contracts.dispatch_rules import (
     DispatchInputs,
     DispatchRule,
@@ -17,8 +16,7 @@ from core.algorithm_runtime.auto_assign_contract import (
 )
 from core.algorithm_runtime.internal_slot import (
     estimate_internal_slot,
-    raise_strict_internal_hours_validation,
-    validate_internal_hours_for_mode,
+    require_internal_hours,
 )
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_handoff, remember_sgs_estimate
@@ -46,34 +44,27 @@ class _ScoringResources(NamedTuple):
     auto_assign_reason: str
 
 
-_NATIVE_PARSE_DATE = parse_date
 _NATIVE_PARSE_OPTIONAL_DATE = parse_optional_date
-_DUE_TEXT_CACHE: Dict[Tuple[bool, str], Optional[date]] = {}
+_DUE_TEXT_CACHE: Dict[str, Optional[date]] = {}
 
 
-def _parse_native_due_text(value: str, *, strict_mode: bool) -> Optional[date]:
-    key = strict_mode, value
-    if key in _DUE_TEXT_CACHE:
-        return _DUE_TEXT_CACHE[key]
-    result = parse_optional_date(value, field="due_date") if strict_mode else parse_date(value)
-    # Invalid non-strict dates also return None: retain their original parse path.
-    if result is not None or not value.strip():
-        if len(_DUE_TEXT_CACHE) >= 4096:
-            _DUE_TEXT_CACHE.pop(next(iter(_DUE_TEXT_CACHE)))
-        _DUE_TEXT_CACHE[key] = result
+def _parse_native_due_text(value: str) -> Optional[date]:
+    # Invalid text raises before it is cached; blank text caches None.
+    if value in _DUE_TEXT_CACHE:
+        return _DUE_TEXT_CACHE[value]
+    result = parse_optional_date(value, field="due_date")
+    if len(_DUE_TEXT_CACHE) >= 4096:
+        _DUE_TEXT_CACHE.pop(next(iter(_DUE_TEXT_CACHE)))
+    _DUE_TEXT_CACHE[value] = result
     return result
 
 
-def parse_due_date(value: Any, *, strict_mode: bool = False) -> Optional[date]:
-    if strict_mode:
-        if value is None or type(value) is date:
-            return value
-        if type(value) is str and parse_optional_date is _NATIVE_PARSE_OPTIONAL_DATE:
-            return _parse_native_due_text(value, strict_mode=True)
-        return parse_optional_date(value, field="due_date")
-    if type(value) is str and parse_date is _NATIVE_PARSE_DATE:
-        return _parse_native_due_text(value, strict_mode=False)
-    return parse_date(value)
+def parse_due_date(value: Any) -> Optional[date]:
+    if value is None or type(value) is date:
+        return value
+    if type(value) is str and parse_optional_date is _NATIVE_PARSE_OPTIONAL_DATE:
+        return _parse_native_due_text(value)
+    return parse_optional_date(value, field="due_date")
 
 
 def _dispatch_key(
@@ -149,10 +140,9 @@ def _score_external_candidate(
     dispatch_rule: Union[DispatchRule, DispatchRuleSpec],
     end_dt_exclusive: Optional[datetime],
     avg_proc_hours: float,
-    strict_mode: bool,
     dispatch_key_builder: Callable[[DispatchInputs], Tuple[float, ...]] = build_dispatch_key,
 ) -> Tuple[float, ...]:
-    meta = _candidate_meta(op=op, batch=batch, batch_id=batch_id, state=state, strict_mode=strict_mode)
+    meta = _candidate_meta(op=op, batch=batch, batch_id=batch_id, state=state)
     window = external_candidate_window(ctx.calendar, state.external_group_cache, op=op, prev_end=meta["prev_end"])
     est_start, est_end = window
     proc_hours = max((est_end - est_start).total_seconds() / 3600.0, 0.0)
@@ -194,17 +184,15 @@ def _score_internal_candidate(
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
     avg_proc_hours: float,
-    strict_mode: bool,
     total_hours_by_op_id: Dict[int, float],
     estimate_slot: Callable[..., Any] = estimate_internal_slot,
     dispatch_key_builder: Callable[[DispatchInputs], Tuple[float, ...]] = build_dispatch_key,
     attempt_sink: Optional[Callable[[Any], None]] = None,
 ) -> Tuple[float, ...]:
-    meta = _candidate_meta(op=op, batch=batch, batch_id=batch_id, state=state, strict_mode=strict_mode)
+    meta = _candidate_meta(op=op, batch=batch, batch_id=batch_id, state=state)
     total_hours = _scoring_total_hours(
         op=op,
         batch=batch,
-        strict_mode=strict_mode,
         total_hours_by_op_id=total_hours_by_op_id,
         op_id=meta["op_id"],
     )
@@ -296,11 +284,11 @@ def _score_internal_candidate(
 
 
 def _candidate_meta(
-    *, op: OpForScheduleAlgo, batch: Batch, batch_id: str, state: ScheduleRunState, strict_mode: bool,
+    *, op: OpForScheduleAlgo, batch: Batch, batch_id: str, state: ScheduleRunState,
 ) -> Dict[str, Any]:
     return {
         "priority": batch.priority,
-        "due_date": parse_due_date(batch.due_date, strict_mode=strict_mode),
+        "due_date": parse_due_date(batch.due_date),
         "seq": op.seq,
         "op_id": op.id,
         "batch_id": batch_id,
@@ -312,16 +300,12 @@ def _scoring_total_hours(
     *,
     op: OpForScheduleAlgo,
     batch: Batch,
-    strict_mode: bool,
     total_hours_by_op_id: Dict[int, float],
     op_id: int,
 ) -> float:
     if op_id in total_hours_by_op_id:
         return total_hours_by_op_id[op_id]
-    try:
-        total_hours = validate_internal_hours_for_mode(op, batch, strict_mode=strict_mode)
-    except ValueError:
-        raise_strict_internal_hours_validation(op, batch)
+    total_hours = require_internal_hours(op, batch)
     total_hours_by_op_id[op_id] = total_hours
     return total_hours
 
@@ -450,7 +434,7 @@ def _estimate_scoring_slot(
 
 _NATIVE_SCORING_HELPERS = {name: globals()[name] for name in (
     "_candidate_meta", "_scoring_total_hours", "_scoring_resources", "_estimate_scoring_slot", "_dispatch_key",
-    "parse_due_date", "parse_optional_date", "parse_date", "_score_internal_candidate", "_score_external_candidate",
+    "parse_due_date", "parse_optional_date", "_score_internal_candidate", "_score_external_candidate",
     "due_span_inputs", "external_candidate_window",
 )}
 

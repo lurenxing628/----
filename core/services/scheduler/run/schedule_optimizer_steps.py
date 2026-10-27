@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 from core.algorithm_contracts.sort_strategies import SortStrategy
 from core.algorithms.evaluation import objective_score
 from core.algorithms.ortools_bottleneck import OrtoolsWarmstartError, try_solve_bottleneck_batch_order
-from core.errors import ValidationError
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 
 from .optimizer.config import (
@@ -62,7 +61,6 @@ def _ortools_strategy_params(snapshot: ScheduleConfigSnapshot, *, strategy: Sort
 
 def _evaluate_ortools_candidate(
     *,
-    strict_mode: bool,
     strategy: SortStrategy,
     params: Dict[str, Any],
     start_dt: datetime,
@@ -80,7 +78,6 @@ def _evaluate_ortools_candidate(
     decoded = decode_and_metrics(
         decode_session=decode_session, objective_name=objective_name,
         optimizer_algo_stats=optimizer_algo_stats,
-        strict_mode=bool(strict_mode),
         strategy=strategy,
         strategy_params=params,
         start_dt=start_dt,
@@ -156,7 +153,6 @@ def run_ortools_warmstart(
     optimizer_algo_stats: Dict[str, Any],
     readiness_gate_enabled: bool = False,
     graph_ready_context: Optional[Any] = None,
-    strict_mode: bool = False,
     clock: Optional[Callable[[], float]] = None,
     search_report_state: OptimizationSearchReportState,
     decode_session: SharedDecodeSession,
@@ -191,18 +187,6 @@ def run_ortools_warmstart(
             start_dt=start_dt,
             order_time_budget_seconds=order_time_budget_seconds,
         )
-    except ValidationError as e:
-        if bool(strict_mode):
-            raise
-        _record_ortools_optional_failure(
-            attempts=attempts,
-            strategy=strategy_enum,
-            dispatch_mode=dispatch_mode_cfg,
-            dispatch_rule=dispatch_rule_cfg,
-            optimizer_algo_stats=optimizer_algo_stats,
-            exc=e,
-        )
-        return best
     except OrtoolsWarmstartError as e:
         # The optional warm start degrades visibly on its real failures; other errors are defects.
         _record_ortools_optional_failure(
@@ -225,7 +209,6 @@ def run_ortools_warmstart(
 
     try:
         cand = _evaluate_ortools_candidate(
-            strict_mode=bool(strict_mode),
             strategy=strategy_enum,
             params=_ortools_strategy_params(cfg, strategy=strategy_enum),
             start_dt=start_dt,
@@ -243,18 +226,6 @@ def run_ortools_warmstart(
     except SharedSearchSkip as exc:
         _record_warmstart_shared_skip(attempts, exc, strategy_enum, dispatch_mode_cfg, dispatch_rule_cfg)
         raise
-    except ValidationError as e:
-        if bool(strict_mode):
-            raise
-        _record_ortools_optional_failure(
-            attempts=attempts,
-            strategy=strategy_enum,
-            dispatch_mode=dispatch_mode_cfg,
-            dispatch_rule=dispatch_rule_cfg,
-            optimizer_algo_stats=optimizer_algo_stats,
-            exc=e,
-        )
-        return best
 
     return _record_ortools_candidate(
         best=best,

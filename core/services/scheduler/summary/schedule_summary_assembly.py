@@ -115,8 +115,6 @@ def _apply_optional_algo_fields(algo: Dict[str, Any], state: AlgorithmSummarySta
 def _apply_fallback_algo_fields(algo: Dict[str, Any], fallback_state: FallbackState) -> None:
     if fallback_state.fallback_counts:
         algo["fallback_counts"] = fallback_state.fallback_counts
-    if fallback_state.param_fallbacks:
-        algo["param_fallbacks"] = fallback_state.param_fallbacks
 
 
 def _algo_dict(state: AlgorithmSummaryState) -> Dict[str, Any]:

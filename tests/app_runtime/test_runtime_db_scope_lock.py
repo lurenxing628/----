@@ -57,7 +57,7 @@ def test_diverged_lock_namespace_same_db_second_instance_rejected(tmp_path: Path
     assert (logs1 / "aps_runtime.lock").exists(), "第一实例的壳锁不受影响"
     assert f"pid={os.getpid()}" in db_lock.read_text(encoding="utf-8"), "db-scope 锁仍归第一实例"
 
-    lock_mod.release_runtime_lock(str(logs1), db_path=str(db), expected_payload=first)
+    lock_mod.release_runtime_lock(str(logs1), expected_payload=first)
 
 
 def _replace_stale_database_lock(runtime_dir, log_dir, database, entered, resume, installed, finish, results):
@@ -84,7 +84,7 @@ def _replace_stale_database_lock(runtime_dir, log_dir, database, entered, resume
         raise
     finally:
         if payload is not None:
-            lock_mod.release_runtime_lock(log_dir, db_path=database, expected_payload=payload)
+            lock_mod.release_runtime_lock(log_dir, expected_payload=payload)
 
 
 def _contend_for_database_lock(runtime_dir, log_dir, database, results):
@@ -94,7 +94,7 @@ def _contend_for_database_lock(runtime_dir, log_dir, database, results):
         results.put(("rejected", str(exc)))
     else:
         results.put(("unexpected_acquire", payload))
-        lock_mod.release_runtime_lock(log_dir, db_path=database, expected_payload=payload)
+        lock_mod.release_runtime_lock(log_dir, expected_payload=payload)
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX real process mutation guard")
@@ -199,7 +199,7 @@ def test_cleanup_rechecks_mirror_and_preserves_new_primary_instance(tmp_path, mo
     assert not (logs / "aps_runtime.json").exists()
     assert (logs / "aps_runtime.lock").is_file()
     assert all(not path.endswith("aps_runtime.lock") for path in result.attempted_paths)
-    assert lock_mod.release_runtime_lock(str(logs), db_path=str(database), expected_payload=old_lock)
+    assert lock_mod.release_runtime_lock(str(logs), expected_payload=old_lock)
 
     new_lock = _acquire(runtime_dir, logs, database)
     publication = _publish_claim(runtime_dir, logs, database, new_lock, "new-primary-instance")
@@ -209,8 +209,8 @@ def test_cleanup_rechecks_mirror_and_preserves_new_primary_instance(tmp_path, mo
     assert Path(publication["path"]).read_bytes() == saved
     assert read_runtime_lock_result(str(logs)).payload["started_at"] == new_lock["started_at"]
     assert lock_mod.read_runtime_lock_result_from_path(db_scope_lock_path(str(database))).payload["started_at"] == new_lock["db_lock"]["started_at"]
-    assert not lock_mod.release_runtime_lock(str(logs), db_path=str(database), expected_payload=old_lock)
-    assert lock_mod.release_runtime_lock(str(logs), db_path=str(database), expected_payload=new_lock)
+    assert not lock_mod.release_runtime_lock(str(logs), expected_payload=old_lock)
+    assert lock_mod.release_runtime_lock(str(logs), expected_payload=new_lock)
 
 
 def test_unmanaged_exit_uses_original_three_identities_after_backup(tmp_path, monkeypatch):
@@ -235,7 +235,7 @@ def test_unmanaged_exit_uses_original_three_identities_after_backup(tmp_path, mo
                       EXCEL_TEMPLATE_DIR=str(runtime_dir / "templates"), APP_UI_MODE="new_ui")
     assert entrypoint_mod._publish_runtime_contract(
         deps, app, runtime_dir=str(runtime_dir), host="127.0.0.1", port=6322,
-        runtime_owner=_OWNER, ui_mode="default", lock_state=state,
+        runtime_owner=_OWNER, lock_state=state,
     ) is None
     assert len(callbacks) == 2
     assert state["contract_cleanup_dir"] == str(logs)
@@ -264,7 +264,7 @@ def test_unmanaged_exit_uses_original_three_identities_after_backup(tmp_path, mo
         callback(*args, **kwargs)
     assert Path(publication["path"]).read_bytes() == current
     assert read_runtime_lock_result(str(logs)).payload["started_at"] == new_lock["started_at"]
-    assert lock_mod.release_runtime_lock(str(logs), db_path=str(database), expected_payload=new_lock)
+    assert lock_mod.release_runtime_lock(str(logs), expected_payload=new_lock)
 
 
 def test_stop_retains_initial_shell_database_and_contract_through_wait(tmp_path, monkeypatch):
@@ -278,7 +278,7 @@ def test_stop_retains_initial_shell_database_and_contract_through_wait(tmp_path,
     monkeypatch.setattr(stop_mod, "_request_runtime_shutdown", lambda *args, **kwargs: True)
 
     def wait_and_replace(*args):
-        assert lock_mod.release_runtime_lock(str(logs), db_path=str(database), expected_payload=old_lock)
+        assert lock_mod.release_runtime_lock(str(logs), expected_payload=old_lock)
         new["lock"] = _acquire(runtime_dir, logs, database)
         new["publication"] = _publish_claim(runtime_dir, logs, database, new["lock"], "new-stop-instance")
         return dict(state="stale", state_dir=str(logs), endpoint_up=False, lock=new["lock"], contract=new["publication"]["payload"])
@@ -288,7 +288,7 @@ def test_stop_retains_initial_shell_database_and_contract_through_wait(tmp_path,
     assert contracts_mod.read_runtime_contract_result(str(logs)).payload["instance_id"] == "new-stop-instance"
     assert read_runtime_lock_result(str(logs)).payload["started_at"] == new["lock"]["started_at"]
     assert lock_mod.read_runtime_lock_result_from_path(db_scope_lock_path(str(database))).payload["started_at"] == new["lock"]["db_lock"]["started_at"]
-    assert lock_mod.release_runtime_lock(str(logs), db_path=str(database), expected_payload=new["lock"])
+    assert lock_mod.release_runtime_lock(str(logs), expected_payload=new["lock"])
 
 
 def test_stop_succeeds_after_server_exit_cleans_configured_log_mirror(tmp_path, monkeypatch):
@@ -306,13 +306,26 @@ def test_stop_succeeds_after_server_exit_cleans_configured_log_mirror(tmp_path, 
             str(logs), expected_lock=claim, expected_contract=contract,
         )
         assert result.ok
-        assert lock_mod.release_runtime_lock(str(logs), db_path=str(database), expected_payload=claim)
+        assert lock_mod.release_runtime_lock(str(logs), expected_payload=claim)
         return dict(state="absent", state_dir=str(logs), endpoint_up=False, lock=None, contract=None)
 
     monkeypatch.setattr(stop_mod, "_wait_for_runtime_stop", server_exits)
     assert stop_mod.stop_runtime_from_dir(str(runtime_dir)) == 0
     assert not (logs / "aps_runtime.json").exists()
     assert not (configured_logs / "aps_runtime.json").exists()
+
+
+def test_release_follows_the_database_lock_path_recorded_in_the_claim(tmp_path):
+    """释放只认 claim：没有可核对的数据库锁时只放壳锁；数据库锁按 claim 记录的路径释放。"""
+    runtime_dir, logs, database = tmp_path / "app", tmp_path / "app" / "logs", tmp_path / "aps.db"
+    claim = _acquire(runtime_dir, logs, database)
+    database_lock = Path(db_scope_lock_path(str(database)))
+    assert claim["db_lock"]["path"] == str(database_lock)
+    shell = read_runtime_lock_result(str(logs)).payload
+    assert stop_mod.release_initial_runtime_locks(str(logs), shell, None)
+    assert not (logs / "aps_runtime.lock").exists() and database_lock.exists()
+    assert lock_mod.release_runtime_lock(str(logs), expected_payload=claim)
+    assert not database_lock.exists()
 
 
 def _make_real_lock_deps(tmp_path: Path, events: List[str], state: Dict[str, Any], *, prelaunch_log_dir: Path) -> EntryPointDeps:
@@ -381,7 +394,7 @@ def test_app_main_rejects_second_instance_on_db_conflict_before_create_app(tmp_p
     assert not (inst2_dir / "logs" / "aps_runtime.lock").exists(), "第二实例的壳锁必须回滚"
     assert f"pid={os.getpid()}" in Path(db_scope_lock_path(str(db))).read_text(encoding="utf-8")
 
-    lock_mod.release_runtime_lock(str(logs1), db_path=str(db), expected_payload=first)
+    lock_mod.release_runtime_lock(str(logs1), expected_payload=first)
 
 
 def test_quality_gate_runtime_probe_does_not_let_stale_contract_mask_active_lock_or_endpoint(monkeypatch) -> None:

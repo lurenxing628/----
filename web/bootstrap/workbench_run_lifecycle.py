@@ -27,7 +27,7 @@ def install_run_lifecycle(deps, app, lock_state):
         "workbench_startup_maintenance_records" not in app.extensions and prepare_system_restore_startup(app)
     ):
         return _install_recovery_lifecycle(deps, app, lock_state)
-    runtime = deps.install_run_runtime(app, runtime_lock=lock_state.get("payload"))
+    runtime = deps.install_run_runtime(app, runtime_lock=lock_state["payload"])
     lock_state["runtime"] = runtime
     if not runtime.ready:
         raise RuntimeError("排产运行恢复检查未通过：" + str(runtime.status["reason"]))
@@ -46,13 +46,13 @@ def install_run_lifecycle(deps, app, lock_state):
 
 
 def _install_recovery_lifecycle(deps, app, lock_state):
-    host = WorkbenchSystemRestoreRecoveryHost(app, lock_state.get("payload"))
+    host = WorkbenchSystemRestoreRecoveryHost(app, lock_state["payload"])
     lock_state["runtime"] = host
     deps.atexit_register(stop_run_runtime, host)
     return host
 
 
-def release_runtime_after_jobs(deps, lock_state, lock_scope, db_path):
+def release_runtime_after_jobs(deps, lock_state, lock_scope):
     runtime = lock_state.get("runtime")
     stop_run_runtime(runtime)
     directory = lock_state.get("contract_cleanup_dir")
@@ -60,9 +60,9 @@ def release_runtime_after_jobs(deps, lock_state, lock_scope, db_path):
         if runtime is not None:
             runtime.proof.verify()
         result = deps.delete_runtime_contract_files(
-            directory, expected_lock=lock_state.get("payload"), expected_contract=lock_state.get("contract")
+            directory, expected_lock=lock_state["payload"], expected_contract=lock_state["contract"]
         )
         if not result.ok:
             raise RuntimeLockError("原实例运行时文件清理失败：" + "; ".join(failure.error or failure.reason for failure in result.failures))
-    if not deps.release_runtime_lock(lock_scope, db_path, expected_payload=lock_state["payload"]):
+    if not deps.release_runtime_lock(lock_scope, expected_payload=lock_state["payload"]):
         raise RuntimeLockError("原实例运行锁释放失败，请查看运行时日志。")

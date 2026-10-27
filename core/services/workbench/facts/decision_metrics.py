@@ -88,13 +88,18 @@ def metric_value(value, *, total=1, unknown=0, subtotal=None, state=None, scope=
     return result
 
 
-def admission_operations(facts, settings, disposition):
+def admission_operation_refs(facts, settings):
+    """Every captured operation of the admitted batches."""
     selected = set(settings["batch_refs"])
-    refs = {ref for ref, key in facts.operations.items()
+    return {ref for ref, key in facts.operations.items()
             if facts.entity_refs.get(("batch", facts.tables["BatchOperations"].get(key, {}).get("batch_id"))) in selected}
-    deferred_ids = material_deferred_ids((disposition or {}).values(), settings)
+
+
+def admission_operations(facts, settings, disposition: Dict[str, Dict[str, Any]]):
+    refs = admission_operation_refs(facts, settings)
+    deferred_ids = material_deferred_ids(disposition.values(), settings)
     deferred = {ref for ref in refs if facts.operations[ref] in deferred_ids}
-    skipped = {ref for ref in refs if (disposition or {}).get(ref, {}).get("status") == "skipped"} - deferred
+    skipped = {ref for ref in refs if disposition[ref]["status"] == "skipped"} - deferred
     return refs, deferred, skipped
 
 
@@ -123,7 +128,7 @@ def candidate_metrics(candidate, tasks, facts, disposition, batch_refs, *, deliv
     has_result = candidate["status"] == "completed"
     scheduled = {row["operation_ref"] for row in tasks} & expected
     missing = expected - scheduled
-    input_known = disposition is not None and refs == set(disposition)
+    input_known = refs == set(disposition)
     state = "unavailable" if not has_result or not input_known else "partial" if missing or skipped else "complete"
     schedulable = {"state": state, "expected_count": len(expected), "scheduled_count": len(scheduled) if has_result else None,
                    "missing_count": len(missing) if has_result else None, "skipped_count": len(skipped), "deferred_count": len(deferred)}

@@ -5,9 +5,10 @@ import re
 from core.errors import ValidationError
 from core.models.calendar_periods import decode_periods, period_hours
 from core.services.workbench.facts.preflight_checks import stored_date
+from core.shared.strict_parse import is_exact_non_negative_number
 
 from .overview_facts import plain
-from .overview_graph import number, text
+from .overview_graph import text
 
 VALUE_TEXT = {"workday": "工作日", "weekend": "周末", "holiday": "节假日", "yes": "允许", "no": "不允许"}
 
@@ -36,7 +37,7 @@ def add_calendar(graph):
                 graph.issue(entity, "calendar." + key, label + "待核对", "资料里记的是「" + text(row[key]) + "」，不在允许填的取值里。")
         for key, label in (("shift_hours", "班次工时（小时）"), ("efficiency", "效率系数")):
             value = row[key]
-            valid_number = number(value, positive=key == "efficiency") and (key != "shift_hours" or value <= 24)
+            valid_number = is_exact_non_negative_number(value, positive=key == "efficiency") and (key != "shift_hours" or value <= 24)
             graph.field(entity, label, value, "WorkCalendar." + key, valid=valid_number)
             if not valid_number:
                 graph.issue(entity, "calendar." + key, label + "待核对", "资料里记的是" + text(value) + "，请核对。")
@@ -56,7 +57,7 @@ def _window(graph, entity, row):
     elif start is not None and end is not None:
         hours = ((end - start) if end > start else end - start + 24 * 60) / 60.0
         graph.field(entity, "按起止算出的工时（小时）", hours, "WorkCalendar.shift_start + shift_end", required=False)
-        if number(row["shift_hours"]) and abs(hours - row["shift_hours"]) > 1e-9:
+        if is_exact_non_negative_number(row["shift_hours"]) and abs(hours - row["shift_hours"]) > 1e-9:
             graph.issue(entity, "calendar.window_conflict", "班次起止与记录工时冲突",
                         "按起止算出 " + text(hours) + " 小时，资料里记的是 " + text(row["shift_hours"]) + " 小时，系统没有改写原值。")
     else:
@@ -73,5 +74,5 @@ def _periods(graph, entity, row):
                      + ("次日 " if p["end"] <= p["start"] else "") + p["end"] for p in periods)
     graph.field(entity, "实际工作时段", label or "无工作时段", "WorkCalendar.periods_json", required=False)
     hours = period_hours(periods)
-    if number(row["shift_hours"]) and abs(hours - row["shift_hours"]) > 1e-9:
+    if is_exact_non_negative_number(row["shift_hours"]) and abs(hours - row["shift_hours"]) > 1e-9:
         graph.issue(entity, "calendar.window_conflict", "工作时段与记录工时冲突", "请按逐段时间重新核对可排工时。")

@@ -1,11 +1,11 @@
 """Truthful legacy template projection, with no inferred human confirmations."""
 
-import math
 import re
 
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.process.template_source import SOURCE_MESSAGES, external_group_issues
+from core.shared.strict_parse import is_exact_non_negative_number
 
 
 def capabilities():
@@ -53,7 +53,7 @@ def _number(value, label, issues, *, positive=False):
     if value is None:
         issues.append(issue("value_missing", label + "未填写。"))
         return None
-    if type(value) not in (int, float) or not math.isfinite(value) or (value <= 0 if positive else value < 0):
+    if not is_exact_non_negative_number(value, positive=positive):
         issues.append(issue("value_invalid", label + "填的值不合法，请核对。"))
         return None
     return value

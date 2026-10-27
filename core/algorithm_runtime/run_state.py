@@ -155,7 +155,7 @@ class ScheduleRunState:
     ) -> None:
         # 审计 A02：后道工序已报工（PROCESSING/PAUSED 进固定集）但前道排产失败，
         # 报工顺序与工艺顺序不一致。只补结构化明细留痕、不重复计数——失败工序
-        # 自身已由 record_dispatch_failure / record_dispatch_exception 计 1。
+        # 自身已由 record_dispatch_failure 计 1。
         self.failure_details.append(
             self._failure_detail(
                 "graph_fixed_successor_order_conflict",
@@ -174,21 +174,6 @@ class ScheduleRunState:
         )
         self.failure_details.append(detail)
         self._retire_resource_demand(detail["op_id"])
-
-    def record_dispatch_exception(self, op: OpForScheduleAlgo, batch_id: str, *, dispatch_mode: str) -> None:
-        self.failed_count += 1
-        # 同 record_missing_batch：只写结构化明细，渲染交给 _structured_failure_message，避免双发。
-        detail = self._failure_detail(
-            "dispatch_operation_exception",
-            op,
-            batch_id=batch_id,
-            extra={"dispatch_mode": dispatch_mode},
-        )
-        self.failure_details.append(detail)
-        self._retire_resource_demand(detail["op_id"], blocked_batch=batch_id)
-        if batch_id:
-            self.batch_failure_sources[batch_id] = detail
-            self.blocked_batches.add(batch_id)
 
     def _retire_resource_demand(self, op_id: int, *, blocked_batch: str = "") -> None:
         if isinstance(self.last_op_type_by_machine, MachineTypeState):

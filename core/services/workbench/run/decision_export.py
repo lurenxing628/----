@@ -152,7 +152,7 @@ def _segments(side):
     if not segments:
         return None
     # 多段事实单列保存，独立时间和资源差值继续为空。
-    return json.dumps(segments, ensure_ascii=False, separators=(",", ":"))
+    return json.dumps(segments, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
 
 
 def operation_rows(data):

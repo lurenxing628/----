@@ -156,7 +156,6 @@ def configure_runtime_contract(
     port: int,
     owner: str,
     *,
-    default_ui_mode: str,
     deps: EntryPointDeps,
     runtime_lock: Dict[str, Any],
 ) -> Dict[str, Any]:
@@ -173,7 +172,7 @@ def configure_runtime_contract(
         db_path=app.config.get("DATABASE_PATH"),
         shutdown_token=shutdown_token,
         instance_id=identity["instance_id"],
-        ui_mode=str(app.config.get("APP_UI_MODE") or default_ui_mode),
+        ui_mode=app.config["APP_UI_MODE"],
         log_dir=app.config.get("LOG_DIR"),
         backup_dir=app.config.get("BACKUP_DIR"),
         excel_template_dir=app.config.get("EXCEL_TEMPLATE_DIR"),
@@ -241,13 +240,13 @@ def app_main(
         )
         return 14
     return _serve_created_app(
-        deps, app, ui_mode=ui_mode, runtime_dir=runtime_dir,
+        deps, app, runtime_dir=runtime_dir,
         prelaunch_log_dir=prelaunch_log_dir, runtime_owner=runtime_owner,
         owns_runtime_resources=owns_runtime_resources, runtime_lock_state=runtime_lock_state,
     )
 
 
-def _serve_created_app(deps, app, *, ui_mode, runtime_dir, prelaunch_log_dir,
+def _serve_created_app(deps, app, *, runtime_dir, prelaunch_log_dir,
                        runtime_owner, owns_runtime_resources, runtime_lock_state):
     debug = bool(app.config.get("DEBUG", False))
     recovery_required = app.config.get("WORKBENCH_RUN_RUNTIME_REASON") == RECOVERY
@@ -296,7 +295,7 @@ def _serve_created_app(deps, app, *, ui_mode, runtime_dir, prelaunch_log_dir,
         if owns_runtime_resources:
             rc = _publish_runtime_contract(
                 deps, app, runtime_dir=runtime_dir, host=host, port=port,
-                runtime_owner=runtime_owner, ui_mode=ui_mode,
+                runtime_owner=runtime_owner,
                 lock_state=runtime_lock_state,
             )
             if rc is not None:
@@ -386,7 +385,7 @@ def _acquire_runtime_lock_before_app(
         )
         return 13
     runtime_lock_state["payload"] = acquired
-    deps.atexit_register(release_runtime_after_jobs, deps, runtime_lock_state, lock_scope_target, runtime_db_path)
+    deps.atexit_register(release_runtime_after_jobs, deps, runtime_lock_state, lock_scope_target)
     return None
 
 
@@ -398,7 +397,6 @@ def _publish_runtime_contract(
     host,
     port,
     runtime_owner,
-    ui_mode,
     lock_state: Dict[str, Any],
 ) -> Optional[int]:
     # 契约失败用 app.logger（区别于锁/create_app 失败用 None），文案不统一化。返回 None=成功继续；15=契约失败。
@@ -409,7 +407,6 @@ def _publish_runtime_contract(
             host,
             port,
             runtime_owner,
-            default_ui_mode=ui_mode,
             deps=deps,
             runtime_lock=lock_state["payload"],
         )

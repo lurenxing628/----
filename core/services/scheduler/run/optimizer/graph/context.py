@@ -83,14 +83,6 @@ def optional_non_negative_number(value: Any, *, field: str) -> Optional[float]:
     return non_negative_number(value, field=field)
 
 
-def reason_from_validation(exc: ValidationError) -> str:
-    if isinstance(exc.details, dict):
-        reason = str(exc.details.get("reason") or "").strip()
-        if reason:
-            return reason
-    return "graph_ready_candidate_rejected"
-
-
 def _validate_schedulable_ids(schedulable_ids: set, fixed_ids: set, *, algo_ops_to_schedule: List[OpForScheduleAlgo]) -> None:
     if schedulable_ids.intersection(fixed_ids):
         _raise("图 ready 候选的待排工序和固定工序有重叠。", "graph_ready_schedulable_fixed_overlap")

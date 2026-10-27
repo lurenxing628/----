@@ -44,7 +44,7 @@ class RunRuntimeLockProof:
 
     def __init__(self, db_path, runtime_lock):
         self.db_path = normalize_runtime_db_path(db_path)
-        if not isinstance(runtime_lock, dict) or not self.db_path:
+        if not self.db_path:
             raise RunRuntimeOwnershipError("runtime_lock_not_supplied")
         self.claim = dict(runtime_lock)
         self.shell_path = self.claim["path"]
@@ -72,5 +72,4 @@ class RunRuntimeLockProof:
             raise RunRuntimeOwnershipError("runtime_lock_replaced")
 
     def matches(self, db_path, runtime_lock):
-        return (self.db_path == normalize_runtime_db_path(db_path)
-                and isinstance(runtime_lock, dict) and runtime_lock == self.claim)
+        return self.db_path == normalize_runtime_db_path(db_path) and runtime_lock == self.claim

@@ -10,7 +10,7 @@ from core.algorithm_contracts.dispatch_rules import (
     build_dispatch_key,
 )
 from core.algorithm_contracts.value_domains import EXTERNAL, INTERNAL
-from core.algorithm_runtime.internal_slot import estimate_internal_slot, validate_internal_hours_for_mode
+from core.algorithm_runtime.internal_slot import estimate_internal_slot, require_internal_hours
 from core.algorithm_runtime.piece_input import operation_dispatch_state
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithm_runtime.sgs_estimate_reuse import sgs_handoff_scope
@@ -77,7 +77,6 @@ def dispatch_sgs(
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
     graph_ready_context: Optional[Any] = None,
-    strict_mode: bool = False,
     decode_resume: Optional[DecodeCheckpoint] = None,
     decode_checkpoints: Optional[DecodeCheckpointRequest] = None,
 ) -> Tuple[int, int]:
@@ -86,12 +85,7 @@ def dispatch_sgs(
     ops_by_batch = _group_sgs_ops(sorted_ops=sorted_ops, batches=batches, state=state)
     batch_ids = sorted(ops_by_batch, key=lambda item: (batch_order.get(item, 999999), item))
     next_idx: Dict[str, int] = {batch_id: 0 for batch_id in batch_ids}
-    avg_proc_hours, total_hours_by_op_id = _average_proc_hours(
-        ctx,
-        ops_by_batch=ops_by_batch,
-        batches=batches,
-        strict_mode=strict_mode,
-    )
+    avg_proc_hours, total_hours_by_op_id = _average_proc_hours(ctx, ops_by_batch=ops_by_batch, batches=batches)
     with sgs_overlap_reuse(state.machine_timeline, expected_operations=len(sorted_ops) + len(state.results)):
         _run_sgs_loop(
             ctx,
@@ -106,7 +100,6 @@ def dispatch_sgs(
             machine_downtimes,
             auto_assign_enabled,
             resource_pool,
-            strict_mode,
             avg_proc_hours,
             total_hours_by_op_id,
             graph_ready_context,
@@ -135,7 +128,6 @@ def _average_proc_hours(
     *,
     ops_by_batch: Dict[str, List[OpForScheduleAlgo]],
     batches: Dict[str, Batch],
-    strict_mode: bool,
 ) -> Tuple[float, Dict[int, float]]:
     samples: List[float] = []
     total_hours_by_op_id: Dict[int, float] = ctx.native_preparation.total_hours_by_op_id
@@ -144,30 +136,13 @@ def _average_proc_hours(
         batch = batches[batch_id]
         for op in operations:
             if op.source == INTERNAL:
-                cached = total_hours_by_op_id.get(op.id)
-                if cached is not None:
-                    samples.append(cached)
-                else:
-                    sample = _append_proc_sample(ctx, samples, op=op, batch=batch, strict_mode=strict_mode)
-                    if sample is not None:
-                        total_hours_by_op_id[op.id] = sample
+                if op.id not in total_hours_by_op_id:
+                    total_hours_by_op_id[op.id] = require_internal_hours(op, resolve_operation_batch(ctx, op, batch))
+                samples.append(total_hours_by_op_id[op.id])
     if samples:
         return sum(samples) / len(samples), total_hours_by_op_id
     ctx.increment("dispatch_key_avg_proc_hours_fallback_count")
     return 1.0, total_hours_by_op_id
-
-
-def _append_proc_sample(
-    ctx: Any, samples: List[float], *, op: OpForScheduleAlgo, batch: Batch, strict_mode: bool,
-) -> Optional[float]:
-    try:
-        sample = validate_internal_hours_for_mode(op, resolve_operation_batch(ctx, op, batch), strict_mode=strict_mode)
-    except ValueError:
-        # 非 strict 预扫跳过坏工时样本会让均值悄悄偏移，必须计数留痕（不许零留痕静默跳过）。
-        ctx.increment("dispatch_key_avg_proc_hours_sample_skipped_count")
-        return None
-    samples.append(sample)
-    return sample
 
 
 def _run_sgs_loop(
@@ -183,7 +158,6 @@ def _run_sgs_loop(
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
-    strict_mode: bool,
     avg_proc_hours: float,
     total_hours_by_op_id: Dict[int, float],
     graph_ready_context: Optional[Any],
@@ -205,7 +179,7 @@ def _run_sgs_loop(
     score_cache = ctx.sgs_score_cache
     if score_cache is not None and score_cache.state is not state:
         raise RuntimeError("SGS 评分缓存绑定的运行状态与本次派工不一致")
-    pruning = (GraphPriorityPruning.for_cache(score_cache, graph_state, batches, total_hours_by_op_id, strict_mode=strict_mode)
+    pruning = (GraphPriorityPruning.for_cache(score_cache, graph_state, batches, total_hours_by_op_id)
                if ctx.native_scoring else None)
     acceleration = DecodeAcceleration(decode_checkpoints, graph_state, pruning, total_hours_by_op_id, ctx,
                                       resume=decode_resume)
@@ -216,7 +190,7 @@ def _run_sgs_loop(
 
     def score(candidates):
         return _score_candidates(ctx, state, candidates, batches, batch_order, dispatch_rule, end_dt_exclusive,
-                                 machine_downtimes, auto_assign_enabled, resource_pool, strict_mode, avg_proc_hours,
+                                 machine_downtimes, auto_assign_enabled, resource_pool, avg_proc_hours,
                                  total_hours_by_op_id, graph_state, priority_pruning=pruning)
 
     with sgs_handoff_scope(score_cache):
@@ -246,7 +220,6 @@ def _run_sgs_loop(
                 machine_downtimes,
                 auto_assign_enabled,
                 resource_pool,
-                strict_mode,
                 graph_state=graph_state,
             )
             position += 1
@@ -291,7 +264,6 @@ def _score_candidates(
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
-    strict_mode: bool,
     avg_proc_hours: float,
     total_hours_by_op_id: Dict[int, float],
     graph_state: Optional[Dict[str, Any]],
@@ -317,7 +289,6 @@ def _score_candidates(
                 machine_downtimes,
                 auto_assign_enabled,
                 resource_pool,
-                strict_mode,
                 avg_proc_hours,
                 total_hours_by_op_id,
                 graph_state,
@@ -333,7 +304,7 @@ def _score_candidates(
         else:
             scored.extend(_score_candidates(
                 ctx, state, remainder, batches, batch_order, dispatch_rule, end_dt_exclusive,
-                machine_downtimes, auto_assign_enabled, resource_pool, strict_mode,
+                machine_downtimes, auto_assign_enabled, resource_pool,
                 avg_proc_hours, total_hours_by_op_id, graph_state))
     return scored
 
@@ -354,7 +325,6 @@ def _score_candidate(
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
-    strict_mode: bool,
     avg_proc_hours: float,
     total_hours_by_op_id: Dict[int, float],
     graph_state: Optional[Dict[str, Any]] = None,
@@ -374,7 +344,6 @@ def _score_candidate(
                 dispatch_rule=dispatch_rule,
                 end_dt_exclusive=end_dt_exclusive,
                 avg_proc_hours=avg_proc_hours,
-                strict_mode=strict_mode,
                 dispatch_key_builder=build_dispatch_key,
             )
         return _score_internal_candidate(
@@ -391,7 +360,6 @@ def _score_candidate(
             resource_pool=resource_pool,
             avg_proc_hours=avg_proc_hours,
             total_hours_by_op_id=total_hours_by_op_id,
-            strict_mode=strict_mode,
             attempt_sink=attempt_sink,
         )
 

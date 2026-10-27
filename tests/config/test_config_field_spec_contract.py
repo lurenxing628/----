@@ -85,7 +85,7 @@ def test_legacy_preset_keeps_budget_and_saved_rows_during_reads_and_restart(conf
     assert [tuple(row) for row in conn.execute("SELECT * FROM ScheduleConfig ORDER BY config_key")] == rows_before
 
 
-def test_build_schedule_config_snapshot_strict_mode_rejects_missing_repo_fields() -> None:
+def test_build_schedule_config_snapshot_rejects_missing_repo_fields() -> None:
     with pytest.raises(ValidationError) as exc_info:
         build_schedule_config_snapshot(rows=[])
 

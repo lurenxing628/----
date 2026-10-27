@@ -39,7 +39,7 @@
     seed_source: '随机种子来源', configured_time_budget_seconds: '配置计算预算（秒）', effective_time_budget_seconds: '实际计算预算（秒）',
     configured_max_iterations: '配置迭代上限', effective_max_iterations: '实际迭代上限', iteration_limit_source: '迭代上限来源',
     restart_after_iterations: '搜索重启间隔（轮次）', repair: '安排修复策略', acceptance: '改动接受策略', candidate_strategy_family: '候选策略组',
-    ortools_warmstart_enabled: '约束求解热启动', strict_mode: '严格约束模式', neighborhoods: '实际搜索邻域',
+    ortools_warmstart_enabled: '约束求解热启动', neighborhoods: '实际搜索邻域',
     configured_neighborhoods: '配置搜索邻域', candidate_strategy_families: '候选策略组' };
   const plain = value => value === null ? '未记录' : typeof value === 'boolean' ? value ? '是' : '否' : String(value);
   const fieldLabel = row => row.entity.key === 'run_options' && row.field === 'time_budget_seconds' ? '总计算预算（秒）'

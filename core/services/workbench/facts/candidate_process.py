@@ -1,7 +1,5 @@
 """Saved candidate solver facts, with explicit legacy and reuse coverage."""
 
-import math
-
 from core.models.objective import best_score_schema, comparison_metric_key, objective_choice_labels
 from core.services.scheduler.contracts.optimizer_public_safety import (
     PUBLIC_ATTEMPT_METRIC_KEYS,
@@ -10,6 +8,7 @@ from core.services.scheduler.contracts.optimizer_public_safety import (
 )
 from core.services.scheduler.contracts.optimizer_public_search_report import project_search_report
 from core.services.scheduler.summary.optimizer_public_attempts import project_attempt_evaluation, project_attempts
+from core.shared.strict_parse import is_exact_non_negative_number
 
 from .candidate_values import corrupt
 
@@ -25,9 +24,7 @@ _STOP_LABELS = {"time_budget": "计算时间预算已用完", "iteration_limit":
 
 
 def _number(value, *, integer=False):
-    if type(value) not in ((int,) if integer else (int, float)):
-        return None
-    return value if value >= 0 and math.isfinite(value) else None
+    return value if (type(value) is int or not integer) and is_exact_non_negative_number(value) else None
 
 
 def _dict(value):

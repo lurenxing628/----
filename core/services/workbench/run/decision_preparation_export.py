@@ -41,7 +41,7 @@ def _path(value, field):
 
 
 def _json(value):
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":")) if value else None
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False) if value else None
 
 
 def effort_values(value):

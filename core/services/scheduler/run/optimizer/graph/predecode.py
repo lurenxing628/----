@@ -35,7 +35,7 @@ class GraphReadyProfileSearch:
         self.report: Dict[str, Any] = {
             "proof": "shared_decode_request_v1", "cache_scope": "shared_session", "shared_skip_by_reason": {},
             "configured_profiles": profile_count, "considered_profiles": 0,
-            "predecode_pruned_profiles": 0, "construction_rejected_profiles": 0,
+            "predecode_pruned_profiles": 0,
             "skipped_before_decode": 0, "equivalent_profiles": [],
             "skipped_by_estimated_decode_cost": 0, "stagnation_stop": None,
         }
@@ -64,10 +64,6 @@ class GraphReadyProfileSearch:
             if exc.reason in ("estimated_decode_cost", "time_budget"):
                 self.budget.stop_reason = exc.reason
             return None
-        except ValidationError:
-            if not started:
-                self.report["construction_rejected_profiles"] += 1
-            raise
         if started:
             self.budget.record_profile_cost(self.budget.clock() - evaluation_started)
         else:

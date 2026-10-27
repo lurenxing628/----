@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import codecs
 import csv
-import math
 import re
 from tempfile import SpooledTemporaryFile
 
@@ -41,6 +40,7 @@ from core.services.workbench.facts.file_codec import NUMBER
 from core.services.workbench.facts.file_source import FileReadMessages, source_rows
 from core.services.workbench.facts.process_file_xml import preserve_carriage_returns
 from core.services.workbench.facts.table_cells import number_text
+from core.shared.strict_parse import is_exact_non_negative_number
 
 _ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _CLEARABLE = ("spec", "unit", "remark")
@@ -140,7 +140,7 @@ def read_material_file(content: bytes, file_format: str):
 
 def _export_value(value, field, number, file_format):
     if field == "stock_qty":
-        if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or value < 0):
+        if value is not None and not is_exact_non_negative_number(value):
             raise _file_error("存着的库存数量不是 0 或大于 0 的有效数字，请核对数量。", number, field)
         return value
     if field == "status" and type(value) is str:

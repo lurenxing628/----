@@ -1,18 +1,14 @@
 """One interpretation of frozen external facts for scheduling, preflight and display."""
 
-import math
 from typing import Any, Mapping, Optional
 
 from core.errors import ValidationError
 from core.models.batch_external_context import context_group_key as context_group_key
 from core.models.enums import BatchExternalContextOrigin
+from core.shared.strict_parse import is_exact_non_negative_number
 
 _MISSING_CONTEXT = "批次外协周期记录缺失。请先完成版本升级；已升级的批次请核对来源后从工艺模板更新工序。"
 _VALID_ORIGINS = frozenset(item.value for item in BatchExternalContextOrigin)
-
-
-def _positive_number(value):
-    return type(value) in (int, float) and math.isfinite(value) and value > 0
 
 
 def _reference(value):
@@ -46,7 +42,7 @@ def _group_problem(row, part_no, sequence):
         return "批次保存的外协分组范围与本工序不一致，请核对批次工序。"
     if not _reference(row["group_ref"]):
         return "批次保存的外协分组缺少来源编号，请联系维护人员核对。"
-    if row["merge_mode"] == "merged" and not _positive_number(row["total_days"]):
+    if row["merge_mode"] == "merged" and not is_exact_non_negative_number(row["total_days"], positive=True):
         return "批次保存的整组外协周期未填写或无效，请核对批次工序。"
     return None
 

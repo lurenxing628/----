@@ -327,12 +327,12 @@ def stop_workbench_runs_for_database(db_path):
     return runtime is None or runtime.shutdown(wait=True)
 
 
-def install_workbench_run_runtime(app, *, runtime_lock=None):
+def install_workbench_run_runtime(app, *, runtime_lock):
     """Install after schema setup, before any API/automatic maintenance is opened.
 
     Pass acquire_runtime_lock(..., db_path=DATABASE_PATH)'s original payload.
-    No proof means disabled without opening the database. Same live app install
-    is idempotent; a second app must not borrow a dispatcher, even during shutdown.
+    Same live app install is idempotent; a second app must not borrow a dispatcher,
+    even during shutdown.
     A closed app cannot be restarted; create a new app explicitly after joining.
     """
     with _INSTALL_LOCK:
@@ -351,16 +351,12 @@ def install_workbench_run_runtime(app, *, runtime_lock=None):
                     runtime._disable("runtime_ownership_lost")
                     raise
                 return runtime
-            if runtime_lock is None:
-                return runtime
         else:
             if _DISPATCHER in app.extensions:
                 app.config[_ENABLED] = False
                 raise RuntimeError("Workbench dispatcher already installed outside managed runtime")
             runtime = WorkbenchRunRuntime(app)
             app.extensions[_EXTENSION] = runtime
-        if runtime_lock is None:
-            return runtime
         existing = _RUNTIMES.get(runtime.db_path)
         if existing is not None and existing is not runtime:
             runtime._disable("runtime_database_already_registered")

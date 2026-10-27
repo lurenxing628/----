@@ -2,11 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
-from core.algorithm_contracts.sort_strategies import SortStrategy
-from core.services.scheduler.run.optimizer.attempt_records import (
-    append_rejected_reason_attempt,
-    attempt_decision_evidence,
-)
+from core.services.scheduler.run.optimizer.attempt_records import attempt_decision_evidence
 from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
 
 if TYPE_CHECKING:
@@ -58,26 +54,6 @@ def append_graph_trace(
             "score": list(candidate["score"]),
             "metrics": metrics.to_dict(),
         }
-    )
-
-
-def record_rejected_attempt(
-    *,
-    attempts: List[Dict[str, Any]],
-    strategy: SortStrategy,
-    dispatch_rule: str,
-    reason: str,
-    message: str,
-    profile_slug: str,
-) -> None:
-    append_rejected_reason_attempt(
-        attempts=attempts,
-        tag=f"graph_ready:{profile_slug}|sgs:{dispatch_rule}",
-        strategy=strategy.value,
-        dispatch_mode="sgs",
-        dispatch_rule=dispatch_rule,
-        reason=reason,
-        message=message,
     )
 
 

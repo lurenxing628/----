@@ -301,7 +301,7 @@ def test_segment_metadata_survives_seed_coercion_and_occupies_only_its_actual_re
         operations=prepared.algo_ops, batches=prepared.batches, seed_results=normalized, resource_pool=None,
         graph_ready_context=None)
     state = prepare_run_state(prepared_inputs=native, params=SimpleNamespace(base_time=datetime(2026, 9, 9, 8)),
-        warnings=[], algo_stats={}, readiness_gate_enabled=False, strict_mode=True)
+        warnings=[], algo_stats={}, readiness_gate_enabled=False)
     assert state.machine_timeline["M1"] == [segment[:2] for segment in segments]
     assert state.operator_timeline["O1"] == [segments[0][:2], segments[2][:2]]
     assert state.operator_timeline["O2"] == [segments[1][:2]]

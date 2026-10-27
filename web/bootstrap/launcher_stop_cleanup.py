@@ -22,25 +22,23 @@ def _read_initial_database_lock(status: Dict[str, Any], sources: List[Dict[str, 
 
 
 def read_initial_runtime_claims(status: Dict[str, Any]) -> Dict[str, Any]:
-    """停止前读一次原始归属；database 只在这里推导，释放时原样复用。"""
+    """停止前读一次原始归属；数据库锁只在这里按 database 读取，释放时按它记录的锁路径复用。"""
     sources = [item for item in (status["lock"], status["contract"]) if item is not None]
     database = next((str(item["db_path"]).strip() for item in sources if item.get("db_path")), "")
-    database_lock = _read_initial_database_lock(status, sources, database) if database else None
     return {
         "expected_lock": status["lock"],
         "expected_contract": status["contract"],
-        "expected_database_lock": database_lock,
-        # 没有可核对的数据库锁时只释放壳锁。
-        "database": database if database_lock is not None else "",
+        # 没有可核对的数据库锁时为 None，只释放壳锁。
+        "expected_database_lock": _read_initial_database_lock(status, sources, database) if database else None,
     }
 
 
 def release_initial_runtime_locks(
-    state_dir: str, expected_lock: Optional[Dict[str, Any]], expected_database_lock: Optional[Dict[str, Any]], database: str
+    state_dir: str, expected_lock: Optional[Dict[str, Any]], expected_database_lock: Optional[Dict[str, Any]]
 ) -> bool:
     claim = dict(expected_lock) if expected_lock is not None else None
     if expected_database_lock is not None:
         if claim is None:
             claim = {}
         claim["db_lock"] = expected_database_lock
-    return claim is None or release_runtime_lock(state_dir, database, expected_payload=claim)
+    return claim is None or release_runtime_lock(state_dir, expected_payload=claim)

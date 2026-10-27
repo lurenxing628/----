@@ -81,7 +81,7 @@ def recovery_response(environ, journal_factory, status, lookup):
         # 与工作台里的「导出维护诊断」同名：维护诊断.json；ASCII 备用名给不认 UTF-8 文件名的浏览器。
         headers["Content-Disposition"] = ("attachment; filename=\"maintenance-diagnostic.json\"; "
                                           "filename*=UTF-8''" + quote(DIAGNOSTIC_FILENAME))
-        return Response(json.dumps(data, ensure_ascii=True, indent=2), content_type="application/json", headers=headers)
+        return Response(json.dumps(data, ensure_ascii=True, indent=2, allow_nan=False), content_type="application/json", headers=headers)
     root = Path(runtime_base_dir(anchor_file=str(Path(__file__).resolve().parents[2] / "app.py")))
     templates = Environment(loader=FileSystemLoader(str(root / "templates")), autoescape=select_autoescape(("html",)))
     html = templates.get_template("workbench/recovery.html").render(

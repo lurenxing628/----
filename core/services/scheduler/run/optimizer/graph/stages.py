@@ -3,18 +3,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
-from core.algorithm_contracts.sort_strategies import SortStrategy
-from core.errors import ValidationError
 from core.services.scheduler.run.optimizer.candidate_comparison import candidate_is_preferred
 from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphReadyWeightProfile
 from core.services.scheduler.run.optimizer.search_stage import SearchStage
 
-from .context import reason_from_validation
 from .iterated_greedy_run import IteratedGreedyRun
 from .predecode import GraphReadyProfileSearch
 from .repair import EliteRepairPool, EliteRepairRun
-from .reporting import append_graph_attempt, append_graph_trace, record_rejected_attempt
-from .v2_contract import is_graph_ready_v2_contract_error
+from .reporting import append_graph_attempt, append_graph_trace
 
 if TYPE_CHECKING:
     from core.services.scheduler.run.optimizer.candidate_fingerprint import CandidateFingerprint
@@ -32,8 +28,8 @@ class ProfileStage(SearchStage):
     name = "profiles"
 
     def __init__(self, *, profiles: List[GraphReadyWeightProfile], search: GraphReadyProfileSearch, pool: EliteRepairPool,
-                 state: GraphSearchState, order: List[str], strict_mode: bool, base_strategy: SortStrategy,
-                 dispatch_rule_cfg: str, attempts: List[Dict[str, Any]], improvement_trace: List[Dict[str, Any]],
+                 state: GraphSearchState, order: List[str], attempts: List[Dict[str, Any]],
+                 improvement_trace: List[Dict[str, Any]],
                  search_report_state: OptimizationSearchReportState, clock: Callable[[], float],
                  t_begin: float) -> None:
         self.profiles = list(profiles)
@@ -41,9 +37,6 @@ class ProfileStage(SearchStage):
         self.pool = pool
         self.state = state
         self.order = order
-        self.strict_mode = bool(strict_mode)
-        self.base_strategy = base_strategy
-        self.dispatch_rule_cfg = dispatch_rule_cfg
         self.attempts = attempts
         self.improvement_trace = improvement_trace
         self.search_report_state = search_report_state
@@ -65,9 +58,7 @@ class ProfileStage(SearchStage):
     def run_task(self) -> None:
         profile = self.profiles[self.index]
         self.index += 1
-        candidate = _evaluate_profile(evaluate=self.search.evaluate, profile=profile, order=self.order, strict_mode=self.strict_mode,
-                                      base_strategy=self.base_strategy, dispatch_rule_cfg=self.dispatch_rule_cfg,
-                                      attempts=self.attempts)
+        candidate = self.search.evaluate(profile=profile, order=self.order)
         if candidate is None:
             return
         fingerprint = self.pool.observe(candidate, profile)
@@ -153,39 +144,6 @@ def iterated_greedy_parent_profile(best: Optional[Dict[str, Any]], *, pool: Elit
     if elite is not None:
         return elite["profile"]
     return next((profile for profile in profiles if profile.formula_version.startswith("graph_ready_v2")), None)
-
-
-def _evaluate_profile(
-    *,
-    evaluate: Callable[..., Optional[Dict[str, Any]]],
-    profile: GraphReadyWeightProfile,
-    strict_mode: bool,
-    base_strategy: SortStrategy,
-    order: List[str],
-    dispatch_rule_cfg: str,
-    attempts: List[Dict[str, Any]],
-) -> Optional[Dict[str, Any]]:
-    try:
-        return evaluate(profile=profile, order=order)
-    except ValidationError as exc:
-        if strict_mode or is_graph_ready_v2_contract_error(exc):
-            raise
-        _record_profile_rejection(exc, profile=profile, attempts=attempts, base_strategy=base_strategy,
-                                  dispatch_rule_cfg=dispatch_rule_cfg)
-        return None
-
-
-def _record_profile_rejection(
-    exc: ValidationError,
-    *,
-    profile: GraphReadyWeightProfile,
-    attempts: List[Dict[str, Any]],
-    base_strategy: SortStrategy,
-    dispatch_rule_cfg: str,
-) -> None:
-    reason = reason_from_validation(exc)
-    record_rejected_attempt(attempts=attempts, strategy=base_strategy, dispatch_rule=dispatch_rule_cfg, reason=reason,
-                            message=str(exc), profile_slug=profile.slug)
 
 
 def _candidate_should_replace_best(

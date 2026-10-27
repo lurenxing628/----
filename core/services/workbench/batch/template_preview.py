@@ -1,16 +1,16 @@
 """Explain template replacement from the exact before/after rows."""
 
-import math
 import re
 from collections import defaultdict
 
 from core.models.workbench_batch import MAX_INTEGER
 from core.services.workbench.process.projection import public_sequence
+from core.shared.strict_parse import is_exact_finite_number
 
 
 def _display_number(value):
     # Non-applicable legacy fields stay untouched in storage and cannot break JSON.
-    return value if type(value) in (int, float) and math.isfinite(value) and abs(value) <= MAX_INTEGER else None
+    return value if is_exact_finite_number(value) and abs(value) <= MAX_INTEGER else None
 
 
 def _sequence_order(value):

@@ -9,7 +9,7 @@ from core.models.schedule_plan_role import SOURCE_ADJUSTMENT_SCENARIO_ROWS, SOUR
 from core.models.scheduler_history_parser import parse_result_summary_payload
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.scheduler.summary.due_risk_items import incomplete_batch_ids_from_failure_details
-from core.services.workbench.facts.candidate_projection import dispositions
+from core.services.workbench.facts.candidate_projection import completed_dispositions
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.material_deferral_evidence import archived_deferred_payload_evidence
 from core.services.workbench.facts.preflight_dependencies import material_deferred_ids
@@ -31,18 +31,19 @@ def deferred_operation_evidence(conn, record):
                 return set(), issues
             store = CandidateStore(conn)
             run_ref = store.candidate_run(payload["candidate_ref"])
-            scope = dispositions(store.receipt(store.run(run_ref)))
+            scope = completed_dispositions(store.receipt(store.run(run_ref)))
             settings = store.capture(run_ref)["input"]
         elif payload.get("source") == "workbench_trial_adoption":
             if not isinstance(payload.get("scenario_ref"), str):
                 return set(), issues
             _, head, _ = load_saved_scenario(conn, payload["scenario_ref"])
             source = head["admission"]["source"]
-            scope, settings = source.get("dispositions"), source.get("capture", {}).get("input", {})
+            if "capture" not in source:
+                # 只有以候选为基础的试调来源带着候选运行的 capture 与工序处置。
+                return set(), issues
+            scope, settings = source["dispositions"], source["capture"]["input"]
         else:
-            return set(), ["deferred_operation_evidence_missing"]
-        if scope is None:
-            return set(), ["deferred_operation_evidence_missing"]
+            return set(), issues
         return material_deferred_ids(scope.values(), settings), []
     except WorkbenchCommandRejected as exc:
         if exc.status == 413:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from typing import Any, Dict, List, Tuple
 
 from core.services.scheduler.contracts.optimizer_public_safety import (
@@ -10,6 +9,7 @@ from core.services.scheduler.contracts.optimizer_public_safety import (
     safe_attempt_text,
     safe_non_negative_int,
 )
+from core.shared.strict_parse import is_exact_finite_number
 
 DIAGNOSTIC_ATTEMPT_KEYS = {
     "tag",
@@ -35,7 +35,7 @@ _TAG_ORIGINS = (("start:", "multi_start"), ("ortools:", "ortools_warmstart"), ("
 
 
 def _finite(value: Any) -> Any:
-    return value if type(value) in (int, float) and math.isfinite(value) else None
+    return value if is_exact_finite_number(value) else None
 
 
 def project_attempt_evaluation(score: Any, primary: Any, completion: Dict[str, Any]) -> Tuple[List[Any], Any]:

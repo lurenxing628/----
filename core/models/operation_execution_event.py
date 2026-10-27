@@ -10,6 +10,7 @@ from ._helpers import RowLike
 from .operation_execution_scope import (
     OperationExecutionScope,
     operation_execution_scope_from_event,
+    required_execution_text,
     validate_current_official_execution_scope,
 )
 
@@ -87,23 +88,16 @@ def normalize_operation_event_time(value: Any) -> str:
     return parse_operation_event_time(value).replace(tzinfo=None).isoformat(sep=" ", timespec="seconds")
 
 
-def _required_contract_text(value: Any, field_name: str) -> str:
-    text = str(value or "").strip()
-    if not text:
-        raise ValueError(f"{field_name} is required")
-    return text
-
-
 def normalize_operation_execution_event_values(
     *,
     event_type: Any,
     reported_status: Any,
     event_time: Any,
 ) -> Tuple[str, str, str]:
-    event_type_text = _required_contract_text(event_type, "event_type")
+    event_type_text = required_execution_text(event_type, "event_type")
     if event_type_text not in VALID_EXECUTION_EVENT_TYPES:
         raise ValueError(f"event_type must be one of {VALID_EXECUTION_EVENT_TYPES}: {event_type!r}")
-    status_text = _required_contract_text(reported_status, "reported_status")
+    status_text = required_execution_text(reported_status, "reported_status")
     if status_text not in VALID_REPORTED_STATUSES:
         raise ValueError(f"reported_status must be one of {VALID_REPORTED_STATUSES}: {reported_status!r}")
     expected_status = REPORTED_STATUS_BY_EXECUTION_EVENT_TYPE[event_type_text]
@@ -255,7 +249,7 @@ def _sequence_values(row: RowLike) -> Dict[str, Any]:
         "event_type": event_type,
         "reported_status": reported_status,
         "event_time": event_time,
-        "previous_state_revision": _required_contract_text(row["previous_state_revision"], "previous_state_revision"),
+        "previous_state_revision": required_execution_text(row["previous_state_revision"], "previous_state_revision"),
     }
 
 

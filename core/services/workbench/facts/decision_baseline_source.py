@@ -78,24 +78,18 @@ def trial_evidence(source, audit):
     return {"basis": "trial_adoption", "audit": audit, "arranged": arranged, "generation_facts": None}
 
 
-def _source_deferred(scope, settings):
-    if scope is not None:
-        return material_deferred_ids(scope.values(), settings), []
-    return archived_deferred_operation_evidence({"summary": {"material_policy": settings}})
-
-
 def _deferred_evidence(source, evidence):
     audit = evidence["audit"]
     if evidence["basis"] == "candidate_adoption":
-        ids, issues = _source_deferred(source.disposition, source.capture["input"])
+        ids, issues = material_deferred_ids(source.disposition.values(), source.capture["input"]), []
     else:
         original = source[1]["admission"]["source"]
         if "deferred_operation_ids" in original:
             ids, issues = archived_deferred_operation_evidence({"summary": original})
             issues = sorted(set(issues + original.get("deferred_operation_issues", [])))
         else:
-            settings = original.get("capture", {}).get("input", original.get("material_policy", {}))
-            ids, issues = _source_deferred(original.get("dispositions"), settings)
+            # 以候选为基础的试调来源保存了候选运行的 capture 与全部工序处置。
+            ids, issues = material_deferred_ids(original["dispositions"].values(), original["capture"]["input"]), []
     recorded, recorded_issues = archived_deferred_payload_evidence(audit)
     if "deferred_operation_evidence_invalid" in recorded_issues:
         return [], recorded_issues

@@ -5,11 +5,7 @@ from typing import Any, Dict, Iterable, List
 FREEZE_WINDOW_DEGRADED_MESSAGE = "冻结窗口资料不完整，本次排产未使用冻结窗口。"
 
 _PUBLIC_EVENT_MESSAGES = {
-    "freeze_seed_unavailable": FREEZE_WINDOW_DEGRADED_MESSAGE,
     "invalid_due_date": "部分交期数据无法使用，本次已按可确认数据继续。",
-    "invalid_number": "部分数字填得不对，本次先按默认值处理。",
-    "blank_required": "部分必填内容为空，本次先按默认值处理。",
-    "number_below_minimum": "部分数字小于允许范围，本次先按默认值处理。",
     "ortools_warmstart_failed": "系统没能复用上一次的排产结果，本次已从头重新计算。结果仍然有效，但耗时可能更长。",
     "graph_enhancement_degraded": "工序图报告已生成，但图增强排队因循环依赖关闭，本次退回普通排法。",
     "dispatch_failure_details": "部分工序没有形成有效排程，摘要已保留失败和跳过明细。",
@@ -53,5 +49,4 @@ def public_degradation_events(events: Iterable[Any]) -> List[Dict[str, Any]]:
 __all__ = [
     "FREEZE_WINDOW_DEGRADED_MESSAGE",
     "public_degradation_events",
-    "public_degradation_event_message",
 ]

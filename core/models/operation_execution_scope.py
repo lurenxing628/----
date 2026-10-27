@@ -14,16 +14,12 @@ def parse_positive_execution_int(value: Any, field: str) -> int:
     return value
 
 
-def _required_text(value: Any, field: str) -> str:
+def required_execution_text(value: Any, field: str) -> str:
+    """Required text in the execution-event storage contract: stripped, and blank is corrupt."""
     text = str(value or "").strip()
     if not text:
         raise ValueError(f"{field} is required")
     return text
-
-
-def _optional_text(value: Any) -> Optional[str]:
-    text = str(value or "").strip()
-    return text or None
 
 
 @dataclass(frozen=True)
@@ -52,15 +48,16 @@ class OperationExecutionScope:
             schedule_version=parse_positive_execution_int(schedule_version, "schedule_version"),
             schedule_id=parse_positive_execution_int(schedule_id, "schedule_id"),
             op_id=parse_positive_execution_int(op_id, "op_id"),
-            batch_id=_required_text(batch_id, "batch_id"),
-            source_table=_required_text(source_table, "source_table"),
-            effective_plan_role=_required_text(effective_plan_role, "effective_plan_role"),
-            scenario_id=_optional_text(scenario_id),
+            batch_id=required_execution_text(batch_id, "batch_id"),
+            source_table=required_execution_text(source_table, "source_table"),
+            effective_plan_role=required_execution_text(effective_plan_role, "effective_plan_role"),
+            # scenario_id 是只许 NULL 的列（schema CHECK），按原值保留，由正式计划校验判 is not None。
+            scenario_id=scenario_id,
         )
 
 
 def validate_current_official_execution_scope(scope: OperationExecutionScope) -> None:
-    """Execution events belong only to the adopted official plan; from_values already normalized the fields."""
+    """Execution events belong only to the adopted official plan; from_values already normalized the text fields."""
     if scope.source_table != SOURCE_SCHEDULE:
         raise ValueError("operation execution events must belong to current official schedule rows")
     if scope.effective_plan_role != ROLE_ADOPTED:
@@ -85,5 +82,6 @@ __all__ = [
     "OperationExecutionScope",
     "operation_execution_scope_from_event",
     "parse_positive_execution_int",
+    "required_execution_text",
     "validate_current_official_execution_scope",
 ]

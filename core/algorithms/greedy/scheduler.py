@@ -68,7 +68,7 @@ class GreedyScheduler:
     def schedule_prepared(
         self, prepared_inputs: NativeSchedulePreparation, *, params: ScheduleParams, batch_order: Dict[str, int],
         operations: List[OpForScheduleAlgo], resource_pool: Any, graph_ready_context: Any,
-        readiness_gate_enabled: bool, strict_mode: bool, decode_resume: Optional[DecodeCheckpoint],
+        readiness_gate_enabled: bool, decode_resume: Optional[DecodeCheckpoint],
         decode_checkpoints: Optional[DecodeCheckpointRequest],
     ) -> Tuple[List[ScheduleResult], ScheduleSummary, SortStrategy, Dict[str, Any]]:
         """Decode already prepared run facts; candidate arguments only supply changes."""
@@ -76,7 +76,6 @@ class GreedyScheduler:
         self.last_algo_stats = algo_stats = make_algo_stats()
         t0 = datetime.now()
         self._active_preparation = prepared_inputs
-        algo_stats["param_fallbacks"].update(params.param_fallbacks)
         for bucket, values in prepared_inputs.algo_stats.items():
             algo_stats[bucket].update(values)
         warnings = list(params.warnings) + list(prepared_inputs.warnings)
@@ -92,7 +91,7 @@ class GreedyScheduler:
             checkpoint_signature = decode_input_signature(
                 operations=sorted_ops, batch_order=batch_order, params=params, resource_pool=resource_pool,
                 graph_ready_context=graph_ready_context, readiness_gate_enabled=readiness_gate_enabled,
-                strict_mode=strict_mode, warnings=warnings, prepared_inputs=prepared_inputs)
+                warnings=warnings, prepared_inputs=prepared_inputs)
         if decode_resume is not None:
             # Resumed decode: the checkpoint already holds seeds, readiness progress and the prefix picks.
             assert checkpoint_signature is not None
@@ -105,7 +104,6 @@ class GreedyScheduler:
                 warnings=warnings,
                 algo_stats=algo_stats,
                 readiness_gate_enabled=readiness_gate_enabled,
-                strict_mode=strict_mode,
             )
         ctx = prepared_inputs.run_context
         ctx.sgs_score_cache = None
@@ -122,7 +120,7 @@ class GreedyScheduler:
         dispatch_run(
             ctx, state=state, sorted_ops=sorted_ops, batches=batches, batch_order=batch_order,
             params=params, machine_downtimes=machine_downtimes, resource_pool=resource_pool,
-            graph_ready_context=graph_ready_context, strict_mode=strict_mode,
+            graph_ready_context=graph_ready_context,
             batch_dispatch=dispatch_batch_order, sgs_dispatch=dispatch_sgs,
             decode_resume=decode_resume, decode_checkpoints=decode_checkpoints,
         )
@@ -171,7 +169,6 @@ class GreedyScheduler:
         last_op_type_by_machine: Dict[str, str],
         machine_busy_hours: Dict[str, float],
         operator_busy_hours: Dict[str, float],
-        strict_mode: bool = False,
     ) -> Tuple[Optional[ScheduleResult], bool]:
         return schedule_internal_operation(
             calendar=self.calendar,
@@ -191,7 +188,6 @@ class GreedyScheduler:
             last_op_type_by_machine=last_op_type_by_machine,
             machine_busy_hours=machine_busy_hours,
             operator_busy_hours=operator_busy_hours,
-            strict_mode=strict_mode,
             total_hours_by_op_id=self._active_preparation.total_hours_by_op_id,
         )
 
@@ -324,14 +320,12 @@ def build_batch_order(
     *,
     batch_order_override: List[str],
     readiness_gate_enabled: bool,
-    strict_mode: bool,
 ) -> Dict[str, int]:
     override_order = list(batch_order_override)
     if override_order and len(override_order) == len(batches):
         return {batch_id: index for index, batch_id in enumerate(override_order)}
     batch_for_sort = build_batch_sort_inputs(
         batches,
-        strict_mode=strict_mode,
         strategy=params.strategy,
         readiness_gate_enabled=readiness_gate_enabled,
     )

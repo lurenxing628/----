@@ -7,7 +7,7 @@ from core.errors import ValidationError
 from core.models.batch import Batch
 from core.shared.strict_parse import parse_optional_date, parse_optional_datetime
 
-from .date_parsers import parse_date, parse_datetime
+from .date_parsers import parse_datetime
 from .sort_strategies import BatchForSort, SortStrategy
 from .types import OpForScheduleAlgo
 
@@ -57,16 +57,9 @@ def normalize_batch_order_override(
     return override_order
 
 
-def _parse_due_date_for_sort(value: Any, *, strict_mode: bool) -> Optional[Any]:
-    return parse_optional_date(value, field="due_date") if strict_mode else parse_date(value)
-
-
-def parse_ready_date_for_sort(value: Any, *, strict_mode: bool) -> Optional[Any]:
-    return parse_optional_date(value, field="ready_date") if strict_mode else parse_date(value)
-
-
-def _parse_created_at_for_sort(value: Any, *, strict_mode: bool, strategy: SortStrategy) -> Optional[datetime]:
-    if strict_mode and strategy == SortStrategy.FIFO:
+def _parse_created_at_for_sort(value: Any, *, strategy: SortStrategy) -> Optional[datetime]:
+    # 只有 FIFO 按创建时间排序，才把它当必须合法的输入。
+    if strategy == SortStrategy.FIFO:
         return parse_optional_datetime(value, field="created_at")
     return parse_datetime(value)
 
@@ -74,7 +67,6 @@ def _parse_created_at_for_sort(value: Any, *, strict_mode: bool, strategy: SortS
 def build_batch_sort_inputs(
     batches: Mapping[str, Batch],
     *,
-    strict_mode: bool,
     strategy: SortStrategy,
     readiness_gate_enabled: bool = False,
 ) -> List[BatchForSort]:
@@ -87,13 +79,9 @@ def build_batch_sort_inputs(
             BatchForSort(
                 batch_id=batch_id,
                 priority=batch.priority,
-                due_date=_parse_due_date_for_sort(batch.due_date, strict_mode=strict_mode),
-                ready_date=(
-                    parse_ready_date_for_sort(batch.ready_date, strict_mode=strict_mode)
-                    if readiness_gate_enabled
-                    else None
-                ),
-                created_at=_parse_created_at_for_sort(batch.created_at, strict_mode=strict_mode, strategy=strategy),
+                due_date=parse_optional_date(batch.due_date, field="due_date"),
+                ready_date=parse_optional_date(batch.ready_date, field="ready_date") if readiness_gate_enabled else None,
+                created_at=_parse_created_at_for_sort(batch.created_at, strategy=strategy),
             )
         )
     return batch_for_sort

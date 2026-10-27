@@ -35,23 +35,22 @@ def validate_internal_hours(op: OpForScheduleAlgo, batch: Batch) -> float:
     return internal_requirement_parts(op, batch)[2]
 
 
-def validate_internal_hours_for_mode(op: OpForScheduleAlgo, batch: Batch, *, strict_mode: bool) -> float:
+def require_internal_hours(op: OpForScheduleAlgo, batch: Batch) -> float:
+    """Total internal hours; invalid hours are reported as a field-level ValidationError."""
     try:
         return validate_internal_hours(op, batch)
     except ValueError:
-        if strict_mode:
-            raise_strict_internal_hours_validation(op, batch)
-        raise
+        raise_internal_hours_validation(op, batch)
 
 
-def raise_strict_internal_hours_validation(op: OpForScheduleAlgo, batch: Batch) -> NoReturn:
+def raise_internal_hours_validation(op: OpForScheduleAlgo, batch: Batch) -> NoReturn:
     for field, raw_value in (("setup_hours", op.setup_hours), ("unit_hours", op.unit_hours), ("quantity", batch.quantity)):
         if raw_value:
-            _raise_if_invalid_strict_number(field, raw_value)
+            _raise_if_invalid_hours_number(field, raw_value)
     raise ValidationError("工时总量不合法，请检查换型时间、单件工时和数量。", field="setup_hours")
 
 
-def _raise_if_invalid_strict_number(field: str, raw_value: Any) -> None:
+def _raise_if_invalid_hours_number(field: str, raw_value: Any) -> None:
     label = display_field_label(field, fallback=field)
     try:
         parsed = float(raw_value)

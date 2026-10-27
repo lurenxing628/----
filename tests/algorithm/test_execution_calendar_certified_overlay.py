@@ -190,7 +190,7 @@ def _pruning(case, calendar):
     graph["ready_op_ids"] = {op.id for op in case["operations"] if op.seq == 0}
     hours = {op.id: float(op.setup_hours + op.unit_hours * case["batches"][op.batch_id].quantity)
              for op in case["operations"] if op.source == "internal"}
-    return GraphPriorityPruning(graph, case["batches"], hours, strict_mode=True, calendar=calendar), graph
+    return GraphPriorityPruning(graph, case["batches"], hours, calendar=calendar), graph
 
 
 @pytest.mark.parametrize("admitted", [False, True])

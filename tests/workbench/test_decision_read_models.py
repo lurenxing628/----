@@ -42,7 +42,7 @@ def test_delivery_projections_share_one_static_batch_group_and_reverse_identity_
     before = canonical_json(facts.tables)
     delivery = project_decision_delivery(facts, tasks, batch_refs, deferred_ids={2})
     intervals = {"row-a": (datetime(2026, 10, 15, 8), datetime(2026, 10, 15, 9))}
-    detail = project_legacy_delivery_detail(candidate, facts, tasks, {}, settings, intervals=intervals, deferred_ids={2})
+    detail = project_legacy_delivery_detail(candidate, facts, tasks, settings, intervals=intervals, deferred_ids={2})
     assert [{key: value for key, value in row.items() if key != "last_operations"} for row in detail] == delivery
     assert [row["completion_state"] for row in delivery] == ["complete", "deferred", "unknown"]
     assert detail[0]["last_operations"] == tasks and detail[1]["last_operations"] == []

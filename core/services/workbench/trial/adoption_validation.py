@@ -44,8 +44,7 @@ def validate_trial_adoption(conn, scenario_ref):
             saved, head, rows = load_saved_scenario(conn, scenario_ref)
             admission = head["admission"]
             capture = ProductionFactsCapture(conn)
-            live = live_context(conn, [row["operation_ref"] for row in rows], capture=capture,
-                execution_service=execution_service)
+            live = live_context(conn, rows, admission, capture=capture, execution_service=execution_service)
             _current_baseline(admission, live)
             _original_work(rows, live)
             checked, settings, held = _scenario_validation(conn, saved, admission, rows, live)

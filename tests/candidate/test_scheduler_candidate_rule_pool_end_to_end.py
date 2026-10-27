@@ -24,7 +24,7 @@ def _compare(scenario, objective="min_overdue"):
     data = fixture_data(scenario)
     with case_environment(data, objective, config) as schedule_input, pytest.MonkeyPatch.context() as runner_patch:
         runner_patch.setattr(schedule_candidate_runner, "monotonic", lambda: next(ticks))
-        return run_candidate_comparison(schedule_input=schedule_input, strict_mode=True)
+        return run_candidate_comparison(schedule_input=schedule_input)
 
 
 @pytest.fixture(scope="module")

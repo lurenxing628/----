@@ -92,7 +92,7 @@ try:
     print(json.dumps({'ready': runtime.ready, 'xlsx': response.status_code, 'shared_lock': True}))
 finally:
     stop_run_runtime(runtime)
-    release_runtime_lock(scope, db_path=app.config['DATABASE_PATH'], expected_payload=payload)
+    release_runtime_lock(scope, expected_payload=payload)
 """
     result = subprocess.run([sys.executable, "-c", script, module], cwd=str(Path(__file__).resolve().parents[2]),
                             env=os.environ.copy(), text=True, capture_output=True, timeout=30)

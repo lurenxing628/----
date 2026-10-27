@@ -15,7 +15,6 @@ from .schedule_shared_optimizer import optimize_shared_schedule
 def run_candidate_comparison(
     *, schedule_input: ScheduleRunInput,
     prepare_graph_fn: Optional[Callable[[Any], Any]] = None,
-    strict_mode: bool = False,
 ) -> CandidateComparisonOutcome:
     """Publish the actual business representatives from one shared search archive."""
     cfg = schedule_input.cfg
@@ -39,7 +38,7 @@ def run_candidate_comparison(
         downtime_map=schedule_input.downtime_map, seed_results=schedule_input.seed_results,
         resource_pool=schedule_input.resource_pool, version=schedule_input.optimizer_seed_version,
         readiness_gate_enabled=schedule_input.readiness_gate_enabled,
-        strict_mode=strict_mode, graph_prepare=graph_prepare, search_budget=budget,
+        graph_prepare=graph_prepare, search_budget=budget,
     )
     primary = shared.archive.primary_objective
     targets = shared.target_objectives

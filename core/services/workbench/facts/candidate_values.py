@@ -1,10 +1,10 @@
 """Strict stored-value parsing and small public projections."""
 
-import math
 from typing import Any, NoReturn, Type
 
 from core.models.workbench_run_candidate import reject
 from core.shared.strict_json import load_strict_json
+from core.shared.strict_parse import is_exact_non_negative_number
 
 
 def corrupt() -> NoReturn:
@@ -37,12 +37,8 @@ def text(value, field, gaps):
 
 
 def number(value, field, gaps, *, integer=False):
-    if type(value) in ((int,) if integer else (int, float)) and value >= 0:
-        try:
-            if math.isfinite(value):
-                return str(value) if type(value) is int and value > (1 << 53) - 1 else value
-        except OverflowError:
-            pass
+    if (type(value) is int or not integer) and is_exact_non_negative_number(value):
+        return str(value) if type(value) is int and value > (1 << 53) - 1 else value
     gaps.append(gap(field, "not_recorded" if value is None else "invalid_stored_value"))
     return None
 

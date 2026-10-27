@@ -16,7 +16,7 @@ from core.algorithm_runtime.auto_assign_contract import (
 from core.algorithm_runtime.downtime import occupy_resource
 from core.algorithm_runtime.internal_slot import (
     estimate_internal_slot,
-    raise_strict_internal_hours_validation,
+    raise_internal_hours_validation,
     validate_internal_hours,
 )
 from core.algorithm_runtime.sgs_estimate_reuse import selected_sgs_estimate, selected_sgs_resources
@@ -43,7 +43,6 @@ def schedule_internal_operation(
     last_op_type_by_machine: Dict[str, str],
     machine_busy_hours: Dict[str, float],
     operator_busy_hours: Dict[str, float],
-    strict_mode: bool,
     total_hours_by_op_id: Dict[int, float],
 ) -> Tuple[Optional[ScheduleResult], bool]:
     bid = op.batch_id
@@ -82,12 +81,8 @@ def schedule_internal_operation(
         end_dt_exclusive=end_dt_exclusive,
         machine_downtimes=machine_downtimes,
         last_op_type_by_machine=last_op_type_by_machine,
-        errors=errors,
-        strict_mode=bool(strict_mode),
         total_hours_base=total_hours_by_op_id.get(op.id),
     )
-    if estimate is None:
-        return None, False
     if estimate.blocked_by_window:
         errors.append(_window_blocked_error(op=op, batch_id=bid, end_time=estimate.end_time, end_dt_exclusive=end_dt_exclusive))
         return None, True
@@ -184,9 +179,7 @@ def _estimate_internal(
     end_dt_exclusive: Optional[datetime],
     machine_downtimes: Optional[Dict[str, List[Tuple[datetime, datetime]]]],
     last_op_type_by_machine: Optional[Dict[str, str]],
-    errors: List[str],
-    strict_mode: bool,
-    total_hours_base: Optional[float] = None,
+    total_hours_base: Optional[float],
 ):
     try:
         inputs = dict(
@@ -212,11 +205,8 @@ def _estimate_internal(
                 estimate = reused[0]
         if estimate is None:
             estimate = estimate_internal_slot(**inputs, abort_after=None, overlap_reuse=overlap_reuse_for(machine_timeline))
-    except ValueError as exc:
-        if strict_mode:
-            raise_strict_internal_hours_validation(op, batch)
-        errors.append(f"工时不合法：工序 {op.op_code} {exc}")
-        return None
+    except ValueError:
+        raise_internal_hours_validation(op, batch)
     if estimate.abort_after_hit:
         raise RuntimeError("正式内部排产不应命中 abort_after 早停")
     return estimate

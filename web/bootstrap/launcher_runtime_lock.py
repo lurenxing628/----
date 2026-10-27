@@ -297,8 +297,9 @@ def acquire_runtime_lock(
     state_dir = resolve_runtime_state_dir(runtime_dir, cfg_log_dir)
     os.makedirs(state_dir, exist_ok=True)
     lock_path = runtime_lock_path(state_dir)
-    owner_s = str(owner or current_runtime_owner()).strip() or "unknown"
-    exe_path_s = os.path.abspath(str(exe_path or sys.executable or "")).strip()
+    # current_runtime_owner() 已去空白且至少是 "unknown"；入口传入的 owner 也取自它。
+    owner_s = current_runtime_owner() if owner is None else owner
+    exe_path_s = os.path.abspath(sys.executable if exe_path is None else exe_path)
     db_path_s = str(db_path).strip()
     # DB 身份只在入口归一一次，壳锁与 db-scope 锁的 payload、提示文案都用这一份。
     database = normalize_runtime_db_path(db_path_s)
@@ -358,21 +359,18 @@ def _release_lock_file(lock_path: str, *, state_dir: str, expected_payload: Dict
         return False
 
 
-def release_runtime_lock(runtime_dir_or_state_dir: str, db_path: str, *, expected_payload: Dict[str, Any]) -> bool:
+def release_runtime_lock(runtime_dir_or_state_dir: str, *, expected_payload: Dict[str, Any]) -> bool:
+    """释放原 claim 的壳锁；claim 带 db_lock 时再按其中记录的锁路径释放数据库锁，两把锁都会尝试。"""
     state_dir = resolve_runtime_state_dir_for_read(runtime_dir_or_state_dir)
-    shell_lock_path = runtime_lock_path(state_dir)
-    db_path_s = str(db_path).strip()
-    if not db_path_s:
-        return _release_lock_file(shell_lock_path, state_dir=state_dir, expected_payload=expected_payload)
-    db_lock_path = db_scope_lock_path(db_path_s)
-    expected_database = expected_payload.get("db_lock")
-    if not isinstance(expected_database, dict):
-        launcher_log_warning(None, "缺少原数据库锁身份，已保留数据库运行锁：path=%s", db_lock_path, state_dir=state_dir)
-        return False
-    shell_released = _release_lock_file(shell_lock_path, state_dir=state_dir, expected_payload=expected_payload)
+    shell_released = _release_lock_file(runtime_lock_path(state_dir), state_dir=state_dir, expected_payload=expected_payload)
+    # acquire 的 claim 总带 db_lock；停止清理找不到可核对的数据库锁时，claim 只有壳锁。
+    if "db_lock" not in expected_payload:
+        return shell_released
+    database_claim = expected_payload["db_lock"]
+    db_lock_path = database_claim["path"]
     database_released = _release_lock_file(
         db_lock_path,
         state_dir=os.path.dirname(db_lock_path),
-        expected_payload=expected_database,
+        expected_payload=database_claim,
     )
     return shell_released and database_released

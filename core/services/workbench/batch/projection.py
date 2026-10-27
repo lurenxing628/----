@@ -1,6 +1,5 @@
 """Public batch facts, never guessed scheduling or execution state."""
 
-import math
 from datetime import date, datetime
 
 from core.algorithm_contracts.value_domains import OPERATION_SOURCES
@@ -16,6 +15,7 @@ from core.services.scheduler.contracts.external_context import (
     origin_notice,
 )
 from core.services.workbench.process.projection import public_sequence
+from core.shared.strict_parse import is_exact_finite_number
 
 from .execution import batch_progress, operation_execution_fields
 from .facts import index_relations
@@ -27,8 +27,8 @@ def issue(message, code="data_gap"):
 
 
 def numeric(value, issues, label, *, integer=False, positive=False):
-    valid = type(value) is int if integer else type(value) in (int, float)
-    valid = valid and 0 <= value <= MAX_INTEGER and (not positive or value > 0) and math.isfinite(value)
+    valid = type(value) is int if integer else is_exact_finite_number(value)
+    valid = valid and 0 <= value <= MAX_INTEGER and (not positive or value > 0)
     if not valid:
         issues.append(issue(label + ("未填写。" if value is None else "原值不合法，请核对。")))
         return None
@@ -136,7 +136,7 @@ class BatchProjection:
             issues.append(issue("工序工种未登记。"))
         # Hidden hours of external operations remain raw in storage, not defaulted.
         for key, value in numbers.items():
-            if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or abs(value) > MAX_INTEGER):
+            if value is not None and (not is_exact_finite_number(value) or abs(value) > MAX_INTEGER):
                 issues.append(issue("工时或周期原值无效。"))
                 numbers[key] = None
         return issues

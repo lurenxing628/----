@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import re
 from datetime import datetime, timezone
 from typing import NoReturn
@@ -16,6 +15,7 @@ from core.infrastructure.workbench_resource_schema import workbench_resource_con
 from core.models.content import content_text, same, unpacked
 from core.models.resource_capabilities import supports_source
 from core.shared.strict_json import load_strict_json
+from core.shared.strict_parse import is_exact_non_negative_number
 from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWorkflowRepository, operation_order
 
 from .template_source import TemplateSourceFacts
@@ -50,10 +50,6 @@ def _part(conn, part_no, contracts=None):
     _ref(part["ref"])
     stored = repo.stored_workflow(part["ref"])
     return part, stored[0] if stored else None
-
-
-def _number(value, *, positive=False):
-    return type(value) in (int, float) and math.isfinite(value) and (value > 0 if positive else value >= 0)
 
 
 def _supplier(source_facts, supplier_id, op_type_id):
@@ -104,12 +100,12 @@ def _source_facts(op, group, source_facts):
 
 def _valid_hours(op, group):
     if op["source"] == "internal":
-        return _number(op["setup_hours"]) and _number(op["unit_hours"])
+        return is_exact_non_negative_number(op["setup_hours"]) and is_exact_non_negative_number(op["unit_hours"])
     if group and group["merge_mode"] == "merged":
         # A merged group owns the duration. Retained per-operation history is not
         # an effective cycle and must not prevent confirming its valid total.
-        return _number(group["total_days"], positive=True)
-    return _number(op["ext_days"], positive=True)
+        return is_exact_non_negative_number(group["total_days"], positive=True)
+    return is_exact_non_negative_number(op["ext_days"], positive=True)
 
 
 def _source_content(route, values, source_valid):

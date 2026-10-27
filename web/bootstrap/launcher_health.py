@@ -22,7 +22,7 @@ def probe_runtime_health_result(base_url: str, timeout_s: float, *, log_failures
     url = base_url.rstrip("/") + "/system/health"
     req = urllib.request.Request(url, method="GET")
     try:
-        with urllib.request.urlopen(req, timeout=max(float(timeout_s), 0.2)) as resp:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             status = resp.status
             payload = json.loads(resp.read().decode("utf-8"))
     except (OSError, TypeError, ValueError) as exc:

@@ -55,6 +55,22 @@ def is_non_finite_number(value: Any) -> bool:
         return False
 
 
+def is_exact_finite_number(value: Any) -> bool:
+    """A stored SQLite / JSON number: an exact int or float (no bool, text or subclass) that is finite as a float;
+    NaN, ±Inf and ints beyond the float range are not."""
+    if type(value) not in (int, float):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
+def is_exact_non_negative_number(value: Any, *, positive: bool = False) -> bool:
+    """is_exact_finite_number and >= 0; > 0 with positive=True."""
+    return is_exact_finite_number(value) and (value > 0 if positive else value >= 0)
+
+
 def integer_value(value: Any) -> Optional[int]:
     """A stored integer: an int (not bool) as is, an integral float, or UTF-8 bytes / text / other value whose
     literal is an integer ('1', ' 1 ', '1.0', '1e3'); None for anything else, blank included."""

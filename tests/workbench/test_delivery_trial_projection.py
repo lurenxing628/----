@@ -22,6 +22,14 @@ from tests.workbench.trial_support import change, create, official, service
 from tests.workbench.trial_support import trial_case as trial_case
 
 
+def assert_current_execution_quantities(item, quantity=3):
+    """同批次没排上的工序也按建草稿时的真实执行投影展示执行目标量和剩余数量。"""
+    for side in ("before", "after"):
+        effort = item["operation_effort"][side]
+        assert effort["execution_target_quantity"] == effort["remaining_quantity"] == quantity
+        assert effort["execution_quantity_basis"] == "batch"
+
+
 def test_unspecified_trial_due_is_excluded_without_losing_complete_finish(trial_case):
     case = trial_case
     case.conn.execute("UPDATE Batches SET due_date='9999-12-31',part_name='Saved part'")
@@ -100,6 +108,8 @@ def test_trial_missing_origin_operation_never_claims_whole_batch_finish(trial_ca
     assert pending["sequence"] == 2 and pending["piece_id"] is None and pending["status"] == "pending"
     assert "predecessor_refs" not in pending and pending["reason"]["message"] == "这道工序在基础方案中没有安排。"
     assert pending["operation_effort"]["after"]["allocation_state"] == "unplanned"
+    assert_current_execution_quantities(pending)
+    assert pending["operation_effort"]["after"]["standard"]["standard_total_hours"] == 0.75
     demand = draft["comparison"]["preparation_common"]["after"]["unplanned_setup_hours"]
     assert demand["value"] is None and demand["state"] == "unavailable" and demand["unknown_count"] == demand["total_count"] == 1
     assert draft["scope_complete"] is False
@@ -144,6 +154,8 @@ def test_candidate_trial_retains_explicit_material_deferral_from_run_capture(tri
     assert demand["after"]["deferred_setup_hours"]["unknown_count"] == demand["after"]["deferred_setup_hours"]["total_count"] == 1
     assert demand["after"]["deferred_processing_hours"]["value"] is None
     assert pending["operation_effort"]["after"]["required_standard_hours"] is None
+    for item in (candidate_pending, pending):
+        assert_current_execution_quantities(item)
     assert official_draft["scope_complete"] is False
     official_head, official_rows = load_draft(service(case.conn).repo, official_draft["draft_ref"])
     historical = deepcopy(official_head["admission"])
@@ -256,6 +268,18 @@ def test_trial_includes_selected_batch_with_only_material_deferred_operations(tr
         assert demand["coverage"]["after"]["deferred"] == [operation_ref]
         assert demand["after"]["deferred_setup_hours"]["unknown_count"] == demand["after"]["deferred_setup_hours"]["total_count"] == 1
         assert demand["after"]["deferred_processing_hours"]["value"] is None
+        assert_current_execution_quantities(pending)
+    saved = service(case.conn).save(formal["draft_ref"], {"name": "Deferred batch execution scope"},
+        formal["write_context"]["write_token"], "stage-two-batch-official-save")["data"]
+    adopter = trial_adoption_service(case.conn)
+    # 待料批次的执行投影进了建草稿快照；数据没变时采用复核照常通过。
+    assert adopter.preview(saved["scenario_ref"])["validation"]["can_adopt"] is True
+    # 只改待料批次的数量：它的执行投影变了，采用复核比较执行快照时就判陈旧。
+    case.conn.execute("UPDATE Batches SET quantity=4 WHERE batch_id='B2'")
+    case.conn.commit()
+    blocked = adopter.preview(saved["scenario_ref"])["validation"]
+    assert blocked["can_adopt"] is False
+    assert [item["code"] for item in blocked["issues"]] == ["snapshot_stale"]
 
 
 def test_saved_legacy_trial_read_reprojects_due_without_rewriting_archive(trial_case, monkeypatch):

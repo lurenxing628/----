@@ -107,7 +107,7 @@ HTML -> 提前应用主题 -> manifest本地脚本/样式 -> React宿主 -> 同�
 
 - `ResourceControls.jsx`统一本地 `trash-2`、展开/收起与搜索图标，`20-controls.css`统一按钮图文和筛选对齐，`21-table-frame.css`提供单层表格框及编辑列分隔。所有可达删除动作使用垃圾桶和可见文字。可达管理样例的三项共享组件移至 `SystemSampleControls.jsx`，由 build-order 放在资源控件之后、SystemLive 之前，冻结原型不改。
 - 工艺归属保存继续走 `stagePreview` 与 `process.source_confirm`；明确保存时提交全部有效工序的确认内容，实际解除外协组关系仍单独列出影响。`ProcessHoursEditor.jsx`拆分自制/外协表，`process_zero_hours.py`在事务内按内容绑定的确认记录决定是否要求零值确认，工时文件读写复用相同规则。既有批次不随模板修改自动变化。
-- `batch_template_validation.py`提供必要资料完整性结果，详情与更新预览共用；`batch_template_preview.py`生成逐工序前后变化及设备/人员指定清除列表。更新确认重新检查模板与批次快照并原子替换。旧 `strict_mode: false` 返回 `template_validation_required`，不再允许宽松复制缺项资料；旧模板缺少确认记录与资料实际缺项分开判断。
+- `batch_template_validation.py`提供必要资料完整性结果，详情与更新预览共用；`batch_template_preview.py`生成逐工序前后变化及设备/人员指定清除列表。更新确认重新检查模板与批次快照并原子替换。更新请求只接受空对象（Round 22 已删除旧客户端 `strict_mode` 字段与 `template_validation_required`），不允许宽松复制缺项资料；旧模板缺少确认记录与资料实际缺项分开判断。
 - `run_data_context.py`由数据库 scope 与数据库外已成功恢复的 journal 集合生成 `data_context_ref`，普通重启及备份创建/删除不改变它。预览、受理和查询绑定同一数据上下文；查找先核对当前任务和回执，再捕获一次 journal 供 resolution 和 data_context_ref 共用。旧 pending 沿原 journal 与受保护备份定位原请求，核对登记文件身份并只读查询实际任务/回执；原来源缺失保持未核实。v2 pending保存最小身份和数据上下文，旧64hex上下文仍可查询；未知查询满60秒暂停自动查询，保留同号重查，真实计算继续查询，不自动重新受理。
 - `OperatorMachinePermissions.jsx`在人员详情维护既有设备资格集合，后端复用 `OperatorMachineService` 与原资格检查，无新授权表；界面以预览/确认保存全量关系，保留未展示的旧字段，不从工种技能推导全部设备权限。
 - v32 在同一可回滚迁移中安装两项追加扩展：`WorkbenchOutsourcingSourceConfirmations`与`WorkbenchProductionReportVoids`，共2表10触发器。只安装空结构，旧来源空值、旧出生事件、报工修订和回执不改写。`migration_state.py`严格校验两项结构，缺表/错误触发器不能以空数据继续读取；原 v25/v30 安装器及冻结历史 schema 保持原合同。

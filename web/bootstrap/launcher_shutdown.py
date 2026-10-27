@@ -34,7 +34,7 @@ class RuntimeHostStopTransport:
                 payload = {"app": "aps", "status": "recovery_required", "contract_version": 1,
                            "operations_available": False}
                 payload.update(runtime_identity(self.app))
-                return Response(json.dumps(payload), status=503, content_type="application/json",
+                return Response(json.dumps(payload, allow_nan=False), status=503, content_type="application/json",
                                 headers={"Cache-Control": "no-store"})(environ, start_response)
         if environ.get("PATH_INFO") != HOST_STOP_PATH:
             return self.app(environ, start_response)

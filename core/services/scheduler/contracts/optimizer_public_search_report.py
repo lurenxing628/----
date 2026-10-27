@@ -86,7 +86,7 @@ _PROFILE_DIAGNOSTIC_TEXT_KEYS = (
     "validation_status",
 )
 _PROFILE_DIAGNOSTIC_INT_KEYS = ("schema_version", "restart_after_iterations")
-_PROFILE_DIAGNOSTIC_BOOL_KEYS = ("ortools_warmstart_enabled", "strict_mode")
+_PROFILE_DIAGNOSTIC_BOOL_KEYS = ("ortools_warmstart_enabled",)
 _NEIGHBORHOOD_COUNTER_KEYS = ("attempted", "effective", "noop", "fallback", "rejected")
 _ACCEPTANCE_COUNTER_KEYS = ("attempted", "accepted", "rejected", "non_improving_accepted")
 _VNS_TEXT_KEYS = ("current_neighborhood", "last_switch_reason")

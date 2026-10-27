@@ -198,7 +198,7 @@ def test_startup_captures_journal_once_and_wsgi_only_observes_memory(db_env, tmp
             assert runtime.shutdown(timeout=15)
         if gate is not None:
             assert gate.shutdown(timeout=15)
-        release_runtime_lock(scope, db_path=db_env, expected_payload=payload)
+        release_runtime_lock(scope, expected_payload=payload)
 
 
 @pytest.mark.parametrize("prepared", [True, False], ids=["factory-prepared", "independent-caller"])
@@ -250,4 +250,4 @@ def test_lifecycle_enters_recovery_without_recapturing_startup_journal(db_env, t
     finally:
         if runtime is not None:
             stop_run_runtime(runtime)
-        release_runtime_lock(scope, db_path=db_env, expected_payload=payload)
+        release_runtime_lock(scope, expected_payload=payload)

@@ -126,8 +126,6 @@ class AdmissionBaseline(ArchivedAdmissionPlan):
         return settings
 
     def _selected(self, disposition):
-        if disposition is None:
-            invalid_baseline()
         facts = self.facts
         batch_refs = set(self.settings["batch_refs"])
         if len(set(facts.operations.values())) != len(facts.operations):

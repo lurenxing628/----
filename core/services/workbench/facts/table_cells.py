@@ -1,11 +1,11 @@
 """One canonical business-cell representation for facets, equality and ordering."""
 
-import math
 import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal
 
 from core.models.workbench_command import WorkbenchCommandRejected, canonical_json
+from core.shared.strict_parse import is_exact_finite_number
 
 
 def text_value(value):
@@ -36,7 +36,7 @@ def number_text(value):
 def number_cell(value, unit="", *, missing="未知"):
     if value is None:
         return TableCell(canonical_json({"type": "number", "value": None}), missing, (0, 0))
-    if type(value) not in (int, float) or not math.isfinite(value):
+    if not is_exact_finite_number(value):
         raise WorkbenchCommandRejected("storage_failure", "这个格子里存的数字不合法，没有显示成 0。请到资料总览核对后重试。", 500)
     number = number_text(value)
     unit = text_value(unit) if unit else ""

@@ -77,10 +77,7 @@ def required_finite_metric(metric: Dict[str, Any], field: str) -> float:
             field="graph_ready_v2_features",
             details={"reason": "graph_ready_missing_v2_feature"},
         )
-    try:
-        return float(finite_number(metric.get(field), field=field, reason="graph_ready_bad_v2_feature"))
-    except ValidationError as exc:
-        raise ValidationError(exc.message, field="graph_ready_v2_features", details=exc.details) from exc
+    return finite_number(metric[field], field=field, reason="graph_ready_bad_v2_feature", error_field="graph_ready_v2_features")
 
 
 def required_non_negative_metric(value: float, field: str) -> float:

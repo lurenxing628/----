@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import math
 from typing import Any, Callable, Dict, Optional
+
+from core.shared.strict_parse import is_exact_non_negative_number
 
 
 class GraphReadySearchBudget:
@@ -25,7 +26,7 @@ class GraphReadySearchBudget:
         return True
 
     def record_profile_cost(self, elapsed_seconds: float) -> None:
-        if isinstance(elapsed_seconds, bool) or not math.isfinite(elapsed_seconds) or elapsed_seconds < 0:
+        if not is_exact_non_negative_number(elapsed_seconds):
             raise ValueError("GraphReady profile elapsed time must be finite and nonnegative")
         if elapsed_seconds > 0:
             self.profile_cost_samples += 1

@@ -1,7 +1,6 @@
 """Public graph primitives; SQL keys stay inside the graph's private index."""
 
 import json
-import math
 
 from core.models.workbench_command import canonical_json
 
@@ -16,12 +15,8 @@ def text(value):
     if value is None:
         return "未填写"
     if isinstance(value, dict):
-        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False)
     return str(value)
-
-
-def number(value, positive=False):
-    return type(value) in (int, float) and math.isfinite(value) and (value > 0 if positive else value >= 0)
 
 
 class MasterOverviewGraph:

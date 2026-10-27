@@ -98,7 +98,7 @@ class WorkbenchTrialService:
 
     def _loaded(self, ref, *, execution_service):
         head, rows = load_draft(self.repo, reference(ref))
-        live = live_context(self.conn, [row["operation_ref"] for row in rows], execution_service=execution_service)
+        live = live_context(self.conn, rows, head["admission"], execution_service=execution_service)
         return head, rows, live
 
     def _projection(self, head, rows, live, checked=None, *, changes=None, source_prepared=None, scenario_ref=None):
@@ -159,7 +159,7 @@ class WorkbenchTrialService:
 
         def prepare(head, rows, live):
             scenario_ref = new_ref()
-            source_prepared = source_projection(rows, head["admission"])
+            source_prepared = source_projection(rows, head["admission"], facts=live["source_facts"])
             snapshot = self._projection(head, rows, live, source_prepared=source_prepared, scenario_ref=scenario_ref)
             return head, rows, source_prepared, scenario_ref, snapshot
 

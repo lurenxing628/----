@@ -11,6 +11,7 @@ import pytest
 from openpyxl import load_workbook
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.scheduler.contracts.optimizer_public_safety import project_attempt_metrics, project_public_metrics
 from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION
 from core.services.scheduler.summary.optimizer_public_attempts import COMPARISON_METRIC_KEYS, project_attempts
 from core.services.scheduler.summary.optimizer_public_summary import project_public_algo_summary
@@ -288,6 +289,15 @@ def test_saved_rejection_summary_with_a_non_integer_count_is_a_corrupt_record(co
     with pytest.raises(WorkbenchCommandRejected) as caught:
         candidate_process(row, [row])
     assert (caught.value.code, caught.value.status) == ("candidate_artifact_invalid", 500)
+
+
+def test_public_attempt_projection_drops_numbers_beyond_the_float_range_without_raising():
+    huge = 10 ** 400
+    completion = {"objective_scope": "all_batches", "incomplete_work_weight": huge}
+    for project in (project_attempt_metrics, project_public_metrics):
+        assert project({"completion": completion})["completion"] == {"objective_scope": "all_batches"}
+    public_attempts, _diagnostics = project_attempts([{"score": [huge, 1.5], "elapsed_ms": huge, "metrics": {"completion": completion}}])
+    assert public_attempts == [{"score": [None, 1.5], "elapsed_ms": None, "metrics": {"completion": {"objective_scope": "all_batches"}}}]
 
 
 def test_legacy_attempts_keep_saved_indices_nulls_and_safe_public_fields():

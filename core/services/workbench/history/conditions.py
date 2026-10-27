@@ -634,7 +634,7 @@ def _experiments(source, packet):
     profile = report.get("candidate_profile") or {}
     for key in ("profile", "enabled", "seed", "seed_source", "configured_time_budget_seconds", "effective_time_budget_seconds",
                 "configured_max_iterations", "effective_max_iterations", "iteration_limit_source", "restart_after_iterations",
-                "repair", "acceptance", "candidate_strategy_family", "dispatch_mode", "dispatch_rule", "ortools_warmstart_enabled", "strict_mode"):
+                "repair", "acceptance", "candidate_strategy_family", "dispatch_mode", "dispatch_rule", "ortools_warmstart_enabled"):
         if key in profile:
             projection.add("algorithm", "candidate_profile", "实际搜索配置", key, profile[key],
                            "candidate.artifact.search_report.candidate_profile." + key, "algorithm")

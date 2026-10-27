@@ -272,7 +272,7 @@ def _oracle_report(case, payload):
 def run_case(scenario, objective):
     data = fixture_data(scenario)
     with case_environment(data, objective, {"time_budget_seconds": 5, "seed": 0}) as env:
-        outcome = run_candidate_comparison(schedule_input=env, strict_mode=True)
+        outcome = run_candidate_comparison(schedule_input=env)
         representatives = {}
         for plan in outcome.candidates:
             _audit_plan(plan, env, data)

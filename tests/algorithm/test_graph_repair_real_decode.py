@@ -40,6 +40,7 @@ from core.services.scheduler.run.optimizer.graph_ready_feature_basis import (
 )
 from core.services.scheduler.run.optimizer.graph_ready_profiles import resolve_v2_profiles
 from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
+from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
 from tests._support.algo_operations import make_batch, make_schedule_result
 from tests._support.optimizer_graph_ready_benchmark import (
     BASE_BATCH_ORDER,
@@ -143,12 +144,12 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
                                     target_objectives=targets, configured_seconds=10)
         session = SharedDecodeSession(
             archive=archive, budget=budget, scheduler=scheduler, operations=decoder_operations, batches=batches,
-            seed_results=seed_results, downtime_map=downtime, resource_pool=pool, graph_ready_context=context, start_dt=START_DT,
+            seed_results=seed_results, downtime_map=downtime, resource_pool=pool, graph_ready_context=context,
             clock=lambda: 0.0, started_at=0.0, deadline=10.0,
         )
         sessions.append(session)
         return evaluate_graph_ready_candidate(
-            profile=decode_profile, strict_mode=True, strategy=SortStrategy.PRIORITY_FIRST, params={},
+            profile=decode_profile, strategy=SortStrategy.PRIORITY_FIRST, params={},
             start_dt=START_DT, end_date=None, order=order,
             dispatch_rule="slack", resource_pool=pool, objective_name="min_overdue", optimizer_algo_stats=None,
             readiness_gate_enabled=False, version=0, clock=lambda: 0.0,
@@ -336,21 +337,24 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
         start_dt=START_DT, seed=0, best=None, report_state=visit_report, graph_context={}, decode_session=session,
     )
     elite = {"neighborhood": parent, "candidate": {}, "prepared_parent": None, "decision_offset": 0, "stream_offsets": {}, "portfolio_id": 1}
+
+    def skipped_neighbor(**_kwargs):
+        # A neighbour the shared session declines to decode (production skip reason) still yields once.
+        raise SharedSearchSkip("seen_without_payload")
+
     visit_kwargs = dict(
-        elite=elite, state=SimpleNamespace(best=None), evaluate=None,
+        elite=elite, state=SimpleNamespace(best=None), evaluate=skipped_neighbor,
         clock=lambda: 0,
-        t_begin=0, attempts=[], improvement_trace=[], report_state=visit_report, strict_mode=True,
+        t_begin=0, attempts=[], improvement_trace=[], report_state=visit_report,
         before_decode=lambda: None, improved_elites=[], accounting=RepairWorkAccounting(),
     )
-    with monkeypatch.context() as patch:
-        patch.setattr(repair, "_evaluate_neighbor", lambda *args, **kwargs: None)
-        expanded.clear()
-        assert len(list(repair._repair_one_elite(visit_pool, **visit_kwargs))) == 8
-        assert expanded == list(range(8))
-        expanded.clear()
-        assert len(list(repair._repair_one_elite(visit_pool, **visit_kwargs))) == 1
-        assert expanded == [8] and elite["decision_offset"] == 9
-        assert visit_pool.report["repair_pruning_report"]["generated_candidates"] == 9
+    expanded.clear()
+    assert len(list(repair._repair_one_elite(visit_pool, **visit_kwargs))) == 8
+    assert expanded == list(range(8))
+    expanded.clear()
+    assert len(list(repair._repair_one_elite(visit_pool, **visit_kwargs))) == 1
+    assert expanded == [8] and elite["decision_offset"] == 9
+    assert visit_pool.report["repair_pruning_report"]["generated_candidates"] == 9
 
     generated = []
 

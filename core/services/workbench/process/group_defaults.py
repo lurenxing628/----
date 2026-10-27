@@ -1,9 +1,9 @@
 """Apply resource defaults only to newly introduced outsourcing operations."""
 
-import math
 from uuid import uuid4
 
 from core.models.resource_capabilities import supplier_capability_rows, supports_source
+from core.shared.strict_parse import is_exact_non_negative_number
 from data.repositories.external_group_repo import ExternalGroupRepository
 from data.repositories.part_operation_repo import PartOperationRepository
 from data.repositories.workbench_process_workflow_repo import WorkbenchProcessWorkflowRepository
@@ -46,7 +46,7 @@ def _uses_merged_default(row, candidates, suppliers, capabilities, available):
     return (row["seq"] in candidates
             and row["supplier_id"] in available
             and (row["supplier_id"], row["op_type_id"]) in capabilities
-            and isinstance(days, (int, float)) and not isinstance(days, bool) and math.isfinite(days) and days > 0)
+            and is_exact_non_negative_number(days, positive=True))
 
 
 def apply_default_groups(conn, part_no, operation_sequences, *, catalog_reader):

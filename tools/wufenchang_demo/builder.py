@@ -51,7 +51,7 @@ def serve_database(database, workspace, with_worker=False):
         if app is not None and not app.extensions["workbench_request_lifecycle"].shutdown(timeout=15):
             raise RuntimeError("业务请求尚未结束，数据库保留在构建目录。")
         if lock is not None:
-            release_runtime_lock(scope, db_path=str(database), expected_payload=lock)
+            release_runtime_lock(scope, expected_payload=lock)
         for key, value in previous.items():
             if value is None:
                 os.environ.pop(key, None)

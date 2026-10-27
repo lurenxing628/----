@@ -88,15 +88,15 @@ class _LocalSearchRun:
         inputs = self.inputs
 
         def _evaluate(shaken_order: List[str], strategy: Any, params: Dict[str, Any],
-                      dispatch_mode: str, dispatch_rule: str) -> Optional[Dict[str, Any]]:
+                      dispatch_mode: str, dispatch_rule: str) -> Dict[str, Any]:
             return _evaluate_restart_candidate(
                 shaken_order=shaken_order, local_state=local_state, strategy=strategy, params=params,
                 dispatch_mode=dispatch_mode, dispatch_rule=dispatch_rule,
-                strict_mode=inputs["strict_mode"], start_dt=inputs["start_dt"], end_date=inputs["end_date"],
+                start_dt=inputs["start_dt"], end_date=inputs["end_date"],
                 resource_pool=inputs["resource_pool"], objective_name=inputs["objective_name"],
                 optimizer_algo_stats=inputs["optimizer_algo_stats"],
                 readiness_gate_enabled=inputs["readiness_gate_enabled"],
-                attempts=inputs["attempts"], search_report_state=inputs["search_report_state"],
+                search_report_state=inputs["search_report_state"],
                 decode_session=inputs["decode_session"],
             )
 
@@ -130,7 +130,6 @@ class LocalSearchStage(SearchStage):
         optimizer_algo_stats: Optional[Dict[str, Any]],
         t_begin: float,
         readiness_gate_enabled: bool,
-        strict_mode: bool,
         clock: Callable[[], float],
         rng_factory: Callable[[int], Any],
         search_report_state: OptimizationSearchReportState,
@@ -170,7 +169,7 @@ class LocalSearchStage(SearchStage):
         run = _LocalSearchRun(
             attempts=attempts, improvement_trace=improvement_trace, rnd=rng_factory(int(version)),
             search_report_state=search_report_state, acceptance=acceptance,
-            strict_mode=strict_mode, batches=batches, start_dt=start_dt,
+            batches=batches, start_dt=start_dt,
             end_date=end_date, resource_pool=resource_pool,
             objective_name=objective_name, optimizer_algo_stats=optimizer_algo_stats,
             readiness_gate_enabled=readiness_gate_enabled,

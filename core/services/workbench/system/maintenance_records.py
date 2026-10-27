@@ -30,7 +30,7 @@ def _timestamp(value):
 
 
 def _event(kind, source, identity, time, status, summary, detail):
-    body = public_system_text(json.dumps(detail, ensure_ascii=False, sort_keys=True), 32768)
+    body = public_system_text(json.dumps(detail, ensure_ascii=False, sort_keys=True, allow_nan=False), 32768)
     return {"key": canonical_json([source, str(identity)]),
             "record_kind": kind + "_event", "type": kind, "time": time, "status": status,
             "summary": summary, "body": body, "event_ref": str(identity), "event_source": source,

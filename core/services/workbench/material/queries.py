@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import re
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
@@ -13,6 +12,7 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_material_query import MaterialPageRequest
 from core.models.workbench_resource_table_query import table_query_required, toolbar_scope
+from core.shared.strict_parse import is_exact_non_negative_number
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_material_query_repo import WorkbenchMaterialQueryRepository
 
@@ -35,7 +35,7 @@ def _project(row):
     if type(row.get("ref")) is not str or re.fullmatch(r"[0-9a-f]{48}", row["ref"]) is None or row.get("revision") is None:
         raise WorkbenchCommandRejected("storage_failure", "物料缺少系统编号，请联系维护人员核对资料。", 500)
     stock = row["stock_qty"]
-    if stock is not None and (type(stock) not in (int, float) or not math.isfinite(stock) or stock < 0):
+    if stock is not None and not is_exact_non_negative_number(stock):
         cause = ValueError("Materials material_id={!r} stock_qty={!r}".format(row["material_id"], stock))
         raise WorkbenchCommandRejected(
             "storage_failure", "物料「{}」的库存数量不是 0 或大于 0 的有效数字，请核对原资料。".format(row["material_id"]),

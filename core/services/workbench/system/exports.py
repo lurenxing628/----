@@ -34,7 +34,7 @@ def diagnostic_zip(rows, sources, as_of):
             "sources": sources, "rows": len(rows), "redacted": True,
             "excludes": ["database", "raw-log-files", "credentials", "absolute-paths", "browser-storage"],
             "note": "每个运行日志文件取最近 200 条，操作日志取最近 500 条；不是全部历史日志。",
-        }, ensure_ascii=False, indent=2))
+        }, ensure_ascii=False, indent=2, allow_nan=False))
         for source in sources:
             if source["state"] in ("error", "missing"):
                 archive.writestr(source["source"] + "_READ_FAILED.txt", source.get("message", "没有读到这个来源的日志文件，包里不放这部分内容。"))

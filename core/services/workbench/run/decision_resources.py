@@ -1,6 +1,5 @@
 """Resource detail pages over the decision resource engine: filters, ordering and heatmap pages."""
 
-from math import isfinite
 from typing import Any, Union
 
 from core.infrastructure.read_evidence import read_evidence_scope
@@ -8,6 +7,7 @@ from core.models.workbench_run_candidate import local_time, reference, reject
 from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.resource_calendar import resource_period_bounds
 from core.services.workbench.facts.resource_projection import RESOURCE_METRIC_VERSION
+from core.shared.strict_parse import finite_float
 
 from .decision_queries import parse_page
 from .decision_resource_engine import DELTA_FIELDS, KINDS, resource_deltas
@@ -25,11 +25,8 @@ def normalize_resource_filters(section, *, resource_kind="machine", resource_ref
         reference(resource_ref)
     if grain not in GRAINS or isinstance(pressure_threshold, bool):
         reject("invalid_input", "资源粒度或高负荷阈值无效，请重新选择。", 422)
-    try:
-        threshold = float(pressure_threshold)
-    except (TypeError, ValueError):
-        reject("invalid_input", "高负荷阈值请选择大于0且不超过100%的比例。", 422)
-    if not isfinite(threshold) or not 0 < threshold <= 1:
+    threshold = finite_float(pressure_threshold)
+    if threshold is None or not 0 < threshold <= 1:
         reject("invalid_input", "高负荷阈值请选择大于0且不超过100%的比例。", 422)
     for first, last in ((display_start, display_end), (bucket_start, bucket_end)):
         if (first is None) != (last is None):

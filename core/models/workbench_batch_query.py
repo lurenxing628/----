@@ -1,9 +1,8 @@
 """Finite, explicit list scopes shared by reads, selections and previews."""
 
-import math
-
 from core.models.workbench_batch import MAX_INTEGER, READY, SORTS, STATUSES, object_fields
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.strict_parse import is_exact_finite_number
 
 
 def batch_scope(values):
@@ -38,7 +37,7 @@ def _validate_selection(scope):
 def _validate_filter_values(items):
     if (not isinstance(items, list) or len(items) > 5000
             or any(value is not None and type(value) not in (str, int, float) for value in items)
-            or any(type(value) in (int, float) and (abs(value) > MAX_INTEGER or not math.isfinite(value)) for value in items)):
+            or any(type(value) in (int, float) and (not is_exact_finite_number(value) or abs(value) > MAX_INTEGER) for value in items)):
         raise WorkbenchCommandRejected("invalid_input", "列筛选必须为明确的值集合。", 400)
 
 

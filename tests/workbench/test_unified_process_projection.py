@@ -8,7 +8,11 @@ import pytest
 from core.models.objective import best_score_schema
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchBudget
-from core.services.scheduler.run.optimizer.shared_process import UNIFIED_PROCESS_VERSION, build_shared_process
+from core.services.scheduler.run.optimizer.shared_process import (
+    UNIFIED_PROCESS_VERSION,
+    build_shared_process,
+    numeric_score,
+)
 from core.services.scheduler.run.schedule_shared_search import SharedSearch
 from core.services.workbench.facts.candidate_process import candidate_process
 from core.services.workbench.facts.unified_process import project_unified_process
@@ -297,3 +301,9 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
         for target in invalid["targets"].values():
             assert target["first_improvement_elapsed_ms"] is target["last_improvement_elapsed_ms"] is None
             assert all("strict_improvement" not in point["flags"] for point in target["points"])
+
+
+def test_numeric_score_keeps_only_finite_numbers_in_their_positions():
+    score = [2, 1.5, True, float("nan"), float("inf"), 10 ** 400, "3"]
+    assert numeric_score(score, components_known=True) == [2, 1.5, None, None, None, None, None]
+    assert numeric_score(score, components_known=False) == [2] + [None] * 6

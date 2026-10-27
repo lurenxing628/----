@@ -95,7 +95,7 @@ class RestoreStatusTransport:
 
     @staticmethod
     def _response(payload, status):
-        return Response(json.dumps(payload, ensure_ascii=True), status=status, content_type="application/json",
+        return Response(json.dumps(payload, ensure_ascii=True, allow_nan=False), status=status, content_type="application/json",
                         headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
     def _error(self, code, message, status):

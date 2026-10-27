@@ -2,15 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
-from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from .acceptance import AcceptanceDecision, decide_acceptance
-from .attempt_records import (
-    append_rejected_reason_attempt,
-    attempt_decision_evidence,
-    evaluate_optional_local_candidate,
-)
+from .attempt_records import append_rejected_reason_attempt, attempt_decision_evidence
 from .local_search_candidate_eval import evaluate_local_search_candidate
 from .local_search_state import LocalSearchState, candidate_can_update_best
 from .neighborhood_moves import NeighborhoodMove
@@ -35,21 +30,20 @@ class LocalSearchRoundResult:
     rejected_mode: Optional[str] = None
 
 
-def stamp_decode_runtime(candidate: Optional[Dict[str, Any]]) -> None:
+def stamp_decode_runtime(candidate: Dict[str, Any]) -> None:
     """Every decoded candidate carries its measured decode time so later phases can budget on it.
 
     A first decode also records that time as its own ``runtime_ms``; a reused decision keeps the source's.
     """
-    if candidate is not None:
-        receipt = candidate["decode_receipt"]
-        source_cost = receipt.get("source_initial_decode_runtime_ms")
-        if source_cost is None:
-            source_cost = receipt.get("source_runtime_ms")
-        if source_cost is None:
-            source_cost = receipt["original_decode_ms"]
-        candidate["initial_decode_runtime_ms"] = max(float(source_cost), 0.0)
-        if receipt["execution_kind"] != "decision_reused":
-            candidate["runtime_ms"] = int(candidate["initial_decode_runtime_ms"])
+    receipt = candidate["decode_receipt"]
+    source_cost = receipt.get("source_initial_decode_runtime_ms")
+    if source_cost is None:
+        source_cost = receipt.get("source_runtime_ms")
+    if source_cost is None:
+        source_cost = receipt["original_decode_ms"]
+    candidate["initial_decode_runtime_ms"] = max(float(source_cost), 0.0)
+    if receipt["execution_kind"] != "decision_reused":
+        candidate["runtime_ms"] = int(candidate["initial_decode_runtime_ms"])
 
 
 def _record_improvement(
@@ -179,7 +173,6 @@ def run_local_search_candidate_round(
     acceptance: str,
     iteration: int,
     iteration_limit: int,
-    strict_mode: bool,
     batches: Dict[str, Any],
     start_dt: datetime,
     end_date: Optional[date],
@@ -222,33 +215,22 @@ def run_local_search_candidate_round(
         candidate_resource_pool = dict(candidate_resource_pool or {}, pair_rank=ranks)
     candidate_mode = str(move.dispatch_mode or cur_dispatch_mode)
     candidate_rule = str(move.dispatch_rule or cur_dispatch_rule)
-    evaluate = partial(
-        evaluate_local_search_candidate,
-        strict_mode=bool(strict_mode),
-        strategy=cur_strat,
-        params=cur_params,
-        start_dt=start_dt,
-        end_date=end_date,
-        order=cand_order,
-        dispatch_mode=candidate_mode,
-        dispatch_rule=candidate_rule,
-        resource_pool=candidate_resource_pool,
-        resource_pair_rank=candidate_pair_rank,
-        objective_name=objective_name,
-        optimizer_algo_stats=optimizer_algo_stats,
-        readiness_gate_enabled=bool(readiness_gate_enabled),
-        decode_session=decode_session,
-    )
     calls_before = decode_session.actual_decoder_calls
     try:
-        candidate = evaluate_optional_local_candidate(
-            evaluate=evaluate,
-            attempts=attempts,
-            move=move.neighborhood_name,
+        candidate = evaluate_local_search_candidate(
             strategy=cur_strat,
+            params=cur_params,
+            start_dt=start_dt,
+            end_date=end_date,
+            order=cand_order,
             dispatch_mode=candidate_mode,
             dispatch_rule=candidate_rule,
-            strict_mode=bool(strict_mode),
+            resource_pool=candidate_resource_pool,
+            resource_pair_rank=candidate_pair_rank,
+            objective_name=objective_name,
+            optimizer_algo_stats=optimizer_algo_stats,
+            readiness_gate_enabled=bool(readiness_gate_enabled),
+            decode_session=decode_session,
         )
     except SharedSearchSkip as exc:
         stop_reason = exc.reason if exc.reason in ("estimated_decode_cost", "time_budget") else None
@@ -258,11 +240,6 @@ def run_local_search_candidate_round(
         )
     decode_attempted = decode_session.actual_decoder_calls > calls_before
     stamp_decode_runtime(candidate)
-    if candidate is None:
-        return LocalSearchRoundResult(
-            no_improve + 1, False,
-            decode_attempted=decode_attempted,
-        )
     candidate_fingerprint = search_report_state.mark_candidate_evaluated(candidate, origin="local_search")
     acceptance_decision = decide_acceptance(
         acceptance_name=acceptance,

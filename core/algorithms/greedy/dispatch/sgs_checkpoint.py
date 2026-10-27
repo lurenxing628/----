@@ -202,7 +202,7 @@ def resume_graph_progress(checkpoint: DecodeCheckpoint, *, graph_state: Optional
 
 def decode_input_signature(*, operations: Sequence[OpForScheduleAlgo], batch_order: Dict[str, int], params: Any,
                            resource_pool: Any, graph_ready_context: Any, readiness_gate_enabled: bool,
-                           strict_mode: bool, warnings: Sequence[str], prepared_inputs: Any) -> Tuple[Any, ...]:
+                           warnings: Sequence[str], prepared_inputs: Any) -> Tuple[Any, ...]:
     """Frozen decode inputs, except the graph priority keys a checkpoint reuse may change.
 
     Batches, downtimes, seeds and the calendar are fixed by ``prepared_inputs`` and encoded once there.
@@ -226,7 +226,7 @@ def decode_input_signature(*, operations: Sequence[OpForScheduleAlgo], batch_ord
          else input_value(resource_pool, field="resource_pool")),
         fixed["seeds"],
         fixed["contexts"][context_key],
-        readiness_gate_enabled, strict_mode,
+        readiness_gate_enabled,
         prepared_inputs.checkpoint_calendar_component(), tuple(warnings),
     ]
     return tuple(parts)

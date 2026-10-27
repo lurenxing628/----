@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import os
 import sqlite3
 import stat
@@ -20,6 +19,7 @@ from core.services.system.runtime_log_reader import (
 from core.services.system.system_config_service import SystemConfigService
 from core.services.system.system_maintenance_service import _parse_db_dt
 from core.shared.strict_json import load_strict_json
+from core.shared.strict_parse import is_exact_non_negative_number
 from data.repositories.operation_log_repo import OperationLogRepository
 from data.repositories.system_job_state_repo import SystemJobStateRepository
 
@@ -180,7 +180,7 @@ def _result_numbers(detail: Dict[str, Any]) -> Dict[str, Any]:
         values[field] = value
     if "size_mb" in detail:
         value = detail["size_mb"]
-        if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or value < 0):
+        if value is not None and not is_exact_non_negative_number(value):
             raise ValueError("Invalid task result number: size_mb")
         values["size_mb"] = value
     return values

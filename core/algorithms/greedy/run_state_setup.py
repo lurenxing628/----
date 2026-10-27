@@ -4,13 +4,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
-from core.algorithm_contracts.ordering import parse_ready_date_for_sort
 from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithm_runtime.downtime import occupy_resource
 from core.algorithm_runtime.resource_quality import MachineTypeState
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.errors import ValidationError
 from core.models.batch import Batch
+from core.shared.strict_parse import parse_optional_date
 
 from .dispatch.sgs_checkpoint import CHECKPOINT_FIELD, DecodeCheckpoint
 from .schedule_params import ScheduleParams
@@ -24,12 +24,11 @@ def prepare_run_state(
     warnings: List[str],
     algo_stats: Dict[str, Any],
     readiness_gate_enabled: bool,
-    strict_mode: bool,
 ) -> ScheduleRunState:
     state = ScheduleRunState(base_time=params.base_time)
     state.readiness_gate_enabled = readiness_gate_enabled
     if readiness_gate_enabled:
-        _initialize_ready_progress(state=state, batches=prepared_inputs.batches, strict_mode=strict_mode)
+        _initialize_ready_progress(state=state, batches=prepared_inputs.batches)
     if prepared_inputs.seed_applications:
         for result, machine_id, operator_id, segments in prepared_inputs.seed_applications:
             if segments:
@@ -49,10 +48,10 @@ def prepare_run_state(
     return state
 
 
-def _initialize_ready_progress(*, state: ScheduleRunState, batches: Dict[str, Batch], strict_mode: bool) -> None:
+def _initialize_ready_progress(*, state: ScheduleRunState, batches: Dict[str, Batch]) -> None:
     # 键来自 build_normalized_batches_map，已保证非空。
     for batch_id, batch in batches.items():
-        ready_date = parse_ready_date_for_sort(batch.ready_date, strict_mode=strict_mode)
+        ready_date = parse_optional_date(batch.ready_date, field="ready_date")
         if ready_date is not None:
             ready_start = datetime(ready_date.year, ready_date.month, ready_date.day, 0, 0, 0)
             # 齐套只设时间下界；日历校验留给实际资源排槽，外协仍按自然日推进。

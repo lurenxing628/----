@@ -42,7 +42,6 @@ _PUBLIC_ALGO_KEYS = {
     "freeze_window",
     "resource_pool",
     "fallback_counts",
-    "param_fallbacks",
     "graph_analysis",
     "candidate_comparison",
     "search_report",
@@ -59,7 +58,7 @@ def project_public_algo_summary(algo: Dict[str, Any]) -> Tuple[Dict[str, Any], D
     search_report_diagnostics = _project_search_report_field(public_algo)
     _project_attempt_fields(public_algo)
     _project_algo_context_fields(public_algo)
-    _project_auxiliary_fields(public_algo)
+    _replace_projected_or_drop(public_algo, "fallback_counts", public_counter_dict)
     _project_nested_summary_fields(public_algo)
 
     diagnostics = _optimizer_diagnostics(
@@ -153,11 +152,6 @@ def _project_algo_context_fields(public_algo: Dict[str, Any]) -> None:
     _replace_projected_or_drop(public_algo, "downtime_avoid", project_downtime_avoid)
     _replace_projected_or_drop(public_algo, "freeze_window", project_freeze_window)
     _replace_projected_or_drop(public_algo, "resource_pool", project_resource_pool)
-
-
-def _project_auxiliary_fields(public_algo: Dict[str, Any]) -> None:
-    _replace_projected_or_drop(public_algo, "fallback_counts", public_counter_dict)
-    _replace_projected_or_drop(public_algo, "param_fallbacks", public_counter_dict)
 
 
 def _project_nested_summary_fields(public_algo: Dict[str, Any]) -> None:

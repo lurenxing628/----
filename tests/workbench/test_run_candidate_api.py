@@ -22,6 +22,8 @@ from core.services.workbench.facts.candidate_store import CandidateStore
 from core.services.workbench.facts.candidate_tasks import filter_workspace, task_resource
 from core.services.workbench.run.candidate_analysis import read_candidate_analysis
 from core.services.workbench.run.candidate_baseline import WorkbenchRunCandidateBaselineQueryService
+from core.services.workbench.run.candidates import WorkbenchRunCandidateQueryService
+from core.services.workbench.run.decision_queries import read_decision_details
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests._support.excel_templates import point_env_at_shared
 from tests.workbench.run_candidate_adoption_support import INTENT, service
@@ -236,13 +238,50 @@ def test_arranged_and_unplanned_operations_share_one_sequence_order():
         assert [item["operation_ref"] for item in pending] == expected_unplanned
 
 
-def test_completed_candidate_receipt_without_dispositions_is_a_corrupt_record(candidate_case):
+@pytest.mark.parametrize("reader", ("candidate_source", "candidate_workspace", "decision_operations", "admission_comparison",
+                                    "adoption"))
+def test_completed_candidate_receipt_without_dispositions_is_a_corrupt_record(candidate_case, reader):
     run_ref, refs = compute(candidate_case)
-    raw = candidate_case.conn.execute("SELECT result_json FROM WorkbenchRunReceipts WHERE run_ref=?", (run_ref,)).fetchone()[0]
+    conn = candidate_case.conn
+    raw = conn.execute("SELECT result_json FROM WorkbenchRunReceipts WHERE run_ref=?", (run_ref,)).fetchone()[0]
     receipt = json.loads(raw)
     del receipt["dispositions"]
-    corrupt_update(candidate_case.conn, "WorkbenchRunReceipts", "UPDATE WorkbenchRunReceipts SET result_json=? WHERE run_ref=?",
+    corrupt_update(conn, "WorkbenchRunReceipts", "UPDATE WorkbenchRunReceipts SET result_json=? WHERE run_ref=?",
                    (json.dumps(receipt, ensure_ascii=False), run_ref))
+    reads = {
+        "candidate_source": lambda: read_candidate_source(CandidateStore(conn), refs[0]),
+        "candidate_workspace": lambda: WorkbenchRunCandidateQueryService(conn).workspace(RunCandidateReadScope(refs[0])),
+        "decision_operations": lambda: read_decision_details(conn, run_ref, "operations", selected_candidate_ref=refs[0]),
+        "admission_comparison": lambda: WorkbenchRunCandidateBaselineQueryService(conn).baseline(
+            RunCandidateBaselineScope(refs[0])),
+        "adoption": lambda: load_adoption_candidate(conn, refs[0]),
+    }
     with pytest.raises(WorkbenchCommandRejected) as rejected:
-        read_candidate_source(CandidateStore(candidate_case.conn), refs[0])
+        reads[reader]()
     assert rejected.value.code == "candidate_artifact_invalid"
+
+
+@pytest.mark.parametrize("state", ("queued", "failed"))
+def test_run_without_candidate_results_cannot_reread_its_admission_official_plan(candidate_case, state):
+    from core.models.workbench_run_job import new_run_ref
+    from core.services.workbench.facts.decision_read_model import build_failure_read_models
+    from core.services.workbench.facts.decision_read_models import decode_model
+    from core.services.workbench.run.decision_export import read_decision_export
+    from data.repositories.workbench_run_repo import WorkbenchRunRepository
+
+    conn = candidate_case.conn
+    run_ref = candidate_case.accept(key="no-result-official-run-01")["run_ref"]
+    if state == "failed":
+        repo = WorkbenchRunRepository(conn)
+        repo.claim(run_ref, new_run_ref(), "2026-09-10T12:00:01")
+        failure = {"state": "failed", "result_persisted": False, "candidates": [],
+                   "error": {"code": "fixture_saved_failure", "message": "Saved worker failure"}}
+        repo.finish(run_ref, "failed", failure, "2026-09-10T12:00:02")
+        admission = decode_model(repo.admission_read_model(run_ref, ("decision",)), ("decision",))["decision"]
+        models = build_failure_read_models(repo.head(run_ref), admission, failure)
+        repo.insert_decision_read_models(run_ref, models["run_model"], models["candidate_models"])
+        conn.commit()
+    # 只有产出候选结果的运行才保存工序处置；按原始来源重读排产时的正式计划需要它们。
+    with pytest.raises(WorkbenchCommandRejected) as rejected:
+        read_decision_export(conn, run_ref, "recommendation", comparison_mode="admission_official")
+    assert rejected.value.code == "candidate_baseline_invalid"

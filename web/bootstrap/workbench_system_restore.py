@@ -206,7 +206,6 @@ class WorkbenchSystemRestoreHost(SystemRestoreHost):
         try:
             lease = self.gate.maintenance_owner()
             g.pop("services", None)
-            g.pop("op_logger", None)
             close_workbench_request_connection(conn)
             g.pop("db")
             self.runtime.shutdown(wait=False)

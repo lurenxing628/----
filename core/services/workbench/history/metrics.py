@@ -8,7 +8,7 @@ from core.services.workbench.facts.candidate_tasks import task_span
 from core.services.workbench.facts.candidate_values import number
 from core.services.workbench.facts.completion_scope import project_completion_summary
 from core.services.workbench.facts.decision_metrics import (
-    admission_operations,
+    admission_operation_refs,
     delivery_metric_values,
     metric_definitions,
     metric_value,
@@ -165,7 +165,7 @@ def _run(reader, packet, window):
         return {}, _scope(packet), "unavailable"
     if candidate is None:
         facts, settings = packet["facts"], packet["capture"]["input"]
-        operation_refs, _deferred, _skipped = admission_operations(facts, settings, None)
+        operation_refs = admission_operation_refs(facts, settings)
         batches = {ref: facts.tables["Batches"].get(key, {}) for (kind, key), ref in facts.entity_refs.items() if kind == "batch"}
         window.update(state="unavailable", reason=metric_reason("history_result_missing", "此事件尚未保存任务安排，资源集合与占用未知。"))
         values = _admission_count_values(packet, operation_refs, reader=reader)

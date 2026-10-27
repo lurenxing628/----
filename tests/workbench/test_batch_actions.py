@@ -529,3 +529,17 @@ def test_strict_json_provider_rejects_duplicate_keys_and_non_finite_numbers_in_g
         response = app_client.post(BASE + "/import-confirm", data=raw, content_type="application/json")
         value = assert_error(response, "invalid_input", 400)
         assert value["error"]["message"] == "提交的内容不完整或有多余项，还没有保存。请刷新页面后重新填写。", raw
+
+
+def test_strict_json_provider_refuses_to_write_non_finite_numbers(app_client):
+    """同一个 provider 的输出端：合法数据原样写出，NaN / Infinity 直接报错，不写出非法 JSON。"""
+    import json
+
+    import pytest
+
+    provider = app_client.application.json
+    data = {"value": 1.5, "items": [0, None, False, ""]}
+    assert json.loads(provider.dumps(data)) == data
+    for value in (float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(ValueError):
+            provider.dumps({"value": value})

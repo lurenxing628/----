@@ -42,9 +42,7 @@ def preparation_projection(rows, admission, current_ledger, *, current_evidence,
     for ref, context in contexts.items():
         op, execution = context["operation"], context["execution"]
         standard = archived_standard_effort(op, execution)
-        # 设计边界：admission["execution"] 只覆盖基础方案已排行、正式计划行和已有报工的工序（trial/facts.py
-        # execution_facts）；同批次没排上的其他工序没有当前执行行，三项执行数量按“未知”展示。
-        current_execution = admission["execution"].get(ref, {})
+        current_execution = admission["execution"][ref]
         pair = {}
         for name, records, evidence in (("before", before, origin), ("after", after, current_evidence)):
             runtime = records.get(ref)

@@ -41,7 +41,7 @@ def owned_case(job_case, tmp_path):
         runtime = case.app.extensions.get("workbench_run_runtime")
         if runtime is not None:
             assert runtime.shutdown(timeout=30), runtime.status
-        release_runtime_lock(case.runtime_dir, db_path=str(case.path), expected_payload=case.lock_payload)
+        release_runtime_lock(case.runtime_dir, expected_payload=case.lock_payload)
 
 
 def install(case):

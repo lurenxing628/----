@@ -58,8 +58,8 @@ def _rescheduled_ids(rows, live):
         if op is None:
             continue
         batch = batches.get(op["batch_id"])
-        projection = live["execution"].get(row["operation_ref"]) or {}
-        if (batch is not None and projection.get("execution_state") == "unreported"
+        projection = live["execution"][row["operation_ref"]]
+        if (batch is not None and projection["execution_state"] == "unreported"
                 and op["status"] not in ("skipped", "processing", "completed")
                 and batch["status"] not in ("completed", "cancelled")):
             result.add(op["id"])
@@ -122,12 +122,12 @@ class TrialProtection:
         original, ref = row["original"], row["task_ref"]
         if (original.get("execution_anchor") or {}).get("basis") == "merged_external_actuals":
             return issue("execution_protected", "合并外协组已有实际记录，整组周期不能单独调整。", ref)
-        execution = self.execution.get(row["operation_ref"])
-        if execution is None or execution["data_quality"] == "invalid":
-            return issue("execution_unproven", "这道工序的报工记录缺失或有坏数据，不能确认可以调整。", ref)
+        execution = self.execution[row["operation_ref"]]
+        if execution["data_quality"] == "invalid":
+            return issue("execution_unproven", "这道工序的报工记录有问题，不能用试调改安排。请到现场记录核对后重试。", ref)
         for facts in (execution, original["execution"]):
-            if facts and (facts["execution_state"] != "unreported" or facts["reports"] or facts["legacy_facts"]
-                          or facts["first_actual_start"] or facts["confirmed_finish"]):
+            if (facts["execution_state"] != "unreported" or facts["reports"] or facts["legacy_facts"]
+                    or facts["first_actual_start"] or facts["confirmed_finish"]):
                 return issue("execution_protected", "这道工序已经开工、报工或完工，不能用试调改安排。", ref)
         return None
 

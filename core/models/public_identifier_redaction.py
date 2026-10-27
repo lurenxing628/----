@@ -100,9 +100,9 @@ def contains_internal_identifier(value: Any) -> bool:
     return bool(INTERNAL_TEXT_RE.search(str(value or "")))
 
 
-def is_forbidden_internal_key(key_text: Any) -> bool:
+def is_forbidden_internal_key(key_text: str) -> bool:
     """dict key 是否属于内部标识(禁止进入 public 投影)。空 key 也视为禁止。"""
-    text = str(key_text or "").strip()
+    text = key_text.strip()
     if not text:
         return True
     lower = text.lower()

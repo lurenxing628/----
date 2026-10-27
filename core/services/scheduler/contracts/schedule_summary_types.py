@@ -79,7 +79,6 @@ class RuntimeState:
 @dataclass(frozen=True)
 class FallbackState:
     fallback_counts: Dict[str, int]
-    param_fallbacks: Dict[str, int]
     ortools_warmstart_failed_count: int
 
 

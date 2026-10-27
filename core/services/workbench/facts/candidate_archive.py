@@ -6,7 +6,7 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
-from .candidate_projection import candidate_summary, dispositions, scheduled_ids, validate_manifest
+from .candidate_projection import candidate_summary, completed_dispositions, scheduled_ids, validate_manifest
 from .candidate_store import CandidateStore
 from .preflight_dependencies import material_deferred_ids
 from .run_policy import require_admission
@@ -32,7 +32,7 @@ def load_adoption_candidate(conn, candidate_ref):
     candidates = store.candidates(run_ref)
     validate_manifest(run, candidates, receipt)
     candidate = next(row for row in candidates if row["candidate_ref"] == candidate_ref)
-    scope = dispositions(receipt)
+    scope = completed_dispositions(receipt)
     capture = store.capture(run_ref)
     ids = require_candidate_scope(run, candidate, scope, capture, scheduled_op_ids=scheduled_ids(candidate))
     tasks = store.tasks(candidate_ref)
@@ -44,12 +44,12 @@ def load_adoption_candidate(conn, candidate_ref):
 def require_candidate_scope(run, candidate, scope, capture, *, scheduled_op_ids):
     """Prove this candidate's scope; a comparison sibling may have exhausted its budget."""
     summary = candidate_summary(candidate, scope, scheduled_op_ids=scheduled_op_ids)
-    deferred = material_deferred_ids(scope.values(), capture["input"]) if scope is not None else set()
+    deferred = material_deferred_ids(scope.values(), capture["input"])
     if (run["state"] not in ("complete", "partial") or candidate["status"] != "completed"
             or (summary["completeness"] != "complete" and not deferred)):
         raise CandidateAdoptionBlocked("candidate_incomplete", _incomplete_message(candidate, scope, deferred, scheduled_op_ids))
     ids = scheduled_op_ids
-    if not ids or scope is None or ids != {row["op_id"] for row in scope.values()} - deferred:
+    if not ids or ids != {row["op_id"] for row in scope.values()} - deferred:
         raise CandidateAdoptionBlocked("candidate_scope_incomplete", "这个候选方案没有排全排产时选定的工序，不能采用。请重新排产后再试。")
     _require_complete_summary(candidate["artifact"], ids)
     return ids
@@ -59,7 +59,7 @@ def _incomplete_message(candidate, scope, deferred, scheduled_op_ids):
     """按没排完的原因说出路：本次跳过的批次重排还是跳过，要先取消勾选或处理好跳过原因。"""
     if candidate["status"] != "completed":
         return "这个候选方案没有算出结果，不能采用。请看其它候选方案；都不行请到「排产记录」查看原因。"
-    skipped = sorted({row["batch_id"] for row in (scope or {}).values()
+    skipped = sorted({row["batch_id"] for row in scope.values()
                       if row["status"] == "skipped" and row["op_id"] not in deferred})
     if skipped:
         names = "、".join(skipped[:5]) + (" 等" if len(skipped) > 5 else "")

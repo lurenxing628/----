@@ -29,7 +29,6 @@ from core.services.scheduler.run.optimizer.graph_ready_profiles import GraphRead
 from core.services.scheduler.run.optimizer.shared_budget import SharedSearchSkip
 from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
 
-from .context import reason_from_validation
 from .decode_capture import capture_failure_reason, is_capture_failure
 from .iterated_greedy_acceptance import (
     ExponentialCooling,
@@ -54,8 +53,7 @@ from .iterated_greedy_neighborhoods import GeneratorRotation, build_generators
 from .iterated_greedy_reference import adopt_incumbent, reference_for_iteration
 from .iterated_greedy_start import start_reference
 from .repair_decisions import RepairDecision
-from .reporting import append_graph_attempt, record_rejected_attempt
-from .v2_contract import is_graph_ready_v2_contract_error
+from .reporting import append_graph_attempt
 
 if TYPE_CHECKING:
     from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
@@ -63,7 +61,6 @@ if TYPE_CHECKING:
 # Pending output contents share one complete decode's row budget and a bounded LRU.
 _PENDING_OUTPUT_CACHE_SIZE = 32
 _STOP_BY_BUDGET = ("time_budget", "decode_budget", "decode_would_overrun", "estimated_decode_cost")
-_FAILED = ((), False)
 # Helpers reachable through this module for existing callers and tests.
 __all__ = ["_IteratedGreedySearch", "_BudgetExhausted", "_Parent", "_publish"]
 
@@ -72,7 +69,7 @@ class _IteratedGreedySearch:
     def __init__(self, *, limits: IteratedGreedyLimits, parent: _Parent, profile: GraphReadyWeightProfile, pool: Any,
                  evaluate: Callable[..., Dict[str, Any]], metrics_by_op_id: Dict[int, Dict[str, Any]], start_dt: Any,
                  seed: int, deadline: float, clock: Callable[[], float], t_begin: float, attempts: List[Dict[str, Any]],
-                 improvement_trace: List[Dict[str, Any]], report_state: OptimizationSearchReportState, strict_mode: bool,
+                 improvement_trace: List[Dict[str, Any]], report_state: OptimizationSearchReportState,
                  report: Dict[str, Any],
                  decode_session: SharedDecodeSession, operations: List[Any],
                  graph_context: Dict[str, Any]) -> None:
@@ -94,7 +91,6 @@ class _IteratedGreedySearch:
         self.attempts = attempts
         self.improvement_trace = improvement_trace
         self.report_state = report_state
-        self.strict_mode = strict_mode
         self.report = report
         self.rnd = random.Random(self.seed * 7919 + 17)
         # Pool sampling must not change the destroy/reinsert random stream.
@@ -212,7 +208,7 @@ class _IteratedGreedySearch:
         if known is not None:
             self.report["duplicate_decision_pruned"] += 1
             self._record_local_reuse("local_trial_reused")
-            return None if known is _FAILED else known
+            return known
         resume = self.checkpoints.best_for(reference.checkpoints, base_order=reference.order, trial_order=order)
         if resume is not None:
             budget = self.decode_session.budget
@@ -227,10 +223,6 @@ class _IteratedGreedySearch:
             self.last_decode_skip = exc
             if exc.reason == "estimated_decode_cost":
                 raise _BudgetExhausted(exc.reason) from exc
-            return None
-        if candidate is None:
-            # A rejected decision is not retried; the rejection reason is already recorded.
-            self.scores[order] = _FAILED
             return None
         score = tuple(candidate["score"])
         feasible = _feasible(candidate)
@@ -250,7 +242,7 @@ class _IteratedGreedySearch:
         return scored
 
     def _decode_trial(self, order: Tuple[int, ...], *, resume: Optional[DecodeCheckpoint],
-                      reference: PoolEntry) -> Optional[Dict[str, Any]]:
+                      reference: PoolEntry) -> Dict[str, Any]:
         """Trial decode of an order derived from ``reference``; large orders also reuse the reference's exact tail."""
         return self._decode(order, resume=resume)
 
@@ -261,10 +253,6 @@ class _IteratedGreedySearch:
         ``capture_of`` is the known solution this decode only re-captures under the IG context (None for search
         decodes)."""
         self.last_decode_skip = None
-        if self.scores.get(order) is _FAILED:
-            self.report["duplicate_decision_pruned"] += 1
-            self._record_local_reuse("local_trial_reused")
-            return None
         known = self.decoded_entries.get(order)
         if known is not None:
             self.decoded_entries.move_to_end(order)
@@ -285,11 +273,6 @@ class _IteratedGreedySearch:
             if exc.reason == "estimated_decode_cost":
                 # This required full reconstruction cannot become affordable as run time decreases.
                 raise _BudgetExhausted(exc.reason) from exc
-            return None
-        if candidate is None:
-            if self._take_output(order) is not None:
-                self._equivalence_violation()
-            self.scores[order] = _FAILED
             return None
         # A full trial may need one new decode to capture a future reference's checkpoints.
         self.report["reference_capture_decodes"] += int(recapture)
@@ -337,7 +320,7 @@ class _IteratedGreedySearch:
 
     def _decode(self, order: Tuple[int, ...], *, resume: Optional[DecodeCheckpoint] = None,
                 checkpoints: Optional[Any] = None, redecode_reason: Optional[str] = None,
-                capture_of: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+                capture_of: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         decision = RepairDecision(self.parent.batch_order, tuple(order), self.parent.inherited)
         batch_order = list(decision.batch_order)
         decode_kwargs: Dict[str, Any] = {"decode_session": self.decode_session, "redecode_reason": redecode_reason}
@@ -350,20 +333,12 @@ class _IteratedGreedySearch:
             candidate = self.evaluate(profile=self.profile, order=batch_order, repair=(decision, self.parent.prepared),
                                       before_decode=self._before_decode, **decode_kwargs)
         except ValidationError as exc:
-            if checkpoints is not None and is_capture_failure(exc, resumed=resume is not None):
-                # Capture refused or lost before the decode finished: degrade to plain full decodes, report why.
-                self.report["checkpoint_capture_rejections"] += 1
-                self.checkpoints.disable(capture_failure_reason(exc))
-                return self._decode(order, redecode_reason=redecode_reason, capture_of=capture_of)
-            if self.strict_mode or is_graph_ready_v2_contract_error(exc) or exc.field in (
-                    "graph_ready_elite_repair", "graph_ready_iterated_greedy", "decode_checkpoint"):
+            if checkpoints is None or not is_capture_failure(exc, resumed=resume is not None):
                 raise
-            reason = reason_from_validation(exc)
-            self.incumbent.reject(reason)
-            best = self._require_best()
-            record_rejected_attempt(attempts=self.attempts, strategy=best["strategy"], dispatch_rule=best["dispatch_rule"],
-                                    reason=reason, message=str(exc), profile_slug=self.profile.slug)
-            return None
+            # Capture refused or lost before the decode finished: degrade to plain full decodes, report why.
+            self.report["checkpoint_capture_rejections"] += 1
+            self.checkpoints.disable(capture_failure_reason(exc))
+            return self._decode(order, redecode_reason=redecode_reason, capture_of=capture_of)
         receipt = candidate["decode_receipt"]
         actual_calls = receipt["actual_decoder_calls"]
         if actual_calls:

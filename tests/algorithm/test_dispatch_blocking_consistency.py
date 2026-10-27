@@ -5,6 +5,8 @@ failed_ops（不被静默过滤）且失败即阻断同批后续工序，schedul
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+import pytest
+
 from core.algorithm_runtime.run_state import ScheduleRunState
 from tests._support.algo_operations import make_algo_op, make_batch
 from tests._support.schedule_decode import config_snapshot, production_decode
@@ -88,6 +90,22 @@ def test_dispatch_blocking_consistency():
         raise AssertionError("SGS 不应为缺资源内部工序生成不可评分兜底 key")
 
 
+class _ExplodingCalendarService(_StubCalendarService):
+    def adjust_to_working_time(self, dt: datetime, priority=None, operator_id=None) -> datetime:
+        raise RuntimeError("日历故障")
+
+
+def test_batch_order_dispatch_exception_propagates_instead_of_recording_failure() -> None:
+    """派工单步里的意外异常直接抛出，不再被吞成“工序排产异常”失败明细后继续排。"""
+    from core.algorithms.greedy.scheduler import GreedyScheduler
+
+    op = make_algo_op(id=1, batch_id="B001", machine_id="M1", operator_id="O1", setup_hours=1.0, unit_hours=0.0)
+    scheduler = GreedyScheduler(calendar_service=_ExplodingCalendarService(), config_service=config_snapshot())
+    with pytest.raises(RuntimeError, match="日历故障"):
+        production_decode(scheduler, operations=[op], batches={"B001": make_batch(batch_id="B001")},
+                          start_dt=datetime(2026, 1, 1, 8, 0, 0), dispatch_mode="batch_order", dispatch_rule="slack")
+
+
 def test_dispatch_sgs_missing_batch_records_structured_failure_detail() -> None:
     from core.algorithms.greedy.scheduler import GreedyScheduler
 
@@ -132,7 +150,7 @@ def test_graph_blocked_ops_already_counted_by_batch_skip_do_not_duplicate_failur
 
 
 def test_dispatch_failures_record_structured_details_without_raw_error_duplication() -> None:
-    """回归：missing_batch / dispatch 异常 / 图阻塞失败只写结构化 failure_details，不再往
+    """回归：missing_batch / 图阻塞失败只写结构化 failure_details，不再往
     state.errors 塞原始中文串。旧行为会让原始串回落成 generic_scheduler_error（“请联系管理员”），
     与结构化具体文案并列形成双发并虚增 error_count。"""
     from core.algorithms.greedy.dispatch.sgs_graph_failure import _record_graph_blocked_operations
@@ -140,12 +158,8 @@ def test_dispatch_failures_record_structured_details_without_raw_error_duplicati
     op = make_algo_op(id=1, batch_id="B001")
     state = ScheduleRunState(base_time=datetime(2026, 1, 1, 8, 0, 0))
     state.record_missing_batch(op, "B001")
-    state.record_dispatch_exception(op, "B001", dispatch_mode="sgs")
     assert state.errors == []
-    assert [item["code"] for item in state.failure_details] == [
-        "missing_batch",
-        "dispatch_operation_exception",
-    ]
+    assert [item["code"] for item in state.failure_details] == ["missing_batch"]
 
     failed_op = make_algo_op(id=1, batch_id="B001")
     blocked_op = make_algo_op(id=2, batch_id="B001", seq=2)

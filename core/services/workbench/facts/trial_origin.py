@@ -18,7 +18,7 @@ def delivery_origin(admission, rows, facts=None):
         batches = {ref: facts.tables["Batches"][key] for (kind, key), ref in facts.entity_refs.items()
                    if kind == "batch" and ref in selected}
         operations = facts.tables["BatchOperations"].values()
-        deferred = material_deferred_ids((source.get("dispositions") or {}).values(), capture["input"])
+        deferred = material_deferred_ids(source["dispositions"].values(), capture["input"])
         deferred_issues = []
     else:
         batches = {row["original"]["batch_ref"]: row["original"]["batch"] for row in rows}
@@ -48,24 +48,19 @@ def delivery_origin(admission, rows, facts=None):
     return batches, by_batch, deferred, deferred_issues
 
 
-def operation_contexts(rows, admission, facts=None, *, origin=None):
-    """Bind original arrangements to every operation in this source's batches."""
+def _source_operations(rows, admission, facts, origin):
+    """Bind original arrangements to every operation in this source's batches; arranged rows come first."""
     source = admission["source"]
     if "capture" in source:
-        facts = facts if facts is not None else GenerationFacts(source["capture"])
-        operations = facts.tables["BatchOperations"]
-        refs = {op_id: ref for ref, op_id in facts.operations.items()}
-        execution = facts.execution
+        operations, refs = facts.tables["BatchOperations"], facts.operation_refs
     else:
         tables = admission["facts"]["tables"]
         operations = {row["id"]: row for row in tables["BatchOperations"]}
         refs = {int(row["source_key"]): row["ref"] for row in tables["WorkbenchPlanSourceRefs"]
                 if row["kind"] == "operation" and row["active"] == 1}
-        execution = admission["execution"]
     batches, by_batch, deferred, _issues = delivery_origin(admission, rows, facts) if origin is None else origin
     result = {row["operation_ref"]: {"operation": row["original"]["operation"],
-        "execution": row["original"].get("execution") or {}, "batch_ref": row["original"]["batch_ref"],
-        "batch": row["original"]["batch"], "row": row, "arranged": True,
+        "batch_ref": row["original"]["batch_ref"], "batch": row["original"]["batch"], "row": row, "arranged": True,
         "deferred": row["original"]["operation"]["id"] in deferred} for row in rows}
     for batch_ref, batch in batches.items():
         for item in by_batch[batch["batch_id"]]:
@@ -74,11 +69,33 @@ def operation_contexts(rows, admission, facts=None, *, origin=None):
             if ref is None:
                 reject("trial_snapshot_invalid", "保存来源中的工序永久编号缺失，请核对保存记录。")
             if ref not in result:
-                result[ref] = {"operation": op, "execution": execution.get(ref, {}),
-                    "batch_ref": batch_ref, "batch": batch, "arranged": False,
-                    "deferred": op["id"] in deferred}
+                result[ref] = {"operation": op, "batch_ref": batch_ref, "batch": batch, "arranged": False,
+                               "deferred": op["id"] in deferred}
+    return result
+
+
+def context_operation_refs(rows, admission, facts):
+    """The trial's whole operation scope: its rows and every other operation of their source batches.
+
+    facts is the candidate source's GenerationFacts, or None for an official plan.
+    Every execution snapshot of the trial includes this whole scope.
+    """
+    return list(_source_operations(rows, admission, facts, None))
+
+
+def operation_contexts(rows, admission, facts=None, *, origin=None):
+    """Bind original arrangements and execution to every operation in this source's batches."""
+    source = admission["source"]
+    candidate = "capture" in source
+    if candidate:
+        facts = facts if facts is not None else GenerationFacts(source["capture"])
+        execution = facts.execution
+    else:
+        execution = admission["execution"]
+    result = _source_operations(rows, admission, facts, origin)
     for ref, context in result.items():
-        disposition = (source.get("dispositions") or {}).get(ref)
-        if disposition is not None:
-            context["disposition"] = disposition
+        context["execution"] = context["row"]["original"]["execution"] if context["arranged"] else execution[ref]
+        if candidate:
+            # 候选来源保存了所选批次全部工序的处置；正式计划来源没有处置。
+            context["disposition"] = source["dispositions"][ref]
     return result

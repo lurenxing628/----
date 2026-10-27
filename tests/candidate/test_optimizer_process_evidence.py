@@ -108,12 +108,11 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
         archive=archive, budget=budget, scheduler=scheduler, operations=operations, batches=batches,
         seed_results=seed_results, downtime_map=downtime_map, resource_pool=None,
         clock=clock, started_at=started_at, deadline=deadline, event_sink=shared.record_event,
-        start_dt=START_DT,
     )
     shared.decode_session = session
     optimizer_stats = {}
     best = schedule_optimizer_steps._evaluate_ortools_candidate(
-        strict_mode=True, start_dt=START_DT, end_date=None, dispatch_mode_cfg="batch_order",
+        start_dt=START_DT, end_date=None, dispatch_mode_cfg="batch_order",
         dispatch_rule_cfg="slack", resource_pool=None, objective_name="min_overdue", optimizer_algo_stats=optimizer_stats,
         readiness_gate_enabled=False, graph_ready_context=None, decode_session=session,
         strategy=SortStrategy.FIFO, params={}, ort_order=list(batches),
@@ -143,7 +142,7 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
     )
     optional_attempts = []
     assert schedule_optimizer_steps.run_ortools_warmstart(
-        strict_mode=True, start_dt=START_DT, end_date=None, dispatch_mode_cfg="batch_order",
+        start_dt=START_DT, end_date=None, dispatch_mode_cfg="batch_order",
         dispatch_rule_cfg="slack", resource_pool=None, objective_name="min_overdue", optimizer_algo_stats=optimizer_stats,
         readiness_gate_enabled=False, graph_ready_context=None, decode_session=session,
         algo_ops_to_schedule=operations, batches=batches,
@@ -169,7 +168,7 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
     attempts = []
     with pytest.raises(RuntimeError) as raised:
         schedule_optimizer_steps.run_ortools_warmstart(
-            strict_mode=True, start_dt=START_DT, end_date=None, dispatch_mode_cfg="batch_order",
+            start_dt=START_DT, end_date=None, dispatch_mode_cfg="batch_order",
             dispatch_rule_cfg="slack", resource_pool=None, objective_name="min_overdue", optimizer_algo_stats=optimizer_stats,
             readiness_gate_enabled=False, graph_ready_context=None, decode_session=session,
             algo_ops_to_schedule=operations, batches=batches,
@@ -184,7 +183,7 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
 
     # Shared ordering admission records one real action, before a decode request exists.
     shared_best = schedule_optimizer_steps._evaluate_ortools_candidate(
-        strict_mode=True, start_dt=START_DT, end_date=None, dispatch_mode_cfg="batch_order",
+        start_dt=START_DT, end_date=None, dispatch_mode_cfg="batch_order",
         dispatch_rule_cfg="slack", resource_pool=None, objective_name="min_overdue", optimizer_algo_stats=optimizer_stats,
         readiness_gate_enabled=False, graph_ready_context=None, decode_session=session,
         strategy=SortStrategy.FIFO, params={}, ort_order=list(batches),
@@ -211,7 +210,7 @@ def test_warmstart_keeps_optional_solver_failure_but_propagates_real_candidate_o
 
         def run_shared_warmstart() -> None:
             schedule_optimizer_steps.run_ortools_warmstart(
-                strict_mode=True, start_dt=START_DT, end_date=None, dispatch_mode_cfg="batch_order",
+                start_dt=START_DT, end_date=None, dispatch_mode_cfg="batch_order",
                 dispatch_rule_cfg="slack", resource_pool=None, objective_name="min_overdue", optimizer_algo_stats=optimizer_stats,
                 readiness_gate_enabled=False, graph_ready_context=None, decode_session=session,
                 algo_ops_to_schedule=operations, batches=batches,
@@ -474,9 +473,9 @@ def test_unknown_and_unverified_results_do_not_claim_valid_or_complete_milestone
                                         target_objectives=fixture_archive.target_objectives, configured_seconds=2)
     session = SharedDecodeSession(archive=fixture_archive, budget=fixture_budget, scheduler=scheduler,
         operations=operations, batches=batches, seed_results=[], downtime_map={}, resource_pool=None,
-        graph_ready_context=context, clock=clock, started_at=0.0, deadline=2.0, start_dt=START_DT)
+        graph_ready_context=context, clock=clock, started_at=0.0, deadline=2.0)
     baseline = schedule_optimizer_steps._evaluate_ortools_candidate(
-        strict_mode=True, strategy=SortStrategy.PRIORITY_FIRST, params={}, start_dt=START_DT, end_date=None,
+        strategy=SortStrategy.PRIORITY_FIRST, params={}, start_dt=START_DT, end_date=None,
         ort_order=list(batches), dispatch_mode_cfg="sgs", dispatch_rule_cfg="slack", resource_pool=None,
         objective_name="min_tardiness", optimizer_algo_stats={}, readiness_gate_enabled=False,
         graph_ready_context=None, decode_session=session)
@@ -490,13 +489,13 @@ def test_unknown_and_unverified_results_do_not_claim_valid_or_complete_milestone
                                                   calendar_service=scheduler.calendar, downtime_map={}, seed_results=[])
     decision_features = PreparedDecisionFeatures(graph_metrics, build_v2_common_rank_cache(graph_metrics))
     evaluate = partial(evaluate_graph_ready_candidate,
-        prepared_decision_features=decision_features, strict_mode=True,
+        prepared_decision_features=decision_features,
         strategy=SortStrategy.PRIORITY_FIRST, params={}, start_dt=START_DT, end_date=None, dispatch_rule="slack",
         resource_pool=None, objective_name="min_tardiness", optimizer_algo_stats=None,
         readiness_gate_enabled=False, version=0, clock=clock)
     search = _IteratedGreedySearch(limits=limits, parent=parent, profile=profile, pool=pool, evaluate=evaluate,
         metrics_by_op_id=context["node_metrics_by_op_id"], start_dt=START_DT, seed=0, deadline=2.0, clock=clock,
-        t_begin=0.0, attempts=[], improvement_trace=[], report_state=recorder, strict_mode=True, report=report,
+        t_begin=0.0, attempts=[], improvement_trace=[], report_state=recorder, report=report,
         decode_session=session, operations=operations, graph_context=context)
     tracker = search.incumbent
     original, capture, improved = _candidate(20.0), _candidate(20.0), _candidate(8.0)

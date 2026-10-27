@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import time
 import traceback
@@ -9,6 +8,7 @@ from typing import Callable, Tuple
 
 from core.infrastructure.backup import BackupManager
 from core.infrastructure.logging import safe_log
+from core.models.workbench_command import canonical_json
 
 from .telemetry import write_job_state, write_oplog
 
@@ -56,15 +56,14 @@ def maybe_run_auto_backup(
         }
         if size_mb_error:
             detail["size_mb_error"] = size_mb_error
-        job_detail = json.dumps(
+        job_detail = canonical_json(
             {
                 "filename": filename,
                 "size_mb": size_mb,
                 "size_mb_status": size_mb_status,
                 "size_mb_error": size_mb_error,
                 "time_cost_ms": time_cost_ms,
-            },
-            ensure_ascii=False,
+            }
         )
 
         write_oplog(
@@ -115,7 +114,7 @@ def maybe_run_auto_backup(
             job_repo=job_repo,
             job_key=job_key,
             last_run_time=fmt_db_dt_fn(now),
-            last_run_detail=json.dumps({"error": str(e), "time_cost_ms": time_cost_ms}, ensure_ascii=False),
+            last_run_detail=canonical_json({"error": str(e), "time_cost_ms": time_cost_ms}),
             logger=logger,
         )
         return True, False

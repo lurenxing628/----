@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from types import FunctionType, MethodType
 from typing import Any, Dict, FrozenSet, Set, Tuple
 
-from core.algorithm_runtime.internal_slot import validate_internal_hours_for_mode
+from core.algorithm_runtime.internal_slot import require_internal_hours
 
 
 class DispatchContextContractError(TypeError):
@@ -64,11 +64,9 @@ def check_dispatch_callback_binding(binding: _CallbackBinding, args: Tuple[Any, 
     binding.shapes.add(shape)
 
 
-def validate_dispatch_internal_input(call_kwargs: Dict[str, Any], *, strict_mode: bool) -> None:
-    if not strict_mode:
-        return
+def validate_dispatch_internal_input(call_kwargs: Dict[str, Any]) -> None:
     missing = [name for name in ("op", "batch") if name not in call_kwargs]
     if missing:
-        raise DispatchContextContractError("dispatch schedule_internal missing strict input: " + ", ".join(missing))
-    validate_internal_hours_for_mode(call_kwargs["op"], call_kwargs["batch"], strict_mode=True)
+        raise DispatchContextContractError("dispatch schedule_internal missing input: " + ", ".join(missing))
+    require_internal_hours(call_kwargs["op"], call_kwargs["batch"])
 

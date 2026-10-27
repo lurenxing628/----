@@ -91,10 +91,11 @@ def profile_payload(profile: GraphReadyWeightProfile, *, version: Optional[int])
     return payload
 
 
-def finite_number(value: Any, *, field: str, reason: str = "graph_ready_bad_node_metrics") -> float:
+def finite_number(value: Any, *, field: str, reason: str = "graph_ready_bad_node_metrics",
+                  error_field: str = "graph_ready_context") -> float:
     number = finite_float(value)
     if number is None:
-        raise ValidationError(f"图指标 {field} 必须是有限数字。", field="graph_ready_context", details={"reason": reason})
+        raise ValidationError(f"图指标 {field} 必须是有限数字。", field=error_field, details={"reason": reason})
     return number
 
 
@@ -117,10 +118,10 @@ def _build_profile(index: int, raw: Dict[str, Any]) -> GraphReadyWeightProfile:
 
 
 def _finite_non_negative_weight(value: Any, *, field: str) -> float:
-    number = finite_number(value, field=field, reason="graph_ready_bad_weight")
+    number = finite_number(value, field=field, reason="graph_ready_bad_weight", error_field="graph_ready_weight")
     if number < 0:
         raise ValidationError(f"图权重 {field} 必须是非负数。", field="graph_ready_weight")
-    return float(number)
+    return number
 
 
 def _weight_fields() -> Tuple[str, str, str, str]:

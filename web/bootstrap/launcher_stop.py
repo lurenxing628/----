@@ -60,6 +60,7 @@ from .launcher_stop_state import (
 )
 
 _STOP_GRACE_SECONDS = 12.0
+_SHUTDOWN_REQUEST_TIMEOUT_SECONDS = 3.0
 
 
 def _contract_log_kwargs(contract: Dict[str, Any]) -> Dict[str, str]:
@@ -90,19 +91,19 @@ def _build_shutdown_url(contract: Dict[str, Any]) -> str:
     return f"http://{host}:{port}{shutdown_path}"
 
 
-def _request_runtime_shutdown(contract: Dict[str, Any], timeout_s: float = 3.0) -> bool:
+def _request_runtime_shutdown(contract: Dict[str, Any]) -> bool:
     url = _build_shutdown_url(contract)
     req = urllib.request.Request(url, method="POST", data=b"")
     req.add_header("X-APS-Shutdown-Token", contract["shutdown_token"])
     req.add_header("Content-Type", "application/json")
     try:
-        with urllib.request.urlopen(req, timeout=max(float(timeout_s), 0.5)) as resp:
+        with urllib.request.urlopen(req, timeout=_SHUTDOWN_REQUEST_TIMEOUT_SECONDS) as resp:
             return int(resp.status) < 400
     except urllib.error.HTTPError as e:
         if e.code == 503 and contract.get("shutdown_path") != HOST_STOP_PATH:
             # Restore deliberately blocks ordinary HTTP shutdown. Only the
             # same token and endpoint may reach the DB-free owning server stop.
-            return _request_runtime_shutdown({**contract, "shutdown_path": HOST_STOP_PATH}, timeout_s)
+            return _request_runtime_shutdown({**contract, "shutdown_path": HOST_STOP_PATH})
         ok = int(e.code) < 400
         if not ok:
             _launcher_log_contract_warning("运行时关闭请求被拒绝：url=%s status=%s", url, e.code, contract=contract)
@@ -254,7 +255,7 @@ def _runtime_stop_failure_reason(status: Dict[str, Any], *, shutdown_requested: 
 def _finalize_stopped_runtime(
     status: Dict[str, Any], runtime_dir_abs: str, *, stop_aps_chrome: bool,
     expected_lock: Optional[Dict[str, Any]], expected_contract: Optional[Dict[str, Any]],
-    expected_database_lock: Optional[Dict[str, Any]], database: str,
+    expected_database_lock: Optional[Dict[str, Any]],
 ) -> int:
     state_dir = status["state_dir"]
     if status.get("db_lock_error"):
@@ -278,7 +279,7 @@ def _finalize_stopped_runtime(
             state_dir=state_dir,
         )
         return 1
-    return 0 if release_initial_runtime_locks(state_dir, expected_lock, expected_database_lock, database) else 1
+    return 0 if release_initial_runtime_locks(state_dir, expected_lock, expected_database_lock) else 1
 
 
 def stop_runtime_from_dir(
@@ -295,7 +296,7 @@ def stop_runtime_from_dir(
         return _finalize_stopped_runtime(original_status, runtime_dir_abs, stop_aps_chrome=stop_aps_chrome, **expected)
 
     grace_deadline = time.time() + _STOP_GRACE_SECONDS
-    shutdown_requested = _request_runtime_shutdown(status["contract"], timeout_s=3.0) if isinstance(status.get("contract"), dict) else False
+    shutdown_requested = _request_runtime_shutdown(status["contract"]) if isinstance(status.get("contract"), dict) else False
     status = _wait_for_runtime_stop(state_dir, grace_deadline)
     if _runtime_stop_is_complete(status):
         return _finalize_stopped_runtime(original_status, runtime_dir_abs, stop_aps_chrome=stop_aps_chrome, **expected)

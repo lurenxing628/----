@@ -6,7 +6,7 @@ Only SGS can decide whether a shortlisted move is feasible or improves the objec
 """
 from __future__ import annotations
 
-import math
+from core.shared.strict_parse import is_exact_finite_number
 
 
 class InsertionScreen:
@@ -26,7 +26,7 @@ class InsertionScreen:
                                     row.op_type_id or "")
             metric = search.metrics.get(row.op_id, {})
             due = metric.get("due_deadline_hours")
-            if type(due) in (int, float) and math.isfinite(due):
+            if is_exact_finite_number(due):
                 self.due[str(row.batch_id)] = float(due)
             pressure = metric.get("due_pressure", 0.0)
             weighted = metric.get("weighted_due_pressure", pressure)

@@ -8,7 +8,7 @@ from core.models.workbench_run_candidate import local_time, reference, reject
 from core.services.workbench.facts.candidate_baseline import invalid_baseline
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_process import index_saved_processes
-from core.services.workbench.facts.candidate_projection import dispositions, validate_manifest
+from core.services.workbench.facts.candidate_projection import completed_dispositions, validate_manifest
 from core.services.workbench.facts.candidate_tasks import project_validated_tasks, validate_saved_tasks
 from core.services.workbench.facts.candidate_values import corrupt
 from core.services.workbench.facts.decision_baseline import read_decision_baseline
@@ -113,8 +113,9 @@ class DecisionSource:
         return GenerationFacts(self.capture)
 
     @cached_property
-    def disposition(self):
-        return dispositions(self.receipt)
+    def disposition(self) -> Dict[str, Dict[str, Any]]:
+        """Dispositions saved with this run's candidate results."""
+        return completed_dispositions(self.receipt)
 
     @cached_property
     def input(self):
@@ -328,6 +329,9 @@ class DecisionSource:
 
     @cached_property
     def official_details(self):
+        if not self.rows:
+            # 只有产出候选结果的运行才保存工序处置；没有处置，就无法按原始来源重读排产时的正式计划。
+            invalid_baseline()
         resolver = decision_baseline_source_resolver(self.store.conn)
         return read_decision_baseline(self.capture, self.facts, self.disposition, source_resolver=resolver)
 

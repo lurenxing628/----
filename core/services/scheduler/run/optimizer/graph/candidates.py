@@ -80,7 +80,6 @@ class PreparedDecisionFeatures:
 def evaluate_graph_ready_candidate(
     *,
     profile: GraphReadyWeightProfile,
-    strict_mode: bool,
     strategy: SortStrategy,
     params: Dict[str, Any],
     start_dt: datetime,
@@ -107,7 +106,7 @@ def evaluate_graph_ready_candidate(
     # 累计值随 profile 评估序号单调递增,会把"偏好更快"悄悄变成"偏好更早评估的 profile"。
     t_candidate_begin = clock()
     # Repair and iterated-greedy stages pass a decision together with the decoded parent it was
-    # generated from (repair._evaluate_neighbor, _IteratedGreedySearch._decode); every other stage passes none.
+    # generated from (repair._repair_one_elite, _IteratedGreedySearch._decode); every other stage passes none.
     repair_decision = repair[0] if repair is not None else None
     _validate_repair_decision(profile, order=order, repair_decision=repair_decision)
     operation_resources = None
@@ -130,7 +129,6 @@ def evaluate_graph_ready_candidate(
         optimizer_algo_stats=optimizer_algo_stats,
         before_decode=before_decode,
         redecode_reason=redecode_reason,
-        strict_mode=bool(strict_mode),
         operation_resources=operation_resources,
         strategy=strategy, strategy_params=_candidate_params(params, profile_dict=full_profile_payload), start_dt=start_dt,
         end_date=end_date, batch_order_override=list(order),

@@ -4,7 +4,7 @@ import pytest
 
 from core.errors import ValidationError
 from core.infrastructure.database import get_connection
-from core.models.schedule_config_runtime_fields import default_for
+from core.models.schedule_config_runtime_fields import get_field_spec
 from core.services.scheduler.config.config_constants import ACTIVE_PRESET_KEY, BUILTIN_PRESET_DEFAULT
 from core.services.scheduler.config.config_field_spec import list_config_fields
 from core.services.scheduler.config.config_snapshot import build_schedule_config_snapshot
@@ -34,7 +34,7 @@ def test_fresh_application_first_real_worker_run_needs_no_config_page(db_env):
     try:
         assert conn.execute("SELECT COUNT(*) FROM ScheduleConfig").fetchone()[0] == 0
         app = create_application()
-        assert _stored_snapshot(conn).sort_strategy == default_for("sort_strategy")
+        assert _stored_snapshot(conn).sort_strategy == get_field_spec("sort_strategy").default
         assert ConfigRepository(conn).get_value(ACTIVE_PRESET_KEY) == BUILTIN_PRESET_DEFAULT
         assert conn.execute("SELECT COUNT(*) FROM ScheduleConfig").fetchone()[0] == len(list_config_fields()) + 3
         initialized = config_rows(conn)

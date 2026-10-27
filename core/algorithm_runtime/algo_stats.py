@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import Any, Dict, Mapping, Optional
 
-_COUNTER_BUCKETS = ("fallback_counts", "param_fallbacks")
+_COUNTER_BUCKETS = ("fallback_counts",)
 _SAMPLE_BUCKETS = ("fallback_samples",)
 _BUCKETS = _COUNTER_BUCKETS + _SAMPLE_BUCKETS
 
 
 def make_algo_stats() -> Dict[str, Any]:
-    return {"fallback_counts": {}, "param_fallbacks": {}, "fallback_samples": {}}
+    return {"fallback_counts": {}, "fallback_samples": {}}
 
 
 def ensure_algo_stats(stats: Optional[Dict[str, Any]]) -> Dict[str, Any]:

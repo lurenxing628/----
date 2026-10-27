@@ -130,9 +130,8 @@ def _within(window, start_date, end_date):
 
 def _window_classified(row, execution):
     # Anchored or reported work is protected (or refused) by the run input before any date check.
-    projection = execution.get(row["operation_ref"]) or {}
     return (row["original"].get("execution_anchor") is None
-            and projection.get("execution_state", "unreported") == "unreported")
+            and execution[row["operation_ref"]]["execution_state"] == "unreported")
 
 
 def material_issues(admission, checks, row):

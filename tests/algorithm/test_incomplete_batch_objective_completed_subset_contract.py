@@ -129,7 +129,7 @@ def test_real_scheduler_window_failure_is_explained_and_scores_behind_failed_ops
                                 config_service=config_snapshot(dispatch_mode="sgs", algo_mode="greedy", time_budget_seconds=1))
     decoded = production_decode(
         scheduler, operations=operations, batches=batches, strategy=SortStrategy.PRIORITY_FIRST,
-        start_dt=START, end_date=START.date(), dispatch_mode="sgs", strict_mode=True,
+        start_dt=START, end_date=START.date(), dispatch_mode="sgs",
     )
     results, summary = decoded.results, decoded.summary
     assert summary.failed_ops == 1
@@ -150,7 +150,7 @@ def test_seed_without_positive_operation_id_is_rejected_at_the_decode_entry(op_i
     with patch.object(scheduler_module, "normalize_seed_results") as normalize, \
             pytest.raises(ValueError, match="positive operation ID"):
         production_session(scheduler, operations=OPERATIONS, batches=_batches(B1="normal", B2="normal", B3="normal"),
-                           start_dt=START, seed_results=[_result(op_id, "B9", hours=1)])
+                           seed_results=[_result(op_id, "B9", hours=1)])
     normalize.assert_not_called()
 
 

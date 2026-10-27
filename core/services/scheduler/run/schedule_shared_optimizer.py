@@ -116,7 +116,7 @@ def optimize_shared_schedule(
     batches: Dict[str, Batch], start_dt: datetime, end_date: Optional[date],
     downtime_map: Dict[str, List[Tuple[datetime, datetime]]], seed_results: List[Dict[str, Any]],
     resource_pool: Optional[Dict[str, Any]], version: int,
-    readiness_gate_enabled: bool = False, strict_mode: bool = False,
+    readiness_gate_enabled: bool = False,
     graph_ready_context: Optional[Any] = None, graph_dispatch_mode_override: Optional[str] = None,
     graph_prepare: Optional[Callable[[], Any]] = None, search_budget: SearchBudget,
     _runtime: Optional[OptimizerRuntime] = None,
@@ -124,7 +124,7 @@ def optimize_shared_schedule(
     """Construct once, then rotate one action at a time over all target generators."""
     runtime = resolve_runtime(_runtime, search_budget)
     started_at = runtime.clock()
-    algo_stats: Dict[str, Any] = {"fallback_counts": {}, "param_fallbacks": {}}
+    algo_stats: Dict[str, Any] = {"fallback_counts": {}}
     if graph_dispatch_mode_override not in (None, "sgs"):
         raise ValidationError("图派工模式覆盖只允许使用 sgs。", field="graph_dispatch_mode_override")
     seeds = coerce_seed_results(seed_results, optimizer_algo_stats=algo_stats)
@@ -162,12 +162,11 @@ def optimize_shared_schedule(
         archive=archive, budget=shared_budget, scheduler=scheduler, operations=algo_ops_to_schedule,
         batches=batches, seed_results=seeds, downtime_map=downtime_map, resource_pool=resource_pool,
         graph_ready_context=graph_ready_context, clock=runtime.clock, started_at=started_at, deadline=deadline,
-        event_sink=session.record_event, start_dt=start_dt, evaluation_context=evaluation_context)
+        event_sink=session.record_event, evaluation_context=evaluation_context)
     native_preparation = session.decode_session.native_preparation
 
     def build_order(strategy: SortStrategy, params: Dict[str, Any]) -> List[str]:
-        sortable = build_batch_sort_inputs(native_preparation.batches,
-                                           strict_mode=bool(strict_mode), strategy=strategy,
+        sortable = build_batch_sort_inputs(native_preparation.batches, strategy=strategy,
                                            readiness_gate_enabled=bool(readiness_gate_enabled))
         sorter = StrategyFactory.create(strategy, **params)
         return [item.batch_id for item in sorter.sort(sortable, base_date=start_dt.date())]
@@ -189,7 +188,7 @@ def optimize_shared_schedule(
     decode_common: Dict[str, Any] = dict(
         start_dt=start_dt, end_date=end_date, resource_pool=resource_pool, deadline=deadline,
         optimizer_algo_stats=algo_stats, t_begin=started_at, readiness_gate_enabled=bool(readiness_gate_enabled),
-        strict_mode=bool(strict_mode), clock=runtime.clock, decode_session=session.decode_session,
+        clock=runtime.clock, decode_session=session.decode_session,
     )
     common: Dict[str, Any] = dict(
         decode_common, scheduler=scheduler, algo_ops_to_schedule=algo_ops_to_schedule,

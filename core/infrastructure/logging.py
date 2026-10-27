@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 import logging.handlers
 import os
@@ -8,6 +7,7 @@ import sys
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from core.infrastructure.transaction import in_transaction_context
+from core.models.workbench_command import canonical_json
 
 
 def _invoke_safely(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> bool:
@@ -175,7 +175,7 @@ class OperationLogger:
                     target_type,
                     target_id,
                     operator,
-                    json.dumps(detail, ensure_ascii=False) if detail else None,
+                    canonical_json(detail) if detail else None,
                     error_code,
                     error_message,
                 ),

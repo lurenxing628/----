@@ -40,13 +40,8 @@ class WorkbenchBatchOperationService:
 
     @staticmethod
     def normalize_sync(payload):
-        object_fields(payload, ("strict_mode",))
-        if "strict_mode" in payload and type(payload["strict_mode"]) is not bool:
-            raise WorkbenchCommandRejected("invalid_input", "更新选项无效，请刷新页面后重试。", 400)
-        if payload.get("strict_mode") is False:
-            raise WorkbenchCommandRejected("template_validation_required", "更新工序前必须检查工艺资料。请刷新页面后重新预检更新。")
-        # Older strict clients remain valid; replacement always checks completeness.
-        return {}
+        # Replacement always checks completeness, so the sync command takes no options.
+        return object_fields(payload, ())
 
     def _prepare_sync(self, batch, facts, *, relations, resources):
         require_unreferenced(relations)

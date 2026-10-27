@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import time
 from datetime import datetime, timedelta
@@ -10,6 +9,7 @@ from core.infrastructure.backup import MIN_KEEP_BACKUPS, protected_recent_backup
 from core.infrastructure.logging import safe_log
 from core.infrastructure.safe_files import UnsafeFixedFileError, remove_fixed_file, stat_regular_file
 from core.infrastructure.transaction import TransactionManager
+from core.models.workbench_command import canonical_json
 from data.repositories.operation_log_repo import OperationLogRepository
 
 from .telemetry import write_job_state, write_oplog
@@ -180,7 +180,7 @@ def maybe_run_auto_backup_cleanup(
             job_repo=job_repo,
             job_key=job_key,
             last_run_time=fmt_db_dt_fn(now),
-            last_run_detail=json.dumps({"removed_count": removed, "time_cost_ms": time_cost_ms, **meta}, ensure_ascii=False),
+            last_run_detail=canonical_json({"removed_count": removed, "time_cost_ms": time_cost_ms, **meta}),
             logger=logger,
         )
         return True
@@ -205,7 +205,7 @@ def maybe_run_auto_backup_cleanup(
             job_repo=job_repo,
             job_key=job_key,
             last_run_time=fmt_db_dt_fn(now),
-            last_run_detail=json.dumps({"error": str(e), "time_cost_ms": time_cost_ms}, ensure_ascii=False),
+            last_run_detail=canonical_json({"error": str(e), "time_cost_ms": time_cost_ms}),
             logger=logger,
         )
         return False
@@ -265,7 +265,7 @@ def maybe_run_auto_log_cleanup(
             job_repo=job_repo,
             job_key=job_key,
             last_run_time=fmt_db_dt_fn(now),
-            last_run_detail=json.dumps({"deleted_count": deleted, "time_cost_ms": time_cost_ms, **meta}, ensure_ascii=False),
+            last_run_detail=canonical_json({"deleted_count": deleted, "time_cost_ms": time_cost_ms, **meta}),
             logger=logger,
         )
         return True
@@ -290,7 +290,7 @@ def maybe_run_auto_log_cleanup(
             job_repo=job_repo,
             job_key=job_key,
             last_run_time=fmt_db_dt_fn(now),
-            last_run_detail=json.dumps({"error": str(e), "time_cost_ms": time_cost_ms}, ensure_ascii=False),
+            last_run_detail=canonical_json({"error": str(e), "time_cost_ms": time_cost_ms}),
             logger=logger,
         )
         return False

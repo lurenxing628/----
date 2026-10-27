@@ -80,9 +80,17 @@ def load_stored_periods(raw):
     return value
 
 
+@overload
+def encode_periods(periods: None) -> None: ...
+
+
+@overload
+def encode_periods(periods: List[Dict[str, Any]]) -> str: ...
+
+
 def encode_periods(periods):
     """Stored text for periods already produced by ``normalize_periods``; None stays legacy NULL."""
-    return None if periods is None else json.dumps(periods, ensure_ascii=False, separators=(",", ":"))
+    return None if periods is None else json.dumps(periods, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
 
 
 def period_windows(day, periods):

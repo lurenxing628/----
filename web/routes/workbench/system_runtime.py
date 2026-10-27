@@ -27,7 +27,7 @@ def health():
     }
     payload.update(runtime_identity(current_app))
     return current_app.response_class(
-        json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False),
         mimetype="application/json",
     )
 
@@ -38,7 +38,7 @@ def runtime_shutdown():
     if remote_addr not in {"127.0.0.1", "::1"}:
         payload = {"app": _APP_ID, "status": "forbidden"}
         return current_app.response_class(
-            json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False),
             status=403,
             mimetype="application/json",
         )
@@ -48,7 +48,7 @@ def runtime_shutdown():
     if not expected_token or not provided_token or not secrets.compare_digest(expected_token, provided_token):
         payload = {"app": _APP_ID, "status": "forbidden"}
         return current_app.response_class(
-            json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False),
             status=403,
             mimetype="application/json",
         )
@@ -56,14 +56,14 @@ def runtime_shutdown():
     if not request_shutdown(current_app, logger=current_app.logger):
         payload = {"app": _APP_ID, "status": "shutdown_unavailable"}
         return current_app.response_class(
-            json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False),
             status=503,
             mimetype="application/json",
         )
 
     payload = {"app": _APP_ID, "status": "shutting_down"}
     return current_app.response_class(
-        json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False),
         status=202,
         mimetype="application/json",
     )

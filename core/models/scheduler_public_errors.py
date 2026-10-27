@@ -91,9 +91,8 @@ LEGACY_PUBLIC_PATTERNS: Tuple[Pattern[str], ...] = (
     ),
 )
 
-_LEGACY_OPERATION_ERROR_PREFIXES: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
-    ("工时不合法：工序 ", (" 工时字段不合法：", " 工时总量不合法：")),
-)
+# internal_operation._auto_assign_failure_message 的工时无效文案：前缀后面只跟工序编号。
+_INVALID_HOURS_ERROR_PREFIX = "工时不合法：工序 "
 # 这些前缀表也是 legacy 中文错误串到公开错误码的反解桥;改中文模板时必须同步这里,
 # 否则 infer_legacy_public_code 会静默退回 scheduler_error,用户可见错误会丢失具体归类。
 _LEGACY_CODE_PREFIXES: Tuple[Tuple[str, str], ...] = (
@@ -130,7 +129,6 @@ _SGS_MISSING_RESOURCE_SUFFIX_CODES: Tuple[Tuple[str, str], ...] = (
 _SGS_RESOURCE_SUFFIX_CODES = _SGS_MISSING_RESOURCE_SUFFIX_CODES + _SGS_AUTO_ASSIGN_SUFFIX_CODES
 _STRUCTURED_FAILURE_CODES = {
     "dispatch_operation_failed",
-    "dispatch_operation_exception",
     "graph_blocked_after_failure",
     "graph_fixed_successor_order_conflict",
     "missing_batch",
@@ -229,25 +227,12 @@ def legacy_public_error_message(raw: str) -> str:
 
 
 def _legacy_operation_error_message(text: str) -> str:
-    for prefix, detail_markers in _LEGACY_OPERATION_ERROR_PREFIXES:
-        if not text.startswith(prefix):
-            continue
-        op_code = _legacy_operation_error_op_code(text[len(prefix) :], detail_markers=detail_markers)
-        return f"{prefix}{op_code}" if op_code else ""
-    return ""
-
-
-def _legacy_operation_error_op_code(tail: str, *, detail_markers: Tuple[str, ...]) -> str:
-    op_code = tail.strip()
-    for marker in detail_markers:
-        if marker in op_code:
-            op_code = op_code.split(marker, 1)[0].strip()
-            break
-    if not op_code or len(op_code) > 120:
+    if not text.startswith(_INVALID_HOURS_ERROR_PREFIX):
         return ""
-    if _PUBLIC_OPERATION_CODE_RE.fullmatch(op_code):
-        return op_code
-    return ""
+    op_code = text[len(_INVALID_HOURS_ERROR_PREFIX) :].strip()
+    if not op_code or len(op_code) > 120 or not _PUBLIC_OPERATION_CODE_RE.fullmatch(op_code):
+        return ""
+    return f"{_INVALID_HOURS_ERROR_PREFIX}{op_code}"
 
 
 def public_error_message_from_detail(raw: Any) -> str:
@@ -279,8 +264,6 @@ def _structured_failure_message(detail: Dict[str, Any]) -> str:
     code = str(detail.get("code") or "").strip()
     op_code = public_safe_identifier(detail.get("op_code")) or "-"
     failed_op_code = public_safe_identifier(detail.get("failed_op_code")) or "-"
-    if code == "dispatch_operation_exception":
-        return f"工序 {op_code} 排产时遇到系统异常，本次没有继续安排该批次后续工序。"
     if code == "dispatch_operation_failed":
         return f"工序 {op_code} 没有形成有效排程，本次没有继续安排该批次后续工序。"
     if code == "skipped_after_batch_failure":

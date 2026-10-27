@@ -34,7 +34,6 @@ class DecodeRequest:
     base_time: datetime
     end_dt_exclusive: Optional[datetime]
     auto_assign_enabled: bool
-    strict_mode: bool
     readiness_gate_enabled: bool
     parameter_warnings: Tuple[str, ...]
     batch_order: Tuple[str, ...]
@@ -105,7 +104,7 @@ class SharedDecodeSession:
         self, *, archive: Any, budget: Any, scheduler: GreedyScheduler, operations: Any, batches: Any,
         seed_results: Any, downtime_map: Any, resource_pool: Any,
         graph_ready_context: Optional[Dict[str, Any]] = None, clock: Callable[[], float],
-        started_at: float, deadline: float, start_dt: Any = None,
+        started_at: float, deadline: float,
         event_sink: Optional[Callable[[Dict[str, Any]], Optional[int]]] = None,
         evaluation_context: Optional[Any] = None,
     ) -> None:
@@ -114,7 +113,6 @@ class SharedDecodeSession:
         self.archive, self.budget, self.scheduler = archive, budget, scheduler
         self.operations, self.batches, self.seed_results = operations, batches, seed_results
         self.resource_pool = resource_pool
-        self.base_time = start_dt if start_dt is not None else datetime.now()
         self.clock, self.started_at, self.deadline = clock, started_at, deadline
         self.event_sink = event_sink
         self.native_preparation = prepare_native_schedule_inputs(
@@ -160,16 +158,15 @@ class SharedDecodeSession:
             pool = dict(pool or {}, pair_rank=ranks)
         params = resolve_schedule_params(
             config=self.scheduler.config, strategy=kwargs.get("strategy"),
-            strategy_params=kwargs.get("strategy_params"), start_dt=kwargs.get("start_dt", self.base_time),
+            strategy_params=kwargs.get("strategy_params"), start_dt=kwargs["start_dt"],
             end_date=kwargs.get("end_date"), dispatch_mode=kwargs.get("dispatch_mode"),
             dispatch_rule=kwargs.get("dispatch_rule"), resource_pool=pool,
-            strict_mode=bool(kwargs.get("strict_mode", False)),
         )
-        strict, readiness = bool(kwargs.get("strict_mode", False)), bool(kwargs.get("readiness_gate_enabled", False))
+        readiness = bool(kwargs.get("readiness_gate_enabled", False))
         override = normalize_batch_order_override(kwargs.get("batch_order_override"), self._normalized_batches)
         full_override = bool(override) and len(override) == len(self._normalized_batches)
         batch_ranks = build_batch_order(self._normalized_batches, params, batch_order_override=override,
-                                       strict_mode=strict, readiness_gate_enabled=readiness)
+                                       readiness_gate_enabled=readiness)
         order = tuple(sorted(batch_ranks, key=batch_ranks.__getitem__))
         sort_inputs = () if full_override else (
             params.strategy.value,
@@ -217,7 +214,7 @@ class SharedDecodeSession:
                 self._last_resources_ops = (resources, operations)
         request = DecodeRequest(
             params.dispatch_mode_key, params.dispatch_rule_spec.token, params.base_time, params.end_dt_exclusive,
-            params.auto_assign_enabled, strict, readiness, tuple(params.warnings), order, sort_inputs,
+            params.auto_assign_enabled, readiness, tuple(params.warnings), order, sort_inputs,
             graph_enabled, score_enabled, preorder, resources, _immutable(pair_rank),
         )
         return request, params, batch_ranks, operations, pool, context
@@ -228,7 +225,7 @@ class SharedDecodeSession:
             self.native_preparation, params=params, batch_order=batch_order,
             operations=operations, resource_pool=resource_pool, graph_ready_context=context,
             readiness_gate_enabled=bool(kwargs.get("readiness_gate_enabled", False)),
-            strict_mode=bool(kwargs.get("strict_mode", False)), decode_resume=kwargs.get("decode_resume"),
+            decode_resume=kwargs.get("decode_resume"),
             decode_checkpoints=kwargs.get("decode_checkpoints"),
         )
 
@@ -278,9 +275,6 @@ class SharedDecodeSession:
                  schedule_kwargs: Dict[str, Any]) -> DecodedEvaluation:
         started = self.clock()
         request, params, batch_order, operations, pool, context = self._request(schedule_kwargs)
-        param_fallbacks = merge_algo_stats(
-            optimizer_algo_stats, {"param_fallbacks": params.param_fallbacks},
-        )["param_fallbacks"]
         record = self._record(request)
         if redecode_reason is not None and redecode_reason not in _REDECODE_KINDS:
             raise ValueError("Unknown shared decode reconstruction reason: " + str(redecode_reason))
@@ -301,10 +295,8 @@ class SharedDecodeSession:
                 receipt = self._receipt(record, "decision_reused", verified=True, calls=0,
                                         elapsed_ms=max((self.clock() - started) * 1000, 0))
                 self._event(record, receipt, objective_name=objective_name)
-                stats = dict(candidate["algo_stats"])
-                stats["param_fallbacks"] = param_fallbacks
                 return DecodedEvaluation(candidate["results"], summary, candidate["metrics"],
-                                         params.strategy, dict(params.used_params), stats, receipt,
+                                         params.strategy, dict(params.used_params), candidate["algo_stats"], receipt,
                                          record.entry_id, ArchiveObservation(entry_id=record.entry_id, reused=True))
             if redecode_reason != "restore_parent":
                 self._skip(record, reason="seen_without_payload", objective_name=objective_name, started=started)
@@ -337,7 +329,6 @@ class SharedDecodeSession:
                                       failure_details=summ.failure_details,
                                       prepared=self.evaluation_context)
             algo_stats = merge_algo_stats(optimizer_algo_stats, self.scheduler.last_algo_stats)
-            algo_stats["param_fallbacks"] = param_fallbacks
         except Exception as exc:
             elapsed = max(self.clock() - call_started, 0)
             self.budget.record_decode(cost_kind, elapsed, unpruned_sgs=unpruned_sgs)
@@ -413,9 +404,9 @@ def decode_and_metrics(
     *, decode_session: SharedDecodeSession, objective_name: str,
     optimizer_algo_stats: Optional[Dict[str, Any]] = None,
     before_decode: Optional[Callable[[], None]] = None, redecode_reason: Optional[str] = None,
-    strategy: Optional[SortStrategy] = None, strategy_params: Any = None, start_dt: Any = None, end_date: Any = None,
+    start_dt: datetime, strategy: Optional[SortStrategy] = None, strategy_params: Any = None, end_date: Any = None,
     batch_order_override: Any = None, dispatch_mode: Any = None, dispatch_rule: Any = None,
-    readiness_gate_enabled: bool = False, strict_mode: bool = False,
+    readiness_gate_enabled: bool = False,
     graph_enabled: bool = False, graph_score_enabled: bool = False,
     graph_priority_key_by_op_id: Any = None, operation_resources: Any = None,
     resource_pair_rank: Any = None, decode_resume: Any = None, decode_checkpoints: Any = None,
@@ -424,10 +415,10 @@ def decode_and_metrics(
         objective_name=objective_name, optimizer_algo_stats=optimizer_algo_stats, before_decode=before_decode,
         redecode_reason=redecode_reason, schedule_kwargs={
             "strategy": strategy, "strategy_params": strategy_params,
-            "start_dt": decode_session.base_time if start_dt is None else start_dt, "end_date": end_date,
+            "start_dt": start_dt, "end_date": end_date,
             "batch_order_override": batch_order_override, "dispatch_mode": dispatch_mode,
             "dispatch_rule": dispatch_rule, "readiness_gate_enabled": readiness_gate_enabled,
-            "strict_mode": strict_mode, "graph_enabled": graph_enabled, "graph_score_enabled": graph_score_enabled,
+            "graph_enabled": graph_enabled, "graph_score_enabled": graph_score_enabled,
             "graph_priority_key_by_op_id": graph_priority_key_by_op_id, "operation_resources": operation_resources,
             "resource_pair_rank": resource_pair_rank, "decode_resume": decode_resume,
             "decode_checkpoints": decode_checkpoints,

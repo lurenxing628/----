@@ -1,5 +1,7 @@
 """Public candidate summaries from persisted artifacts, without inferred costs."""
 
+from typing import Any, Dict
+
 from core.models.workbench_run_candidate import blocked_reasons, read_capabilities, reference
 from core.services.scheduler.config.config_field_spec import choice_label_map_for
 
@@ -23,9 +25,19 @@ def business_candidate_fields(artifact):
 
 
 def dispositions(receipt):
-    value = None if receipt is None else receipt.get("dispositions")
-    if value is None:
+    """A run's admitted operation dispositions, or None when it saved no candidate results.
+
+    Queued/running runs have no receipt yet and failed/interrupted receipts save
+    ``result_persisted: false``; every other receipt records them.
+    """
+    if receipt is None or receipt.get("result_persisted") is False:
         return None
+    return completed_dispositions(receipt)
+
+
+def completed_dispositions(receipt) -> Dict[str, Dict[str, Any]]:
+    """Dispositions saved with a run's candidate results (or built at admission); absence is a corrupt archive."""
+    value = receipt.get("dispositions")
     if type(value) is not list:
         corrupt()
     result, ids = {}, set()
@@ -111,7 +123,7 @@ def completion(row, disposition, gaps, scheduled_op_ids):
             corrupt()
         return "no_result"
     ids = scheduled_op_ids
-    if disposition is None or ids is None:
+    if ids is None:
         gaps.append(gap("completeness"))
         return "unknown"
     expected = {item["op_id"] for item in disposition.values() if item["status"] != "skipped"}

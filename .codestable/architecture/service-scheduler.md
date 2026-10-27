@@ -59,7 +59,7 @@ implements: []
 ## 4. 一次搜索的固定准备与结果所有权
 
 - `NativeSchedulePreparation` 归本次搜索所有，准备固定工序、批次、种子、停机、基础资源、图拓扑和断点固定编码。`GreedyScheduler.schedule` 的独立原始输入入口准备一次；共享会话直接调用共同准备后的核心。
-- `SharedDecodeSession` 在创建时选定实际解码器及输入适配，请求只表达批序、派工规则、图开关和优先级、资源覆盖或偏好、允许变化的参数。已解析参数连同 warnings、param_fallbacks 直接交解码，缺省起点使用会话起点。
+- `SharedDecodeSession` 在创建时选定实际解码器及输入适配，请求只表达批序、派工规则、图开关和优先级、资源覆盖或偏好、允许变化的参数。已解析参数连同 warnings 直接交解码；开始时间由每次解码请求显式传入（会话不持有起点，Round 22 删除了 `param_fallbacks` 与 `datetime.now()` 兜底）。
 - 静态资格和资源组合共同准备，动态占用、换型、需求退休和排槽仍随搜索运行态实时计算。`RepairParentPreparation` 供 repair 与 IG 共用；内部合法覆盖只复制被修改的工序。
 - 图准备和图特征各在实际搜索作用域内生成一次。旧多候选 `core_cache`、缓存 factory、候选侧重复拓扑匹配和缓存专用深拷贝已经删除。
 - `SharedScheduleArchive.register_decode` 在真实解码出口取得安排身份，计算一次内容 key 并接管已验证 payload；已登记安排复用 `entry_id`，完成性证据升级仍沿原 revision 处理。

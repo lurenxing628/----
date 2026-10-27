@@ -48,14 +48,15 @@ class WorkbenchReportFacts:
         return replace(scope, plan_ref=ref), plan, resolution, span
 
     def _resource_maps(self, rows):
+        # 设备、人员、批次编号都经外键指向资料主表，主表各写入口拒绝空白编号；只有未分配的设备人员是 None。
         maps = {}
         for kind, key in (("machine", "machine_id"), ("operator", "operator_id"), ("batch", "batch_id")):
-            keys = {str(row[key]) for row in rows if row.get(key) not in (None, "")}
+            keys = {row[key] for row in rows if row[key] is not None}
             identities = self.plans.entities.active_map(kind, sorted(keys))
             if set(identities) != keys:
                 raise WorkbenchCommandRejected("identity_missing", "有批次或实际用到的设备人员在资料里查不到编号，分析没有生成。请到资料总览核对后重试。")
             name_key = kind + "_name"
-            labels = {} if kind == "batch" else {str(row[key]): row[name_key] for row in rows if row.get(key) not in (None, "")}
+            labels = {} if kind == "batch" else {row[key]: row[name_key] for row in rows if row[key] is not None}
             maps[kind] = {key: {"ref": identity.ref, "label": labels.get(key) or (key if kind == "batch" else "名称未填写")}
                           for key, identity in identities.items()}
         return maps
@@ -97,8 +98,7 @@ class WorkbenchReportFacts:
                 actual_resources = ledger["resources"]
             else:
                 choice_resources = self._resource_maps(self.repo.plan_resource_keys(version))
-                resources = {kind: {str(row[key]): choice_resources[kind][str(row[key])] for row in rows
-                                    if row.get(key) not in (None, "")}
+                resources = {kind: {row[key]: choice_resources[kind][row[key]] for row in rows if row[key] is not None}
                              for kind, key in (("machine", "machine_id"), ("operator", "operator_id"), ("batch", "batch_id"))}
                 actual_rows = ledger_reader.resources(self.repo.actual_resource_refs(scope.plan_ref))
                 actual_resources = {

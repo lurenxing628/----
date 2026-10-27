@@ -212,7 +212,7 @@ def write_fixed_bytes(path: Any, data: bytes) -> None:
 
 
 def write_fixed_json(path: Any, payload: Any) -> None:
-    text = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    text = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False) + "\n"
     write_fixed_text(path, text)
 
 

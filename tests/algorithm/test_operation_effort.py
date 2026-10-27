@@ -157,9 +157,10 @@ def test_batch_order_dispatch_supplies_required_operation_input(source, callback
     op, batch = _warmstart_op(1, "B1", piece="P1"), make_batch(quantity=20)
     op.source = source
     ctx, state = MagicMock(), MagicMock()
+    ctx.schedule_internal.return_value = ctx.schedule_external.return_value = (None, False)
     _dispatch_one(
         ctx, op=op, batches={"B1": batch}, state=state, base_time=datetime(2026, 10, 13),
-        end_dt_exclusive=None, machine_downtimes={}, auto_assign_enabled=False, resource_pool=None, strict_mode=False,
+        end_dt_exclusive=None, machine_downtimes={}, auto_assign_enabled=False, resource_pool=None,
     )
     sent = ctx.schedule_internal.call_args if callback == "schedule_internal" else ctx.schedule_external.call_args
     if source == "internal":

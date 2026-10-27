@@ -10,7 +10,7 @@ from .preparation_projection import preparation_summary
 
 def _remaining_operation(row: Mapping[str, Any]) -> Dict[str, Any]:
     result = {key: value for key, value in row.items() if key != "disposition"}
-    disposition = row.get("disposition") or {}
+    disposition = row["disposition"]
     result.update(disposition_status=disposition.get("status"), reasons=list(disposition.get("issues", [])))
     return result
 

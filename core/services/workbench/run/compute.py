@@ -79,7 +79,7 @@ def _compute_in_read_snapshot(conn, schedule_input, version):
     if any(op.piece_id is not None for op in schedule_input.operations):
         compare = partial(compare, prepare_graph_fn=piece_graph_preparer(schedule_input))
     orchestration = orchestrate_schedule_run(
-        schedule_input=schedule_input, version=version, strict_mode=True,
+        schedule_input=schedule_input, version=version,
         build_result_summary_fn=build_result_summary,
         point_validator=candidate_point_validator(schedule_input),
         candidate_comparison_fn=compare,

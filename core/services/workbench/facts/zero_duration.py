@@ -102,9 +102,10 @@ def candidate_point_validator(schedule_input):
 
 def _candidate_point_evidence(schedule_input, row, operations, dispositions):
     op = operations.get(row.op_id)
-    disposition = dispositions.get(row.op_id)
-    if op is None or disposition is None:
+    if op is None:
         raise PointEventError("point_identity_unproven", "这道零工时工序找不到对应的原工序。")
+    # 排产输入为每道工序恰好分类一行处置（classify_rows），找得到工序就找得到处置。
+    disposition = dispositions[row.op_id]
     batch = schedule_input.batches[op.batch_id]
     if op.source != "internal" or row.source != "internal":
         raise PointEventError("point_source_unproven", "只有自制工序才能是零工时工序。")

@@ -48613,7 +48613,6 @@ function SMExport({
     acceptance: '改动接受策略',
     candidate_strategy_family: '候选策略组',
     ortools_warmstart_enabled: '约束求解热启动',
-    strict_mode: '严格约束模式',
     neighborhoods: '实际搜索邻域',
     configured_neighborhoods: '配置搜索邻域',
     candidate_strategy_families: '候选策略组'

@@ -31,7 +31,7 @@ def _clock() -> float:
     return 0.0
 
 
-def production_session(scheduler: Any, *, operations: Any, batches: Any, start_dt: Any,
+def production_session(scheduler: Any, *, operations: Any, batches: Any,
                        seed_results: Any = (), machine_downtimes: Any = None, resource_pool: Any = None,
                        graph_ready_context: Optional[Dict[str, Any]] = None,
                        objective_name: str = "min_overdue") -> SharedDecodeSession:
@@ -49,7 +49,7 @@ def production_session(scheduler: Any, *, operations: Any, batches: Any, start_d
         archive=archive, budget=budget, scheduler=scheduler, operations=operations, batches=batches,
         seed_results=seeds, downtime_map={} if machine_downtimes is None else machine_downtimes,
         resource_pool=resource_pool, graph_ready_context=graph_ready_context, clock=_clock,
-        started_at=0.0, deadline=float("inf"), start_dt=start_dt, evaluation_context=evaluation_context,
+        started_at=0.0, deadline=float("inf"), evaluation_context=evaluation_context,
     )
 
 
@@ -68,7 +68,7 @@ def production_decode_in_session(scheduler: Any, *, operations: Any, batches: An
     The session is returned so tests can read the run's own preparation (e.g. its score cache).
     """
     session = production_session(
-        scheduler, operations=operations, batches=batches, start_dt=start_dt, seed_results=seed_results,
+        scheduler, operations=operations, batches=batches, seed_results=seed_results,
         machine_downtimes=machine_downtimes, resource_pool=resource_pool,
         graph_ready_context=graph_ready_context, objective_name=objective_name,
     )
@@ -77,7 +77,8 @@ def production_decode_in_session(scheduler: Any, *, operations: Any, batches: An
         decode_kwargs.setdefault("graph_score_enabled", graph_ready_context.get("score_enabled", False))
         decode_kwargs.setdefault("graph_priority_key_by_op_id",
                                  graph_ready_context.get("graph_priority_key_by_op_id"))
-    return session, decode_and_metrics(decode_session=session, objective_name=objective_name, **decode_kwargs)
+    return session, decode_and_metrics(decode_session=session, objective_name=objective_name, start_dt=start_dt,
+                                       **decode_kwargs)
 
 
 __all__ = ["config_snapshot", "production_decode", "production_decode_in_session", "production_session"]

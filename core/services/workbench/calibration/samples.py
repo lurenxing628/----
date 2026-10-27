@@ -1,6 +1,5 @@
 """D05 eligibility over the one execution projection, including exclusion evidence."""
 
-import math
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 from typing import Optional, overload
@@ -8,6 +7,7 @@ from typing import Optional, overload
 from core.models.content import content_text
 from core.models.workbench_calibration import issue
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.strict_parse import is_exact_non_negative_number
 
 # 除法结果（单件工时、建议定额、偏差百分比）统一整形到 3 位小数，四舍五入；
 # 求和不整形，因为报工里填的小时数在 Decimal 里相加本来就是精确的。
@@ -17,7 +17,7 @@ QUANTUM = Decimal("0.001")
 def number(value):
     if value is None:
         return None
-    if type(value) not in (float, int) or not math.isfinite(value) or value < 0:
+    if not is_exact_non_negative_number(value):
         raise WorkbenchCommandRejected("storage_failure", "报工数量或工时无效，请核对报工记录。", 500)
     return Decimal(str(value))
 

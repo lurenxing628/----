@@ -4,7 +4,7 @@ from typing import Any, List
 
 from core.services.workbench.facts.candidate_tasks import operation_labels
 
-from .decision_export_cells import boolean_text
+from .decision_export_cells import baseline_ref, boolean_text
 
 RESOURCE_MEASURES = (
     ("available_hours", "可排总时长（小时）", False),
@@ -48,11 +48,10 @@ def _issues(items):
 
 
 def _scope(data, resource):
-    baseline, scope = data["baseline"], data["scope"]
-    baseline_ref = baseline.get("candidate_ref") if baseline["kind"] == "candidate" else baseline.get("baseline_ref")
+    scope = data["scope"]
     filters = data["filters"]
     pressure = data.get("pressure_scope") or data.get("display_scope") or {"start": scope["range_start"], "end": scope["range_end"]}
-    return [data["run_ref"], baseline_ref, data["candidate"]["candidate_ref"], resource["ref"],
+    return [data["run_ref"], baseline_ref(data["baseline"]), data["candidate"]["candidate_ref"], resource["ref"],
             "设备" if resource["kind"] == "machine" else "人员", resource["label"],
             "本次所选批次" if scope["resource_view"] == "selected_batches" else "方案全部安排", scope["range_start"], scope["range_end"],
             {"hour": "小时", "day": "天", "shift": "真实可排班段", "week": "周"}[filters["grain"]], filters["pressure_threshold"] * 100,
@@ -101,8 +100,7 @@ def resource_rows(documents):
 def coverage_operation_rows(source, coverage):
     """Keep every saved coverage identity in its own Excel row."""
     baseline = source.baseline
-    baseline_ref = baseline.get("candidate_ref") if baseline["kind"] == "candidate" else baseline.get("baseline_ref")
-    common = [source.run["run_ref"], baseline_ref, source.selected_ref]
+    common = [source.run["run_ref"], baseline_ref(baseline), source.selected_ref]
     official_labels = {row["operation_ref"]: row for row in source.official["tasks"]}
     labels_by_ref = {}
     for side, side_label in (("before", "基准"), ("after", "所选")):

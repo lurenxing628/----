@@ -1,11 +1,11 @@
 """Strict sparse report input; an omitted field never means zero or clearing."""
 
-import math
 import re
 from datetime import datetime
 from typing import NoReturn
 
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.shared.strict_parse import is_exact_non_negative_number
 
 REPORT_FIELDS = ("actual_start", "actual_end", "completed_quantity", "effective_processing_hours",
                  "actual_machine_ref", "actual_operator_ref", "remark")
@@ -40,11 +40,7 @@ def _validate_quantity(value):
 
 
 def _validate_hours(value):
-    try:
-        valid = type(value) in (int, float) and math.isfinite(value) and value >= 0
-    except OverflowError:
-        valid = False
-    if not valid:
+    if not is_exact_non_negative_number(value):
         reject("有效加工小时请填 0 或正数；不填就留空。")
 
 

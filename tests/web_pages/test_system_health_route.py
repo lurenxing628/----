@@ -4,7 +4,7 @@
 验证点：
 1) `app.py` / `app_new_ui.py` 均暴露 `GET /system/health`。
 2) 返回 JSON 包含 app/status/contract_version/ui_mode/timestamp。
-3) 请求健康检查时不打开 `g.db` / `g.op_logger`。
+3) 请求健康检查时不打开 `g.db`。
 4) `POST /system/runtime/shutdown` 仅允许本机 + 正确 token，且不打开数据库连接。
 5) `request_runtime_server_shutdown()` 返回 False 时应返回 503 + `shutdown_unavailable`。
 """
