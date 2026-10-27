@@ -23,7 +23,7 @@ def dispatch_batch_order(
     state: ScheduleRunState,
     auto_assign_enabled: bool,
     resource_pool: Optional[Dict[str, Any]],
-) -> Tuple[int, int]:
+) -> None:
     ctx = context
     for op in sorted_ops:
         _dispatch_one(
@@ -37,7 +37,6 @@ def dispatch_batch_order(
             auto_assign_enabled=auto_assign_enabled,
             resource_pool=resource_pool,
         )
-    return state.scheduled_count, state.failed_count
 
 
 def _dispatch_one(

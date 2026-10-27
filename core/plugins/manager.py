@@ -113,11 +113,7 @@ class PluginManager:
 
                 enabled = default_enabled
                 if config_reader is not None:
-                    try:
-                        raw_enabled = config_reader(plugin_id)
-                    except Exception as exc:
-                        raw_enabled = None
-                        logger.error(f"读取插件配置失败：{plugin_id} err={exc}")
+                    raw_enabled = config_reader(plugin_id)
                     if raw_enabled is not None:
                         enabled = _normalize_yes_no(raw_enabled, default=default_enabled)
 
@@ -180,10 +176,7 @@ class PluginManager:
                 tb = traceback.format_exc(limit=5)
                 enabled = "no"
                 if config_reader is not None:
-                    try:
-                        raw_enabled = config_reader(guessed_id)
-                    except Exception:
-                        raw_enabled = None
+                    raw_enabled = config_reader(guessed_id)
                     if raw_enabled is not None:
                         enabled = _normalize_yes_no(raw_enabled, default="no")
                 statuses.append(

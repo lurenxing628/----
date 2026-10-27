@@ -143,11 +143,7 @@ def build_available_graph_score_projection(
     topological_order: List[str],
     schedule_input: ScheduleRunInput,
 ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
-    from core.services.scheduler.graph.input_adapter import GraphInputContractError
-    from core.services.scheduler.graph.scoring import (
-        GraphScoringContractError,
-        graph_score_components,
-    )
+    from core.services.scheduler.graph.scoring import graph_score_components
 
     schedulable_op_ids, allowed_op_ids = graph_score_op_id_sets(schedule_input)
     metrics_by_op_id = node_metrics_by_op_id(
@@ -161,15 +157,12 @@ def build_available_graph_score_projection(
         topological_order=topological_order,
         schedulable_op_ids=schedulable_op_ids,
     )
-    try:
-        graph_priority_key_by_op_id, score_bonus_by_op_id = build_graph_scores_by_op_id(
-            metrics_by_op_id=metrics_by_op_id,
-            schedulable_op_ids=schedulable_op_ids,
-            score_weights=score_weights,
-            score_components_fn=graph_score_components,
-        )
-    except GraphScoringContractError as exc:
-        raise GraphInputContractError(f"图评分指标合同错误：{exc}") from exc
+    graph_priority_key_by_op_id, score_bonus_by_op_id = build_graph_scores_by_op_id(
+        metrics_by_op_id=metrics_by_op_id,
+        schedulable_op_ids=schedulable_op_ids,
+        score_weights=score_weights,
+        score_components_fn=graph_score_components,
+    )
 
     return (
         {

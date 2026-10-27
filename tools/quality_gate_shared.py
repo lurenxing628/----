@@ -651,7 +651,7 @@ def replay_quality_gate_command_plan(
             receipt = _normalize_command_receipt_payload(receipt_payload or {})
             expected_run_id = expected_run_id or receipt["run_id"]
             for error in (
-                _verify_receipt_header(receipt, command, index=index, run_id=expected_run_id),
+                _verify_receipt_header(receipt, index=index, run_id=expected_run_id),
                 _verify_receipt_command_fields(receipt, command, command),
                 _verify_receipt_execution_fields(receipt),
             ):
@@ -674,7 +674,7 @@ def replay_quality_gate_command_plan(
             return f"UNBOUND: quality gate command replay failed: {display}"
         if receipt is not None:
             output_error = _verify_receipt_output_content(
-                receipt, command, index=index, current_collect_stdout=stdout, current_collect_stderr=stderr,
+                receipt, command, current_collect_stdout=stdout, current_collect_stderr=stderr,
             )
             if output_error:
                 return output_error + " during replay"
@@ -1043,7 +1043,6 @@ def _load_verified_quality_gate_receipt(
 
 def _verify_receipt_header(
     receipt: Dict[str, Any],
-    normalized_command: Dict[str, Any],
     *,
     index: int,
     run_id: str,
@@ -1078,7 +1077,6 @@ def _verify_receipt_output_content(
     receipt: Dict[str, Any],
     normalized_command: Dict[str, Any],
     *,
-    index: int,
     current_collect_stdout: str,
     current_collect_stderr: str,
 ) -> Optional[str]:
@@ -1145,12 +1143,11 @@ def _verify_quality_gate_receipt_payload(
     receipt = _normalize_command_receipt_payload(receipt_payload)
     normalized_command = _normalize_command_rows([command])[0]
     for error in (
-        _verify_receipt_header(receipt, normalized_command, index=index, run_id=run_id),
+        _verify_receipt_header(receipt, index=index, run_id=run_id),
         _verify_receipt_command_fields(receipt, command, normalized_command),
         _verify_receipt_output_content(
             receipt,
             normalized_command,
-            index=index,
             current_collect_stdout=current_collect_stdout,
             current_collect_stderr=current_collect_stderr,
         ),

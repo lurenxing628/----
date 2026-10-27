@@ -176,6 +176,7 @@ def _linear_fixture():
     context["successor_op_ids_by_op_id"].update({99: {1}, 1: {2}})
     pool = {
         "machines_by_op_type": {"OT-BENCH": ["MC-BENCH", "MC-ALT"]},
+        "machines_by_operator": {},
         "operators_by_machine": {"MC-BENCH": ["OP-BENCH"], "MC-ALT": ["OP-ALT"]},
     }
     downtime = {"MC-ALT": [(START_DT, START_DT + timedelta(hours=4))]}
@@ -266,7 +267,7 @@ def _assert_controlled_worse_reference_keeps_source():
         operations.append(make_algo_op(id=op_id, op_code=f"OP{op_id}", batch_id=batch_id, seq=10, setup_hours=hours,
                                        unit_hours=0.0, op_type_id="T", op_type_name="T"))
         batches[batch_id] = make_batch(batch_id=batch_id, due_date="2026-01-01")
-    pool = {"machines_by_op_type": {"T": ["M"]}, "operators_by_machine": {"M": ["O"]}}
+    pool = {"machines_by_op_type": {"T": ["M"]}, "machines_by_operator": {}, "operators_by_machine": {"M": ["O"]}}
     scheduler = GreedyScheduler(calendar_service=ContinuousCalendar(), config_service=_config(mode="greedy"))
     started_at = monotonic()
     decoded = production_decode(

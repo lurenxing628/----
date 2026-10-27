@@ -10,10 +10,6 @@ from .types import OperationGraphNode
 _DIAGNOSTIC_SAMPLE_LIMIT = 50
 
 
-class GraphResourceMatchingContractError(ValueError):
-    pass
-
-
 @dataclass(frozen=True)
 class OperationMachineMatch:
     operation_node_id: str
@@ -39,21 +35,6 @@ class ResourceMatchingSummary:
 
 def _node_display_id(node: OperationGraphNode) -> str:
     return display_id(node.node_id)
-
-
-def _as_ready_node_list(ready_nodes: Iterable[OperationGraphNode]) -> List[OperationGraphNode]:
-    nodes = list(ready_nodes)
-    seen_node_ids: Set[str] = set()
-    for index, node in enumerate(nodes):
-        if not isinstance(node, OperationGraphNode):
-            raise GraphResourceMatchingContractError(
-                f"resource_matching 只接受 OperationGraphNode：index={index}"
-            )
-        node_id = str(node.node_id).strip()
-        if node_id in seen_node_ids:
-            raise GraphResourceMatchingContractError(f"resource_matching 发现重复 node_id：{node_id}")
-        seen_node_ids.add(node_id)
-    return nodes
 
 
 def _missing_candidate_warning(node: OperationGraphNode) -> Dict[str, Any]:
@@ -154,7 +135,7 @@ def summarize_operation_machine_matching(
     ready_nodes: Iterable[OperationGraphNode],
 ) -> ResourceMatchingSummary:
     """Return report-only maximum matching summary for first-wave ready operations."""
-    nodes = _as_ready_node_list(ready_nodes)
+    nodes = list(ready_nodes)
     if not nodes:
         return ResourceMatchingSummary(
             status="empty",
@@ -250,7 +231,6 @@ def resource_matching_summary_to_diagnostics_dict(summary: ResourceMatchingSumma
 
 
 __all__ = [
-    "GraphResourceMatchingContractError",
     "OperationMachineMatch",
     "ResourceMatchingSummary",
     "resource_matching_summary_to_diagnostics_dict",

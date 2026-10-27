@@ -13,10 +13,6 @@ def _text(value: Any) -> str:
     return str(value).strip() if value else ""
 
 
-def _native_pair(pair: Any) -> bool:
-    return type(pair) in (list, tuple) and len(pair) == 2 and all(type(value) is str for value in pair)
-
-
 @dataclass(frozen=True)
 class ResourceClaim:
     token: int
@@ -62,8 +58,6 @@ class ResourceDemand:
 
     def comparison_is_neutral(self, op: OpForScheduleAlgo, first: Tuple[str, str], second: Tuple[str, str]) -> bool:
         """Skip equal reservation hints before forming the tie-break score."""
-        if not _native_pair(first) or not _native_pair(second):
-            return True
         current = self._by_token.get(id(op))
         if current is None:
             return True
@@ -72,14 +66,9 @@ class ResourceDemand:
 
     def penalties(self, op: OpForScheduleAlgo, pairs: Tuple[Tuple[str, str], ...]) -> Tuple[float, ...]:
         """Compare tied pairs against the current decode window."""
-        if type(pairs) not in (list, tuple):
-            return ()
-        zeroes = tuple(0.0 for _ in pairs)
-        if not all(_native_pair(pair) for pair in pairs):
-            return zeroes
         current = self._by_token.get(id(op))
         if current is None:
-            return zeroes
+            return tuple(0.0 for _ in pairs)
         self._refresh_window()
         return tuple(self._score(current, mid, oid) for mid, oid in pairs)
 

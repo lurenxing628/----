@@ -227,7 +227,6 @@ def _metric_node(
         batch_id="B_METRIC",
         op_code=node_id.replace("op:", "METRIC-"),
         seq=int(seq),
-        name=node_id,
         duration_minutes=int(duration_minutes),
         machine_id=machine_id,
         candidate_machine_ids=candidate_machine_ids,

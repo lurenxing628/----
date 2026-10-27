@@ -93,17 +93,21 @@ def encode_periods(periods):
     return None if periods is None else json.dumps(periods, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
 
 
+def _minutes(clock_text: str) -> int:
+    return int(clock_text[:2]) * 60 + int(clock_text[3:])
+
+
 def period_windows(day, periods):
     base = datetime.combine(day, datetime.min.time())
-    return tuple((base + timedelta(minutes=_clock(p["start"]) + p["day_offset"] * 1440),
-                  base + timedelta(minutes=_clock(p["end"]) + p["day_offset"] * 1440
+    return tuple((base + timedelta(minutes=_minutes(p["start"]) + p["day_offset"] * 1440),
+                  base + timedelta(minutes=_minutes(p["end"]) + p["day_offset"] * 1440
                                    + (1440 if p["end"] <= p["start"] else 0))) for p in periods)
 
 
 def period_hours(periods):
     total_minutes = 0
     for p in periods:
-        start, end = _clock(p["start"]), _clock(p["end"])
+        start, end = _minutes(p["start"]), _minutes(p["end"])
         total_minutes += end - start + (1440 if end <= start else 0)
     return total_minutes / 60
 

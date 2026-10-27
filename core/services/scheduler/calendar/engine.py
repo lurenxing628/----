@@ -117,13 +117,11 @@ class CalendarEngine:
     def default_periods(self):
         """The engine owns these parsed defaults; callers consume them read-only."""
         if self._default_periods is None:
-            periods = (read_default_periods(self.conn, capture=self.capture) if self._default_periods_json is None
-                       else decode_periods(self._default_periods_json))
+            periods = read_default_periods(self.conn, capture=self.capture)
             if not periods:
                 raise ValidationError("默认工作时间至少需要一个工作时段。", field="periods")
             self._default_periods = periods
-            if self._default_periods_json is None:
-                self._default_periods_json = encode_periods(periods)
+            self._default_periods_json = encode_periods(periods)
             _, self._default_period_hours = self._period_facts_for_json(self._default_periods_json, periods)
         return self._default_periods
 

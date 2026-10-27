@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Union
 
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_query import ProcessPageRequest
-from core.models.workbench_resource_table_query import MAX_FACET_KEYS
+from core.models.workbench_resource_table_query import normalize_table_column_filters
 
 PROCESS_TABLE_COLUMNS = ("business_code", "label", "operation_count", "stage")
 PROCESS_STAGES = ("route", "source", "hours", "ready")
@@ -16,19 +16,9 @@ DUPLICATE_QUERY_MESSAGE = "查询条件里有重复的项，请重新选择。"
 
 
 def normalize_process_column_filters(value):
-    if type(value) is not dict or set(value) - set(PROCESS_TABLE_COLUMNS):
-        raise WorkbenchCommandRejected("invalid_input", "工艺列表的筛选列不正确，请重新选择筛选条件。", 400)
-    result = {}
-    for column, condition in value.items():
-        if type(condition) is not dict or set(condition) != {"mode", "values"}:
-            raise WorkbenchCommandRejected("invalid_input", "列筛选必须包含mode和values。", 400)
-        values = condition["values"]
-        if condition["mode"] not in ("include", "exclude") or type(values) is not list or len(values) > MAX_FACET_KEYS:
-            raise WorkbenchCommandRejected("invalid_input", "列筛选方式不对，每列最多 50000 个值。", 400)
-        if any(type(key) is not str or not key for key in values) or len(set(values)) != len(values):
-            raise WorkbenchCommandRejected("invalid_input", "筛选值不对或有重复，请重新选择筛选条件。", 400)
-        result[column] = {"mode": condition["mode"], "values": sorted(values)}
-    return {column: result[column] for column in sorted(result)}
+    return normalize_table_column_filters(
+        value, PROCESS_TABLE_COLUMNS, invalid_column_message="工艺列表的筛选列不正确，请重新选择筛选条件。"
+    )
 
 
 def normalize_process_sort(value, direction="asc"):

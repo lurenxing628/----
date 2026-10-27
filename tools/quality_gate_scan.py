@@ -105,13 +105,6 @@ class ScanContext:
         return sorted(set(_normalized_scan_path(path) for path in self._collect_globbed(patterns)))
 
 
-def build_scan_context(paths: Optional[Sequence[str]] = None) -> ScanContext:
-    context = ScanContext()
-    for path in paths or ():
-        context.file(str(path))
-    return context
-
-
 def _ast_tree_for_file(rel_path: str, *, context: Optional[ScanContext] = None) -> ast.AST:
     if context is not None:
         return context.ast_tree(rel_path)
@@ -980,7 +973,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 __all__ = [
     "ScanContext",
     "ScanFile",
-    "build_scan_context",
     "classify_silent_fallback",
     "scan_complexity_entries",
     "scan_oversize_entries",

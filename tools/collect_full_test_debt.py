@@ -293,7 +293,6 @@ def _failed_report_texts(reports: Sequence[Dict[str, Any]]) -> Dict[str, str]:
 
 def _classify_failures(
     reports: Sequence[Dict[str, Any]],
-    collection_errors: Sequence[Dict[str, Any]],
     required_paths: Sequence[str],
     baseline_kind: str,
 ) -> Dict[str, List[str]]:
@@ -357,7 +356,7 @@ def _build_payload(
     worktree_clean_before: Optional[bool],
     importable_blockers: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
-    classifications = _classify_failures(collector.reports, collector.collection_errors, required_paths, baseline_kind)
+    classifications = _classify_failures(collector.reports, required_paths, baseline_kind)
     summary = _summarize(collector.collected_nodeids, collector.reports, collector.collection_errors, classifications)
     return {
         "schema_version": SCHEMA_VERSION,

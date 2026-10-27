@@ -12,7 +12,6 @@ class SchemaStructure:
         self._columns: Dict[str, tuple] = {}
         self._indexes: Dict[str, tuple] = {}
         self._index_columns: Dict[str, tuple] = {}
-        self._index_details: Dict[str, tuple] = {}
 
     def has_table(self, name):
         return name in self.objects and self.objects[name][0] == "table"
@@ -35,9 +34,6 @@ class SchemaStructure:
 
     def index_info(self, name):
         return self._pragma(self._index_columns, "index_info", name)
-
-    def index_xinfo(self, name):
-        return self._pragma(self._index_details, "index_xinfo", name)
 
     def has_unique_key(self, table, columns):
         expected = tuple(columns)

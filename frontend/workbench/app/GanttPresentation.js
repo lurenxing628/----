@@ -59,12 +59,12 @@
       const theme = new MutationObserver(schedule), resize = new ResizeObserver(schedule);
       theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class'] }); resize.observe(ref.current);
       const media = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
-      if (media) { if (typeof media.addEventListener === 'function') media.addEventListener('change', schedule); else media.addListener(schedule); }
+      if (media) media.addEventListener('change', schedule);
       window.addEventListener('beforeprint', draw); window.addEventListener('afterprint', schedule); window.addEventListener('resize', schedule);
       return () => {
         live = false; request.current = null; if (frame !== null) cancelAnimationFrame(frame);
         theme.disconnect(); resize.disconnect(); window.removeEventListener('beforeprint', draw); window.removeEventListener('afterprint', schedule); window.removeEventListener('resize', schedule);
-        if (media) { if (typeof media.removeEventListener === 'function') media.removeEventListener('change', schedule); else media.removeListener(schedule); }
+        if (media) media.removeEventListener('change', schedule);
       };
     }, []);
     React.useLayoutEffect(() => { if (request.current) request.current(); }, [printing, ...deps]);

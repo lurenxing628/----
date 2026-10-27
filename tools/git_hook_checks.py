@@ -190,14 +190,6 @@ def _pre_push_input_from_stdin(stream: Optional[TextIO] = None) -> PrePushInput:
     )
 
 
-def _pre_push_refs_from_stdin(stream: Optional[TextIO] = None) -> List[PrePushRef]:
-    return _pre_push_input_from_stdin(stream).refs
-
-
-def _remote_refs_from_stdin(stream: Optional[TextIO] = None) -> List[str]:
-    return sorted(dict.fromkeys(ref.remote_ref for ref in _pre_push_refs_from_stdin(stream) if ref.remote_ref))
-
-
 def _pre_push_input_for_hook(stream: Optional[TextIO] = None) -> PrePushInput:
     input_file = os.environ.get("APS_PRE_PUSH_INPUT_FILE")
     if input_file:
@@ -247,7 +239,6 @@ def _daily_scope_for_refs(refs: Sequence[PrePushRef], *, remote_name: str) -> Di
             ref.remote_sha,
             ref.local_sha,
             remote_name,
-            remote_ref=ref.remote_ref,
         )
         changed_paths.extend(changed.paths)
         if changed.reason:

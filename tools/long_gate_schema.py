@@ -104,18 +104,6 @@ def version_info_for_paths(repo_root: str, rel_paths: Sequence[str]) -> Dict[str
     return {"rows": rows, "untrusted_paths": untrusted}
 
 
-def version_untrusted_paths_for_paths(repo_root: str, rel_paths: Sequence[str]) -> List[str]:
-    return list(version_info_for_paths(repo_root, rel_paths)["untrusted_paths"])
-
-
-def long_gate_runner_version_content(repo_root: str) -> List[Dict[str, Any]]:
-    return version_rows_for_paths(repo_root, LONG_GATE_RUNNER_VERSION_PATHS)
-
-
-def long_gate_tooling_version_content(repo_root: str) -> List[Dict[str, Any]]:
-    return version_rows_for_paths(repo_root, LONG_GATE_TOOLING_VERSION_PATHS)
-
-
 def long_gate_repo_identity(repo_root: str) -> Dict[str, str]:
     from tools.quality_gate_shared import repo_identity
 

@@ -8,18 +8,16 @@ recomputes an O(1) witness of the cells a candidate reads straight from the live
 and reuses the previous key only when the witness is identical.
 
 Fixed-resource candidates read the predecessor end, one machine and one operator
-timeline and that machine's type history. Native auto-assign candidates read the same
+timeline and that machine's type history. Auto-assign candidates read the same
 cells for every eligible machine and operator plus busy hours; they consult the demand
 window only after two probes tied on (end_time, changeover), which the probe reports
-itself. External candidates are cheap and never cached. The cache stays out of the way
-while the certificate reuse owns a round and whenever scoring or auto-assign internals
-are monkeypatched, so instrumented runs still observe every estimate they hook.
+itself. External candidates are cheap and never cached.
 """
 from __future__ import annotations
 
 from functools import partial
-from types import GetSetDescriptorType, MemberDescriptorType, MethodType
-from typing import TYPE_CHECKING, Any, Callable, Dict, NamedTuple, Optional, Tuple
+from types import GetSetDescriptorType, MemberDescriptorType
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
 
 from core.algorithm_contracts.value_domains import INTERNAL
 from core.algorithm_runtime.auto_assign_contract import AutoAssignAttempt
@@ -48,29 +46,11 @@ Witness = Tuple[Any, ...]
 EligibleResources = Optional[Tuple[Tuple[str, ...], Tuple[str, ...]]]
 
 
-class AutoAssignProbeContract(NamedTuple):
-    """What the parent package tells the cache about its auto-assign probe; dispatch never imports it."""
-
-    natives_intact: Callable[[], bool]
-
-
-def native_auto_assign_context(ctx: Any, scheduler: Any, native_type: type) -> bool:
-    """The auto-assign callback is ``native_type``'s untouched probe method bound to ``scheduler``.
-
-    A patched probe (plain function, mock or another method) is not a bound native method, so the cache stays off.
-    """
-    callback = ctx.auto_assign_attempt_callback
-    return (type(callback) is MethodType and callback.__self__ is scheduler
-            and callback.__func__ is vars(native_type).get("_auto_assign_internal_resources_attempt"))
-
-
-def make_sgs_score_cache_factory(ctx: Any, scheduler: Any, native_type: type, *,
-                                 preparation: Any, probe: AutoAssignProbeContract) -> Any:
+def make_sgs_score_cache_factory(ctx: Any, *, preparation: Any) -> Any:
     """Select the native input and calendar adapters at the preparation boundary."""
-    native_auto_assign = native_auto_assign_context(ctx, scheduler, native_type) and probe.natives_intact()
     timing_calendar = ctx.calendar if native_timing_calendar(ctx.calendar) else None
     calendar_days = ctx.calendar.add_calendar_days if native_timing_calendar(ctx.calendar, include_calendar_days=True) else None
-    return partial(SgsScoreCache, native_auto_assign=native_auto_assign, eligible_resources=preparation.eligible_auto_assign_resources,
+    return partial(SgsScoreCache, eligible_resources=preparation.eligible_auto_assign_resources,
                    timing_calendar=timing_calendar, calendar_days=calendar_days, preparation=preparation)
 
 
@@ -148,7 +128,7 @@ class SgsScoreCache:
     """
 
     def __init__(
-        self, state: ScheduleRunState, *, auto_assign_enabled: bool, resource_pool: Any, native_auto_assign: bool,
+        self, state: ScheduleRunState, *, auto_assign_enabled: bool, resource_pool: Any,
         eligible_resources: Callable[[Any], EligibleResources], timing_calendar: Any, calendar_days: Any, preparation: Any,
     ) -> None:
         self.state = state
@@ -160,7 +140,7 @@ class SgsScoreCache:
         self._saw_auto = False
         self.graph_candidates_pruned = 0
         self.eligible_resources: Optional[Callable[[Any], EligibleResources]] = (
-            eligible_resources if (auto_assign_enabled and native_auto_assign and isinstance(resource_pool, dict)) else None
+            eligible_resources if (auto_assign_enabled and isinstance(resource_pool, dict)) else None
         )
         self._timing = MemoizedTimingCalendar(timing_calendar) if timing_calendar is not None else None
         self._shared_slots = SharedSlotEstimateCache() if self._timing is not None else None
@@ -179,8 +159,6 @@ class SgsScoreCache:
         self.pair_misses = 0
         # op identity -> (machine, operator) -> abort-free estimate with its witness; one probe pair reads only these cells.
         self._pairs: Dict[int, Dict[Tuple[str, str], _PairEntry]] = {}
-        # Set for a round whose scoring internals are instrumented: nothing is handed back until a native round begins.
-        self._suspended = False
         self._scoring_op: Any = None
         self._pending_tie: Optional[bool] = None
         self._pending_resources: Optional[Tuple[str, str]] = None
@@ -199,7 +177,7 @@ class SgsScoreCache:
 
     def shared_slot_estimate(self, *, calendar, op, batch, machine_id, operator_id, prev_end, total_hours,
                              end_dt_exclusive, machine_downtimes, compute):
-        if (self._suspended or self._timing is None or self._shared_slots is None
+        if (self._timing is None or self._shared_slots is None
                 or not self._plain(op) or not self._plain(batch)):
             return compute()
         return self._shared_slots.resolve(
@@ -211,7 +189,7 @@ class SgsScoreCache:
     def timing_calendar(self, calendar: Any) -> Any:
         """The per-decode memo of ``calendar``'s pure timing calls, or ``calendar`` itself when it is not certified."""
         timing = self._timing
-        if self._suspended or timing is None or timing.calendar is not calendar:
+        if timing is None or timing.calendar is not calendar:
             return calendar
         return timing
 
@@ -240,7 +218,7 @@ class SgsScoreCache:
         must estimate the very same pair against the same timelines with ``abort_after=None``.
         """
         state = self.state
-        if (self._suspended or not self._reuse_keys or self.eligible_resources is None
+        if (not self._reuse_keys or self.eligible_resources is None
                 or machine_timeline is not state.machine_timeline or operator_timeline is not state.operator_timeline):
             return None
         witness = (
@@ -322,17 +300,7 @@ class SgsScoreCache:
                 self._pairs.clear()
             self._shared_slots.clear()
 
-    def suspend_round(self) -> None:
-        """The scoring loop is not running its own code this round: serve no memo, hand nothing to placement.
-
-        The handoff scope stays installed for the whole decode, so without this the probe memo and
-        the calendar memo would keep answering behind an instrumented scorer's back.
-        """
-        self._suspended = True
-
     def begin_round(self) -> None:
-        """Auto-assign keys may only be reused while the probe still runs the module's own code."""
-        self._suspended = False
         if self._timing is not None and self._shared_slots is not None:
             self._shared_slots.begin_round()
 
@@ -355,7 +323,7 @@ class SgsScoreCache:
     def selected_estimate(self, inputs: Dict[str, Any]) -> Optional[Tuple[Any, float]]:
         """(estimate, total_hours_base) proved current this round for exactly these placement inputs."""
         entry = self._entries.get(id(inputs.get("op")))
-        if self._suspended or entry is None or entry.round != self.round or entry.estimate is None:
+        if entry is None or entry.round != self.round or entry.estimate is None:
             return None
         estimate, total_hours_base, machine_id, operator_id, prev_end, calendar, end_dt_exclusive = entry.estimate
         if (inputs.get("machine_id"), inputs.get("operator_id")) != (machine_id, operator_id):
@@ -369,7 +337,7 @@ class SgsScoreCache:
     def selected_resources(self, op: OpForScheduleAlgo) -> Optional[Tuple[str, str]]:
         """Auto-assign pair the scoring probe chose for ``op``, valid only within the same round."""
         entry = self._entries.get(id(op))
-        if self._suspended or entry is None or entry.round != self.round or entry.witness[0] != _AUTO:
+        if entry is None or entry.round != self.round or entry.witness[0] != _AUTO:
             return None
         return entry.resources
 

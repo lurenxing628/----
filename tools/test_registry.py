@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from tools.test_registry_data import (
@@ -9,7 +8,6 @@ from tools.test_registry_data import (
     QUALITY_GATE_REQUIRED_TESTS,
     QUALITY_GATE_SELFTEST_PATH,
     QUALITY_GATE_STARTUP_REGRESSION_ARGS,
-    REPO_ROOT,
     REQUIRED_REGRESSION_COMMON_SCOPES,
     REQUIRED_REGRESSION_GROUPS,
     SUPPLEMENTAL_REGRESSION_GROUPS,
@@ -96,14 +94,6 @@ def iter_test_only_helper_impacts(
     return rows
 
 
-def test_only_helper_impacts_for_path(
-    path: str,
-    helper_impacts: Optional[Mapping[str, Sequence[str]]] = None,
-) -> List[str]:
-    normalized = _normalize_registry_path(path)
-    return list(iter_test_only_helper_impacts(helper_impacts).get(normalized) or [])
-
-
 def normalize_test_paths(paths: Sequence[str]) -> List[str]:
     out: List[str] = []
     seen = set()
@@ -126,15 +116,6 @@ def iter_startup_regressions(
     return normalize_test_paths(startup_regressions)
 
 
-def iter_non_regression_guard_tests(required_tests: Sequence[str] = QUALITY_GATE_REQUIRED_TESTS) -> List[str]:
-    out: List[str] = []
-    for rel_path in iter_required_tests(required_tests):
-        if os.path.basename(rel_path).startswith("regression_"):
-            continue
-        out.append(rel_path)
-    return out
-
-
 def required_test_nodeid_matches(nodeid: str, required_tests: Sequence[str] = QUALITY_GATE_REQUIRED_TESTS) -> bool:
     normalized_nodeid = str(nodeid or "").strip().replace("\\", "/")
     node_path = normalized_nodeid.split("::", 1)[0]
@@ -142,36 +123,6 @@ def required_test_nodeid_matches(nodeid: str, required_tests: Sequence[str] = QU
         node_path == required_path or normalized_nodeid.startswith(required_path + "::")
         for required_path in iter_required_tests(required_tests)
     )
-
-
-def build_test_path_status(
-    paths: Sequence[str],
-    *,
-    repo_root: Optional[str] = None,
-) -> List[Dict[str, Any]]:
-    root = os.path.abspath(repo_root or REPO_ROOT)
-    rows: List[Dict[str, Any]] = []
-    for rel_path in normalize_test_paths(paths):
-        tracked = subprocess.run(
-            ["git", "ls-files", "--error-unmatch", rel_path],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        rows.append(
-            {
-                "path": rel_path,
-                "exists": os.path.exists(os.path.join(root, rel_path)),
-                "tracked": tracked.returncode == 0,
-            }
-        )
-    return rows
-
-
-def required_tests_registry_content(required_tests: Sequence[str]) -> List[str]:
-    return iter_required_tests(required_tests)
 
 
 def iter_required_regression_groups(
@@ -216,12 +167,6 @@ def iter_required_regression_common_scope_policy(
         "dependency_file_scopes": _normalize_scope_paths(source.get("dependency_file_scopes") or ()),
         "env_keys": _normalize_env_keys(source.get("env_keys") or ()),
     }
-
-
-def required_regression_groups_content(
-    groups: Optional[Sequence[Mapping[str, Any]]] = None,
-) -> List[Dict[str, Any]]:
-    return iter_required_regression_groups(groups)
 
 
 def validate_required_regression_group_coverage(
@@ -298,11 +243,7 @@ __all__ = [
     "REQUIRED_REGRESSION_GROUPS",
     "SUPPLEMENTAL_REGRESSION_GROUPS",
     "TEST_ONLY_HELPER_IMPACT",
-    "build_test_path_status",
-    "required_regression_groups_content",
-    "required_tests_registry_content",
     "test_registry_content",
-    "iter_non_regression_guard_tests",
     "iter_required_regression_common_scope_policy",
     "iter_required_regression_groups",
     "iter_required_tests",
@@ -310,6 +251,5 @@ __all__ = [
     "iter_test_only_helper_impacts",
     "normalize_test_paths",
     "required_test_nodeid_matches",
-    "test_only_helper_impacts_for_path",
     "validate_required_regression_group_coverage",
 ]

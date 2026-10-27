@@ -206,11 +206,6 @@ def write_fixed_text(path: Any, text: str, *, append: bool = False, replace_syml
         f.write(text)
 
 
-def write_fixed_bytes(path: Any, data: bytes) -> None:
-    with open_fixed_file_for_write_binary(path, append=False) as f:
-        f.write(data)
-
-
 def write_fixed_json(path: Any, payload: Any) -> None:
     text = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False) + "\n"
     write_fixed_text(path, text)

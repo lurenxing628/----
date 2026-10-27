@@ -120,8 +120,8 @@
     const grouped = data.completion_groups.flatMap(group => group.candidate_refs);
     check(grouped.length === data.candidates.length && new Set(grouped).size === grouped.length && data.candidates.every(row => grouped.includes(row.candidate_ref)), '批次安排分类与本次排产方案不一致，请点“刷新方案对比”。');
   }
-  function decisionCore(payload, runRef, query) {
-    const data = payload.data, q = scope(runRef, query);
+  function _decisionCore(payload, runRef, q) {
+    const data = payload.data;
     check(data.run && data.run.run_ref === runRef && data.scope && data.scope.run_ref === runRef
       && data.scope.comparison_mode === q.comparison_mode && Array.isArray(data.candidates) && Array.isArray(data.metric_definitions), '比较资料与当前排产记录不一致，请点“刷新方案对比”。');
     check(data.metric_definitions.every(metric => object(metric) && typeof metric.key === 'string' && typeof metric.metric_version === 'string')
@@ -167,16 +167,17 @@
     }
     return data;
   }
-  function validateDecision(payload, runRef, query) {
-    const data = decisionCore(payload, runRef, query);
+  function _validateDecision(payload, runRef, q) {
+    const data = _decisionCore(payload, runRef, q);
     const extraMetrics = data.metric_definitions.filter(metric => !coreMetricKeys.includes(metric.key));
     data.candidates.forEach(row => extraMetrics.forEach(metric => check(window.EffortProjectionContract.metric(row.metrics[metric.key])
       && row.metrics[metric.key].metric_version === metric.metric_version && window.EffortProjectionContract.delta(row.deltas[metric.key]), '比较指标资料不完整，请点“刷新方案对比”。')));
     completionGroups(data);
     return data;
   }
-  function validateDecisionSummary(payload, runRef, query) {
-    const data = decisionCore(payload, runRef, query), exactCore = value => object(value)
+  const validateDecision = (payload, runRef, query) => _validateDecision(payload, runRef, scope(runRef, query));
+  function _validateDecisionSummary(payload, runRef, q) {
+    const data = _decisionCore(payload, runRef, q), exactCore = value => object(value)
       && Object.keys(value).length === coreMetricKeys.length && coreMetricKeys.every(key => Object.prototype.hasOwnProperty.call(value, key));
     const baseline = data.baseline, missingCandidateBaseline = data.scope.comparison_mode === 'candidates' && data.scope.reference_state === 'selection_required';
     check(data.completion_groups === undefined && data.candidates.every(row => exactCore(row.metrics) && exactCore(row.deltas)
@@ -191,6 +192,7 @@
       && data.difference_summary !== undefined, '方案首屏指标或基准资料不完整，请点“刷新方案对比”。');
     return data;
   }
+  const validateDecisionSummary = (payload, runRef, query) => _validateDecisionSummary(payload, runRef, scope(runRef, query));
   const completionFilters = ['all', 'complete', 'unfinished', 'ordinary', 'deferred', 'unknown'];
   function completionScope(runRef, query) {
     const value = { ...scope(runRef, query), completion_filter: 'all', sort: 'batch_id', order: 'asc', page: 1, size: 20 };
@@ -202,8 +204,8 @@
     check(Number.isInteger(value.page) && value.page > 0 && [20, 50].includes(value.size), '批次清单每页支持 20 或 50 条，请重新选择页码。');
     return value;
   }
-  function validateCompletionBatches(payload, runRef, query) {
-    const data = payload.data, q = completionScope(runRef, query), E = window.EffortProjectionContract;
+  function _validateCompletionBatches(payload, runRef, q) {
+    const data = payload.data, E = window.EffortProjectionContract;
     check(A.shape(data, ['run_ref', 'scope', 'baseline', 'candidate', 'source', 'filters', 'items', 'page', 'summary', 'metric_version'])
       && data.run_ref === runRef && object(data.scope) && data.scope.run_ref === runRef
       && data.scope.selected_candidate_ref === q.selected_candidate_ref && data.scope.comparison_mode === q.comparison_mode
@@ -269,6 +271,7 @@
     check(new Set(data.items.map(row => row.batch_ref)).size === data.items.length, '批次清单出现重复记录，请刷新批次清单。');
     return data;
   }
+  const validateCompletionBatches = (payload, runRef, query) => _validateCompletionBatches(payload, runRef, completionScope(runRef, query));
   function processScope(runRef, query) {
     const value = { ...scope(runRef, query), record_kind: 'attempts', order: 'asc', page: 1, size: 20 };
     ['process_candidate_ref', 'objective', 'record_kind', 'sort', 'order', 'page', 'size'].forEach(key => {
@@ -285,8 +288,8 @@
     return value;
   }
   // 优化过程只有共同优化一种存档（unified-optimization-process-v1）。
-  function processDetails(payload, runRef, query) {
-    const data = payload.data, q = processScope(runRef, query);
+  function _processDetails(payload, runRef, q) {
+    const data = payload.data;
     const nullableText = value => value === null || typeof value === 'string';
     const amount = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
     const optionalAmount = value => value === null || amount(value), positive = value => count(value) && value > 0;
@@ -403,6 +406,7 @@
       && data.items.every(q.record_kind === 'progress' ? point : action), '过程方向、来源或分页位置已变化，请点“刷新优化过程”。');
     return data;
   }
+  const processDetails = (payload, runRef, query) => _processDetails(payload, runRef, processScope(runRef, query));
   function detailScope(runRef, query, section) {
     const value = { ...scope(runRef, query), page: 1, size: 20, change_kind: 'all', sort: section === 'batches' ? 'worsened' : 'sequence', order: section === 'batches' ? 'desc' : 'asc' };
     if (section === 'batches') value.delivery_filter = 'all';
@@ -416,8 +420,8 @@
     if (section === 'batches') check(['all', 'attention', 'overdue', 'deferred', 'unplanned', 'on_time'].includes(value.delivery_filter), '请选择需要查看的交付问题。');
     return value;
   }
-  function details(payload, runRef, query, section) {
-    const data = payload.data, q = detailScope(runRef, query, section);
+  function _details(payload, runRef, q, section) {
+    const data = payload.data;
     check(data.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref
       && data.scope.comparison_mode === q.comparison_mode && data.candidate && data.candidate.candidate_ref === q.selected_candidate_ref
       && Array.isArray(data.items) && data.page && data.page.number === q.page && data.page.size === q.size && data.filters && data.filters.section === section,
@@ -443,6 +447,7 @@
     bindScope(payload, data, q);
     return data;
   }
+  const details = (payload, runRef, query, section) => _details(payload, runRef, detailScope(runRef, query, section), section);
   const preparationSorts = ['sequence', 'batch_id', 'after_setup_hours', 'after_required_hours', 'setup_delta_hours'];
   const changeoverSorts = ['next_start', 'machine_label', 'next_batch_id'];
   const preparationMetrics = ['pending_setup_hours', 'scheduled_setup_hours', 'unplanned_setup_hours', 'deferred_setup_hours', 'pending_processing_hours', 'scheduled_processing_hours', 'unplanned_processing_hours', 'deferred_processing_hours'];
@@ -462,8 +467,8 @@
       : ['all', 'selected', 'reference'].includes(value.event_side), '准备与切换筛选无效，请重新选择。');
     return value;
   }
-  function preparationDetails(payload, runRef, query, section = 'preparation') {
-    const data = payload.data, q = preparationScope(runRef, query, section), E = window.EffortProjectionContract;
+  function _preparationDetails(payload, runRef, q, section = 'preparation') {
+    const data = payload.data, E = window.EffortProjectionContract;
     check(data.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref
       && data.scope.comparison_mode === q.comparison_mode && data.candidate && data.candidate.candidate_ref === q.selected_candidate_ref
       && data.metric_version === 'decision-preparation-v4' && data.filters && data.filters.section === section && Array.isArray(data.items)
@@ -502,6 +507,7 @@
       && row.drill && drill(row.drill.previous, row.event_side, row.previous_operation_ref) && drill(row.drill.next, row.event_side, row.next_operation_ref)), '工种切换事件或甘特定位资料不完整，请点“刷新准备与切换明细”。');
     return data;
   }
+  const preparationDetails = (payload, runRef, query, section = 'preparation') => _preparationDetails(payload, runRef, preparationScope(runRef, query, section), section);
   function validateReferenceWorkspace(payload, runRef, query) {
     const data = payload.data;
     check(data.candidate && data.candidate.run_ref === runRef && data.candidate.candidate_ref === query.selected_candidate_ref
@@ -556,18 +562,14 @@
     }
     return next;
   }
-  function resourceWorkspaceScope(runRef, query, savedQuery) {
-    const filters = resourceFilters(savedQuery), resourceSnapshot = filters.snapshot_ref; delete filters.snapshot_ref;
-    return { ...scope(runRef, query), ...filters, ...(resourceSnapshot !== undefined ? { resource_snapshot_ref: resourceSnapshot } : {}) };
-  }
   // 资源首屏的 data 在方案对比首屏之外多带 resource_result（内嵌的资源读取结果）与 resource_query（实际采用的资源筛选）。
-  function validateResourceWorkspace(payload, runRef, query, savedQuery) {
-    const data = validateDecisionSummary(payload, runRef, query), { resource_result: resources, resource_query: effective } = data, cohort = data.scope.resource_refs;
+  function _validateResourceWorkspace(payload, runRef, q, filters) {
+    const data = _validateDecisionSummary(payload, runRef, q), { resource_result: resources, resource_query: effective } = data, cohort = data.scope.resource_refs;
     check(object(cohort) && ['machine', 'operator'].every(kind => Array.isArray(cohort[kind]) && cohort[kind].every(ref)
       && new Set(cohort[kind]).size === cohort[kind].length), '参与比较的设备或人员资料不完整，请刷新方案对比。');
     const filterKeys = ['resource_kind', 'grain', 'pressure_threshold', 'page', 'size', 'pressure_filter', 'sort', 'order', 'heatmap_page', 'heatmap_size'];
     check(A.shape(effective, filterKeys, ['resource_ref', 'display_start', 'display_end', 'snapshot_ref']), '恢复的资源筛选资料不完整，请刷新方案对比。');
-    const expected = resourceFilters(savedResourceView(resourceFilters(savedQuery), cohort, data.scope)), actual = resourceFilters(effective);
+    const expected = savedResourceView(filters, cohort, data.scope), actual = resourceFilters(effective);
     check(JSON.stringify(actual) === JSON.stringify(expected) && Object.keys(effective).length === Object.keys(actual).length,
       '恢复的资源筛选与当前范围不一致，请刷新方案对比。');
     const candidate = data.candidates.find(row => row.candidate_ref === data.scope.selected_candidate_ref);
@@ -581,12 +583,13 @@
       const comparison = { comparison_mode: data.scope.comparison_mode, resource_view: data.scope.resource_view,
         selected_candidate_ref: data.scope.selected_candidate_ref, range_start: data.scope.range_start, range_end: data.scope.range_end,
         ...(data.scope.comparison_mode === 'candidates' ? { reference_candidate_ref: data.scope.reference.candidate_ref } : {}) };
-      resourceDetails(resources, runRef, { ...comparison, ...actual, expected_resource_refs: cohort });
+      _resourceDetails(resources, runRef, { ...comparison, ...actual }, 'resources', cohort);
     }
     return data;
   }
-  function resourceDetails(payload, runRef, query, section = 'resources') {
-    const data = payload.data, q = resourceScope(runRef, query, section);
+  const validateResourceWorkspace = (payload, runRef, query, savedQuery) => _validateResourceWorkspace(payload, runRef, scope(runRef, query), resourceFilters(savedQuery));
+  function _resourceDetails(payload, runRef, q, section = 'resources', expectedRefs) {
+    const data = payload.data;
     check(data.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref
       && data.scope.comparison_mode === q.comparison_mode && data.candidate && data.candidate.candidate_ref === q.selected_candidate_ref
       && data.metric_version === 'decision-resource-v4' && data.filters && data.filters.section === section && data.filters.resource_kind === q.resource_kind
@@ -600,7 +603,7 @@
     '资源时间粒度、关注线或所选时段已变化，请点“刷新资源影响”。');
     const cohort = data.scope.resource_refs;
     check(cohort && ['machine', 'operator'].every(kind => Array.isArray(cohort[kind]) && cohort[kind].every(ref) && new Set(cohort[kind]).size === cohort[kind].length), '参与比较的设备或人员资料不完整，请点“刷新资源影响”。');
-    if (query.expected_resource_refs) check(['machine', 'operator'].every(kind => JSON.stringify(cohort[kind]) === JSON.stringify(query.expected_resource_refs[kind])), '参与比较的设备或人员已变化，请点“刷新资源影响”。');
+    if (expectedRefs) check(['machine', 'operator'].every(kind => JSON.stringify(cohort[kind]) === JSON.stringify(expectedRefs[kind])), '参与比较的设备或人员已变化，请点“刷新资源影响”。');
     const windowSource = value => window.ResourceProjectionContract.window(value) && value.source === 'archived_resource_calendar';
     function drillIdentity(value, side, resourceRef) {
       if (side === 'reference' && data.baseline.state !== 'available') return value === null;
@@ -648,19 +651,23 @@
     }
     return data;
   }
+  const resourceDetails = (payload, runRef, query, section = 'resources') => _resourceDetails(payload, runRef, resourceScope(runRef, query, section), section, query && query.expected_resource_refs);
   const BASE = '/api/workbench/v1/scheduling/runs/';
   const read = (runRef, leaf, query, signal) => T.read(BASE + runRef + '/decision' + leaf, query, { signal, timeout: 60000 });
   window.RunDecisionAPI = {
-    async decision(runRef, query, signal) { const q = scope(runRef, query), value = await read(runRef, '', q, signal); validateDecision(value, runRef, q); return value; },
-    async decisionSummary(runRef, query, signal) { const q = scope(runRef, query), value = await read(runRef, '/summary', q, signal); validateDecisionSummary(value, runRef, q); return value; },
+    async decision(runRef, query, signal) { const q = scope(runRef, query), value = await read(runRef, '', q, signal); _validateDecision(value, runRef, q); return value; },
+    async decisionSummary(runRef, query, signal) { const q = scope(runRef, query), value = await read(runRef, '/summary', q, signal); _validateDecisionSummary(value, runRef, q); return value; },
     async resourceWorkspace(runRef, query, savedQuery, signal) {
-      const value = await read(runRef, '/resource-workspace', resourceWorkspaceScope(runRef, query, savedQuery), signal); validateResourceWorkspace(value, runRef, query, savedQuery); return value;
+      const q = scope(runRef, query), filters = resourceFilters(savedQuery), wire = { ...filters }, resourceSnapshot = wire.snapshot_ref;
+      delete wire.snapshot_ref;
+      const value = await read(runRef, '/resource-workspace', { ...q, ...wire, ...(resourceSnapshot !== undefined ? { resource_snapshot_ref: resourceSnapshot } : {}) }, signal);
+      _validateResourceWorkspace(value, runRef, q, filters); return value;
     },
-    async decisionDetails(runRef, query, section, signal) { const q = detailScope(runRef, query, section), value = await read(runRef, '/' + section, q, signal); details(value, runRef, q, section); return value; },
+    async decisionDetails(runRef, query, section, signal) { const q = detailScope(runRef, query, section), value = await read(runRef, '/' + section, q, signal); _details(value, runRef, q, section); return value; },
     async completionBatches(runRef, query, signal) {
-      const q = completionScope(runRef, query), value = await read(runRef, '/completion-batches', q, signal); validateCompletionBatches(value, runRef, q); return value;
+      const q = completionScope(runRef, query), value = await read(runRef, '/completion-batches', q, signal); _validateCompletionBatches(value, runRef, q); return value;
     },
-    async process(runRef, query, signal) { const q = processScope(runRef, query), value = await read(runRef, '/process', q, signal); processDetails(value, runRef, q); return value; },
+    async process(runRef, query, signal) { const q = processScope(runRef, query), value = await read(runRef, '/process', q, signal); _processDetails(value, runRef, q); return value; },
     async referenceWorkspace(runRef, query, signal) {
       const q = { ...scope(runRef, { ...query, comparison_mode: 'admission_official' }) };
       if (query.batch_ref) q.batch_ref = query.batch_ref;
@@ -668,14 +675,14 @@
     },
     async resources(runRef, query, signal) {
       const q = resourceScope(runRef, query), value = await read(runRef, '/resources', q, signal);
-      resourceDetails(value, runRef, { ...q, expected_resource_refs: query.expected_resource_refs }); return value;
+      _resourceDetails(value, runRef, q, 'resources', query.expected_resource_refs); return value;
     },
     async resourceDays(runRef, query, signal) {
       const q = resourceScope(runRef, query, 'resource-days'), value = await read(runRef, '/resource-days', q, signal);
-      resourceDetails(value, runRef, { ...q, expected_resource_refs: query.expected_resource_refs }, 'resource-days'); return value;
+      _resourceDetails(value, runRef, q, 'resource-days', query.expected_resource_refs); return value;
     },
-    async preparation(runRef, query, signal) { const q = preparationScope(runRef, query), value = await read(runRef, '/preparation', q, signal); preparationDetails(value, runRef, q); return value; },
-    async changeovers(runRef, query, signal) { const q = preparationScope(runRef, query, 'changeovers'), value = await read(runRef, '/changeovers', q, signal); preparationDetails(value, runRef, q, 'changeovers'); return value; },
+    async preparation(runRef, query, signal) { const q = preparationScope(runRef, query), value = await read(runRef, '/preparation', q, signal); _preparationDetails(value, runRef, q); return value; },
+    async changeovers(runRef, query, signal) { const q = preparationScope(runRef, query, 'changeovers'), value = await read(runRef, '/changeovers', q, signal); _preparationDetails(value, runRef, q, 'changeovers'); return value; },
     async decisionExport(runRef, query, snapshotRef, format, signal, section) {
       check(['csv', 'xlsx'].includes(format) && typeof snapshotRef === 'string' && snapshotRef.length > 0);
       const detailSection = query.filter_section || (['batches', 'operations', 'resources', 'resource-days', 'preparation', 'changeovers', 'process'].includes(section) ? section : null);
@@ -690,7 +697,7 @@
       check(rowCount !== null && /^\d+$/.test(rowCount), '导出文件没有读取到内容，请重新点击下载。');
       return { blob: file.blob, row_count: Number(rowCount), filename: file.filename };
     },
-    validateDecision, validateDecisionSummary, validateResourceWorkspace, resourceWorkspaceScope, resourceFilters, savedResourceView, details, scope, detailScope,
+    validateDecision, validateDecisionSummary, validateResourceWorkspace, resourceFilters, savedResourceView, details, scope, detailScope,
     completionScope, validateCompletionBatches, processScope, processDetails, validateReferenceWorkspace, resourceScope, resourceDetails, preparationScope, preparationDetails
   };
 })();

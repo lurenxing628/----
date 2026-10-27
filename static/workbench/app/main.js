@@ -7321,14 +7321,25 @@ function SMExport({
     return result;
   }
   function draft(value) {
+    if (Array.isArray(value)) return {
+      type: 'work',
+      hours: displayNumber(window.APSWorkPeriods.hours(value)),
+      periods: window.APSWorkPeriods.clone(value),
+      defaultPeriods: window.APSWorkPeriods.clone(value),
+      legacyShift: false,
+      shiftStart: '',
+      shiftEnd: '',
+      eff: '100',
+      allowNormal: 'yes',
+      allowUrgent: 'yes',
+      note: ''
+    };
     // legacyShift：原记录是没有逐段时段的旧单班工作日，休息改回工作日时恢复原班次，不填默认时段。
     return {
       ...value.fields,
-      defaultPeriods: value.default_periods,
+      defaultPeriods: window.APSWorkPeriods.clone(value.default_periods),
       legacyShift: value.fields.type === 'work' && value.fields.periods == null,
-      periods: value.fields.periods == null ? null : value.fields.periods.map(row => ({
-        ...row
-      })),
+      periods: window.APSWorkPeriods.clone(value.fields.periods),
       shiftStart: value.stored && value.stored.shift_start || value.effective.window_start.slice(11, 16),
       shiftEnd: value.stored === null || value.stored.shift_end === null ? '' : value.stored.shift_end,
       hours: displayNumber(value.fields.hours),
@@ -7348,7 +7359,8 @@ function SMExport({
       ...value,
       type,
       periods: window.APSWorkPeriods.clone(periods),
-      hours: String(window.APSWorkPeriods.hours(periods)),
+      hours: displayNumber(window.APSWorkPeriods.hours(periods)),
+      legacyShift: false,
       allowNormal: 'yes',
       allowUrgent: 'yes'
     };
@@ -8591,15 +8603,11 @@ function SMExport({
       }
       window.addEventListener('beforeprint', beforePrint);
       window.addEventListener('afterprint', afterPrint);
-      if (media) {
-        if (typeof media.addEventListener === 'function') media.addEventListener('change', mediaChanged);else media.addListener(mediaChanged);
-      }
+      if (media) media.addEventListener('change', mediaChanged);
       return () => {
         window.removeEventListener('beforeprint', beforePrint);
         window.removeEventListener('afterprint', afterPrint);
-        if (media) {
-          if (typeof media.removeEventListener === 'function') media.removeEventListener('change', mediaChanged);else media.removeListener(mediaChanged);
-        }
+        if (media) media.removeEventListener('change', mediaChanged);
       };
     }, []);
     return printing;
@@ -13959,15 +13967,7 @@ function SMExport({
       scope: 'all',
       operation: 'upsert'
     });
-    const [value, setValue] = React.useState({
-      type: 'work',
-      hours: String(window.APSWorkPeriods.hours(defaultPeriods)),
-      periods: window.APSWorkPeriods.clone(defaultPeriods),
-      eff: '100',
-      allowNormal: 'yes',
-      allowUrgent: 'yes',
-      note: ''
-    });
+    const [value, setValue] = React.useState(() => K.draft(defaultPeriods));
     const [replaceNote, setReplaceNote] = React.useState(false);
     const [result, setResult] = React.useState(null),
       [loading, setLoading] = React.useState(false),
@@ -25194,6 +25194,138 @@ function SMExport({
 (function () {
   'use strict';
 
+  const C = window.APSResourceContract;
+  // 报工状态与报工类型都取全站词表：现场记录、现场实际甘特、报表中心、工时校准与排产候选、值班台用同一套叫法，不再各自造词。
+  const states = window.WorkbenchTerms.execution_states;
+  const reportActions = window.WorkbenchTerms.report_actions;
+  const fields = ['completed_quantity', 'actual_start', 'actual_end', 'effective_processing_hours', 'actual_machine_ref', 'actual_operator_ref', 'remark'];
+  const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
+  const nullable = value => value === null || Number.isFinite(value) && value >= 0;
+  const time = value => value === null || typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(value);
+  const validTime = value => typeof value === 'string' && time(value) && Number.isFinite(Date.parse(value + 'Z')) && new Date(value + 'Z').toISOString().slice(0, 19) === value;
+  // 计划应做数量缺失的三种说法：现场记录、现场实际甘特、计划甘特提示共用，不再各写一份。
+  const quantityReasons = {
+    plan_target_not_recorded: '原计划未记录应做数量',
+    plan_target_unavailable: '原计划应做数量读不到',
+    plan_target_invalid: '原计划应做数量无效'
+  };
+  const quantity = (value, options = {
+    digits: 0
+  }) => typeof value === 'string' ? window.WorkbenchFormat.integerText(value) : window.WorkbenchFormat.number(value, options);
+  // 有效工时按录入精度最多显示三位小数；单位由表头或调用处补。
+  const hours = value => value === null || value === undefined || value === '' ? '未知' : window.WorkbenchFormat.number(value, {
+    digits: 3,
+    trim: true
+  });
+  const pieceLabel = value => value.piece_id === null ? '共同工序' : '分件 ' + value.piece_id;
+  function planQuantity(value) {
+    const valid = C.nonnegativeInt64;
+    if (!(value.piece_id === null || typeof value.piece_id === 'string' && value.piece_id.trim() && !value.piece_id.includes('\0')) || ![value.quantity, value.batch_quantity].every(n => n === null || valid(n))) return false;
+    if (value.quantity_basis === 'unknown') return value.quantity === null && value.batch_quantity === null && ['plan_target_not_recorded', 'plan_target_unavailable'].includes(value.quantity_reason);
+    return ['run_admission', 'trial_creation'].includes(value.quantity_basis) && (value.quantity_reason === null ? valid(value.quantity) && valid(value.batch_quantity) : value.quantity_reason === 'plan_target_invalid');
+  }
+  function planned(value) {
+    const row = {
+      ...value,
+      start: value.planned_start,
+      end: value.planned_end
+    };
+    const planTime = at => typeof at === 'string' && /^(?!0000)\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.(?!000000$)\d{6})?(?![\s\S])/.test(at) && Number.isFinite(Date.parse(at.slice(0, 19) + 'Z')) && new Date(at.slice(0, 19) + 'Z').toISOString().slice(0, 19) === at.slice(0, 19);
+    return planTime(row.start) && planTime(row.end) && window.PointContract.arrangement(row);
+  }
+  function report(value) {
+    return C.object(value) && ref(value.report_ref) && ref(value.revision_ref) && ref(value.operation_ref) && ref(value.recorded_against_task_ref) && ref(value.recorded_against_plan_ref) && typeof value.report_no === 'string' && nullable(value.completed_quantity) && nullable(value.effective_processing_hours) && time(value.actual_start) && time(value.actual_end) && Array.isArray(value.correction_history) && C.object(value.write_context);
+  }
+  function task(value) {
+    const p = value && value.execution;
+    return C.object(value) && ref(value.task_ref) && ref(value.plan_ref) && planned(value) && planQuantity(value) && typeof value.batch_id === 'string' && typeof value.operation_label === 'string' && C.object(p) && ref(p.operation_ref) && p.operation_ref === value.operation_ref && (p.comparison_task_ref === null || p.comparison_task_ref === value.task_ref) && Object.hasOwnProperty.call(states, p.execution_state) && ['complete', 'incomplete', 'invalid'].includes(p.data_quality) && nullable(p.target_quantity) && nullable(p.known_completed_quantity) && nullable(p.remaining_quantity) && typeof p.records_complete === 'boolean' && typeof p.quantity_complete === 'boolean' && Number.isInteger(p.unknown_record_count) && Array.isArray(p.data_gaps) && Array.isArray(p.reports) && p.reports.every(row => report(row) && row.operation_ref === p.operation_ref) && Array.isArray(p.voided_reports) && C.object(p.write_context);
+  }
+  // 信封（ok、schema_version、meta、data 对象）已由 transport.js 的 envelope() 校验，这里只校验 data。
+  function query(result, mode, expected) {
+    const d = result.data;
+    if (mode === 'list' && (!Array.isArray(d.tasks) || !d.tasks.every(task) || !C.object(d.page) || !Number.isInteger(d.page.total) || !C.object(d.summary))) throw C.failure('读到的现场任务列表不完整，请刷新重试。');
+    if (mode === 'list' && d.tasks.some(row => !d.plan || row.plan_ref !== d.plan.plan_ref)) throw C.failure('现场任务与所选计划不一致。');
+    if (mode === 'detail' && (!task(d.task) || d.task.task_ref !== expected)) throw C.failure('现场任务详情不匹配，请刷新后重选。');
+    if (mode === 'preview' && (!/^[A-Za-z0-9_-]{32}$/.test(d.preview_ref) || typeof d.actual_source_ref !== 'string' || !/^[a-f0-9]{32}$/.test(d.actual_source_ref) || !Array.isArray(d.rows) || typeof d.can_confirm !== 'boolean' || d.commit_policy !== 'atomic' || !C.object(d.write_context) || !C.object(d.summary) || !['total', 'changed', 'unchanged', 'blank', 'rejected'].every(key => Number.isInteger(d.summary[key])))) throw C.failure('读到的文件预检结果不完整，请刷新重试。');
+    return result;
+  }
+  // context 是已校验过的任务、记录或预检上下文；关闭的上下文没有 write_token、capabilities 为空，原因都在 blocked_reasons 里
+  // （core/models/workbench_execution_input.py closed_write_context）。
+  function blocked(context, action) {
+    if (context.write_token && context.capabilities[action] === true) return '';
+    const reasons = context.blocked_reasons.map(item => item.message);
+    return reasons.length ? reasons.join('；') : '本页数据已过期，请刷新后重试。';
+  }
+  function draft(record) {
+    return Object.fromEntries(fields.map(key => [key, record && record[key] != null ? String(record[key]) : '']).concat([['reason', ''], ['declared_operator', '']]));
+  }
+  function input(value, record, action) {
+    const result = {},
+      errors = [];
+    const bad = (path, message) => errors.push({
+      path,
+      message
+    });
+    fields.forEach(key => {
+      let v = value[key];
+      if (['completed_quantity', 'effective_processing_hours'].includes(key)) {
+        if (v !== '' && (!Number.isFinite(Number(v)) || Number(v) < 0 || key === 'completed_quantity' && !Number.isSafeInteger(Number(v)))) bad(key, key === 'completed_quantity' ? '数量必须为非负整数。' : '工时必须是 0 或正数。');
+        v = v === '' ? null : Number(v);
+      } else if (key === 'actual_start' || key === 'actual_end') {
+        v = v ? v.length === 16 ? v + ':00' : v : null;
+        if (v !== null && !validTime(v)) bad(key, '请按 2026-09-13 08:30 这样填写；未知时请清除。');
+      } else if (key.endsWith('_ref')) v = v === '' ? null : v;
+      if (!record || v !== record[key]) result[key] = v;
+    });
+    if (record) {
+      if (!value.reason.trim()) bad('reason', '请填写补齐或更正原因。');
+      if (!Object.keys(result).length) throw C.failure('内容没有变化。');
+      result.original_revision_ref = record.revision_ref;
+      result.reason = value.reason.trim();
+    } else result.source = 'manual';
+    if (action === 'supplement') fields.filter(key => Object.prototype.hasOwnProperty.call(result, key) && record[key] !== null && record[key] !== '' && result[key] !== record[key]).forEach(key => bad(key, '补齐不能改动已有记录，请改用「更正」。'));
+    const start = value.actual_start ? Date.parse(value.actual_start + 'Z') : NaN,
+      end = value.actual_end ? Date.parse(value.actual_end + 'Z') : NaN;
+    if (Number.isFinite(start) && Number.isFinite(end) && start > end) bad('actual_end', '本次实际完工不能早于实际开工。');
+    if (Number.isFinite(start) && Number.isFinite(end) && end >= start && value.effective_processing_hours !== '' && Number(value.effective_processing_hours) > (end - start) / 3600000) bad('effective_processing_hours', '有效工时不能超过本次实际起止的时长。');
+    if (errors.length) throw C.failure('请核对标红的项。', errors);
+    result.declared_operator = value.declared_operator.trim();
+    return result;
+  }
+  const display = value => value === null || value === undefined || value === '' ? '未知' : String(value);
+  // Report times are second-precision (see the time pattern and step="1" inputs): seconds stay visible whenever they are
+  // not :00, so nothing is lost while whole-minute times read as minutes. WorkbenchFormat has no auto option yet.
+  const hasSeconds = value => typeof value === 'string' && /:\d\d:(?!00(?:\.0+)?$)\d\d(?:\.\d+)?$/.test(value);
+  const date = value => window.WorkbenchFormat.dateTime(value, {
+    seconds: hasSeconds(value),
+    fractions: true
+  });
+  window.FieldContract = {
+    states,
+    reportActions,
+    fields,
+    ref,
+    task,
+    report,
+    query,
+    blocked,
+    draft,
+    input,
+    display,
+    date,
+    quantity,
+    hours,
+    pieceLabel,
+    planQuantity,
+    quantityReasons,
+    validTime
+  };
+})();
+
+;
+(function () {
+  'use strict';
+
   // Factory-local wall-clock coordinates, deliberately independent of browser DST.
   // Date truncates below milliseconds; add the factory-local fractional seconds separately.
   const instant = value => value ? Date.parse(value.slice(0, 19) + 'Z') + Number(value.slice(19) || 0) * 1000 : NaN;
@@ -25211,12 +25343,7 @@ function SMExport({
   });
   const quantityLabel = (value, reason) => value === null ? quantityReasons[reason] || '未知' : typeof value === 'string' ? value : number(value);
   const pieceLabel = task => task.piece_id === null ? '共同工序' : '分件 ' + task.piece_id;
-  // Same three sentences as FieldContract.quantityReasons; this module loads before FieldContract, so the text is repeated here.
-  const quantityReasons = {
-    plan_target_not_recorded: '原计划未记录应做数量',
-    plan_target_unavailable: '原计划应做数量读不到',
-    plan_target_invalid: '原计划应做数量无效'
-  };
+  const quantityReasons = window.FieldContract.quantityReasons;
   const kindLabels = {
     machine: '设备',
     operator: '人员',
@@ -25747,9 +25874,7 @@ function SMExport({
       });
       resize.observe(ref.current);
       const media = typeof window.matchMedia === 'function' ? window.matchMedia('print') : null;
-      if (media) {
-        if (typeof media.addEventListener === 'function') media.addEventListener('change', schedule);else media.addListener(schedule);
-      }
+      if (media) media.addEventListener('change', schedule);
       window.addEventListener('beforeprint', draw);
       window.addEventListener('afterprint', schedule);
       window.addEventListener('resize', schedule);
@@ -25762,9 +25887,7 @@ function SMExport({
         window.removeEventListener('beforeprint', draw);
         window.removeEventListener('afterprint', schedule);
         window.removeEventListener('resize', schedule);
-        if (media) {
-          if (typeof media.removeEventListener === 'function') media.removeEventListener('change', schedule);else media.removeListener(schedule);
-        }
+        if (media) media.removeEventListener('change', schedule);
       };
     }, []);
     React.useLayoutEffect(() => {
@@ -28308,138 +28431,6 @@ function SMExport({
     });
   }
   window.PlanWorkspace = PlanWorkspace;
-})();
-
-;
-(function () {
-  'use strict';
-
-  const C = window.APSResourceContract;
-  // 报工状态与报工类型都取全站词表：现场记录、现场实际甘特、报表中心、工时校准与排产候选、值班台用同一套叫法，不再各自造词。
-  const states = window.WorkbenchTerms.execution_states;
-  const reportActions = window.WorkbenchTerms.report_actions;
-  const fields = ['completed_quantity', 'actual_start', 'actual_end', 'effective_processing_hours', 'actual_machine_ref', 'actual_operator_ref', 'remark'];
-  const ref = value => typeof value === 'string' && /^[0-9a-f]{48}$/.test(value);
-  const nullable = value => value === null || Number.isFinite(value) && value >= 0;
-  const time = value => value === null || typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(value);
-  const validTime = value => typeof value === 'string' && time(value) && Number.isFinite(Date.parse(value + 'Z')) && new Date(value + 'Z').toISOString().slice(0, 19) === value;
-  // 计划应做数量缺失的三种说法：现场记录、现场实际甘特、计划甘特提示共用，不再各写一份。
-  const quantityReasons = {
-    plan_target_not_recorded: '原计划未记录应做数量',
-    plan_target_unavailable: '原计划应做数量读不到',
-    plan_target_invalid: '原计划应做数量无效'
-  };
-  const quantity = (value, options = {
-    digits: 0
-  }) => typeof value === 'string' ? window.WorkbenchFormat.integerText(value) : window.WorkbenchFormat.number(value, options);
-  // 有效工时按录入精度最多显示三位小数；单位由表头或调用处补。
-  const hours = value => value === null || value === undefined || value === '' ? '未知' : window.WorkbenchFormat.number(value, {
-    digits: 3,
-    trim: true
-  });
-  const pieceLabel = value => value.piece_id === null ? '共同工序' : '分件 ' + value.piece_id;
-  function planQuantity(value) {
-    const valid = C.nonnegativeInt64;
-    if (!(value.piece_id === null || typeof value.piece_id === 'string' && value.piece_id.trim() && !value.piece_id.includes('\0')) || ![value.quantity, value.batch_quantity].every(n => n === null || valid(n))) return false;
-    if (value.quantity_basis === 'unknown') return value.quantity === null && value.batch_quantity === null && ['plan_target_not_recorded', 'plan_target_unavailable'].includes(value.quantity_reason);
-    return ['run_admission', 'trial_creation'].includes(value.quantity_basis) && (value.quantity_reason === null ? valid(value.quantity) && valid(value.batch_quantity) : value.quantity_reason === 'plan_target_invalid');
-  }
-  function planned(value) {
-    const row = {
-      ...value,
-      start: value.planned_start,
-      end: value.planned_end
-    };
-    const planTime = at => typeof at === 'string' && /^(?!0000)\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.(?!000000$)\d{6})?(?![\s\S])/.test(at) && Number.isFinite(Date.parse(at.slice(0, 19) + 'Z')) && new Date(at.slice(0, 19) + 'Z').toISOString().slice(0, 19) === at.slice(0, 19);
-    return planTime(row.start) && planTime(row.end) && window.PointContract.arrangement(row);
-  }
-  function report(value) {
-    return C.object(value) && ref(value.report_ref) && ref(value.revision_ref) && ref(value.operation_ref) && ref(value.recorded_against_task_ref) && ref(value.recorded_against_plan_ref) && typeof value.report_no === 'string' && nullable(value.completed_quantity) && nullable(value.effective_processing_hours) && time(value.actual_start) && time(value.actual_end) && Array.isArray(value.correction_history) && C.object(value.write_context);
-  }
-  function task(value) {
-    const p = value && value.execution;
-    return C.object(value) && ref(value.task_ref) && ref(value.plan_ref) && planned(value) && planQuantity(value) && typeof value.batch_id === 'string' && typeof value.operation_label === 'string' && C.object(p) && ref(p.operation_ref) && p.operation_ref === value.operation_ref && (p.comparison_task_ref === null || p.comparison_task_ref === value.task_ref) && Object.hasOwnProperty.call(states, p.execution_state) && ['complete', 'incomplete', 'invalid'].includes(p.data_quality) && nullable(p.target_quantity) && nullable(p.known_completed_quantity) && nullable(p.remaining_quantity) && typeof p.records_complete === 'boolean' && typeof p.quantity_complete === 'boolean' && Number.isInteger(p.unknown_record_count) && Array.isArray(p.data_gaps) && Array.isArray(p.reports) && p.reports.every(row => report(row) && row.operation_ref === p.operation_ref) && Array.isArray(p.voided_reports) && C.object(p.write_context);
-  }
-  // 信封（ok、schema_version、meta、data 对象）已由 transport.js 的 envelope() 校验，这里只校验 data。
-  function query(result, mode, expected) {
-    const d = result.data;
-    if (mode === 'list' && (!Array.isArray(d.tasks) || !d.tasks.every(task) || !C.object(d.page) || !Number.isInteger(d.page.total) || !C.object(d.summary))) throw C.failure('读到的现场任务列表不完整，请刷新重试。');
-    if (mode === 'list' && d.tasks.some(row => !d.plan || row.plan_ref !== d.plan.plan_ref)) throw C.failure('现场任务与所选计划不一致。');
-    if (mode === 'detail' && (!task(d.task) || d.task.task_ref !== expected)) throw C.failure('现场任务详情不匹配，请刷新后重选。');
-    if (mode === 'preview' && (!/^[A-Za-z0-9_-]{32}$/.test(d.preview_ref) || typeof d.actual_source_ref !== 'string' || !/^[a-f0-9]{32}$/.test(d.actual_source_ref) || !Array.isArray(d.rows) || typeof d.can_confirm !== 'boolean' || d.commit_policy !== 'atomic' || !C.object(d.write_context) || !C.object(d.summary) || !['total', 'changed', 'unchanged', 'blank', 'rejected'].every(key => Number.isInteger(d.summary[key])))) throw C.failure('读到的文件预检结果不完整，请刷新重试。');
-    return result;
-  }
-  // context 是已校验过的任务、记录或预检上下文；关闭的上下文没有 write_token、capabilities 为空，原因都在 blocked_reasons 里
-  // （core/models/workbench_execution_input.py closed_write_context）。
-  function blocked(context, action) {
-    if (context.write_token && context.capabilities[action] === true) return '';
-    const reasons = context.blocked_reasons.map(item => item.message);
-    return reasons.length ? reasons.join('；') : '本页数据已过期，请刷新后重试。';
-  }
-  function draft(record) {
-    return Object.fromEntries(fields.map(key => [key, record && record[key] != null ? String(record[key]) : '']).concat([['reason', ''], ['declared_operator', '']]));
-  }
-  function input(value, record, action) {
-    const result = {},
-      errors = [];
-    const bad = (path, message) => errors.push({
-      path,
-      message
-    });
-    fields.forEach(key => {
-      let v = value[key];
-      if (['completed_quantity', 'effective_processing_hours'].includes(key)) {
-        if (v !== '' && (!Number.isFinite(Number(v)) || Number(v) < 0 || key === 'completed_quantity' && !Number.isSafeInteger(Number(v)))) bad(key, key === 'completed_quantity' ? '数量必须为非负整数。' : '工时必须是 0 或正数。');
-        v = v === '' ? null : Number(v);
-      } else if (key === 'actual_start' || key === 'actual_end') {
-        v = v ? v.length === 16 ? v + ':00' : v : null;
-        if (v !== null && !validTime(v)) bad(key, '请按 2026-09-13 08:30 这样填写；未知时请清除。');
-      } else if (key.endsWith('_ref')) v = v === '' ? null : v;
-      if (!record || v !== record[key]) result[key] = v;
-    });
-    if (record) {
-      if (!value.reason.trim()) bad('reason', '请填写补齐或更正原因。');
-      if (!Object.keys(result).length) throw C.failure('内容没有变化。');
-      result.original_revision_ref = record.revision_ref;
-      result.reason = value.reason.trim();
-    } else result.source = 'manual';
-    if (action === 'supplement') fields.filter(key => Object.prototype.hasOwnProperty.call(result, key) && record[key] !== null && record[key] !== '' && result[key] !== record[key]).forEach(key => bad(key, '补齐不能改动已有记录，请改用「更正」。'));
-    const start = value.actual_start ? Date.parse(value.actual_start + 'Z') : NaN,
-      end = value.actual_end ? Date.parse(value.actual_end + 'Z') : NaN;
-    if (Number.isFinite(start) && Number.isFinite(end) && start > end) bad('actual_end', '本次实际完工不能早于实际开工。');
-    if (Number.isFinite(start) && Number.isFinite(end) && end >= start && value.effective_processing_hours !== '' && Number(value.effective_processing_hours) > (end - start) / 3600000) bad('effective_processing_hours', '有效工时不能超过本次实际起止的时长。');
-    if (errors.length) throw C.failure('请核对标红的项。', errors);
-    result.declared_operator = value.declared_operator.trim();
-    return result;
-  }
-  const display = value => value === null || value === undefined || value === '' ? '未知' : String(value);
-  // Report times are second-precision (see the time pattern and step="1" inputs): seconds stay visible whenever they are
-  // not :00, so nothing is lost while whole-minute times read as minutes. WorkbenchFormat has no auto option yet.
-  const hasSeconds = value => typeof value === 'string' && /:\d\d:(?!00(?:\.0+)?$)\d\d(?:\.\d+)?$/.test(value);
-  const date = value => window.WorkbenchFormat.dateTime(value, {
-    seconds: hasSeconds(value),
-    fractions: true
-  });
-  window.FieldContract = {
-    states,
-    reportActions,
-    fields,
-    ref,
-    task,
-    report,
-    query,
-    blocked,
-    draft,
-    input,
-    display,
-    date,
-    quantity,
-    hours,
-    pieceLabel,
-    planQuantity,
-    quantityReasons,
-    validTime
-  };
 })();
 
 ;
@@ -35955,9 +35946,8 @@ function SMExport({
     if (q.snapshot_ref === undefined) delete q.snapshot_ref;
     return q;
   }
-  function validateCatalog(v, runRef, query) {
-    const d = v.data,
-      q = catalogScope(query);
+  function _validateCatalog(v, runRef, q) {
+    const d = v.data;
     check(ref(runRef) && shape(d, ['run_ref', 'run_state', 'candidates', 'page', 'candidate_count', 'catalog_complete', 'capabilities', 'blocked_reasons']) && d.run_ref === runRef && ['queued', 'running', 'complete', 'partial', 'failed', 'interrupted'].includes(d.run_state) && count(d.candidate_count) && d.candidate_count <= 256 && d.catalog_complete === !['queued', 'running'].includes(d.run_state) && caps(d.capabilities) && blocked(d.blocked_reasons) && shape(d.page, ['number', 'size', 'total', 'has_more']) && d.page.number === q.page && d.page.size === q.size && count(d.page.total) && d.page.total <= d.candidate_count && (q.status !== 'all' || d.page.total === d.candidate_count) && d.page.has_more === q.page * q.size < d.page.total && token(v.meta.snapshot_ref) && (!q.snapshot_ref || v.meta.snapshot_ref === q.snapshot_ref) && Array.isArray(d.candidates) && d.candidates.length === Math.min(q.size, Math.max(0, d.page.total - (q.page - 1) * q.size)));
     d.candidates.forEach(c => {
       summary(c, runRef);
@@ -35966,6 +35956,7 @@ function SMExport({
     check(new Set(d.candidates.map(c => c.candidate_ref)).size === d.candidates.length);
     return d;
   }
+  const validateCatalog = (v, runRef, query) => _validateCatalog(v, runRef, catalogScope(query));
   function workspaceScope(candidateRef, query) {
     check(ref(candidateRef), '请选择有效的候选方案。');
     check(shape(query, [], ['range_start', 'range_end', 'batch_ref', 'sort', 'order', 'snapshot_ref']));
@@ -36016,9 +36007,8 @@ function SMExport({
     const s = v.summary;
     check(new Set(v.items.map(row => row.batch_ref)).size === v.items.length && object(s) && ['complete', 'partial', 'unavailable', 'not_applicable'].includes(s.state) && ['batch_count', 'due_eligible_count', 'excluded_due_count', 'invalid_due_count', 'due_evaluation_count', 'known_due_count', 'unknown_due_count', 'unknown_count', 'known_overdue_count'].every(k => count(s[k])) && ['overdue_count', 'total_tardiness_hours', 'known_tardiness_hours'].every(k => nullableNumber(s[k])) && s.batch_count === v.batch_count && Array.isArray(s.known_batch_refs) && s.known_batch_refs.every(ref));
   }
-  function validateWorkspace(v, candidateRef, query) {
-    const d = v.data,
-      q = workspaceScope(candidateRef, query);
+  function _validateWorkspace(v, candidateRef, q) {
+    const d = v.data;
     check(shape(d, ['candidate', 'generation', 'tasks', 'task_count', 'tasks_complete', 'candidate_task_count', 'candidate_span', 'task_span', 'unplanned_operations', 'unplanned_operation_count', 'time_scope', 'batch_ref', 'capabilities', 'blocked_reasons', 'data_gaps', 'delivery_risks', 'gantt_graph']));
     summary(d.candidate);
     check(d.candidate.candidate_ref === candidateRef);
@@ -36069,6 +36059,7 @@ function SMExport({
     }));
     return d;
   }
+  const validateWorkspace = (v, candidateRef, query) => _validateWorkspace(v, candidateRef, workspaceScope(candidateRef, query));
   // 文件名非空与后缀由传输层按 Content-Type 断言；这里只核对本领域业务头与当前读取范围。
   function download(value, result) {
     const d = result.data;
@@ -36089,13 +36080,13 @@ function SMExport({
     check(ref(runRef));
     const q = catalogScope(query),
       value = await read('/runs/' + runRef + '/candidates', q, signal);
-    validateCatalog(value, runRef, q);
+    _validateCatalog(value, runRef, q);
     return value;
   }
   async function workspace(candidateRef, query, signal) {
     const q = workspaceScope(candidateRef, query),
       value = await read('/candidates/' + candidateRef + '/workspace', q, signal);
-    validateWorkspace(value, candidateRef, q);
+    _validateWorkspace(value, candidateRef, q);
     return value;
   }
   // 传输层已校验附件、文件名与后缀、格式、魔数与非空；这里只取文件与本领域的四个响应头，与当前读取范围的核对在 download() 里做。
@@ -37395,9 +37386,8 @@ function SMExport({
     const grouped = data.completion_groups.flatMap(group => group.candidate_refs);
     check(grouped.length === data.candidates.length && new Set(grouped).size === grouped.length && data.candidates.every(row => grouped.includes(row.candidate_ref)), '批次安排分类与本次排产方案不一致，请点“刷新方案对比”。');
   }
-  function decisionCore(payload, runRef, query) {
-    const data = payload.data,
-      q = scope(runRef, query);
+  function _decisionCore(payload, runRef, q) {
+    const data = payload.data;
     check(data.run && data.run.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.comparison_mode === q.comparison_mode && Array.isArray(data.candidates) && Array.isArray(data.metric_definitions), '比较资料与当前排产记录不一致，请点“刷新方案对比”。');
     check(data.metric_definitions.every(metric => object(metric) && typeof metric.key === 'string' && typeof metric.metric_version === 'string') && new Set(data.metric_definitions.map(metric => metric.key)).size === data.metric_definitions.length && coreMetricKeys.every(key => data.metric_definitions.some(metric => metric.key === key)), '方案核心指标目录不完整，请点“刷新方案对比”。');
     const candidates = new Set();
@@ -37425,21 +37415,23 @@ function SMExport({
     }
     return data;
   }
-  function validateDecision(payload, runRef, query) {
-    const data = decisionCore(payload, runRef, query);
+  function _validateDecision(payload, runRef, q) {
+    const data = _decisionCore(payload, runRef, q);
     const extraMetrics = data.metric_definitions.filter(metric => !coreMetricKeys.includes(metric.key));
     data.candidates.forEach(row => extraMetrics.forEach(metric => check(window.EffortProjectionContract.metric(row.metrics[metric.key]) && row.metrics[metric.key].metric_version === metric.metric_version && window.EffortProjectionContract.delta(row.deltas[metric.key]), '比较指标资料不完整，请点“刷新方案对比”。')));
     completionGroups(data);
     return data;
   }
-  function validateDecisionSummary(payload, runRef, query) {
-    const data = decisionCore(payload, runRef, query),
+  const validateDecision = (payload, runRef, query) => _validateDecision(payload, runRef, scope(runRef, query));
+  function _validateDecisionSummary(payload, runRef, q) {
+    const data = _decisionCore(payload, runRef, q),
       exactCore = value => object(value) && Object.keys(value).length === coreMetricKeys.length && coreMetricKeys.every(key => Object.prototype.hasOwnProperty.call(value, key));
     const baseline = data.baseline,
       missingCandidateBaseline = data.scope.comparison_mode === 'candidates' && data.scope.reference_state === 'selection_required';
     check(data.completion_groups === undefined && data.candidates.every(row => exactCore(row.metrics) && exactCore(row.deltas) && Object.keys(row.coverage).length === 3) && baseline && object(baseline.coverage) && baseline.state === data.scope.reference_state && (missingCandidateBaseline ? object(baseline.metrics) && Object.keys(baseline.metrics).length === 0 && baseline.candidate_ref === null && Object.keys(baseline.coverage).length === 1 && baseline.coverage.schedulable && baseline.coverage.schedulable.state === 'unavailable' : Object.keys(baseline.coverage).length === 2 && ['schedulable', 'delivery'].every(key => object(baseline.coverage[key])) && (data.scope.comparison_mode !== 'candidates' || baseline.candidate_ref === data.scope.reference.candidate_ref) && exactCore(baseline.metrics) && coreMetricKeys.every(key => window.EffortProjectionContract.metric(baseline.metrics[key]) && baseline.metrics[key].metric_version === data.metric_definitions.find(metric => metric.key === key).metric_version)) && data.difference_summary !== undefined, '方案首屏指标或基准资料不完整，请点“刷新方案对比”。');
     return data;
   }
+  const validateDecisionSummary = (payload, runRef, query) => _validateDecisionSummary(payload, runRef, scope(runRef, query));
   const completionFilters = ['all', 'complete', 'unfinished', 'ordinary', 'deferred', 'unknown'];
   function completionScope(runRef, query) {
     const value = {
@@ -37458,9 +37450,8 @@ function SMExport({
     check(Number.isInteger(value.page) && value.page > 0 && [20, 50].includes(value.size), '批次清单每页支持 20 或 50 条，请重新选择页码。');
     return value;
   }
-  function validateCompletionBatches(payload, runRef, query) {
+  function _validateCompletionBatches(payload, runRef, q) {
     const data = payload.data,
-      q = completionScope(runRef, query),
       E = window.EffortProjectionContract;
     check(A.shape(data, ['run_ref', 'scope', 'baseline', 'candidate', 'source', 'filters', 'items', 'page', 'summary', 'metric_version']) && data.run_ref === runRef && object(data.scope) && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref && data.scope.comparison_mode === q.comparison_mode && time(data.scope.range_start) && time(data.scope.range_end) && timeKey(data.scope.range_start) < timeKey(data.scope.range_end) && Array.isArray(data.scope.batch_refs) && data.scope.batch_refs.every(ref) && object(data.scope.reference) && object(data.baseline) && data.baseline.kind === data.scope.reference.kind && data.baseline.state === data.scope.reference_state && A.shape(data.candidate, ['candidate_ref', 'label', 'persisted_status']) && data.candidate.candidate_ref === q.selected_candidate_ref && (data.candidate.label === null || typeof data.candidate.label === 'string') && data.candidate.persisted_status === 'completed' && data.metric_version === 'decision-preparation-v4', '批次安排资料与当前方案或比较范围不一致，请刷新批次清单。');
     if (q.comparison_mode === 'candidates') check(data.scope.reference.kind === 'candidate' && data.baseline.candidate_ref === data.scope.reference.candidate_ref && (data.scope.reference_state === 'available' ? ref(data.scope.reference.candidate_ref) : data.scope.reference_state === 'selection_required' && data.scope.reference.candidate_ref === null) && (!q.reference_candidate_ref || data.scope.reference.candidate_ref === q.reference_candidate_ref), '批次安排的比较基准已变化，请刷新批次清单。');else check(data.scope.reference.kind === 'admission_official' && (data.scope.reference_state === 'available' ? ref(data.scope.reference.baseline_ref) : data.scope.reference_state === 'absent' && data.scope.reference.baseline_ref === null), '批次安排使用的正式计划资料已变化，请刷新批次清单。');
@@ -37500,6 +37491,7 @@ function SMExport({
     check(new Set(data.items.map(row => row.batch_ref)).size === data.items.length, '批次清单出现重复记录，请刷新批次清单。');
     return data;
   }
+  const validateCompletionBatches = (payload, runRef, query) => _validateCompletionBatches(payload, runRef, completionScope(runRef, query));
   function processScope(runRef, query) {
     const value = {
       ...scope(runRef, query),
@@ -37520,9 +37512,8 @@ function SMExport({
     return value;
   }
   // 优化过程只有共同优化一种存档（unified-optimization-process-v1）。
-  function processDetails(payload, runRef, query) {
-    const data = payload.data,
-      q = processScope(runRef, query);
+  function _processDetails(payload, runRef, q) {
+    const data = payload.data;
     const nullableText = value => value === null || typeof value === 'string';
     const amount = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
     const optionalAmount = value => value === null || amount(value),
@@ -37569,6 +37560,7 @@ function SMExport({
     check(A.shape(data.filters, ['section', 'process_candidate_ref', 'objective', 'record_kind', 'sort', 'order']) && data.filters.section === 'process' && data.filters.process_candidate_ref === anchor && data.filters.objective === selectedObjective && ['record_kind', 'sort', 'order'].every(key => data.filters[key] === q[key]) && A.shape(data.page, ['number', 'size', 'total', 'has_more']) && data.page.number === q.page && data.page.size === q.size && count(data.page.total) && data.page.total === (q.record_kind === 'progress' ? data.progress.points.length : data.actions.length) && data.page.has_more === q.page * q.size < data.page.total && Array.isArray(data.items) && data.items.length === Math.min(q.size, Math.max(0, data.page.total - (q.page - 1) * q.size)) && data.items.every(q.record_kind === 'progress' ? point : action), '过程方向、来源或分页位置已变化，请点“刷新优化过程”。');
     return data;
   }
+  const processDetails = (payload, runRef, query) => _processDetails(payload, runRef, processScope(runRef, query));
   function detailScope(runRef, query, section) {
     const value = {
       ...scope(runRef, query),
@@ -37589,9 +37581,8 @@ function SMExport({
     if (section === 'batches') check(['all', 'attention', 'overdue', 'deferred', 'unplanned', 'on_time'].includes(value.delivery_filter), '请选择需要查看的交付问题。');
     return value;
   }
-  function details(payload, runRef, query, section) {
-    const data = payload.data,
-      q = detailScope(runRef, query, section);
+  function _details(payload, runRef, q, section) {
+    const data = payload.data;
     check(data.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref && data.scope.comparison_mode === q.comparison_mode && data.candidate && data.candidate.candidate_ref === q.selected_candidate_ref && Array.isArray(data.items) && data.page && data.page.number === q.page && data.page.size === q.size && data.filters && data.filters.section === section, '明细的方案、比较范围或页码已变化，请点“刷新影响明细”。');
     if (q.comparison_mode === 'candidates' && q.reference_candidate_ref) check(data.scope.reference && data.scope.reference.candidate_ref === q.reference_candidate_ref, '明细的比较基准已变化，请点“刷新影响明细”。');
     ['change_kind', 'sort', 'order'].forEach(key => check(data.filters[key] === q[key], '明细的筛选或排序已变化，请点“刷新影响明细”。'));
@@ -37609,6 +37600,7 @@ function SMExport({
     bindScope(payload, data, q);
     return data;
   }
+  const details = (payload, runRef, query, section) => _details(payload, runRef, detailScope(runRef, query, section), section);
   const preparationSorts = ['sequence', 'batch_id', 'after_setup_hours', 'after_required_hours', 'setup_delta_hours'];
   const changeoverSorts = ['next_start', 'machine_label', 'next_batch_id'];
   const preparationMetrics = ['pending_setup_hours', 'scheduled_setup_hours', 'unplanned_setup_hours', 'deferred_setup_hours', 'pending_processing_hours', 'scheduled_processing_hours', 'unplanned_processing_hours', 'deferred_processing_hours'];
@@ -37638,9 +37630,8 @@ function SMExport({
     check(section === 'preparation' ? ['all', 'remaining'].includes(value.work_scope) && ['all', ...Object.keys(window.WorkbenchTerms.preparation_allocations)].includes(value.allocation_state) : ['all', 'selected', 'reference'].includes(value.event_side), '准备与切换筛选无效，请重新选择。');
     return value;
   }
-  function preparationDetails(payload, runRef, query, section = 'preparation') {
+  function _preparationDetails(payload, runRef, q, section = 'preparation') {
     const data = payload.data,
-      q = preparationScope(runRef, query, section),
       E = window.EffortProjectionContract;
     check(data.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref && data.scope.comparison_mode === q.comparison_mode && data.candidate && data.candidate.candidate_ref === q.selected_candidate_ref && data.metric_version === 'decision-preparation-v4' && data.filters && data.filters.section === section && Array.isArray(data.items) && data.baseline && ['available', 'absent', 'selection_required'].includes(data.baseline.state) && data.page && data.page.number === q.page && data.page.size === q.size && Number.isSafeInteger(data.page.total) && data.page.total >= 0, '准备与切换明细的方案、范围或页码已变化，请点“刷新准备与切换明细”。');
     if (q.comparison_mode === 'candidates' && q.reference_candidate_ref) check(data.scope.reference && data.scope.reference.candidate_ref === q.reference_candidate_ref, '准备与切换明细的比较基准已变化，请点“刷新准备与切换明细”。');
@@ -37664,6 +37655,7 @@ function SMExport({
     } else check(data.items.every(row => typeof row.event_ref === 'string' && ['selected', 'reference'].includes(row.event_side) && ref(row.machine_ref) && ref(row.previous_operation_ref) && ref(row.next_operation_ref) && ref(row.previous_row_ref) && ref(row.next_row_ref) && row.previous && row.next && typeof row.predecessor_outside_window === 'boolean' && [true, false, null].includes(row.overlap) && row.drill && drill(row.drill.previous, row.event_side, row.previous_operation_ref) && drill(row.drill.next, row.event_side, row.next_operation_ref)), '工种切换事件或甘特定位资料不完整，请点“刷新准备与切换明细”。');
     return data;
   }
+  const preparationDetails = (payload, runRef, query, section = 'preparation') => _preparationDetails(payload, runRef, preparationScope(runRef, query, section), section);
   function validateReferenceWorkspace(payload, runRef, query) {
     const data = payload.data;
     check(data.candidate && data.candidate.run_ref === runRef && data.candidate.candidate_ref === query.selected_candidate_ref && data.reference && data.reference.kind === 'admission_official' && Array.isArray(data.tasks) && Array.isArray(data.unplanned_operations), '正式计划资料与本次比较不一致，请从方案对比重新打开。');
@@ -37736,21 +37728,9 @@ function SMExport({
     }
     return next;
   }
-  function resourceWorkspaceScope(runRef, query, savedQuery) {
-    const filters = resourceFilters(savedQuery),
-      resourceSnapshot = filters.snapshot_ref;
-    delete filters.snapshot_ref;
-    return {
-      ...scope(runRef, query),
-      ...filters,
-      ...(resourceSnapshot !== undefined ? {
-        resource_snapshot_ref: resourceSnapshot
-      } : {})
-    };
-  }
   // 资源首屏的 data 在方案对比首屏之外多带 resource_result（内嵌的资源读取结果）与 resource_query（实际采用的资源筛选）。
-  function validateResourceWorkspace(payload, runRef, query, savedQuery) {
-    const data = validateDecisionSummary(payload, runRef, query),
+  function _validateResourceWorkspace(payload, runRef, q, filters) {
+    const data = _validateDecisionSummary(payload, runRef, q),
       {
         resource_result: resources,
         resource_query: effective
@@ -37759,7 +37739,7 @@ function SMExport({
     check(object(cohort) && ['machine', 'operator'].every(kind => Array.isArray(cohort[kind]) && cohort[kind].every(ref) && new Set(cohort[kind]).size === cohort[kind].length), '参与比较的设备或人员资料不完整，请刷新方案对比。');
     const filterKeys = ['resource_kind', 'grain', 'pressure_threshold', 'page', 'size', 'pressure_filter', 'sort', 'order', 'heatmap_page', 'heatmap_size'];
     check(A.shape(effective, filterKeys, ['resource_ref', 'display_start', 'display_end', 'snapshot_ref']), '恢复的资源筛选资料不完整，请刷新方案对比。');
-    const expected = resourceFilters(savedResourceView(resourceFilters(savedQuery), cohort, data.scope)),
+    const expected = savedResourceView(filters, cohort, data.scope),
       actual = resourceFilters(effective);
     check(JSON.stringify(actual) === JSON.stringify(expected) && Object.keys(effective).length === Object.keys(actual).length, '恢复的资源筛选与当前范围不一致，请刷新方案对比。');
     const candidate = data.candidates.find(row => row.candidate_ref === data.scope.selected_candidate_ref);
@@ -37781,24 +37761,23 @@ function SMExport({
           reference_candidate_ref: data.scope.reference.candidate_ref
         } : {})
       };
-      resourceDetails(resources, runRef, {
+      _resourceDetails(resources, runRef, {
         ...comparison,
-        ...actual,
-        expected_resource_refs: cohort
-      });
+        ...actual
+      }, 'resources', cohort);
     }
     return data;
   }
-  function resourceDetails(payload, runRef, query, section = 'resources') {
-    const data = payload.data,
-      q = resourceScope(runRef, query, section);
+  const validateResourceWorkspace = (payload, runRef, query, savedQuery) => _validateResourceWorkspace(payload, runRef, scope(runRef, query), resourceFilters(savedQuery));
+  function _resourceDetails(payload, runRef, q, section = 'resources', expectedRefs) {
+    const data = payload.data;
     check(data.run_ref === runRef && data.scope && data.scope.run_ref === runRef && data.scope.selected_candidate_ref === q.selected_candidate_ref && data.scope.comparison_mode === q.comparison_mode && data.candidate && data.candidate.candidate_ref === q.selected_candidate_ref && data.metric_version === 'decision-resource-v4' && data.filters && data.filters.section === section && data.filters.resource_kind === q.resource_kind && data.filters.resource_ref === (q.resource_ref ?? null) && Array.isArray(data.items) && data.page && data.page.number === q.page && data.page.size === q.size, '资源明细的方案、设备人员范围或页码已变化，请点“刷新资源影响”。');
     if (q.comparison_mode === 'candidates' && q.reference_candidate_ref) check(data.scope.reference && data.scope.reference.candidate_ref === q.reference_candidate_ref, '资源明细的比较基准已变化，请点“刷新资源影响”。');
     bindScope(payload, data, q);
     check(data.filters.grain === q.grain && data.filters.pressure_threshold === q.pressure_threshold && (section === 'resources' || ['bucket_start', 'bucket_end'].every(key => data.filters[key] === (q[key] ?? null))), '资源时间粒度、关注线或所选时段已变化，请点“刷新资源影响”。');
     const cohort = data.scope.resource_refs;
     check(cohort && ['machine', 'operator'].every(kind => Array.isArray(cohort[kind]) && cohort[kind].every(ref) && new Set(cohort[kind]).size === cohort[kind].length), '参与比较的设备或人员资料不完整，请点“刷新资源影响”。');
-    if (query.expected_resource_refs) check(['machine', 'operator'].every(kind => JSON.stringify(cohort[kind]) === JSON.stringify(query.expected_resource_refs[kind])), '参与比较的设备或人员已变化，请点“刷新资源影响”。');
+    if (expectedRefs) check(['machine', 'operator'].every(kind => JSON.stringify(cohort[kind]) === JSON.stringify(expectedRefs[kind])), '参与比较的设备或人员已变化，请点“刷新资源影响”。');
     const windowSource = value => window.ResourceProjectionContract.window(value) && value.source === 'archived_resource_calendar';
     function drillIdentity(value, side, resourceRef) {
       if (side === 'reference' && data.baseline.state !== 'available') return value === null;
@@ -37827,6 +37806,7 @@ function SMExport({
     }
     return data;
   }
+  const resourceDetails = (payload, runRef, query, section = 'resources') => _resourceDetails(payload, runRef, resourceScope(runRef, query, section), section, query && query.expected_resource_refs);
   const BASE = '/api/workbench/v1/scheduling/runs/';
   const read = (runRef, leaf, query, signal) => T.read(BASE + runRef + '/decision' + leaf, query, {
     signal,
@@ -37836,36 +37816,49 @@ function SMExport({
     async decision(runRef, query, signal) {
       const q = scope(runRef, query),
         value = await read(runRef, '', q, signal);
-      validateDecision(value, runRef, q);
+      _validateDecision(value, runRef, q);
       return value;
     },
     async decisionSummary(runRef, query, signal) {
       const q = scope(runRef, query),
         value = await read(runRef, '/summary', q, signal);
-      validateDecisionSummary(value, runRef, q);
+      _validateDecisionSummary(value, runRef, q);
       return value;
     },
     async resourceWorkspace(runRef, query, savedQuery, signal) {
-      const value = await read(runRef, '/resource-workspace', resourceWorkspaceScope(runRef, query, savedQuery), signal);
-      validateResourceWorkspace(value, runRef, query, savedQuery);
+      const q = scope(runRef, query),
+        filters = resourceFilters(savedQuery),
+        wire = {
+          ...filters
+        },
+        resourceSnapshot = wire.snapshot_ref;
+      delete wire.snapshot_ref;
+      const value = await read(runRef, '/resource-workspace', {
+        ...q,
+        ...wire,
+        ...(resourceSnapshot !== undefined ? {
+          resource_snapshot_ref: resourceSnapshot
+        } : {})
+      }, signal);
+      _validateResourceWorkspace(value, runRef, q, filters);
       return value;
     },
     async decisionDetails(runRef, query, section, signal) {
       const q = detailScope(runRef, query, section),
         value = await read(runRef, '/' + section, q, signal);
-      details(value, runRef, q, section);
+      _details(value, runRef, q, section);
       return value;
     },
     async completionBatches(runRef, query, signal) {
       const q = completionScope(runRef, query),
         value = await read(runRef, '/completion-batches', q, signal);
-      validateCompletionBatches(value, runRef, q);
+      _validateCompletionBatches(value, runRef, q);
       return value;
     },
     async process(runRef, query, signal) {
       const q = processScope(runRef, query),
         value = await read(runRef, '/process', q, signal);
-      processDetails(value, runRef, q);
+      _processDetails(value, runRef, q);
       return value;
     },
     async referenceWorkspace(runRef, query, signal) {
@@ -37886,31 +37879,25 @@ function SMExport({
     async resources(runRef, query, signal) {
       const q = resourceScope(runRef, query),
         value = await read(runRef, '/resources', q, signal);
-      resourceDetails(value, runRef, {
-        ...q,
-        expected_resource_refs: query.expected_resource_refs
-      });
+      _resourceDetails(value, runRef, q, 'resources', query.expected_resource_refs);
       return value;
     },
     async resourceDays(runRef, query, signal) {
       const q = resourceScope(runRef, query, 'resource-days'),
         value = await read(runRef, '/resource-days', q, signal);
-      resourceDetails(value, runRef, {
-        ...q,
-        expected_resource_refs: query.expected_resource_refs
-      }, 'resource-days');
+      _resourceDetails(value, runRef, q, 'resource-days', query.expected_resource_refs);
       return value;
     },
     async preparation(runRef, query, signal) {
       const q = preparationScope(runRef, query),
         value = await read(runRef, '/preparation', q, signal);
-      preparationDetails(value, runRef, q);
+      _preparationDetails(value, runRef, q);
       return value;
     },
     async changeovers(runRef, query, signal) {
       const q = preparationScope(runRef, query, 'changeovers'),
         value = await read(runRef, '/changeovers', q, signal);
-      preparationDetails(value, runRef, q, 'changeovers');
+      _preparationDetails(value, runRef, q, 'changeovers');
       return value;
     },
     async decisionExport(runRef, query, snapshotRef, format, signal, section) {
@@ -37944,7 +37931,6 @@ function SMExport({
     validateDecision,
     validateDecisionSummary,
     validateResourceWorkspace,
-    resourceWorkspaceScope,
     resourceFilters,
     savedResourceView,
     details,
@@ -55159,12 +55145,13 @@ function SMExport({
       ...value.table
     });
   }
-  const read = (value, signal) => window.APSWorkbenchTransport.read(base, encode(input(value)), {
+  const _read = (wanted, signal) => window.APSWorkbenchTransport.read(base, encode(wanted), {
     signal
   });
+  const read = (value, signal) => _read(input(value), signal);
   async function readView(value, signal) {
     const wanted = input(value);
-    return validate(await read(wanted, signal), wanted);
+    return _validate(await _read(wanted, signal), wanted);
   }
   function detail(value, query, signal) {
     if (!ref(value) || !query.snapshot_ref) throw failure('所选记录或数据版本缺失。');
@@ -55187,12 +55174,11 @@ function SMExport({
     const selected = samples.filter(sample => sample.selected);
     return selected.length === row.sample_count && samples.filter(sample => sample.eligible).length === row.eligible_sample_count && selected.every(sample => row.sample_refs.includes(sample.sample_ref) && row.sample_revisions.some(revision => object(revision) && revision.sample_ref === sample.sample_ref && revision.sample_revision === sample.sample_revision && revision.template_revision === sample.template_revision && JSON.stringify(revision.report_revision_refs) === JSON.stringify(sample.report_revision_refs)));
   }
-  function validate(result, query, detailRef) {
+  function _validate(result, wanted, detailRef) {
     // 信封已由 transport 校验；本页要按快照绑定明细和导出，所以快照必须非空。
     const data = result.data,
       meta = result.meta;
     if (!meta.snapshot_ref || !object(data.scope) || !object(data.summary) || !object(data.capabilities) || !Array.isArray(data.blocked_reasons) || !Array.isArray(data.source_constraints) || typeof data.lineage_available !== 'boolean' || !object(data.exports) || data.exports.url !== base + '/export' || data.exports.scope !== 'all_filtered_suggestions' || !Array.isArray(data.exports.formats)) throw failure('校准数据不完整，未使用样例或零值替代。');
-    const wanted = input(query);
     if (wanted.snapshot_ref && wanted.snapshot_ref !== meta.snapshot_ref) throw failure(window.WorkbenchTerms.outcomes.stale, 'snapshot_stale');
     if (Object.keys(defaults).filter(key => !['page', 'column_filters'].includes(key)).some(key => data.scope[key] !== wanted[key])
     // 后端在没有列筛选时省略 scope.column_filters（core/models/workbench_calibration.py scope()）。
@@ -55203,6 +55189,7 @@ function SMExport({
     } else if (!Array.isArray(data.items) || !data.items.every(row => validRow(row, meta)) || !data.page || !count(data.page.total) || data.page.number !== wanted.page || data.page.size !== wanted.size || data.page.total !== data.summary.total || data.page.total_pages !== Math.ceil(data.page.total / wanted.size) || data.items.length !== Math.max(0, Math.min(wanted.size, data.page.total - (wanted.page - 1) * wanted.size))) throw failure('校准列表或分页数量不一致。');
     return result;
   }
+  const validate = (result, query, detailRef) => _validate(result, input(query), detailRef);
   function exportReason(data, format) {
     if (!data || !data.capabilities || data.capabilities.export !== true) return '当前来源暂不能导出。';
     if (!data.summary.total) return '当前筛选没有可导出的记录。';

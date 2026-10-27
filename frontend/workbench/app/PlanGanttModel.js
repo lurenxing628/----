@@ -10,8 +10,7 @@
   const count = value => window.WorkbenchFormat.number(value, { digits: 0 });
   const quantityLabel = (value, reason) => value === null ? quantityReasons[reason] || '未知' : typeof value === 'string' ? value : number(value);
   const pieceLabel = task => task.piece_id === null ? '共同工序' : '分件 ' + task.piece_id;
-  // Same three sentences as FieldContract.quantityReasons; this module loads before FieldContract, so the text is repeated here.
-  const quantityReasons = { plan_target_not_recorded: '原计划未记录应做数量', plan_target_unavailable: '原计划应做数量读不到', plan_target_invalid: '原计划应做数量无效' };
+  const quantityReasons = window.FieldContract.quantityReasons;
   const kindLabels = { machine: '设备', operator: '人员', batch: '批次' };
   function scopeCaption(data) {
     if (!data) return '';

@@ -23,18 +23,12 @@ def ensure_algo_stats(stats: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def increment_counter(
-    target: Optional[Dict[str, Any]], key: str, amount: int = 1, *, bucket: str = "fallback_counts",
+    target: Optional[Dict[str, Any]], key: str, amount: int = 1,
 ) -> None:
     if not key:
         return
     stats = ensure_algo_stats(target)
-    if bucket in _BUCKETS:
-        current_bucket = stats[bucket]
-    else:
-        current_bucket = stats.get(bucket)
-        if not isinstance(current_bucket, dict):
-            current_bucket = {}
-            stats[bucket] = current_bucket
+    current_bucket = stats["fallback_counts"]
     # Counts are the decoder's own integers (len()/counters/event.count); they are summed as given.
     if amount == 0:
         return

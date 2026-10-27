@@ -63,12 +63,9 @@ def _load_app_for_scan(repo_root: str) -> Tuple[Flask, str]:
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
         app = getattr(module, "app", None)
-        if app is not None:
-            return cast(Flask, app), module_name
-        create_app = getattr(module, "create_app", None)
-        if not callable(create_app):
-            raise RuntimeError("app.py 未导出 create_app")
-        return cast(Flask, create_app()), module_name
+        if app is None:
+            raise RuntimeError("app.py 未导出 app")
+        return cast(Flask, app), module_name
     except Exception:
         sys.modules.pop(module_name, None)
         raise

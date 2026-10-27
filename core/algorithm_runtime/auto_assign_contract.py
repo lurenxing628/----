@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union
+from typing import Optional
 
 AUTO_ASSIGN_REASON_SUCCESS = ""
 AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL = "auto_assign_missing_machine_pool"
 AUTO_ASSIGN_REASON_NO_MACHINE_CANDIDATE = "auto_assign_no_machine_candidate"
 AUTO_ASSIGN_REASON_NO_OPERATOR_CANDIDATE = "auto_assign_no_operator_candidate"
-AUTO_ASSIGN_REASON_NO_FEASIBLE_PAIR = "auto_assign_no_feasible_pair"
 # 全部机-人组合的完工时间都越过排产截止窗口（blocked_by_window）时的专属归因；
-# 与 NO_FEASIBLE_PAIR（资源/时间通用不可行）区分，避免把截止日期问题误导成资质问题。
+# 避免把截止日期问题误导成资质问题。
 AUTO_ASSIGN_REASON_WINDOW_BLOCKED = "auto_assign_window_blocked"
 AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS = "invalid_internal_hours"
 
@@ -23,17 +22,3 @@ class AutoAssignAttempt:
     # case in which the resource-demand window can influence the chosen pair. None means the
     # attempt came from a caller that does not report it, so consumers must not assume either way.
     pair_tie_occurred: Optional[bool] = None
-
-
-def auto_assign_attempt_from_result(
-    result: Union[AutoAssignAttempt, Tuple[str, str], List[str], None],
-) -> AutoAssignAttempt:
-    if isinstance(result, AutoAssignAttempt):
-        return result
-    if result is None:
-        return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_NO_FEASIBLE_PAIR)
-    if not isinstance(result, (list, tuple)) or len(result) < 2:
-        raise TypeError("auto_assign probe result is not a pair")
-    # The pair form is only the same-round SGS handoff, recorded only when the probe chose both
-    # resources (sgs_score_cache records the pair only for a non-empty machine and operator).
-    return AutoAssignAttempt(machine_id=result[0], operator_id=result[1])

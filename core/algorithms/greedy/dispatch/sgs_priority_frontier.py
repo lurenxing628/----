@@ -49,8 +49,8 @@ def make_priority_queue(graph, pruning):
     return PriorityReadyQueue(graph, pruning)
 
 
-def score_next_ready(queue, *, collect, score, native, blocked_batches, cache):
-    candidates = queue.head(blocked_batches) if queue is not None and native() else None
+def score_next_ready(queue, *, collect, score, blocked_batches, cache):
+    candidates = queue.head(blocked_batches) if queue is not None else None
     narrowed = candidates is not None
     if candidates is None:
         candidates = collect()

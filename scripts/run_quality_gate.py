@@ -492,7 +492,7 @@ def _load_resume_receipt_payload(
         return None, str(error or "旧 receipt 证据缺失")
     normalized_command = _command_identity(command)
     error = quality_gate_shared._verify_receipt_header(
-        payload, normalized_command, index=index, run_id=previous_run_id,
+        payload, index=index, run_id=previous_run_id,
     )
     if error:
         return None, error
@@ -833,10 +833,6 @@ def _clear_stale_long_gate_output_files(
             _remove_quality_gate_run_output_path(str(rel_path))
         if entry_id == ENTRY_REQUIRED_REGRESSIONS:
             _remove_quality_gate_run_output_path("evidence/QualityGate/required_regressions")
-
-
-def _clear_quality_gate_receipts() -> None:
-    _clear_quality_gate_run_outputs()
 
 
 def _guard_test_abs_path(rel_path: str) -> str:
@@ -2339,10 +2335,6 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     return parsed
 
 
-def _planned_long_gate_decision(entry: Dict[str, Any]) -> Dict[str, Any]:
-    return _planned_long_gate_decision_forced(entry, force_requested=False)
-
-
 def _planned_long_gate_decision_forced(entry: Dict[str, Any], *, force_requested: bool) -> Dict[str, Any]:
     reason = "long gate cache for this entry is not enabled yet"
     invalidated_by: List[str] = []
@@ -2570,15 +2562,6 @@ def _prepare_long_gate_cache_decisions(
                 "summary_entry": summary_entry,
             }
     return summary_entries, runtime_entries
-
-
-def _collect_long_gate_cache_decisions(command_plan: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    summary_entries, _runtime_entries = _prepare_long_gate_cache_decisions(
-        command_plan,
-        cache_enabled=True,
-        cache_dir="",
-    )
-    return summary_entries
 
 
 def _print_long_gate_cache_decisions(entries: Sequence[Dict[str, Any]], *, cache_dir: str) -> None:

@@ -498,14 +498,6 @@ class RuntimeSyntaxRiskScanner(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def _is_isinstance_type_arg(node: ast.AST) -> bool:
-    parent = getattr(node, "_ast_parent", None)
-    if not isinstance(parent, ast.Call) or len(parent.args) < 2 or parent.args[1] is not node:
-        return False
-    target = _qualified_name(parent.func, {})
-    return target in {"isinstance", "issubclass"}
-
-
 def _syntax_findings_for_source(rel_path: str, source: str) -> Tuple[Optional[ast.AST], List[Finding]]:
     try:
         py38_tree = _attach_parents(_parse_as_py38(source, rel_path))

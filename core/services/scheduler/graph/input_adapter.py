@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Mapping as MappingABC
-from datetime import date
-from typing import AbstractSet, Any, Dict, Iterable, List, Mapping, Optional, Tuple, Union, cast
+from typing import AbstractSet, Any, Dict, Iterable, List, Mapping, Optional, Tuple, cast
 
-from core.algorithm_contracts.operator_eligibility import qualified_operators
 from core.algorithm_contracts.types import OpForScheduleAlgo
 from core.algorithm_contracts.value_domains import INTERNAL, MERGED
 from core.models.batch import Batch
@@ -36,19 +33,14 @@ class GraphResourcePreparation:
     """Resource candidates shared by equal work types and fixed assignments in one graph."""
 
     def __init__(self, resource_pool: Optional[Mapping[str, Any]]) -> None:
-        self.skills_pool = resource_pool
-        self.machines_by_op_type = _mapping_part(resource_pool, "machines_by_op_type")
-        self.operators_by_machine = _mapping_part(resource_pool, "operators_by_machine")
-        self.machines_by_operator = _mapping_part(resource_pool, "machines_by_operator")
-        self._candidates: Dict[Tuple[Optional[str], Optional[str], str],
-                               Tuple[Tuple[str, ...], Tuple[str, ...]]] = {}
+        self.machines_by_op_type = {} if resource_pool is None else resource_pool["machines_by_op_type"]
+        self.machines_by_operator = {} if resource_pool is None else resource_pool["machines_by_operator"]
+        self._candidates: Dict[Tuple[Optional[str], Optional[str], str], Tuple[str, ...]] = {}
 
-    def candidates_for(self, row: OpForScheduleAlgo) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+    def candidates_for(self, row: OpForScheduleAlgo) -> Tuple[str, ...]:
         key = (row.machine_id, row.operator_id, row.op_type_id)
         if key not in self._candidates:
-            machines = _candidate_machine_ids(row, resource_pool=self)
-            operators = _candidate_operator_ids(row, candidate_machine_ids=machines, resource_pool=self)
-            self._candidates[key] = machines, operators
+            self._candidates[key] = _candidate_machine_ids(row, resource_pool=self)
         return self._candidates[key]
 
 
@@ -62,48 +54,19 @@ def _build_operation_node(
     # 算法工序由排产输入构建一次给出规范值（编号、文本、来源、工时、外协周期都已校验），批次同样来自读取边界；
     # 这里只做图节点投影，不再逐字段复核。
     batch = batches[row.batch_id]
-    candidate_machine_ids, candidate_operator_ids = resource_pool.candidates_for(row)
-    frozen = row.id in frozen_op_ids
     return OperationGraphNode(
         node_id=make_operation_node_id(row.id),
         batch_id=row.batch_id,
         piece_id=row.piece_id,
         op_code=row.op_code,
         seq=row.seq,
-        name=row.op_type_name,
         duration_minutes=_operation_duration_minutes(row, batch),
-        part_no=batch.part_no,
-        priority=batch.priority,
         source=row.source,
-        due_date=_due_date_text(batch.due_date),
-        is_frozen=frozen,
-        fixed_source="freeze_window" if frozen else "",
-        op_type_id=row.op_type_id,
+        is_frozen=row.id in frozen_op_ids,
         machine_id=row.machine_id,
-        operator_id=row.operator_id,
-        supplier_id=row.supplier_id,
-        ext_group_id=row.ext_group_id,
-        ext_merge_mode="" if row.ext_merge_mode is None else row.ext_merge_mode,
-        ext_group_total_days=row.ext_group_total_days,
-        candidate_machine_ids=candidate_machine_ids,
-        candidate_operator_ids=candidate_operator_ids,
-        raw={"id": row.id, "batch_id": row.batch_id, "op_code": row.op_code, "seq": row.seq, "source": row.source,
-             "op_type_id": row.op_type_id, "machine_id": row.machine_id, "operator_id": row.operator_id,
-             "supplier_id": row.supplier_id, "ext_group_id": row.ext_group_id, "ext_merge_mode": row.ext_merge_mode},
+        candidate_machine_ids=resource_pool.candidates_for(row),
+        raw={"id": row.id},
     )
-
-
-def _mapping_part(source: Optional[Mapping[str, Any]], key: str) -> Mapping[Any, Any]:
-    if source is None:
-        return {}
-    if not isinstance(source, MappingABC):
-        raise GraphInputContractError("resource_pool 必须是映射。")
-    if key not in source:
-        return {}
-    value = source[key]
-    if isinstance(value, MappingABC):
-        return value
-    raise GraphInputContractError(f"resource_pool.{key} 必须是映射。")
 
 
 def _optional_text(value: Any) -> Optional[str]:
@@ -145,37 +108,7 @@ def _candidate_machine_ids(row: OpForScheduleAlgo, *, resource_pool: GraphResour
 
 
 def _machines_for_fixed_operator(fixed_operator: str, *, resource_pool: GraphResourcePreparation) -> List[str]:
-    candidates = _text_list(resource_pool.machines_by_operator.get(fixed_operator))
-    if candidates:
-        return candidates
-    found: List[str] = []
-    for machine_id, operator_ids in resource_pool.operators_by_machine.items():
-        machine_text = _optional_text(machine_id)
-        if machine_text and fixed_operator in _text_list(operator_ids):
-            found.append(machine_text)
-    return found
-
-
-def _candidate_operator_ids(
-    row: OpForScheduleAlgo,
-    *,
-    candidate_machine_ids: Tuple[str, ...],
-    resource_pool: GraphResourcePreparation,
-) -> Tuple[str, ...]:
-    fixed_operator = row.operator_id
-    if fixed_operator:
-        if not candidate_machine_ids:
-            return tuple(qualified_operators(resource_pool.skills_pool, [fixed_operator], row.op_type_id))
-        for machine_id in candidate_machine_ids:
-            if fixed_operator in _text_list(resource_pool.operators_by_machine.get(machine_id)):
-                return tuple(qualified_operators(resource_pool.skills_pool, [fixed_operator], row.op_type_id))
-        return ()
-    if not candidate_machine_ids:
-        return ()
-    candidates: List[str] = []
-    for machine_id in candidate_machine_ids:
-        candidates.extend(_text_list(resource_pool.operators_by_machine.get(machine_id)))
-    return _unique_text_tuple(qualified_operators(resource_pool.skills_pool, candidates, row.op_type_id))
+    return _text_list(resource_pool.machines_by_operator.get(fixed_operator))
 
 
 def _text_list(values: Any) -> List[str]:
@@ -197,14 +130,6 @@ def _unique_text_tuple(values: Iterable[Any]) -> Tuple[str, ...]:
         seen.add(text)
         ordered.append(text)
     return tuple(ordered)
-
-
-def _due_date_text(value: Union[str, date, None]) -> Optional[str]:
-    # Batches.due_date 是 DATE 列：连接按声明类型把它读成 date；读取边界 batch_model 已核对过，
-    # 只剩 date 与规范的 ISO 文本两种形态，这里统一成文本。
-    if isinstance(value, date):
-        return value.isoformat()
-    return value
 
 
 __all__ = ["GraphInputContractError", "GraphResourcePreparation", "build_operation_nodes_from_rows"]

@@ -20,14 +20,13 @@ def table_columns(kind, category=None):
     return _COLUMNS.get(kind, ())
 
 
-def normalize_column_filters(value, kind, category=None):
+def normalize_table_column_filters(value, allowed, *, invalid_column_message="列筛选的列或归属不正确，请重新选择。"):
     if type(value) is not dict or len(value) > 20:
         raise WorkbenchCommandRejected("invalid_input", "列筛选最多 20 列。", 400)
-    allowed = table_columns(kind, category)
     result = {}
     for column, condition in value.items():
         if column not in allowed or type(condition) is not dict or set(condition) != {"mode", "values"}:
-            raise WorkbenchCommandRejected("invalid_input", "列筛选的列或归属不正确，请重新选择。", 400)
+            raise WorkbenchCommandRejected("invalid_input", invalid_column_message, 400)
         values = condition["values"]
         if condition["mode"] not in ("include", "exclude") or type(values) is not list or len(values) > MAX_FACET_KEYS:
             raise WorkbenchCommandRejected("invalid_input", "列筛选方式不对，每列最多 50000 个值。", 400)
@@ -35,6 +34,10 @@ def normalize_column_filters(value, kind, category=None):
             raise WorkbenchCommandRejected("invalid_input", "筛选值不对或有重复，请重新选择筛选条件。", 400)
         result[column] = {"mode": condition["mode"], "values": sorted(values)}
     return {column: result[column] for column in sorted(result)}
+
+
+def normalize_column_filters(value, kind, category=None):
+    return normalize_table_column_filters(value, table_columns(kind, category))
 
 
 def table_query_required(query):

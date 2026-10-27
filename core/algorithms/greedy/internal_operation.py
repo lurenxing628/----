@@ -11,7 +11,7 @@ from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS,
     AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL,
     AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
-    auto_assign_attempt_from_result,
+    AutoAssignAttempt,
 )
 from core.algorithm_runtime.downtime import occupy_resource
 from core.algorithm_runtime.internal_slot import (
@@ -123,20 +123,21 @@ def _resolve_internal_resources(
     increment_counter(algo_stats, "internal_auto_assign_attempt_count")
     # The scoring probe of this very round already chose the pair against the unchanged state.
     handoff = selected_sgs_resources(op)
-    attempt = auto_assign_attempt_from_result(handoff if handoff is not None else auto_assign_resources(
-        op=op,
-        batch=batch,
-        batch_progress=batch_progress,
-        machine_timeline=machine_timeline,
-        operator_timeline=operator_timeline,
-        base_time=base_time,
-        end_dt_exclusive=end_dt_exclusive,
-        machine_downtimes=machine_downtimes,
-        resource_pool=resource_pool,
-        last_op_type_by_machine=last_op_type_by_machine,
-        machine_busy_hours=machine_busy_hours,
-        operator_busy_hours=operator_busy_hours,
-    ))
+    attempt = (AutoAssignAttempt(machine_id=handoff[0], operator_id=handoff[1])
+               if handoff is not None else auto_assign_resources(
+                   op=op,
+                   batch=batch,
+                   batch_progress=batch_progress,
+                   machine_timeline=machine_timeline,
+                   operator_timeline=operator_timeline,
+                   base_time=base_time,
+                   end_dt_exclusive=end_dt_exclusive,
+                   machine_downtimes=machine_downtimes,
+                   resource_pool=resource_pool,
+                   last_op_type_by_machine=last_op_type_by_machine,
+                   machine_busy_hours=machine_busy_hours,
+                   operator_busy_hours=operator_busy_hours,
+               ))
     if attempt.machine_id and attempt.operator_id:
         increment_counter(algo_stats, "internal_auto_assign_success_count")
         return normalize_text_id(attempt.machine_id), normalize_text_id(attempt.operator_id)
@@ -198,11 +199,10 @@ def _estimate_internal(
             total_hours_base=total_hours_base,
         )
         estimate = None
-        if estimate_internal_slot is _NATIVE_ESTIMATE_SLOT:
-            reused = selected_sgs_estimate(**inputs)
-            # Formal placement keeps its own validation, failure accounting and occupancy writes.
-            if reused is not None and (total_hours_base if total_hours_base is not None else validate_internal_hours(op, batch)) == reused[1]:
-                estimate = reused[0]
+        reused = selected_sgs_estimate(**inputs)
+        # Formal placement keeps its own validation, failure accounting and occupancy writes.
+        if reused is not None and (total_hours_base if total_hours_base is not None else validate_internal_hours(op, batch)) == reused[1]:
+            estimate = reused[0]
         if estimate is None:
             estimate = estimate_internal_slot(**inputs, abort_after=None, overlap_reuse=overlap_reuse_for(machine_timeline))
     except ValueError:
@@ -234,6 +234,3 @@ def _build_internal_result(*, op: OpForScheduleAlgo, batch_id: str, machine_id: 
         op_type_name=op.op_type_name,
         op_type_id=op.op_type_id,
     )
-
-
-_NATIVE_ESTIMATE_SLOT = estimate_internal_slot

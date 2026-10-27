@@ -209,8 +209,7 @@ def _new_branch_pre_push_paths(to_ref: str, remote_name: str) -> ChangedPathSet:
     return ChangedPathSet(paths, True, "pre-push new branch diff")
 
 
-def _pre_push_diff_paths(from_ref: str, to_ref: str, remote_name: str, remote_ref: str = "") -> ChangedPathSet:
-    del remote_ref
+def _pre_push_diff_paths(from_ref: str, to_ref: str, remote_name: str) -> ChangedPathSet:
     to_value = str(to_ref or "").strip()
     from_value = str(from_ref or "").strip()
     if not to_value:
@@ -232,7 +231,6 @@ def _changed_paths(
     pre_push_from_ref: str = "",
     pre_push_to_ref: str = "",
     pre_push_remote_name: str = "",
-    pre_push_remote_ref: str = "",
     pre_push_changed_paths: Sequence[str] = (),
     pre_push_scope_reason: str = "",
     pre_push_scope_known: Optional[bool] = None,
@@ -260,7 +258,6 @@ def _changed_paths(
             pre_push_from_ref,
             pre_push_to_ref,
             pre_push_remote_name,
-            remote_ref=pre_push_remote_ref,
         )
     else:
         branch_paths = _branch_diff_paths()
@@ -441,7 +438,6 @@ def build_daily_gate_scope(
     pre_push_from_ref: str = "",
     pre_push_to_ref: str = "",
     pre_push_remote_name: str = "",
-    pre_push_remote_ref: str = "",
     pre_push_changed_paths: Sequence[str] = (),
     pre_push_scope_reason: str = "",
     pre_push_scope_known: Optional[bool] = None,
@@ -450,7 +446,6 @@ def build_daily_gate_scope(
         pre_push_from_ref=pre_push_from_ref,
         pre_push_to_ref=pre_push_to_ref,
         pre_push_remote_name=pre_push_remote_name,
-        pre_push_remote_ref=pre_push_remote_ref,
         pre_push_changed_paths=pre_push_changed_paths,
         pre_push_scope_reason=pre_push_scope_reason,
         pre_push_scope_known=pre_push_scope_known,
@@ -626,7 +621,6 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     parser.add_argument("--pre-push-from-ref", default="")
     parser.add_argument("--pre-push-to-ref", default="")
     parser.add_argument("--pre-push-remote-name", default="")
-    parser.add_argument("--pre-push-remote-ref", default="")
     parser.add_argument("--pre-push-changed-path", action="append", default=[], help=argparse.SUPPRESS)
     parser.add_argument("--pre-push-scope-reason", default="", help=argparse.SUPPRESS)
     parser.add_argument("--pre-push-scope-file", default="", help=argparse.SUPPRESS)
@@ -672,7 +666,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         pre_push_from_ref=str(args.pre_push_from_ref or ""),
         pre_push_to_ref=str(args.pre_push_to_ref or ""),
         pre_push_remote_name=str(args.pre_push_remote_name or ""),
-        pre_push_remote_ref=str(args.pre_push_remote_ref or ""),
         pre_push_changed_paths=list(args.pre_push_changed_path or []),
         pre_push_scope_reason=str(args.pre_push_scope_reason or ""),
         pre_push_scope_known=args.pre_push_scope_known,

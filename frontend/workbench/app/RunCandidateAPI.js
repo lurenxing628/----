@@ -58,8 +58,8 @@
     if (q.snapshot_ref === undefined) delete q.snapshot_ref;
     return q;
   }
-  function validateCatalog(v, runRef, query) {
-    const d = v.data, q = catalogScope(query);
+  function _validateCatalog(v, runRef, q) {
+    const d = v.data;
     check(ref(runRef) && shape(d, ['run_ref', 'run_state', 'candidates', 'page', 'candidate_count', 'catalog_complete', 'capabilities', 'blocked_reasons'])
       && d.run_ref === runRef && ['queued', 'running', 'complete', 'partial', 'failed', 'interrupted'].includes(d.run_state)
       && count(d.candidate_count) && d.candidate_count <= 256 && d.catalog_complete === !['queued', 'running'].includes(d.run_state)
@@ -71,6 +71,7 @@
     d.candidates.forEach(c => { summary(c, runRef); check(q.status === 'all' || c.status === q.status); });
     check(new Set(d.candidates.map(c => c.candidate_ref)).size === d.candidates.length); return d;
   }
+  const validateCatalog = (v, runRef, query) => _validateCatalog(v, runRef, catalogScope(query));
   function workspaceScope(candidateRef, query) {
     check(ref(candidateRef), '请选择有效的候选方案。');
     check(shape(query, [], ['range_start', 'range_end', 'batch_ref', 'sort', 'order', 'snapshot_ref']));
@@ -166,8 +167,8 @@
       && ['overdue_count', 'total_tardiness_hours', 'known_tardiness_hours'].every(k => nullableNumber(s[k]))
       && s.batch_count === v.batch_count && Array.isArray(s.known_batch_refs) && s.known_batch_refs.every(ref));
   }
-  function validateWorkspace(v, candidateRef, query) {
-    const d = v.data, q = workspaceScope(candidateRef, query);
+  function _validateWorkspace(v, candidateRef, q) {
+    const d = v.data;
     check(shape(d, ['candidate', 'generation', 'tasks', 'task_count', 'tasks_complete', 'candidate_task_count', 'candidate_span', 'task_span',
       'unplanned_operations', 'unplanned_operation_count', 'time_scope', 'batch_ref', 'capabilities', 'blocked_reasons', 'data_gaps', 'delivery_risks', 'gantt_graph']));
     summary(d.candidate); check(d.candidate.candidate_ref === candidateRef);
@@ -222,6 +223,7 @@
       sequence: nullableNumber, processLabel: nullableText, completeCount: d.candidate_task_count }));
     return d;
   }
+  const validateWorkspace = (v, candidateRef, query) => _validateWorkspace(v, candidateRef, workspaceScope(candidateRef, query));
   // 文件名非空与后缀由传输层按 Content-Type 断言；这里只核对本领域业务头与当前读取范围。
   function download(value, result) {
     const d = result.data;
@@ -236,11 +238,11 @@
   }
   async function catalog(runRef, query, signal) {
     check(ref(runRef)); const q = catalogScope(query), value = await read('/runs/' + runRef + '/candidates', q, signal);
-    validateCatalog(value, runRef, q); return value;
+    _validateCatalog(value, runRef, q); return value;
   }
   async function workspace(candidateRef, query, signal) {
     const q = workspaceScope(candidateRef, query), value = await read('/candidates/' + candidateRef + '/workspace', q, signal);
-    validateWorkspace(value, candidateRef, q); return value;
+    _validateWorkspace(value, candidateRef, q); return value;
   }
   // 传输层已校验附件、文件名与后缀、格式、魔数与非空；这里只取文件与本领域的四个响应头，与当前读取范围的核对在 download() 里做。
   async function exportFile(candidateRef, query, snapshotRef, fmt, signal) {

@@ -365,15 +365,7 @@ def _mapping_part(source: Optional[Dict[str, Any]], key: str) -> MappingABC:
 
 
 def _machines_for_fixed_operator(fixed_operator: str, *, pool: _ResourcePoolView) -> List[str]:
-    candidates = _text_list(pool.machines_by_operator.get(fixed_operator))
-    if candidates:
-        return candidates
-    found: List[str] = []
-    for machine_id, operator_ids in pool.operators_by_machine.items():
-        machine_text = _text(machine_id)
-        if machine_text and fixed_operator in _text_list(operator_ids):
-            found.append(machine_text)
-    return found
+    return _text_list(pool.machines_by_operator.get(fixed_operator))
 
 
 def _valid_segments(segments: Iterable[Tuple[datetime, datetime]]) -> List[Tuple[datetime, datetime]]:

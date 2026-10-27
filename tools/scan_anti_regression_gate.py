@@ -81,17 +81,6 @@ def _has_test_function(tree: ast.AST) -> bool:
     )
 
 
-def scan_missing_test_function(root: str, test_paths: Sequence[str]) -> List[str]:
-    """新增收集型测试文件须含 test 函数(模块级 def test_ 或类内 test_ 方法,ast.walk 全覆盖)。
-    无任何 test 函数者 = 没转 pytest 的 main-style 脚本 / 纯 import 空壳 / 只有 async def main 的伪回归——
-    pytest 实际收集 0 个真实用例,放行即名存实亡的回潮。"""
-    return [rel_path for rel_path in test_paths if not _has_test_function(_parse(root, rel_path))]
-
-
-def scan_missing_docstring(root: str, test_paths: Sequence[str]) -> List[str]:
-    return [rel_path for rel_path in test_paths if ast.get_docstring(_parse(root, rel_path)) is None]
-
-
 def load_scope_globs() -> Set[str]:
     globs: Set[str] = set()
     for group in iter_required_regression_groups():

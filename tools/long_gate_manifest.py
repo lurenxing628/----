@@ -143,13 +143,6 @@ def classify_quality_gate_command(command: Mapping[str, Any]) -> str:
     return ENTRY_UNKNOWN
 
 
-def _classify_quality_gate_plan_command(
-    command: Mapping[str, Any], *, index: int, debt_sync_index: Optional[int]
-) -> str:
-    del index, debt_sync_index
-    return classify_quality_gate_command(command)
-
-
 def _entry_id_for_command(entry_type: str, command: Mapping[str, Any], index: int) -> str:
     display = str(command.get("display") or "").strip()
     if entry_type == ENTRY_VERSION_OR_ENV_PROBE:
@@ -829,11 +822,6 @@ def build_manifest_from_quality_gate_plan(
 ) -> Dict[str, Any]:
     root = os.path.abspath(repo_root or quality_gate_shared.REPO_ROOT)
     commands = [_normalize_command(command) for command in list(command_plan or [])]
-    debt_sync_index = None
-    for index, command in enumerate(commands, start=1):
-        if classify_quality_gate_command(command) == ENTRY_DEBT_LEDGER_SYNC:
-            debt_sync_index = index
-            break
     manifest = {
         "schema_version": LONG_GATE_SCHEMA_VERSION,
         "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -844,11 +832,7 @@ def build_manifest_from_quality_gate_plan(
             _build_entry(
                 command,
                 index,
-                entry_type=_classify_quality_gate_plan_command(
-                    command,
-                    index=index,
-                    debt_sync_index=debt_sync_index,
-                ),
+                entry_type=classify_quality_gate_command(command),
                 repo_root=root,
             )
             for index, command in enumerate(commands, start=1)
@@ -858,12 +842,6 @@ def build_manifest_from_quality_gate_plan(
     if receipts is not None:
         _attach_receipt_observations(manifest, receipts)
     return manifest
-
-
-def build_long_gate_manifest(repo_root: Optional[str] = None) -> Dict[str, Any]:
-    root = os.path.abspath(repo_root or quality_gate_shared.REPO_ROOT)
-    command_plan = quality_gate_shared.build_quality_gate_command_plan()
-    return build_manifest_from_quality_gate_plan(command_plan, repo_root=root)
 
 
 def _normalize_repo_path(path: str) -> str:

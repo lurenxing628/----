@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, NamedTuple, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
 
 from core.algorithm_contracts.operator_eligibility import qualified_operators
 from core.algorithm_contracts.types import OpForScheduleAlgo
@@ -10,7 +10,6 @@ from core.algorithm_runtime.algo_stats import increment_counter
 from core.algorithm_runtime.auto_assign_contract import (
     AUTO_ASSIGN_REASON_INVALID_INTERNAL_HOURS,
     AUTO_ASSIGN_REASON_MISSING_MACHINE_POOL,
-    AUTO_ASSIGN_REASON_NO_FEASIBLE_PAIR,
     AUTO_ASSIGN_REASON_NO_MACHINE_CANDIDATE,
     AUTO_ASSIGN_REASON_NO_OPERATOR_CANDIDATE,
     AUTO_ASSIGN_REASON_SUCCESS,
@@ -21,9 +20,7 @@ from core.algorithm_runtime.internal_slot import estimate_internal_slot, validat
 from core.algorithm_runtime.resource_quality import prefer_resource_pair
 from core.algorithm_runtime.sgs_estimate_reuse import current_sgs_handoff
 from core.algorithm_runtime.slot_overlap_reuse import SlotOverlapReuse, overlap_reuse_for
-from core.errors import ValidationError
 from core.models.batch import Batch
-from core.shared.strict_parse import parse_required_int
 
 if TYPE_CHECKING:
     from .schedule_preparation import NativeSchedulePreparation
@@ -79,13 +76,6 @@ def prepare_resource_candidates(op: OpForScheduleAlgo, resource_pool: Any) -> Re
     choice = _resolve_machine_candidates(fixed_machine=fixed_machine, fixed_operator=fixed_operator,
                                         op_type_id=op_type_id, pool=pool, count=counters.append)
     return ResourceCandidates(tuple(choice.values), fixed_operator, op_type_id, pool, choice.reason, tuple(counters))
-
-
-class _PairProbe(NamedTuple):
-    """单个机-人组合的评估结果：score=None 表示不可行，window_blocked 标记不可行原因是否为窗口截止。"""
-
-    score: Optional[Tuple[Any, ...]]
-    window_blocked: bool
 
 
 def auto_assign_internal_resources_attempt(
@@ -209,14 +199,7 @@ def _resolve_machine_candidates(
 
 
 def _machines_for_fixed_operator(fixed_operator: str, *, pool: Dict[str, Any]) -> List[str]:
-    candidates = [str(x) for x in (pool["machines_by_operator"].get(fixed_operator) or []) if str(x).strip()]
-    if candidates:
-        return candidates
-    for mid0, operator_ids in pool["operators_by_machine"].items():
-        machine_id = str(mid0).strip()
-        if machine_id and any(str(x).strip() == fixed_operator for x in operator_ids):
-            candidates.append(machine_id)
-    return candidates
+    return [str(x) for x in (pool["machines_by_operator"].get(fixed_operator) or []) if str(x).strip()]
 
 
 def _needs_op_type_machine_filter(*, fixed_machine: Optional[str], op_type_id: str, pool: Dict[str, Any]) -> bool:
@@ -282,8 +265,6 @@ def _choose_best_pair(
     best_pair: Optional[Tuple[str, str]] = None
     seen_operator = False
     tie_seen = False
-    window_blocked_pairs = 0
-    non_window_infeasible_pairs = 0
     prev_end = batch_progress.get(op.batch_id, base_time)
     handoff = current_sgs_handoff()
     overlap_reuse = overlap_reuse_for(machine_timeline)
@@ -296,7 +277,7 @@ def _choose_best_pair(
         m_downtimes = (machine_downtimes.get(machine_id) or []) if machine_downtimes and machine_id else []
         m_busy = machine_busy_hours.get(machine_id, 0.0)
         for operator_id in _sort_operator_candidates(operator_candidates, machine_id=machine_id, pool=pool, operator_busy_hours=operator_busy_hours):
-            probe = _pair_score(
+            score = _pair_score(
                 calendar=calendar,
                 op=op,
                 batch=batch,
@@ -318,21 +299,15 @@ def _choose_best_pair(
                 m_busy=m_busy,
                 overlap_reuse=overlap_reuse,
             )
-            if probe.score is not None:
-                if best is not None and probe.score[:2] == best[:2]:
+            if score is not None:
+                if best is not None and score[:2] == best[:2]:
                     tie_seen = True
-                if best is None or prefer_resource_pair(last_op_type_by_machine, op, probe.score, best):
-                    best = probe.score
+                if best is None or prefer_resource_pair(last_op_type_by_machine, op, score, best):
+                    best = score
                     best_pair = (machine_id, operator_id)
-            elif probe.window_blocked:
-                window_blocked_pairs += 1
-            else:
-                non_window_infeasible_pairs += 1
     if best_pair is None:
         return _pair_failure_attempt(
             seen_operator=seen_operator,
-            window_blocked_pairs=window_blocked_pairs,
-            non_window_infeasible_pairs=non_window_infeasible_pairs,
             count=count,
         )
     return AutoAssignAttempt(machine_id=best_pair[0], operator_id=best_pair[1], pair_tie_occurred=tie_seen)
@@ -341,23 +316,13 @@ def _choose_best_pair(
 def _pair_failure_attempt(
     *,
     seen_operator: bool,
-    window_blocked_pairs: int,
-    non_window_infeasible_pairs: int,
     count: Any,
 ) -> AutoAssignAttempt:
     if not seen_operator:
         count("auto_assign_no_operator_candidate_count")
         return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_NO_OPERATOR_CANDIDATE, pair_tie_occurred=False)
-    # 窗口归因规则：仅当"所有被评估的机-人组合都因排产截止窗口被拒、且不存在窗口外原因的
-    # 不可行判定"时才归因 WINDOW_BLOCKED；混合场景（存在窗口外原因的不可行判定）保持
-    # NO_FEASIBLE_PAIR，宁可保守也不把非窗口问题伪装成截止日期问题。
-    # 注：abort_after 剪枝（非窗口 None）只会在已找到可行 best 后出现，走不到这里，
-    # 这里对它的计数纯属防御。
-    if window_blocked_pairs > 0 and non_window_infeasible_pairs == 0:
-        count("auto_assign_window_blocked_count")
-        return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_WINDOW_BLOCKED, pair_tie_occurred=False)
-    count("auto_assign_no_feasible_pair_count")
-    return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_NO_FEASIBLE_PAIR, pair_tie_occurred=False)
+    count("auto_assign_window_blocked_count")
+    return AutoAssignAttempt(reason=AUTO_ASSIGN_REASON_WINDOW_BLOCKED, pair_tie_occurred=False)
 
 
 def _operator_candidates_for_machine(machine_id: str, *, fixed_operator: Optional[str], pool: Dict[str, Any], op_type_id: str) -> List[str]:
@@ -400,7 +365,7 @@ def _pair_score(
     m_downtimes: List[Tuple[datetime, datetime]],
     m_busy: float,
     overlap_reuse: Optional[SlotOverlapReuse],
-) -> _PairProbe:
+) -> Optional[Tuple[Any, ...]]:
     def estimate_pair(abort_at: Optional[datetime]):
         return estimate_internal_slot(
             calendar=calendar,
@@ -431,39 +396,11 @@ def _pair_score(
         )
     if estimate is None:
         estimate = estimate_pair(abort_after)
-    if estimate.abort_after_hit or (abort_after is not None and estimate.start_time > abort_after):
-        return _PairProbe(score=None, window_blocked=False)
-    if estimate.blocked_by_window:
-        return _PairProbe(score=None, window_blocked=True)
+    if estimate.abort_after_hit or (abort_after is not None and estimate.start_time > abort_after) or estimate.blocked_by_window:
+        return None
     load_penalty = m_busy + operator_busy_hours.get(operator_id, 0.0)
-    return _PairProbe(
-        score=(estimate.end_time, estimate.changeover_penalty, load_penalty, _pair_rank(pool, operator_id, machine_id), machine_id, operator_id),
-        window_blocked=False,
-    )
+    return (estimate.end_time, estimate.changeover_penalty, load_penalty, _pair_rank(pool, operator_id, machine_id), machine_id, operator_id)
 
 
 def _pair_rank(pool: Dict[str, Any], operator_id: str, machine_id: str) -> int:
-    pair = (operator_id, machine_id)
-    if pair not in pool["pair_rank"]:
-        return 9999
-    try:
-        value = pool["pair_rank"][pair]
-        if type(value) is int:
-            return value
-        normalized = parse_required_int(value, field="pair_rank")
-        pool["pair_rank"][pair] = normalized
-        return normalized
-    except ValidationError as exc:
-        raise ValidationError(f"pair_rank 必须是整数：operator_id={operator_id!r} machine_id={machine_id!r}", field="pair_rank") from exc
-
-
-_NATIVE_AUTO_ASSIGN = {name: globals()[name] for name in (
-    "auto_assign_internal_resources_attempt", "_resolve_machine_candidates", "_sort_machine_candidates",
-    "_choose_best_pair", "_pair_score", "_pair_rank", "_operator_candidates_for_machine", "_sort_operator_candidates",
-    "estimate_internal_slot", "prefer_resource_pair", "validate_internal_hours",
-)}
-
-
-def native_auto_assign_unchanged() -> bool:
-    """The probe still runs the module's own code; a monkeypatched helper must be observed on every call."""
-    return all(globals()[name] is original for name, original in _NATIVE_AUTO_ASSIGN.items())
+    return pool["pair_rank"].get((operator_id, machine_id), 9999)

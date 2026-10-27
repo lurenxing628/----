@@ -68,25 +68,12 @@ class OperationGraphNode:
     batch_id: str
     op_code: str
     seq: int
-    name: str
     duration_minutes: int
     piece_id: Optional[str] = None
-    part_no: Optional[str] = None
-    priority: str = "normal"
     source: str = "internal"
-    status: str = "pending"
     is_frozen: bool = False
-    fixed_source: str = ""
-    due_date: Optional[str] = None
-    op_type_id: Optional[str] = None
     machine_id: Optional[str] = None
-    operator_id: Optional[str] = None
-    supplier_id: Optional[str] = None
-    ext_group_id: Optional[str] = None
-    ext_merge_mode: str = ""
-    ext_group_total_days: Optional[float] = None
     candidate_machine_ids: Tuple[str, ...] = field(default_factory=tuple)
-    candidate_operator_ids: Tuple[str, ...] = field(default_factory=tuple)
     raw: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -95,7 +82,6 @@ class OperationGraphNode:
         if self.duration_minutes < 0:
             raise ValueError("OperationGraphNode.duration_minutes 不能为负数。")
         object.__setattr__(self, "candidate_machine_ids", _compact_text_tuple(self.candidate_machine_ids))
-        object.__setattr__(self, "candidate_operator_ids", _compact_text_tuple(self.candidate_operator_ids))
         object.__setattr__(self, "raw", _freeze_json_like(self.raw))
 
 

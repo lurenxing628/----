@@ -41,10 +41,10 @@ class ScheduleConfigSnapshot:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "sort_strategy": self.sort_strategy,
-            "priority_weight": float(self.priority_weight),
-            "due_weight": float(self.due_weight),
-            "ready_weight": float(self.ready_weight),
-            "holiday_default_efficiency": float(self.holiday_default_efficiency),
+            "priority_weight": self.priority_weight,
+            "due_weight": self.due_weight,
+            "ready_weight": self.ready_weight,
+            "holiday_default_efficiency": self.holiday_default_efficiency,
             "enforce_ready_default": self.enforce_ready_default,
             "prefer_primary_skill": self.prefer_primary_skill,
             "dispatch_mode": self.dispatch_mode,
@@ -52,25 +52,24 @@ class ScheduleConfigSnapshot:
             "auto_assign_enabled": self.auto_assign_enabled,
             "auto_assign_persist": self.auto_assign_persist,
             "ortools_enabled": self.ortools_enabled,
-            "ortools_time_limit_seconds": int(self.ortools_time_limit_seconds),
+            "ortools_time_limit_seconds": self.ortools_time_limit_seconds,
             "algo_mode": self.algo_mode,
-            "time_budget_seconds": int(self.time_budget_seconds),
+            "time_budget_seconds": self.time_budget_seconds,
             "objective": self.objective,
             "freeze_window_enabled": self.freeze_window_enabled,
-            "freeze_window_days": int(self.freeze_window_days),
+            "freeze_window_days": self.freeze_window_days,
             "graph_analysis_mode": self.graph_analysis_mode,
             "graph_block_on_cycle": self.graph_block_on_cycle,
-            "graph_critical_weight": int(self.graph_critical_weight),
-            "graph_impact_weight": int(self.graph_impact_weight),
+            "graph_critical_weight": self.graph_critical_weight,
+            "graph_impact_weight": self.graph_impact_weight,
             "graph_debug_export": self.graph_debug_export,
         }
 
 
 def snapshot_from_values(values):
     """Build the shared projection after field coercion."""
-    convert = {"int": int, "float": float, "enum": str, "yes_no": str}
     return ScheduleConfigSnapshot(
-        **{spec.key: convert[spec.field_type](values[spec.key]) for spec in list_runtime_config_fields()})
+        **{spec.key: values[spec.key] for spec in list_runtime_config_fields()})
 
 
 __all__ = ["ScheduleConfigSnapshot", "snapshot_from_values"]

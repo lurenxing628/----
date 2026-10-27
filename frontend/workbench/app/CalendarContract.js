@@ -74,9 +74,11 @@
     return result;
   }
   function draft(value) {
+    if (Array.isArray(value)) return { type: 'work', hours: displayNumber(window.APSWorkPeriods.hours(value)), periods: window.APSWorkPeriods.clone(value),
+      defaultPeriods: window.APSWorkPeriods.clone(value), legacyShift: false, shiftStart: '', shiftEnd: '', eff: '100', allowNormal: 'yes', allowUrgent: 'yes', note: '' };
     // legacyShift：原记录是没有逐段时段的旧单班工作日，休息改回工作日时恢复原班次，不填默认时段。
-    return { ...value.fields, defaultPeriods: value.default_periods, legacyShift: value.fields.type === 'work' && value.fields.periods == null,
-      periods: value.fields.periods == null ? null : value.fields.periods.map(row => ({ ...row })), shiftStart: value.stored && value.stored.shift_start || value.effective.window_start.slice(11, 16),
+    return { ...value.fields, defaultPeriods: window.APSWorkPeriods.clone(value.default_periods), legacyShift: value.fields.type === 'work' && value.fields.periods == null,
+      periods: window.APSWorkPeriods.clone(value.fields.periods), shiftStart: value.stored && value.stored.shift_start || value.effective.window_start.slice(11, 16),
       shiftEnd: value.stored === null || value.stored.shift_end === null ? '' : value.stored.shift_end,
       hours: displayNumber(value.fields.hours), eff: displayNumber(value.fields.eff), note: value.fields.note === null ? '' : value.fields.note };
   }
@@ -85,7 +87,7 @@
   function switchType(value, type) {
     if (type !== 'work' || value.type !== 'rest' || value.periods?.length || value.periods == null && value.legacyShift) return { ...value, type };
     const periods = value.defaultPeriods || window.APSWorkPeriods.defaults();
-    return { ...value, type, periods: window.APSWorkPeriods.clone(periods), hours: String(window.APSWorkPeriods.hours(periods)), allowNormal: 'yes', allowUrgent: 'yes' };
+    return { ...value, type, periods: window.APSWorkPeriods.clone(periods), hours: displayNumber(window.APSWorkPeriods.hours(periods)), legacyShift: false, allowNormal: 'yes', allowUrgent: 'yes' };
   }
   function number(value, key) {
     const result = Number(value);

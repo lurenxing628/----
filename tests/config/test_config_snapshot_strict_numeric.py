@@ -8,8 +8,14 @@ from decimal import Decimal
 import pytest
 
 from core.models.schedule_config_runtime_fields import default_snapshot_values
+from core.services.common.excel_validators import get_batch_row_validate_and_normalize
 from core.services.scheduler.config.config_snapshot import build_schedule_config_snapshot
-from core.shared.strict_parse import is_exact_finite_number, is_exact_non_negative_number, parse_required_int
+from core.shared.strict_parse import (
+    integer_value,
+    is_exact_finite_number,
+    is_exact_non_negative_number,
+    parse_required_int,
+)
 
 
 class _One(enum.IntEnum):
@@ -61,6 +67,20 @@ def test_strict_integer_parse_keeps_integers_beyond_float_precision_exact() -> N
     exact = 2**53 + 1
     assert parse_required_int(exact, field="工序编号") == exact
     assert parse_required_int(str(exact), field="工序编号") == exact
+    assert parse_required_int(f"{exact}.0", field="工序编号") == exact
+    assert integer_value(f"{exact}.0") == exact
+    assert integer_value("1.0000000001") is None
+    _expect_validation(
+        "fractional.near_integer",
+        lambda: parse_required_int("1.0000000001", field="工序编号"),
+        "工序编号",
+        message_contains="必须是整数",
+    )
+    validator = get_batch_row_validate_and_normalize(parts_cache={"P001": {"part_name": "零件"}})
+    fractional_row = {"批次号": "B1", "图号": "P001", "数量": "1.0000000001", "优先级": "普通", "维护齐套标记": "齐套"}
+    assert validator(fractional_row) == "“数量”必须是整数"
+    exact_row = {"批次号": "B1", "图号": "P001", "数量": str(exact), "优先级": "普通", "维护齐套标记": "齐套"}
+    assert validator(exact_row) is None and exact_row["数量"] == exact
     # The config snapshot reads stored integer text through the min_value path.
     rows = [
         {"config_key": key, "config_value": value}

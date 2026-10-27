@@ -314,7 +314,7 @@ async function main() {
     APSResourceSession: { useQuery: () => planRead }, ResourceControls: { Button: 'button', ErrorBox: 'error', Issues: 'issues' },
     PlanCatalogUI: { Catalog: 'catalog' },
     WorkbenchFormat: { compactRange: () => '时间范围', dateTime: String }, WorkbenchDatePickerModel: { factoryTime: value => value },
-    WorkbenchTerms: { current_official: '当前正式计划', plan_version: String },
+    WorkbenchTerms: { current_official: '当前正式计划', plan_version: String }, FieldContract: { quantityReasons: {} },
     PlanDetailsUI: { TaskDetail: 'task-detail', ProjectionTables: 'projection-tables', Conflicts: 'conflicts' },
     WorkbenchPageContext: { useSnapshot() {} }, WorkbenchCaption: { useCaption() {} }, WorkbenchControls: { Pager: 'pager', EmptyState: 'empty' } };
   const planContext = vm.createContext({ window: planWindow, React: planHooks.React });
@@ -349,7 +349,7 @@ async function main() {
   const routeWindow = { APSResourceContract: { failure: text => new Error(text) }, APSPlanContract: { workspaceScope: (_, scope) => scope },
     ResourceControls: { Button: 'button', ErrorBox: 'error', Issues: 'issues' }, PlanCatalogUI: { Catalog: 'catalog' },
     PlanDetailsUI: { TaskDetail: 'task-detail', ProjectionTables: 'projection-tables', Conflicts: 'conflicts' }, PlanGantt: 'plan-gantt', PlanExportUI: 'plan-export',
-    WorkbenchTerms: { current_official: '当前正式计划', plan_version: String }, WorkbenchPageContext: { useSnapshot() {} }, WorkbenchCaption: { useCaption() {} }, WorkbenchControls: { EmptyState: 'empty' } };
+    WorkbenchTerms: { current_official: '当前正式计划', plan_version: String }, FieldContract: { quantityReasons: {} }, WorkbenchPageContext: { useSnapshot() {} }, WorkbenchCaption: { useCaption() {} }, WorkbenchControls: { EmptyState: 'empty' } };
   const routeContext = vm.createContext({ window: routeWindow, React: routeHooks.React, AbortController, DOMException });
   for (const name of ['resource-session.js', 'WorkbenchFormat.js', 'WorkbenchDatePickerModel.js', 'PointContract.js', 'GanttGraph.js', 'PlanContract.js', 'PlanGanttModel.js']) load(routeContext, name);
   const createRouteGraph = routeWindow.GanttGraph.create; let routeGraphBuilds = 0;
@@ -967,7 +967,7 @@ async function main() {
   let overviewHooks = null, cssWidth = 200.2, cssHeight = 16, binBuilds = 0, overviewTimeReads = 0, printChange, primary = 'light', printing = false;
   const overviewCtx = { clearRect() {}, setTransform() {}, fillRect(...args) { fills.push({ args, color: this.fillStyle }); }, strokeRect() {} };
   const canvas = { get clientWidth() { return Math.round(cssWidth); }, get clientHeight() { return Math.round(cssHeight); }, getBoundingClientRect: () => ({ width: cssWidth, height: cssHeight }), getContext: () => overviewCtx };
-  const overviewWindow = { addEventListener() {}, removeEventListener() {}, devicePixelRatio: 1, PointContract: { isPoint: task => task.event_kind === 'point' }, PointGanttModel: { paint: (_, x) => pointXs.push(x) },
+  const overviewWindow = { addEventListener() {}, removeEventListener() {}, devicePixelRatio: 1, FieldContract: { quantityReasons: {} }, PointContract: { isPoint: task => task.event_kind === 'point' }, PointGanttModel: { paint: (_, x) => pointXs.push(x) },
     GanttPresentation: { palette: () => ({ primary: { edge: primary }, plan: {}, gold: 'gold' }) },
     matchMedia: () => ({ addEventListener(_, fn) { printChange = fn; }, removeEventListener() {} }) };
   const overviewContext = vm.createContext({ window: overviewWindow, React: overviewParentHooks.React, document: { documentElement: {} },
@@ -1045,7 +1045,7 @@ async function main() {
   const conflictHooks = hooks(); let conflictSegmentReads = 0, conflictMemberChecks = 0;
   const conflictWindow = { ResourceControls: { Button: 'button', Issues: 'issues', ErrorBox: 'error' }, WorkbenchTerms: { delivery_risks: {} },
     WorkbenchFormat: { dateTime: String, compactRange: (start, end) => start + ' / ' + end },
-    WorkbenchControls: { Pager: 'pager', EmptyState: 'empty' }, PointContract: { isPoint: task => task.start === task.end } };
+    WorkbenchControls: { Pager: 'pager', EmptyState: 'empty' }, FieldContract: { quantityReasons: {} }, PointContract: { isPoint: task => task.start === task.end } };
   const conflictContext = vm.createContext({ window: conflictWindow, React: conflictHooks.React });
   load(conflictContext, 'PlanGanttModel.js'); load(conflictContext, 'PlanDetailsUI.jsx');
   const conflictTask = (id, start, end, machine = 'machine') => ({ task_ref: id, batch_id: id, process_label: id, sequence: 1,
@@ -1183,7 +1183,7 @@ async function main() {
   const trialGanttWindow = { TrialControls: { Button: 'button', Tabs: 'tabs', Pager: 'pager', timeLabel: String, number: String },
     ResourceControls: { TimelineZoom: 'zoom' }, TrialViewState: { useView: () => ({ value: trialValues, change(patch) { trialPreferencePatches.push(patch); Object.assign(trialValues, patch); return true; } }), Notice: 'notice' },
     GanttPresentationUI: { useExpanded: () => ({ expanded: false }), Axis: 'axis' }, GanttPresentation: { axis: () => ({ ticks: [] }), taskLines: () => ({ primary: '加工', secondary: '' }) },
-    PointContract: { isPoint: task => task.event_kind === 'point' }, PointGantt: { Marker: 'point' }, trialRowSorts: 0 };
+    PointContract: { isPoint: task => task.event_kind === 'point' }, PointGantt: { Marker: 'point' }, FieldContract: { quantityReasons: {} }, trialRowSorts: 0 };
   const trialGanttContext = vm.createContext({ window: trialGanttWindow, React: trialGanttHooks.React, Set: TrialBatchSet, innerWidth: 1280, innerHeight: 800,
     ResizeObserver: class { observe() {} disconnect() {} } });
   load(trialGanttContext, 'PlanGanttModel.js'); load(trialGanttContext, 'TrialGantt.jsx');
@@ -1288,7 +1288,7 @@ async function main() {
   const fileCommand = { phase: 'idle', locked: false, reset() { fieldResets++; this.phase = 'idle'; return true; } };
   const fieldWorkspaceWindow = { APSResourceContract: {}, FieldControls: { Button: 'button', ErrorBox: 'error', Feedback: 'feedback' },
     WorkbenchGuards: { useDirtyGuard: () => ({}), confirmLeave: async () => true }, WorkbenchPageContext: { useSnapshot() {} }, WorkbenchCaption: { useCaption() {} },
-    WorkbenchTerms: { current_official: '当前正式计划', plan_version: String }, WorkbenchListControls: { Pager: 'field-pager' },
+    WorkbenchTerms: { current_official: '当前正式计划', plan_version: String }, FieldContract: { quantityReasons: {} }, WorkbenchListControls: { Pager: 'field-pager' },
     FieldFilters: 'field-filters', FieldTable: 'field-table', FieldDetail: 'field-detail', FieldFiles: 'field-files' };
   const fieldWorkspaceContext = vm.createContext({ window: fieldWorkspaceWindow, React: fieldWorkspaceHooks.React, AbortController, DOMException });
   // FieldAPI binds its execution namespace at load; this workspace check replaces only its readView answer.

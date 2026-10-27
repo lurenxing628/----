@@ -225,3 +225,25 @@ def test_maintenance_job_detail_never_stores_non_finite_numbers(schema_conn, mon
     logs = schema_conn.execute("SELECT log_level, action, detail, error_message FROM OperationLogs").fetchall()
     assert [(row[0], row[1]) for row in logs] == [("ERROR", "logs_cleanup")]
     assert set(_strict(logs[0][2])) == {"mode", "time_cost_ms"} and logs[0][3].startswith(_NOT_JSON)
+
+
+def test_unreadable_stale_maintenance_lock_fails_closed_without_deleting_lock(tmp_path, monkeypatch):
+    import os
+    import time
+
+    from core.infrastructure import maintenance_lock
+
+    db_path = tmp_path / "aps.db"
+    lock_path = tmp_path / "aps.db.maintenance.lock"
+    lock_path.write_text(f"pid={os.getpid()} action=backup ts=2026-10-01T00:00:00", encoding="utf-8")
+    stale_time = time.time() - 600
+    os.utime(lock_path, (stale_time, stale_time))
+
+    def deny_read(_path):
+        raise PermissionError("permission denied reading lock file")
+
+    monkeypatch.setattr(maintenance_lock, "read_fixed_bytes", deny_read)
+    with pytest.raises(maintenance_lock.MaintenanceWindowError) as exc:
+        maintenance_lock.is_maintenance_window_active(str(db_path))
+    assert exc.value.code == "lock_state_unavailable"
+    assert lock_path.exists()

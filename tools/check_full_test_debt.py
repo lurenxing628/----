@@ -17,7 +17,6 @@ from tools.quality_gate_ledger import load_ledger  # noqa: E402
 from tools.quality_gate_shared import (  # noqa: E402
     FORMAL_FULL_TEST_PYTEST_ARGS,
     FULL_TEST_DEBT_ALLOWED_ACTIVE_XFAIL_NODEIDS,
-    QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
     QUALITY_GATE_FULL_TEST_DEBT_SUMMARY_REL,
     QualityGateError,
     quality_gate_required_test_nodeid_matches,
@@ -554,27 +553,6 @@ def run_check(
     )
     _progress("full-test-debt proof 校验完成")
     return summary
-
-
-def run_check_from_existing_payload(
-    payload: Dict[str, Any],
-    *,
-    ledger: Optional[Dict[str, Any]] = None,
-    require_clean_worktree_proof: bool = True,
-) -> Dict[str, Any]:
-    resolved_ledger = ledger if ledger is not None else load_ledger(required=True)
-    summary = build_full_test_debt_summary(
-        payload,
-        ledger=resolved_ledger,
-        require_historical_registry=True,
-        require_clean_worktree_proof=bool(require_clean_worktree_proof),
-    )
-    _progress("full-test-debt proof 校验完成")
-    return summary
-
-
-def write_current_full_test_debt_payload(payload: Dict[str, Any], *, repo_root: str = REPO_ROOT) -> None:
-    _write_json_atomically(QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL, payload, repo_root=repo_root)
 
 
 def write_full_test_debt_summary(summary: Dict[str, Any], *, repo_root: str = REPO_ROOT) -> None:

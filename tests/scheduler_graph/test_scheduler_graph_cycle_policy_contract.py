@@ -383,8 +383,6 @@ def _build_duration_weighted_graph(graph: Any) -> Any:
         ([("z", 1), ("a", 1)], [], (["a"], 1)),
         ([("a", 0), ("b", 0)], [("a", "b", 0)], ([], 0)),
         ([("a", 3), ("b", 2), ("c", 4)], [("b", "c", 0), ("a", "c", 2)], (["a", "c"], 9)),
-        ([("a", 5), ("b", 1), ("c", 10)], [("a", "b", -6), ("b", "c", 0)], (["a", "b", "c"], 10)),
-        ([("a", 5), ("b", 1), ("c", 10)], [("a", "b", -7), ("b", "c", 0)], (["b", "c"], 10)),
     ],
 )
 def test_critical_path_keeps_original_networkx_order_and_zero_semantics(

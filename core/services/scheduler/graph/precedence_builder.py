@@ -17,7 +17,6 @@ def build_linear_edges_by_batch(nodes: Iterable[OperationGraphNode]) -> List[Ope
     grouped: Dict[Tuple[str, Optional[str]], List[OperationGraphNode]] = {}
 
     for node in nodes:
-        _validate_node_object(node)
         grouped.setdefault((node.batch_id, node.piece_id), []).append(node)
 
     edges: List[OperationGraphEdge] = []
@@ -45,8 +44,6 @@ def build_precedence_graph(
     node_list = list(nodes)
     edge_list = list(edges)
 
-    _validate_node_objects(node_list)
-    _validate_edge_objects(edge_list)
     node_ids = _validate_unique_node_ids(node_list)
 
     for edge in edge_list:
@@ -62,22 +59,6 @@ def build_precedence_graph(
         graph.add_edge(edge.from_node_id, edge.to_node_id, **_edge_attrs(edge))
 
     return graph
-
-
-def _validate_node_objects(nodes: List[OperationGraphNode]) -> None:
-    for node in nodes:
-        _validate_node_object(node)
-
-
-def _validate_node_object(node: object) -> None:
-    if not isinstance(node, OperationGraphNode):
-        raise GraphBuildContractError("nodes 只能包含 OperationGraphNode。")
-
-
-def _validate_edge_objects(edges: List[OperationGraphEdge]) -> None:
-    for edge in edges:
-        if not isinstance(edge, OperationGraphEdge):
-            raise GraphBuildContractError("edges 只能包含 OperationGraphEdge。")
 
 
 def _validate_unique_node_ids(nodes: List[OperationGraphNode]) -> Set[str]:

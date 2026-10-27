@@ -24,7 +24,7 @@
   function CalendarRangeDialog({ adapter, month, defaultPeriods, source, command, onClose, refreshState, onRefresh }) {
     const monthPrefix = K.monthKey(month.year, month.month), fullMonth = { start_date: monthPrefix + '-01', end_date: monthPrefix + '-' + K.monthDays(month.year, month.month) };
     const [range, setRange] = React.useState({ ...fullMonth, scope: 'all', operation: 'upsert' });
-    const [value, setValue] = React.useState({ type: 'work', hours: String(window.APSWorkPeriods.hours(defaultPeriods)), periods: window.APSWorkPeriods.clone(defaultPeriods), eff: '100', allowNormal: 'yes', allowUrgent: 'yes', note: '' });
+    const [value, setValue] = React.useState(() => K.draft(defaultPeriods));
     const [replaceNote, setReplaceNote] = React.useState(false);
     const [result, setResult] = React.useState(null), [loading, setLoading] = React.useState(false), [error, setError] = React.useState(null), [page, setPage] = React.useState(1);
     const controller = React.useRef(null), mounted = React.useRef(true), formRef = React.useRef(null), formId = React.useId();

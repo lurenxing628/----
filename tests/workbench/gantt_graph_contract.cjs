@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const root = path.resolve(__dirname, '../..'), window = {};
 const context = vm.createContext({ window, Date, Number, Map, Set });
-for (const file of ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'PointContract.js', 'PointGanttModel.js', 'PlanGanttModel.js', 'GanttPresentation.js', 'RunCandidateModel.js', 'RunBaselineModel.js', 'GanttGraph.js'])
+for (const file of ['WorkbenchFormat.js', 'WorkbenchTerms.js', 'FieldContract.js', 'PointContract.js', 'PointGanttModel.js', 'PlanGanttModel.js', 'GanttPresentation.js', 'RunCandidateModel.js', 'RunBaselineModel.js', 'GanttGraph.js'])
   vm.runInContext(fs.readFileSync(path.join(root, 'frontend/workbench/app', file), 'utf8'), context, { filename: file });
 const G = window.GanttGraph, ref = n => n.toString(16).padStart(48, '0'), clone = value => JSON.parse(JSON.stringify(value));
 const at = hour => '2026-10-12T' + String(hour).padStart(2, '0') + ':00:00';

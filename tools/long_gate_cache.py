@@ -423,7 +423,7 @@ def _validated_log_texts(
     entry_id: str,
 ) -> Tuple[Optional[Dict[str, str]], Optional[str]]:
     texts: Dict[str, str] = {}
-    expected_stdout_log_path, expected_stderr_log_path = _log_paths_for_result(entry_id, {}, cache_dir=cache_dir)
+    expected_stdout_log_path, expected_stderr_log_path = _log_paths_for_result(entry_id, cache_dir=cache_dir)
     expected_paths = {
         "stdout_log_path": expected_stdout_log_path,
         "stderr_log_path": expected_stderr_log_path,
@@ -1010,7 +1010,6 @@ def decide_reuse(
 
 def _log_paths_for_result(
     entry_id: str,
-    _command_result: Mapping[str, Any],
     *,
     cache_dir: str = LONG_GATE_CACHE_DIR_REL,
 ) -> Tuple[str, str]:
@@ -1142,7 +1141,6 @@ def write_success(
         raise ValueError(f"long gate success cache requires valid required evidence: {required_reason}")
     stdout_log_path, stderr_log_path = _log_paths_for_result(
         entry_id,
-        command_result,
         cache_dir=resolved_cache_dir,
     )
     _write_text_if_needed(root, stdout_log_path, str(command_result.get("stdout") or ""))
@@ -1204,7 +1202,6 @@ def write_failure(
     entry_id = _safe_entry_id(str(entry.get("entry_id") or ""))
     stdout_log_path, stderr_log_path = _log_paths_for_result(
         entry_id,
-        command_result,
         cache_dir=resolved_cache_dir,
     )
     _write_text_if_needed(root, stdout_log_path, str(command_result.get("stdout") or ""))

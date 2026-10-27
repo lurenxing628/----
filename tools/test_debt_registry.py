@@ -644,10 +644,6 @@ def active_xfail_entries_by_nodeid(ledger: Optional[Dict[str, Any]] = None) -> D
     }
 
 
-def active_xfail_nodeids(ledger: Dict[str, Any]) -> Set[str]:
-    return set(active_xfail_entries_by_nodeid(ledger))
-
-
 def iter_required_tests() -> List[str]:
     return _iter_required_tests()
 
@@ -699,7 +695,6 @@ __all__ = [
     "P0_TEST_DEBT_SEED_METADATA",
     "TEST_DEBT_FAMILY",
     "active_xfail_entries_by_nodeid",
-    "active_xfail_nodeids",
     "baseline_candidate_nodeids",
     "build_test_debt_entries",
     "build_test_debt_ledger_from_baseline",

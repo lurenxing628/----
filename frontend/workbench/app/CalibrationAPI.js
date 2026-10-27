@@ -29,10 +29,11 @@
       || !Number.isFinite(value.table_widths[key]) || value.table_widths[key] < 56 || value.table_widths[key] > 16384))) throw failure('校准表格列宽记录无效。');
     return input({ ...value.scope, ...value.table });
   }
-  const read = (value, signal) => window.APSWorkbenchTransport.read(base, encode(input(value)), { signal });
+  const _read = (wanted, signal) => window.APSWorkbenchTransport.read(base, encode(wanted), { signal });
+  const read = (value, signal) => _read(input(value), signal);
   async function readView(value, signal) {
     const wanted = input(value);
-    return validate(await read(wanted, signal), wanted);
+    return _validate(await _read(wanted, signal), wanted);
   }
   function detail(value, query, signal) {
     if (!ref(value) || !query.snapshot_ref) throw failure('所选记录或数据版本缺失。');
@@ -75,13 +76,12 @@
         && revision.sample_ref === sample.sample_ref && revision.sample_revision === sample.sample_revision && revision.template_revision === sample.template_revision
         && JSON.stringify(revision.report_revision_refs) === JSON.stringify(sample.report_revision_refs)));
   }
-  function validate(result, query, detailRef) {
+  function _validate(result, wanted, detailRef) {
     // 信封已由 transport 校验；本页要按快照绑定明细和导出，所以快照必须非空。
     const data = result.data, meta = result.meta;
     if (!meta.snapshot_ref || !object(data.scope) || !object(data.summary) || !object(data.capabilities) || !Array.isArray(data.blocked_reasons)
       || !Array.isArray(data.source_constraints) || typeof data.lineage_available !== 'boolean' || !object(data.exports) || data.exports.url !== base + '/export'
       || data.exports.scope !== 'all_filtered_suggestions' || !Array.isArray(data.exports.formats)) throw failure('校准数据不完整，未使用样例或零值替代。');
-    const wanted = input(query);
     if (wanted.snapshot_ref && wanted.snapshot_ref !== meta.snapshot_ref) throw failure(window.WorkbenchTerms.outcomes.stale, 'snapshot_stale');
     if (Object.keys(defaults).filter(key => !['page', 'column_filters'].includes(key)).some(key => data.scope[key] !== wanted[key])
       // 后端在没有列筛选时省略 scope.column_filters（core/models/workbench_calibration.py scope()）。
@@ -95,6 +95,7 @@
       || data.page.total_pages !== Math.ceil(data.page.total / wanted.size) || data.items.length !== Math.max(0, Math.min(wanted.size, data.page.total - (wanted.page - 1) * wanted.size))) throw failure('校准列表或分页数量不一致。');
     return result;
   }
+  const validate = (result, query, detailRef) => _validate(result, input(query), detailRef);
   function exportReason(data, format) {
     if (!data || !data.capabilities || data.capabilities.export !== true) return '当前来源暂不能导出。';
     if (!data.summary.total) return '当前筛选没有可导出的记录。';

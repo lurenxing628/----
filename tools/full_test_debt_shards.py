@@ -4,7 +4,6 @@ import fnmatch
 import os
 from typing import Dict, List, Literal, Sequence, Tuple
 
-from tools.browser_lane_files import is_browser_lane_file
 from tools.test_registry import iter_startup_regressions
 
 ShardKind = Literal["serial", "parallel"]
@@ -54,8 +53,6 @@ PERF_FILE_PATTERNS: Tuple[str, ...] = ()
 
 def is_perf_nodeid(nodeid: str) -> bool:
     path = nodeid_file(nodeid)
-    if is_browser_lane_file(path):
-        return True
     return any(fnmatch.fnmatch(path, pattern) for pattern in PERF_FILE_PATTERNS)
 
 

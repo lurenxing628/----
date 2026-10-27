@@ -10,10 +10,7 @@ from core.algorithm_contracts.dispatch_rules import (
     as_dispatch_rule_spec,
     build_dispatch_key,
 )
-from core.algorithm_runtime.auto_assign_contract import (
-    AUTO_ASSIGN_REASON_WINDOW_BLOCKED,
-    auto_assign_attempt_from_result,
-)
+from core.algorithm_runtime.auto_assign_contract import AUTO_ASSIGN_REASON_WINDOW_BLOCKED
 from core.algorithm_runtime.internal_slot import (
     estimate_internal_slot,
     require_internal_hours,
@@ -44,7 +41,6 @@ class _ScoringResources(NamedTuple):
     auto_assign_reason: str
 
 
-_NATIVE_PARSE_OPTIONAL_DATE = parse_optional_date
 _DUE_TEXT_CACHE: Dict[str, Optional[date]] = {}
 
 
@@ -62,7 +58,7 @@ def _parse_native_due_text(value: str) -> Optional[date]:
 def parse_due_date(value: Any) -> Optional[date]:
     if value is None or type(value) is date:
         return value
-    if type(value) is str and parse_optional_date is _NATIVE_PARSE_OPTIONAL_DATE:
+    if type(value) is str:
         return _parse_native_due_text(value)
     return parse_optional_date(value, field="due_date")
 
@@ -368,7 +364,7 @@ def _auto_assign_attempt_for_scoring(
         "operator_busy_hours": state.operator_busy_hours,
         "probe_only": True,
     }
-    return auto_assign_attempt_from_result(ctx.auto_assign_internal_resources_attempt(**kwargs))
+    return ctx.auto_assign_internal_resources_attempt(**kwargs)
 
 
 def _estimate_scoring_slot(
@@ -406,7 +402,7 @@ def _estimate_scoring_slot(
     handoff = current_sgs_handoff()
     estimate = None
     compute = estimate_selected
-    if handoff is not None and estimate_slot is estimate_internal_slot:
+    if handoff is not None:
         if handoff._timing is not None:
             def shared_selected():
                 return handoff.shared_slot_estimate(
@@ -430,14 +426,3 @@ def _estimate_scoring_slot(
             prev_end=meta["prev_end"], end_dt_exclusive=end_dt_exclusive, total_hours_base=total_hours,
         )
     return estimate
-
-
-_NATIVE_SCORING_HELPERS = {name: globals()[name] for name in (
-    "_candidate_meta", "_scoring_total_hours", "_scoring_resources", "_estimate_scoring_slot", "_dispatch_key",
-    "parse_due_date", "parse_optional_date", "_score_internal_candidate", "_score_external_candidate",
-    "due_span_inputs", "external_candidate_window",
-)}
-
-
-def native_scoring_unchanged():
-    return all(globals()[name] is original for name, original in _NATIVE_SCORING_HELPERS.items())

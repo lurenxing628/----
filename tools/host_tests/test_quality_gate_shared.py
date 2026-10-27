@@ -123,7 +123,7 @@ def test_replay_checks_run_index_path_and_preserves_execution_failures(tmp_path)
     assert "run_id mismatch" in shared.replay_quality_gate_command_plan(
         tmp_path, [command], receipt_entries=[entry], run_id="another-run",
     )
-    assert "command_index mismatch" in shared._verify_receipt_header(receipt, command, index=2, run_id="run-content")
+    assert "command_index mismatch" in shared._verify_receipt_header(receipt, index=2, run_id="run-content")
     assert "path mismatch" in shared._load_verified_quality_gate_receipt(
         tmp_path, {**entry, "path": entry["path"].replace("01_", "02_")}, command, index=1,
     )[1]

@@ -91,29 +91,29 @@ def test_graph_resource_preparation_is_shared_by_full_and_per_operation_inputs(m
                          machine_id="M2" if op_id == 3 else None, operator_id=None) for op_id in range(1, 6)]
     batches = {"B1": make_batch(quantity=2)}
     pool = {"machines_by_op_type": {"T1": ["M1", "M2"], "T2": ["M1"]},
+            "machines_by_operator": {},
             "operators_by_machine": {"M1": ["O1"], "M2": ["O2"]},
             "operator_skills": {"O1": ["T1"], "O2": ["T1"]}}
     calls = {}
-    for name in ("_candidate_machine_ids", "_candidate_operator_ids"):
-        helper = getattr(input_adapter, name)
+    helper = input_adapter._candidate_machine_ids
 
-        def counted(*args, _name=name, _helper=helper, **kwargs):
-            calls[_name] = calls.get(_name, 0) + 1
-            return _helper(*args, **kwargs)
+    def counted(*args, **kwargs):
+        calls["_candidate_machine_ids"] = calls.get("_candidate_machine_ids", 0) + 1
+        return helper(*args, **kwargs)
 
-        monkeypatch.setattr(input_adapter, name, counted)
+    monkeypatch.setattr(input_adapter, "_candidate_machine_ids", counted)
 
     full = input_adapter.build_operation_nodes_from_rows(rows, batches=batches, resource_pool=pool)
-    assert calls == {"_candidate_machine_ids": 3, "_candidate_operator_ids": 3}
+    assert calls == {"_candidate_machine_ids": 3}
     calls.clear()
     resources = input_adapter.GraphResourcePreparation(pool)
     per_operation = [input_adapter.build_operation_nodes_from_rows([row], batches=batches,
                      resource_preparation=resources)[0] for row in rows]
-    assert calls == {"_candidate_machine_ids": 3, "_candidate_operator_ids": 3}
+    assert calls == {"_candidate_machine_ids": 3}
     assert per_operation == full
     assert full[0].candidate_machine_ids == full[1].candidate_machine_ids == full[4].candidate_machine_ids == ("M1", "M2")
-    assert full[2].candidate_machine_ids == ("M2",) and full[2].candidate_operator_ids == ("O2",)
-    assert full[3].candidate_machine_ids == ("M1",) and full[3].candidate_operator_ids == ()
+    assert full[2].candidate_machine_ids == ("M2",)
+    assert full[3].candidate_machine_ids == ("M1",)
 
 
 def test_multi_segment_seed_result_blocks_each_resource_only_during_its_segment():

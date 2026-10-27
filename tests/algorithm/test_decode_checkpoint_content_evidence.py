@@ -359,9 +359,9 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         case.update(seed_results=[], machine_downtimes={}, resource_pool=None,
                     batch_order_override=list(batches), dispatch_rule="slack")
         nodes = [OperationGraphNode(node_id=str(op.id), batch_id=op.batch_id, op_code=op.op_code,
-                                    seq=op.seq, name=op.op_code,
+                                    seq=op.seq,
                                     duration_minutes=round((op.setup_hours + op.unit_hours * batches[op.batch_id].quantity) * 60),
-                                    machine_id=op.machine_id, operator_id=op.operator_id, op_type_id=op.op_type_id)
+                                    machine_id=op.machine_id)
                  for op in operations]
         edges = [OperationGraphEdge(str(parent), str(child))
                  for child, parents in context["predecessor_op_ids_by_op_id"].items() for parent in parents]

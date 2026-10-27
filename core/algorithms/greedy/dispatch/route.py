@@ -5,7 +5,7 @@ from core.errors import ValidationError
 
 def dispatch_run(ctx, *, state, sorted_ops, batches, batch_order, params, machine_downtimes,
                  resource_pool, graph_ready_context, batch_dispatch, sgs_dispatch,
-                 decode_resume=None, decode_checkpoints=None):
+                 decode_resume=None, decode_checkpoints=None) -> None:
     if graph_ready_context is not None and params.dispatch_mode_key != "sgs":
         raise ValidationError("图 ready 队列只能在 SGS 派工模式下启用。", field="graph_ready_context")
     if (decode_resume is not None or decode_checkpoints is not None) and (
@@ -22,7 +22,8 @@ def dispatch_run(ctx, *, state, sorted_ops, batches, batch_order, params, machin
         resource_pool=resource_pool,
     )
     if params.dispatch_mode_key != "sgs":
-        return batch_dispatch(ctx, **common, base_time=params.base_time)
-    return sgs_dispatch(ctx, **common, batch_order=batch_order, dispatch_rule=params.dispatch_rule_spec,
-                        graph_ready_context=graph_ready_context,
-                        decode_resume=decode_resume, decode_checkpoints=decode_checkpoints)
+        batch_dispatch(ctx, **common, base_time=params.base_time)
+        return
+    sgs_dispatch(ctx, **common, batch_order=batch_order, dispatch_rule=params.dispatch_rule_spec,
+                 graph_ready_context=graph_ready_context,
+                 decode_resume=decode_resume, decode_checkpoints=decode_checkpoints)

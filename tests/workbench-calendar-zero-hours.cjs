@@ -24,7 +24,7 @@ const window = {
   WorkbenchTerms: { personal_calendar: '个人日历' }, WorkbenchFormat: { hours: v => String(v) }, WorkPeriodFields: 'WorkPeriodFields'
 };
 const context = vm.createContext({ React, window, console });
-for (const name of ['WorkPeriods.js', 'OperatorCalendarContract.js']) vm.runInContext(fs.readFileSync(path.join(app, name), 'utf8'), context);
+for (const name of ['WorkPeriods.js', 'CalendarContract.js', 'OperatorCalendarContract.js']) vm.runInContext(fs.readFileSync(path.join(app, name), 'utf8'), context);
 output.outputs.forEach(row => vm.runInContext(row.code, context));
 function expand(node) {
   if (Array.isArray(node)) return node.map(expand);
@@ -48,6 +48,17 @@ assert.equal(notes(fields(day)).length, 0, '有工时不提醒');
 assert.equal(notes(fields({ ...day, hours: '' })).length, 0, '工时还没填时交给必填校验，不提醒');
 assert.equal(notes(fields({ ...day, periods: [{ start: '08:00', end: '12:00', day_offset: 0 }], hours: '4' })).length, 0, '有工作时段不提醒');
 assert.equal(notes(fields({ ...day, type: 'rest', periods: [], hours: '0' })).length, 0, '休息日不提醒');
+
+// 批量维护草稿：从默认时段初始化后清空时段，再「工作 -> 休息 -> 工作」切换，恢复工厂默认时段而非硬编码两班制。
+const factoryDefault = [{ start: '06:00', end: '14:00', day_offset: 0 }];
+let rangeDraft = window.APSCalendarContract.draft(factoryDefault);
+assert.equal(rangeDraft.hours, '8');
+assert.equal(JSON.stringify(rangeDraft.periods), JSON.stringify(factoryDefault));
+assert.equal(JSON.stringify(rangeDraft.defaultPeriods), JSON.stringify(factoryDefault));
+rangeDraft = window.APSCalendarContract.switchType({ ...rangeDraft, periods: [], hours: '0' }, 'rest');
+rangeDraft = window.APSCalendarContract.switchType(rangeDraft, 'work');
+assert.equal(JSON.stringify(rangeDraft.periods), JSON.stringify(factoryDefault), '批量维护从休息切回工作日时恢复工厂默认时段');
+assert.equal(rangeDraft.hours, '8', '恢复工厂默认时段后工时按默认时段计算');
 
 // 个人日历：点一天，上班但工作时段全部移除时提醒；保存按钮照常可用。
 const date = '2026-10-05', defaults = [{ start: '08:30', end: '11:50', day_offset: 0 }, { start: '13:30', end: '17:30', day_offset: 0 }];

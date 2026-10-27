@@ -139,7 +139,7 @@ for (const R of [P.risk, A.risk]) {
 }
 assert.equal(A.value(0.004), '不到 0.01');
 // 交付/停机共用真实时间轴：跨日仍连续，零工时独立点轨，停机只标登记范围。
-for (const name of ['PointContract.js', 'PointGanttModel.js', 'PlanGanttModel.js', 'GanttPresentation.js', 'DashboardTimelineModel.js'])
+for (const name of ['FieldContract.js', 'PointContract.js', 'PointGanttModel.js', 'PlanGanttModel.js', 'GanttPresentation.js', 'DashboardTimelineModel.js'])
   vm.runInNewContext(fs.readFileSync(path.join(app, name), 'utf8'), { window: real });
 const timelineReact = { ...react, useRef: value => ({ current: value }), useState: value => [typeof value === 'function' ? value() : value, noop],
   useMemo: fn => fn(), useEffect: noop, useLayoutEffect: noop };

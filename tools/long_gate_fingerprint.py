@@ -14,6 +14,7 @@ import tempfile
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, cast
 
 from tools import architecture_scan_cache
+from tools.long_gate_paths import is_within_repo, real_repo_root
 from tools.long_gate_schema import LONG_GATE_FINGERPRINT_SCHEMA_VERSION, content_equal, read_file_content
 from tools.quality_gate_shared import (
     QUALITY_GATE_CURRENT_FULL_TEST_DEBT_REL,
@@ -126,21 +127,11 @@ def _normalize_scope_path(path: str) -> str:
     return normalized
 
 
-def _real_repo_root(repo_root: str) -> str:
-    return os.path.realpath(os.path.abspath(repo_root))
-
-
-def _is_within_repo(abs_path: str, repo_root: str) -> bool:
-    root = _real_repo_root(repo_root)
-    real_path = os.path.realpath(abs_path)
-    return real_path == root or real_path.startswith(root + os.sep)
-
-
 def _abs_for_scope_path(path: str, repo_root: str) -> str:
     normalized = _normalize_scope_path(path)
     if os.path.isabs(normalized):
         return normalized
-    return os.path.join(_real_repo_root(repo_root), normalized.replace("/", os.sep))
+    return os.path.join(real_repo_root(repo_root), normalized.replace("/", os.sep))
 
 
 def _candidate_paths_for_scope(scope: str, repo_root: str, tracked: Set[str], untracked: Set[str]) -> Set[str]:
@@ -151,9 +142,9 @@ def _candidate_paths_for_scope(scope: str, repo_root: str, tracked: Set[str], un
         return {normalized_scope}
 
     candidates = {path for path in set(tracked) | set(untracked) if fnmatch.fnmatch(path, normalized_scope)}
-    root = _real_repo_root(repo_root)
+    root = real_repo_root(repo_root)
     glob_pattern = normalized_scope if os.path.isabs(normalized_scope) else os.path.join(root, normalized_scope)
-    if not _is_within_repo(glob_pattern, root):
+    if not is_within_repo(glob_pattern, root):
         candidates.add(normalized_scope)
     filesystem_matches = glob.glob(glob_pattern, recursive=True)
     for abs_path in filesystem_matches:
@@ -179,7 +170,7 @@ def _file_mode(path: str, kind: str) -> str:
 def _fingerprint_one_file(rel_path: str, repo_root: str, tracked: Set[str], untracked: Set[str]) -> Dict[str, Any]:
     normalized = _normalize_scope_path(rel_path)
     abs_path = _abs_for_scope_path(normalized, repo_root)
-    if not os.path.islink(abs_path) and not _is_within_repo(abs_path, repo_root):
+    if not os.path.islink(abs_path) and not is_within_repo(abs_path, repo_root):
         return {
             "path": normalized,
             "exists": False,
@@ -204,7 +195,7 @@ def _fingerprint_one_file(rel_path: str, repo_root: str, tracked: Set[str], untr
     if os.path.islink(abs_path):
         link_target = os.readlink(abs_path)
         link_realpath = os.path.realpath(abs_path)
-        inside = _is_within_repo(link_realpath, repo_root)
+        inside = is_within_repo(link_realpath, repo_root)
         kind = "symlink" if inside else "symlink_outside_repo"
         content = {
             "target": link_target,

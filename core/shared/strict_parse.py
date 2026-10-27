@@ -75,7 +75,7 @@ def integer_value(value: Any) -> Optional[int]:
     """A stored integer: an int (not bool) as is, an integral float, or UTF-8 bytes / text / other value whose
     literal is an integer ('1', ' 1 ', '1.0', '1e3'); None for anything else, blank included."""
     if is_int(value):
-        return value
+        return int(value)
     if isinstance(value, float):
         return int(value) if value.is_integer() else None
     if isinstance(value, (bytes, bytearray)):
@@ -123,6 +123,8 @@ def _parse_finite_float(value: Any, *, field: str) -> float:
 def _looks_like_integer_float(value: Any) -> bool:
     if isinstance(value, float):
         return True
+    if isinstance(value, Decimal):
+        return int(value.as_tuple().exponent) != 0
     if isinstance(value, str):
         text = value.strip()
         return "." in text or "e" in text.lower()
@@ -132,8 +134,13 @@ def _looks_like_integer_float(value: Any) -> bool:
 def _parse_finite_int(value: Any, *, field: str, reject_integer_float: bool = False) -> int:
     if isinstance(value, bool):
         raise ValidationError(f"“{field}”必须是整数", field=field)
-    # Native integers and plain integer text parse exactly; only float-shaped input takes the float route.
     if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValidationError(f"“{field}”必须是{'有限整数' if math.isinf(value) else '整数'}", field=field)
+        if reject_integer_float or not value.is_integer():
+            raise ValidationError(f"“{field}”必须是整数", field=field)
         return int(value)
     if isinstance(value, str) and not _looks_like_integer_float(value):
         try:
@@ -141,17 +148,16 @@ def _parse_finite_int(value: Any, *, field: str, reject_integer_float: bool = Fa
         except ValueError as exc:
             raise ValidationError(f"“{field}”必须是整数", field=field) from exc
     try:
-        parsed = float(value)
-    except (TypeError, ValueError, OverflowError) as exc:
+        number = value if isinstance(value, Decimal) else Decimal(str(value).strip())
+    except InvalidOperation as exc:
         raise ValidationError(f"“{field}”必须是整数", field=field) from exc
-    if not math.isfinite(parsed):
+    if number.is_nan():
+        raise ValidationError(f"“{field}”必须是整数", field=field)
+    if number.is_infinite():
         raise ValidationError(f"“{field}”必须是有限整数", field=field)
-    integer_value = int(parsed)
-    if abs(parsed - float(integer_value)) > 1e-9:
+    if number != number.to_integral_value() or (reject_integer_float and _looks_like_integer_float(value)):
         raise ValidationError(f"“{field}”必须是整数", field=field)
-    if reject_integer_float and _looks_like_integer_float(value):
-        raise ValidationError(f"“{field}”必须是整数", field=field)
-    return int(integer_value)
+    return int(number)
 
 
 def parse_required_float(

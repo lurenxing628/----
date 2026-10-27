@@ -6,9 +6,8 @@ sha256 的扫描结果磁盘缓存（含 ~250 行缓存校验/合并机器）。
 塌缩为「每次直扫」：
 
 - 公共 API（scan_files_with_cache / aggregate_architecture_scan /
-  scan_single_file_architecture_fact / scan_architecture_paths_with_cache /
-  architecture_scan_cache_metadata）签名与返回结构保持不变；
-  cache_path / force 参数保留但不再有任何作用。
+  scan_single_file_architecture_fact /
+  architecture_scan_cache_metadata）按给定路径直扫或聚合；
 - 不再读写磁盘缓存文件；同次适应度检查显式共享扫描快照，跨次调用保持新鲜。
 - architecture_scan_cache_metadata 仍被 long_gate_fingerprint 与
   run_quality_gate 回执使用，保存源码与实际版本或行为原文。
@@ -160,13 +159,10 @@ def scan_single_file_architecture_fact(
 
 def scan_files_with_cache(
     paths: Sequence[str],
-    cache_path: Optional[str] = None,
-    force: bool = False,
     context: Optional[ScanContext] = None,
     fact_kinds: Optional[Sequence[str]] = None,
 ) -> List[Dict[str, Any]]:
-    """对给定路径直扫并返回 facts（cache_path/force 为塌缩前遗留参数，无作用）。"""
-    del cache_path, force  # 塌缩后不再有磁盘缓存
+    """对给定路径直扫并返回 facts。"""
     scan_context = context or ScanContext()
     requested_kinds = _normalize_fact_kinds(fact_kinds)
     normalized_paths = sorted(set(_normalize_path(str(path)) for path in list(paths or [])))
@@ -234,21 +230,12 @@ def aggregate_architecture_scan(
     }
 
 
-def scan_architecture_paths_with_cache(
-    paths: Sequence[str],
-    cache_path: Optional[str] = None,
-    force: bool = False,
-) -> Dict[str, Any]:
-    return aggregate_architecture_scan(scan_files_with_cache(paths, cache_path=cache_path, force=force))
-
-
 __all__ = [
     "ARCHITECTURE_SCAN_CACHE_REL",
     "ARCHITECTURE_SCAN_CACHE_SCHEMA_VERSION",
     "ARCHITECTURE_SCAN_FACT_SCHEMA_VERSION",
     "aggregate_architecture_scan",
     "architecture_scan_cache_metadata",
-    "scan_architecture_paths_with_cache",
     "scan_files_with_cache",
     "scan_single_file_architecture_fact",
 ]

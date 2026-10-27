@@ -6,7 +6,6 @@ from .schedule_graph_dispatch_context import build_predecessor_successor_maps, s
 from .schedule_input_contracts import ScheduleRunInput
 
 GRAPH_RESOURCE_NOT_DAG_REASON = "graph_not_dag"
-GRAPH_RESOURCE_MATCHING_CONTRACT_REASON = "graph_resource_matching_contract_error"
 
 
 def build_first_wave_ready_nodes(
@@ -62,7 +61,6 @@ def build_graph_resource_matching_projection(
         ), {}
 
     from core.services.scheduler.graph.resource_matching import (
-        GraphResourceMatchingContractError,
         resource_matching_summary_to_diagnostics_dict,
         resource_matching_summary_to_public_dict,
         summarize_operation_machine_matching,
@@ -74,13 +72,7 @@ def build_graph_resource_matching_projection(
         edges=edges,
         graph_ready_context=(graph_ready_context if mode == "on" else None),
     )
-    try:
-        summary = summarize_operation_machine_matching(ready_nodes)
-    except GraphResourceMatchingContractError:
-        return _resource_matching_status_projection(
-            status="error",
-            reason=GRAPH_RESOURCE_MATCHING_CONTRACT_REASON,
-        ), {}
+    summary = summarize_operation_machine_matching(ready_nodes)
     return resource_matching_summary_to_public_dict(summary), resource_matching_summary_to_diagnostics_dict(summary)
 
 

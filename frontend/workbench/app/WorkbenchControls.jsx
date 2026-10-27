@@ -14,16 +14,10 @@
       function afterPrint() { commit(false, true); }
       function mediaChanged(event) { commit(event.matches, false); }
       window.addEventListener('beforeprint', beforePrint); window.addEventListener('afterprint', afterPrint);
-      if (media) {
-        if (typeof media.addEventListener === 'function') media.addEventListener('change', mediaChanged);
-        else media.addListener(mediaChanged);
-      }
+      if (media) media.addEventListener('change', mediaChanged);
       return () => {
         window.removeEventListener('beforeprint', beforePrint); window.removeEventListener('afterprint', afterPrint);
-        if (media) {
-          if (typeof media.removeEventListener === 'function') media.removeEventListener('change', mediaChanged);
-          else media.removeListener(mediaChanged);
-        }
+        if (media) media.removeEventListener('change', mediaChanged);
       };
     }, []);
     return printing;

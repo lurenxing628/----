@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
+from typing import Any, Dict, List, Optional, Protocol, Tuple
 
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult
 from core.algorithm_runtime.auto_assign_contract import AutoAssignAttempt
@@ -59,4 +59,4 @@ class AutoAssignAttemptCallback(Protocol):
         machine_busy_hours: Dict[str, float],
         operator_busy_hours: Dict[str, float],
         probe_only: bool = False,
-    ) -> Union[AutoAssignAttempt, Tuple[str, str], List[str], None]: ...
+    ) -> AutoAssignAttempt: ...

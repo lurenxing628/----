@@ -51,18 +51,15 @@ def get_critical_path(
             )
         else:
             best = (duration, _SOURCE_NODE_ID)
-        distances[node_id] = best if best[0] >= 0 else (0, node_id)
+        distances[node_id] = best
 
     # Source comes first, so a graph with no positive distance has an empty path.
     node_id = max(distances, key=lambda item: distances[item][0])
     minutes = distances[node_id][0]
     path: List[str] = []
-    while node_id != _SOURCE_NODE_ID:
+    while node_id is not _SOURCE_NODE_ID:
         path.append(node_id)
-        predecessor = distances[node_id][1]
-        if predecessor == node_id:
-            break
-        node_id = predecessor
+        node_id = distances[node_id][1]
     path.reverse()
 
     return path, minutes

@@ -8,63 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
 
-from core.shared.strict_parse import is_int
-
 _NON_CRITICAL_PATH_RANK = 1_000_000_000
-
-
-class GraphScoringContractError(ValueError):
-    """Raised when graph scoring input violates the PR-6 scoring contract."""
-
-
-def _require_metric_field(metric: Dict[str, Any], field: str) -> Any:
-    if field not in metric:
-        raise GraphScoringContractError(f"图评分指标缺少字段：{field}")
-    return metric[field]
-
-
-def _require_bool(value: Any, *, field: str) -> bool:
-    if not isinstance(value, bool):
-        raise GraphScoringContractError(f"图评分字段 {field} 必须是 bool。")
-    return value
-
-
-def _require_non_negative_int(value: Any, *, field: str) -> int:
-    if not is_int(value) or value < 0:
-        raise GraphScoringContractError(f"图评分字段 {field} 必须是非负整数。")
-    return value
-
-
-def _require_optional_non_negative_int(value: Any, *, field: str) -> Optional[int]:
-    if value is None:
-        return None
-    return _require_non_negative_int(value, field=field)
-
-
-def _require_weight(value: Any, *, field: str) -> int:
-    if not is_int(value) or value < 0:
-        raise GraphScoringContractError(f"图评分权重 {field} 必须是非负整数。")
-    return value
-
-
-def _normalized_metric(metric: Dict[str, Any]) -> Tuple[bool, Optional[int], int, int]:
-    is_on_critical_path = _require_bool(
-        _require_metric_field(metric, "is_on_critical_path"),
-        field="is_on_critical_path",
-    )
-    critical_path_rank = _require_optional_non_negative_int(
-        _require_metric_field(metric, "critical_path_rank"),
-        field="critical_path_rank",
-    )
-    impact_count = _require_non_negative_int(
-        _require_metric_field(metric, "impact_count"),
-        field="impact_count",
-    )
-    downstream_critical_minutes = _require_non_negative_int(
-        _require_metric_field(metric, "downstream_critical_minutes"),
-        field="downstream_critical_minutes",
-    )
-    return is_on_critical_path, critical_path_rank, impact_count, downstream_critical_minutes
 
 
 def _graph_score_values(
@@ -74,13 +18,10 @@ def _graph_score_values(
     impact_weight: int,
     downstream_minutes_weight: int = 1,
 ) -> Tuple[int, Optional[int]]:
-    is_on_critical_path, rank, impact_count, downstream_critical_minutes = _normalized_metric(node_metric)
-    critical_weight = _require_weight(critical_weight, field="critical_weight")
-    impact_weight = _require_weight(impact_weight, field="impact_weight")
-    downstream_minutes_weight = _require_weight(
-        downstream_minutes_weight,
-        field="downstream_minutes_weight",
-    )
+    is_on_critical_path = node_metric["is_on_critical_path"]
+    rank = node_metric["critical_path_rank"]
+    impact_count = node_metric["impact_count"]
+    downstream_critical_minutes = node_metric["downstream_critical_minutes"]
     bonus = int(
         (critical_weight if is_on_critical_path else 0)
         + impact_count * impact_weight
@@ -96,7 +37,7 @@ def graph_score_components(
     impact_weight: int,
     downstream_minutes_weight: int = 1,
 ) -> Tuple[int, Tuple[float, ...]]:
-    """Validate once and return the exact bonus together with its dispatch key."""
+    """Return the exact bonus together with its dispatch key."""
     bonus, rank = _graph_score_values(
         node_metric,
         critical_weight=critical_weight,
@@ -110,6 +51,5 @@ def graph_score_components(
 
 
 __all__ = [
-    "GraphScoringContractError",
     "graph_score_components",
 ]

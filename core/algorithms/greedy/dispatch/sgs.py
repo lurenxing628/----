@@ -33,7 +33,6 @@ from .sgs_priority_frontier import score_next_ready
 from .sgs_priority_pruning import GraphPriorityPruning
 from .sgs_scoring import (
     _score_external_candidate,
-    native_scoring_unchanged,
     with_graph_priority_key,
 )
 from .sgs_scoring import (
@@ -45,8 +44,6 @@ if TYPE_CHECKING:
     from core.models.batch import Batch
 
 ScoredCandidate = Tuple[Tuple[float, ...], str, "OpForScheduleAlgo"]
-
-_NATIVE_DISPATCH_SELECTED = _dispatch_selected
 
 
 def _score_internal_candidate(**kwargs: Any) -> Tuple[float, ...]:
@@ -79,7 +76,7 @@ def dispatch_sgs(
     graph_ready_context: Optional[Any] = None,
     decode_resume: Optional[DecodeCheckpoint] = None,
     decode_checkpoints: Optional[DecodeCheckpointRequest] = None,
-) -> Tuple[int, int]:
+) -> None:
     ctx = context
     rule_spec = as_dispatch_rule_spec(dispatch_rule)
     ops_by_batch = _group_sgs_ops(sorted_ops=sorted_ops, batches=batches, state=state)
@@ -106,7 +103,6 @@ def dispatch_sgs(
             decode_resume=decode_resume,
             decode_checkpoints=decode_checkpoints,
         )
-    return state.scheduled_count, state.failed_count
 
 
 def _group_sgs_ops(
@@ -179,9 +175,8 @@ def _run_sgs_loop(
     score_cache = ctx.sgs_score_cache
     if score_cache is not None and score_cache.state is not state:
         raise RuntimeError("SGS 评分缓存绑定的运行状态与本次派工不一致")
-    pruning = (GraphPriorityPruning.for_cache(score_cache, graph_state, batches, total_hours_by_op_id)
-               if ctx.native_scoring else None)
-    acceleration = DecodeAcceleration(decode_checkpoints, graph_state, pruning, total_hours_by_op_id, ctx,
+    pruning = GraphPriorityPruning.for_cache(score_cache, graph_state, batches, total_hours_by_op_id)
+    acceleration = DecodeAcceleration(decode_checkpoints, graph_state, pruning, total_hours_by_op_id,
                                       resume=decode_resume)
 
     def collect():
@@ -197,7 +192,7 @@ def _run_sgs_loop(
         while True:
             if score_cache is not None:
                 score_cache.next_round()
-            scored = score_next_ready(acceleration.frontier, collect=collect, score=score, native=lambda: ctx.native_scoring,
+            scored = score_next_ready(acceleration.frontier, collect=collect, score=score,
                                       blocked_batches=state.blocked_batches, cache=score_cache)
             if not scored:
                 if graph_state is not None:
@@ -223,8 +218,7 @@ def _run_sgs_loop(
                 graph_state=graph_state,
             )
             position += 1
-            if acceleration.record(op.id, position, state=state, next_idx=next_idx, graph=graph_state,
-                                   native_dispatch=_dispatch_selected is _NATIVE_DISPATCH_SELECTED):
+            if acceleration.record(op.id, position, state=state, next_idx=next_idx, graph=graph_state):
                 _complete_reused_tail(graph_state, ops_by_batch=ops_by_batch, blocked_batches=state.blocked_batches)
                 return
             if score_cache is not None:
@@ -240,12 +234,7 @@ def _complete_reused_tail(graph_state: Optional[Dict[str, Any]], *, ops_by_batch
 
 
 def _prepare_scoring_round(ctx, priority_pruning):
-    natives_intact = ctx.native_scoring
     cache = ctx.sgs_score_cache
-    if cache is not None and not natives_intact:
-        # The handoff scope still holds this cache; an instrumented scorer must see every estimate itself.
-        cache.suspend_round()
-        cache = None
     if cache is not None:
         cache.begin_round()
     if cache is None or cache._timing is None:
@@ -371,13 +360,3 @@ def _score_candidate(
     if graph_key is None:
         raise ValidationError(f"图评分上下文缺少待排工序 {op_id} 的评分 key。", field="graph_ready_context")
     return with_graph_priority_key(base_key, graph_key)
-
-
-_NATIVE_SCORE_FUNCTIONS = {name: globals()[name] for name in (
-    "_score_candidate", "_score_internal_candidate", "_score_internal_candidate_impl", "_score_external_candidate",
-    "estimate_internal_slot", "build_dispatch_key", "operation_dispatch_state",
-)}
-
-
-def native_score_functions_unchanged():
-    return native_scoring_unchanged() and all(globals()[name] is original for name, original in _NATIVE_SCORE_FUNCTIONS.items())

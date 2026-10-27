@@ -49,8 +49,7 @@ def _maintenance_lock_path(db_path: str) -> str:
 
 
 def _current_maintenance_state() -> Optional[dict]:
-    state = _MAINT_CONTEXT.state
-    return state if isinstance(state, dict) else None
+    return _MAINT_CONTEXT.state
 
 
 def current_thread_holds_maintenance_window(db_path: str) -> bool:
@@ -100,17 +99,14 @@ def _empty_maintenance_lock_state(lock_path: str) -> dict:
     return state
 
 
-def _read_lock_file_text(lock_path: str, state: dict) -> Optional[str]:
+def _read_lock_file_text(lock_path: str) -> Optional[str]:
     if not os.path.lexists(lock_path):
         raise FileNotFoundError(lock_path)
+    data = read_fixed_bytes(lock_path)
     try:
-        raw = read_fixed_bytes(lock_path).decode("utf-8").strip()
-    except FileNotFoundError:
-        raise
-    except Exception as e:
-        state["read_error"] = e
+        return data.decode("utf-8").strip()
+    except UnicodeDecodeError:
         return None
-    return raw
 
 
 def _apply_maintenance_lock_token(state: dict, token: str) -> None:
@@ -135,7 +131,7 @@ def _apply_maintenance_lock_token(state: dict, token: str) -> None:
 
 
 def _apply_maintenance_lock_age(state: dict) -> None:
-    ts = state.get("ts")
+    ts = state["ts"]
     if isinstance(ts, datetime):
         try:
             state["age_seconds"] = max(0.0, (datetime.now() - ts).total_seconds())
@@ -145,44 +141,38 @@ def _apply_maintenance_lock_age(state: dict) -> None:
             state["age_seconds"] = None
     # B04(a)：ts 缺失/损坏（含断电半写、内容不可解码）时用锁文件 mtime 兜底计算 age，
     # 否则 age 永远为 None、陈旧锁永不自愈。mtime 也拿不到时维持 fail-closed（按窗口活跃）。
-    try:
-        lock_mtime = os.lstat(str(state.get("path") or "")).st_mtime
-        state["age_seconds"] = max(0.0, time.time() - float(lock_mtime))
-        state["age_source"] = "mtime"
-    except Exception:
-        state["age_seconds"] = None
-        state["age_source"] = None
+    lock_mtime = os.lstat(state["path"]).st_mtime
+    state["age_seconds"] = max(0.0, time.time() - float(lock_mtime))
+    state["age_source"] = "mtime"
 
 
 def read_maintenance_lock_state(db_path: str) -> Optional[dict]:
     lock_path = _maintenance_lock_path(db_path)
     state = _empty_maintenance_lock_state(lock_path)
     try:
-        raw = _read_lock_file_text(lock_path, state)
+        raw = _read_lock_file_text(lock_path)
+        if raw is not None:
+            state["raw"] = raw
+            for token in raw.split():
+                _apply_maintenance_lock_token(state, token)
+        _apply_maintenance_lock_age(state)
     except FileNotFoundError:
         return None
-    if raw is not None:
-        state["raw"] = raw
-        for token in raw.split():
-            _apply_maintenance_lock_token(state, token)
-    _apply_maintenance_lock_age(state)
     return state
 
 
 def _lock_age_value(state: dict) -> Optional[float]:
-    age_seconds = state.get("age_seconds")
+    age_seconds = state["age_seconds"]
     return float(age_seconds) if isinstance(age_seconds, (int, float)) else None
 
 
-def _should_auto_heal_lock(state: Optional[dict]) -> bool:
-    if not isinstance(state, dict):
-        return False
+def _should_auto_heal_lock(state: dict) -> bool:
     age_value = _lock_age_value(state)
     if age_value is None:
         return False
     if age_value < float(_MAINT_LOCK_STALE_SECONDS):
         return False
-    pid = state.get("pid")
+    pid = state["pid"]
     if not isinstance(pid, int) or pid <= 0:
         # B04(b)：超龄锁的 pid 缺失/不可解析按可疑处理，允许自愈。
         # 此前 _pid_exists(None) 恒按存活，导致半写锁永久卡死维护窗。
@@ -199,8 +189,8 @@ def _log_stale_lock_kept_alive(state: dict, logger) -> None:
         logger,
         "warning",
         "维护锁已超过陈旧阈值，但锁内 pid 判定为存活，继续按维护中处理："
-        f"path={state.get('path')} pid={state.get('pid')} age_s={int(age_value)} "
-        f"age_source={state.get('age_source')} raw={state['raw']!r}；"
+        f"path={state['path']} pid={state['pid']} age_s={int(age_value)} "
+        f"age_source={state['age_source']} raw={state['raw']!r}；"
         "判定依据仅为 PID 存活（无法核对进程身份，PID 可能已被其它进程复用）。"
         "若确认维护进程已不存在，可手动删除该锁文件后重试。",
     )
@@ -220,16 +210,16 @@ def is_maintenance_window_active(db_path: str, *, logger=None) -> bool:
                 current = read_maintenance_lock_state(db_path)
                 if current is None:
                     return False
-                if not _should_auto_heal_lock(current) or current.get("raw") != state.get("raw"):
+                if not _should_auto_heal_lock(current) or current["raw"] != state["raw"]:
                     return True
-                lock_path = str(current.get("path") or _maintenance_lock_path(db_path))
+                lock_path = current["path"]
                 try:
                     remove_fixed_file(lock_path)
                     fallback_log(
                         logger,
                         "warning",
-                        f"检测到陈旧维护锁，已自动清理：{lock_path}（pid={current.get('pid')} "
-                        f"age_s={int(current['age_seconds'])} age_source={current.get('age_source')} "
+                        f"检测到陈旧维护锁，已自动清理：{lock_path}（pid={current['pid']} "
+                        f"age_s={int(current['age_seconds'])} age_source={current['age_source']} "
                         f"raw={current['raw']!r}）",
                     )
                     return False
@@ -246,7 +236,7 @@ def is_maintenance_window_active(db_path: str, *, logger=None) -> bool:
 
 
 def _enter_nested_maintenance_window(state: dict, db_abs: str) -> None:
-    if state.get("db_path") != db_abs:
+    if state["db_path"] != db_abs:
         raise MaintenanceWindowError("busy", "当前线程已有其他维护任务在执行，暂不支持跨数据库嵌套维护。")
     state["depth"] = state["depth"] + 1
 
@@ -317,7 +307,7 @@ def maintenance_window(db_path: str, *, logger=None, action: str = "maintenance"
         except Exception as e:
             raise MaintenanceWindowError("lock_failed", f"维护锁文件创建失败：{e}") from e
 
-        _MAINT_CONTEXT.state = {"db_path": db_abs, "depth": 1, "lock_path": lock_path, "lock_fd": lock_fd}
+        _MAINT_CONTEXT.state = {"db_path": db_abs, "depth": 1}
         entered_root = True
         yield
     finally:

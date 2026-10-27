@@ -20,7 +20,7 @@ function hooks() {
     useReducer(reducer, initial) { const [value, set] = this.useState(initial); return [value, action => set(old => reducer(old, action))]; } },
     render(fn) { cursor = 0; return fn(); }, flush() { while (effects.length) effects.shift()(); } };
 }
-const sources = ['resource-contract.js', 'resource-session.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'RunGenerationContract.js', 'EffortProjectionContract.js', 'PointContract.js', 'GanttGraph.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunCandidateAPI.js', 'RunOperationEffort.jsx', 'RecommendationContract.js', 'RunDecisionAPI.js', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx', 'RunDecisionPreparation.jsx'];
+const sources = ['resource-contract.js', 'resource-session.js', 'WorkbenchFormat.js', 'WorkbenchTerms.js', 'FieldContract.js', 'RunGenerationContract.js', 'EffortProjectionContract.js', 'PointContract.js', 'GanttGraph.js', 'PlanGanttModel.js', 'RunCandidateModel.js', 'RunCandidateAPI.js', 'RunOperationEffort.jsx', 'RecommendationContract.js', 'RunDecisionAPI.js', 'RunDecisionRecommendation.jsx', 'RunDecisionComparison.jsx', 'RunDecisionPreparation.jsx'];
 const built = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'), sources: sources.map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
 // Requests run through the real APIs and APSWorkbenchTransport; only the network answer comes from these routes.
 const routes = {}, network = routeFetch(routes);

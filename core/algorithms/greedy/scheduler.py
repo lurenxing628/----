@@ -18,7 +18,6 @@ from core.algorithm_contracts.ordering import (
 from core.algorithm_contracts.sort_strategies import SortStrategy, StrategyFactory
 from core.algorithm_contracts.types import OpForScheduleAlgo, ScheduleResult, ScheduleSummary
 from core.algorithm_runtime.algo_stats import increment_counter, make_algo_stats
-from core.algorithm_runtime.native_snapshot import make_class_guard
 from core.algorithm_runtime.resource_quality import initialize_resource_quality
 from core.algorithm_runtime.run_state import ScheduleRunState
 from core.algorithms.greedy.dispatch.batch_order import dispatch_batch_order
@@ -26,16 +25,10 @@ from core.algorithms.greedy.dispatch.sgs import dispatch_sgs
 from core.models.batch import Batch
 from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 
-from . import internal_operation
-from .auto_assign import (
-    auto_assign_internal_resources_attempt,
-    native_auto_assign_unchanged,
-)
+from .auto_assign import auto_assign_internal_resources_attempt
 from .dispatch.route import dispatch_run
 from .dispatch.sgs_checkpoint import DecodeCheckpoint, DecodeCheckpointRequest, decode_input_signature
-from .dispatch.sgs_decode_acceleration import dispatch_certificate, pristine_functions
 from .dispatch.sgs_score_cache import (
-    AutoAssignProbeContract,
     attach_sgs_score_cache,
     make_sgs_score_cache_factory,
 )
@@ -288,7 +281,6 @@ def prepare_native_schedule_inputs(
                        **{TOPOLOGY_FIELD: topology})
     records = list(operations) + list(normalized_batches.values())
     plain_classes = {kind: plain_record_class(kind) for kind in {type(value) for value in records}}
-    from .dispatch.sgs import native_score_functions_unchanged
     from .dispatch.sgs_priority_pruning import prepare_pruning_record
     pruning_records = ({id(value): prepare_pruning_record(value, plain_classes) for value in records}
                        if context is not None else {})
@@ -296,21 +288,12 @@ def prepare_native_schedule_inputs(
         normalized_machine_downtimes=_normalize_machine_downtimes(machine_downtimes), calendar=calendar,
         operations=operations, records_by_token={id(value): value for value in records}, batches=normalized_batches, seed_results=normalized_seeds, seed_applications=tuple(seed_applications),
         seed_external_group_cache=external_seed_cache, seed_op_ids=seed_op_ids,
-        unseeded_operations=unseeded, resource_pool=(dict(resource_pool, pair_rank=(dict(resource_pool["pair_rank"])
-                                                                                         if isinstance(resource_pool.get("pair_rank"), dict)
-                                                                                         else resource_pool.get("pair_rank", {})))
-                                                   if isinstance(resource_pool, dict) else resource_pool), graph_ready_context=context,
+        unseeded_operations=unseeded, resource_pool=resource_pool, graph_ready_context=context,
         warnings=tuple(warnings), algo_stats=stats, topology=topology,
         plain_classes=plain_classes, pruning_records=pruning_records,
     )
-    ctx = preparation.run_context = ScheduleRunContext.from_legacy_scheduler(
-        scheduler, preparation, native_scoring=native_score_functions_unchanged())
-    native_dispatch = dispatch_certificate(scheduler, ctx, _NATIVE_SGS_SCHEDULER_GUARD, _NATIVE_SGS_CONTEXT_GUARD,
-                                           internal_operation, _NATIVE_INTERNAL_OPERATION_FUNCTIONS)()
-    ctx.checkpoint_dispatch_guard = lambda: native_dispatch
-    preparation.score_cache_factory = make_sgs_score_cache_factory(
-        ctx, scheduler, GreedyScheduler, preparation=preparation, probe=_SGS_AUTO_ASSIGN_PROBE,
-    )
+    ctx = preparation.run_context = ScheduleRunContext.from_legacy_scheduler(scheduler, preparation)
+    preparation.score_cache_factory = make_sgs_score_cache_factory(ctx, preparation=preparation)
     return preparation
 
 
@@ -354,12 +337,3 @@ def _build_summary(*, state: ScheduleRunState, warnings: List[str], sorted_ops: 
         duration_seconds=duration,
         failure_details=list(state.failure_details),
     )
-
-
-_NATIVE_SGS_SCHEDULER_GUARD = make_class_guard(GreedyScheduler)
-_SGS_AUTO_ASSIGN_PROBE = AutoAssignProbeContract(native_auto_assign_unchanged)
-# Freeze the imported context's original methods during module initialization;
-# the dispatch child never imports its parent or certifies a caller-supplied type.
-_NATIVE_SGS_CONTEXT_GUARD = make_class_guard(ScheduleRunContext)
-# 派工见证只在 internal_operation 的函数仍是导入时的同一批对象时才有效；快照由本包持有，dispatch 子包不反向 import。
-_NATIVE_INTERNAL_OPERATION_FUNCTIONS = pristine_functions(internal_operation)

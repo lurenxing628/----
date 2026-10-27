@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution import ExecutionProjection
 from core.models.workbench_execution_input import public_ref
+from core.models.workbench_resource_table_query import normalize_table_column_filters
 
 METHOD_VERSION = "d05-median-effective-hours-v2"
 SUGGESTION_BELOW_PRECISION_CODE = "calibration_suggestion_below_precision"
@@ -21,19 +22,9 @@ DUPLICATE_FILTER_MESSAGE = "筛选条件里有重复的列，请重新选择。"
 
 
 def normalize_calibration_filters(value):
-    if type(value) is not dict or set(value) - set(TABLE_COLUMNS):
-        raise WorkbenchCommandRejected("invalid_input", "校准列表的筛选列不正确，请重新选择筛选条件。", 400)
-    result = {}
-    for column, rule in value.items():
-        if type(rule) is not dict or set(rule) != {"mode", "values"}:
-            raise WorkbenchCommandRejected("invalid_input", "列筛选必须包含mode和values。", 400)
-        values = rule["values"]
-        if rule["mode"] not in ("include", "exclude") or type(values) is not list or len(values) > 50000:
-            raise WorkbenchCommandRejected("invalid_input", "列筛选方式无效，每列最多50000个值。", 400)
-        if any(type(key) is not str or not key for key in values) or len(set(values)) != len(values):
-            raise WorkbenchCommandRejected("invalid_input", "列筛选值必须是唯一的非空编号。", 400)
-        result[column] = {"mode": rule["mode"], "values": sorted(values)}
-    return {column: result[column] for column in sorted(result)}
+    return normalize_table_column_filters(
+        value, TABLE_COLUMNS, invalid_column_message="校准列表的筛选列不正确，请重新选择筛选条件。"
+    )
 
 
 def issue(code, message):
