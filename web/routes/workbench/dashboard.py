@@ -72,9 +72,7 @@ def _read(item_ref=None, history=False):
             result["history"], error = records
             if error is not None:
                 raise error
-    response = query_success(result, snapshot, byte_limit=MAX_BYTES)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return query_success(result, snapshot, byte_limit=MAX_BYTES)
 
 
 @api_endpoint
@@ -103,9 +101,7 @@ def _command(item_ref, action):
     service = WorkbenchDashboardCommandService(g.db)
     result = service.execute(action, item_ref, body["input"], request_key=body["request_key"], admission=PLAN_READ_SLOTS.slot,
         validate_context=lambda subject, verb, facts: validate_write_context(body["write_token"], subject, verb, facts))
-    response = json_response(result)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return json_response(result)
 
 
 @api_endpoint

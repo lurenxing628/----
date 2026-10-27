@@ -45,12 +45,6 @@ def _list_query():
                               direction=request.args.get("direction", "asc"))
 
 
-def _response(data, snapshot):
-    response = query_success(data, snapshot)
-    response.headers["Cache-Control"] = "no-store"
-    return response
-
-
 @api_endpoint
 def process_list():
     query = _list_query()
@@ -58,12 +52,12 @@ def process_list():
     reader = WorkbenchProcessQueryService(g.db, current_app.logger)
     with reader.read_snapshot() as state:
         snapshot = bind_read_snapshot(query.scope(), state, token)
-        data = reader.table().page(query) if isinstance(query, ProcessTablePageRequest) else reader.page(query)
+        data = reader.page(query)
         data["capabilities"] = capabilities()
         data["create_context"] = issue_write_context("process:create", ["process.create"], state)
         if query.number > data["page"]["pages"]:
             raise WorkbenchCommandRejected("snapshot_stale", "翻页位置已失效，请回到第 1 页重新查询。")
-    return _response(data, snapshot)
+    return query_success(data, snapshot)
 
 
 @api_endpoint
@@ -76,7 +70,7 @@ def process_detail(ref):
         snapshot = bind_read_snapshot({"kind": "part", "entity_ref": ref}, state, request.args.get("snapshot_ref"))
         if data["workflow"]["source"]["state"] == "confirmed":
             data["write_context"] = issue_write_context(ref, ["process.hours_confirm"], state)
-    return _response(data, snapshot)
+    return query_success(data, snapshot)
 
 
 @read_endpoint
@@ -99,7 +93,7 @@ def process_route_preview(ref):
                 data["write_context"] = issue_write_context(ref, ["process.route_confirm"], {"state": state, "input": body})
             snapshot = bind_read_snapshot({"kind": "process_route_preview", "entity_ref": ref,
                                            "input_content": body}, state)
-        return _response(data, snapshot)
+        return query_success(data, snapshot)
     except (WorkbenchCommandRejected, AppError, HTTPException):
         raise
     except Exception as exc:

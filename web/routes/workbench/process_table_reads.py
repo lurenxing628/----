@@ -49,9 +49,7 @@ def process_facets(column, selection=False):
         snapshot = bind_read_snapshot(process_facet_scope(query, column, search, size), state, token)
         table = reader.table()
         data = table.facet_selection(query, column, search, size) if selection else table.facets(query, column, search, number, size)
-    response = query_success(data, snapshot)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return query_success(data, snapshot)
 
 
 def register_process_table_routes(bp):

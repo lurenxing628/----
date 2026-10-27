@@ -69,9 +69,7 @@ def process_stage_preview(ref):
                 data["changes"] = prepared.auxiliary
             snapshot = bind_read_snapshot({"kind": "process_stage_preview", "entity_ref": ref,
                                            "input_content": normalized}, state)
-        response = query_success(data, snapshot)
-        response.headers["Cache-Control"] = "no-store"
-        return response
+        return query_success(data, snapshot)
     except WorkbenchCommandRejected as exc:
         if exc.operation_refs:
             return _operation_failure(exc)

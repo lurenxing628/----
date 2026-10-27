@@ -31,10 +31,6 @@ def _capped(read, refs, message):
 class ExecutionLedgerReader:
     def __init__(self, conn, *, current_plan_provider: Callable[[Connection], Optional[dict]],
                  clock: Optional[Callable[[], datetime]] = None):
-        if not callable(current_plan_provider):
-            raise TypeError("Ledger current-plan provider must be callable.")
-        if clock is not None and not callable(clock):
-            raise TypeError("Ledger clock must be callable.")
         self.conn = conn
         self.current_plan_provider = current_plan_provider
         self.clock = datetime.now if clock is None else clock
@@ -58,7 +54,7 @@ class ExecutionLedgerReader:
 
     def revision_clock(self):
         if self._snapshot_clock is not None:
-            return dict(self._snapshot_clock)
+            return self._snapshot_clock
         clock = self.repo.clock()
         if clock is None:
             reject("报工或计划状态资料缺失，请联系维护人员核对。", "execution_ledger_unavailable", 409)
@@ -178,7 +174,7 @@ class ExecutionLedgerReader:
     @contextmanager
     def read_snapshot(self):
         if self._snapshot_clock is not None:
-            yield dict(self._snapshot_clock)
+            yield
             return
         with TransactionManager(self.conn).transaction():
             self.require_schema()
@@ -188,7 +184,7 @@ class ExecutionLedgerReader:
             self._snapshot_comparison_plans = {}
             self._snapshot_facts = {"loaded": set(), "reports": {}, "report_heads": {}, "voids": {}, "scope_tasks": {}}
             try:
-                yield dict(self._snapshot_clock)
+                yield
             finally:
                 self._snapshot_clock = None
                 self._snapshot_plan, self._snapshot_plan_read = None, False

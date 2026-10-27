@@ -20,7 +20,12 @@ def json_response(payload, *, byte_limit=None, too_large_code="query_too_large",
     content = canonical_json(payload).encode("utf-8")
     if byte_limit is not None and len(content) > byte_limit:
         raise WorkbenchCommandRejected(too_large_code, too_large_message, 413)
-    return Response(content, status=status, content_type="application/json; charset=utf-8")
+    return Response(
+        content,
+        status=status,
+        content_type="application/json; charset=utf-8",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 def failure_payload(code, message, status, *, committed: Union[bool, Literal["unknown"]] = False, fields=None,
@@ -40,11 +45,9 @@ def failure_payload(code, message, status, *, committed: Union[bool, Literal["un
 
 def failure(code, message, status, *, committed: Union[bool, Literal["unknown"]] = False, fields=None,
             request_key=None, conflicts=None, row_number=None, request_ref=None, result_target=None):
-    response = json_response(failure_payload(code, message, status, committed=committed, fields=fields,
+    return json_response(failure_payload(code, message, status, committed=committed, fields=fields,
         request_key=request_key, conflicts=conflicts, row_number=row_number, request_ref=request_ref,
         result_target=result_target), status=status)
-    response.headers["Cache-Control"] = "no-store"
-    return response
 
 
 def query_payload(data, snapshot, warnings=()):

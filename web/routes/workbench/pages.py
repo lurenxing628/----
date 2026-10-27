@@ -118,13 +118,9 @@ def system_overview():
             )
     except Exception:
         current_app.logger.exception("工作台系统概况读取失败 request_ref=%s", request_ref)
-        response = json_response({"ok": False, "committed": False, "error": {
+        return json_response({"ok": False, "committed": False, "error": {
             "code": "system_read_failed", "message": "系统概况没有读出来，页面数据没有变化。请刷新重试；仍不行请联系维护人员，并告知下方编号。",
             "fields": [], "retryable": True, "request_ref": request_ref,
-        }})
-        response.status_code = 500
-    else:
-        # 概况是一次性的本机检查，没有可回绑的读取快照。
-        response = query_success(data, {"as_of": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "snapshot_ref": None})
-    response.headers["Cache-Control"] = "no-store"
-    return response
+        }}, status=500)
+    # 概况是一次性的本机检查，没有可回绑的读取快照。
+    return query_success(data, {"as_of": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"), "snapshot_ref": None})

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from core.errors import AppError, BusinessError, ErrorCode
@@ -34,14 +34,6 @@ class WorkbenchMaterialService:
     @staticmethod
     def normalize_input(action: str, payload: Any) -> Dict[str, Any]:
         return normalize_material_input(action, payload)
-
-    @staticmethod
-    def _snapshot_from_current(identity, material):
-        """Project an identity and full material row already read in this transaction."""
-        if (material["material_id"], material["ref"], material["revision"]) != (
-                identity.entity_key, identity.ref, identity.revision):
-            raise WorkbenchCommandRejected("stale_write", "物料和选中的记录对不上，请刷新后重新核对。")
-        return {"identity": asdict(identity), "material": material}
 
     def prepare_checked(self, action, payload, checked):
         """Turn normalized input and this transaction's facts into the actual write."""

@@ -86,7 +86,6 @@ def scheduling_preflight():
         current_app.logger.exception("只读排产前检查失败 request_ref=%s", request_ref)
         response = failure("storage_failure", "排产检查没有完成，没有生成这次排产，也没有改动任何业务数据。请刷新重试；仍不行请联系维护人员，并告知下方编号。", 500,
                            committed=False, request_ref=request_ref)
-    response.headers["Cache-Control"] = "no-store"
     return response
 
 
@@ -98,9 +97,7 @@ def scheduling_preferences_read():
         data, state = SchedulingPreferencesService(g.db).snapshot()
         data["write_context"] = issue_write_context(SCHEDULING_PREFERENCES_SUBJECT, [SCHEDULING_PREFERENCES_ACTION], state)
         snapshot = bind_read_snapshot({"kind": "scheduling_preferences"}, canonical_json(state))
-    response = query_success(data, snapshot)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return query_success(data, snapshot)
 
 
 @api_endpoint
@@ -115,9 +112,7 @@ def scheduling_preferences_write():
     result = SchedulingPreferencesService(g.db, current_app.logger).save(
         body["input"], request_key=body["request_key"],
         validate_context=lambda subject, action, state: validate_write_context(body["write_token"], subject, action, state))
-    response = json_response(result)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return json_response(result)
 
 
 def register_preflight_routes(bp):

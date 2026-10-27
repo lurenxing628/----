@@ -62,7 +62,7 @@ class FieldReportFileService:
 
     def _items(self, tasks, rows, *, source_ref):
         by_ref = task_index(tasks)
-        resources, items, positions, indexes = self._resource_index(), [], [], {}
+        resources, items, positions, indexes = None, [], [], {}
         for row in rows:
             value = row['values']
             if row['errors']:
@@ -76,6 +76,8 @@ class FieldReportFileService:
                 task_ref = task['task_ref']
                 if task_ref not in indexes:
                     indexes[task_ref] = report_index(task['execution']['reports'])
+                if resources is None:
+                    resources = self._resource_index()
                 items.append(self._row_item(row, task_ref, indexes[task_ref], resources, source_ref))
                 positions.append(row['row'])
                 row['result'] = 'pending'

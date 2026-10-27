@@ -8,18 +8,10 @@ COPY_COLUMNS = ("operation_id", "part_no", "sequence", "template_operation_id", 
 
 
 class BatchExternalContextRepository(BaseRepository):
-    def available(self):
-        return self.fetchone("SELECT 1 FROM sqlite_master WHERE type='table' AND name='BatchExternalContexts'") is not None
-
     def for_operations(self, operation_ids):
         ids = sorted(set(operation_ids))
         if not ids:
             return []
-        if not self.available():
-            version = self.fetchone("SELECT version FROM SchemaVersion WHERE id=1")
-            if version is not None and version["version"] < 33:
-                return []
-            raise RuntimeError("Current database is missing BatchExternalContexts.")
         rows = []
         for start in range(0, len(ids), 400):
             group = ids[start:start + 400]

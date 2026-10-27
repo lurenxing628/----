@@ -33,9 +33,7 @@ def run_candidate_adopt_preview(candidate_ref):
     _body(())
     data = _service().preview(candidate_ref)
     snapshot = bind_read_snapshot({"candidate_ref": candidate_ref, "action": "adopt-preview"}, data, None)
-    response = query_success(data, snapshot)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return query_success(data, snapshot)
 
 
 @api_endpoint
@@ -44,9 +42,7 @@ def run_candidate_adopt(candidate_ref):
     validate_request_key(value["request_key"])
     g.workbench_request_key = value["request_key"]
     result = _service().adopt(candidate_ref, value["write_token"], value["request_key"], value["input"])
-    response = json_response(result)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return json_response(result)
 
 
 @api_endpoint
@@ -56,9 +52,7 @@ def run_candidate_adoption_command(candidate_ref, request_key):
         raise WorkbenchCommandRejected("invalid_input", "查询采用结果的条件不完整、有多余项或重复项，请重新查询。", 400)
     _, result = _service().resolve_command(candidate_ref, request_key, run_ref=request.args.get("run_ref"),
                                           data_context_ref=request.args["data_context_ref"])
-    response = json_response(result)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return json_response(result)
 
 
 def register_run_candidate_adoption_routes(bp):

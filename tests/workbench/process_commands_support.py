@@ -272,7 +272,7 @@ def _profile_route(conn, output, count, measure):
 
     if count <= 2000:
         payload = {"route": {"mode": "rows", "rows": [{"seq": seq, "op_type_name": "车削"} for seq in range(1, count + 1)]}}
-        normalized = measure("normalize_route", lambda: WorkbenchProcessMutationService.normalize("route_confirm", payload))
+        normalized = measure("normalize_route", lambda: WorkbenchProcessMutationService(conn).normalize("route_confirm", payload))
         measure("route_transaction", lambda: _profile_command(conn, "route_confirm", normalized))
     else:
         # The route API still rejects >2000 inputs. Do not fabricate a route API timing.
@@ -321,7 +321,7 @@ def profile_stage_scale(count, output):
         measure("fixture_scale_seed", lambda: seed_stage_scale(conn, count))
         source, hours = measure("fixture_payload", lambda: scale_inputs(conn))
         _profile_route(conn, output, count, measure)
-        normalized_source = measure("normalize_source", lambda: WorkbenchProcessMutationService.normalize("source_confirm", source))
+        normalized_source = measure("normalize_source", lambda: WorkbenchProcessMutationService(conn).normalize("source_confirm", source))
 
         def source_preview():
             service, reader = WorkbenchProcessMutationService(conn), WorkbenchProcessQueryService(conn)
@@ -332,7 +332,7 @@ def profile_stage_scale(count, output):
         measure("source_preview", source_preview)
         measure("source_transaction", lambda: _profile_command(conn, "source_confirm", normalized_source))
         measure("source_unchanged_transaction", lambda: _profile_command(conn, "source_confirm", normalized_source, "-unchanged"))
-        normalized_hours = measure("normalize_hours", lambda: WorkbenchProcessMutationService.normalize("hours_confirm", hours))
+        normalized_hours = measure("normalize_hours", lambda: WorkbenchProcessMutationService(conn).normalize("hours_confirm", hours))
         measure("hours_transaction", lambda: _profile_command(conn, "hours_confirm", normalized_hours))
         measure("hours_unchanged_transaction", lambda: _profile_command(conn, "hours_confirm", normalized_hours, "-unchanged"))
         assert conn.execute("SELECT COUNT(*) FROM PartOperations WHERE part_no='SCALE' AND unit_hours=2").fetchone()[0] == count

@@ -35,9 +35,7 @@ def _official(export):
             snapshot = bind_read_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of=as_of, binding=binding)
             data, ordered, labels = report_workspace(facts, snapshot, topic, page)
     if not export:
-        response = query_success(data, snapshot)
-        response.headers["Cache-Control"] = "no-store"
-        return response
+        return query_success(data, snapshot)
     if request.args.get("format", "xlsx") != "xlsx":
         raise WorkbenchCommandRejected("invalid_input", "正式执行复盘只提供 XLSX，没有开始下载。需要 CSV 请用五个专题的范围导出。", 400)
     selected = project_export_rows(ordered, labels)
@@ -83,9 +81,7 @@ def _catalog(kind, export=False):
         format_name = request.args.get("format", "xlsx")
         file = export_catalog_xlsx(reader, data, selected, snapshot) if format_name == "xlsx" else export_table(reader.engine, data, ordered, snapshot, format_name)
         return download_response(file, snapshot)
-    response = query_success(data, snapshot)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return query_success(data, snapshot)
 
 
 @api_endpoint

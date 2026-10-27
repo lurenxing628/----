@@ -51,7 +51,7 @@ def _route_summary(preview, existing):
             "retained" if before[sequence] == after[sequence] else "changed"
         differences.append({"sequence": public_sequence(sequence), "change": change,
                             "before": before.get(sequence), "after": after.get(sequence)})
-    return {"counts": dict(preview["counts"]), "diagnostics": diagnostics,
+    return {"counts": preview["counts"], "diagnostics": diagnostics,
             "can_confirm_route": preview["can_confirm_route"], "differences": differences,
             "operations": [{"sequence": public_sequence(row["sequence"]), "op_type_name": row["op_type_name"],
                             "source_suggestion": row["source_suggestion"], "supplier_label": row["supplier_label"],

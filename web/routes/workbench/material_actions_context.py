@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from functools import wraps
 from types import MappingProxyType
-from typing import Optional, Union
+from typing import Optional
 
 from werkzeug.exceptions import HTTPException
 
@@ -15,7 +15,6 @@ from core.errors import AppError, ValidationError
 from core.models.content import content_text
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_material_file import MaterialPreview, normalize_scope
-from core.models.workbench_resource_file_source import PreparedImportSource
 from core.services.workbench.material.files import local_created_at
 from web.public_token_registry import issue_public_token_with_expiry, resolve_public_token
 
@@ -31,7 +30,7 @@ TTL_SECONDS = 900
 @dataclass(frozen=True)
 class RetainedPreview:
     preview: MaterialPreview
-    content: Optional[Union[bytes, PreparedImportSource]]
+    content: Optional[bytes]
 
 
 def read_endpoint(function):

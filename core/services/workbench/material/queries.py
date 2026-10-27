@@ -154,6 +154,11 @@ class WorkbenchMaterialQueryService:
             raise WorkbenchCommandRejected("storage_failure", "物料的系统编号和实际记录对不上。请刷新重试；仍不行请联系维护人员。", 500)
         return self._record(row)
 
+    def count(self, query: MaterialPageRequest) -> int:
+        if table_query_required(query):
+            return len(self.table_index(query).matching_keys(query))
+        return len(self._toolbar_rows(query))
+
     def page(self, query: MaterialPageRequest):
         if table_query_required(query):
             records, total = self.table_index(query).page(query)

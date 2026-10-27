@@ -138,7 +138,7 @@ def _export_value(value, field):
 
 
 def _append_report(sheet, row):
-    values = [_export_value(row.get(field), field) for field in FIELDS]
+    values = [_export_value(row[field], field) for field in FIELDS]
     sheet.append(values)
     for column, (field, value) in enumerate(zip(FIELDS, values), 1):
         if field in _NUMBER_FIELDS and type(value) is str:
@@ -183,7 +183,6 @@ def encode_reports(rows, *, summaries, metadata):
     # 模板和导出都带说明表，位置固定在数据表后面；回导时它会被当成多余的表忽略。
     append_instruction_sheet(book, table_descriptor())
     for title, values in [('工序汇总', summaries), ('录入信息', metadata)]:
-        values = list(values)
         if values:
             extra = book.create_sheet(title)
             for row in values:

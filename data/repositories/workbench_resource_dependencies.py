@@ -51,7 +51,7 @@ def report_revision_rows(conn, kind, key, codes=None, *, identities=None):
     unique_codes = sorted(set(codes))
     grouped = {code: [] for code in codes}
     if not unique_codes:
-        return dict(grouped)
+        return grouped
     ref_rows = []
     for start in range(0, len(unique_codes), 400):
         chunk = unique_codes[start : start + 400]
@@ -64,7 +64,7 @@ def report_revision_rows(conn, kind, key, codes=None, *, identities=None):
         )
     ref_to_code = {row["ref"]: row["entity_key"] for row in ref_rows}
     if not ref_to_code:
-        return dict(grouped)
+        return grouped
     refs = sorted(ref_to_code)
     for start in range(0, len(refs), 200):
         ref_chunk = refs[start : start + 200]
@@ -81,4 +81,4 @@ def report_revision_rows(conn, kind, key, codes=None, *, identities=None):
             ref = stored_report_values(row["values_json"]).get(key)
             if ref in chunk_set:
                 grouped[ref_to_code[ref]].append(dict(row))
-    return dict(grouped)
+    return grouped

@@ -35,9 +35,7 @@ def resource_relations(kind, ref):
     reader = WorkbenchResourceRelationService(g.db, current_app.logger)
     with reader.read_snapshot(kind, ref, query) as (fingerprint, data):
         snapshot = bind_read_snapshot(query.scope(ref), fingerprint, request.args.get("snapshot_ref"))
-        response = query_success(data, snapshot)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+        return query_success(data, snapshot)
 
 
 def register_resource_relation_routes(bp):

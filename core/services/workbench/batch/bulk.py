@@ -69,7 +69,6 @@ class WorkbenchBatchBulkService:
                          "relationships": {**before["relationships"], "completed_count": 0, "plan_reference_count": 0,
                                            "outsourcing_reference_count": 0,
                                            "gap_count": sum(bool(op["issues"]) for op in operations),
-                                           "report_count": 0,
                                            "execution_reference_count": 0},
                          "operations": operations,
                          "issues": [issue for issue in before["issues"] if issue["code"] != "completion_inconsistent"]}

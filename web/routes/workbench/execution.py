@@ -39,9 +39,7 @@ def field_query(task_ref=None):
         if task_ref is None:
             number = index // size + 1
     data = reader.detail(cohort, task_ref) if task_ref else reader.page(cohort, number, size)
-    response = query_success(data, snapshot, byte_limit=MAX_PLAN_RESPONSE_BYTES)
-    response.headers['Cache-Control'] = 'no-store'
-    return response
+    return query_success(data, snapshot, byte_limit=MAX_PLAN_RESPONSE_BYTES)
 
 
 @api_endpoint
@@ -72,9 +70,7 @@ def save_report(action, ref):
     service = WorkbenchProductionReportService(g.db)
     result = service.execute(action, ref, body['input'], request_key=body['request_key'],
                              validate_context=lambda subject, operation, snapshot: validate_write_context(body['write_token'], subject, operation, snapshot))
-    response = json_response(result)
-    response.headers['Cache-Control'] = 'no-store'
-    return response
+    return json_response(result)
 
 
 @api_endpoint
@@ -107,9 +103,7 @@ def field_report_void_preview(report_ref):
     service = WorkbenchProductionReportService(g.db, context_factory=issue_write_context)
     preview = service.preview('report_void', report_ref, body['input'])
     snapshot = bind_read_snapshot({'kind': 'report_void', 'report_ref': report_ref}, preview.pop('snapshot'))
-    response = query_success(preview, snapshot, byte_limit=MAX_PLAN_RESPONSE_BYTES)
-    response.headers['Cache-Control'] = 'no-store'
-    return response
+    return query_success(preview, snapshot, byte_limit=MAX_PLAN_RESPONSE_BYTES)
 
 
 def register_execution_routes(bp):

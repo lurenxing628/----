@@ -25,7 +25,6 @@ from .write_context import preview_write_context, validate_preview_confirmation
 
 def download(content, name, count):
     response = send_file(BytesIO(content), mimetype=MIME, as_attachment=True, download_name=name)
-    response.headers["Cache-Control"] = "no-store"
     response.headers["X-Workbench-Row-Count"] = str(count)
     return response
 

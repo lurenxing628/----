@@ -44,8 +44,7 @@ def _selection(body, reader, scope):
             reader.resolve(ref)
         return {"selected_refs": refs}, len(refs)
     effective = normalize_scope({}) if selected == "all" else scope
-    _, page = reader.page(MaterialPageRequest(**effective, size=1))
-    return {"scope": effective}, page["total"]
+    return {"scope": effective}, reader.count(MaterialPageRequest(**effective, size=1))
 
 
 @read_endpoint

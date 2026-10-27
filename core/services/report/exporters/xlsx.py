@@ -146,10 +146,10 @@ def export_overdue_xlsx(
             _append_row(ws, _OVERDUE_HEADERS)
         append = _append_write_only_row if write_only else _append_row
         for item in items:
-            append(ws, [item.get("bucket_label"), item.get("batch_id"), item.get("part_no"),
-                        item.get("part_name"), item.get("quantity"), item.get("due_date"),
-                        item.get("finish_time") or item.get("as_of_time"),
-                        item.get("delay_days"), item.get("delay_hours")])
+            append(ws, [item["bucket_label"], item["batch_id"], item["part_no"],
+                        item["part_name"], item["quantity"], item["due_date"],
+                        item["finish_time"] or item["as_of_time"],
+                        item["delay_days"], item["delay_hours"]])
         if not write_only:
             _format_sheet(ws)
 
@@ -186,10 +186,10 @@ def export_utilization_xlsx(
             else:
                 _append_row(sheet, header)
             for row in rows:
-                values = [row.get(kind + "_id"), row.get(kind + "_name"), row.get("hours"),
-                          row.get("task_count"), row.get("capacity_hours"), utilization_percent(row.get("utilization")),
-                          row.get("summed_load_hours"), row.get("overlap_hours"), row.get("outside_calendar_hours"),
-                          row.get("metric_version"), utilization_availability_note(row)]
+                values = [row[kind + "_id"], row[kind + "_name"], row["hours"],
+                          row["task_count"], row["capacity_hours"], utilization_percent(row["utilization"]),
+                          row["summed_load_hours"], row["overlap_hours"], row["outside_calendar_hours"],
+                          row["metric_version"], utilization_availability_note(row)]
                 if write_only:
                     _append_write_only_row(sheet, values)
                 else:
@@ -224,9 +224,9 @@ def export_downtime_impact_xlsx(
             _append_row(ws, header)
         append = _append_write_only_row if write_only else _append_row
         for row in machines:
-            append(ws, [row.get("machine_id"), row.get("machine_name"), row.get("downtime_hours"),
-                        row.get("downtime_count"), row.get("schedule_overlap_hours"),
-                        row.get("schedule_overlap_count")])
+            append(ws, [row["machine_id"], row["machine_name"], row["downtime_hours"],
+                        row["downtime_count"], row["schedule_overlap_hours"],
+                        row["schedule_overlap_count"]])
         if not write_only:
             _format_sheet(ws)
 
@@ -270,15 +270,15 @@ def export_execution_review_xlsx(
 
 def _execution_review_values(row: Dict[str, Any]) -> List[Any]:
     return [
-        row.get("batch_id_label"),
-        row.get("operation_label"),
-        row.get("planned_start_time_label"),
-        row.get("actual_start_time_label"),
-        row.get("start_deviation_label"),
-        row.get("planned_end_time_label"),
-        row.get("actual_end_time_label"),
-        row.get("end_deviation_label"),
-        row.get("planned_resource_label"),
-        row.get("actual_resource_label"),
-        row.get("feedback_status_label"),
+        row["batch_id_label"],
+        row["operation_label"],
+        row["planned_start_time_label"],
+        row["actual_start_time_label"],
+        row["start_deviation_label"],
+        row["planned_end_time_label"],
+        row["actual_end_time_label"],
+        row["end_deviation_label"],
+        row["planned_resource_label"],
+        row["actual_resource_label"],
+        row["feedback_status_label"],
     ]

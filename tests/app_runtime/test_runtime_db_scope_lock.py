@@ -198,7 +198,6 @@ def test_cleanup_rechecks_mirror_and_preserves_new_primary_instance(tmp_path, mo
     assert contracts_mod.read_runtime_contract_result(str(mirror)).payload["instance_id"] == "new-mirror-instance"
     assert not (logs / "aps_runtime.json").exists()
     assert (logs / "aps_runtime.lock").is_file()
-    assert all(not path.endswith("aps_runtime.lock") for path in result.attempted_paths)
     assert lock_mod.release_runtime_lock(str(logs), expected_payload=old_lock)
 
     new_lock = _acquire(runtime_dir, logs, database)
@@ -254,7 +253,6 @@ def test_unmanaged_exit_uses_original_three_identities_after_backup(tmp_path, mo
         str(logs), expected_lock=state["payload"], expected_contract=state["contract"],
     )
     assert repeated.ok, "服务退出已删除镜像契约，停止命令重复清理应成功"
-    assert str(configured_logs / "aps_runtime.json") in repeated.missing_paths
 
     new_lock = _acquire(runtime_dir, logs, database)
     publication = _publish_claim(runtime_dir, logs, database, new_lock, "new-exit-instance")

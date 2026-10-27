@@ -292,27 +292,29 @@ def test_stage_material_wait_has_complete_schedulable_scope_and_deferred_deliver
 
 
 def test_explicit_comparison_navigation_preserves_identity_and_complete_window():
+    from werkzeug.datastructures import MultiDict
+
     context = {"run_ref": "a" * 48, "candidate_ref": "b" * 48, "reference_candidate_ref": "c" * 48,
                "comparison_mode": "candidates", "range_start": "2026-09-09T00:00:00", "range_end": "2026-09-12T00:00:00"}
     for view in ("analysis", "gantt"):
         navigation = {"version": 1, "view": view, "context": context}
-        assert read_navigation(view, {"nav": json.dumps(navigation)}) == navigation
+        assert read_navigation(view, MultiDict({"nav": json.dumps(navigation)})) == navigation
     formal = {key: value for key, value in context.items() if key != "reference_candidate_ref"}
     formal.update(comparison_mode="admission_official", reference_view=True, plan_ref="d" * 48,
                   operation_ref="e" * 48, comparison_tab="differences", metric_view="all")
     navigation = {"version": 1, "view": "gantt", "context": formal}
-    assert read_navigation("gantt", {"nav": json.dumps(navigation)}) == navigation
+    assert read_navigation("gantt", MultiDict({"nav": json.dumps(navigation)})) == navigation
     resources = dict(formal, comparison_tab="resources", resource_view="full_candidate", resource_kind="operator", resource_ref="f" * 48)
     for view in ("analysis", "gantt"):
         navigation = {"version": 1, "view": view, "context": resources}
-        assert read_navigation(view, {"nav": json.dumps(navigation)}) == navigation
+        assert read_navigation(view, MultiDict({"nav": json.dumps(navigation)})) == navigation
         for tab in ("preparation", "changeovers"):
             scoped = {"version": 1, "view": view, "context": dict(resources, comparison_tab=tab, resource_kind="machine")}
-            assert read_navigation(view, {"nav": json.dumps(scoped)}) == scoped
+            assert read_navigation(view, MultiDict({"nav": json.dumps(scoped)})) == scoped
     reading = dict(context, selected_batch_ref="1" * 48, range_start="2026-09-09T00:00:00.123456")
     for tab in ("delivery", "differences", "process", "metrics", "completion"):
         navigation = {"version": 1, "view": "analysis", "context": dict(reading, comparison_tab=tab)}
-        assert read_navigation("analysis", {"nav": json.dumps(navigation)}) == navigation
+        assert read_navigation("analysis", MultiDict({"nav": json.dumps(navigation)})) == navigation
     mixed = dict(context, plan_ref="d" * 48)
     incomplete = {key: value for key, value in context.items() if key != "range_end"}
     for invalid in (mixed, incomplete, dict(formal, reference_candidate_ref="c" * 48),
@@ -325,7 +327,7 @@ def test_explicit_comparison_navigation_preserves_identity_and_complete_window()
                     dict(formal, metric_view="unknown"), dict(formal, operation_ref="invalid"), dict(reading, selected_batch_ref="invalid"),
                     dict(resources, resource_view="invalid"), dict(resources, resource_kind="invalid"), dict(resources, resource_ref="invalid")):
         with pytest.raises(WorkbenchNavigationInvalid):
-            read_navigation("analysis", {"nav": json.dumps({"version": 1, "view": "analysis", "context": invalid})})
+            read_navigation("analysis", MultiDict({"nav": json.dumps({"version": 1, "view": "analysis", "context": invalid})}))
     history_state = {"query": {"timeline": "official", "comparison": "same_conditions", "reference_run_ref": "a" * 48,
         "metric_keys": ["overdue_count", "makespan_hours"], "date_from": "2026-09-09", "date_to": "2026-09-12",
         "range_start": "2026-09-09T08:00:00.123456", "range_end": "2026-09-12T16:00:00.654321",
@@ -337,23 +339,23 @@ def test_explicit_comparison_navigation_preserves_identity_and_complete_window()
               "history_query": {"state": "complete", "page": 3, "size": 50}}
     for view in ("analysis", "gantt"):
         navigation = {"version": 1, "view": view, "context": target}
-        assert read_navigation(view, {"nav": json.dumps(navigation)}) == navigation
+        assert read_navigation(view, MultiDict({"nav": json.dumps(navigation)})) == navigation
     for view, source in (("analysis", context), ("gantt", {"plan_ref": "d" * 48}),
                          ("run", {"run_ref": "a" * 48}), ("trial", {"scenario_ref": "b" * 48})):
         navigation = {"version": 1, "view": view, "context": dict(source, return_decision_history_context=history_state)}
-        assert read_navigation(view, {"nav": json.dumps(navigation)}) == navigation
+        assert read_navigation(view, MultiDict({"nav": json.dumps(navigation)})) == navigation
     for patch in ({"timeline": "invalid"}, {"comparison": "invalid"}, {"reference_run_ref": "invalid"},
                   {"metric_keys": ["overdue_count", "overdue_count"]}, {"range_end": None}, {"state": "invalid"},
                   {"sort": "invalid"}, {"order": "invalid"}, {"page": 0}, {"size": 25}):
         invalid_state = dict(history_state, query=dict(history_state["query"], **patch))
         invalid = dict(target, decision_history_context=invalid_state)
         with pytest.raises(WorkbenchNavigationInvalid):
-            read_navigation("analysis", {"nav": json.dumps({"version": 1, "view": "analysis", "context": invalid})})
+            read_navigation("analysis", MultiDict({"nav": json.dumps({"version": 1, "view": "analysis", "context": invalid})}))
     for patch in ({"selected_entry_ref": "invalid"}, {"reference_entry_ref": "invalid"},
                   {"metric_key": "elapsed_seconds"}, {"detail_queries": []}):
         invalid = dict(target, decision_history_context=dict(history_state, **patch))
         with pytest.raises(WorkbenchNavigationInvalid):
-            read_navigation("analysis", {"nav": json.dumps({"version": 1, "view": "analysis", "context": invalid})})
+            read_navigation("analysis", MultiDict({"nav": json.dumps({"version": 1, "view": "analysis", "context": invalid})}))
 
 
 def test_unsaved_recommendation_does_not_invent_missing_saved_selection_evidence():
@@ -385,6 +387,8 @@ _NAVIGATION_NON_FINITE = "页面地址里的数字不是有效数字，页面没
     ('{"version": 1, "view": "analysis", "context": {}', _NAVIGATION_MALFORMED),
 ], ids=("duplicate", "nan", "infinity", "overflow", "syntax"))
 def test_navigation_json_rejects_duplicate_keys_and_non_finite_numbers(raw, message):
+    from werkzeug.datastructures import MultiDict
+
     with pytest.raises(WorkbenchNavigationInvalid) as raised:
-        read_navigation("analysis", {"nav": raw})
+        read_navigation("analysis", MultiDict({"nav": raw}))
     assert str(raised.value) == message

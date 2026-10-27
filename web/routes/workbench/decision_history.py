@@ -29,9 +29,7 @@ def decision_history():
 
         data, scope, state = read_decision_history(g.db, values)
         snapshot = bind_read_snapshot(scope, state, token)
-    response = query_success(data, snapshot)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return query_success(data, snapshot)
 
 
 @api_endpoint
@@ -55,7 +53,6 @@ def decision_history_export():
                 write_history_export(data, snapshot, fmt, section))
     response = send_file(BytesIO(download.content), mimetype=download.mime_type, as_attachment=True,
                          download_name=download.filename, max_age=0)
-    response.headers["Cache-Control"] = "no-store"
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
     response.headers["X-Workbench-Export-Version"] = str(HISTORY_EXPORT_VERSION)
     response.headers["X-Workbench-Row-Count"] = str(download.row_count)

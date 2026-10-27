@@ -42,7 +42,9 @@ def api_endpoint(function, *, readonly=False):
     def wrapped(*args, **kwargs):
         is_write = not readonly and request.method not in ("GET", "HEAD", "OPTIONS")
         try:
-            return function(*args, **kwargs)
+            response = function(*args, **kwargs)
+            response.headers["Cache-Control"] = "no-store"
+            return response
         except WorkbenchCommandRejected as exc:
             # 500 拒绝的文案让用户“告知下方编号”：日志记下的编号就是响应里的这一个。
             request_ref = uuid.uuid4().hex

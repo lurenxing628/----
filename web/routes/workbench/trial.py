@@ -41,9 +41,7 @@ def _query(data, scope):
     if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
         from core.models.workbench_trial import reject
         reject("invalid_input", messages.STALE, 400)
-    response = query_success(data, bind_read_snapshot(scope, content_text(data), request.args.get("snapshot_ref")))
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return query_success(data, bind_read_snapshot(scope, content_text(data), request.args.get("snapshot_ref")))
 
 
 @read_endpoint
@@ -51,16 +49,10 @@ def trial_create_preview():
     return _query(_service().preview_create(_body()), {"kind": "trial_create_preview"})
 
 
-def _command(result):
-    response = json_response(result)
-    response.headers["Cache-Control"] = "no-store"
-    return response
-
-
 @api_endpoint
 def trial_create():
     value = _body(True)
-    return _command(_service().create(value["input"], value["write_token"], value["request_key"]))
+    return json_response(_service().create(value["input"], value["write_token"], value["request_key"]))
 
 
 @api_endpoint
@@ -71,19 +63,19 @@ def trial_read(draft_ref):
 @api_endpoint
 def trial_change(draft_ref):
     value = _body(True)
-    return _command(_service().change(draft_ref, value["input"], value["write_token"], value["request_key"]))
+    return json_response(_service().change(draft_ref, value["input"], value["write_token"], value["request_key"]))
 
 
 @api_endpoint
 def trial_save(draft_ref):
     value = _body(True)
-    return _command(_service().save(draft_ref, value["input"], value["write_token"], value["request_key"]))
+    return json_response(_service().save(draft_ref, value["input"], value["write_token"], value["request_key"]))
 
 
 @api_endpoint
 def trial_discard(draft_ref):
     value = _body(True)
-    return _command(_service().discard(draft_ref, value["input"], value["write_token"], value["request_key"]))
+    return json_response(_service().discard(draft_ref, value["input"], value["write_token"], value["request_key"]))
 
 
 @api_endpoint
@@ -113,9 +105,7 @@ def _catalog(collection):
     scope = TrialCatalogScope(collection, status=request.args.get("status", "all"),
         base_kind=request.args.get("base_kind"), base_ref=request.args.get("base_ref"), **numbers)
     data, content = WorkbenchTrialCatalogService(g.db).catalog(scope)
-    response = query_success(data, bind_read_snapshot(scope.scope(), content, request.args.get("snapshot_ref")))
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return query_success(data, bind_read_snapshot(scope.scope(), content, request.args.get("snapshot_ref")))
 
 
 @api_endpoint

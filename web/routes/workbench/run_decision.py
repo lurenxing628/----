@@ -35,9 +35,7 @@ def _query(allowed) -> Dict[str, str]:
 
 
 def _response(data, snapshot):
-    response = query_success(data, snapshot, byte_limit=MAX_RESPONSE_BYTES, too_large_code="candidate_capacity_exceeded")
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return query_success(data, snapshot, byte_limit=MAX_RESPONSE_BYTES, too_large_code="candidate_capacity_exceeded")
 
 
 def _read(run_ref, reader):
@@ -190,10 +188,8 @@ def run_decision_resource_workspace(run_ref):
             resource_result = _resource_error(exc)
     if snapshot is None:
         snapshot = bind_read_snapshot(scope, state)
-    response = json_response(query_payload({**data, "resource_result": resource_result, "resource_query": resource_query}, snapshot),
+    return json_response(query_payload({**data, "resource_result": resource_result, "resource_query": resource_query}, snapshot),
         byte_limit=MAX_RESPONSE_BYTES, too_large_code="candidate_capacity_exceeded")
-    response.headers["Cache-Control"] = "no-store"
-    return response
 
 
 @api_endpoint
@@ -211,7 +207,6 @@ def run_decision_export(run_ref):
                 write_run_decision_export(data, snapshot, fmt, section))
     response = send_file(BytesIO(download.content), mimetype=download.mime_type, as_attachment=True,
                          download_name=download.filename, max_age=0)
-    response.headers["Cache-Control"] = "no-store"
     response.headers["X-Workbench-Run-Ref"] = run_ref
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
     response.headers["X-Workbench-Row-Count"] = str(download.row_count)

@@ -107,33 +107,21 @@ class WorkbenchProcessQueryService:
         return identity
 
     def page(self, query):
-        facts = self.facts()
-        grouped = defaultdict(list)
-        for row in facts["operations"]:
-            grouped[row["part_no"]].append(row)
-        needle = query.query.casefold()
-        matched = [project_part(row, grouped[row["part_no"]], facts["workflow"][row["part_no"]]["workflow"]) for row in facts["parts"]
-                   if not needle or any(needle in str(row[key] or "").casefold() for key in ("part_no", "part_name", "route_raw"))]
-        if query.stage is not None:
-            matched = [row for row in matched if row["workflow"]["stage"] == query.stage]
-        counts = {stage: sum(row["workflow"]["stage"] == stage for row in matched) for stage in ("route", "source", "hours", "ready")}
-        counts["total"] = len(matched)
-        matched.sort(key=lambda row: row["business_code"])
+        from core.models.workbench_process_table_query import ProcessTablePageRequest
 
-        def order(row):
-            if query.sort == "operation_count":
-                return row["relationships"]["operation_count"]
-            if query.sort == "stage":
-                return ("route", "source", "hours", "ready").index(row["workflow"]["stage"])
-            return row[query.sort]
-
-        matched.sort(key=order, reverse=query.direction == "desc")
-        start = (query.number - 1) * query.size
-        return {"entities": matched[start:start + query.size], "page": {
-            "number": query.number, "size": query.size, "total": len(matched),
-            "pages": max(1, (len(matched) + query.size - 1) // query.size),
-            "sort": [{"field": query.sort, "direction": query.direction}]},
-            "metrics": {"scope": "filtered", "counts": counts}, "capabilities": capabilities(), "create_context": None}
+        table_query = (
+            query
+            if isinstance(query, ProcessTablePageRequest)
+            else ProcessTablePageRequest(
+                query=query.query,
+                stage=query.stage,
+                number=query.number,
+                size=query.size,
+                sort=query.sort,
+                direction=query.direction,
+            )
+        )
+        return {**self.table().page(table_query), "capabilities": capabilities(), "create_context": None}
 
     def detail(self, ref):
         if ref in self._details:

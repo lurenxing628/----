@@ -54,11 +54,9 @@ def _read(*, export=False, suggestion_ref=None):
         response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
         response.headers["X-Workbench-As-Of"] = snapshot["as_of"]
         response.headers["X-Workbench-Row-Count"] = str(file.estimated_rows)
-    else:
-        response = query_success(data, snapshot, byte_limit=MAX_RESPONSE_BYTES,
-            too_large_message="这次要读的校准明细超过 8 MB，系统没有给出不完整内容。请缩小筛选范围后点「刷新」。")
-    response.headers["Cache-Control"] = "no-store"
-    return response
+        return response
+    return query_success(data, snapshot, byte_limit=MAX_RESPONSE_BYTES,
+        too_large_message="这次要读的校准明细超过 8 MB，系统没有给出不完整内容。请缩小筛选范围后点「刷新」。")
 
 
 @api_endpoint

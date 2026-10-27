@@ -31,9 +31,7 @@ def _body(required):
 
 
 def _query(data, scope):
-    response = query_success(data, bind_read_snapshot(scope, data, None))
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return query_success(data, bind_read_snapshot(scope, data, None))
 
 
 @read_endpoint
@@ -48,9 +46,7 @@ def trial_adopt(scenario_ref):
     validate_request_key(value["request_key"])
     g.workbench_request_key = value["request_key"]
     g.workbench_result_target = "/api/workbench/v1/trial/scenarios/" + scenario_ref + "/adoption-commands/" + value["request_key"]
-    response = json_response(_service().adopt(scenario_ref, value["write_token"], value["request_key"], value["input"]))
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return json_response(_service().adopt(scenario_ref, value["write_token"], value["request_key"], value["input"]))
 
 
 @api_endpoint

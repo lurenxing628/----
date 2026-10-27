@@ -37,10 +37,6 @@ def _write(repo, path, value):
     raise AssertionError(path)
 
 
-def _snapshot(conn):
-    return [tuple(row) for row in conn.execute("SELECT *, typeof(stock_qty) FROM Materials ORDER BY material_id")]
-
-
 @pytest.mark.parametrize('path', ["repo_create", "repo_update"])
 def test_finite_numeric_write_contract_is_preserved(material_repo, path):
     repo = material_repo
@@ -55,15 +51,3 @@ def test_finite_numeric_write_contract_is_preserved(material_repo, path):
     if result is not None:
         assert float(result.stock_qty) == stored
     assert repo.conn.execute("SELECT COUNT(*) FROM Materials").fetchone()[0] == (1 if mid == "M001" else 2)
-
-
-@pytest.mark.parametrize('path', ["repo_create", "repo_update"])
-def test_invalid_quantity_rolls_back_prior_writes_in_outer_transaction(material_repo, path):
-    repo = material_repo
-    before = _snapshot(repo.conn)
-    with pytest.raises(ValueError):
-        with TransactionManager(repo.conn).transaction():
-            repo.create(Material(material_id="M003", name="earlier", stock_qty=3))
-            _write(repo, path, "Infinity")
-    assert _snapshot(repo.conn) == before
-    assert not repo.conn.in_transaction

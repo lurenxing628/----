@@ -20,10 +20,8 @@ def exact_operations(payload, operations):
     return active
 
 
-def _related(identities, ref, kind, cache):
-    if ref not in cache:
-        cache[ref] = identities.get(ref)
-    current = cache[ref]
+def _related(identities, ref, kind):
+    current = identities.get(ref)
     if current is None or not current.active or current.kind != kind:
         raise WorkbenchCommandRejected("invalid_relation", "所选工种或供应商记录不存在、已失效，或者选错了类型。请刷新后重新选择。", 422)
     return current.entity_key
@@ -58,15 +56,15 @@ def require_supplier(operation, supplier_key, type_key, catalog):
 def prepare_source(payload, operations, identities, *, catalog):
     active = exact_operations(payload, operations)
     types = catalog[0]
-    changes, cache = [], {}
+    changes = []
     for row in payload["operations"]:
         old = active[row["ref"]]
-        type_key = _related(identities, row["op_type_ref"], "op_type", cache)
+        type_key = _related(identities, row["op_type_ref"], "op_type")
         if type_key not in types or not supports_source(types[type_key]["category"], row["source"]):
             raise WorkbenchCommandRejected("source_category_mismatch", "所选工种类别必须匹配本序归属，不能通过本序操作修改全局工种类别。", 422)
         supplier_key = None
         if row["source"] == "external":
-            supplier_key = _related(identities, row["supplier_ref"], "supplier", cache)
+            supplier_key = _related(identities, row["supplier_ref"], "supplier")
             require_supplier(old, supplier_key, type_key, catalog)
         values = (row["source"], type_key, supplier_key)
         if values != (old["source"], old["op_type_id"], old["supplier_id"]):

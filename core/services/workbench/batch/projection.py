@@ -218,7 +218,6 @@ class BatchProjection:
                     "outsourcing_reference_count": len(facts["outsourcing_receipts"]),
                     "quantity_split_reference_count": len(facts["quantity_splits"]),
                     "execution_reference_count": len(facts["reports"]),
-                    "report_count": len(facts["reports"]),
                     "material_requirement_count": len(facts["materials"])},
                 "all_operations_complete": all_complete, "issues": issues,
                 "write_context": None, "protected": facts["protected"]}

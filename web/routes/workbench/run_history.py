@@ -29,9 +29,7 @@ def run_history_list():
         order=request.args.get("order", "desc"), page=_integer("page", "1"), size=_integer("size", "20"))
     data, fingerprint = WorkbenchRunHistoryQueryService(g.db).catalog(scope)
     snapshot = bind_read_snapshot(scope.scope(), fingerprint, request.args.get("snapshot_ref"))
-    response = query_success(data, snapshot)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return query_success(data, snapshot)
 
 
 def register_run_history_routes(bp):

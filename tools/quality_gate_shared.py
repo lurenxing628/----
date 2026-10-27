@@ -317,8 +317,8 @@ STARTUP_SAMPLE_EXPECTATIONS = [
     SilentFallbackSample(
         path="web/bootstrap/launcher_observability.py",
         symbol="_format_message",
-        line_start=79,
-        line_end=80,
+        line_start=64,
+        line_end=65,
         fallback_kind="silent_default_fallback",
     ),
     SilentFallbackSample(

@@ -348,7 +348,21 @@ def test_report_date_limit_and_offline_view_contract():
 
 def test_standalone_execution_xlsx_stream_keeps_canonical_headers():
     output = export_execution_review_xlsx(
-        [{"batch_id_label": "B1", "actual_resource_label": "二号设备 / 李四"}],
+        [
+            {
+                "batch_id_label": "B1",
+                "operation_label": "OP10 / 车削",
+                "planned_start_time_label": "2026-05-01 08:00:00",
+                "actual_start_time_label": "2026-05-01 08:10:00",
+                "start_deviation_label": "晚了 10 分钟",
+                "planned_end_time_label": "2026-05-01 09:00:00",
+                "actual_end_time_label": "2026-05-01 09:05:00",
+                "end_deviation_label": "晚了 5 分钟",
+                "planned_resource_label": "一号设备 / 张三",
+                "actual_resource_label": "二号设备 / 李四",
+                "feedback_status_label": "已完工",
+            }
+        ],
         summary_rows=[["计划编号", "P1"]], write_only=True)
     workbook = openpyxl.load_workbook(BytesIO(output.read()), data_only=True)
     try:

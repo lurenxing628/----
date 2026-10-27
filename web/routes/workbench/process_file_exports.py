@@ -88,8 +88,6 @@ def process_file_export(kind):
         facts = reader.facts()
     # 读事务已结束：文件只用读快照里的工艺资料生成，编码再久也不挡别人提交写入。
     download = encode_process_file(kind, process_export_rows(kind, parts, facts), body["format"])
-    if download.row_count != saved["row_count"] or len(parts) != saved["part_count"]:
-        raise WorkbenchCommandRejected("snapshot_stale", "导出范围里的记录条数有变化，一行都没有下载。请点「重新预检」。")
     response = file_response(download)
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
     response.headers["X-Workbench-As-Of"] = snapshot["as_of"]

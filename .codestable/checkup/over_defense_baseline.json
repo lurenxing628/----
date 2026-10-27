@@ -52,11 +52,6 @@
       "path": "web/bootstrap/workbench_request_lifecycle_wsgi.py",
       "kind": "internal_reflect_literal",
       "count": 1
-    },
-    {
-      "path": "web/routes/workbench/navigation_boot.py",
-      "kind": "internal_reflect_literal",
-      "count": 1
     }
   ]
 }

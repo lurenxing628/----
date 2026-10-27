@@ -199,9 +199,6 @@ def _register_exit_backup(app: Flask) -> None:
 def create_app_core(
     *,
     ui_mode: str,
-    enable_secret_key: bool,
-    enable_security_headers: bool,
-    enable_session_cookie_hardening: bool,
 ) -> Flask:
     cfg_class = resolve_config_class(_config_map)
 
@@ -232,10 +229,8 @@ def create_app_core(
     app.logger.handlers = app_logger.logger.handlers
     app.logger.setLevel(app_logger.logger.level)
 
-    if enable_secret_key:
-        ensure_secret_key(app)
-    if enable_session_cookie_hardening:
-        apply_session_cookie_hardening(app)
+    ensure_secret_key(app)
+    apply_session_cookie_hardening(app)
 
     _ensure_runtime_dirs(app)
 
@@ -314,8 +309,7 @@ def create_app_core(
             except Exception as exc:
                 _app_log_once(app, "close_db_failed", "warning", "数据库连接关闭失败，已按清理型尽力而为继续：%s", exc)
 
-    if enable_security_headers:
-        register_security_headers(app)
+    register_security_headers(app)
 
     @app.after_request
     def _schedule_idle_maintenance(resp):

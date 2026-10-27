@@ -54,7 +54,6 @@ def _boundary(function):
                                committed="unknown" if is_accept else False, request_key=request_key,
                                result_target=("/api/workbench/v1/scheduling/requests/" + request_key) if request_key else None,
                                request_ref=request_ref)
-        response.headers["Cache-Control"] = "no-store"
         return response
     return wrapped
 

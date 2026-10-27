@@ -44,11 +44,6 @@ class RuntimeCleanupFailure:
 
 @dataclass(frozen=True)
 class RuntimeCleanupResult:
-    state_dir: str
-    target_dirs: Tuple[str, ...]
-    attempted_paths: Tuple[str, ...]
-    removed_paths: Tuple[str, ...]
-    missing_paths: Tuple[str, ...]
     failures: Tuple[RuntimeCleanupFailure, ...]
 
     @property
@@ -64,9 +59,6 @@ def delete_runtime_contract_files_result(
 ) -> RuntimeCleanupResult:
     state_dir = resolve_runtime_state_dir_for_read(runtime_dir)
     target_dirs, discovery_failures = _runtime_contract_log_dirs_result(state_dir, expected_contract)
-    attempted_paths: List[str] = []
-    removed_paths: List[str] = []
-    missing_paths: List[str] = []
     failures: List[RuntimeCleanupFailure] = list(discovery_failures)
 
     for log_dir in target_dirs:
@@ -78,20 +70,13 @@ def delete_runtime_contract_files_result(
                     if log_dir == target_dirs[0]:
                         break
                     continue
-                _remove_contract_artifacts(log_dir, attempted_paths, removed_paths, missing_paths, failures)
+                _remove_contract_artifacts(log_dir, failures)
         except RuntimeLockError as exc:
             failures.append(RuntimeCleanupFailure(path=runtime_lock_path(log_dir), reason="mutation_guard_failed", error=str(exc)))
             if log_dir == target_dirs[0]:
                 break
 
-    return RuntimeCleanupResult(
-        state_dir=state_dir,
-        target_dirs=tuple(target_dirs),
-        attempted_paths=tuple(attempted_paths),
-        removed_paths=tuple(removed_paths),
-        missing_paths=tuple(missing_paths),
-        failures=tuple(failures),
-    )
+    return RuntimeCleanupResult(failures=tuple(failures))
 
 
 def _cleanup_ownership_failure(
@@ -118,20 +103,14 @@ def _cleanup_ownership_failure(
 
 def _remove_contract_artifacts(
     log_dir: str,
-    attempted_paths: List[str],
-    removed_paths: List[str],
-    missing_paths: List[str],
     failures: List[RuntimeCleanupFailure],
 ) -> None:
     for path in _cleanup_paths(log_dir):
-        attempted_paths.append(path)
         try:
-            removed = remove_fixed_file(path, allow_symlink=False)
+            remove_fixed_file(path, allow_symlink=False)
         except OSError as exc:
             launcher_log_warning(None, "删除运行时契约相关文件失败：path=%s error=%s", path, exc, state_dir=log_dir)
             failures.append(RuntimeCleanupFailure(path=path, reason="remove_failed", error=str(exc)))
-        else:
-            (removed_paths if removed else missing_paths).append(path)
 
 
 def _cleanup_paths(log_dir: str) -> Tuple[str, ...]:

@@ -40,10 +40,8 @@ def _arguments(allowed):
 
 
 def _response(data, snapshot):
-    response = query_success(data, snapshot, byte_limit=MAX_PLAN_RESPONSE_BYTES,
+    return query_success(data, snapshot, byte_limit=MAX_PLAN_RESPONSE_BYTES,
         too_large_message="这次要读的计划数据太多，系统没有给出不完整结果。请缩小日期范围后点「刷新」。")
-    response.headers["Cache-Control"] = "no-store"
-    return response
 
 
 def _cursor(scope_dict):
@@ -112,7 +110,6 @@ def plan_export(plan_ref):
         raise WorkbenchCommandRejected("query_too_large", "导出文件超过 8 MB，请缩小范围后重新导出。", 413)
     response = send_file(BytesIO(download.content), mimetype=download.mime_type, as_attachment=True,
                          download_name=download.filename, max_age=0)
-    response.headers["Cache-Control"] = "no-store"
     response.headers["X-Workbench-Row-Count"] = str(download.row_count)
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
     response.headers["X-Workbench-Plan-Ref"] = scope.plan_ref

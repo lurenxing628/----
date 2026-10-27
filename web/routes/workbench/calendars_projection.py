@@ -37,7 +37,7 @@ def calendar_preview(preview) -> Dict[str, Any]:
              "changed": item["before"]["row"] != item["after"]["row"]} for item in preview.days]
     changed = sum(item["changed"] for item in days)
     return {"preview_ref": preview.preview_ref, "created_at": preview.created_at, "expires_at": preview.expires_at,
-            "request": {**preview.request, "fields": preview.request["fields"]},
+            "request": preview.request,
             "dates": preview.dates, "days": days,
             "counts": {"selected": len(days), "changed": changed, "unchanged": len(days) - changed,
                        "configured_before": sum(item["before"]["explicit"] for item in days),

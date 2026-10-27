@@ -31,7 +31,6 @@ from .launcher_paths import (
     resolve_runtime_state_dir,
     resolve_runtime_state_dir_for_read,
     runtime_lock_path,
-    runtime_log_dir,
     runtime_log_mirror_dir,
     state_contract_paths,
 )
@@ -71,9 +70,9 @@ def _runtime_contract_payload(
     shutdown_token: str,
     instance_id: str,
     ui_mode: str,
-    log_dir: Optional[str],
-    backup_dir: Optional[str],
-    excel_template_dir: Optional[str],
+    log_dir: str,
+    backup_dir: str,
+    excel_template_dir: str,
     exe_path: str,
     chrome_profile_dir: str,
     owner: str,
@@ -95,11 +94,9 @@ def _runtime_contract_payload(
         "db_path": normalize_runtime_db_path(db_path),
         "chrome_profile_dir": os.path.abspath(chrome_profile_dir),
         "data_dirs": {
-            "log_dir": os.path.abspath(str(log_dir or runtime_log_dir(runtime_dir_abs))),
-            "backup_dir": os.path.abspath(str(backup_dir or os.path.join(runtime_dir_abs, "backups"))),
-            "excel_template_dir": os.path.abspath(
-                str(excel_template_dir or os.path.join(runtime_dir_abs, "templates_excel"))
-            ),
+            "log_dir": os.path.abspath(str(log_dir)),
+            "backup_dir": os.path.abspath(str(backup_dir)),
+            "excel_template_dir": os.path.abspath(str(excel_template_dir)),
         },
     }
 
@@ -113,9 +110,9 @@ def write_runtime_contract_file(
     shutdown_token: str,
     instance_id: str,
     ui_mode: str,
-    log_dir: Optional[str],
-    backup_dir: Optional[str],
-    excel_template_dir: Optional[str],
+    log_dir: str,
+    backup_dir: str,
+    excel_template_dir: str,
     exe_path: str,
     chrome_profile_dir: str,
     owner: str,

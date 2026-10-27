@@ -58,9 +58,7 @@ def _read(kind, ref=None):
             data = reader.detail(ref, as_of=now)
         snapshot = bind_read_snapshot(scope, data.pop("content"), token, as_of=now, binding=binding,
             stale_message="外协来源或登记内容有变化，还没有保存；系统没有偷偷用新数据。请点「刷新」后重新核对。")
-    response = query_success(data, snapshot, byte_limit=MAX_BYTES)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return query_success(data, snapshot, byte_limit=MAX_BYTES)
 
 
 @api_endpoint
@@ -98,10 +96,8 @@ def outsourcing_preview():
     body = _body(False)
     service = WorkbenchOutsourcingCommandService(g.db, context_factory=issue_write_context)
     result = service.preview(body["input"])
-    response = query_success(result, {"as_of": service.reader.now().isoformat(timespec="seconds"), "snapshot_ref": None},
-                             byte_limit=MAX_BYTES)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return query_success(result, {"as_of": service.reader.now().isoformat(timespec="seconds"), "snapshot_ref": None},
+                         byte_limit=MAX_BYTES)
 
 
 @api_endpoint
@@ -112,9 +108,7 @@ def outsourcing_confirm():
     service = WorkbenchOutsourcingCommandService(g.db)
     result = service.execute(body["input"], request_key=body["request_key"],
         validate_context=lambda subject, action, snapshot: validate_write_context(body["write_token"], subject, action, snapshot))
-    response = json_response(result)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return json_response(result)
 
 
 def register_outsourcing_routes(bp):

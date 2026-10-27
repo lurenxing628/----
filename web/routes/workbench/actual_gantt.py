@@ -43,10 +43,8 @@ def _read(scope, *, chain_target=None, bind_axis=True, include_chain=True):
 @api_endpoint
 def actual_gantt_workspace():
     data, snapshot = _read(_scope())
-    response = query_success(data, snapshot, byte_limit=MAX_ACTUAL_RESPONSE_BYTES,
+    return query_success(data, snapshot, byte_limit=MAX_ACTUAL_RESPONSE_BYTES,
         too_large_message="这次要读的现场甘特数据太多，系统没有给出不完整结果。请缩小日期范围或减少所选批次后点「刷新」。")
-    response.headers["Cache-Control"] = "no-store"
-    return response
 
 
 @api_endpoint
@@ -57,10 +55,8 @@ def actual_gantt_related_chain():
     if not request.args.get("snapshot_ref"):
         raise WorkbenchCommandRejected("snapshot_required", "数据已更新，关联工序还没有打开。请点「刷新」后重新选择。", 400)
     data, snapshot = _read(scope, chain_target=target, bind_axis=False)
-    response = query_success({key: data[key] for key in ("plan", "scope", "critical_chain")}, snapshot,
-                             byte_limit=MAX_ACTUAL_RESPONSE_BYTES)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return query_success({key: data[key] for key in ("plan", "scope", "critical_chain")}, snapshot,
+                         byte_limit=MAX_ACTUAL_RESPONSE_BYTES)
 
 
 @api_endpoint
@@ -74,7 +70,6 @@ def actual_gantt_export():
         raise WorkbenchCommandRejected("query_too_large", "现场甘特 CSV 超过 32 MB，请缩小范围后重新导出。", 413)
     response = send_file(BytesIO(content), mimetype="text/csv;charset=utf-8", as_attachment=True,
                          download_name="现场实际甘特-" + snapshot["as_of"].replace(":", "") + ".csv", max_age=0)
-    response.headers["Cache-Control"] = "no-store"
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
     response.headers["X-Workbench-Row-Count"] = str(rows)
     response.headers["X-Workbench-Operation-Count"] = str(operations)

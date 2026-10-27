@@ -21,8 +21,7 @@ def sample_server(tmp_path, monkeypatch):
                        ("APS_BACKUP_DIR", tmp_path / "backups"), ("APS_EXCEL_TEMPLATE_DIR", tmp_path / "templates")):
         monkeypatch.setenv(key, str(value))
     monkeypatch.setenv("APS_ENV", "production")
-    app = create_app_core(ui_mode="default", enable_secret_key=True, enable_security_headers=False,
-                          enable_session_cookie_hardening=False)
+    app = create_app_core(ui_mode="default")
     server = create_runtime_server(app, "127.0.0.1", 0)
     thread = threading.Thread(target=server.serve_forever)
     thread.start()

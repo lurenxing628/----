@@ -4,7 +4,7 @@ import os
 import sys
 import time
 from dataclasses import dataclass
-from typing import Any, List, Optional, Tuple
+from typing import Any, Optional
 
 from core.infrastructure.safe_files import write_fixed_text
 
@@ -14,12 +14,8 @@ RUNTIME_ERROR_FILE = "aps_launch_error.txt"
 
 @dataclass(frozen=True)
 class LauncherLogResult:
-    logger_ok: bool
     file_ok: bool
     error_file_ok: bool
-    stderr_ok: bool
-    attempted_paths: Tuple[str, ...]
-    errors: Tuple[str, ...]
 
 
 def launcher_log_warning(
@@ -35,10 +31,8 @@ def launcher_log_warning(
 ) -> LauncherLogResult:
     text = _format_message(message, *args)
     launch_error_text = _format_public_launch_error(public_launch_error_message)
-    attempted_paths: List[str] = []
-    errors: List[str] = []
 
-    logger_ok = _write_logger(logger, logger_level, text, errors)
+    logger_ok = _write_logger(logger, logger_level, text)
     target_dir = _resolve_log_target_dir(runtime_dir=runtime_dir, state_dir=state_dir, cfg_log_dir=cfg_log_dir)
     file_ok = False
     error_file_ok = False
@@ -46,27 +40,18 @@ def launcher_log_warning(
         file_ok = _append_text_file(
             os.path.join(target_dir, LAUNCHER_LOG_FILE),
             _format_file_line(text, level=logger_level),
-            attempted_paths,
-            errors,
         )
         if write_launch_error:
             error_file_ok = _write_text_file(
                 os.path.join(target_dir, RUNTIME_ERROR_FILE),
                 launch_error_text,
-                attempted_paths,
-                errors,
             )
 
-    stderr_ok = False
     if not logger_ok or not file_ok or (write_launch_error and not error_file_ok):
-        stderr_ok = _write_stderr(launch_error_text if write_launch_error else text, errors)
+        _write_stderr(launch_error_text if write_launch_error else text)
     return LauncherLogResult(
-        logger_ok=logger_ok,
         file_ok=file_ok,
         error_file_ok=error_file_ok,
-        stderr_ok=stderr_ok,
-        attempted_paths=tuple(attempted_paths),
-        errors=tuple(errors),
     )
 
 
@@ -91,15 +76,14 @@ def _format_file_line(text: str, *, level: str) -> str:
     return "{} [{}] {}\n".format(time.strftime("%Y-%m-%d %H:%M:%S"), level.upper(), text)
 
 
-def _write_logger(logger: Optional[Any], level: str, text: str, errors: List[str]) -> bool:
+def _write_logger(logger: Optional[Any], level: str, text: str) -> bool:
     method = getattr(logger, level, None) if logger is not None else None
     if not callable(method):
         return False
     try:
         method("%s", text)
         return True
-    except Exception as exc:
-        errors.append(f"logger:{exc}")
+    except Exception:
         return False
 
 
@@ -128,30 +112,24 @@ def _normalize_dir(path: Optional[str]) -> str:
     return os.path.abspath(raw)
 
 
-def _append_text_file(path: str, text: str, attempted_paths: List[str], errors: List[str]) -> bool:
-    attempted_paths.append(path)
+def _append_text_file(path: str, text: str) -> bool:
     try:
         write_fixed_text(path, text, append=True)
         return True
-    except Exception as exc:
-        errors.append(f"{path}:{exc}")
+    except Exception:
         return False
 
 
-def _write_text_file(path: str, text: str, attempted_paths: List[str], errors: List[str]) -> bool:
-    attempted_paths.append(path)
+def _write_text_file(path: str, text: str) -> bool:
     try:
         write_fixed_text(path, text)
         return True
-    except Exception as exc:
-        errors.append(f"{path}:{exc}")
+    except Exception:
         return False
 
 
-def _write_stderr(text: str, errors: List[str]) -> bool:
+def _write_stderr(text: str) -> None:
     try:
         print(text, file=sys.stderr)
-        return True
-    except Exception as exc:
-        errors.append(f"stderr:{exc}")
-        return False
+    except Exception:
+        return

@@ -56,9 +56,7 @@ def field_file_preview():
         context.update(capabilities={'import_confirm': False}, blocked_reasons=[{'code': 'constraint_conflict', 'message': '文件里有问题行或没有可导入的记录，一条报工都没有写入。请修好文件后点「选择文件」重新选择，再点「开始预检」。'}])
     public = {key: value for key, value in preview.items() if key not in ('snapshot', 'items')}
     public.update(preview_ref=ref, expires_at=expiry, write_context=context)
-    response = query_success(public, snapshot)
-    response.headers['Cache-Control'] = 'no-store'
-    return response
+    return query_success(public, snapshot)
 
 
 @api_endpoint
@@ -94,10 +92,8 @@ def field_file_confirm():
         validate_preview_confirmation(body['write_token'], subject)
 
     # 整份现场范围和文件复核在拿写锁前的读快照里做；写锁里库没变就直接沿用，只核对并写入报工。
-    response = json_response(service.execute_import(ref, request_key=body['request_key'], load_items=load_items, validate_context=guard,
-                                              admission=PLAN_READ_SLOTS.slot))
-    response.headers['Cache-Control'] = 'no-store'
-    return response
+    return json_response(service.execute_import(ref, request_key=body['request_key'], load_items=load_items, validate_context=guard,
+                                                admission=PLAN_READ_SLOTS.slot))
 
 
 @read_endpoint
@@ -106,9 +102,7 @@ def field_file_errors():
         raise WorkbenchCommandRejected('invalid_input', '预检结果已过期，没有开始下载。请点「重新预检」。', 400)
     document, _ = resolve_context(PREVIEW_NAMESPACE, request.args['preview_ref'], 'snapshot_stale')
     content = encode_issues(document['preview']['rows'])
-    response = send_file(BytesIO(content), mimetype=MIME, as_attachment=True, download_name='报工导入问题.xlsx', max_age=0)
-    response.headers['Cache-Control'] = 'no-store'
-    return response
+    return send_file(BytesIO(content), mimetype=MIME, as_attachment=True, download_name='报工导入问题.xlsx', max_age=0)
 
 
 def download(template):
@@ -125,7 +119,6 @@ def download(template):
     content, count = FieldReportFileService.download(cohort, template, resource_codes=resource_codes)
     response = send_file(BytesIO(content), mimetype=MIME, as_attachment=True,
                          download_name='现场分次报工模板.xlsx' if template else '现场报工导出.xlsx', max_age=0)
-    response.headers['Cache-Control'] = 'no-store'
     response.headers['X-Workbench-Row-Count'] = str(count)
     response.headers['X-Workbench-Snapshot-Ref'] = snapshot['snapshot_ref']
     return response

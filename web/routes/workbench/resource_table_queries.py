@@ -61,9 +61,7 @@ def _readonly_endpoint(function):
     @wraps(function)
     def wrapped(*args, **kwargs):
         try:
-            response = function(*args, **kwargs)
-            response.headers["Cache-Control"] = "no-store"
-            return response
+            return function(*args, **kwargs)
         except (WorkbenchCommandRejected, AppError, HTTPException):
             raise
         except Exception as exc:

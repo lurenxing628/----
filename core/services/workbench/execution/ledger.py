@@ -32,8 +32,6 @@ class ExecutionLedgerService(ExecutionLedgerReader):
     def __init__(self, conn, *, clock: Optional[Callable[[], datetime]] = None,
                  context_factory: Optional[ExecutionContextFactory] = None,
                  current_plan_provider=current_execution_plan):
-        if context_factory is not None and not callable(context_factory):
-            raise TypeError("Ledger context factory must be callable.")
         super().__init__(conn, current_plan_provider=current_plan_provider, clock=clock)
         self.context_factory = context_factory
 

@@ -28,9 +28,7 @@ def trial_adoption_history(scenario_ref):
         reject("snapshot_required", "翻页位置已失效，请回到第 1 页重新查询。", 400)
     status = request.args.get("status", "all")
     data, content = WorkbenchTrialAdoptionHistoryService(g.db).read(scenario_ref, status=status, **numbers)
-    response = query_success(data, bind_read_snapshot(data["scope"], content, request.args.get("snapshot_ref")), byte_limit=MAX_DIRECTORY_BYTES)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return query_success(data, bind_read_snapshot(data["scope"], content, request.args.get("snapshot_ref")), byte_limit=MAX_DIRECTORY_BYTES)
 
 
 def register_trial_adoption_history_routes(bp):

@@ -41,10 +41,8 @@ def _scope(candidate_ref):
 
 
 def _response(data, snapshot):
-    response = query_success(data, snapshot, byte_limit=MAX_RESPONSE_BYTES, too_large_code="candidate_capacity_exceeded",
+    return query_success(data, snapshot, byte_limit=MAX_RESPONSE_BYTES, too_large_code="candidate_capacity_exceeded",
         too_large_message="这次要读的候选方案数据太多，系统没有给出不完整结果。请缩小筛选范围后点「刷新」。")
-    response.headers["Cache-Control"] = "no-store"
-    return response
 
 
 @api_endpoint
@@ -89,7 +87,6 @@ def run_candidate_export(candidate_ref):
         reject("candidate_capacity_exceeded", "候选方案导出文件超过 32 MB，请缩小范围后重新导出。", 413)
     response = send_file(BytesIO(download.content), mimetype=download.mime_type, as_attachment=True,
                          download_name=download.filename, max_age=0)
-    response.headers["Cache-Control"] = "no-store"
     response.headers["X-Workbench-Row-Count"] = str(download.row_count)
     response.headers["X-Workbench-Task-Count"] = str(data["task_count"])
     response.headers["X-Workbench-Candidate-Ref"] = candidate_ref

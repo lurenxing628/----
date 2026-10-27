@@ -84,9 +84,6 @@ class WorkbenchMaterialFileService:
         self.repo = WorkbenchMaterialFileRepository(conn, logger=logger)
         self.tx = TransactionManager(conn)
 
-    def prepare_import(self, content, *, file_format, scope, mode="upsert"):
-        return self._prepare_source(content, file_format=file_format, scope=scope, mode=mode)[0]
-
     def _prepare_source(self, content, *, file_format, scope, mode="upsert"):
         request = file_request(content, file_format, mode, scope)
         source, notices = read_material_file(content, file_format)
@@ -95,11 +92,7 @@ class WorkbenchMaterialFileService:
         return prepared, request
 
     def preview_import(self, content, *, file_format, scope, mode="upsert"):
-        if isinstance(content, PreparedImportSource):
-            prepared = content
-            request = content.request_for("material.import", file_format, mode, normalize_scope(scope))
-        else:
-            prepared, request = self._prepare_source(content, file_format=file_format, scope=scope, mode=mode)
+        prepared, request = self._prepare_source(content, file_format=file_format, scope=scope, mode=mode)
         with self.tx.transaction():
             preview, _ = self._prepare_import(prepared, request)
             return preview
@@ -142,7 +135,7 @@ class WorkbenchMaterialFileService:
                                                     identity["revision"], bool(identity["active"])) if identity else None
                 if identity is None:
                     raise WorkbenchCommandRejected("storage_failure", "这条物料缺少系统编号，请联系维护人员核对资料。", 500)
-                row["expected"] = full_material_snapshot(self.adapter, captured, identity)
+                row["expected"] = full_material_snapshot(captured, identity)
                 if code != raw["material_id"] or raw["material_id"] != raw["material_id"].strip():
                     raise ValidationError("原来的物料编号首尾有空格，不能安全更新。请先核对原记录。", field="business_code")
             if not row["errors"]:

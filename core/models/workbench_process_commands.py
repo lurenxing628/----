@@ -105,7 +105,7 @@ def _normalize_group_input(payload):
             "discard_group_refs": discarded}
 
 
-def normalize_process_input(action, payload):
+def normalize_process_input(action, payload, *, route_out=None):
     if type(action) is not str or action not in PROCESS_ACTIONS:
         raise WorkbenchCommandRejected("invalid_input", "不支持的工艺阶段操作。", 400)
     if action == "groups_confirm":
@@ -128,5 +128,7 @@ def normalize_process_input(action, payload):
     if action == "source_confirm":
         return {field: _source_operations(payload[field]), "discard_group_refs": discarded}
     # The existing normalizer validates shape/capacity without erasing raw spaces.
-    normalize_route_preview_input(payload["route"])
+    preview_input = normalize_route_preview_input(payload["route"])
+    if route_out is not None:
+        route_out.append(preview_input)
     return {field: payload[field], "discard_group_refs": discarded}

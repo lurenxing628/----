@@ -46,7 +46,6 @@ def arguments(export=False, detail=False):
 
 def download_response(file, snapshot):
     response = send_file(file.data, mimetype=file.content_type, as_attachment=True, download_name=file.filename, max_age=0)
-    response.headers["Cache-Control"] = "no-store"
     response.headers["X-Workbench-Snapshot-Ref"] = snapshot["snapshot_ref"]
     response.headers["X-Workbench-As-Of"] = snapshot["as_of"]
     response.headers["X-Workbench-Row-Count"] = str(file.estimated_rows)
@@ -73,10 +72,8 @@ def _read(export=False, operation_ref=None):
     if export:
         # 读事务和读额度都已释放：文件只用已读出的结果生成，编码再久也不挡别人提交写入。
         return download_response(export_table(reader.engine, data, rows, snapshot, request.args.get("format", "csv")), snapshot)
-    response = query_success(data, snapshot, byte_limit=8 * 1024 * 1024,
+    return query_success(data, snapshot, byte_limit=8 * 1024 * 1024,
         too_large_message="这次要读的报表数据太多，系统没有给出不完整结果。请缩小筛选范围后点「刷新」。")
-    response.headers["Cache-Control"] = "no-store"
-    return response
 
 
 @api_endpoint

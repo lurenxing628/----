@@ -15,9 +15,7 @@ from .read_context import bind_read_snapshot, page_integer, read_snapshot_time, 
 
 
 def _response(data, snapshot):
-    response = query_success(data, snapshot, byte_limit=MAX_BYTES)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return query_success(data, snapshot, byte_limit=MAX_BYTES)
 
 
 def _arguments(allowed):

@@ -161,8 +161,6 @@ def _closed_block(title, anchor, level, body, source, *, render_html):
 
 
 def manual_blocks(text, *, render_html=True):
-    if not isinstance(text, str):
-        raise ValueError("Manual source must be the existing public text.")
     blocks, body, title, anchor, source, fenced = [], [], "", "", [], False
     level = 0
     used = {}

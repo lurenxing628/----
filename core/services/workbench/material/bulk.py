@@ -14,6 +14,8 @@ outer command transaction rolls back the whole batch if a domain operation fails
 
 from __future__ import annotations
 
+from dataclasses import asdict
+
 from core.errors import ValidationError
 from core.infrastructure.transaction import TransactionManager
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
@@ -31,13 +33,18 @@ from data.repositories.workbench_material_file_repo import WorkbenchMaterialFile
 from .service import WorkbenchMaterialService
 
 
-def full_material_snapshot(adapter, captured, identity):
+def full_material_snapshot(captured, identity):
     material = captured["materials"].get(identity.entity_key)
     if material is None:
         raise WorkbenchCommandRejected("entity_not_found", "该物料已不存在，请刷新。", 404)
-    snapshot = adapter._snapshot_from_current(identity, material)
-    snapshot["requirements"] = captured["requirements"].get(identity.entity_key, [])
-    return snapshot
+    if (material["material_id"], material["ref"], material["revision"]) != (
+            identity.entity_key, identity.ref, identity.revision):
+        raise WorkbenchCommandRejected("stale_write", "物料和选中的记录对不上，请刷新后重新核对。")
+    return {
+        "identity": asdict(identity),
+        "material": material,
+        "requirements": captured["requirements"].get(identity.entity_key, []),
+    }
 
 
 class WorkbenchMaterialBulkService:
@@ -68,7 +75,7 @@ class WorkbenchMaterialBulkService:
             reject_row(row, "这条物料记录已失效，请重新选择。", field="entity_ref", code="entity_not_found")
             return row
         row["business_code"] = identity.entity_key
-        row["expected"] = full_material_snapshot(self.adapter, captured, identity)
+        row["expected"] = full_material_snapshot(captured, identity)
         if identity.entity_key != identity.entity_key.strip():
             reject_row(row, "这个物料编号首尾有空格，不能安全删除。请先核对原记录。", code="constraint_conflict")
         elif row["expected"]["requirements"]:

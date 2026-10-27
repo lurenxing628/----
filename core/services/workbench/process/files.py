@@ -29,9 +29,6 @@ class WorkbenchProcessFileService:
 
         return ProcessHoursFileOperations(self.conn, self.logger)
 
-    def prepare_import(self, kind, content, *, file_format, mode="upsert", target_ref=None):
-        return self._prepare_source(kind, content, file_format=file_format, mode=mode, target_ref=target_ref)[0]
-
     def _prepare_source(self, kind, content, *, file_format, mode, target_ref):
         file_columns(kind)
         check_format(file_format)
@@ -43,13 +40,7 @@ class WorkbenchProcessFileService:
         return prepared, dict(request, actual_source_ref=prepared.source_ref)
 
     def preview_import(self, kind, content, *, file_format, mode="upsert", target_ref=None):
-        if isinstance(content, PreparedImportSource):
-            prepared = content
-            request = prepared.request_for(file_operation(kind), file_format, mode)
-            if request["target_ref"] != target_ref:
-                raise WorkbenchCommandRejected("stale_write", "原文件的零件范围已变化，请重新预检。")
-        else:
-            prepared, request = self._prepare_source(kind, content, file_format=file_format, mode=mode, target_ref=target_ref)
+        prepared, request = self._prepare_source(kind, content, file_format=file_format, mode=mode, target_ref=target_ref)
         preview, extra, _, _ = self._prepare_import(kind, prepared, request)
         return preview, extra
 

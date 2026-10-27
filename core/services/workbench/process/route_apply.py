@@ -13,10 +13,10 @@ from .route_choices import changed_route_sequences, preview_existing_route
 from .route_preview import ProcessRoutePreviewService
 
 
-def prepare_route(conn, logger, payload, operations, *, facts):
+def prepare_route(conn, logger, payload, operations, *, facts, normalized=None):
     parser = ProcessRoutePreviewService(conn, logger, facts=facts)
     with parser.reference_snapshot():
-        preview = parser.preview(payload["route"])
+        preview = parser.preview(payload["route"], normalized=normalized)
     from .route_choices import route_choice_context
 
     changed = changed_route_sequences({row["seq"]: row for row in operations}, preview["operations"])

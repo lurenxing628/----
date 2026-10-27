@@ -40,13 +40,6 @@ class WorkbenchPreflightFactsRepository(BaseRepository):
         return {name: self._captured_business_rows(name, capture) for name in PREFLIGHT_TABLES}
 
     def _captured_business_rows(self, name, capture):
-        introduced = {"BatchExternalContexts": 33, "MachineOpTypes": 35, "BatchMaterialReviews": 36,
-                      "BatchMaterialStages": 36, "BatchMaterialArrivals": 36, "BatchQuantitySplits": 36}
-        if name not in capture.table_names and name in introduced:
-            versions = capture.table("SchemaVersion")
-            version = versions[0].get("version") if len(versions) == 1 else None
-            if type(version) is int and version < introduced[name]:
-                return []
         rows = capture.business_table(name)
         return sorted(rows, key=lambda row: row["operation_id"]) if name == "BatchExternalContexts" else rows
 

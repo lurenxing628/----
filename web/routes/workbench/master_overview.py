@@ -41,12 +41,6 @@ def _current_snapshot(scope, token, as_of):
     return snapshot
 
 
-def _response(data, snapshot):
-    response = query_success(data, snapshot)
-    response.headers["Cache-Control"] = "no-store"
-    return response
-
-
 @api_endpoint
 def master_overview_list():
     page = _page("page")
@@ -55,7 +49,7 @@ def master_overview_list():
     with reader.read_snapshot() as state:
         snapshot = _current_snapshot(scope.scope(), token, state)
         data = reader.page(scope, page)
-    return _response(data, snapshot)
+    return query_success(data, snapshot)
 
 
 @api_endpoint
@@ -68,7 +62,7 @@ def master_overview_detail(domain, ref):
     with reader.read_snapshot() as state:
         snapshot = _current_snapshot(scope.scope(), token, state)
         data = reader.detail(scope, domain, ref, section, _page("detail_page"))
-    return _response(data, snapshot)
+    return query_success(data, snapshot)
 
 
 @api_endpoint
@@ -79,7 +73,7 @@ def master_overview_locate(domain, ref):
         _current_snapshot(scope.scope(), token, state)
         target_scope, data = reader.locate(scope, domain, ref)
         snapshot = _current_snapshot(target_scope.scope(), None, state)
-    return _response(data, snapshot)
+    return query_success(data, snapshot)
 
 
 @api_endpoint
@@ -91,7 +85,7 @@ def master_overview_export():
         content, count = reader.csv(scope)
     filename = "基础资料待维护项.csv" if scope.view == "issues" else "基础资料清单.csv"
     response = Response(content, content_type="text/csv; charset=utf-8")
-    response.headers.update({"Cache-Control": "no-store", "X-Workbench-Snapshot-Ref": snapshot["snapshot_ref"],
+    response.headers.update({"X-Workbench-Snapshot-Ref": snapshot["snapshot_ref"],
                              "X-Workbench-Row-Count": str(count), "X-Workbench-As-Of": snapshot["as_of"], "Content-Disposition": "attachment; filename*=UTF-8''" + quote(filename)})
     return response
 

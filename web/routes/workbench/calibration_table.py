@@ -48,9 +48,7 @@ def calibration_facets(column, selection=False):
     cell_cache = {}
     rows = filtered_suggestions(facts["rows"], query, cell_cache=cell_cache, sort=False)
     data = facet_data(rows, column, search, number, size, selection=selection, cell_cache=cell_cache)
-    response = query_success(data, facts["snapshot"])
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    return query_success(data, facts["snapshot"])
 
 
 def register_calibration_table_routes(bp):

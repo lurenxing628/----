@@ -63,7 +63,7 @@ def _query_value(view, args):
     if set(args) - {"nav", "view"}:
         _invalid("页面地址里有不支持的条件，页面没有打开。请从侧栏重新进入。")
     for key in args:
-        values = args.getlist(key) if hasattr(args, "getlist") else [args[key]]
+        values = args.getlist(key)
         if len(values) != 1 or type(values[0]) is not str:
             _invalid("页面地址里的条件有重复项或格式不对，页面没有打开。请从侧栏重新进入。")
     if "view" in args and args["view"] != view:

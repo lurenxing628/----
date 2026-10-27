@@ -73,12 +73,7 @@ class EntryPointDeps:
 
 
 def create_app_with_mode(ui_mode: str = "default") -> Flask:
-    return create_app_core(
-        ui_mode=ui_mode,
-        enable_secret_key=True,
-        enable_security_headers=True,
-        enable_session_cookie_hardening=True,
-    )
+    return create_app_core(ui_mode=ui_mode)
 
 
 def _parse_cli_args(argv):
