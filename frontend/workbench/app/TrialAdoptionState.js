@@ -10,18 +10,15 @@
         && A.equal(A.input(v.input), v.input) && ['pending', 'rejected', 'committed'].includes(v.phase) && (v.phase !== 'committed' || !!A.receipt(v.receipt, v));
     } catch (_) { return false; }
   }
-  function read() {
-    let raw; try { raw = window.localStorage.getItem(KEY); } catch (_) { throw new Error('读不到上次采用操作的记录，不能开始新的采用。请重新打开页面。'); }
-    if (raw === null) return null;
-    let value; try { value = JSON.parse(raw); } catch (_) { throw new Error('上次采用操作的记录已损坏。请不要再操作，联系维护人员。'); }
-    A.check(valid(value), '上次采用操作的记录不完整。请不要再操作，联系维护人员。'); return value;
-  }
-  function save(value, previous) {
-    A.check(A.equal(read(), previous), '上次采用操作的记录已变化，没有覆盖其他页面的记录。'); A.check(value === null || valid(value));
-    try { if (value === null) window.localStorage.removeItem(KEY); else window.localStorage.setItem(KEY, JSON.stringify(value)); }
-    catch (_) { throw new Error('存不下这次采用操作的记录，这次没有提交。请点「查询结果」确认上次操作。'); }
-    window.dispatchEvent(new CustomEvent(EVENT, { detail: value })); return value;
-  }
+  const { read, save } = window.APSWorkbenchTransport.pendingStore({
+    key: KEY, event: EVENT, validate: valid,
+    readError: '读不到上次采用操作的记录，不能开始新的采用。请重新打开页面。',
+    corruptError: '上次采用操作的记录已损坏。请不要再操作，联系维护人员。',
+    invalidError: '上次采用操作的记录不完整。请不要再操作，联系维护人员。',
+    conflictError: '上次采用操作的记录已变化，没有覆盖其他页面的记录。',
+    invalidWriteError: '读到的采用数据不完整或对不上，这次没有确认采用。请刷新重试。',
+    writeError: '存不下这次采用操作的记录，这次没有提交。请点「查询结果」确认上次操作。'
+  });
   function begin(preview, values, previous) {
     const scope = A.overview(preview), input = A.input(values);
     A.check(!previous || valid(previous) && previous.phase === 'rejected' && A.sameScope(previous.preview, scope) && A.equal(previous.input, input),

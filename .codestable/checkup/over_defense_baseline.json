@@ -29,11 +29,6 @@
       "count": 1
     },
     {
-      "path": "core/infrastructure/migration_backup.py",
-      "kind": "internal_reflect_literal",
-      "count": 1
-    },
-    {
       "path": "core/plugins/manager.py",
       "kind": "internal_reflect_literal",
       "count": 5

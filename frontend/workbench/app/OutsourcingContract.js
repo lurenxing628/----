@@ -9,8 +9,7 @@
   const text = v => typeof v === 'string' && v.length > 0;
   const count = v => Number.isSafeInteger(v) && v >= 0;
   function check(ok, message = '外协读到的数据不完整，请刷新后重试。') { if (!ok) throw new Error(message); }
-  function canonical(v) { return JSON.stringify(v, (_, x) => object(x) ? Object.keys(x).sort().reduce((r, k) => { r[k] = x[k]; return r; }, {}) : x); }
-  const equal = (a, b) => canonical(a) === canonical(b);
+  const equal = (a, b) => T.equal(a, b);
   function time(v) {
     if (typeof v !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(v)) return false;
     const n = v.match(/\d+/g).map(Number), date = new Date(0);

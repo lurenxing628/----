@@ -211,5 +211,43 @@
   const rejected = error => error.committed === false
     && (REJECTED_STATUS.includes(error.status) && error.code !== 'request_key_conflict' || error.status === null);
   const uncertain = error => error.committed === 'unknown';
-  window.APSWorkbenchTransport = { types, url, read, preview, command, lookup, download, saveBlob, downloadJSON, requestKey, rejected, uncertain, envelope, failure };
+  function canonical(value) {
+    return JSON.stringify(value, (_, item) => object(item) ? Object.keys(item).sort().reduce((out, key) => { out[key] = item[key]; return out; }, {}) : item);
+  }
+  const equal = (a, b) => canonical(a) === canonical(b);
+  function raise(spec, fallback) {
+    if (!spec) throw fallback;
+    throw typeof spec === 'function' ? spec() : new Error(spec);
+  }
+  // 待确认意图的本机存储：统一读、校验、CAS 写、清除与同页事件通知，错误文案由各领域指定。
+  function pendingStore({ key, storage = () => window.localStorage, event, raw = false, validate, validateWrite = validate,
+      encode = value => value, same = equal, readError, corruptError = readError, invalidError = corruptError,
+      conflictError, invalidWriteError = invalidError, writeError, removeError = writeError }) {
+    function read() {
+      let text;
+      try { text = storage().getItem(key); } catch (error) { raise(readError, error); }
+      if (text === null) return null;
+      let value = text;
+      if (!raw) {
+        try { value = JSON.parse(text); } catch (error) { raise(corruptError, error); }
+      }
+      if (validate && !validate(value)) raise(invalidError);
+      return value;
+    }
+    function write(value) {
+      if (value !== null && validateWrite && !validateWrite(value)) raise(invalidWriteError);
+      try {
+        if (value === null) storage().removeItem(key);
+        else storage().setItem(key, raw ? value : JSON.stringify(encode(value)));
+      } catch (error) { raise(value === null ? removeError : writeError, error); }
+      if (event) window.dispatchEvent(new CustomEvent(event, { detail: value }));
+      return value;
+    }
+    function save(value, previous) {
+      if (!same(read(), previous)) raise(conflictError);
+      return write(value);
+    }
+    return { read, write, save };
+  }
+  window.APSWorkbenchTransport = { types, url, read, preview, command, lookup, download, saveBlob, downloadJSON, requestKey, rejected, uncertain, envelope, failure, canonical, equal, pendingStore };
 })();

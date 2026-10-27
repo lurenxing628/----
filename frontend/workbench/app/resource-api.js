@@ -89,6 +89,16 @@
     if (!['resources', 'calendar', 'catalog', 'process', 'batches', 'execution'].includes(namespace)
         && ![...fileKinds, ...importOnlyKinds].some(kind => namespace === kind + '_files')) throw failure('基础资料操作入口不正确。');
     const pendingKey = 'aps_workbench_resource_pending_v1' + (namespace === 'resources' ? '' : '_' + namespace);
+    const pending = T.pendingStore({
+      key: pendingKey, storage: () => sessionStorage,
+      validate: intent => validIntent(intent, true) && matchesNamespace(namespace, intent),
+      validateWrite: intent => validIntent(intent) && matchesNamespace(namespace, intent),
+      encode: pendingRecord,
+      readError: () => unconfirmed('读不到上次操作记录，请重新打开页面；暂时不能继续保存。'),
+      invalidWriteError: () => failure('操作编号无法保存，本次没有提交。'),
+      writeError: () => failure('本次没有提交：操作编号没能保存，请重新打开页面。'),
+      removeError: () => failure('结果已确认，但上次操作记录没清掉；重新打开页面后可以再点「查询结果」。')
+    });
     const api = {
       query(path, scope, signal) { return T.read(absolute(path), scope, { signal, timeout: 20000 }); },
       preview(path, body, signal) { return T.preview(absolute(path), body, { signal, timeout: 20000 }); },
@@ -132,24 +142,9 @@
         throw unconfirmed('上次操作的结果还没确认，请保留当前页面并点「查询结果」。');
       },
       download(path, scope, signal, options = {}) { return T.download(absolute(path), scope, { types: fileTypes, timeout: 20000, ...options, signal }); },
-      readPending() {
-        try {
-          const raw = sessionStorage.getItem(pendingKey);
-          if (raw === null) return null;
-          const intent = JSON.parse(raw);
-          if (!validIntent(intent, true) || !matchesNamespace(namespace, intent)) throw new Error('invalid');
-          return intent;
-        } catch (_) { throw unconfirmed('读不到上次操作记录，请重新打开页面；暂时不能继续保存。'); }
-      },
-      savePending(intent) {
-        if (!validIntent(intent) || !matchesNamespace(namespace, intent)) throw failure('操作编号无法保存，本次没有提交。');
-        try { sessionStorage.setItem(pendingKey, JSON.stringify(pendingRecord(intent))); }
-        catch (_) { throw failure('本次没有提交：操作编号没能保存，请重新打开页面。'); }
-      },
-      clearPending() {
-        try { sessionStorage.removeItem(pendingKey); }
-        catch (_) { throw failure('结果已确认，但上次操作记录没清掉；重新打开页面后可以再点「查询结果」。'); }
-      }
+      readPending: pending.read,
+      savePending(intent) { pending.write(intent); },
+      clearPending() { pending.write(null); }
     };
     return api;
   }

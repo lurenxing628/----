@@ -250,7 +250,7 @@ async function main() {
     WorkbenchFormat: { dateTime: String, compactRange: (start, end) => start + ' / ' + end, compactDateTime: String },
     WorkbenchTerms: { candidate_statuses: { completed: '计算完成' }, hold_window: () => '未设置', material_strategy: () => '全部齐套' } };
   const dashboardContext = vm.createContext({ window: dashboardWindow, React: dashboardHooks.React, AbortController });
-  load(dashboardContext, 'DashboardContract.js'); load(dashboardContext, 'DashboardAnalysisAPI.js'); load(dashboardContext, 'DashboardCandidateComparisonAPI.js');
+  loadTransport(dashboardContext); load(dashboardContext, 'DashboardContract.js'); load(dashboardContext, 'DashboardAnalysisAPI.js'); load(dashboardContext, 'DashboardCandidateComparisonAPI.js');
   // Component-ownership check: the comparison read itself is covered by its own contract, so only its answer timing is held here.
   dashboardWindow.DashboardCandidateComparisonAPI.read = (scope, signal) => new Promise(resolve =>
     dashboardRequests.push({ kind: 'comparison', candidateRef: scope.candidate_ref, scope, signal, resolve }));

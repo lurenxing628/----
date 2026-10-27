@@ -282,6 +282,24 @@ def test_shared_process_projection_and_export_keep_actual_objectives_and_one_run
             assert target["first_improvement_elapsed_ms"] is target["last_improvement_elapsed_ms"] is None
             assert all("strict_improvement" not in point["flags"] for point in target["points"])
 
+    # A restored archive entry refreshes its evidence_event_ids to the restoring event.
+    restored_archive = _archive("min_overdue", limit=1)
+    restored_budget = SharedSearchBudget(clock=lambda: 0, started_at=0, deadline=1.0,
+                                         target_objectives=restored_archive.target_objectives, configured_seconds=1.0)
+    restored_search = SharedSearch(archive=restored_archive, clock=lambda: 0, started_at=0, budget=restored_budget)
+    _observe_decoded(restored_search, "min_overdue", candidate=deepcopy(worse), origin="first_decode", verified=True, elapsed_ms=10)
+    assert restored_search.evidence_event_ids[1] == 1
+    _observe_decoded(restored_search, "min_overdue", candidate=deepcopy(better), origin="better_decode", verified=True, elapsed_ms=20)
+    for target in restored_archive.target_objectives:
+        restored_archive.set_starting_entries(target, (2,))
+        restored_archive.accept_exploration(target, 2)
+    assert 1 not in restored_archive
+    with restored_archive.retention_scope():
+        _observe_decoded(restored_search, "min_overdue", candidate=deepcopy(worse), origin="restored_decode", verified=True, elapsed_ms=30)
+        assert restored_search.events[-1]["restored"] is True
+        assert restored_search.evidence_event_ids[1] == 3
+        assert restored_archive.entry(1).evidence_origin["origin"] == "restored_decode"
+
 
 def test_numeric_score_keeps_only_finite_numbers_in_their_positions():
     score = [2, 1.5, True, float("nan"), float("inf"), 10 ** 400, "3"]

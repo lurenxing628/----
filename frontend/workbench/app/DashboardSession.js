@@ -6,21 +6,15 @@
       && ['pending', 'confirmed', 'rejected'].includes(v.phase) && C.object(v.input) && C.object(v.source) && C.object(v.risk)
       && !!C.baseHandling(v.before) && !!C.baseHandling(C.expected(v)) && (v.phase !== 'confirmed' || !!C.receipt(v.receipt, v)); } catch (_) { return false; }
   }
-  function read() {
-    let raw; try { raw = localStorage.getItem(KEY); } catch (_) { throw new Error('上次操作记录读不出来，不能开始新的处置。请重新打开页面。'); }
-    if (raw === null) return null;
-    let value; try { value = JSON.parse(raw); } catch (_) { throw new Error('上次操作记录已损坏，不能开始新的处置。请不要再操作，联系维护人员。'); }
-    C.check(valid(value), '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。'); return value;
-  }
-  function save(value, previous) {
-    C.check(C.equal(read(), previous), '上次操作已在另一个页面变化，这里没有覆盖它。请刷新后重试。'); C.check(value === null || valid(value));
-    return write(value);
-  }
-  function write(value) {
-    try { if (value === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, JSON.stringify(value)); }
-    catch (_) { throw new Error('上次操作记录保存不了，不能开始处置。请重新打开页面。'); }
-    window.dispatchEvent(new CustomEvent(EVENT, { detail: value })); return value;
-  }
+  const { read, save, write } = window.APSWorkbenchTransport.pendingStore({
+    key: KEY, event: EVENT, validate: valid,
+    readError: '上次操作记录读不出来，不能开始新的处置。请重新打开页面。',
+    corruptError: '上次操作记录已损坏，不能开始新的处置。请不要再操作，联系维护人员。',
+    invalidError: '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。',
+    conflictError: '上次操作已在另一个页面变化，这里没有覆盖它。请刷新后重试。',
+    invalidWriteError: '值班台读到的数据不完整，请刷新后重试。',
+    writeError: '上次操作记录保存不了，不能开始处置。请重新打开页面。'
+  });
   function useCommand() {
     const [initial] = React.useState(() => { try { return { saved: read(), error: null }; } catch (error) { return { saved: null, error }; } });
     const [saved, setSaved] = React.useState(initial.saved), [storageError, setStorageError] = React.useState(initial.error);

@@ -13,7 +13,6 @@ class SchemaStructure:
         self._indexes: Dict[str, tuple] = {}
         self._index_columns: Dict[str, tuple] = {}
         self._index_details: Dict[str, tuple] = {}
-        self._foreign_keys: Dict[str, tuple] = {}
 
     def has_table(self, name):
         return name in self.objects and self.objects[name][0] == "table"
@@ -39,9 +38,6 @@ class SchemaStructure:
 
     def index_xinfo(self, name):
         return self._pragma(self._index_details, "index_xinfo", name)
-
-    def foreign_keys(self, name):
-        return self._pragma(self._foreign_keys, "foreign_key_list", name)
 
     def has_unique_key(self, table, columns):
         expected = tuple(columns)

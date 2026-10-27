@@ -3,21 +3,20 @@
   const T = window.APSWorkbenchTransport, C = window.TrialContract, ROOT = '/api/workbench/v1', BASE = ROOT + '/trial';
   const PENDING_KEY = 'aps_workbench_trial_pending_v1';
   const validKey = v => typeof v === 'string' && /^trial-[a-f0-9]{48}$/.test(v);
-  function pending() {
-    let value; try { value = localStorage.getItem(PENDING_KEY); }
-    catch (_) { throw new Error('读不到上次操作记录，暂时不能提交。请重新打开页面。'); }
-    C.check(value === null || validKey(value), '上次操作记录已损坏，没有删除也没有覆盖。请重新打开页面。'); return value;
-  }
+  const store = T.pendingStore({
+    key: PENDING_KEY, raw: true, validate: validKey,
+    readError: '读不到上次操作记录，暂时不能提交。请重新打开页面。',
+    invalidError: '上次操作记录已损坏，没有删除也没有覆盖。请重新打开页面。',
+    conflictError: '上次操作记录已变化，没有清除其他操作记录。',
+    writeError: '存不下上次操作记录，这次没有提交。请重新打开页面。',
+    removeError: '上次提交的结果已确认，但上次操作记录没清掉。请点「刷新」后重新查询。'
+  });
+  const pending = store.read;
   function reserve() {
     C.check(pending() === null, window.WorkbenchTerms.outcomes.pending('试调提交'));
-    const key = T.requestKey('trial');
-    try { localStorage.setItem(PENDING_KEY, key); } catch (_) { throw new Error('存不下上次操作记录，这次没有提交。请重新打开页面。'); }
-    return key;
+    return store.write(T.requestKey('trial'));
   }
-  function clear(key) {
-    C.check(pending() === key, '上次操作记录已变化，没有清除其他操作记录。');
-    try { localStorage.removeItem(PENDING_KEY); } catch (_) { throw new Error('上次提交的结果已确认，但上次操作记录没清掉。请点「刷新」后重新查询。'); }
-  }
+  function clear(key) { store.save(null, key); }
   async function read(path, q, signal, validate) {
     const value = await T.read(ROOT + path, q, { signal, timeout: 60000 });
     if (validate) return validate(value);

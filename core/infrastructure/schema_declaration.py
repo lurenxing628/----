@@ -12,7 +12,7 @@ import sqlite3
 import sys
 from typing import Dict, List, Optional, Tuple
 
-_DECLARED_CACHE: Dict[str, Tuple[List[str], Dict[str, List[str]]]] = {}
+_DECLARED_CACHE: Dict[str, Dict[str, List[str]]] = {}
 _TEXT_CACHE: Dict[str, Tuple[Tuple[int, int], str]] = {}
 
 
@@ -48,7 +48,7 @@ def load_schema_sql(schema_path: Optional[str] = None) -> str:
     return text
 
 
-def _parse(schema_sql: str) -> Tuple[List[str], Dict[str, List[str]]]:
+def _parse(schema_sql: str) -> Dict[str, List[str]]:
     conn = sqlite3.connect(":memory:")
     try:
         conn.executescript(schema_sql)
@@ -63,10 +63,11 @@ def _parse(schema_sql: str) -> Tuple[List[str], Dict[str, List[str]]]:
         }
     finally:
         conn.close()
-    return names, columns
+    return columns
 
 
-def _declared(schema_sql: str) -> Tuple[List[str], Dict[str, List[str]]]:
+def declared_columns(schema_sql: str) -> Dict[str, List[str]]:
+    """schema 文本声明的 {表名: [列名...]}（含 SchemaVersion）。"""
     cached = _DECLARED_CACHE.get(schema_sql)
     if cached is None:
         cached = _parse(schema_sql)
@@ -74,13 +75,3 @@ def _declared(schema_sql: str) -> Tuple[List[str], Dict[str, List[str]]]:
             _DECLARED_CACHE.clear()
         _DECLARED_CACHE[schema_sql] = cached
     return cached
-
-
-def declared_tables(schema_sql: str) -> List[str]:
-    """schema 文本声明的业务表名（创建顺序，不含 SchemaVersion）。"""
-    return [name for name in _declared(schema_sql)[0] if name != "SchemaVersion"]
-
-
-def declared_columns(schema_sql: str) -> Dict[str, List[str]]:
-    """schema 文本声明的 {表名: [列名...]}（含 SchemaVersion）。"""
-    return _declared(schema_sql)[1]

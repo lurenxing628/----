@@ -93,7 +93,7 @@ function browser(context, fetch, { origin = ORIGIN } = {}) {
     return link;
   };
   const location = { origin, href: origin + '/workbench' };
-  const globals = { fetch, URL, URLSearchParams, AbortController, AbortSignal, DOMException, Response, Headers, Blob, FormData,
+  const globals = { fetch, URL, URLSearchParams, AbortController, AbortSignal, DOMException, CustomEvent, Response, Headers, Blob, FormData,
     TextEncoder, TextDecoder, setTimeout, clearTimeout, crypto: globalThis.crypto, location, document };
   for (const [key, value] of Object.entries(globals)) if (!(key in context) || ['fetch', 'location', 'document'].includes(key)) context[key] = value;
   if (context.window && context.window !== context) {

@@ -5,16 +5,8 @@ from itertools import islice
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Union
 
 from core.errors import AppError, ErrorCode
-from core.shared.strict_parse import is_int
 
 Params = Union[Sequence[Any], Dict[str, Any]]
-
-
-def strict_non_negative_int(value: Any, *, field: str) -> int:
-    """A stored SQLite INTEGER read back as is: text, blob, REAL or bool values are corrupt, not coerced."""
-    if not is_int(value) or value < 0:
-        raise ValueError(f"invalid {field}: {value!r}")
-    return value
 
 
 class BaseRepository:

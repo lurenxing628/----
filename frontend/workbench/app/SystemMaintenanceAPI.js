@@ -105,22 +105,21 @@
       && Object.prototype.hasOwnProperty.call(actions, value.action) && value.summary === actions[value.action];
   }
   function pending(storage = window.localStorage) {
+    const store = T.pendingStore({
+      key: PENDING_KEY, storage: () => storage, validate: validIntent, validateWrite: null,
+      corruptError: '上次操作记录损坏，请联系维护人员核对。',
+      invalidError: '本机存的上次操作记录不完整，已停止新的操作。请不要再操作，联系维护人员。'
+    });
     return {
-      read() {
-        const raw = storage.getItem(PENDING_KEY); if (raw === null) return null;
-        let value; try { value = JSON.parse(raw); } catch (_) { throw new Error('上次操作记录损坏，请联系维护人员核对。'); }
-        check(validIntent(value), '本机存的上次操作记录不完整，已停止新的操作。请不要再操作，联系维护人员。'); return value;
-      },
+      read: store.read,
       begin(action) {
         check(Object.prototype.hasOwnProperty.call(actions, action), '未知维护动作。');
         check(!this.read(), '还有一次操作没有确认结果，不能重新发起。请先点「查询结果」。');
-        const value = { request_key: T.requestKey('system'), action, summary: actions[action] };
-        storage.setItem(PENDING_KEY, JSON.stringify(value));
-        return value;
+        return store.write({ request_key: T.requestKey('system'), action, summary: actions[action] });
       },
       finish(intent) {
         const saved = this.read(); check(!saved || saved.request_key === intent.request_key, '上次操作记录已变化，没有删除其他记录。请刷新后重新确认。');
-        if (saved) storage.removeItem(PENDING_KEY);
+        if (saved) store.write(null);
       }
     };
   }

@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, cast
 
-from core.errors import AppError, ErrorCode
 from core.models.schedule_history import ScheduleHistory
 
-from .base_repo import BaseRepository, strict_non_negative_int
+from .base_repo import BaseRepository
 
 
 class ScheduleHistoryRepository(BaseRepository):
@@ -17,14 +16,6 @@ class ScheduleHistoryRepository(BaseRepository):
             (version,),
         )
         return ScheduleHistory.from_row(row) if row else None
-
-    def get_latest_version(self) -> int:
-        try:
-            val = self.fetchvalue("SELECT COALESCE(MAX(version), 0) FROM ScheduleHistory")
-            latest = strict_non_negative_int(val, field="latest schedule version")
-        except ValueError as exc:
-            raise AppError(ErrorCode.DB_QUERY_ERROR, "读取最新排产版本失败，请查看日志。", cause=exc) from exc
-        return latest
 
     def allocate_next_version(self) -> int:
         """

@@ -165,9 +165,9 @@ PREPARATION_EXPORT_EFFORT_FIELDS = {
     "来源": "source", "需求数量依据": "quantity_basis", "需求目标量": "target_quantity",
     "执行数量依据": "execution_quantity_basis", "执行目标量": "execution_target_quantity", "执行剩余量": "remaining_quantity",
     "准备标准工时": "setup_standard_hours", "加工标准工时": "processing_standard_hours",
-    "排槽标准需求工时": "required_standard_hours", "准备状态": "setup_state", "运行需求角色": "requirement_role",
-    "实际安排归属": "allocation_state", "外协周期天": "external_cycle_days", "外协组编号": "external_group_id",
-    "外协合并模式": "external_merge_mode", "需求分解口径": "effort_basis", "需求分解状态": "state",
+    "所需标准工时": "required_standard_hours", "准备状态": "setup_state", "安排类型": "requirement_role",
+    "工序安排状态": "allocation_state", "外协周期天": "external_cycle_days", "外协组编号": "external_group_id",
+    "外协合并模式": "external_merge_mode", "工时计算方式": "effort_basis", "工时资料状态": "state",
     "需求来源类型": "evidence_source.kind", "需求来源排产编号": "evidence_source.run_ref",
     "需求来源候选编号": "evidence_source.candidate_ref", "需求来源试调编号": "evidence_source.scenario_ref",
     "需求来源计划编号": "evidence_source.plan_ref", "需求来源正式版本": "evidence_source.version",
@@ -183,12 +183,12 @@ PREPARATION_EXPORT_FIELDS = {
        for header, path in PREPARATION_EXPORT_EFFORT_FIELDS.items()},
     "基准设备编号": "before.machines.ref", "基准设备": "before.machines.label",
     "所选设备编号": "after.machines.ref", "所选设备": "after.machines.label",
-    "基准安排事实": "before.arrangements", "所选安排事实": "after.arrangements",
+    "基准安排记录": "before.arrangements", "所选安排记录": "after.arrangements",
     **{label + suffix: "deltas." + field + "." + path
        for label, field in (("准备工时变化", "setup_standard_hours"), ("加工工时变化", "processing_standard_hours"),
-                            ("排槽标准需求工时变化", "required_standard_hours"))
+                            ("所需标准工时变化", "required_standard_hours"))
        for suffix, path in (("", "value"), ("状态", "state"), ("方向", "direction"))},
-    "元数据缺项": "data_gaps",
+    "缺少资料": "data_gaps",
 }
 CHANGEOVER_EXPORT_FIELDS = {
     "排产编号": "$run_ref", "查看基准永久编号": "$baseline", "所选方案编号": "$candidate.candidate_ref",
@@ -201,33 +201,33 @@ CHANGEOVER_EXPORT_FIELDS = {
     "后序工序名称": "next.process_label", "后序工种永久编号": "next.type_ref", "后序工种名称": "next.type_label",
     "后序开始": "next_start", "后序结束": "next_end", "前序位于窗口之前": "predecessor_outside_window",
     "前后安排重叠": "overlap", "设备安排冲突": "conflict", "事件状态": "state", "事件缺项": "data_gaps",
-    "事件口径": None, "事件指标版本": None,
+    "计算方式": None, "事件指标版本": None,
 }
 
 
 RECOMMENDATION_EXPORT_COMMON = ("排产编号", "归档编号", "读取编号", "读取时间", "保存推荐候选编号", "当前查看候选编号", "比较模式",
     "查看基准编号", "查看基准类型", "范围起点（含）", "范围终点（不含）", "资源视角", "推荐版本", "推荐记录格式版本")
-RECOMMENDATION_EXPORT_EXPLANATION_FIELDS = ("record_kind", "字段key", "名称", "范围", "来源", "状态", "变化方向", "单位",
-    "基准值", "比较对象值", "差值", "主项类别", "主项顺序", "支撑类型", "支撑永久编号",
-    "支撑候选编号", "支撑页签", "支撑比较起点", "支撑比较终点", "支撑筛选字段", "支撑筛选值", "说明")
+RECOMMENDATION_EXPORT_EXPLANATION_FIELDS = ("record_kind", "指标标识", "名称", "范围", "来源", "状态", "变化方向", "单位",
+    "基准值", "比较对象值", "差值", "主项类别", "主项顺序", "相关明细类型", "相关明细永久编号",
+    "相关明细候选编号", "相关明细页签", "相关明细比较起点", "相关明细比较终点", "相关明细筛选字段", "相关明细筛选值", "说明", "指标版本")
 RECOMMENDATION_EXPORT_COMPLETION_FIELDS = {
-    "record_kind": None, "完成组号": None, "完成来源类型": None, "候选永久编号": None, "候选名称": None,
-    "来源可用": None, "批次永久编号": "batch_ref", "批次编号": "batch_id", "完成分类": None, "当前比较共同完成": None,
-    "完成状态": "after.completion_state", "交付状态": "after.risk", "交期状态": "due_state", "交期": "due_date",
-    "完整结束": "after.planned_finish", "已排部分结束": "after.partial_planned_finish", "拖期小时": "after.delay_hours",
+    "record_kind": None, "安排组号": None, "安排来源类型": None, "候选永久编号": None, "候选名称": None,
+    "来源可用": None, "批次永久编号": "batch_ref", "批次编号": "batch_id", "安排分类": None, "双方工序都已排齐": None,
+    "批次工序安排状态": "after.completion_state", "交付状态": "after.risk", "交期状态": "due_state", "交期": "due_date",
+    "预计完工": "after.planned_finish", "已排部分预计结束": "after.partial_planned_finish", "拖期小时": "after.delay_hours",
     "工序总数": "after.operation_count", "已排工序数": "after.scheduled_operation_count",
-    "普通未排工序数": "after.ordinary_unscheduled_operation_count", "待料暂缓工序数": "after.deferred_operation_count",
-    "完成缺项": "after.issues",
+    "其他未安排工序数": "after.ordinary_unscheduled_operation_count", "缺料未安排工序数": "after.deferred_operation_count",
+    "安排缺少资料": "after.issues",
 }
 RECOMMENDATION_EXPORT_REMAINING_FIELDS = {
-    "record_kind": None, "完成组号": None, "完成来源类型": None, "候选永久编号": None, "候选名称": None, "来源可用": None,
+    "record_kind": None, "安排组号": None, "安排来源类型": None, "候选永久编号": None, "候选名称": None, "来源可用": None,
     "批次永久编号": "batch_ref", "批次编号": "batch_label", "工序永久编号": "operation_ref", "零件名称": "part_label",
-    "工序号": "sequence", "工序名称": "process_label", "单件编号": "piece_id", "受理状态": None, "受理说明": None,
+    "工序号": "sequence", "工序名称": "process_label", "单件编号": "piece_id", "排产时安排状态": None, "排产时说明": None,
     **{header: "after." + path for header, path in PREPARATION_EXPORT_EFFORT_FIELDS.items()},
 }
 RECOMMENDATION_EXPORT_HEADERS = {
     "推荐说明": RECOMMENDATION_EXPORT_COMMON + RECOMMENDATION_EXPORT_EXPLANATION_FIELDS,
-    "完成集合": RECOMMENDATION_EXPORT_COMMON + tuple(RECOMMENDATION_EXPORT_COMPLETION_FIELDS),
+    "工序安排": RECOMMENDATION_EXPORT_COMMON + tuple(RECOMMENDATION_EXPORT_COMPLETION_FIELDS),
     "剩余需求": RECOMMENDATION_EXPORT_COMMON + tuple(RECOMMENDATION_EXPORT_REMAINING_FIELDS),
 }
 RECOMMENDATION_EXPORT_CSV_HEADERS = tuple(dict.fromkeys(header for headers in RECOMMENDATION_EXPORT_HEADERS.values() for header in headers))
@@ -1518,7 +1518,7 @@ def _check_export_download(content, fmt, documents):
 
     workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=False)
     try:
-        expected_sheets = [titles[section] for section in documents] + ["指标口径", "比较范围"]
+        expected_sheets = [titles[section] for section in documents] + ["指标计算方式", "比较范围"]
         if workbook.sheetnames != expected_sheets:
             raise RuntimeError("XLSX 业务表和附表顺序不同：" + str(workbook.sheetnames))
         for section, document in documents.items():
@@ -2075,16 +2075,16 @@ def preparation_export_expected(data, item, section):
                  else preparation_export_path(item, path) if path else None)
         if header == "查看基准永久编号":
             value = value["candidate_ref"] if value["kind"] == "candidate" else value["baseline_ref"]
-        elif header.endswith("缺项"):
+        elif header.endswith("缺项") or header == "缺少资料":
             value = _export_issue(value)
         elif path and ".machines." in path:
             value = "、".join(machine or "" for machine in value) or None
-        elif header.endswith("安排事实"):
+        elif header.endswith("安排记录"):
             value = value or None
         elif type(value) is bool:
             value = "是" if value else "否"
-        elif header == "事件口径":
-            value = "保存设备序列按实际工种永久身份逐相邻安排比较，以后序开始落入左闭右开窗口"
+        elif header == "计算方式":
+            value = "同一设备上相邻两道工序的工种不同，后一道工序开始时间在所选范围内（含开始、不含结束）"
         elif header == "事件指标版本":
             value = "type_changeover_v1"
         expected[header] = value
@@ -2119,7 +2119,7 @@ def preparation_export_check_table(document, rows, headers, fmt, types):
 
 def preparation_export_check_operations(document, rows, headers, fmt, types):
     original = DETAIL_EXPORT_COMMON + tuple(OPERATION_EXPORT_FIELDS)
-    extra = {prefix + "运行需求：" + header: "runtime_effort." + side + "." + path
+    extra = {prefix + "所需工时：" + header: "runtime_effort." + side + "." + path
              for prefix, side in (("基准", "before"), ("所选", "after"))
              for header, path in PREPARATION_EXPORT_EFFORT_FIELDS.items()}
     if tuple(headers) != original + tuple(extra) or len(headers) != len(set(headers)):
@@ -2145,14 +2145,14 @@ def preparation_export_check_operations(document, rows, headers, fmt, types):
 def preparation_export_labels():
     labels = {key: dict(value) for key, value in RESOURCE_METRIC_LABELS.items()}
     labels["group"]["preparation"] = "准备与切换"
-    labels["scope"]["fixed_changeover_window"] = "后序开始落入共同窗口的实际设备工种切换"
-    labels["source"].update(runtime_operation_effort="实际排槽时保存的准备与加工标准需求",
-                            archived_changeover_events="保存设备序列按实际工种永久身份相邻比较")
+    labels["scope"]["fixed_changeover_window"] = "后一道工序在所选范围内开始的设备工种切换"
+    labels["source"].update(runtime_operation_effort="计算时保存的准备和加工所需标准工时",
+                            archived_changeover_events="同一设备上相邻工序的工种变化")
     labels["state"] = {"complete": "完整", "partial": "部分", "unavailable": "缺少资料", "not_applicable": "范围无适用对象",
-        "completed": "已完成", "failed": "失败", "skipped": "跳过", "queued": "待计算", "running": "计算中",
+        "completed": "计算完成", "failed": "失败", "skipped": "跳过", "queued": "待计算", "running": "计算中",
         "unknown": "缺少资料", "comparable": "可比较", "different_coverage": "覆盖范围不同",
         "better": "改善", "worse": "增加代价", "equal": "相同", "neutral": "中性变化",
-        "available": "已保存", "absent": "受理时无正式计划", "selection_required": "需要选择基准"}
+        "available": "已保存", "absent": "排产时无正式计划", "selection_required": "需要选择基准"}
     return labels
 
 
@@ -2163,7 +2163,7 @@ def preparation_export_metric_expected(definitions):
 def preparation_export_overview_expected(data):
     headers = ("排产编号", "归档编号", "查看基准编号", "查看基准名称", "所选方案编号", "推荐方案编号",
         "范围起点（含）", "范围终点（不含）", "候选编号", "候选名称", "搜索状态", "应排范围状态", "交付覆盖状态",
-        "指标", "单位", "指标版本", "指标范围", "指标口径", "覆盖状态", "数值", "已知小计", "已知数量", "未知数量",
+        "指标", "单位", "指标版本", "指标范围", "指标计算方式", "覆盖状态", "数值", "已知小计", "已知数量", "未知数量",
         "总数量", "基准数值", "差值（候选减基准）", "差值状态", "变化方向", "缺项说明")
     scope, baseline = data["scope"], data["baseline"]
     baseline_ref = baseline["candidate_ref"] if baseline["kind"] == "candidate" else baseline["baseline_ref"]
@@ -2231,7 +2231,7 @@ def preparation_export_check_download(content, fmt, documents, active, definitio
                 expected_sheets.append("覆盖工序")
             elif section == "resource-days":
                 expected_sheets.extend(("资源冲突", "覆盖工序"))
-        expected_sheets.extend(("指标口径", "比较范围"))
+        expected_sheets.extend(("指标计算方式", "比较范围"))
         if workbook.sheetnames != expected_sheets:
             raise RuntimeError("准备与切换 XLSX 表单顺序与独立契约不同：" + str(workbook.sheetnames))
         for section, document in documents.items():
@@ -2259,7 +2259,7 @@ def preparation_export_check_download(content, fmt, documents, active, definitio
         if "resource-days" in documents:
             checked["resource-conflicts"] = preparation_export_check_records(workbook["资源冲突"], RESOURCE_CONFLICT_HEADERS,
                 _resource_conflict_expected(documents))
-        checked["metric-definitions"] = preparation_export_check_records(workbook["指标口径"], RESOURCE_METRIC_HEADERS,
+        checked["metric-definitions"] = preparation_export_check_records(workbook["指标计算方式"], RESOURCE_METRIC_HEADERS,
             preparation_export_metric_expected(definitions))
         entries = {row[0]: row[1] if len(row) > 1 else None for row in workbook["比较范围"].iter_rows(values_only=True)}
         data, scope = active["data"], active["data"]["scope"]
@@ -2268,14 +2268,14 @@ def preparation_export_check_download(content, fmt, documents, active, definitio
             "查看基准编号": baseline["candidate_ref"] if baseline["kind"] == "candidate" else baseline["baseline_ref"],
             "所选方案编号": data["candidate"]["candidate_ref"], "范围起点（含）": scope["range_start"],
             "范围终点（不含）": scope["range_end"], "批次数": len(scope["batch_refs"]), "工序数": len(scope["operation_refs"]),
-            "资源视角": "本次选批贡献" if scope["resource_view"] == "selected_batches" else "完整候选压力",
+            "资源视角": "本次所选批次" if scope["resource_view"] == "selected_batches" else "方案全部安排",
             "共同设备数": len(scope["resource_refs"]["machine"]), "共同人员数": len(scope["resource_refs"]["operator"]),
             "筛选页签": data["filters"]["section"], "明细范围": "筛选结果全部页",
-            "标准工时口径": "归档工序标准×其来源的执行目标量",
-            "运行需求口径": "实际排槽时保存的准备、加工与标准需求分解；原需求目标和本次AJ执行目标分别保留",
-            "工种切换口径": "实际设备完整序列，按工种永久身份逐相邻安排比较，以后序开始落入共同左闭右开窗口",
-            "切换排除对象": "外协与归档证据明确的零工时点事件",
-            "准备覆盖口径": "整次受理范围；新排、普通未排、待料暂缓分别汇总，原样保留、执行、完成种子单列",
+            "标准工时计算方式": "保存的工时定额乘以其对应的加工目标数量",
+            "所需工时计算方式": "计算时保存的准备和加工所需标准工时；原加工目标与本次报工目标数量分别保留",
+            "工种切换计算方式": "同一设备上相邻工序的工种不同，后一道工序开始时间在所选范围内（含开始、不含结束）",
+            "不计工种切换的工序": "外协工序，以及保存记录中明确的零工时工序",
+            "准备工时统计范围": "本次所选批次；新安排、其他未安排、缺料未安排分别汇总；原安排、已开工和已完工工序分别列出",
             "准备差值方向": "候选减基准，中性展示实际需求与安排覆盖变化"}
         if any(entries.get(key) != value for key, value in wanted.items()):
             raise RuntimeError("准备与切换 XLSX 的共同范围、来源或运行身份不同。")
@@ -2528,8 +2528,8 @@ def recommendation_export_scalar_leaves(value, path):
 
 
 def recommendation_export_definition(entry):
-    values = {"字段key": entry.get("metric_key") or entry.get("key"), "名称": entry["label"], "范围": entry["scope"],
-        "来源": entry["source"], "状态": entry["state"], "变化方向": entry.get("direction"), "单位": entry.get("unit"),
+    values = {"指标标识": entry.get("metric_key") or entry.get("key"), "名称": entry["label"], "范围": entry["scope"],
+        "来源": entry["source"], "指标版本": entry.get("metric_version"), "状态": entry["state"], "变化方向": entry.get("direction"), "单位": entry.get("unit"),
         "说明": entry["text"]}
     for header, key in (("基准值", "reference_value"), ("比较对象值", "selected_value"), ("差值", "value")):
         value = entry.get(key)
@@ -2540,16 +2540,16 @@ def recommendation_export_definition(entry):
 def recommendation_export_explanations(document):
     data = document["data"]
     recommendation, basis = data["recommendation"], data["selection_basis"]
-    rows = [{"record_kind": "conclusion", "字段key": "recommendation_type", "名称": "推荐结论", "范围": "full_admission",
+    rows = [{"record_kind": "conclusion", "指标标识": "recommendation_type", "名称": "推荐结论", "范围": "full_admission",
              "状态": recommendation["state"], "比较对象值": recommendation["recommendation_type"], "说明": recommendation["headline"]}]
     for field in RECOMMENDATION_EXPORT_FIXED_FIELDS:
         for path, value in recommendation_export_scalar_leaves(basis[field], field).items():
-            rows.append({"record_kind": "fixed_selection", "字段key": path, "名称": field, "范围": "fixed_algorithm_selection",
+            rows.append({"record_kind": "fixed_selection", "指标标识": path, "名称": field, "范围": "fixed_algorithm_selection",
                 "来源": "saved_selection", "状态": "unavailable" if value is None else "complete", "比较对象值": value})
     for entry in basis["explanation"]["entries"]:
         rows.append({"record_kind": "selection_explanation", **recommendation_export_definition(entry)})
     for issue in basis["explanation"]["issues"]:
-        rows.append({"record_kind": "missing_evidence", "字段key": issue["code"], "名称": "保存证据缺项",
+        rows.append({"record_kind": "missing_evidence", "指标标识": issue["code"], "名称": "推荐依据缺少资料",
                      "状态": "unavailable", "说明": issue["message"]})
     main = {row["metric_key"]: (kind, index + 1) for kind in ("benefits", "costs")
             for index, row in enumerate(recommendation["current_comparison"][kind])}
@@ -2558,16 +2558,16 @@ def recommendation_export_explanations(document):
         rows.append({"record_kind": "difference", **recommendation_export_definition(entry), "主项类别": category, "主项顺序": order})
         for support in entry["supporting_refs"]:
             drill = support["drill"]
-            record = {"record_kind": "support", "字段key": entry["metric_key"], "名称": entry["label"],
-                "范围": entry["scope"], "来源": entry["source"], "支撑类型": support["kind"], "支撑永久编号": support["ref"],
-                "支撑候选编号": drill["candidate_ref"], "支撑页签": drill.get("comparison_tab", "gantt"),
-                "支撑比较起点": drill["range_start"], "支撑比较终点": drill["range_end"]}
+            record = {"record_kind": "support", "指标标识": entry["metric_key"], "名称": entry["label"],
+                "范围": entry["scope"], "来源": entry["source"], "指标版本": entry["metric_version"], "相关明细类型": support["kind"], "相关明细永久编号": support["ref"],
+                "相关明细候选编号": drill["candidate_ref"], "相关明细页签": drill.get("comparison_tab", "gantt"),
+                "相关明细比较起点": drill["range_start"], "相关明细比较终点": drill["range_end"]}
             query = {"side": support.get("side", "selected"), **(drill.get("detail_query") or {key: drill[key] for key in
                 ("batch_ref", "operation_ref", "selected_row_ref", "resource_ref", "resource_kind", "reference_view", "plan_ref") if key in drill})}
             if not query:
                 rows.append(record)
             for field, value in query.items():
-                rows.append({**record, "支撑筛选字段": field, "支撑筛选值": value})
+                rows.append({**record, "相关明细筛选字段": field, "相关明细筛选值": value})
     return rows
 
 
@@ -2615,17 +2615,17 @@ def recommendation_export_expected(document, candidates, dispositions):
         contexts.append((None, data["baseline"].get("label"), "admission_official", "before", before_facts,
                          data["baseline"]["state"] == "available", before_complete))
     for ref, label, origin, side, facts, available, completed_refs in contexts:
-        identity = {"完成组号": groups.get(ref), "完成来源类型": origin, "候选永久编号": ref,
+        identity = {"安排组号": groups.get(ref), "安排来源类型": origin, "候选永久编号": ref,
                     "候选名称": label, "来源可用": available}
         by_batch = {row["batch_ref"]: row for row in facts["batches"]["data"]["items"]}
         for batch in data["scope"]["batch_refs"]:
             item = by_batch[batch]
             values = {header: preparation_export_path(item, path.replace("after.", side + "."))
                       for header, path in RECOMMENDATION_EXPORT_COMPLETION_FIELDS.items() if path}
-            values["完成缺项"] = _export_issue(values["完成缺项"])
+            values["安排缺少资料"] = _export_issue(values["安排缺少资料"])
             category = item[side]["completion_state"] if available else "unknown"
             completion.append({"record_kind": "completion_set", **identity, **values,
-                "完成分类": category, "当前比较共同完成": batch in shared and category == "complete"})
+                "安排分类": category, "双方工序都已排齐": batch in shared and category == "complete"})
         pending = [row for row in facts["preparation"]["data"]["items"] if available
                    and not row[side]["arrangements"] and row["batch_ref"] not in completed_refs]
         pending.sort(key=lambda row: (row["batch_ref"], row["sequence"] is None, row["sequence"] or 0, row["operation_ref"]))
@@ -2636,10 +2636,10 @@ def recommendation_export_expected(document, candidates, dispositions):
                 values[header] = _export_issue(values[header])
             disposition = dispositions["operations"].get(item["operation_ref"], {})
             remaining.append({"record_kind": "remaining_work", **identity, **values,
-                "受理状态": disposition.get("status"), "受理说明": _export_issue(disposition.get("issues"))})
+                "排产时安排状态": disposition.get("status"), "排产时说明": _export_issue(disposition.get("issues"))})
         if not available:
-            remaining.append({"record_kind": "remaining_unavailable", **identity, "受理说明": "此来源没有完整安排，剩余需求分类保持未知。"})
-    tables = {"推荐说明": recommendation_export_explanations(document), "完成集合": completion, "剩余需求": remaining}
+            remaining.append({"record_kind": "remaining_unavailable", **identity, "排产时说明": "这份方案未保存完整安排，无法确认未安排工序及其所需工时。"})
+    tables = {"推荐说明": recommendation_export_explanations(document), "工序安排": completion, "剩余需求": remaining}
     return {title: [{**dict.fromkeys(RECOMMENDATION_EXPORT_HEADERS[title]), **common, **row} for row in rows]
             for title, rows in tables.items()}
 
@@ -2651,12 +2651,12 @@ def recommendation_export_cell_matches(actual, expected, fmt, header, kind):
 
 
 def recommendation_export_record_identity(row, title):
-    if title == "完成集合":
+    if title == "工序安排":
         fields = ("record_kind", "候选永久编号", "批次永久编号")
     elif title == "剩余需求":
         fields = ("record_kind", "候选永久编号", "工序永久编号")
     else:
-        fields = ("record_kind", "字段key", "支撑类型", "支撑永久编号", "支撑候选编号", "支撑筛选字段", "说明")
+        fields = ("record_kind", "指标标识", "相关明细类型", "相关明细永久编号", "相关明细候选编号", "相关明细筛选字段", "说明")
     return tuple(row.get(header) or None for header in fields)
 
 
@@ -2664,14 +2664,14 @@ def recommendation_export_check_table(rows, headers, fmt, types, expected, title
     wanted_headers = RECOMMENDATION_EXPORT_CSV_HEADERS if csv_union else RECOMMENDATION_EXPORT_HEADERS[title]
     if tuple(headers) != wanted_headers or len(headers) != len(set(headers)) or len(rows) != len(expected):
         raise RuntimeError("推荐导出列或全部事实行数与独立 API 清单不同：" + title)
-    if title in ("完成集合", "剩余需求") and [recommendation_export_record_identity(row, title) for row in rows] != [
+    if title in ("工序安排", "剩余需求") and [recommendation_export_record_identity(row, title) for row in rows] != [
             recommendation_export_record_identity(row, title) for row in expected]:
-        raise RuntimeError("完成集合或剩余需求的候选、批次或工序原序不同：" + title)
+        raise RuntimeError("工序安排或剩余需求的候选、批次或工序原序不同：" + title)
     if title == "推荐说明":
         if rows and rows[0].get("record_kind") != "conclusion":
             raise RuntimeError("推荐导出首行缺少固定推荐结论。")
         for kind in ("fixed_selection", "selection_explanation", "missing_evidence", "difference"):
-            fields = ("字段key", "说明") if kind == "missing_evidence" else ("字段key",)
+            fields = ("指标标识", "说明") if kind == "missing_evidence" else ("指标标识",)
             actual_order = [tuple(row.get(field) or None for field in fields) for row in rows if row.get("record_kind") == kind]
             wanted_order = [tuple(row.get(field) or None for field in fields) for row in expected if row.get("record_kind") == kind]
             if actual_order != wanted_order:
@@ -2711,14 +2711,14 @@ def recommendation_export_check_scope(workbook, document):
     scope, baseline = data["scope"], data["baseline"]
     entries = {row[0]: row[1] if len(row) > 1 else None for row in workbook["比较范围"].iter_rows(values_only=True)}
     expected = {"排产编号": data["run"]["run_ref"], "归档编号": data["capture_ref"], "读取编号": meta["snapshot_ref"],
-        "读取时间": meta["as_of"], "比较模式": "受理时正式计划" if scope["comparison_mode"] == "admission_official" else "同次候选",
+        "读取时间": meta["as_of"], "比较模式": "排产时的正式计划" if scope["comparison_mode"] == "admission_official" else "同次候选",
         "查看基准编号": baseline["candidate_ref"] if baseline["kind"] == "candidate" else baseline["baseline_ref"],
         "所选方案编号": scope["selected_candidate_ref"], "推荐方案编号": data["recommendation"]["candidate_ref"],
         "推荐版本": data["recommendation"]["recommendation_version"],
-        "选择证据版本": data["selection_basis"]["selection_policy_version"],
+        "推荐记录格式版本": data["selection_basis"]["selection_policy_version"],
         "范围起点（含）": scope["range_start"], "范围终点（不含）": scope["range_end"],
         "批次数": len(scope["batch_refs"]), "工序数": len(scope["operation_refs"]),
-        "资源视角": "本次选批贡献" if scope["resource_view"] == "selected_batches" else "完整候选压力",
+        "资源视角": "本次所选批次" if scope["resource_view"] == "selected_batches" else "方案全部安排",
         "共同设备数": len(scope["resource_refs"]["machine"]), "共同人员数": len(scope["resource_refs"]["operator"]),
         "筛选页签": None, "筛选条件": "完整比较范围", "明细范围": "筛选结果全部页"}
     if any(entries.get(key) != value for key, value in expected.items()):
@@ -2734,7 +2734,7 @@ def recommendation_export_check_download(content, fmt, document, expected, docum
         rank, last = {title: index for index, title in enumerate(grouped)}, 0
         for row in actual:
             kind = row["record_kind"]
-            title = "完成集合" if kind == "completion_set" else "剩余需求" if kind in ("remaining_work", "remaining_unavailable") else "推荐说明"
+            title = "工序安排" if kind == "completion_set" else "剩余需求" if kind in ("remaining_work", "remaining_unavailable") else "推荐说明"
             if rank[title] < last:
                 raise RuntimeError("推荐 CSV 的说明、完成和剩余事实分区顺序不同。")
             last = rank[title]
@@ -2747,7 +2747,7 @@ def recommendation_export_check_download(content, fmt, document, expected, docum
     checked = {}
     try:
         business = ["方案总览", "批次影响", "工序变化", "资源影响", "覆盖工序", "准备需求", "工种切换"] if documents else []
-        wanted_sheets = business + list(RECOMMENDATION_EXPORT_HEADERS) + ["指标口径", "比较范围"]
+        wanted_sheets = business + list(RECOMMENDATION_EXPORT_HEADERS) + ["指标计算方式", "比较范围"]
         if workbook.sheetnames != wanted_sheets:
             raise RuntimeError("推荐 XLSX 的五表或十二表顺序不同：" + str(workbook.sheetnames))
         titles = {"overview": "方案总览", "batches": "批次影响", "operations": "工序变化", "resources": "资源影响",
@@ -2782,7 +2782,7 @@ def recommendation_export_check_download(content, fmt, document, expected, docum
             types = [dict(zip(headers, (cell.data_type for cell in row))) for row in cells]
             checked[title] = recommendation_export_check_table(rows, headers, fmt, types, expected[title], title)
         definitions = document["data"]["metric_definitions"]
-        checked["metric-definitions"] = preparation_export_check_records(workbook["指标口径"], RESOURCE_METRIC_HEADERS,
+        checked["metric-definitions"] = preparation_export_check_records(workbook["指标计算方式"], RESOURCE_METRIC_HEADERS,
             preparation_export_metric_expected(definitions))
         checked["comparison-scope"] = recommendation_export_check_scope(workbook, document)
         checked["sheet_names"] = workbook.sheetnames
@@ -3354,7 +3354,7 @@ _CURRENT_ALL_TITLES = {
     "resources": "资源影响", "resource-days": "资源逐日",
     "preparation": "准备需求", "changeovers": "工种切换",
 }
-_CURRENT_ALL_RECOMMENDATION_TITLES = ("推荐说明", "完成集合", "剩余需求")
+_CURRENT_ALL_RECOMMENDATION_TITLES = ("推荐说明", "工序安排", "剩余需求")
 _CURRENT_ALL_PROCESS_TITLES = ("候选计算", "进步事件", "搜索阶段", "代表尝试")
 
 
@@ -4033,7 +4033,7 @@ def verify(args):
 
             workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
             try:
-                if workbook.sheetnames != ["方案总览", "指标口径", "比较范围"]:
+                if workbook.sheetnames != ["方案总览", "指标计算方式", "比较范围"]:
                     raise RuntimeError("XLSX 工作表与总览导出约定不同。")
                 iterator = workbook["方案总览"].iter_rows(values_only=True)
                 headings = next(iterator)

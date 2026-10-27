@@ -116,7 +116,7 @@ class SharedSearch:
                 event["partial_group_improved_objectives"] = list(observed.improved_objectives)
             if self.initial_entry_id is None:
                 self.initial_entry_id = entry_id
-            if entry_id not in self.evidence_event_ids or observed.evidence_updated:
+            if entry_id not in self.evidence_event_ids or observed.evidence_updated or observed.restored:
                 self.evidence_event_ids[entry_id] = event_id
             if observed.evidence_updated:
                 self.revisions[entry_id] = self.revisions.get(entry_id, 0) + 1

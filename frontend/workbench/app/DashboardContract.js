@@ -13,8 +13,7 @@
   const ref = v => typeof v === 'string' && /^[a-f0-9]{48}$/.test(v);
   const text = v => typeof v === 'string' && v.length > 0;
   const count = v => Number.isSafeInteger(v) && v >= 0;
-  const equal = (a, b) => canonical(a) === canonical(b);
-  function canonical(v) { return JSON.stringify(v, (_, value) => object(value) ? Object.keys(value).sort().reduce((out, k) => { out[k] = value[k]; return out; }, {}) : value); }
+  const equal = (a, b) => T.equal(a, b);
   function check(ok, message = '值班台读到的数据不完整，请刷新后重试。') { if (!ok) throw new Error(message); }
   function scope(value) {
     const q = { category: 'all', status: 'all', query: '', sort: 'subject', direction: 'asc', page: 1, size: 20, source: 'production', ...value };

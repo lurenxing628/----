@@ -87,20 +87,16 @@
   }
   function pending(storage) {
     if (storage === undefined) { try { storage = window.localStorage; } catch (_) { throw new Error('读不到上次采用的操作记录，请重新打开页面。'); } }
-    function read() {
-      let raw; try { raw = storage.getItem(PENDING_KEY); } catch (_) { throw new Error('读不到上次采用的操作记录，不要重新采用。'); }
-      if (raw === null) return null;
-      let value; try { value = JSON.parse(raw); } catch (_) { throw new Error('本机存的采用操作记录已损坏，已拦下新采用。请不要再操作，联系维护人员。'); }
-      check(validIntent(value), '本机存的采用操作记录不完整，已拦下新采用。请不要再操作，联系维护人员。'); return value;
-    }
-    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-    function save(value, previous) {
-      check(same(read(), previous), '上次采用记录已变化，没有覆盖其他操作。');
-      check(value === null || validIntent(value));
-      try { if (value === null) storage.removeItem(PENDING_KEY); else storage.setItem(PENDING_KEY, JSON.stringify(value)); }
-      catch (_) { throw new Error('存不下采用的操作记录，没有开始新的采用。请重新打开页面。'); }
-      window.dispatchEvent(new CustomEvent(EVENT, { detail: value })); return value;
-    }
+    const { read, save } = T.pendingStore({
+      key: PENDING_KEY, storage: () => storage, event: EVENT, validate: validIntent,
+      same: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+      readError: '读不到上次采用的操作记录，不要重新采用。',
+      corruptError: '本机存的采用操作记录已损坏，已拦下新采用。请不要再操作，联系维护人员。',
+      invalidError: '本机存的采用操作记录不完整，已拦下新采用。请不要再操作，联系维护人员。',
+      conflictError: '上次采用记录已变化，没有覆盖其他操作。',
+      invalidWriteError: '读到的采用数据不完整，请刷新重试。',
+      writeError: '存不下采用的操作记录，没有开始新的采用。请重新打开页面。'
+    });
     return { read,
       begin(value, values, previous) {
         check(!previous || validIntent(previous) && previous.phase === 'rejected' && previous.candidate_ref === value.candidate_ref, '上次采用还没确认结果，不能重新提交。');

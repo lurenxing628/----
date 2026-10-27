@@ -4030,6 +4030,76 @@ function SMExport({
   // 查回执失败一律是 committed:'unknown'，不会落进这里。
   const rejected = error => error.committed === false && (REJECTED_STATUS.includes(error.status) && error.code !== 'request_key_conflict' || error.status === null);
   const uncertain = error => error.committed === 'unknown';
+  function canonical(value) {
+    return JSON.stringify(value, (_, item) => object(item) ? Object.keys(item).sort().reduce((out, key) => {
+      out[key] = item[key];
+      return out;
+    }, {}) : item);
+  }
+  const equal = (a, b) => canonical(a) === canonical(b);
+  function raise(spec, fallback) {
+    if (!spec) throw fallback;
+    throw typeof spec === 'function' ? spec() : new Error(spec);
+  }
+  // 待确认意图的本机存储：统一读、校验、CAS 写、清除与同页事件通知，错误文案由各领域指定。
+  function pendingStore({
+    key,
+    storage = () => window.localStorage,
+    event,
+    raw = false,
+    validate,
+    validateWrite = validate,
+    encode = value => value,
+    same = equal,
+    readError,
+    corruptError = readError,
+    invalidError = corruptError,
+    conflictError,
+    invalidWriteError = invalidError,
+    writeError,
+    removeError = writeError
+  }) {
+    function read() {
+      let text;
+      try {
+        text = storage().getItem(key);
+      } catch (error) {
+        raise(readError, error);
+      }
+      if (text === null) return null;
+      let value = text;
+      if (!raw) {
+        try {
+          value = JSON.parse(text);
+        } catch (error) {
+          raise(corruptError, error);
+        }
+      }
+      if (validate && !validate(value)) raise(invalidError);
+      return value;
+    }
+    function write(value) {
+      if (value !== null && validateWrite && !validateWrite(value)) raise(invalidWriteError);
+      try {
+        if (value === null) storage().removeItem(key);else storage().setItem(key, raw ? value : JSON.stringify(encode(value)));
+      } catch (error) {
+        raise(value === null ? removeError : writeError, error);
+      }
+      if (event) window.dispatchEvent(new CustomEvent(event, {
+        detail: value
+      }));
+      return value;
+    }
+    function save(value, previous) {
+      if (!same(read(), previous)) raise(conflictError);
+      return write(value);
+    }
+    return {
+      read,
+      write,
+      save
+    };
+  }
   window.APSWorkbenchTransport = {
     types,
     url,
@@ -4044,7 +4114,10 @@ function SMExport({
     rejected,
     uncertain,
     envelope,
-    failure
+    failure,
+    canonical,
+    equal,
+    pendingStore
   };
 })();
 
@@ -4580,6 +4653,17 @@ function SMExport({
   function create(namespace = 'resources') {
     if (!['resources', 'calendar', 'catalog', 'process', 'batches', 'execution'].includes(namespace) && ![...fileKinds, ...importOnlyKinds].some(kind => namespace === kind + '_files')) throw failure('基础资料操作入口不正确。');
     const pendingKey = 'aps_workbench_resource_pending_v1' + (namespace === 'resources' ? '' : '_' + namespace);
+    const pending = T.pendingStore({
+      key: pendingKey,
+      storage: () => sessionStorage,
+      validate: intent => validIntent(intent, true) && matchesNamespace(namespace, intent),
+      validateWrite: intent => validIntent(intent) && matchesNamespace(namespace, intent),
+      encode: pendingRecord,
+      readError: () => unconfirmed('读不到上次操作记录，请重新打开页面；暂时不能继续保存。'),
+      invalidWriteError: () => failure('操作编号无法保存，本次没有提交。'),
+      writeError: () => failure('本次没有提交：操作编号没能保存，请重新打开页面。'),
+      removeError: () => failure('结果已确认，但上次操作记录没清掉；重新打开页面后可以再点「查询结果」。')
+    });
     const api = {
       query(path, scope, signal) {
         return T.read(absolute(path), scope, {
@@ -4658,31 +4742,12 @@ function SMExport({
           signal
         });
       },
-      readPending() {
-        try {
-          const raw = sessionStorage.getItem(pendingKey);
-          if (raw === null) return null;
-          const intent = JSON.parse(raw);
-          if (!validIntent(intent, true) || !matchesNamespace(namespace, intent)) throw new Error('invalid');
-          return intent;
-        } catch (_) {
-          throw unconfirmed('读不到上次操作记录，请重新打开页面；暂时不能继续保存。');
-        }
-      },
+      readPending: pending.read,
       savePending(intent) {
-        if (!validIntent(intent) || !matchesNamespace(namespace, intent)) throw failure('操作编号无法保存，本次没有提交。');
-        try {
-          sessionStorage.setItem(pendingKey, JSON.stringify(pendingRecord(intent)));
-        } catch (_) {
-          throw failure('本次没有提交：操作编号没能保存，请重新打开页面。');
-        }
+        pending.write(intent);
       },
       clearPending() {
-        try {
-          sessionStorage.removeItem(pendingKey);
-        } catch (_) {
-          throw failure('结果已确认，但上次操作记录没清掉；重新打开页面后可以再点「查询结果」。');
-        }
+        pending.write(null);
       }
     };
     return api;
@@ -34097,53 +34162,42 @@ function SMExport({
       }
     }
     const same = (a, b) => !!a && !!b && a.input_ref === b.input_ref && a.request_key === b.request_key && a.run_ref === b.run_ref && a.data_context_ref === b.data_context_ref;
-    function save(v) {
-      try {
-        storage.setItem(PENDING_KEY, JSON.stringify(v));
-      } catch (_) {
-        throw new Error('存不下这次排产的操作记录，没有开始排产。请重新打开页面。');
-      }
-      return v;
-    }
-    function read() {
-      let raw;
-      try {
-        raw = storage.getItem(PENDING_KEY);
-      } catch (_) {
-        throw new Error('读不到上次排产的操作记录，请重新打开页面，不要重做。');
-      }
-      if (raw === null) return null;
-      let value;
-      try {
-        value = JSON.parse(raw);
-      } catch (_) {
-        throw new Error('本机存的排产操作记录已损坏，已拦下新排产。请不要再操作，联系维护人员。');
-      }
-      check(validIntent(value), '本机存的排产操作记录不完整，已拦下新排产。请不要再操作，联系维护人员。');
-      return value;
-    }
-    function recent() {
-      const raw = storage.getItem(RECENT_KEY);
-      if (raw === null) return null;
-      let value;
-      try {
-        value = JSON.parse(raw);
-      } catch (_) {
-        throw new Error('最近排产记录读不到，请到排产记录页查看。');
-      }
-      check(shape(value, ['intent', 'resolution']) && validIntent(value.intent) && ['found', 'context_replaced'].includes(value.resolution), '最近排产记录不完整，请到排产记录页查看。');
-      return value;
-    }
+    const store = T.pendingStore({
+      key: PENDING_KEY,
+      storage: () => storage,
+      validate: validIntent,
+      validateWrite: null,
+      same,
+      readError: '读不到上次排产的操作记录，请重新打开页面，不要重做。',
+      corruptError: '本机存的排产操作记录已损坏，已拦下新排产。请不要再操作，联系维护人员。',
+      invalidError: '本机存的排产操作记录不完整，已拦下新排产。请不要再操作，联系维护人员。',
+      conflictError: '上次操作记录已变化，没有删除其他记录。',
+      writeError: '存不下这次排产的操作记录，没有开始排产。请重新打开页面。',
+      removeError: '本机无法更新上次操作记录。请不要再操作，联系维护人员。'
+    });
+    const recentStore = T.pendingStore({
+      key: RECENT_KEY,
+      storage: () => storage,
+      validate: value => shape(value, ['intent', 'resolution']) && validIntent(value.intent) && ['found', 'context_replaced'].includes(value.resolution),
+      validateWrite: null,
+      corruptError: '最近排产记录读不到，请到排产记录页查看。',
+      invalidError: '最近排产记录不完整，请到排产记录页查看。'
+    });
+    const {
+      read,
+      write,
+      save
+    } = store;
     return {
       read,
-      recent,
+      recent: recentStore.read,
       begin(inputRef, previous, dataContext) {
         check(token(inputRef), '排产检查已失效，请重新做排产检查。');
         const current = read();
         check(previous === null || validIntent(previous));
         check(previous ? same(current, previous) : current === null, '上次排产还没确认结果，不能重做。请先点「查询结果」。');
         check(contextRef(dataContext));
-        return save({
+        return write({
           schema_version: 2,
           input_ref: inputRef,
           request_key: T.requestKey('run'),
@@ -34155,7 +34209,7 @@ function SMExport({
         const current = read();
         check(validIntent(intent) && current !== null && ref(runRef) && current.request_key === intent.request_key && current.input_ref === intent.input_ref && (!intent.run_ref || intent.run_ref === runRef) && (!current.run_ref || current.run_ref === runRef), '上次操作记录已变化，没有覆盖其他排产记录。');
         if (current.run_ref === runRef) return current;
-        return save({
+        return write({
           ...intent,
           run_ref: runRef
         });
@@ -34166,20 +34220,15 @@ function SMExport({
         // A completed lookup in an older tab must never erase a newer submission.
         if (current === null) return;
         check(same(current, intent), '上次操作记录已变化，没有删除其他记录。');
-        storage.setItem(RECENT_KEY, JSON.stringify({
+        recentStore.write({
           intent,
           resolution
-        }));
+        });
         storage.removeItem(PENDING_KEY);
       },
       reject(intent) {
         check(validIntent(intent));
-        check(same(read(), intent), '上次操作记录已变化，没有删除其他记录。');
-        try {
-          storage.removeItem(PENDING_KEY);
-        } catch (_) {
-          throw new Error('本机无法更新上次操作记录。请不要再操作，联系维护人员。');
-        }
+        save(null, intent);
       }
     };
   }
@@ -35235,37 +35284,22 @@ function SMExport({
         throw new Error('读不到上次采用的操作记录，请重新打开页面。');
       }
     }
-    function read() {
-      let raw;
-      try {
-        raw = storage.getItem(PENDING_KEY);
-      } catch (_) {
-        throw new Error('读不到上次采用的操作记录，不要重新采用。');
-      }
-      if (raw === null) return null;
-      let value;
-      try {
-        value = JSON.parse(raw);
-      } catch (_) {
-        throw new Error('本机存的采用操作记录已损坏，已拦下新采用。请不要再操作，联系维护人员。');
-      }
-      check(validIntent(value), '本机存的采用操作记录不完整，已拦下新采用。请不要再操作，联系维护人员。');
-      return value;
-    }
-    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-    function save(value, previous) {
-      check(same(read(), previous), '上次采用记录已变化，没有覆盖其他操作。');
-      check(value === null || validIntent(value));
-      try {
-        if (value === null) storage.removeItem(PENDING_KEY);else storage.setItem(PENDING_KEY, JSON.stringify(value));
-      } catch (_) {
-        throw new Error('存不下采用的操作记录，没有开始新的采用。请重新打开页面。');
-      }
-      window.dispatchEvent(new CustomEvent(EVENT, {
-        detail: value
-      }));
-      return value;
-    }
+    const {
+      read,
+      save
+    } = T.pendingStore({
+      key: PENDING_KEY,
+      storage: () => storage,
+      event: EVENT,
+      validate: validIntent,
+      same: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+      readError: '读不到上次采用的操作记录，不要重新采用。',
+      corruptError: '本机存的采用操作记录已损坏，已拦下新采用。请不要再操作，联系维护人员。',
+      invalidError: '本机存的采用操作记录不完整，已拦下新采用。请不要再操作，联系维护人员。',
+      conflictError: '上次采用记录已变化，没有覆盖其他操作。',
+      invalidWriteError: '读到的采用数据不完整，请刷新重试。',
+      writeError: '存不下采用的操作记录，没有开始新的采用。请重新打开页面。'
+    });
     return {
       read,
       begin(value, values, previous) {
@@ -49155,33 +49189,23 @@ function SMExport({
     BASE = ROOT + '/trial';
   const PENDING_KEY = 'aps_workbench_trial_pending_v1';
   const validKey = v => typeof v === 'string' && /^trial-[a-f0-9]{48}$/.test(v);
-  function pending() {
-    let value;
-    try {
-      value = localStorage.getItem(PENDING_KEY);
-    } catch (_) {
-      throw new Error('读不到上次操作记录，暂时不能提交。请重新打开页面。');
-    }
-    C.check(value === null || validKey(value), '上次操作记录已损坏，没有删除也没有覆盖。请重新打开页面。');
-    return value;
-  }
+  const store = T.pendingStore({
+    key: PENDING_KEY,
+    raw: true,
+    validate: validKey,
+    readError: '读不到上次操作记录，暂时不能提交。请重新打开页面。',
+    invalidError: '上次操作记录已损坏，没有删除也没有覆盖。请重新打开页面。',
+    conflictError: '上次操作记录已变化，没有清除其他操作记录。',
+    writeError: '存不下上次操作记录，这次没有提交。请重新打开页面。',
+    removeError: '上次提交的结果已确认，但上次操作记录没清掉。请点「刷新」后重新查询。'
+  });
+  const pending = store.read;
   function reserve() {
     C.check(pending() === null, window.WorkbenchTerms.outcomes.pending('试调提交'));
-    const key = T.requestKey('trial');
-    try {
-      localStorage.setItem(PENDING_KEY, key);
-    } catch (_) {
-      throw new Error('存不下上次操作记录，这次没有提交。请重新打开页面。');
-    }
-    return key;
+    return store.write(T.requestKey('trial'));
   }
   function clear(key) {
-    C.check(pending() === key, '上次操作记录已变化，没有清除其他操作记录。');
-    try {
-      localStorage.removeItem(PENDING_KEY);
-    } catch (_) {
-      throw new Error('上次提交的结果已确认，但上次操作记录没清掉。请点「刷新」后重新查询。');
-    }
+    store.save(null, key);
   }
   async function read(path, q, signal, validate) {
     const value = await T.read(ROOT + path, q, {
@@ -52303,13 +52327,7 @@ function SMExport({
   function shape(v, required, optional = []) {
     return object(v) && required.every(k => Object.prototype.hasOwnProperty.call(v, k)) && Object.keys(v).every(k => required.concat(optional).includes(k));
   }
-  function equal(a, b) {
-    const canonical = v => JSON.stringify(v, (_, x) => object(x) ? Object.keys(x).sort().reduce((o, k) => {
-      o[k] = x[k];
-      return o;
-    }, {}) : x);
-    return canonical(a) === canonical(b);
-  }
+  const equal = (a, b) => T.equal(a, b);
   const DAYS = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
   function time(v) {
     if (!text(v) || !/^(?!0000)\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.(?!000000$)\d{6})?(?![\s\S])/.test(v)) return false;
@@ -52456,36 +52474,20 @@ function SMExport({
       return false;
     }
   }
-  function read() {
-    let raw;
-    try {
-      raw = window.localStorage.getItem(KEY);
-    } catch (_) {
-      throw new Error('读不到上次采用操作的记录，不能开始新的采用。请重新打开页面。');
-    }
-    if (raw === null) return null;
-    let value;
-    try {
-      value = JSON.parse(raw);
-    } catch (_) {
-      throw new Error('上次采用操作的记录已损坏。请不要再操作，联系维护人员。');
-    }
-    A.check(valid(value), '上次采用操作的记录不完整。请不要再操作，联系维护人员。');
-    return value;
-  }
-  function save(value, previous) {
-    A.check(A.equal(read(), previous), '上次采用操作的记录已变化，没有覆盖其他页面的记录。');
-    A.check(value === null || valid(value));
-    try {
-      if (value === null) window.localStorage.removeItem(KEY);else window.localStorage.setItem(KEY, JSON.stringify(value));
-    } catch (_) {
-      throw new Error('存不下这次采用操作的记录，这次没有提交。请点「查询结果」确认上次操作。');
-    }
-    window.dispatchEvent(new CustomEvent(EVENT, {
-      detail: value
-    }));
-    return value;
-  }
+  const {
+    read,
+    save
+  } = window.APSWorkbenchTransport.pendingStore({
+    key: KEY,
+    event: EVENT,
+    validate: valid,
+    readError: '读不到上次采用操作的记录，不能开始新的采用。请重新打开页面。',
+    corruptError: '上次采用操作的记录已损坏。请不要再操作，联系维护人员。',
+    invalidError: '上次采用操作的记录不完整。请不要再操作，联系维护人员。',
+    conflictError: '上次采用操作的记录已变化，没有覆盖其他页面的记录。',
+    invalidWriteError: '读到的采用数据不完整或对不上，这次没有确认采用。请刷新重试。',
+    writeError: '存不下这次采用操作的记录，这次没有提交。请点「查询结果」确认上次操作。'
+  });
   function begin(preview, values, previous) {
     const scope = A.overview(preview),
       input = A.input(values);
@@ -55551,13 +55553,7 @@ function SMExport({
   const key = v => typeof v === 'string' && /^calibration-[a-f0-9]{48}$/.test(v);
   const text = v => typeof v === 'string' && v.length > 0;
   const number = v => typeof v === 'number' && Number.isFinite(v) && v >= 0;
-  const equal = (a, b) => canonical(a) === canonical(b);
-  function canonical(v) {
-    return JSON.stringify(v, (_, value) => object(value) ? Object.keys(value).sort().reduce((out, k) => {
-      out[k] = value[k];
-      return out;
-    }, {}) : value);
-  }
+  const equal = (a, b) => T.equal(a, b);
   function check(value, message = '读到的采用结果不完整或来源不一致，没有确认采用。') {
     if (!value) throw new Error(message);
   }
@@ -55654,36 +55650,20 @@ function SMExport({
       return false;
     }
   }
-  function read() {
-    let raw;
-    try {
-      raw = localStorage.getItem(KEY);
-    } catch (_) {
-      throw new Error('无法读取上次采用操作的记录，暂时不能开始新的采用。');
-    }
-    if (raw === null) return null;
-    let value;
-    try {
-      value = JSON.parse(raw);
-    } catch (_) {
-      throw new Error('上次采用的操作记录已损坏。请不要再操作，联系维护人员；不能换个编号重新提交。');
-    }
-    A.check(valid(value), '上次采用的操作记录不完整。请不要再操作，联系维护人员；不能换个编号重新提交。');
-    return value;
-  }
-  function save(value, previous) {
-    A.check(A.equal(read(), previous), '上次操作已变化，没有覆盖其他页面的采用记录。');
-    A.check(value === null || valid(value));
-    try {
-      if (value === null) localStorage.removeItem(KEY);else localStorage.setItem(KEY, JSON.stringify(value));
-    } catch (_) {
-      throw new Error('无法保存这次采用操作的记录，没有开始新的采用。');
-    }
-    window.dispatchEvent(new CustomEvent(EVENT, {
-      detail: value
-    }));
-    return value;
-  }
+  const {
+    read,
+    save
+  } = window.APSWorkbenchTransport.pendingStore({
+    key: KEY,
+    event: EVENT,
+    validate: valid,
+    readError: '无法读取上次采用操作的记录，暂时不能开始新的采用。',
+    corruptError: '上次采用的操作记录已损坏。请不要再操作，联系维护人员；不能换个编号重新提交。',
+    invalidError: '上次采用的操作记录不完整。请不要再操作，联系维护人员；不能换个编号重新提交。',
+    conflictError: '上次操作已变化，没有覆盖其他页面的采用记录。',
+    invalidWriteError: '读到的采用结果不完整或来源不一致，没有确认采用。',
+    writeError: '无法保存这次采用操作的记录，没有开始新的采用。'
+  });
   function begin(preview, previous) {
     A.check(!previous || previous.phase === 'rejected', '上次操作的结果还没确认，不能开始新的采用。');
     return save({
@@ -58256,34 +58236,29 @@ function SMExport({
     return object(value) && Object.keys(value).length === 3 && /^system-[a-f0-9]{48}$/.test(value.request_key) && Object.prototype.hasOwnProperty.call(actions, value.action) && value.summary === actions[value.action];
   }
   function pending(storage = window.localStorage) {
+    const store = T.pendingStore({
+      key: PENDING_KEY,
+      storage: () => storage,
+      validate: validIntent,
+      validateWrite: null,
+      corruptError: '上次操作记录损坏，请联系维护人员核对。',
+      invalidError: '本机存的上次操作记录不完整，已停止新的操作。请不要再操作，联系维护人员。'
+    });
     return {
-      read() {
-        const raw = storage.getItem(PENDING_KEY);
-        if (raw === null) return null;
-        let value;
-        try {
-          value = JSON.parse(raw);
-        } catch (_) {
-          throw new Error('上次操作记录损坏，请联系维护人员核对。');
-        }
-        check(validIntent(value), '本机存的上次操作记录不完整，已停止新的操作。请不要再操作，联系维护人员。');
-        return value;
-      },
+      read: store.read,
       begin(action) {
         check(Object.prototype.hasOwnProperty.call(actions, action), '未知维护动作。');
         check(!this.read(), '还有一次操作没有确认结果，不能重新发起。请先点「查询结果」。');
-        const value = {
+        return store.write({
           request_key: T.requestKey('system'),
           action,
           summary: actions[action]
-        };
-        storage.setItem(PENDING_KEY, JSON.stringify(value));
-        return value;
+        });
       },
       finish(intent) {
         const saved = this.read();
         check(!saved || saved.request_key === intent.request_key, '上次操作记录已变化，没有删除其他记录。请刷新后重新确认。');
-        if (saved) storage.removeItem(PENDING_KEY);
+        if (saved) store.write(null);
       }
     };
   }
@@ -60209,13 +60184,7 @@ function SystemLiveOverview({
   function check(ok, message = '外协读到的数据不完整，请刷新后重试。') {
     if (!ok) throw new Error(message);
   }
-  function canonical(v) {
-    return JSON.stringify(v, (_, x) => object(x) ? Object.keys(x).sort().reduce((r, k) => {
-      r[k] = x[k];
-      return r;
-    }, {}) : x);
-  }
-  const equal = (a, b) => canonical(a) === canonical(b);
+  const equal = (a, b) => T.equal(a, b);
   function time(v) {
     if (typeof v !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$/.test(v)) return false;
     const n = v.match(/\d+/g).map(Number),
@@ -60437,39 +60406,21 @@ function SystemLiveOverview({
       return false;
     }
   }
-  function read() {
-    let raw;
-    try {
-      raw = localStorage.getItem(KEY);
-    } catch (_) {
-      throw new Error('上次操作记录读不出来，不能开始新的登记。请重新打开页面。');
-    }
-    if (raw === null) return null;
-    let v;
-    try {
-      v = JSON.parse(raw);
-    } catch (_) {
-      throw new Error('上次操作记录已损坏，不能开始新的登记。请不要再操作，联系维护人员。');
-    }
-    C.check(valid(v), '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。');
-    return v;
-  }
-  function save(v, previous) {
-    C.check(C.equal(read(), previous), '上次操作已在另一个页面变化，这里没有覆盖它。请刷新后重试。');
-    C.check(v === null || valid(v));
-    return write(v);
-  }
-  function write(v) {
-    try {
-      if (v === null) localStorage.removeItem(KEY);else localStorage.setItem(KEY, JSON.stringify(v));
-    } catch (_) {
-      throw new Error('上次操作记录保存不了，不能开始登记。请重新打开页面。');
-    }
-    window.dispatchEvent(new CustomEvent(EVENT, {
-      detail: v
-    }));
-    return v;
-  }
+  const {
+    read,
+    save,
+    write
+  } = window.APSWorkbenchTransport.pendingStore({
+    key: KEY,
+    event: EVENT,
+    validate: valid,
+    readError: '上次操作记录读不出来，不能开始新的登记。请重新打开页面。',
+    corruptError: '上次操作记录已损坏，不能开始新的登记。请不要再操作，联系维护人员。',
+    invalidError: '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。',
+    conflictError: '上次操作已在另一个页面变化，这里没有覆盖它。请刷新后重试。',
+    invalidWriteError: '外协读到的数据不完整，请刷新后重试。',
+    writeError: '上次操作记录保存不了，不能开始登记。请重新打开页面。'
+  });
   function useCommand() {
     const [initial] = React.useState(() => {
       try {
@@ -61532,13 +61483,7 @@ function SystemLiveOverview({
   const ref = v => typeof v === 'string' && /^[a-f0-9]{48}$/.test(v);
   const text = v => typeof v === 'string' && v.length > 0;
   const count = v => Number.isSafeInteger(v) && v >= 0;
-  const equal = (a, b) => canonical(a) === canonical(b);
-  function canonical(v) {
-    return JSON.stringify(v, (_, value) => object(value) ? Object.keys(value).sort().reduce((out, k) => {
-      out[k] = value[k];
-      return out;
-    }, {}) : value);
-  }
+  const equal = (a, b) => T.equal(a, b);
   function check(ok, message = '值班台读到的数据不完整，请刷新后重试。') {
     if (!ok) throw new Error(message);
   }
@@ -63551,39 +63496,21 @@ function SystemLiveOverview({
       return false;
     }
   }
-  function read() {
-    let raw;
-    try {
-      raw = localStorage.getItem(KEY);
-    } catch (_) {
-      throw new Error('上次操作记录读不出来，不能开始新的处置。请重新打开页面。');
-    }
-    if (raw === null) return null;
-    let value;
-    try {
-      value = JSON.parse(raw);
-    } catch (_) {
-      throw new Error('上次操作记录已损坏，不能开始新的处置。请不要再操作，联系维护人员。');
-    }
-    C.check(valid(value), '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。');
-    return value;
-  }
-  function save(value, previous) {
-    C.check(C.equal(read(), previous), '上次操作已在另一个页面变化，这里没有覆盖它。请刷新后重试。');
-    C.check(value === null || valid(value));
-    return write(value);
-  }
-  function write(value) {
-    try {
-      if (value === null) localStorage.removeItem(KEY);else localStorage.setItem(KEY, JSON.stringify(value));
-    } catch (_) {
-      throw new Error('上次操作记录保存不了，不能开始处置。请重新打开页面。');
-    }
-    window.dispatchEvent(new CustomEvent(EVENT, {
-      detail: value
-    }));
-    return value;
-  }
+  const {
+    read,
+    save,
+    write
+  } = window.APSWorkbenchTransport.pendingStore({
+    key: KEY,
+    event: EVENT,
+    validate: valid,
+    readError: '上次操作记录读不出来，不能开始新的处置。请重新打开页面。',
+    corruptError: '上次操作记录已损坏，不能开始新的处置。请不要再操作，联系维护人员。',
+    invalidError: '上次操作记录不完整，不能重新提交。请不要再操作，联系维护人员。',
+    conflictError: '上次操作已在另一个页面变化，这里没有覆盖它。请刷新后重试。',
+    invalidWriteError: '值班台读到的数据不完整，请刷新后重试。',
+    writeError: '上次操作记录保存不了，不能开始处置。请重新打开页面。'
+  });
   function useCommand() {
     const [initial] = React.useState(() => {
       try {

@@ -8,19 +8,15 @@
         && (value.phase !== 'committed' || !!A.receipt(value.receipt, value));
     } catch (_) { return false; }
   }
-  function read() {
-    let raw; try { raw = localStorage.getItem(KEY); } catch (_) { throw new Error('无法读取上次采用操作的记录，暂时不能开始新的采用。'); }
-    if (raw === null) return null;
-    let value; try { value = JSON.parse(raw); } catch (_) { throw new Error('上次采用的操作记录已损坏。请不要再操作，联系维护人员；不能换个编号重新提交。'); }
-    A.check(valid(value), '上次采用的操作记录不完整。请不要再操作，联系维护人员；不能换个编号重新提交。'); return value;
-  }
-  function save(value, previous) {
-    A.check(A.equal(read(), previous), '上次操作已变化，没有覆盖其他页面的采用记录。');
-    A.check(value === null || valid(value));
-    try { if (value === null) localStorage.removeItem(KEY); else localStorage.setItem(KEY, JSON.stringify(value)); }
-    catch (_) { throw new Error('无法保存这次采用操作的记录，没有开始新的采用。'); }
-    window.dispatchEvent(new CustomEvent(EVENT, { detail: value })); return value;
-  }
+  const { read, save } = window.APSWorkbenchTransport.pendingStore({
+    key: KEY, event: EVENT, validate: valid,
+    readError: '无法读取上次采用操作的记录，暂时不能开始新的采用。',
+    corruptError: '上次采用的操作记录已损坏。请不要再操作，联系维护人员；不能换个编号重新提交。',
+    invalidError: '上次采用的操作记录不完整。请不要再操作，联系维护人员；不能换个编号重新提交。',
+    conflictError: '上次操作已变化，没有覆盖其他页面的采用记录。',
+    invalidWriteError: '读到的采用结果不完整或来源不一致，没有确认采用。',
+    writeError: '无法保存这次采用操作的记录，没有开始新的采用。'
+  });
   function begin(preview, previous) {
     A.check(!previous || previous.phase === 'rejected', '上次操作的结果还没确认，不能开始新的采用。');
     return save({ version: 1, request_key: window.APSWorkbenchTransport.requestKey('calibration'),

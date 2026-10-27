@@ -6,8 +6,7 @@
   const key = v => typeof v === 'string' && /^calibration-[a-f0-9]{48}$/.test(v);
   const text = v => typeof v === 'string' && v.length > 0;
   const number = v => typeof v === 'number' && Number.isFinite(v) && v >= 0;
-  const equal = (a, b) => canonical(a) === canonical(b);
-  function canonical(v) { return JSON.stringify(v, (_, value) => object(value) ? Object.keys(value).sort().reduce((out, k) => { out[k] = value[k]; return out; }, {}) : value); }
+  const equal = (a, b) => T.equal(a, b);
   function check(value, message = '读到的采用结果不完整或来源不一致，没有确认采用。') { if (!value) throw new Error(message); }
   function input(value, confirmed = false) {
     check(object(value) && Object.keys(value).length === (confirmed ? 3 : 2) && (!confirmed || value.confirm === true) && typeof value.reason === 'string' && value.reason.trim()

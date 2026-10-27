@@ -123,8 +123,6 @@ def test_schedule_history_query_service_versions_and_latest() -> None:
 
     q = ScheduleHistoryRepository(conn)
 
-    assert q.get_latest_version() == 2
-
     h1 = q.get_by_version(1)
     assert h1 is not None
     assert h1.version == 1
@@ -139,16 +137,6 @@ def test_schedule_history_row_missing_column_fails_instead_of_defaulting() -> No
         ScheduleHistory.from_row(row)
     with pytest.raises(KeyError):
         ScheduleHistory.from_row(dict(row))
-
-
-def _history_conn_with_versions(*versions) -> sqlite3.Connection:
-    conn = _mem_conn()
-    conn.execute(
-        "CREATE TABLE ScheduleHistory (id INTEGER PRIMARY KEY AUTOINCREMENT, schedule_time TEXT, version INTEGER,"
-        " strategy TEXT, batch_count INTEGER, op_count INTEGER, result_status TEXT, result_summary TEXT, created_by TEXT)"
-    )
-    conn.executemany("INSERT INTO ScheduleHistory(version, strategy) VALUES (?, 's')", [(v,) for v in versions])
-    return conn
 
 
 def _history_row(**values):
@@ -175,18 +163,6 @@ def test_schedule_history_optional_counts_read_blank_as_none_and_keep_integer_va
 def test_schedule_history_optional_count_with_bad_value_is_corrupt(raw) -> None:
     with pytest.raises(ValueError, match="batch_count 必须是整数"):
         ScheduleHistory.from_row(_history_row(batch_count=raw))
-
-
-@pytest.mark.parametrize("corrupt", ["abc", b"7"])
-def test_latest_version_with_corrupt_stored_value_is_a_query_error(corrupt) -> None:
-    # SQLite 允许 INTEGER 列存文本/blob，且 MAX 会返回它；精确整数口径下一律报读取失败，不再把 b"7" 读成 7。
-    from core.errors import AppError, ErrorCode
-
-    repo = ScheduleHistoryRepository(_history_conn_with_versions(1, 2, corrupt))
-    with pytest.raises(AppError) as caught:
-        repo.get_latest_version()
-    assert caught.value.code is ErrorCode.DB_QUERY_ERROR
-    assert ScheduleHistoryRepository(_history_conn_with_versions(1, 2)).get_latest_version() == 2
 
 
 @pytest.mark.parametrize(("raw", "expected"), [(None, 8.0), ("", 8.0), ("  ", 8.0), (6, 6.0), (" 7.5 ", 7.5), (b"4", 4.0)])

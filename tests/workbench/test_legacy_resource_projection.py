@@ -188,7 +188,7 @@ def test_current_dashboard_two_kinds_share_fact_contract_without_rederiving_pres
     program = r"""
 const fs = require('node:fs'), vm = require('node:vm'), path = require('node:path');
 const w = {}, context = vm.createContext({window:w, AbortController, URLSearchParams, setTimeout, clearTimeout});
-for (const file of ['DashboardContract.js', 'RunCandidateAPI.js', 'ResourceProjectionContract.js', 'DashboardAnalysisAPI.js'])
+for (const file of ['transport.js', 'DashboardContract.js', 'RunCandidateAPI.js', 'ResourceProjectionContract.js', 'DashboardAnalysisAPI.js'])
   vm.runInContext(fs.readFileSync(path.join(process.cwd(), 'frontend/workbench/app', file), 'utf8'), context);
 const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
 const planRef = payload.data.plan.plan_ref, query = {section: 'pressure'};

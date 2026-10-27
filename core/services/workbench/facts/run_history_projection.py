@@ -5,7 +5,7 @@ from typing import Optional
 
 from core.errors import AppError
 from core.models.workbench_preflight import stored_hold_window_valid
-from core.models.workbench_run_history import STATES, TERMINAL_STATES, inconsistent, local_date, local_datetime
+from core.models.workbench_run_history import TERMINAL_STATES, inconsistent, local_date, local_datetime
 from core.shared.strict_json import load_strict_json
 
 COMPUTATION_FAILED = "本次候选计算失败。请联系维护人员，再重新做排产检查。"
@@ -53,12 +53,6 @@ def stored_json(value):
     return load_strict_json(value, on_malformed=inconsistent, expected=dict)
 
 
-def _ref(value):
-    if type(value) is not str or re.fullmatch(r"[0-9a-f]{48}", value) is None:
-        inconsistent()
-    return value
-
-
 def job_clocks(row):
     try:
         accepted = local_datetime(row["accepted_at"])
@@ -76,22 +70,6 @@ def job_lifecycle(row, started, finished):
     if ((state == "queued" and (started is not None or row["executor_ref"] is not None))
             or (state == "running" and (started is None or not row["executor_ref"]))
             or ((state in TERMINAL_STATES) != (finished is not None))):
-        inconsistent()
-
-
-def project_job(row):
-    _ref(row["run_ref"])
-    state, stage = row["state"], row["stage"]
-    if state not in STATES:
-        inconsistent()
-    expected = {"queued": ("queued", "awaiting_reconciliation"), "running": ("computing", "awaiting_reconciliation")}
-    if stage not in expected.get(state, ("finished",)):
-        inconsistent()
-    started, finished = job_clocks(row)
-    job_lifecycle(row, started, finished)
-    admission = stored_json(row["admission_json"])
-    if (row["admission_action"] != "scheduling.run" or row["admission_context"] != row["input_ref"]
-            or admission.get("data") != {"run_ref": row["run_ref"]}):
         inconsistent()
 
 

@@ -143,37 +143,37 @@
       try { storage = window.localStorage; } catch (_) { throw new Error('读不到上次排产的操作记录，请重新打开页面，不要重做。'); }
     }
     const same = (a, b) => !!a && !!b && a.input_ref === b.input_ref && a.request_key === b.request_key && a.run_ref === b.run_ref && a.data_context_ref === b.data_context_ref;
-    function save(v) {
-      try { storage.setItem(PENDING_KEY, JSON.stringify(v)); } catch (_) { throw new Error('存不下这次排产的操作记录，没有开始排产。请重新打开页面。'); }
-      return v;
-    }
-    function read() {
-      let raw; try { raw = storage.getItem(PENDING_KEY); } catch (_) { throw new Error('读不到上次排产的操作记录，请重新打开页面，不要重做。'); }
-      if (raw === null) return null;
-      let value; try { value = JSON.parse(raw); } catch (_) { throw new Error('本机存的排产操作记录已损坏，已拦下新排产。请不要再操作，联系维护人员。'); }
-      check(validIntent(value), '本机存的排产操作记录不完整，已拦下新排产。请不要再操作，联系维护人员。'); return value;
-    }
-    function recent() {
-      const raw = storage.getItem(RECENT_KEY);
-      if (raw === null) return null;
-      let value; try { value = JSON.parse(raw); } catch (_) { throw new Error('最近排产记录读不到，请到排产记录页查看。'); }
-      check(shape(value, ['intent', 'resolution']) && validIntent(value.intent) && ['found', 'context_replaced'].includes(value.resolution), '最近排产记录不完整，请到排产记录页查看。');
-      return value;
-    }
-    return { read, recent,
+    const store = T.pendingStore({
+      key: PENDING_KEY, storage: () => storage, validate: validIntent, validateWrite: null, same,
+      readError: '读不到上次排产的操作记录，请重新打开页面，不要重做。',
+      corruptError: '本机存的排产操作记录已损坏，已拦下新排产。请不要再操作，联系维护人员。',
+      invalidError: '本机存的排产操作记录不完整，已拦下新排产。请不要再操作，联系维护人员。',
+      conflictError: '上次操作记录已变化，没有删除其他记录。',
+      writeError: '存不下这次排产的操作记录，没有开始排产。请重新打开页面。',
+      removeError: '本机无法更新上次操作记录。请不要再操作，联系维护人员。'
+    });
+    const recentStore = T.pendingStore({
+      key: RECENT_KEY, storage: () => storage,
+      validate: value => shape(value, ['intent', 'resolution']) && validIntent(value.intent) && ['found', 'context_replaced'].includes(value.resolution),
+      validateWrite: null,
+      corruptError: '最近排产记录读不到，请到排产记录页查看。',
+      invalidError: '最近排产记录不完整，请到排产记录页查看。'
+    });
+    const { read, write, save } = store;
+    return { read, recent: recentStore.read,
       begin(inputRef, previous, dataContext) {
         check(token(inputRef), '排产检查已失效，请重新做排产检查。'); const current = read();
         check(previous === null || validIntent(previous));
         check(previous ? same(current, previous) : current === null, '上次排产还没确认结果，不能重做。请先点「查询结果」。');
         check(contextRef(dataContext));
-        return save({ schema_version: 2, input_ref: inputRef, request_key: T.requestKey('run'), run_ref: null, data_context_ref: dataContext });
+        return write({ schema_version: 2, input_ref: inputRef, request_key: T.requestKey('run'), run_ref: null, data_context_ref: dataContext });
       },
       attach(intent, runRef) {
         const current = read();
         check(validIntent(intent) && current !== null && ref(runRef) && current.request_key === intent.request_key && current.input_ref === intent.input_ref
           && (!intent.run_ref || intent.run_ref === runRef) && (!current.run_ref || current.run_ref === runRef), '上次操作记录已变化，没有覆盖其他排产记录。');
         if (current.run_ref === runRef) return current;
-        return save({ ...intent, run_ref: runRef });
+        return write({ ...intent, run_ref: runRef });
       },
       finish(intent, resolution) {
         const current = read();
@@ -181,13 +181,12 @@
         // A completed lookup in an older tab must never erase a newer submission.
         if (current === null) return;
         check(same(current, intent), '上次操作记录已变化，没有删除其他记录。');
-        storage.setItem(RECENT_KEY, JSON.stringify({ intent, resolution }));
+        recentStore.write({ intent, resolution });
         storage.removeItem(PENDING_KEY);
       },
       reject(intent) {
         check(validIntent(intent));
-        check(same(read(), intent), '上次操作记录已变化，没有删除其他记录。');
-        try { storage.removeItem(PENDING_KEY); } catch (_) { throw new Error('本机无法更新上次操作记录。请不要再操作，联系维护人员。'); }
+        save(null, intent);
       }
     };
   }

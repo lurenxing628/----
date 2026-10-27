@@ -1262,6 +1262,7 @@ async function adoptionContextContracts() {
   const outputs = compile({ babel_path: path.join(root, 'frontend/workbench/prototype/ui_kits/workbench/assets/vendor/babel-7.29.0.min.js'),
     sources: ['RunAdoptionAPI.js', 'RunAdoptionControls.jsx', 'RunAdoptionAction.jsx'].map(name => ({ path: name, code: fs.readFileSync(path.join(app, name), 'utf8') })) }).outputs;
   const context = vm.createContext({ React: state.React, window: local, AbortController, DOMException, CustomEvent, URLSearchParams, setTimeout, clearTimeout });
+  browser(context, network); loadTransport(context);
   outputs.forEach(output => vm.runInContext(output.code, context, { filename: output.path }));
   const A = local.RunAdoptionAPI, oldContext = JSON.stringify({ database_scope: '/old.db', successful_restores: [] }),
     newContext = JSON.stringify({ database_scope: '/current.db', successful_restores: ['e'.repeat(32)] });
