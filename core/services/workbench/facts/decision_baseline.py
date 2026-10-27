@@ -115,9 +115,9 @@ def _resolved_source(source, audit, resolver, saved):
     return {"available": evidence is not None, "origins": value.get("origins", {}) if evidence is not None else {},
             "point_work": value.get("point_work") if evidence is not None else None,
             "deferred_issues": value.get("deferred_issues", []) if evidence is not None else [],
-            "operation_effort": value.get("operation_effort") if evidence is not None else None,
-            "operation_types": value.get("operation_types", {}) if evidence is not None else {},
-            "operation_standards": value.get("operation_standards", {}) if evidence is not None else {},
+            "operation_effort": value["operation_effort"] if evidence is not None else None,
+            "operation_types": value["operation_types"] if evidence is not None else {},
+            "operation_standards": value["operation_standards"] if evidence is not None else {},
             "issue": value.get("issue") or missing}
 
 

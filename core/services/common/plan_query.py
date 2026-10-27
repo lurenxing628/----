@@ -58,11 +58,7 @@ class SchedulePlanQueryService:
         )
         return replace(resolution, plan_identity=identity)
 
-    def resolve_plan(self, version: int, role: Optional[str] = None) -> SchedulePlanResolution:
-        requested_role = _normalize_role(role)
-        if requested_role not in VALID_PLAN_ROLES:
-            raise ValueError(f"未知的排产方案角色：{requested_role}")
-
+    def _resolve_validated_plan(self, version: int, requested_role: str) -> SchedulePlanResolution:
         return self._with_plan_identity(SchedulePlanResolution(
             version=int(version),
             requested_role=requested_role,
@@ -72,6 +68,12 @@ class SchedulePlanQueryService:
             message="",
         ))
 
+    def resolve_plan(self, version: int, role: Optional[str] = None) -> SchedulePlanResolution:
+        requested_role = _normalize_role(role)
+        if requested_role not in VALID_PLAN_ROLES:
+            raise ValueError(f"未知的排产方案角色：{requested_role}")
+        return self._resolve_validated_plan(version, requested_role)
+
     def resolve_existing_plan(self, version: int, role: str = ROLE_ADOPTED) -> SchedulePlanResolution:
         if role not in VALID_PLAN_ROLES:
             raise ValueError(f"未知的排产方案角色：{role}")
@@ -80,7 +82,7 @@ class SchedulePlanQueryService:
             version=int(version),
         ) is None:
             raise ValueError("所选方案没有可查看的明细。")
-        return self.resolve_plan(version, role)
+        return self._resolve_validated_plan(version, role)
 
     def list_plan_detail_rows_between_for_resolution(
         self,

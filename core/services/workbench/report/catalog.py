@@ -66,47 +66,53 @@ def _identity(facts, kind, key):
     return facts["identities"][kind][str(key)]["ref"]
 
 
-def _overdue_rows(facts, *, as_of: datetime):
-    rows, source_rows = [], []
+def _overdue_rows(facts, *, as_of: datetime, include_sources: bool = False):
+    rows, source_by_key = [], {}
     scheduled, unscheduled, invalid = compute_overdue_bucket_groups(facts["raw"], now_dt=as_of)
     for row in scheduled + invalid + unscheduled:
+        batch_ref = _identity(facts, "batch", row["batch_id"])
         public = {key: row.get(key) for key, _ in CATALOG_COLUMNS["overdue"]}
-        public.update({"batch_ref": _identity(facts, "batch", row["batch_id"]), "batch_label": row["batch_id"]})
+        public.update({"batch_ref": batch_ref, "batch_label": row["batch_id"]})
         rows.append(public)
-        source_rows.append(row)
-    return rows, source_rows
+        if include_sources:
+            source_by_key[batch_ref] = row
+    return rows, source_by_key
 
 
-def _resource_rows(facts):
+def _resource_rows(facts, *, include_sources: bool = False):
     scope, rep = facts["scope"], facts["report"]
-    rows, source_rows = [], []
+    rows, source_by_key = [], {}
     for kind, collection in (("machine", "machines"), ("operator", "operators")):
         for row in rep.get(collection, []):
+            resource_ref = _identity(facts, kind, row[kind + "_id"])
             public = {key: row.get(key) for key, _ in CATALOG_COLUMNS[scope.kind]}
-            public.update({"resource_ref": _identity(facts, kind, row[kind + "_id"]),
+            public.update({"resource_ref": resource_ref,
                 "resource_label": row.get(kind + "_name") or "名称未填写", "resource_kind": kind,
                 "resource_kind_label": "设备" if kind == "machine" else "人员"})
             if scope.kind == "utilization":
                 public["utilization_percent"] = utilization_percent(row.get("utilization"))
                 public["availability_note"] = utilization_availability_note(row)
             rows.append(public)
-            source_rows.append({**row, "resource_kind": kind})
-    return rows, source_rows
+            if include_sources:
+                source_by_key[resource_ref] = {**row, "resource_kind": kind}
+    return rows, source_by_key
 
 
-def catalog_workspace(facts, page, *, as_of: datetime):
+def catalog_workspace(facts, page, *, as_of: datetime, include_sources: bool = False):
     scope, rep = facts["scope"], facts["report"]
-    rows, source_rows = _overdue_rows(facts, as_of=as_of) if scope.kind == "overdue" else _resource_rows(facts)
-    source_by_key = {}
-    for public, raw in zip(rows, source_rows):
-        source_by_key[public.get("batch_ref") or public["resource_ref"]] = raw
+    rows, source_by_key = (
+        _overdue_rows(facts, as_of=as_of, include_sources=include_sources)
+        if scope.kind == "overdue"
+        else _resource_rows(facts, include_sources=include_sources)
+    )
     query = scope.query.strip().casefold()
     columns = [key for key, _ in CATALOG_COLUMNS[scope.kind]]
     # 数值列的 0 / 0.0 是合法值，也要能被搜到；只有缺值才算空。
     rows = [row for row in rows
             if query in " ".join("" if value is None else str(value) for value in (row[key] for key in columns)).casefold()]
     ordered, visible, pagination = page.apply(rows, columns)
-    selected = [source_by_key[row.get("batch_ref") or row["resource_ref"]] for row in ordered]
+    key_field = "batch_ref" if scope.kind == "overdue" else "resource_ref"
+    selected = [source_by_key[row[key_field]] for row in ordered] if include_sources else []
     provenance, gap = CATALOG_CONTEXT[scope.kind]
     data = {"plan": facts["plan"], "scope": scope.scope(), "topic": scope.kind,
             "rows": visible, "columns": [{"key": key, "label": label} for key, label in CATALOG_COLUMNS[scope.kind]],

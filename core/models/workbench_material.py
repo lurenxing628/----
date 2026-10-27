@@ -6,6 +6,7 @@ import math
 from typing import Any, Dict
 
 from core.errors import ValidationError
+from core.models.workbench_resource_input import resource_object, resource_text
 
 #: 解析器认的状态代号；描述符那份在 workbench_material_file.ENUMS，见 supplier 里的说明。
 STATUS_VALUES = ("active", "inactive")
@@ -16,25 +17,6 @@ _TOP_LEVEL = {
     "update": frozenset(("label", "fields")),
     "delete": frozenset(),
 }
-
-
-def _object(value: Any, allowed, path: str) -> Dict[str, Any]:
-    if type(value) is not dict:
-        raise ValidationError("提交内容格式不对，这次操作没有执行。请刷新页面后重试。", field=path)
-    if any(type(key) is not str or key not in allowed for key in value):
-        raise ValidationError("提交内容含有不支持的项，这次操作没有执行。请刷新页面后重试。", field=path)
-    return value
-
-
-def _text(value: Any, path: str, *, clearable: bool = False):
-    if value is None and clearable:
-        return None
-    if type(value) is not str:
-        raise ValidationError("这一项必须填文字。", field=path)
-    text = value.strip()
-    if not text and not clearable:
-        raise ValidationError("这一项不能为空。", field=path)
-    return text or None
 
 
 def _stock_qty(value: Any) -> float:
@@ -54,23 +36,23 @@ def normalize_material_input(action: str, payload: Any) -> Dict[str, Any]:
     """Keep omissions distinct from clearing; never inspect current database state."""
     if type(action) is not str or action not in _TOP_LEVEL:
         raise ValidationError("不支持的物料操作。", field="action")
-    payload = _object(payload, _TOP_LEVEL[action], "input")
+    payload = resource_object(payload, _TOP_LEVEL[action], "input")
     if action == "delete":
         return {}
     result: Dict[str, Any] = {}
     if action == "create":
-        result["business_code"] = _text(payload.get("business_code"), "business_code")
+        result["business_code"] = resource_text(payload.get("business_code"), "business_code")
     if action == "create" or "label" in payload:
-        result["label"] = _text(payload.get("label"), "label")
-    fields = _object(payload.get("fields", {}), _FIELDS, "fields")
+        result["label"] = resource_text(payload.get("label"), "label")
+    fields = resource_object(payload.get("fields", {}), _FIELDS, "fields")
     normalized: Dict[str, Any] = {}
     for key, value in fields.items():
         if key in _CLEARABLE:
-            normalized[key] = _text(value, "fields." + key, clearable=True)
+            normalized[key] = resource_text(value, "fields." + key, nullable=True)
         elif key == "stock_qty":
             normalized[key] = _stock_qty(value)
         else:
-            status = _text(value, "fields.status")
+            status = resource_text(value, "fields.status")
             if status not in STATUS_VALUES:
                 raise ValidationError("状态请选择启用或停用。", field="fields.status")
             normalized[key] = status

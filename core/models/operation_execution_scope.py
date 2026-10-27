@@ -38,11 +38,10 @@ def parse_positive_execution_int(value: Any, field: str) -> int:
 
 
 def required_execution_text(value: Any, field: str) -> str:
-    """Required text in the execution storage contract: stripped, and blank is corrupt."""
-    text = str(value or "").strip()
-    if not text:
+    """Required text in the execution storage contract: an exact non-blank str, preserved verbatim."""
+    if type(value) is not str or not value.strip():
         raise ValueError(f"{field} is required")
-    return text
+    return value
 
 
 @dataclass(frozen=True)
@@ -51,8 +50,6 @@ class OperationExecutionScope:
     schedule_id: int
     op_id: int
     batch_id: str
-    source_table: str
-    effective_plan_role: str
 
     @classmethod
     def from_values(
@@ -62,16 +59,12 @@ class OperationExecutionScope:
         schedule_id: Any,
         op_id: Any,
         batch_id: Any,
-        source_table: Any,
-        effective_plan_role: Any,
     ) -> OperationExecutionScope:
         return cls(
             schedule_version=parse_positive_execution_int(schedule_version, "schedule_version"),
             schedule_id=parse_positive_execution_int(schedule_id, "schedule_id"),
             op_id=parse_positive_execution_int(op_id, "op_id"),
             batch_id=required_execution_text(batch_id, "batch_id"),
-            source_table=required_execution_text(source_table, "source_table"),
-            effective_plan_role=required_execution_text(effective_plan_role, "effective_plan_role"),
         )
 
 

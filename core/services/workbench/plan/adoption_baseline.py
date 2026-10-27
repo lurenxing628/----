@@ -1,7 +1,7 @@
 """Resolve a new official baseline from its recorded adoption, never version - 1."""
 
 from core.infrastructure.read_evidence import verified_read
-from core.models.content import content_text, same
+from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_plan_reference import WorkbenchPlanReferenceError
 from core.services.workbench.facts.adoption_baseline_sources import (
@@ -89,7 +89,11 @@ def _receipt(conn, plan_ref, version, audit, *, receipt, result):
     require(same({key: official[key] for key in expected}, expected), "adoption.receipt_official_identity")
     require((receipt["action"], receipt["context_ref"]) == (action, audit[context]), "adoption.receipt_source")
     intent = {"confirm": True, "reason": audit["reason"], "declared_operator": audit["declared_operator"]}
-    require(repo.input_content(receipt) == content_text(intent), "adoption.receipt_intent")
+    recorded_intent = stored(receipt["input_json"])
+    require(set(recorded_intent) == set(intent) and all(
+        type(recorded_intent[key]) is type(value) and recorded_intent[key] == value
+        for key, value in intent.items()
+    ), "adoption.receipt_intent")
     require(data[context] == audit[context] and data[parent] == audit[parent]
             and same(data["row_count"], audit["row_count"]), "adoption.receipt_scope")
     require(all(official[key] == audit[key[len("source_"):]] for key in fields), "adoption.receipt_provenance")

@@ -2,7 +2,6 @@
 
 from collections import defaultdict
 
-from core.algorithm_contracts.value_domains import OPERATION_SOURCES
 from core.errors import ValidationError
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_process_commands import process_ref
@@ -69,10 +68,8 @@ class HoursFilePreview:
 
     def _is_source_ready(self, operation):
         state = self.facts["workflow"][operation["part_no"]]
-        confirmation = state["operations"].get(operation["ref"], {}).get("source", {})
-        return (state["workflow"]["route"]["state"] == "confirmed"
-                and confirmation.get("state") == "confirmed"
-                and operation["source"] in OPERATION_SOURCES)
+        confirmation = state["operations"][operation["ref"]]["source"]
+        return state["workflow"]["route"]["state"] == "confirmed" and confirmation["state"] == "confirmed"
 
     def source_ready(self, operation):
         if not self._is_source_ready(operation):
@@ -153,7 +150,7 @@ class HoursFilePreview:
             return
         row["result"] = "update" if row["changes"] else "unchanged"
         operation = row["expected"]["operation"]
-        confirmation = self.facts["workflow"][operation["part_no"]]["operations"].get(operation["ref"], {})
+        confirmation = self.facts["workflow"][operation["part_no"]]["operations"][operation["ref"]]
         row["requires_confirmation"] = zero_confirmation_required(row["before"], after, confirmation)
         if row["requires_confirmation"]:
             row["warnings"] = [{"row": row["row"], "field": "unit_hours", "code": "zero_unit_hours_review",

@@ -33,7 +33,7 @@ def project_operation(row, projection, label, facts, as_of):
             "operation_source": read_source_type(row["source"]),
             "planned_start": planned_start, "planned_end": planned_end, "actual_start": projection["first_actual_start"],
             "confirmed_finish": confirmed_finish, "completion_basis": projection["completion_basis"],
-            "execution_state": status, "ledger_execution_state": projection["execution_state"],
+            "execution_state": status,
             "execution_label": STATUS_LABELS[status],
             **{key: projection[key] for key in ("target_quantity", "target_basis", "known_completed_quantity", "remaining_quantity",
                 "quantity_complete", "unknown_record_count", "records_complete", "data_quality")},
@@ -41,7 +41,7 @@ def project_operation(row, projection, label, facts, as_of):
             "operator_ref": operator["ref"], "operator_label": operator["label"],
             **{key: deviation[key] for key in ("due", "complete", "unclosed", "late_open", "finish_late",
                                                "finish_deviation_minutes", "elapsed_since_planned_minutes")},
-            "data_gaps": [gap["message"] for gap in projection["data_gaps"]], "execution_data_gaps": projection["data_gaps"]}
+            "data_gaps": [gap["message"] for gap in projection["data_gaps"]]}
 
 
 def _resource_selected(scope, operation, projection):

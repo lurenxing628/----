@@ -60,7 +60,7 @@ def prepare_source(payload, operations, identities, *, catalog):
     for row in payload["operations"]:
         old = active[row["ref"]]
         type_key = _related(identities, row["op_type_ref"], "op_type")
-        if type_key not in types or not supports_source(types[type_key]["category"], row["source"]):
+        if row["source"] != "external" and (type_key not in types or not supports_source(types[type_key]["category"], row["source"])):
             raise WorkbenchCommandRejected("source_category_mismatch", "所选工种类别必须匹配本序归属，不能通过本序操作修改全局工种类别。", 422)
         supplier_key = None
         if row["source"] == "external":

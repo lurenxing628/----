@@ -134,7 +134,13 @@ class BatchProjection:
         if row["op_type_id"] not in self.catalogs["op_type"]:
             issues.append(issue("工序工种未登记。"))
         # Hidden hours of external operations remain raw in storage, not defaulted.
-        for key, value in numbers.items():
+        hidden_keys = (
+            ("ext_days",) if row["source"] == "internal"
+            else ("setup_hours", "unit_hours") if row["source"] == "external"
+            else ("setup_hours", "unit_hours", "ext_days")
+        )
+        for key in hidden_keys:
+            value = numbers[key]
             if value is not None and (not is_exact_finite_number(value) or abs(value) > MAX_INTEGER):
                 issues.append(issue("工时或周期原值无效。"))
                 numbers[key] = None

@@ -1,7 +1,7 @@
 """Per-row batch import validation and the complete replacement deletion set."""
 
 from core.errors import ValidationError
-from core.models.workbench_batch import FIELDS, PRIORITIES, READY, normalize_batch_input
+from core.models.workbench_batch import FIELDS, MAX_INTEGER, PRIORITIES, READY, normalize_batch_input
 from core.models.workbench_batch_file import HEADER_FIELDS, HEADERS
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.common.enum_normalizers import batch_priority_label, ready_status_label
@@ -31,7 +31,10 @@ class BatchImportPreview:
         self.projection = BatchProjection(facts)
         self._entities = {}
         self.existing = {row["batch_id"]: row for row in facts["Batches"]}
-        self.validator = get_batch_row_validate_and_normalize(parts_cache=self.projection.parts)
+        self.validator = get_batch_row_validate_and_normalize(
+            parts_cache=self.projection.parts,
+            max_quantity=MAX_INTEGER,
+        )
         self.seen = set()
 
     def _entity(self, batch):

@@ -74,7 +74,7 @@ def ensure_export_size(engine, count):
 
 
 def _export_values(columns, rows, format_name):
-    values = [[_cell(column["key"], row.get(column["key"])) for column in columns] for row in rows]
+    values = [[_cell(column["key"], row[column["key"]]) for column in columns] for row in rows]
     if format_name == "xlsx" and any(isinstance(value, str) and len(value) > 32767 for row in values for value in row):
         raise WorkbenchCommandRejected("export_too_large", "单元格内容超过 XLSX 上限，请改用 CSV 导出。", 413)
     return values

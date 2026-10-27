@@ -17,12 +17,9 @@ from core.infrastructure.transaction import TransactionManager, in_transaction_c
 from core.infrastructure.workbench_metadata_schema import entity_key
 from core.models.calendar import OperatorCalendar
 from core.models.calendar_periods import decode_periods
+from core.models.workbench_calendar import calendar_date, calendar_domain_fields
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
-from core.models.workbench_operator_calendar import (
-    normalize_operator_calendar_input,
-    operator_calendar_date,
-    operator_domain_fields,
-)
+from core.models.workbench_operator_calendar import normalize_operator_calendar_input
 from core.services.scheduler.calendar.service import CalendarService
 from data.repositories.workbench_calendar_query_repo import WorkbenchCalendarQueryRepository
 
@@ -34,7 +31,7 @@ _PUBLIC_FIELDS = ("day_type", "shift_start", "shift_end", "shift_hours", "effici
 
 def _patch_day_hours(payload, fields, before):
     row = before["row"]
-    payload.update(operator_domain_fields(fields))
+    payload.update(calendar_domain_fields(fields))
     if row is not None and row.get("periods_json") not in (None, "[]") and "periods" in fields and fields["periods"] is None:
         if "shiftEnd" not in fields:
             payload["shift_end"] = None
@@ -56,7 +53,7 @@ def _date_key(value: Any) -> str:
     if type(value) is date:
         return value.isoformat()
     try:
-        return operator_calendar_date(value)
+        return calendar_date(value)
     except ValidationError as exc:
         raise WorkbenchCommandRejected("constraint_conflict", "存储的个人日历日期无效，不能当作本地日期读取。") from exc
 

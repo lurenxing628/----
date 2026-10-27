@@ -3,8 +3,10 @@
 import math
 import re
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from typing import NoReturn, cast
+from xml.etree import ElementTree
 from zipfile import BadZipFile
 
 from core.models.workbench_command import WorkbenchCommandRejected
@@ -16,9 +18,10 @@ from core.models.workbench_field_report_file import (
     table_descriptor,
 )
 from core.models.workbench_table_descriptor import INSTRUCTION_SHEET
-from core.services.common.excel_cell_values import cell_value, is_formula_or_error
+from core.services.common.excel_cell_values import cell_value, is_formula_or_error, is_percent_format
 from core.services.common.excel_instruction_sheet import append_instruction_sheet
 from core.services.workbench.facts.table_cells import number_text
+from core.shared.strict_parse import ILLEGAL_XML_CHARS_RE, decimal_integral_span, scaled_decimal
 
 from .field_report_files_xml import check_package
 
@@ -54,33 +57,73 @@ def _timestamp(value, epoch):
     return parsed.isoformat(timespec='seconds')
 
 
-def _value(cell, field, epoch):
-    value = cell_value(cell)
-    if is_formula_or_error(cell) or type(value) is bool:
+def _value(cell, field, epoch, raw_number=None):
+    raw_value = cell.value
+    if is_formula_or_error(cell) or type(raw_value) is bool:
         reject('这一格不能填公式，也不能是 Excel 的错误值或「是/否」，请直接填实际值。')
-    if value is None or type(value) is str and not value.strip():
+    if raw_value is None or type(raw_value) is str and not raw_value.strip():
         return None if field in FIELDS[3:7] else ''
+    if field in ('completed_quantity', 'effective_processing_hours'):
+        percent_scaled = (
+            raw_number is not None
+            and (type(raw_value) is int or type(raw_value) is float)
+            and is_percent_format(cell.number_format, raw_value)
+        )
+        return _numeric(raw_value, field, raw_number, percent_scaled=percent_scaled)
+    value = cell_value(cell)
     if field in ('actual_start', 'actual_end'):
         return _timestamp(value, epoch)
-    if field in ('completed_quantity', 'effective_processing_hours'):
-        return _numeric(value, field)
     if type(value) is not str:
         reject('编号、批次、工序、设备人员和备注都要填文字。')
     if len(value) > 32767:
         reject('这一格的文字超过了 Excel 单元格能放的长度。')
+    if ILLEGAL_XML_CHARS_RE.search(value) is not None:
+        reject('这一格含有 Excel 不支持的隐藏字符，请改掉后重新导入。')
     return value.strip() if field in ('remark', 'operation_scope', 'report_no') else value
 
 
-def _numeric(value, field):
-    if type(value) not in (str, int, float) or type(value) is str and not re.fullmatch(r'\d+(?:\.\d+)?', value.strip()):
-        reject('数量和工时要填 0 或大于 0 的数字。')
-    number = float(value)
-    if not math.isfinite(number) or number < 0:
+def _exact_decimal_quantity(decimal: Decimal, *, scale10: int = 0) -> int:
+    if decimal.is_zero():
+        return 0
+    if decimal.is_signed():
         reject('数量和工时要填 0 或大于 0 的有效数字。')
+    span = decimal_integral_span(decimal, scale10=scale10)
+    if span is None or span > 16:
+        reject('本次完成数量要填 0 或正整数。')
+    integer = int(scaled_decimal(decimal, scale10))
+    if integer > (1 << 53) - 1:
+        reject('本次完成数量要填 0 或正整数。')
+    return integer
+
+
+def _numeric(value, field, raw_number=None, *, percent_scaled=False):
+    if type(value) in (int, float) and raw_number is not None:
+        scale10 = 2 if percent_scaled else 0
+        if field == 'completed_quantity':
+            return _exact_decimal_quantity(raw_number, scale10=scale10)
+        if raw_number.is_zero():
+            return 0.0
+        if raw_number.is_signed():
+            reject('数量和工时要填 0 或大于 0 的有效数字。')
+        try:
+            number = float(scaled_decimal(raw_number, scale10))
+        except (InvalidOperation, ValueError, OverflowError):
+            reject('数量和工时要填 0 或大于 0 的有效数字。')
+        if percent_scaled:
+            number = round(number, 10)
+        if not math.isfinite(number) or number <= 0:
+            reject('数量和工时要填 0 或大于 0 的有效数字。')
+        return number
+    if type(value) is not str or not re.fullmatch(r'\d+(?:\.\d+)?', value.strip()):
+        reject('数量和工时要填 0 或大于 0 的数字。')
+    decimal = Decimal(value.strip())
     if field == 'completed_quantity':
-        if not number.is_integer() or number > (1 << 53) - 1:
-            reject('本次完成数量要填 0 或正整数。')
-        return int(number)
+        return _exact_decimal_quantity(decimal)
+    if decimal.is_zero():
+        return 0.0
+    number = float(decimal)
+    if not math.isfinite(number) or number <= 0:
+        reject('数量和工时要填 0 或大于 0 的有效数字。')
     return number
 
 
@@ -91,11 +134,12 @@ def _column_order(first):
     reject('第一张工作表的表头必须正好是导出文件里带任务编号、工序范围、单件编号的 13 列。')
 
 
-def _decode_row(cells, number, order, epoch):
+def _decode_row(cells, number, order, epoch, raw_numbers):
     row = {'row': number, 'values': {}, 'errors': []}
     for field, index in zip(FIELDS, order):
         try:
-            row['values'][field] = _value(cells[index], field, epoch) if index < len(cells) else None
+            raw_number = raw_numbers.get((number, index))
+            row['values'][field] = _value(cells[index], field, epoch, raw_number) if index < len(cells) else None
         except (WorkbenchCommandRejected, ValueError, OverflowError) as exc:
             row['errors'].append({'row': number, 'field': field, 'message': str(exc)})
     return row
@@ -106,10 +150,10 @@ def decode_reports(content):
 
     if type(content) is not bytes or not content or len(content) > BYTE_LIMIT:
         reject('请选择不超过 8 MB 的 XLSX 文件。')
-    columns = check_package(content)
+    raw_numbers = check_package(content)
     try:
         book = load_workbook(BytesIO(content), read_only=True, data_only=False, keep_links=False)
-    except (BadZipFile, OSError, ValueError, KeyError) as exc:
+    except (BadZipFile, OSError, ValueError, OverflowError, KeyError, IndexError, TypeError, ElementTree.ParseError) as exc:
         raise WorkbenchCommandRejected('invalid_input', '这个 XLSX 文件读不开，请确认文件没有损坏。', 422) from exc
     try:
         sheet = book.worksheets[0]
@@ -117,16 +161,19 @@ def decode_reports(content):
         sheet.reset_dimensions()
         source = sheet.iter_rows()
         order = _column_order(next(source, ()))
-        if columns > len(FIELDS):
-            reject('有单元格超出表头范围，请按模板修正。')
-        result = []
-        for number, cells in enumerate(source, 2):
-            if number > ROW_LIMIT + 1:
-                reject('最多只能导入 5000 行，这次一行都没有导入。')
-            result.append(_decode_row(cells, number, order, book.epoch))
-        return result
+        return [_decode_row(cells, number, order, book.epoch, raw_numbers) for number, cells in enumerate(source, 2)]
+    except WorkbenchCommandRejected:
+        raise
+    except (BadZipFile, OSError, ValueError, OverflowError, KeyError, IndexError, TypeError, ElementTree.ParseError) as exc:
+        raise WorkbenchCommandRejected('invalid_input', '这个 XLSX 文件读不开，请确认文件没有损坏。', 422) from exc
     finally:
         book.close()
+
+
+def _check_export_cell(value):
+    if type(value) is str and (len(value) > 32767 or ILLEGAL_XML_CHARS_RE.search(value) is not None):
+        reject('导出内容含有 Excel 不支持的隐藏字符，或超过单元格 32767 字上限，没有导出。')
+    return value
 
 
 def _export_value(value, field):
@@ -134,7 +181,7 @@ def _export_value(value, field):
     1.6666666666666667 回导会变成 1.666666666666667，被当成改过的报工整份拒掉。"""
     if field in _NUMBER_FIELDS and type(value) in (int, float):
         return number_text(value)
-    return value
+    return _check_export_cell(value)
 
 
 def _append_report(sheet, row):
@@ -186,7 +233,7 @@ def encode_reports(rows, *, summaries, metadata):
         if values:
             extra = book.create_sheet(title)
             for row in values:
-                extra.append(row)
+                extra.append([_check_export_cell(item) for item in row])
     for page in book:
         if page.title != INSTRUCTION_SHEET:
             _style(page, page is sheet)
@@ -209,14 +256,15 @@ def encode_issues(rows):
                   '工序编号', '安排编号', '正式计划编号', '约束编号'])
     for row in rows:
         for issue in row['errors']:
-            sheet.append([row['row'], issue['message']])
+            sheet.append([_check_export_cell(row['row']), _check_export_cell(issue['message'])])
             sheet.cell(sheet.max_row, 2).data_type = TYPE_STRING
             for conflict in issue.get('conflicts', []):
                 plan = conflict['plan']
-                sheet.append([row['row'], conflict['message'], conflict['batch_id'], conflict['operation_label'],
+                sheet.append([_check_export_cell(item) for item in (
+                    row['row'], conflict['message'], conflict['batch_id'], conflict['operation_label'],
                     conflict['piece_id'], plan['version'] if plan else None, plan['start'] if plan else None,
                     plan['end'] if plan else None, conflict['operation_ref'], plan['task_ref'] if plan else None,
-                    plan['plan_ref'] if plan else None, conflict['code']])
+                    plan['plan_ref'] if plan else None, conflict['code'])])
                 for column in (2, 3, 4, 5, 7, 8, 9, 10, 11, 12):
                     sheet.cell(sheet.max_row, column).data_type = TYPE_STRING
     sheet.column_dimensions['A'].width = 15

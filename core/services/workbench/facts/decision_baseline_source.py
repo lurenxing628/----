@@ -1,14 +1,15 @@
 """Resolve archived official lineage without reading today's official rows."""
 
 from core.infrastructure.read_evidence import verified_read
-from core.models.scheduler_history_parser import parse_result_summary_payload
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.workbench.plan.adoption_baseline import read_adoption_record
 from core.shared.strict_json import canonical_json
 
 from .adoption_baseline_sources import (
     read_adoption_operation_facts,
     trial_adoption_facts,
 )
+from .adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
 from .candidate_read_source import read_candidate_source
 from .candidate_store import CandidateStore
 from .material_deferral_evidence import archived_deferred_payload_evidence
@@ -28,20 +29,12 @@ def _require_identity(actual, expected):
         )
 
 
-def _proof(audit):
-    """Every adoption audit records its source by content references."""
-    proof = audit["proof"]
-    if type(proof) is not dict or proof.get("proof_version") != "content_refs_v1":
-        raise WorkbenchCommandRejected("adoption_snapshot_invalid", "此正式版本的原采用凭据字段格式无效。")
-    return proof
-
-
 def candidate_evidence(source, audit):
     _require_identity((source.candidate["candidate_ref"], source.run["run_ref"]),
                       (audit["candidate_ref"], audit["run_ref"]))
     _require_identity((source.capture["baseline"]["plan_ref"], source.capture["baseline"]["version"]),
                       (audit["baseline_ref"], audit["baseline_version"]))
-    proof = _proof(audit)
+    proof = audit["proof"]
     _require_identity((proof["candidate_ref"], proof["run_ref"], proof["baseline_ref"], proof["baseline_version"]),
                       (audit["candidate_ref"], audit["run_ref"], source.capture["baseline"]["plan_ref"],
                        source.capture["baseline"]["version"]))
@@ -55,7 +48,7 @@ def trial_evidence(source, audit):
                       (audit["scenario_ref"], audit["draft_ref"]))
     _require_identity((saved["baseline"]["plan_ref"], saved["baseline"]["version"]),
                       (audit["baseline_ref"], audit["baseline_version"]))
-    proof = _proof(audit)
+    proof = audit["proof"]
     _require_identity((proof["scenario_ref"], proof["draft_ref"], proof["scenario_revision"],
                        proof["baseline_ref"], proof["baseline_version"]),
                       (audit["scenario_ref"], audit["draft_ref"], head["scenario_revision"],
@@ -81,7 +74,7 @@ def _deferred_evidence(source, evidence):
         else:
             # 以正式计划为基础的试调来源在创建时记下了原计划的待料工序编号与缺口。
             ids, issues = archived_deferred_payload_evidence(original)
-            issues = sorted(set(issues + original["deferred_operation_issues"]))
+            issues = issues or original["deferred_operation_issues"]
     if not issues and recorded != ids:
         return [], ["deferred_operation_evidence_invalid"]
     return sorted(recorded), []
@@ -124,8 +117,8 @@ def _operation_metadata(source, evidence):
     slot_refs = prepared.assigned_resources.entity_refs
     slot_names = {key: row.get("name") for key, row in prepared.assigned_resources.tables["OpTypes"].items()}
     slot_names_by_ref = _type_names_by_ref(slot_refs, slot_names)
-    recorded, slot_types = original.get("operation_types") or {}, original.get("trial_operation_types") or {}
-    ledger = {item["operation_ref"]: item for item in (saved.get("operation_effort") or {}).get("items", [])}
+    recorded, slot_types = original.get("operation_types") or {}, original["trial_operation_types"]
+    ledger = {item["operation_ref"]: item for item in (saved["operation_effort"] or {}).get("items", [])}
     types = {}
     for row in rows:
         ref = row["operation_ref"]
@@ -137,7 +130,7 @@ def _operation_metadata(source, evidence):
                  for row in rows}
     # A trial owns its saved current ledger. Its base ledger describes an earlier
     # arrangement; old saved trials retain an explicit missing decomposition.
-    return saved.get("operation_effort"), types, standards
+    return saved["operation_effort"], types, standards
 
 
 def _candidate_points(source):
@@ -179,14 +172,15 @@ def _decision_baseline_source_resolver(conn, *, candidate_provider):
 
     def resolve(*, plan_ref, version, history):
         key = ("decision_baseline_source", plan_ref, version, history.get("version"), history.get("result_summary"))
-        return verified_read(conn, key, lambda: load(version=version, history=history))
+        return verified_read(conn, key, lambda: load(plan_ref=plan_ref, version=version, history=history))
 
-    def load(*, version, history):
+    def load(*, plan_ref, version, history):
         # Every official version is written by a candidate or trial adoption together with its audit.
-        audit = parse_result_summary_payload(history.get("result_summary")).payload
-        if audit is None or audit.get("source") not in ("workbench_candidate_adoption", "workbench_trial_adoption"):
-            raise WorkbenchCommandRejected("adoption_snapshot_invalid", "此正式计划的采用摘要缺失、格式无效或不是采用来源。")
-        _require_identity((audit.get("version"), history.get("version")), (version, version))
+        _require_identity(history.get("version"), version)
+        try:
+            _, audit, _ = read_adoption_record(conn, plan_ref=plan_ref, version=version, history=history)
+        except AdoptionBaselineUnavailable as exc:
+            raise WorkbenchCommandRejected("adoption_snapshot_invalid", REASONS[exc.code]) from exc
         try:
             if audit["source"] == "workbench_candidate_adoption":
                 key = ("candidate", audit["candidate_ref"])

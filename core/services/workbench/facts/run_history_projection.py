@@ -6,7 +6,6 @@ from typing import Optional
 from core.errors import AppError
 from core.models.workbench_preflight import stored_hold_window_valid
 from core.models.workbench_run_history import TERMINAL_STATES, inconsistent, local_date, local_datetime
-from core.shared.strict_json import load_strict_json
 
 COMPUTATION_FAILED = "本次候选计算失败。请联系维护人员，再重新做排产检查。"
 # 原话指着检查页列出的缺项，排产记录里没有这份清单，改成能照做的说法。
@@ -44,13 +43,6 @@ def failure_message(code, message):
     if type(message) is str and _CHINESE.search(message):
         return message
     return COMPUTATION_FAILED
-
-
-def stored_json(value):
-    # Stored documents are TEXT; a BLOB is as inconsistent as unreadable JSON.
-    if type(value) is not str:
-        inconsistent()
-    return load_strict_json(value, on_malformed=inconsistent, expected=dict)
 
 
 def job_clocks(row):
@@ -131,8 +123,8 @@ def _scope_batch_count(refs, gaps):
     return count
 
 
-def scope_summary(raw):
-    settings, result, gaps = stored_json(raw), {}, []
+def scope_summary(settings):
+    result, gaps = {}, []
     for key in stored_scope_input_keys(settings):
         value = settings.get(key)
         valid = stored_scope_value_valid(key, value)

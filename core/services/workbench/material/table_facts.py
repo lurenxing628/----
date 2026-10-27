@@ -1,8 +1,11 @@
 """Material cells reuse the same canonical cell and index logic as resources."""
 
+import re
+
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.table_cells import number_cell, status_cell, text_cell
 from core.services.workbench.facts.table_index import ResourceTableIndex
+from core.shared.strict_parse import is_exact_non_negative_number
 from data.repositories.sqlite_rows import sql_order
 
 _ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
@@ -41,6 +44,22 @@ def damaged_material_status(code):
                                     "请联系维护人员核对资料。", 500)
 
 
+def material_ref(row):
+    if type(row.get("ref")) is not str or re.fullmatch(r"[0-9a-f]{48}", row["ref"]) is None or row.get("revision") is None:
+        raise WorkbenchCommandRejected("storage_failure", "物料缺少系统编号，请联系维护人员核对资料。", 500)
+    return row["ref"]
+
+
+def material_stock(row):
+    stock = row["stock_qty"]
+    if stock is not None and not is_exact_non_negative_number(stock):
+        cause = ValueError("Materials material_id={!r} stock_qty={!r}".format(row["material_id"], stock))
+        raise WorkbenchCommandRejected(
+            "storage_failure", "物料「{}」的库存数量不是 0 或大于 0 的有效数字，请核对原资料。".format(row["material_id"]),
+            500) from cause
+    return stock
+
+
 def material_status(row):
     if row["status"] not in ("active", "inactive"):
         raise damaged_material_status(row["material_id"])
@@ -53,15 +72,15 @@ def material_counts(rows):
             "stock_unknown": sum(row["stock_qty"] is None for row in rows)}
 
 
-def material_table_index(rows, project):
-    records, cells, legacy_values = {}, {}, {}
+def material_table_index(rows):
+    records, cells = {}, {}
     for row in rows:
-        record = project(row)
-        entity = record.entity
-        code = entity["business_code"]
-        records[code] = record
-        legacy_values[code] = {"business_code": code, "label": row["name"], "status": row["status"], "stock_qty": row["stock_qty"]}
-        cells[code] = {"business_code": text_cell(code), "label": text_cell(entity["label"]),
-                       "spec": text_cell(row["spec"]), "stock_qty": number_cell(row["stock_qty"], row["unit"]),
-                       "status": status_cell("material", row["status"])}
-    return ResourceTableIndex(records, cells, legacy_values)
+        material_ref(row)
+        status = material_status(row)
+        stock = material_stock(row)
+        code = row["material_id"]
+        records[code] = row
+        cells[code] = {"business_code": text_cell(code), "label": text_cell(row["name"]),
+                       "spec": text_cell(row["spec"]), "stock_qty": number_cell(stock, row["unit"]),
+                       "status": status_cell("material", status)}
+    return ResourceTableIndex(records, cells)

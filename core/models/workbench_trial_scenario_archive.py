@@ -64,7 +64,7 @@ def scenario_snapshot(archive, stored) -> Dict[str, Any]:
     metadata = archive.get("snapshot")
     if (set(archive) != {"format", "snapshot", "task_row_refs"}
             or archive["format"] != SCENARIO_ROW_FORMAT
-            or type(metadata) is not dict or "tasks" in metadata
+            or type(metadata) is not dict or "tasks" in metadata or "operation_effort" not in metadata
             or type(refs) is not list or any(type(ref) is not str for ref in refs)
             or len(refs) != len(set(refs)) or set(refs) != set(stored)
             or any(type(stored[ref]) is not dict or stored[ref].get("row_ref") != ref for ref in refs)):

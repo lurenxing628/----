@@ -25,7 +25,7 @@ def _current_piece_scope(prepared):
         block("piece_identity_changed", "排产时的批次范围和现在的不一致，本次没有采用。请回「执行排产」重新排一次。")
     refs = {op.id: facts.operation_refs[op.id] for op in operations}
     _dispositions(prepared, scope, refs, batch_refs)
-    return scope, refs
+    return scope
 
 
 def _dispositions(prepared, scope, refs, batch_refs):

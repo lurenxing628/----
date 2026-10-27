@@ -2,6 +2,9 @@
 
 from copy import deepcopy
 
+import pytest
+
+from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_trial_codec import load
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.trial_origin import delivery_origin, operation_contexts
@@ -12,7 +15,7 @@ from core.services.workbench.trial.preparation import apply_preparation, prepara
 from core.services.workbench.trial.projection import unplanned_operations
 from core.services.workbench.trial.service import WorkbenchTrialService
 from tests.workbench.test_legacy_resource_projection import shipped
-from tests.workbench.trial_support import candidate, change, create, service
+from tests.workbench.trial_support import candidate, change, create, official, service
 from tests.workbench.trial_support import trial_case as trial_case  # noqa: F401
 
 
@@ -162,13 +165,14 @@ return {shipped_contract:true, retained_quantity:true, csv_quantity:true};
 
 def test_saved_legacy_trial_does_not_restore_runtime_from_newer_draft_metadata(trial_case, monkeypatch):
     case = trial_case
-    draft = create(case)
+    intent = official(case)
+    draft = create(case, intent)
     adjusted = change(case, draft)["data"]
     original_projection = WorkbenchTrialService._projection
 
     def legacy_projection(*args, **kwargs):
         result = original_projection(*args, **kwargs)
-        result.pop("operation_effort")
+        result["operation_effort"] = {"effort_basis": result["operation_effort"]["effort_basis"], "items": []}
         result["comparison"].pop("preparation_common")
         for task in result["tasks"]:
             task.pop("operation_effort")
@@ -180,13 +184,25 @@ def test_saved_legacy_trial_does_not_restore_runtime_from_newer_draft_metadata(t
             adjusted["write_context"]["write_token"], "trial-legacy-effort-save-01")["data"]
     before = case.conn.total_changes
     reread = service(case.conn).scenario(saved["scenario_ref"])
-    assert "operation_effort" not in reread
+    assert reread["operation_effort"] == {"effort_basis": "runtime_requirement_v1", "items": []}
     effort = reread["tasks"][0]["operation_effort"]["after"]
     assert effort["setup_standard_hours"] is effort["processing_standard_hours"] is effort["required_standard_hours"] is None
     assert effort["standard"]["standard_total_hours"] == 3
     assert reread["comparison"]["preparation_common"]["after"]["scheduled_setup_hours"]["value"] is None
     assert load_scenario(service(case.conn).repo, saved["scenario_ref"]) == saved
     assert case.conn.total_changes == before
+    second = create(case, intent, key="trial-legacy-effort-create-02")
+    with monkeypatch.context() as patch:
+        patch.setattr(WorkbenchTrialService, "_projection",
+                      lambda *args, **kwargs: {key: value for key, value in original_projection(*args, **kwargs).items()
+                                               if key != "operation_effort"})
+        damaged = service(case.conn).save(second["draft_ref"], {"name": "Damaged requirements"},
+            second["write_context"]["write_token"], "trial-legacy-effort-save-02")["data"]
+    for reader in (lambda: service(case.conn).scenario(damaged["scenario_ref"]),
+                   lambda: load_saved_scenario(case.conn, damaged["scenario_ref"])):
+        with pytest.raises(WorkbenchCommandRejected) as error:
+            reader()
+        assert (error.value.code, error.value.status) == ("trial_snapshot_invalid", 409)
 
 
 def test_trial_switches_follow_actual_type_identity_and_saved_complete_arrangements(trial_case):

@@ -7,7 +7,6 @@ import re
 from typing import Dict, Optional, Union
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_process_route import normalize_route_preview_input
 
 PROCESS_ACTIONS = ("route_confirm", "source_confirm", "hours_confirm", "groups_confirm")
 MAX_STAGE_ITEMS = 10000
@@ -46,7 +45,7 @@ def process_list(value):
 
 
 def process_unique(rows, *, refs_only=False):
-    refs = [process_ref(row if refs_only else row["ref"]) for row in rows]
+    refs = [process_ref(row) for row in rows] if refs_only else [row["ref"] for row in rows]
     if len(refs) != len(set(refs)):
         raise WorkbenchCommandRejected("invalid_input", "同一记录不能重复提交。", 422)
     return sorted(rows, key=(lambda row: row) if refs_only else (lambda row: row["ref"]))
@@ -56,6 +55,7 @@ def _source_operations(rows):
     result = []
     for row in process_list(rows):
         process_object(row, {"ref", "source", "op_type_ref", "supplier_ref", "confirmed"})
+        process_ref(row["ref"])
         if type(row["source"]) is not str or row["source"] not in ("internal", "external") or row["confirmed"] is not True:
             raise WorkbenchCommandRejected("invalid_input", "每道工序都需要选定归属并确认。", 422)
         process_ref(row["op_type_ref"])
@@ -105,7 +105,7 @@ def _normalize_group_input(payload):
             "discard_group_refs": discarded}
 
 
-def normalize_process_input(action, payload, *, route_out=None):
+def normalize_process_input(action, payload):
     if type(action) is not str or action not in PROCESS_ACTIONS:
         raise WorkbenchCommandRejected("invalid_input", "不支持的工艺阶段操作。", 400)
     if action == "groups_confirm":
@@ -127,8 +127,4 @@ def normalize_process_input(action, payload, *, route_out=None):
     discarded = process_unique(process_list(payload.get("discard_group_refs", [])), refs_only=True)
     if action == "source_confirm":
         return {field: _source_operations(payload[field]), "discard_group_refs": discarded}
-    # The existing normalizer validates shape/capacity without erasing raw spaces.
-    preview_input = normalize_route_preview_input(payload["route"])
-    if route_out is not None:
-        route_out.append(preview_input)
     return {field: payload[field], "discard_group_refs": discarded}

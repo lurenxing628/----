@@ -17,9 +17,9 @@ from core.models.workbench_process_file import (
 )
 from core.services.workbench.facts.file_codec import NUMBER
 from core.services.workbench.facts.table_cells import number_text
+from core.shared.strict_parse import ILLEGAL_XML_CHARS_RE as _ILLEGAL_XML
 
 _INTEGER = re.compile(r"[0-9]+\Z")
-_ILLEGAL_XML = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
 XLSX_MAX_CELL_CHARACTERS = 32767
 
 

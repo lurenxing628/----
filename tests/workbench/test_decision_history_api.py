@@ -72,11 +72,15 @@ def test_history_event_keeps_all_metrics_but_enriches_only_its_candidate(candida
 
 
 def test_three_saved_sources_preserve_events_and_result_identity_on_two_timelines(history_case):
+    from core.infrastructure.read_evidence import read_evidence_scope
     from core.infrastructure.transaction import TransactionManager
+    from core.models.workbench_command import WorkbenchCommandRejected
     from core.models.workbench_run_job import new_run_ref
     from core.services.workbench.facts.decision_read_model import build_failure_read_models
     from core.services.workbench.facts.decision_read_models import decode_model
+    from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
     from core.services.workbench.history.catalog import read_history_catalog
+    from core.services.workbench.history.reading import HistoryReader
     from data.repositories.workbench_run_repo import WorkbenchRunRepository
 
     case, refs = history_case, history_case.history_refs
@@ -86,7 +90,7 @@ def test_three_saved_sources_preserve_events_and_result_identity_on_two_timeline
     repo.claim(failed, new_run_ref(), "2026-09-10T12:00:01")
     failure = {"state": "failed", "result_persisted": False, "candidates": [],
         "error": {"code": "fixture_saved_failure", "message": "Saved worker failure"}}
-    repo.finish(failed, "failed", failure, "2026-09-10T12:00:02")
+    repo.finish(failed, failure, "2026-09-10T12:00:02")
     admission = decode_model(repo.admission_read_model(failed, ("decision",)), ("decision",))["decision"]
     models = build_failure_read_models(repo.head(failed), admission, failure)
     repo.insert_decision_read_models(failed, models["run_model"], models["candidate_models"])
@@ -150,6 +154,15 @@ def test_three_saved_sources_preserve_events_and_result_identity_on_two_timeline
     )
     assert degraded_entry["times"]["committed_at_utc"] is None
     assert {"code": "invalid_stored_time", "message": "原记录的此项无法确认。"} in degraded_entry["issues"]
+    case.conn.execute("UPDATE ScheduleHistory SET result_summary = REPLACE(result_summary, '\"content_refs_v1\"', '\"invalid_v0\"')")
+    case.conn.commit()
+    with TransactionManager(case.conn).transaction(), candidate_read_snapshot(case.conn), read_evidence_scope(case.conn):
+        descriptors, _ = read_history_catalog(case.conn)
+        for key in ("candidate_receipt_ref", "trial_receipt_ref"):
+            target = next(row for row in descriptors if row["entry_ref"] == "adoption:" + refs[key])
+            with pytest.raises(WorkbenchCommandRejected) as exc_info:
+                HistoryReader(case.conn, catalog=descriptors).read(target)
+            assert (exc_info.value.code, exc_info.value.status) == ("adoption_snapshot_invalid", 409)
 
 
 def test_saved_production_conditions_and_metric_gates_keep_algorithm_experiments_separate(history_case, monkeypatch):

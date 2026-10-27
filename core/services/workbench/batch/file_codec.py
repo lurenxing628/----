@@ -1,6 +1,5 @@
 """Bytes-only first-sheet XLSX, explicit formulas rejection and typed output text."""
 
-import re
 import zipfile
 from io import BytesIO
 
@@ -16,6 +15,7 @@ from core.models.workbench_batch_file import (
 from core.models.workbench_table_descriptor import cell_notes, extra_sheet_notice
 from core.services.common.excel_cell_values import cell_value, is_formula_or_error
 from core.services.common.excel_instruction_sheet import add_enum_dropdowns, append_instruction_sheet
+from core.services.workbench.facts.file_writer import ILLEGAL
 
 # 这里原本拿旧模板清单（excel_template_defaults）交叉校验一遍表头。那份清单 2026-09-21
 # 随旧资料转换一起退役了，而表头本来就同源：表描述的列标签直接取自 HEADERS
@@ -109,7 +109,7 @@ def write_batch_file(rows):
         sheet.column_dimensions[get_column_letter(index)].width = (22 if index < 3 else 16) if index != 8 else 36
     for number, row in enumerate(rows, 2):
         for index, value in enumerate(row, 1):
-            if isinstance(value, str) and (re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", value) or len(value) > 32767):
+            if isinstance(value, str) and (ILLEGAL.search(value) or len(value) > 32767):
                 raise ValidationError("这段文字里有 Excel 放不了的字符，或者太长；系统没有删除或截断内容。", field="file")
             cell = sheet.cell(number, index, value)
             if isinstance(value, str):

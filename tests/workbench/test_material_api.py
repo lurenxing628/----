@@ -119,7 +119,7 @@ def test_real_create_read_update_clear_delete_and_replay_keep_hidden_fields(app_
 def test_material_file_holds_one_batch_preparation_and_export_skips_write_snapshot(app_client, monkeypatch):
     import pytest
 
-    from core.models.workbench_command import WorkbenchCommandUncertain
+    from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
     from core.services.workbench.material.bulk import WorkbenchMaterialBulkService
     from core.services.workbench.material.files import WorkbenchMaterialFileService
     from data.repositories.material_repo import MaterialRepository
@@ -159,6 +159,14 @@ def test_material_file_holds_one_batch_preparation_and_export_skips_write_snapsh
         with service.reader.read_snapshot():
             exported = service.export_rows("csv", scope={})
         assert [row["stock_qty"] for row in exported] == [10, 20]
+        conn.execute("UPDATE Materials SET stock_qty=-1 WHERE material_id='M1'")
+        conn.commit()
+        with service.reader.read_snapshot():
+            with pytest.raises(WorkbenchCommandRejected) as exc_info:
+                service.export_rows("csv", scope={})
+        assert (exc_info.value.code, exc_info.value.status) == ("storage_failure", 500)
+        conn.execute("UPDATE Materials SET stock_qty=10 WHERE material_id='M1'")
+        conn.commit()
         refs = [row[0] for row in conn.execute("SELECT ref FROM WorkbenchEntityRefs WHERE kind='material' AND active=1 ORDER BY entity_key")]
         delete = WorkbenchMaterialBulkService(conn).preview_delete(refs, scope={})
         calls.clear()

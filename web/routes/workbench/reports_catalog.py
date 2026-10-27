@@ -69,16 +69,18 @@ def _catalog(kind, export=False):
         raise WorkbenchCommandRejected("snapshot_required", messages.STALE, 400)
     as_of, binding = read_snapshot_time(token)
     reader = WorkbenchReportFacts(g.db, current_app.logger)
+    format_name = request.args.get("format", "xlsx") if export else None
     with PLAN_READ_SLOTS.slot():
         with reader.read_snapshot():
             facts = catalog_facts(reader, scope)
             snapshot = bind_read_snapshot(facts["scope"].scope(), facts["fingerprint"], token, as_of=as_of, binding=binding)
-            data, ordered, selected = catalog_workspace(facts, page, as_of=as_of)
+            data, ordered, selected = catalog_workspace(
+                facts, page, as_of=as_of, include_sources=format_name == "xlsx"
+            )
             if not export:
                 data["exports"] = {"url": "/api/workbench/v1/reports/" + kind + "/export", "formats": ["csv", "xlsx"], "scope": "all_filtered_rows"}
     if export:
         # 读事务和读额度都已释放：文件只用已读出的结果生成。
-        format_name = request.args.get("format", "xlsx")
         file = export_catalog_xlsx(reader, data, selected, snapshot) if format_name == "xlsx" else export_table(reader.engine, data, ordered, snapshot, format_name)
         return download_response(file, snapshot)
     return query_success(data, snapshot)

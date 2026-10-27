@@ -10,16 +10,13 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import url2pathname
 
-import pytest
 from flask import Blueprint
 
 from core.infrastructure.transaction import TransactionManager
-from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_run_history import RunHistoryScope
 from core.models.workbench_run_job import new_run_ref
 from core.services.workbench.facts.decision_read_model import build_failure_read_models
 from core.services.workbench.facts.decision_read_models import decode_model
-from core.services.workbench.facts.run_history_projection import stored_json
 from core.services.workbench.run.history import WorkbenchRunHistoryQueryService
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from data.repositories.workbench_run_repo import WorkbenchRunRepository
@@ -150,7 +147,7 @@ def test_new_process_reopens_history_without_browser_token_cache(history_case):
             admission = decode_model(repo.admission_read_model(run_ref, fields=("decision",)), ("decision",))["decision"]
             models = build_failure_read_models(repo.get(run_ref), admission, result)
             repo.insert_decision_read_models(run_ref, models["run_model"], models["candidate_models"])
-            repo.finish(run_ref, state, result, (when + timedelta(seconds=2)).isoformat(timespec="microseconds"))
+            repo.finish(run_ref, result, (when + timedelta(seconds=2)).isoformat(timespec="microseconds"))
         assert not case.conn.in_transaction
         refs.append(run_ref)
     expected, fingerprint = WorkbenchRunHistoryQueryService(case.conn).catalog(RunHistoryScope())
@@ -177,15 +174,6 @@ conn.close()
     assert {row["run_ref"] for row in actual["data"]["runs"]} == set(refs)
     assert {row["state"] for row in actual["data"]["runs"]} == {"complete", "partial", "failed", "interrupted"}
     assert dump(case.conn) == before
-
-
-@pytest.mark.parametrize("raw", ['{"start_date":"2026-09-01","start_date":"2026-09-02"}', '{"x":NaN}', '{"x":1e999}',
-                                 '{', '[]', None, b'{}'])
-def test_stored_run_documents_reject_duplicate_keys_nonfinite_numbers_and_non_objects(raw):
-    with pytest.raises(WorkbenchCommandRejected) as error:
-        stored_json(raw)
-    assert (error.value.code, error.value.status, str(error.value)) == (
-        "run_result_inconsistent", 500, "排产记录、提交结果和候选方案的条数对不上，这里不返回结果。请刷新重试；仍不行请联系维护人员。")
 
 
 def test_history_conditions_strict_operator_machine_enum_parsing(history_case):

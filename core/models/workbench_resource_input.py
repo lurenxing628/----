@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
-from typing import Literal, Optional, overload
+from typing import Any, Dict, Literal, Optional, overload
 
 from core.errors import ValidationError
 from core.models.calendar_periods import normalize_periods, period_summary, period_windows
@@ -29,9 +29,11 @@ _SHIFT_BASE_DATE = date(2000, 1, 1)
 _SHIFT_NEXT_DATE = date(2000, 1, 2)
 
 
-def resource_object(value, allowed, path):
-    if type(value) is not dict or any(type(key) is not str or key not in allowed for key in value):
-        raise ValidationError("提交内容格式不对或含有不支持的项，这次操作没有执行。请刷新页面后重试。", field=path)
+def resource_object(value: Any, allowed, field: str) -> Dict[str, Any]:
+    if type(value) is not dict:
+        raise ValidationError("提交内容格式不对，这次操作没有执行。请刷新页面后重试。", field=field)
+    if any(type(key) is not str or key not in allowed for key in value):
+        raise ValidationError("提交内容含有不支持的项，这次操作没有执行。请刷新页面后重试。", field=field)
     return value
 
 

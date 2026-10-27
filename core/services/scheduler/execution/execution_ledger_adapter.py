@@ -4,9 +4,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import replace
 
 from core.errors import AppError, ErrorCode
-from core.infrastructure.transaction import TransactionManager
 from core.models.content import same
-from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_execution import ExecutionProjection
 from core.services.execution.ledger_reader import ExecutionLedgerReader
@@ -27,16 +25,15 @@ def _unavailable(reason, *, op_id=None):
 
 @contextmanager
 def ledger_read_snapshot(conn, *, ledger=None):
-    with TransactionManager(conn).transaction():
-        if ledger is not None and ledger.conn is not conn:
-            raise ValueError("Execution ledger must belong to the current connection")
-        ledger = ledger if ledger is not None else ExecutionLedgerReader(conn, current_plan_provider=current_execution_plan)
-        with ExitStack() as stack:
-            try:
-                stack.enter_context(ledger.read_snapshot())
-            except WorkbenchCommandRejected as exc:
-                raise _unavailable(exc.code) from exc
-            yield ledger
+    if ledger is not None and ledger.conn is not conn:
+        raise ValueError("Execution ledger must belong to the current connection")
+    ledger = ledger if ledger is not None else ExecutionLedgerReader(conn, current_plan_provider=current_execution_plan)
+    with ExitStack() as stack:
+        try:
+            stack.enter_context(ledger.read_snapshot())
+        except WorkbenchCommandRejected as exc:
+            raise _unavailable(exc.code) from exc
+        yield ledger
 
 
 def _scope_tasks(ledger, scopes):
@@ -90,7 +87,7 @@ def _load_projections(ledger, refs, execution_projections):
 
 
 def _adapt_scope_facts(facts, tasks, projections, plan, ledger_revision, resources, refs_by_op):
-    result = dict(facts)
+    result = {}
     for scope, task in tasks.items():
         projection = projections[task["operation_ref"]]
         if plan and scope.schedule_version == plan["version"] and (
@@ -120,13 +117,11 @@ def _adapt_scope_facts(facts, tasks, projections, plan, ledger_revision, resourc
 def adapt_ledger_facts(ledger, facts, *, execution_projections):
     try:
         _require_reported_operation_scopes(ledger)
-        scopes = [scope for scope in facts if scope.source_table == SOURCE_SCHEDULE
-                  and scope.effective_plan_role == ROLE_ADOPTED]
-        if not scopes:
+        if not facts:
             if execution_projections:
                 raise _unavailable("execution_ledger_projection_scope_mismatch")
             return facts
-        tasks = _scope_tasks(ledger, scopes)
+        tasks = _scope_tasks(ledger, facts)
         refs = list(dict.fromkeys(task["operation_ref"] for task in tasks.values()))
         projections, plan, ledger_revision = _load_projections(ledger, refs, execution_projections)
         refs_by_op = {op_ref: projection_resource_refs(row) for op_ref, row in projections.items()}

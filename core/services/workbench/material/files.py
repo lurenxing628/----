@@ -48,6 +48,7 @@ from core.models.workbench_material_file import (
 )
 from core.models.workbench_material_query import MaterialPageRequest
 from core.models.workbench_resource_file_source import PreparedImportSource
+from core.models.workbench_resource_input import resource_text
 from core.services.workbench import messages
 from data.repositories.workbench_material_file_repo import WorkbenchMaterialFileRepository
 
@@ -55,7 +56,7 @@ from .bulk import full_material_snapshot
 from .file_codec import check_export_capacity, read_material_file, write_material_file
 from .queries import WorkbenchMaterialQueryService
 from .service import WorkbenchMaterialService
-from .table_facts import material_status
+from .table_facts import material_ref, material_status, material_stock
 
 # 与资源导出（resource/file_projection.py）同一条规则：认得出的存储时刻才换算。
 _STORED_TIME_TEXT = re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$")
@@ -120,7 +121,7 @@ class WorkbenchMaterialFileService:
         row["errors"] = list(source["errors"])
         row["reference_fields"] = ["created_at"] if "created_at" in values else []
         try:
-            code = normalize_material_input("create", {"business_code": values.get("business_code"), "label": "_"})["business_code"]
+            code = resource_text(values.get("business_code"), "business_code")
             row["business_code"] = code
             if values["business_code"] != code and values["business_code"] in captured["materials"]:
                 raise ValidationError("物料编号不能有首尾空格，请修正。", field="business_code")
@@ -210,9 +211,8 @@ class WorkbenchMaterialFileService:
             raise ValidationError("导出要么按筛选范围，要么按勾选的记录，只能选一种。", field="scope")
         if selected_refs is None:
             query = MaterialPageRequest(**normalize_scope(scope))
-            index = self.reader.table_index(query)
-            matching = index.matching_keys(query)
-            rows, total = (index.rows[code].state["material"] for code in matching), len(matching)
+            rows = self.reader.matching_rows(query)
+            total = len(rows)
         else:
             refs = normalize_refs(selected_refs, allow_empty=True)
             captured = snapshot["by_ref"]
@@ -229,9 +229,9 @@ class WorkbenchMaterialFileService:
         for raw in rows:
             if raw is None:
                 raise WorkbenchCommandRejected("entity_not_found", "勾选的物料已经删除了。请刷新后重新勾选。", 404)
-            if type(raw.get("ref")) is not str or re.fullmatch(r"[0-9a-f]{48}", raw["ref"]) is None or raw.get("revision") is None:
-                raise WorkbenchCommandRejected("storage_failure", "要导出的物料缺少系统编号，请联系维护人员核对资料。", 500)
+            material_ref(raw)
             material_status(raw)
+            material_stock(raw)
             row = dict(zip(COLUMNS, (raw[key] for key in MATERIAL_COLUMNS)))
             row["created_at"] = local_created_at(raw["created_at"])
             yield row

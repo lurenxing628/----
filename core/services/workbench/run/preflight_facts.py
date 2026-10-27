@@ -4,10 +4,10 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Optional
 
 from core.infrastructure.connection_guards import schema_contract_memo
-from core.infrastructure.transaction import TransactionManager
 from core.infrastructure.workbench_execution_ledger_schema import execution_ledger_contract_issues
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.workbench.facts.production_capture import ProductionFactsCapture
+from core.services.workbench.facts.run_input_readonly import candidate_read_snapshot
 
 if TYPE_CHECKING:
     from core.errors import ValidationError
@@ -38,9 +38,11 @@ class PreflightFacts:
 
     @contextmanager
     def snapshot(self, *, fingerprint=True):
-        with TransactionManager(self.conn).transaction():
-            capture = (self.capture if self._snapshot_depth else
-                       self._shared_capture if self._shared_capture is not None else ProductionFactsCapture(self.conn))
+        if self._snapshot_depth > 0:
+            yield self.capture.content() if fingerprint else ""
+            return
+        with candidate_read_snapshot(self.conn):
+            capture = self._shared_capture if self._shared_capture is not None else ProductionFactsCapture(self.conn)
             self.bind_capture(capture)
             self._snapshot_depth += 1
             try:

@@ -1,7 +1,7 @@
 """Admission-baseline read scope and descriptive comparison DTOs, not plan scores."""
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from core.models.workbench_run_candidate import RunCandidateReadScope, local_time
 
@@ -94,7 +94,8 @@ class RunBaselineComparison:
             reasons.append(baseline_reason("execution_affected"))
         delta: Dict[str, Any] = dict(start_hours=None, end_hours=None, elapsed_hours=None, machine_changed=None,
                                     operator_changed=None, supplier_changed=None, effective_processing_hours=None)
-        if status == "matched" and candidate is not None:
+        if status == "matched":
+            candidate = cast(Dict[str, Any], candidate)
             baseline = segments[0]
             delta.update(start_hours=elapsed_hours(baseline["start"], candidate["start"]),
                          end_hours=elapsed_hours(baseline["end"], candidate["end"]),

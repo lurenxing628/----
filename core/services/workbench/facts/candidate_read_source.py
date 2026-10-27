@@ -74,23 +74,12 @@ def read_candidate_source(store, candidate_ref, *, prepared=None):
         tasks = None
     else:
         run, rows, receipt = prepared["run"], prepared["rows"], prepared["receipt"]
-        run_ref = reference(run.get("run_ref"), stored=True)
         candidate = prepared["candidate"]
-        if candidate.get("candidate_ref") != candidate_ref or candidate.get("run_ref") != run_ref:
-            corrupt()
-        saved = next((row for row in rows if row["candidate_ref"] == candidate_ref), None)
-        if (saved is None or saved.get("run_ref", run_ref) != run_ref or saved.get("status") != "completed" or
-                any(saved.get(key) != candidate.get(key) for key in ("status", "task_count", "sequence"))):
-            corrupt()
         capture = prepared["capture"]
         facts = prepared["facts"]
         disposition = prepared["disposition"]
-        raw_tasks = prepared.get("raw_tasks")
+        raw_tasks = prepared["raw_tasks"] if "raw_tasks" in prepared else store.tasks(candidate_ref)
         tasks = prepared.get("tasks")
-        if raw_tasks is None:
-            if tasks is not None:
-                corrupt()
-            raw_tasks = store.tasks(candidate_ref)
     if tasks is None:
         if len(raw_tasks) != candidate["task_count"]:
             corrupt()

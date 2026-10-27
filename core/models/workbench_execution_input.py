@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import NoReturn
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.shared.strict_parse import is_exact_non_negative_number
+from core.shared.strict_parse import ILLEGAL_XML_CHARS_RE, is_exact_non_negative_number
 
 REPORT_FIELDS = ("actual_start", "actual_end", "completed_quantity", "effective_processing_hours",
                  "actual_machine_ref", "actual_operator_ref", "remark")
@@ -57,7 +57,7 @@ def _validate_field(key, value):
     elif key.endswith("_ref"):
         if value is not None:
             public_ref(value)
-    elif not isinstance(value, str) or "\x00" in value or len(value) > (64 if key == "report_no" else 2000):
+    elif not isinstance(value, str) or ILLEGAL_XML_CHARS_RE.search(value) is not None or len(value) > (64 if key == "report_no" else 2000):
         reject("报工里的文字填写不对或太长。")
 
 
@@ -72,7 +72,8 @@ def _validate_create(result):
 
 
 def _validate_revision(result):
-    public_ref(result.get("original_revision_ref"))
+    if "original_revision_ref" not in result or result["original_revision_ref"] is None:
+        reject("这条记录已失效，请刷新后重新选择。", status=400)
     if not result.get("reason", "").strip():
         reject("补齐或更正必须填写原因，并选好要改的那条记录。")
     if not any(key in result for key in REPORT_FIELDS):
@@ -116,14 +117,14 @@ def normalize_report_void_input(report_ref, payload):
 def validate_actual_values(values, now):
     if not isinstance(now, datetime) or now.tzinfo is not None:
         raise ValueError("Ledger clock must return naive factory-local datetime.")
-    times = {key: factory_time(values[key]) for key in ("actual_start", "actual_end") if values.get(key) is not None}
+    times = {key: factory_time(values[key]) for key in ("actual_start", "actual_end") if values[key] is not None}
     if any(value > now for value in times.values()):
         reject("实际时间不能晚于当前时间。")
     if len(times) == 2:
         span = (times["actual_end"] - times["actual_start"]).total_seconds() / 3600
         if span < 0:
             reject("实际结束不能早于实际开始。")
-        hours = values.get("effective_processing_hours")
+        hours = values["effective_processing_hours"]
         if hours is not None and hours > span:
             reject("有效加工小时不能超过实际起止时间的时长。")
 

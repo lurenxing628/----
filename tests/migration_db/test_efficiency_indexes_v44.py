@@ -46,7 +46,7 @@ def _run(conn, number, accepted, *, time=None, archive='{"synthetic":"saved inpu
                 facts_json=archive, projections=[], baseline={}, now=accepted, run_ref=ref)
     if time is not None:
         repo.claim(ref, f"{number + 100:048x}", time)
-        repo.finish(ref, "complete", {"state": "complete", "candidates": [], "error": None}, time)
+        repo.finish(ref, {"state": "complete", "candidates": [], "error": None}, time)
     return ref
 
 

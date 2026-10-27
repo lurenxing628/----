@@ -4,7 +4,6 @@ import sqlite3
 from typing import Any, Dict, Sequence, Tuple
 
 from core.errors import AppError, ErrorCode
-from core.models.schedule_plan_role import ROLE_ADOPTED, SOURCE_SCHEDULE
 from core.models.workbench_execution import ExecutionProjection
 from core.services.scheduler.execution.execution_fact_provider import ExecutionFact, ExecutionFactProvider
 from core.services.scheduler.execution.execution_snapshot import (
@@ -30,7 +29,6 @@ def collect_resource_execution_facts(
         plan_rows = capture.latest_plan_rows(prev_version)
         facts = ExecutionFactProvider(conn, ledger=ledger).facts_by_op_id_for_plan_rows(
             list(plan_rows.values()),
-            {"source_table": SOURCE_SCHEDULE, "effective_plan_role": ROLE_ADOPTED},
             execution_projections=execution_projections,
         )
         snapshot = build_execution_snapshot(facts, plan_rows=plan_rows)

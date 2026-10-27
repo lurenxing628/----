@@ -6,7 +6,7 @@ from core.models.workbench_command import WorkbenchCommandRejected
 def zero_confirmation_required(before, after, confirmation):
     if before["source"] != "internal" or after["unit_hours"] != 0:
         return False
-    return confirmation.get("hours", {}).get("state") != "confirmed" or any(
+    return confirmation["hours"]["state"] != "confirmed" or any(
         before[key] != after[key] for key in ("setup_hours", "unit_hours"))
 
 
@@ -15,9 +15,7 @@ def require_zero_confirmation(proposals, acknowledged, *, states):
         return
     pending = []
     for before, after in proposals:
-        if before["source"] != "internal" or after["unit_hours"] != 0:
-            continue
-        if zero_confirmation_required(before, after, states.get(before["part_no"], {}).get(before["ref"], {})):
+        if zero_confirmation_required(before, after, states[before["part_no"]][before["ref"]]):
             pending.append(before)
     if pending:
         operations = "、".join(str(row["seq"]) for row in pending)

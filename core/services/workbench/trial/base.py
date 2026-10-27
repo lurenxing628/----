@@ -95,9 +95,6 @@ def _plan_capture(conn, ref, capture):
             selected = [row for row in capture.table(table) if row["version"] == locator.version]
             context.seed_source_rows(selected, **query)
         _, entry, _ = context.selected(ref)
-        identity = entry.plan_identity
-        if identity is None:
-            reject("plan_unavailable", "所选计划的编号已失效，请刷新计划列表后重新选择。")
         tables = {"BatchOperations": capture.index("BatchOperations", "id"),
                   "Batches": capture.index("Batches", "batch_id")}
         detail = context.detail_rows(entry)
@@ -127,9 +124,8 @@ def _plan_capture(conn, ref, capture):
         operations = {int(row["source_key"]): row["ref"] for row in capture.table("WorkbenchPlanSourceRefs")
                       if row["kind"] == "operation" and row["active"] == 1}
         issues = [] if entry.completeness == "complete" else [issue("trial_base_incomplete", "基础方案不完整，暂无法评估交期。")]
-        history = context.history(locator.version)
-        delivery_record = ({"source": source, "summary": history["result_summary"], "result_status": history["result_status"]}
-                           if history is not None else {"source": source})
+        history = cast(Dict[str, Any], context.history(locator.version))
+        delivery_record = {"source": source, "summary": history["result_summary"], "result_status": history["result_status"]}
         deferred, deferred_issues = archived_deferred_operation_evidence(delivery_record)
         runtime = _formal_effort_source(conn, ref, locator.version, delivery_record, list(raw.values()))
         slot_types = operation_types(result, refs, capture.index("OpTypes", "op_type_id"))
@@ -143,8 +139,6 @@ def _plan_capture(conn, ref, capture):
 
 
 def _formal_effort_source(conn, ref, version, record, rows):
-    if "summary" not in record:
-        return {"operation_effort": None}
     history = {"version": version, "result_summary": record["summary"], "result_status": record["result_status"]}
     source = decision_baseline_source_resolver(conn)(plan_ref=ref, version=version, history=history)
     evidence = source.get("evidence")

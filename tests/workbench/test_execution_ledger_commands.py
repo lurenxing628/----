@@ -150,8 +150,7 @@ def test_execution_adapter_consumes_one_ledger_plan_task_and_resource_scope(ledg
     case = ledger_case
     saved = case.command('create', case.task(1, case.op_id), case.values(1))['data']['rows'][0]
     schedule_id = case.conn.execute('SELECT id FROM Schedule WHERE version=1 AND op_id=?', (case.op_id,)).fetchone()[0]
-    scope = OperationExecutionScope.from_values(schedule_version=1, schedule_id=schedule_id, op_id=case.op_id,
-        batch_id='B1', source_table='schedule', effective_plan_role='adopted')
+    scope = OperationExecutionScope.from_values(schedule_version=1, schedule_id=schedule_id, op_id=case.op_id, batch_id='B1')
     calls = {'plan': 0, 'tasks': 0, 'scope': 0, 'resources': 0, 'orphans': 0}
     original_plan = case.ledger.current_plan_provider
 
@@ -189,8 +188,7 @@ def test_execution_adapter_translates_ledger_read_rejection(ledger_case, monkeyp
 
     case = ledger_case
     schedule_id = case.conn.execute("SELECT id FROM Schedule WHERE op_id=?", (case.op_id,)).fetchone()[0]
-    scope = OperationExecutionScope.from_values(schedule_version=1, schedule_id=schedule_id, op_id=case.op_id,
-        batch_id="B1", source_table="schedule", effective_plan_role="adopted")
+    scope = OperationExecutionScope.from_values(schedule_version=1, schedule_id=schedule_id, op_id=case.op_id, batch_id="B1")
     operation_ref = WorkbenchPlanIdentityRepository(case.conn).get_operation_refs([case.op_id])[case.op_id]
     projected = case.ledger.project_operations([operation_ref])
 
@@ -202,3 +200,17 @@ def test_execution_adapter_translates_ledger_read_rejection(ledger_case, monkeyp
     with pytest.raises(AppError) as error:
         ExecutionFactProvider(case.conn, ledger=case.ledger).facts_by_scope([scope], execution_projections=projected)
     assert error.value.details == {"reason": "ledger_read_rejected"}
+
+
+def test_correct_remark_preserves_actual_operator_with_legacy_external_skill(ledger_case):
+    case = ledger_case
+    task = case.task(1, case.op_id)
+    saved = case.command("create", task, case.values(4, remark="original"))["data"]["rows"][0]
+    original = case.report_projection(saved["report_ref"])
+    case.conn.execute("INSERT INTO OpTypes(op_type_id,name,category) VALUES ('LEGACY-EXT','LegacyExt','external')")
+    case.conn.execute("INSERT INTO OperatorSkill(operator_id,op_type_id) VALUES ('O1','LEGACY-EXT')")
+    case.conn.commit()
+    payload = {"remark": "remark only", "original_revision_ref": original.revision_ref, "reason": "Add note"}
+    outcome = case.command("correct", original.report_ref, payload)
+    assert outcome["result"] == "committed"
+    assert case.report_projection(original.report_ref).remark == "remark only"

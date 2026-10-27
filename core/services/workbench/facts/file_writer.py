@@ -2,7 +2,6 @@
 
 import codecs
 import csv
-import re
 from tempfile import SpooledTemporaryFile
 
 from core.models.workbench_action_values import FileDownload
@@ -21,7 +20,12 @@ from core.services.common.excel_instruction_sheet import (
     close_write_only_sheets,
 )
 from core.shared.strict_json import canonical_json
-from core.shared.strict_parse import is_exact_finite_number
+from core.shared.strict_parse import (
+    ILLEGAL_XML_CHARS_RE as ILLEGAL,
+)
+from core.shared.strict_parse import (
+    is_exact_finite_number,
+)
 
 from .file_codec import file_error
 from .file_lists import encode_code_list
@@ -30,7 +34,6 @@ from .table_cells import number_text
 
 XLSX_MAX_ROWS = 1048576
 XLSX_MAX_CELL_CHARACTERS = 32767
-ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 # 下载文件名按界面上的叫法写，不用内部代号；工种还要分自制与外协。
 _CATEGORY_NAMES = {"internal": "自制", "external": "外协"}
 

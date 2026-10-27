@@ -49,7 +49,7 @@ def recover_unfinished_runs(conn, *, executor_is_active=None, clock=None, run_re
                     )["decision"]
                     models = build_failure_read_models(row, admission_decision, result)
                     repo.insert_decision_read_models(row["run_ref"], models["run_model"], models["candidate_models"])
-                    repo.finish(row["run_ref"], "interrupted", result, now)
+                    repo.finish(row["run_ref"], result, now)
                     recovered.append(row["run_ref"])
                 else:
                     if active is not True:

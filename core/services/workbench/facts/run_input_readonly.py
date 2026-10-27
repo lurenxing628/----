@@ -9,5 +9,8 @@ from core.infrastructure.transaction import TransactionManager
 @contextmanager
 def candidate_read_snapshot(conn):
     with query_only(conn):
+        if conn.in_transaction:
+            yield
+            return
         with TransactionManager(conn).transaction():
             yield

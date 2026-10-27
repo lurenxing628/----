@@ -14,25 +14,35 @@ from data.repositories.workbench_report_validation_repo import WorkbenchReportVa
 def _reject_external_resources(operation, values):
     # 外协不占本厂设备和人员，排产守卫也按这条拒绝；保留原资源的更正同样不放行，
     # 否则写进去的报工会让之后每次排产都被拦下。
-    if operation["source"] == "external" and (values.get("actual_machine_ref") or values.get("actual_operator_ref")):
+    if operation["source"] == "external" and (values["actual_machine_ref"] or values["actual_operator_ref"]):
         reject("外协工序不占用本厂设备和人员，实际设备、实际人员请留空；原报工已填的，请用「更正」清除。跟进人请填在经办人里。",
                "constraint_conflict", 409)
 
 
 class ReportResourceValidator:
     def __init__(self, conn):
-        self.conn = conn
         self.identities = WorkbenchIdentityRepository(conn)
         self.repo = WorkbenchReportValidationRepository(conn)
+        self.qualification_service = OperatorQualificationService(conn)
         self.entities = {}
         self.checked = set()
         self.machine_types = {}
+        self.operator_qualifications = {}
+        self._skill_profiles = {}
+        self._skill_rows = {}
 
     def preload(self, refs):
         for row in self.repo.entity_rows_with_machine_type(refs):
             self.entities[row["ref"]] = WorkbenchEntityIdentity(row["ref"], row["kind"], row["entity_key"], row["revision"], bool(row["active"]))
             if row["kind"] == "machine":
                 self.machine_types[row["entity_key"]] = set(machine_types({"op_type_id": row["machine_type"], "op_type_ids": row["op_type_ids"]}))
+        operators = sorted({entity.entity_key for entity in self.entities.values() if entity.kind == "operator" and entity.active})
+        if operators:
+            profiles, skills = self.qualification_service.repo.read_skill_facts(operators)
+            for row in profiles:
+                self._skill_profiles.setdefault(row["operator_id"], []).append(row)
+            for row in skills:
+                self._skill_rows.setdefault(row["operator_id"], []).append(row)
 
     def resolve(self, ref, kind):
         if ref is None:
@@ -52,23 +62,34 @@ class ReportResourceValidator:
         # interval. Maintaining quantity/hours/remark must retain their permanent
         # identities, but must not reapply today's capabilities or permissions.
         preserved_actual = previous_values is not None and all(
-            values.get(field) == previous_values.get(field) for field in
+            values[field] == previous_values[field] for field in
             ("actual_machine_ref", "actual_operator_ref", "actual_start", "actual_end"))
         if preserved_actual:
-            self.resolve(values.get("actual_machine_ref"), "machine")
-            self.resolve(values.get("actual_operator_ref"), "operator")
+            self.resolve(values["actual_machine_ref"], "machine")
+            self.resolve(values["actual_operator_ref"], "operator")
             return  # Historical validation never fills the current-qualification cache.
-        key = (operation["source"], operation["op_type_id"], values.get("actual_machine_ref"), values.get("actual_operator_ref"))
+        key = (operation["source"], operation["op_type_id"], values["actual_machine_ref"], values["actual_operator_ref"])
         if key in self.checked:
             return
-        machine = self.resolve(values.get("actual_machine_ref"), "machine")
-        operator = self.resolve(values.get("actual_operator_ref"), "operator")
+        machine = self.resolve(values["actual_machine_ref"], "machine")
+        operator = self.resolve(values["actual_operator_ref"], "operator")
         if machine is not None:
             if not operation["op_type_id"] or operation["op_type_id"] not in self.machine_types.get(machine, set()):
                 reject("填的设备工种和这道工序对不上。请到资料总览核对设备工种。", "constraint_conflict", 409)
         if operator is not None:
             try:
-                OperatorQualificationService(self.conn).require(operator_id=operator, op_type_id=operation["op_type_id"], machine_id=machine)
+                if operator not in self.operator_qualifications:
+                    self.operator_qualifications.update(
+                        self.qualification_service.project_facts(
+                            [operator],
+                            self._skill_profiles.get(operator, []),
+                            self._skill_rows.get(operator, []),
+                        )
+                    )
+                self.qualification_service.require(
+                    operator_id=operator, op_type_id=operation["op_type_id"], machine_id=machine,
+                    qualifications=self.operator_qualifications,
+                )
             except OperatorQualificationError as exc:
                 reject(str(exc), "constraint_conflict", 409)
         self.checked.add(key)

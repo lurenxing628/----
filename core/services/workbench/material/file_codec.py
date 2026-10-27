@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import codecs
 import csv
-import re
 from tempfile import SpooledTemporaryFile
 
 from core.errors import ValidationError
@@ -40,9 +39,10 @@ from core.services.workbench.facts.file_codec import NUMBER
 from core.services.workbench.facts.file_source import FileReadMessages, source_rows
 from core.services.workbench.facts.process_file_xml import preserve_carriage_returns
 from core.services.workbench.facts.table_cells import number_text
-from core.shared.strict_parse import is_exact_non_negative_number
+from core.shared.strict_parse import (
+    ILLEGAL_XML_CHARS_RE as ILLEGAL,
+)
 
-_ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 _CLEARABLE = ("spec", "unit", "remark")
 # Excel worksheet capacity includes the header. Neither limit belongs to CSV.
 XLSX_MAX_ROWS = 1_048_576
@@ -144,8 +144,6 @@ def read_material_file(content: bytes, file_format: str):
 
 def _export_value(value, field, number, file_format):
     if field == "stock_qty":
-        if value is not None and not is_exact_non_negative_number(value):
-            raise _file_error("存着的库存数量不是 0 或大于 0 的有效数字，请核对数量。", number, field)
         return value
     if field == "status" and type(value) is str:
         value = STATUS_LABELS.get(value, value)
@@ -168,7 +166,7 @@ def _check_export_text(value, field, number, file_format):
     if file_format == "csv":
         if "\x00" in value:
             raise _file_error("这段文字里有 CSV 打不开的隐藏字符，系统没有删除或替换原文。", number, field)
-    elif _ILLEGAL.search(value) or len(value) > XLSX_MAX_CELL_CHARACTERS:
+    elif ILLEGAL.search(value) or len(value) > XLSX_MAX_CELL_CHARACTERS:
         raise _file_error("这段文字里有 XLSX 放不了的隐藏字符，或者超过单元格 32767 字的上限；系统没有截断内容。", number, field)
 
 

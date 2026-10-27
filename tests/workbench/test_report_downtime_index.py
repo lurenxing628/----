@@ -346,4 +346,8 @@ def test_catalog_search_matches_rows_only_reachable_through_zero_values():
              "report": {"machines": [machine("M-IDLE", "idle", 0.0, 0), machine("M-BUSY", "busy", 1.5, 2)], "operators": []}}
     data, ordered, selected = catalog_workspace(facts, ReportPage(sort="resource_label"), as_of=datetime(2026, 10, 17))
     assert [row["resource_label"] for row in data["rows"]] == ["idle"]
+    assert selected == []
+    _, _, selected = catalog_workspace(
+        facts, ReportPage(sort="resource_label"), as_of=datetime(2026, 10, 17), include_sources=True
+    )
     assert [row["machine_id"] for row in selected] == ["M-IDLE"]

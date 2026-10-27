@@ -247,8 +247,7 @@ def test_receipt_write_failure_rolls_back_admission(job_case, monkeypatch):
     assert case.conn.execute("SELECT config_value FROM ScheduleConfig WHERE config_key='time_budget_seconds'").fetchone()[0] == "60"
 
 
-@pytest.mark.parametrize("failure_stage", ["second_candidate"])
-def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkeypatch, failure_stage):
+def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkeypatch):
     case = job_case
     accepted = case.accept()
     captured_scope = accepted["data"]["scope_summary"]
@@ -260,42 +259,66 @@ def test_result_second_write_and_receipt_failure_are_all_atomic(job_case, monkey
     legacy_scope = project_admitted_scope(
         legacy_input, GenerationFacts({"facts_text": legacy_row["facts_json"],
                                        "execution": json.loads(legacy_row["execution_json"])}),
-        summary=scope_summary(canonical_json(legacy_input)))
+        summary=scope_summary(legacy_input))
     assert legacy_scope["objective"] is None and legacy_scope["objective_label"] is None
     assert {"field": "objective", "code": "not_recorded", "message": "排产时没有记下这一项。"} in legacy_scope["data_gaps"]
     before = ProductionFactsCapture(case.conn).content()
     save = WorkbenchRunResultRepository.save
-    finish = WorkbenchRunRepository.finish
-    executed = []
+    compute = WorkbenchRunWorker.compute_owned_snapshot
+    executed, computed, receipt_stage = [], [], []
+
+    def capture_compute(worker, snapshot, row, admission):
+        prepared = compute(worker, snapshot, row, admission)
+        computed.append((row, prepared))
+        return prepared
 
     def broken_save(repo, run_ref, candidates):
-        if failure_stage != "second_candidate":
-            return save(repo, run_ref, candidates)
         save(repo, run_ref, candidates[:1])
         executed.append(repo.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidateTasks").fetchone()[0])
         raise sqlite3.OperationalError("second candidate write failed")
 
-    def broken_finish(repo, run_ref, state, result, now):
-        if failure_stage == "result_receipt":
-            raise sqlite3.OperationalError("result receipt failed")
-        if failure_stage == "terminal_update":
-            finish(repo, run_ref, state, result, now)
-            raise sqlite3.OperationalError("result transaction commit failed")
-        return finish(repo, run_ref, state, result, now)
+    def broken_finish_prepared(repo, run_ref, result, now):
+        receipt_stage.append((
+            repo.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidates").fetchone()[0],
+            repo.conn.execute("SELECT COUNT(*) FROM WorkbenchRunDecisionReadModels").fetchone()[0],
+            repo.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidateReadModels").fetchone()[0],
+        ))
+        raise sqlite3.OperationalError("result receipt failed")
 
+    monkeypatch.setattr(WorkbenchRunWorker, "compute_owned_snapshot", capture_compute)
     monkeypatch.setattr(WorkbenchRunResultRepository, "save", broken_save)
-    monkeypatch.setattr(WorkbenchRunRepository, "finish", broken_finish)
     with pytest.raises(WorkbenchCommandUncertain):
         WorkbenchRunWorker(case.conn, clock=lambda: datetime(2026, 9, 10, 12, 1, 0, 100000)).execute(accepted["run_ref"])
     assert not case.conn.in_transaction
     assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidates").fetchone()[0] == 0
     assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidateTasks").fetchone()[0] == 0
+    assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunDecisionReadModels").fetchone()[0] == 0
+    assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidateReadModels").fetchone()[0] == 0
     assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunReceipts").fetchone()[0] == 0
     running = service(case.conn).get(accepted["run_ref"])
     assert running["state"] == "running" and running["scope_summary"] == captured_scope
     assert ProductionFactsCapture(case.conn).content() == before
-    if failure_stage == "second_candidate":
-        assert executed == [1]
+    assert executed == [1] and len(computed) == 1
+
+    monkeypatch.setattr(WorkbenchRunResultRepository, "save", save)
+    monkeypatch.setattr(worker_module, "claim_run", lambda *_args: (computed[0][0], None))
+    monkeypatch.setattr(WorkbenchRunRepository, "finish_prepared", broken_finish_prepared)
+    with pytest.raises(WorkbenchCommandUncertain):
+        WorkbenchRunWorker(
+            case.conn,
+            clock=lambda: datetime(2026, 9, 10, 12, 1, 0, 100000),
+            compute_runner=lambda *_args, **_kwargs: computed[0][1],
+        ).execute(accepted["run_ref"])
+    assert receipt_stage == [(1, 1, 1)]
+    assert not case.conn.in_transaction
+    assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidates").fetchone()[0] == 0
+    assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidateTasks").fetchone()[0] == 0
+    assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunDecisionReadModels").fetchone()[0] == 0
+    assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunCandidateReadModels").fetchone()[0] == 0
+    assert case.conn.execute("SELECT COUNT(*) FROM WorkbenchRunReceipts").fetchone()[0] == 0
+    running = service(case.conn).get(accepted["run_ref"])
+    assert running["state"] == "running" and running["scope_summary"] == captured_scope
+    assert ProductionFactsCapture(case.conn).content() == before
     monkeypatch.undo()
     recovery = service(case.conn)
     recovery.clock = lambda: datetime(2026, 9, 10, 12, 1, 0, 123456)

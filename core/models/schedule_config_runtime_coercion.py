@@ -41,10 +41,10 @@ def _coerce_number(spec: RuntimeConfigFieldSpec, value: Any, *, label: str) -> A
     # 解析提示用页面字段名，错误归属用配置键。
     try:
         if spec.field_type == "float":
-            return float(parse_required_float(value, field=label, min_value=spec.min_value,
-                                              min_inclusive=bool(spec.min_inclusive)))
-        return int(parse_required_int(value, field=label,
-                                      min_value=(None if spec.min_value is None else int(spec.min_value))))
+            return parse_required_float(value, field=label, min_value=spec.min_value,
+                                        min_inclusive=bool(spec.min_inclusive))
+        return parse_required_int(value, field=label,
+                                  min_value=(None if spec.min_value is None else int(spec.min_value)))
     except ValidationError as exc:
         raise ValidationError(exc.message, field=spec.key) from exc
 

@@ -243,7 +243,7 @@ class PlanReadContext:
         key = (scope.plan_ref, scope.range_start, scope.range_end)
         if key not in self._calendar_selections:
             self._calendar_selections[key] = selected_context(self.conn, entry, scope,
-                self.scoped_rows(entry, scope), resources, plan_span, read_context=self)
+                self.scoped_rows(entry, scope), resources, plan_span)
         return self._calendar_selections[key]
 
     def datetime_intervals(self, entry):

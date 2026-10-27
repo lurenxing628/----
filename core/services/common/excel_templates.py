@@ -13,10 +13,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.shared.strict_parse import ILLEGAL_XML_CHARS_RE
+
 
 def sanitize_export_cell(value: Any) -> Any:
     if isinstance(value, str):
-        value = "".join(ch for ch in value if ord(ch) >= 32 or ch in "\t\n\r")
+        value = ILLEGAL_XML_CHARS_RE.sub("", value)
         if value and value[0] in ("=", "+", "-", "@"):
             return "'" + value
     return value

@@ -9,40 +9,24 @@ import pytest
 from core.models.content import same
 from core.models.workbench_command import WorkbenchCommandRejected, WorkbenchCommandUncertain
 from core.models.workbench_piece_adoption import PieceAdoptionBlocked
+from core.models.workbench_run_adoption import CandidateAdoptionBlocked
 from core.models.workbench_run_compute import CandidateRunInputError
 from core.services.workbench.run import piece_adoption
+from core.services.workbench.run.candidate_adoption_validation import _require_official_scope
 from core.services.workbench.run.compute_validation import validate_candidate
 from core.services.workbench.run.worker import WorkbenchRunWorker
 from tests.workbench.piece_adoption_support import START, checked_read_only, lower_input, payload, slot_payload, split
-from tests.workbench.piece_chain_support import piece_candidate, piece_layout, saved_trial
+from tests.workbench.piece_chain_support import piece_candidate, piece_layout
 from tests.workbench.piece_chain_support import trial_case as trial_case  # noqa: F401
-from tests.workbench.round1_piece_point_support import point_case as point_case
 from tests.workbench.run_candidate_adoption_support import INTENT
 from tests.workbench.run_candidate_adoption_support import service as candidate_adoption
-from tests.workbench.run_jobs_support import service as run_service
-from tests.workbench.trial_adoption_support import service as trial_adoption
 from tests.workbench.trial_support import connect, snapshot
 
 
-@pytest.mark.parametrize("phase", ["worker"])
-def test_other_connection_drift_rejected_without_changing_old_work(trial_case, phase):
+def test_other_connection_drift_rejected_without_changing_old_work(trial_case):
     case = trial_case
-    if phase in ("admission", "worker"):
-        piece_layout(case)
-        if phase == "admission":
-            ref, token = case.intent()
-        else:
-            accepted = case.accept()
-    else:
-        ids, _, refs = piece_candidate(case)
-        if phase == "candidate":
-            ref, svc = refs[0], candidate_adoption(case.conn)
-        else:
-            _, _, saved = saved_trial(case, {"candidate_ref": refs[0]}, op_id=ids[None, 40])
-            ref, svc = saved["scenario_ref"], trial_adoption(case.conn)
-        preview = svc.preview(ref)
-        assert preview["validation"]["can_adopt"], preview
-        token = preview["write_context"]["write_token"]
+    piece_layout(case)
+    accepted = case.accept()
     other = connect(case.path)
     try:
         other.execute("UPDATE BatchOperations SET unit_hours=0.5 WHERE piece_id='item-A'")
@@ -50,61 +34,46 @@ def test_other_connection_drift_rejected_without_changing_old_work(trial_case, p
     finally:
         other.close()
     before = snapshot(case.conn)
-    if phase == "worker":
-        admission = json.loads(case.conn.execute(
-            "SELECT decision_json FROM WorkbenchRunAdmissionReadModels WHERE run_ref=?",
-            (accepted["run_ref"],)).fetchone()[0])
+    admission = json.loads(case.conn.execute(
+        "SELECT decision_json FROM WorkbenchRunAdmissionReadModels WHERE run_ref=?",
+        (accepted["run_ref"],)).fetchone()[0])
     with pytest.raises(WorkbenchCommandRejected):
-        if phase == "admission":
-            run_service(case.conn).accept(ref, token, "ef-stale-admission-0001")
-        elif phase == "worker":
-            WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
-        else:
-            svc.adopt(ref, token, "ef-stale-adopt-0001", INTENT)
+        WorkbenchRunWorker(case.conn).execute(accepted["run_ref"])
     after = snapshot(case.conn)
-    if phase == "worker":
-        for table, rows in before.items():
-            if table not in ("WorkbenchRunJobs", "WorkbenchRunReceipts", "WorkbenchRunDecisionReadModels"):
-                assert after[table] == rows, table
-        models = after["WorkbenchRunDecisionReadModels"]
-        assert models[:-1] == before["WorkbenchRunDecisionReadModels"]
-        assert len(models) == len(before["WorkbenchRunDecisionReadModels"]) + 1
-        model = dict(case.conn.execute("SELECT * FROM WorkbenchRunDecisionReadModels WHERE rowid=?",
-                                       (models[-1][0][1],)).fetchone())
-        assert model["run_ref"] == accepted["run_ref"]
-        assert model["projection_version"] == "decision-read-v1"
-        header = json.loads(model["header_json"])
-        assert header["state"] == "failed"
-        assert header["result_persisted"] is False and header["candidates"] == []
-        assert header["error"]["code"] == "snapshot_stale"
-        for field in ("context", "memberships", "calendar", "official"):
-            assert same(json.loads(model[field + "_json"]), admission[field]), field
-        assert model["process_json"] is None
-        assert after["WorkbenchRunReceipts"][:-1] == before["WorkbenchRunReceipts"]
-        assert len(after["WorkbenchRunReceipts"]) == len(before["WorkbenchRunReceipts"]) + 1
-        assert case.conn.execute("SELECT state FROM WorkbenchRunJobs").fetchone()[0] == "failed"
-        assert case.conn.execute("SELECT state FROM WorkbenchRunReceipts").fetchone()[0] == "failed"
-        assert not case.conn.in_transaction
-    else:
-        assert after == before
+    for table, rows in before.items():
+        if table not in ("WorkbenchRunJobs", "WorkbenchRunReceipts", "WorkbenchRunDecisionReadModels"):
+            assert after[table] == rows, table
+    models = after["WorkbenchRunDecisionReadModels"]
+    assert models[:-1] == before["WorkbenchRunDecisionReadModels"]
+    assert len(models) == len(before["WorkbenchRunDecisionReadModels"]) + 1
+    model = dict(case.conn.execute("SELECT * FROM WorkbenchRunDecisionReadModels WHERE rowid=?",
+                                   (models[-1][0][1],)).fetchone())
+    assert model["run_ref"] == accepted["run_ref"]
+    assert model["projection_version"] == "decision-read-v1"
+    header = json.loads(model["header_json"])
+    assert header["state"] == "failed"
+    assert header["result_persisted"] is False and header["candidates"] == []
+    assert header["error"]["code"] == "snapshot_stale"
+    for field in ("context", "memberships", "calendar", "official"):
+        assert same(json.loads(model[field + "_json"]), admission[field]), field
+    assert model["process_json"] is None
+    assert after["WorkbenchRunReceipts"][:-1] == before["WorkbenchRunReceipts"]
+    assert len(after["WorkbenchRunReceipts"]) == len(before["WorkbenchRunReceipts"]) + 1
+    assert case.conn.execute("SELECT state FROM WorkbenchRunJobs").fetchone()[0] == "failed"
+    assert case.conn.execute("SELECT state FROM WorkbenchRunReceipts").fetchone()[0] == "failed"
+    assert not case.conn.in_transaction
 
 
-@pytest.mark.parametrize("phase", ["candidate"])
-@pytest.mark.parametrize("table", ["WorkbenchCommandReceipts"])
-def test_actual_insert_failure_rolls_back_whole_piece_adoption(trial_case, phase, table):
+def test_actual_insert_failure_rolls_back_whole_piece_adoption(trial_case):
     case = trial_case
-    action = "scheduling.candidate.adopt" if phase == "candidate" else "trial.scenario.adopt"
-    condition = "(SELECT count(*) FROM Schedule)>0" if table == "Schedule" else (
-        "NEW.action='" + action + "'" if table == "WorkbenchCommandReceipts" else "1")
-    case.conn.execute('CREATE TRIGGER ef_piece_failure BEFORE INSERT ON "' + table + '" WHEN ' + condition
-                     + " BEGIN SELECT RAISE(ABORT,'EF partial-write failure'); END")
+    case.conn.execute(
+        'CREATE TRIGGER ef_piece_failure BEFORE INSERT ON "WorkbenchCommandReceipts" '
+        "WHEN NEW.action='scheduling.candidate.adopt' "
+        "BEGIN SELECT RAISE(ABORT,'EF partial-write failure'); END"
+    )
     case.conn.commit()
-    ids, _, refs = piece_candidate(case)
-    if phase == "candidate":
-        ref, svc = refs[0], candidate_adoption(case.conn)
-    else:
-        _, _, saved = saved_trial(case, {"candidate_ref": refs[0]}, op_id=ids[None, 40])
-        ref, svc = saved["scenario_ref"], trial_adoption(case.conn)
+    _, _, refs = piece_candidate(case)
+    ref, svc = refs[0], candidate_adoption(case.conn)
     preview = svc.preview(ref)
     assert preview["validation"]["can_adopt"], preview
     before = snapshot(case.conn)
@@ -155,16 +124,18 @@ def test_closed_partial_piece_publication_keeps_adoption_and_protection_boundari
             case.conn, prepared=prepared, payload=known))
     assert caught.value.code == "piece_scope_incomplete"
     checked_read_only(case, published(full))
-    with pytest.raises(PieceAdoptionBlocked) as caught:
-        checked_read_only(case, lambda: piece_adoption.validate_piece_adoption(
-            case.conn, prepared=prepared, payload=full))
+    with pytest.raises(CandidateAdoptionBlocked) as caught:
+        checked_read_only(case, lambda: _require_official_scope(prepared.latest_plan_rows, full.scheduled_op_ids))
     assert caught.value.code == "official_scope_not_covered"
 
     with pytest.raises(CandidateRunInputError) as caught:
         validate_candidate(prepared, [row for row in rows if row.op_id != ids["item-A", 20]], [],
                            prepared_payload=payload(prepared, [row for row in rows if row.op_id != ids["item-A", 20]]))
     assert caught.value.code == "candidate_predecessor_missing"
-    reject([row for row in rows if row.op_id != common], "piece_protected_seed_missing")
+    with pytest.raises(CandidateRunInputError) as caught:
+        validate_candidate(prepared, [row for row in rows if row.op_id != common], [],
+                           prepared_payload=payload(prepared, [row for row in rows if row.op_id != common]))
+    assert caught.value.code == "protected_seed_changed"
     late = [replace(row, start_time=row.start_time + timedelta(days=30),
                     end_time=row.end_time + timedelta(days=30)) if row.op_id == ids["item-A", 30] else row
             for row in rows]

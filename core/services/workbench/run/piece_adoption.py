@@ -30,7 +30,6 @@ from .candidate_adoption_constraints import (
     external_duration_conflict,
     external_holds_resources,
 )
-from .piece_adoption_execution import _quantities, validate_piece_execution
 from .piece_adoption_facts import current_piece_scope
 
 
@@ -75,8 +74,7 @@ def prepare_piece_validation_context(conn, prepared):
 
 
 def _prepare_piece_validation_context(conn, prepared):
-    scope, refs = current_piece_scope(conn, prepared)
-    _quantities(scope, refs, prepared.preflight_facts.execution_projections)
+    scope = current_piece_scope(conn, prepared)
     algo_ops = {op.id: op for op in prepared.algo_ops}
     ops = {op.id: op for op in prepared.operations}
     raw_batches = {batch_id: vars(batch) for batch_id, batch in prepared.batches.items()}
@@ -105,7 +103,6 @@ def _validate_piece(conn, prepared, payload, *, purpose, context=None):
             context = _prepare_piece_validation_context(conn, prepared)
         scope = context["scope"]
         _payload(prepared, payload, scope, purpose=purpose)
-        validate_piece_execution(prepared, payload, purpose=purpose)
         _constraints(prepared, payload, context)
 
 

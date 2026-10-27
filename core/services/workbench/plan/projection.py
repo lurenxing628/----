@@ -105,8 +105,6 @@ def read_adopted_task_facts(conn, plan_ref, *, context):
 
     try:
         evidence = adopted_source_record(plan_ref, context=context)
-        if evidence is None:
-            return {}, "plan_target_not_recorded", None
         basis, arranged = evidence["basis"], evidence["arranged"]
         source = evidence["generation_facts"] if basis == "candidate_adoption" else evidence["trial_source"]
         result = _source_quantities(basis, arranged, source)

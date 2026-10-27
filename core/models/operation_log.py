@@ -22,10 +22,13 @@ class OperationLog:
 
     @classmethod
     def from_row(cls, row: RowLike) -> OperationLog:
+        log_level = str(row["log_level"] or "").strip()
+        if not log_level:
+            raise ValueError("OperationLogs.log_level cannot be empty")
         return cls(
             id=parse_optional_int(row["id"], field="id"),
             log_time=row["log_time"],
-            log_level=str(row["log_level"] or "INFO"),
+            log_level=log_level,
             module=str(row["module"]),
             action=str(row["action"]),
             target_type=row["target_type"],

@@ -70,9 +70,8 @@ def test_snapshot_reuses_raw_requirements_and_projected_rows_preserving_sqlite_s
         assert facets["row_count"] == 6
         index = reader.table_index(scope)
         records, page = reader.page(scope)
-        assert page["total"] == 6 and all(record is index.rows[record.identity.entity_key] for record in records)
-        assert reader.matching_rows(scope) == [{"business_code": record.identity.entity_key,
-                                              "ref": record.identity.ref, "revision": 1} for record in records]
+        assert page["total"] == 6 and all(record.state["material"] is index.rows[record.identity.entity_key] for record in records)
+        assert reader.matching_rows(scope) == [record.state["material"] for record in records]
         assert reader.facet_selection(scope, "spec")["total"] == len(facets["options"])
         filtered = MaterialPageRequest(column_filters={"status": {"mode": "include", "values": [index.cells["M1"]["status"].key]}})
         records, page = reader.page(filtered)

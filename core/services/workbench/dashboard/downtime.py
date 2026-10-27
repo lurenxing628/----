@@ -1,5 +1,6 @@
 """Actual registered downtime versus the exact current formal task intervals."""
 
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
 
 from core.models.workbench_dashboard import MAX_FACT_ROWS, bounded
@@ -65,6 +66,34 @@ def _task(task, raw_task, resource_rows, index):
                          {"task": raw_task, "resource": resource, "downtimes": index["all_rows"][key],
                           "identity": index["machine_identities"][key]})
     return result, bad, len(details)
+
+
+def downtime_overlap_count(facts):
+    if "downtime" in facts._observations:
+        return sum(1 for item in facts._observations["downtime"][0] if item["source"]["known_overlap_hours"])
+    raw, refs = (facts.raw[key] for key in ("MachineDowntimes", "WorkbenchDashboardDowntimeRefs"))
+    index = _index(raw, refs)
+    bounds = {
+        key: (
+            sorted(start for start, _, _ in windows),
+            sorted(end for _, end, _ in windows),
+        )
+        for key, windows in index["windows"].items()
+    }
+    overlaps, intersections = 0, 0
+    for task, raw_task in zip(facts.tasks, facts.task_rows):
+        if raw_task["source"] == "external":
+            continue
+        key = raw_task["machine_id"]
+        if key not in index["indexes"]:
+            continue
+        low, high = instant(task["start"]), instant(task["end"])
+        if index["indexes"][key].hours_between(low, high):
+            overlaps += 1
+            starts, ends = bounds[key]
+            intersections += bisect_left(starts, high) - bisect_right(ends, low)
+            bounded(range(intersections), MAX_FACT_ROWS)
+    return overlaps
 
 
 def downtime(facts):

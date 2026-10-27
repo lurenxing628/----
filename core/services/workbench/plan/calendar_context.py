@@ -5,7 +5,6 @@ from collections import namedtuple
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.services.capacity.plan_calendar_intervals import instant
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
-from core.services.workbench.facts.zero_duration_evidence import overlaps
 
 SelectedPlanContext = namedtuple("SelectedPlanContext", "rows start end time_scope binding")
 
@@ -15,31 +14,12 @@ def require_snapshot(conn):
         raise RuntimeError("Plan projections require a caller-owned read transaction.")
 
 
-def selected_context(conn, entry, scope, rows, resources, plan_span, *, read_context):
+def selected_context(conn, entry, scope, rows, resources, plan_span):
     require_snapshot(conn)
-    if not entry.can_view or entry.plan_identity is None:
-        raise WorkbenchCommandRejected("plan_unavailable", "所选计划暂不可用，请刷新列表后重新选择。")
     time_scope = scope.time_scope(plan_span)
     start, end = instant(time_scope["range_start"]), instant(time_scope["range_end"])
-    if start > end or (start == end and scope.range_start is not None):
-        raise WorkbenchCommandRejected("plan_unavailable", "查询的时间范围无效。请重新选择起止日期。")
-    selected = _selected_rows(entry, scope, rows, start, end, read_context=read_context)
-    binding = _context_binding(entry, scope, selected, resources, time_scope)
-    return SelectedPlanContext(selected, start, end, time_scope, plain_plan_facts(binding))
-
-
-def _selected_rows(entry, scope, rows, start, end, *, read_context):
-    selected, unique = [], {}
-    times = read_context.datetime_intervals(entry)
-    for row in rows:
-        low, high = times[row["schedule_id"]]
-        key = row["schedule_id"]
-        if key in unique and unique[key] != row:
-            raise WorkbenchCommandRejected("plan_unavailable", "同一条安排读到了两份不一样的数据，算不出实际占用。请刷新后重试。")
-        if key not in unique and (scope.range_start is None or overlaps(low, high, start, end)):
-            selected.append(row)
-        unique[key] = row
-    return selected
+    binding = _context_binding(entry, scope, rows, resources, time_scope)
+    return SelectedPlanContext(rows, start, end, time_scope, plain_plan_facts(binding))
 
 
 def _context_binding(entry, scope, selected, resources, time_scope):

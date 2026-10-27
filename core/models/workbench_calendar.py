@@ -6,16 +6,17 @@ import math
 import re
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from core.errors import ValidationError
 from core.models.calendar_periods import normalize_periods
-from core.models.workbench_operator_calendar import operator_clock
+from core.models.workbench_resource_input import resource_object
 
 # Reuse CalendarEngine.MAX_CALENDAR_DAYS' domain magnitude, counting inclusive dates.
 # The prototype has no day-count cap; this is an adapter admission bound, not a UI limit.
 MAX_CALENDAR_RANGE_DAYS = 36500
 CALENDAR_PREVIEW_TTL_SECONDS = 900
+TIME = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]\Z")
 _FIELDS = frozenset(("type", "hours", "eff", "allowNormal", "allowUrgent", "note", "shiftStart", "shiftEnd", "periods"))
 _DOMAIN_FIELDS = {"periods": "periods", "hours": "shift_hours", "eff": "efficiency", "allowNormal": "allow_normal",
                   "allowUrgent": "allow_urgent", "note": "remark", "type": "day_type",
@@ -38,12 +39,26 @@ def calendar_date(value: Any, field: str = "date") -> str:
         raise ValidationError("日期不存在，请核对年月日。", field=field) from exc
 
 
-def _object(value: Any, allowed, field: str) -> Dict[str, Any]:
-    if type(value) is not dict:
-        raise ValidationError("提交内容格式不对，这次操作没有执行。请刷新页面后重试。", field=field)
-    if any(type(key) is not str or key not in allowed for key in value):
-        raise ValidationError("提交内容含有不支持的项，这次操作没有执行。请刷新页面后重试。", field=field)
+def operator_clock(value: Any, field: str) -> str:
+    """班次时刻只收 HH:MM，秒必须为零，跨零点由结束早于开始表达。"""
+    if type(value) is not str or TIME.fullmatch(value) is None:
+        raise ValidationError("时刻必须填成 08:00 这样的 24 小时制，分钟到分为止。", field=field)
     return value
+
+
+def calendar_note(raw: Any, path: str) -> Optional[str]:
+    if raw is None:
+        return None
+    if type(raw) is not str:
+        raise ValidationError("备注必须是文字或 null。", field=path)
+    return raw.strip() or None
+
+
+def calendar_choice(key: str, raw: Any, path: str) -> str:
+    choices = ("work", "rest") if key == "type" else ("yes", "no")
+    if type(raw) is not str or raw not in choices:
+        raise ValidationError("请选择有效的日历选项。", field=path)
+    return raw
 
 
 def _number(value: Any, field: str, maximum: float, *, positive: bool = False) -> float:
@@ -67,19 +82,12 @@ def _field_value(key: str, raw: Any) -> Any:
     if key in ("shiftStart", "shiftEnd"):
         return None if raw is None and key == "shiftEnd" else operator_clock(raw, path)
     if key == "note":
-        if raw is None:
-            return None
-        if type(raw) is not str:
-            raise ValidationError("备注必须是文字或 null。", field=path)
-        return raw.strip() or None
-    choices = ("work", "rest") if key == "type" else ("yes", "no")
-    if type(raw) is not str or raw not in choices:
-        raise ValidationError("请选择有效的日历选项。", field=path)
-    return raw
+        return calendar_note(raw, path)
+    return calendar_choice(key, raw, path)
 
 
 def _fields(value: Any) -> Dict[str, Any]:
-    fields = _object(value, _FIELDS, "fields")
+    fields = resource_object(value, _FIELDS, "fields")
     result = {key: _field_value(key, raw) for key, raw in fields.items()}
     if result.get("type") == "rest":
         rest = {"hours": 0.0, "allowNormal": "no", "allowUrgent": "no"}
@@ -104,7 +112,7 @@ def normalize_calendar_input(action: str, payload: Any) -> Dict[str, Any]:
     """
     if type(action) is not str or action not in _INPUTS:
         raise ValidationError("不支持的日历操作。", field="action")
-    payload = _object(payload, _INPUTS[action], "input")
+    payload = resource_object(payload, _INPUTS[action], "input")
     if action == "confirm":
         ref = payload.get("preview_ref")
         if type(ref) is not str or re.fullmatch(r"[0-9a-f]{32}", ref) is None:

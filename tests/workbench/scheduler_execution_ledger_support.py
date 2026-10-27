@@ -5,8 +5,6 @@ from core.services.scheduler.execution.execution_fact_provider import ExecutionF
 from core.services.scheduler.execution.execution_plan_identity import current_execution_plan
 from data.repositories.workbench_plan_identity_repo import WorkbenchPlanIdentityRepository
 
-PLAN_FIELDS = {"source_table": "schedule", "effective_plan_role": "adopted"}
-
 
 def plan_rows(conn, version):
     return [dict(row) for row in conn.execute("""SELECT s.id AS schedule_id, s.version, s.op_id, b.batch_id
@@ -19,7 +17,7 @@ def read_facts(conn, version=1):
     refs = WorkbenchPlanIdentityRepository(conn).get_operation_refs(row["op_id"] for row in rows)
     projections = ExecutionLedgerReader(conn, current_plan_provider=current_execution_plan).project_operations(
         sorted({refs[row["op_id"]] for row in rows}))
-    return ExecutionFactProvider(conn).facts_by_op_id_for_plan_rows(rows, PLAN_FIELDS, execution_projections=projections)
+    return ExecutionFactProvider(conn).facts_by_op_id_for_plan_rows(rows, execution_projections=projections)
 
 
 def formal_rows(conn):

@@ -69,7 +69,7 @@ def publish_official_plan(conn, version, rows, *, adopted_at=START, operator="lo
                 "blocked_reasons": [], "source_run_ref": run_ref}
     WorkbenchCommandRepository(conn).insert(
         request_key=request_key, receipt_ref=format(0xB0000000 + version, "032x"), action="scheduling.candidate.adopt",
-        context_ref=candidate_ref, input_json=content_text(PLAN_INTENT, json_input=True),
+        context_ref=candidate_ref, input_json=content_text({"confirm": True, **PLAN_INTENT}, json_input=True),
         outcome=WorkbenchCommandOutcome("committed", {"candidate_ref": candidate_ref, "run_ref": run_ref,
                                                       "official_plan": official, "row_count": len(rows)}))
     return plan_ref

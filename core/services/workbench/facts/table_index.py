@@ -1,13 +1,12 @@
 """Whole-cell AND/OR filtering and toolbar-only distincts, independent of SQL."""
 
 from core.models.workbench_command import WorkbenchCommandRejected
-from core.models.workbench_resource_table_query import MAX_FACET_KEYS, table_query_required, validate_facet_request
+from core.models.workbench_resource_table_query import MAX_FACET_KEYS, validate_facet_request
 
 
 class ResourceTableIndex:
-    def __init__(self, rows, cells, legacy_values=None):
+    def __init__(self, rows, cells):
         self.rows, self.cells = rows, cells
-        self.legacy_values = legacy_values
 
     def matching_keys(self, query):
         filters = [(column, condition["mode"], set(condition["values"])) for column, condition in query.column_filters.items()]
@@ -19,15 +18,7 @@ class ResourceTableIndex:
         return keys
 
     def _order(self, code, query):
-        if self.legacy_values is not None and not table_query_required(query):
-            value = self.legacy_values[code][query.sort]
-            return (0, "") if value is None else (1, value)
         return self.cells[code][query.sort].order
-
-    def page(self, query):
-        keys = self.matching_keys(query)
-        start = (query.number - 1) * query.size
-        return [self.rows[code] for code in keys[start:start + query.size]], len(keys)
 
     def _options(self, column, search):
         options = {}

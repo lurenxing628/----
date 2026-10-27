@@ -188,7 +188,7 @@ class GenerationFacts:
 
     def operation_type_labels(self, type_id):
         ref = self.entity_refs.get(("op_type", type_id)) if type(type_id) is str else None
-        label = self.tables.get("OpTypes", {}).get(type_id, {}).get("name") if type(type_id) is str else None
+        label = self.tables["OpTypes"].get(type_id, {}).get("name") if type(type_id) is str else None
         return {"process_type_ref": ref, "process_type_label": label if type(label) is str else None}
 
 

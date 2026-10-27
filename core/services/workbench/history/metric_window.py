@@ -36,10 +36,6 @@ def history_window(packet, query):
             if explicit is not None:
                 day = explicit["start_date"]
                 anchor = day + "T00:00:00" if type(day) is str else None
-            else:
-                tasks = packet["saved"]["tasks"]
-                starts = [task.get("start") for task in tasks if task.get("start") is not None]
-                anchor = min(starts) if starts else None
         start, end = _fixed_window(anchor, days)
     reason = None if start is not None and end is not None else {
         "code": "history_window_start_missing", "message": "保存来源未记录有效排产起点，固定资源窗口未知。"}

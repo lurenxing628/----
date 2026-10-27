@@ -7,6 +7,7 @@ import re
 from typing import Any, Dict
 
 from core.errors import ValidationError
+from core.models.workbench_resource_input import resource_object, resource_text
 from core.models.workbench_resource_status import reasoned_resource_state
 
 #: 解析器认的状态代号。描述符那份在 workbench_resource_file.ENUMS，两份是有意分开的：
@@ -20,22 +21,6 @@ _TOP_LEVEL = {
     "delete": frozenset(),
 }
 _FIELDS = frozenset(("default_days", "status", "remark"))
-
-
-def _object(value, allowed, path):
-    if type(value) is not dict:
-        raise ValidationError("提交内容格式不对，这次操作没有执行。请刷新页面后重试。", field=path)
-    if any(type(key) is not str or key not in allowed for key in value):
-        raise ValidationError("提交内容含有不支持的项，这次操作没有执行。请刷新页面后重试。", field=path)
-    return value
-
-
-def _text(value, path, clearable=False):
-    if value is None and clearable:
-        return None
-    if type(value) is not str or (not value.strip() and not clearable):
-        raise ValidationError("这一项必须填文字，不能为空。", field=path)
-    return value.strip() or None
 
 
 def _days(value):
@@ -52,7 +37,7 @@ def _days(value):
 
 
 def _relationships(value):
-    relation = _object(value, {"op_type_refs"}, "relationships")
+    relation = resource_object(value, {"op_type_refs"}, "relationships")
     refs = relation.get("op_type_refs")
     if type(refs) is not list or any(type(ref) is not str or re.fullmatch(r"[0-9a-f]{48}", ref) is None for ref in refs):
         raise ValidationError("请从列表里选工种，而且要一次提交完整的工种列表。", field="relationships.op_type_refs")
@@ -64,21 +49,21 @@ def _relationships(value):
 def normalize_supplier_input(action: str, payload: Any) -> Dict[str, Any]:
     if type(action) is not str or action not in _TOP_LEVEL:
         raise ValidationError("不支持的供应商操作。", field="action")
-    payload = _object(payload, _TOP_LEVEL[action], "input")
+    payload = resource_object(payload, _TOP_LEVEL[action], "input")
     if action == "delete":
         return {}
     result: Dict[str, Any] = {}
     if action == "create":
-        result["business_code"] = _text(payload.get("business_code"), "business_code")
+        result["business_code"] = resource_text(payload.get("business_code"), "business_code")
     if action == "create" or "label" in payload:
-        result["label"] = _text(payload.get("label"), "label")
-    fields = _object(payload.get("fields", {}), _FIELDS, "fields")
+        result["label"] = resource_text(payload.get("label"), "label")
+    fields = resource_object(payload.get("fields", {}), _FIELDS, "fields")
     normalized = {}
     for key, value in fields.items():
         if key == "default_days":
             normalized[key] = _days(value)
         elif key == "remark":
-            normalized[key] = _text(value, "fields.remark", clearable=True)
+            normalized[key] = resource_text(value, "fields.remark", nullable=True)
         else:
             if type(value) is not str or value not in STATUS_VALUES:
                 raise ValidationError("状态只能选启用、待复核或停用。", field="fields.status")

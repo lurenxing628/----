@@ -71,7 +71,8 @@ def _resolver(originals, calls):
             key: row[key] for key in ("source", "supplier", "machine", "operator", "data_gaps")}
             for row in source.tasks}
         return {"evidence": {"audit": audit, "arranged": [row["payload"] for row in source.raw_tasks]},
-                "origins": origins, "point_work": lambda: work}
+                "origins": origins, "point_work": lambda: work,
+                "operation_effort": None, "operation_types": {}, "operation_standards": {}}
     return resolve
 
 
@@ -285,6 +286,14 @@ def test_formal_deferred_ids_use_original_stage_source_independently_of_current_
     invalid = _read(wrong, decision_baseline_source_resolver(case.conn))
     assert invalid["deferred_operation_ids"] == []
     assert any(row["code"] == "deferred_operation_evidence_invalid" for row in invalid["source_refs"][0]["data_gaps"])
+    audit.pop("request_key")
+    with pytest.raises(WorkbenchCommandRejected) as exc:
+        decision_baseline_source_resolver(case.conn)(
+            plan_ref=official["plan_ref"],
+            version=official["version"],
+            history={"version": official["version"], "result_summary": json.dumps(audit)},
+        )
+    assert exc.value.code == "adoption_snapshot_invalid"
 
 
 def test_source_runtime_effort_and_type_keep_saved_context_without_recalculation():
@@ -319,7 +328,7 @@ def test_source_runtime_effort_and_type_keep_saved_context_without_recalculation
     rows = [{"operation_ref": op_ref, "original": {"operation": operation, "execution": facts.execution[op_ref]}}]
     trial_evidence = {"basis": "trial_adoption", "trial_source": prepare_trial_adoption_facts(({}, head, rows))}
     # A base requirement cannot supply a missing saved trial's current ledger.
-    assert _operation_metadata(({}, head, rows), trial_evidence) == (None, types, standards)
+    assert _operation_metadata(({"operation_effort": None}, head, rows), trial_evidence) == (None, types, standards)
     saved = {"operation_effort": ledger}
     assert _operation_metadata((saved, head, rows), trial_evidence)[0] is ledger
     rows[0]["current"] = {"operation_effort": ledger["items"][0]}
@@ -327,7 +336,7 @@ def test_source_runtime_effort_and_type_keep_saved_context_without_recalculation
     rows[0]["current"] = {}
     assert _operation_metadata((saved, head, rows), trial_evidence)[1] == types
     head["admission"]["source"].pop("operation_types")
-    assert _operation_metadata(({}, head, rows), trial_evidence)[1] == {op_ref: {"ref": None, "label": None}}
+    assert _operation_metadata(({"operation_effort": None}, head, rows), trial_evidence)[1] == {op_ref: {"ref": None, "label": None}}
 
 
 @pytest.mark.parametrize("captured", [False, True])
@@ -350,10 +359,11 @@ def test_trial_resolver_prepares_each_scenario_once_and_keeps_original_resource_
                                       ("operator", "O", operator_ref))]}}
 
     original = sources._TrialResourceFacts(archive("original"))
-    saved = {"scenario_ref": scenario_ref, "baseline": {"plan_ref": baseline_ref, "version": 1}}
+    saved = {"scenario_ref": scenario_ref, "baseline": {"plan_ref": baseline_ref, "version": 1},
+             "operation_effort": None}
     # 以候选为基础的试调来源保存 capture 与全部处置；以正式计划为基础的保存待料编号与缺口。
-    source = ({"capture": {"original": True, "input": {}}, "dispositions": {}} if captured
-              else {"deferred_operation_ids": [], "deferred_operation_issues": []})
+    source = ({"capture": {"original": True, "input": {}}, "dispositions": {}, "trial_operation_types": {}} if captured
+              else {"deferred_operation_ids": [], "deferred_operation_issues": [], "trial_operation_types": {}})
     head = {"draft_ref": draft_ref, "scenario_revision": 2,
             "admission": {"source": source, "facts": archive("assigned")}}
     rows = [{"operation_ref": operation_ref,
@@ -381,6 +391,10 @@ def test_trial_resolver_prepares_each_scenario_once_and_keeps_original_resource_
     monkeypatch.setattr(sources, "load_saved_scenario", load)
     monkeypatch.setattr(sources, "GenerationFacts", generation)
     monkeypatch.setattr(sources, "_TrialResourceFacts", assigned)
+    monkeypatch.setattr(
+        "core.services.workbench.facts.decision_baseline_source.read_adoption_record",
+        lambda conn, *, plan_ref, version, history: ("trial_adoption", json.loads(history["result_summary"]), {}),
+    )
     with sqlite3.connect(":memory:") as conn:
         resolve = decision_baseline_source_resolver(conn)
         for version in (2, 3):

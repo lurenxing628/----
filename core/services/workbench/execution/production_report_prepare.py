@@ -56,7 +56,7 @@ def _merge(action, original, patch):
     for key in REPORT_FIELDS:
         if key not in patch:
             continue
-        if action == "supplement" and original.get(key) not in (None, "") and original[key] != patch[key]:
+        if action == "supplement" and original[key] not in (None, "") and original[key] != patch[key]:
             reject("已有的报工记录不能用「补齐」盖掉。请改用「更正」。", "constraint_conflict", 409)
         values[key] = patch[key]
     return values
@@ -98,7 +98,7 @@ class ReportBatchPreparation:
         fields = ("actual_machine_ref", "actual_operator_ref")
         refs = {item["payload"][field] for item in self.items for field in fields if item["payload"].get(field)}
         refs.update(history[-1]["values"][field] for group in self.facts["reports"].values()
-                    for history in group.values() for field in fields if history[-1]["values"].get(field))
+                    for history in group.values() for field in fields if history[-1]["values"][field])
         self.resources.preload(refs)
 
     def resolve(self):

@@ -37,8 +37,6 @@ def _event(kind, source, identity, time, status, summary, detail):
 
 
 def _restore_records(journal, records):
-    if records is None:
-        records = journal.collection()
     rows = []
     for record in records:
         if record["action"] != "restore":

@@ -122,7 +122,7 @@ class ActualGanttService:
             batches = set(scope.batch_ids)
             rows = [row for row in rows if row["batch_id"] in batches]
         tasks, task_facts, resources, resource_state = context.projected_tasks(scope.plan_ref, rows)
-        selected = selected_context(self.conn, entry, plan_scope, rows, resources, span, read_context=context)
+        selected = selected_context(self.conn, entry, plan_scope, rows, resources, span)
         calendar, calendar_facts = project_plan_calendar(self.conn, scope=plan_scope, resources=resources, selected=selected)
         planned = {"plan": project_plan(entry, scope.plan_ref), "plan_span": span, "tasks": tasks,
                    "resources": resource_directory(rows, resources, tasks=tasks, archived=task_facts["resource_directory"]),

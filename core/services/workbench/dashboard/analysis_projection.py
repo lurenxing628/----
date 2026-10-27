@@ -8,6 +8,8 @@ from core.services.workbench import messages
 from core.services.workbench.facts.resource_pressure import pressure_summary
 from core.services.workbench.facts.resource_projection import RESOURCE_METRIC_VERSION, resource_summary
 
+from .downtime import downtime_overlap_count
+
 
 def _time(value):
     try:
@@ -74,14 +76,10 @@ def _resources(facts, scope, query):
     return result, common
 
 
-def _downtime_record(raw, ref, machine_ref):
-    if ref is None:
-        raise WorkbenchCommandRejected("identity_missing", "停机登记编号缺失，请刷新重试。")
-    start, end = _time(raw["start_time"]), _time(raw["end_time"])
-    valid = raw["status"] == "active" and start is not None and end is not None and start < end
-    return {"downtime_ref": ref, "machine_ref": machine_ref, "start": start, "end": end,
-            "valid": valid, "reason": raw["reason_detail"], "recorded_at": _stored_time(raw["created_at"]),
-            "recorded_at_basis": "local_time"}
+def _downtime_record(raw, ref, machine_ref, machine_label, start, end, valid):
+    return {"downtime_ref": ref, "machine_ref": machine_ref, "machine_label": machine_label,
+            "start": start, "end": end, "valid": valid, "reason": raw["reason_detail"],
+            "recorded_at": _stored_time(raw["created_at"]), "recorded_at_basis": "local_time"}
 
 
 def _downtime_overlaps(sources, tasks):
@@ -94,20 +92,31 @@ def _downtime_overlaps(sources, tasks):
     return overlaps
 
 
-def _downtimes(facts):
+def _downtime_records(facts, *, include_records):
     machines = {str(raw["machine_id"]): task["machine_ref"] for task, raw in zip(facts.tasks, facts.task_rows)
                 if task["machine_ref"] is not None and raw["source"] == "internal"}
-    labels = {str(row["machine_id"]): row["machine_name"] for row in facts.task_rows}
+    labels = {str(row["machine_id"]): row["machine_name"] for row in facts.task_rows} if include_records else {}
     identities = {row["source_id"]: row["ref"] for row in facts.raw["WorkbenchDashboardDowntimeRefs"] if row["active"] == 1}
-    records, issues = [], []
+    records, count, issues = [], 0, []
     for raw in facts.raw["MachineDowntimes"]:
-        if raw["status"] == "cancelled" or str(raw["machine_id"]) not in machines:
+        machine_id = str(raw["machine_id"])
+        if raw["status"] == "cancelled" or machine_id not in machines:
             continue
-        record = _downtime_record(raw, identities.get(raw["id"]), machines[str(raw["machine_id"])])
-        record["machine_label"] = labels.get(str(raw["machine_id"]))
-        records.append(record)
-        if not record["valid"]:
+        ref = identities.get(raw["id"])
+        if ref is None:
+            raise WorkbenchCommandRejected("identity_missing", "停机登记编号缺失，请刷新重试。")
+        start, end = _time(raw["start_time"]), _time(raw["end_time"])
+        valid = raw["status"] == "active" and start is not None and end is not None and start < end
+        count += 1
+        if include_records:
+            records.append((raw, ref, machines[machine_id], labels.get(machine_id), start, end, valid))
+        if not valid:
             issues.append({"code": "downtime_invalid", "message": "有停机记录的起止时间或状态填得不对，没有画成有效的停机条。"})
+    return records, count, issues
+
+
+def _downtimes(facts):
+    records, _count, issues = _downtime_records(facts, include_records=True)
     observations, state = facts.observations("downtime")
     overlaps = [item["source"] for item in observations if item["source"]["known_overlap_hours"]]
     return records, overlaps, issues + state["issues"]
@@ -124,15 +133,23 @@ def _project_execution_slice(selected_execution, tasks):
 
 def project_dashboard_analysis(facts, material, *, query):
     pending, pending_rows = _pending(facts, material)
+    section = query.section
     if facts.plan_state != "loaded":
         resources, downtimes, overlaps, deliveries, execution_obs = [], [], [], [], []
+        downtime_count = overlap_count = 0
         result = {"plan": None, "state": facts.plan_state, "time_scope": None, "tasks": [], "resources": [],
                   "downtimes": [], "overlaps": [], "deliveries": [], "execution": [], "pending": pending,
                   "pressure": {**pressure_summary([]), "count": None}, "resource_common": None, "issues": facts.plan_issues}
     else:
         scope = facts.pressure["time_scope"]
         resources, resource_common = _resources(facts, scope, query)
-        downtimes, overlaps, issues = _downtimes(facts)
+        if section == "downtime":
+            downtimes, overlaps, issues = _downtimes(facts)
+            downtime_count, overlap_count = len(downtimes), len(overlaps)
+        else:
+            downtimes, overlaps = [], []
+            _, downtime_count, issues = _downtime_records(facts, include_records=False)
+            overlap_count = downtime_overlap_count(facts)
         deliveries = facts.delivery["items"]
         execution_obs, execution_state = facts.observations("actual")
         result = {"plan": facts.plan, "state": "available", "time_scope": scope, "tasks": [], "resources": [],
@@ -142,14 +159,13 @@ def project_dashboard_analysis(facts, material, *, query):
     totals = {
         "tasks": len(facts.tasks) if facts.plan_state == "loaded" else 0,
         "resources": len(resources),
-        "downtimes": len(downtimes),
-        "overlaps": len(overlaps),
+        "downtimes": downtime_count,
+        "overlaps": overlap_count,
         "deliveries": len(deliveries),
         "execution": len(execution_obs),
         "pending": pending["known_count"],
         "resource_days": 0,
     }
-    section = query.section
     resource = None
     if section == "resource_days":
         resource = next((row for row in resources if row["resource_ref"] == query.resource_ref), None)
@@ -188,7 +204,7 @@ def project_dashboard_analysis(facts, material, *, query):
         task_refs = {source["task_ref"] for source in selected_overlaps}
         result["tasks"] = _tasks(facts, selected_refs=task_refs)
         result["overlaps"] = _downtime_overlaps(selected_overlaps, result["tasks"])
-        result["downtimes"] = downtimes[low:high]
+        result["downtimes"] = [_downtime_record(*item) for item in downtimes[low:high]]
         batches = {task["batch_ref"] for task in result["tasks"]}
         result["deliveries"] = [row for row in deliveries if row["batch_ref"] in batches]
     elif section == "material":

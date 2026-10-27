@@ -16,8 +16,7 @@ from core.services.workbench.facts.zero_duration import point_event_dto
 from core.services.workbench.facts.zero_duration_evidence import trial_point_evidence
 
 from .arrangements import same_arrangement
-from .effort import operation_types, retained_role
-from .facts import entity_maps
+from .effort import retained_role
 
 
 def _allocation(runtime, *, arranged, deferred=False, source):
@@ -31,6 +30,33 @@ def _allocation(runtime, *, arranged, deferred=False, source):
     return "new_schedule" if role == "new_schedule" else "unknown"
 
 
+def _side_effort(name, ref, context, records, evidence, admission, *, standard=None):
+    op, execution = context["operation"], context["execution"]
+    standard = archived_standard_effort(op, execution) if standard is None else standard
+    current_execution = admission["execution"][ref]
+    runtime = records.get(ref)
+    if runtime is not None and runtime["op_id"] != op["id"]:
+        from core.services.workbench.facts.candidate_values import corrupt
+
+        corrupt()
+    value = project_operation_effort(runtime, standard,
+        allocation_state=_allocation(runtime, arranged=context["arranged"], deferred=context["deferred"], source=op["source"]),
+        source=op["source"], execution=current_execution, evidence_source=evidence)
+    if name == "after" and runtime is None and context["arranged"]:
+        row = context["row"]
+        held = row["original"].get("execution_anchor") is not None or same_arrangement(row["current"], row["original"]["arrangement"])
+        role = retained_role(row, current_execution) if held else "new_schedule"
+        value.update(requirement_role=role, allocation_state="external" if op["source"] == "external" else role)
+    return value
+
+
+def after_preparation_rows(admission, current_ledger, *, current_evidence, contexts):
+    after = saved_operation_efforts(current_ledger)
+    return [dict(_side_effort("after", ref, context, after, current_evidence, admission),
+                 operation_ref=ref, arranged=context["arranged"])
+            for ref, context in contexts.items()]
+
+
 def preparation_projection(rows, admission, current_ledger, *, current_evidence, contexts=None, before_efforts=None):
     """The immutable source and the explicit current ledger remain distinct."""
     source = admission["source"]
@@ -42,22 +68,9 @@ def preparation_projection(rows, admission, current_ledger, *, current_evidence,
     for ref, context in contexts.items():
         op, execution = context["operation"], context["execution"]
         standard = archived_standard_effort(op, execution)
-        current_execution = admission["execution"][ref]
         pair = {}
         for name, records, evidence in (("before", before, origin), ("after", after, current_evidence)):
-            runtime = records.get(ref)
-            if runtime is not None and runtime["op_id"] != op["id"]:
-                from core.services.workbench.facts.candidate_values import corrupt
-
-                corrupt()
-            value = project_operation_effort(runtime, standard,
-                allocation_state=_allocation(runtime, arranged=context["arranged"], deferred=context.get("deferred", False), source=op["source"]),
-                source=op["source"], execution=current_execution, evidence_source=evidence)
-            if name == "after" and runtime is None and context["arranged"]:
-                row = context["row"]
-                held = row["original"].get("execution_anchor") is not None or same_arrangement(row["current"], row["original"]["arrangement"])
-                role = retained_role(row, current_execution) if held else "new_schedule"
-                value.update(requirement_role=role, allocation_state="external" if op["source"] == "external" else role)
+            value = _side_effort(name, ref, context, records, evidence, admission, standard=standard)
             pair[name] = value
             summary_rows[name].append(dict(value, operation_ref=ref, arranged=context["arranged"]))
         pairs[ref] = pair
@@ -74,11 +87,7 @@ def preparation_projection(rows, admission, current_ledger, *, current_evidence,
 def trial_changeovers(rows, admission, *, start=None, end=None, next_operation_refs=None, facts=None):
     source = admission["source"]
     types = source.get("operation_types") or {}
-    slot_types = source.get("trial_operation_types")
-    if slot_types is None:
-        tables = admission["facts"]["tables"]
-        refs = entity_maps(tables)
-        slot_types = operation_types(rows, refs, {item["op_type_id"]: item for item in tables["OpTypes"]})
+    slot_types = source["trial_operation_types"]
     if "capture" in source:
         facts = facts if facts is not None else GenerationFacts(source["capture"])
         machine_rows = facts.tables["Machines"].values()

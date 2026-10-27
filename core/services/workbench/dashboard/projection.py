@@ -6,7 +6,6 @@ from core.models.enums import DueState
 from core.models.workbench_batch import STATUSES
 from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_dashboard import MAX_ROWS, bounded
-from core.services.material.stage_availability import MaterialAvailability
 from core.services.workbench.facts.preflight_checks import PreflightChecks, number, stored_date
 
 from .facts import source_issue
@@ -68,19 +67,18 @@ def delivery(facts):
 class _MaterialChecks(PreflightChecks):
     """Reuse the exact readiness rule without loading unrelated resource catalogs."""
 
-    def __init__(self, requirements, stored_batches):
-        self.availability = MaterialAvailability({"BatchMaterials": requirements})
+    def __init__(self, availability, requirements, stored_batches, day):
+        self.availability = availability
+        self.requirements = defaultdict(list)
+        for row in requirements:
+            self.requirements[row["batch_id"]].append(row)
+        self.stored_batches = {row["batch_id"]: row for row in stored_batches}
+        self.day = day
         self._batch_reviewed = {}
         self._batch_readiness = {}
-        self.marks = {row["batch_id"]: row["ready_status"] for row in stored_batches}
 
     def readiness(self, batch):
-        reasons = super().readiness(batch)
-        # 看板传进来的批次齐套是按当前到料算出的结果。批次管理里的维护标记已经是"齐套"、只是料没到够时，
-        # 缺口由逐条物料说明；不再说"这批还没确认齐套"，免得用户去批次管理看到标记明明是齐套。
-        if self.marks.get(batch["batch_id"]) == "yes" and len(reasons) > 1:
-            return [item for item in reasons if item["code"] != "batch_not_ready"]
-        return reasons
+        return super().readiness(self.stored_batches[batch["batch_id"]])
 
 
 def _material_requirement(row, value, material_refs):
@@ -96,7 +94,7 @@ def _material_requirement(row, value, material_refs):
 
 def _material_batch(batch, checks, refs, by_material, material_refs, source_facts):
     reasons = checks.readiness(batch)
-    rows = checks.availability.requirements[batch["batch_id"]]
+    rows = checks.requirements[batch["batch_id"]]
     projected = [_material_requirement(row, by_material.get(row["material_id"]), material_refs) for row in rows]
     status = batch["ready_status"] if batch["ready_status"] in ("yes", "no", "partial") else None
     unknown = status is None or batch["status"] not in STATUSES or any(bad for _, bad in projected)
@@ -134,14 +132,15 @@ def _material_sources(raw):
 
 def material(facts):
     materials = facts.raw["Materials"]
-    batches, requirements = current_material_views(facts.raw, facts.now.date().isoformat())
+    day = facts.now.date().isoformat()
+    batches, requirements, availability = current_material_views(facts.raw, day)
     bounded(batches, MAX_ROWS)
     refs = facts.entity_refs("batch", [row["batch_id"] for row in batches])
     facts.raw["material_batch_refs"] = refs
     material_refs = facts.entity_refs("material", [row["material_id"] for row in materials])
     facts.raw["material_refs"] = material_refs
     by_material = {row["material_id"]: row for row in materials}
-    checks = _MaterialChecks(requirements, facts.raw["Batches"])
+    checks = _MaterialChecks(availability, requirements, facts.raw["Batches"], day)
     source_facts = _material_sources(facts.raw)
     items = [_material_batch(batch, checks, refs, by_material, material_refs, source_facts) for batch in batches]
     unknown = sum(row["risk"]["active"] is None for row in items)

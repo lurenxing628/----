@@ -3,6 +3,7 @@
 from core.infrastructure.connection_guards import schema_contract_memo
 from core.infrastructure.workbench_run_schema import workbench_run_contract_issues
 from core.models.workbench_command import WorkbenchCommandRejected
+from core.services.workbench.facts.adoption_baseline_values import REASONS, AdoptionBaselineUnavailable
 from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_projection import candidate_summary, dispositions, validate_manifest
 from core.services.workbench.facts.candidate_read_source import read_candidate_source
@@ -11,6 +12,7 @@ from core.services.workbench.facts.candidate_values import corrupt
 from core.services.workbench.facts.decision_baseline_source import candidate_evidence, trial_evidence
 from core.services.workbench.facts.decision_metrics import admission_operation_refs
 from core.services.workbench.facts.trial_scenario_archive import load_saved_scenario
+from core.services.workbench.plan.adoption_baseline import read_adoption_record
 from core.services.workbench.run.decision import decision_history_candidate
 from core.services.workbench.run.decision_source import DecisionSource
 
@@ -194,6 +196,20 @@ class HistoryReader:
             raise WorkbenchCommandRejected("history_source_invalid", "历史记录的保存来源缺失，请联系维护人员核对。", 500) from exc
         return packet
 
+    def _verify_adoption_record(self, descriptor):
+        record, source = descriptor["record"], descriptor["source"]
+        try:
+            return read_adoption_record(
+                self.conn,
+                plan_ref=source["plan_ref"],
+                version=source["version"],
+                history=record["history"],
+                receipt=record["receipt"],
+                receipt_result=record["outcome"],
+            )[1]
+        except AdoptionBaselineUnavailable as exc:
+            raise WorkbenchCommandRejected("adoption_snapshot_invalid", REASONS[exc.code]) from exc
+
     def _read_run(self, packet, refs, descriptor):
         record = descriptor["record"]
         if descriptor["source_kind"] == "run" and "admission" in record:
@@ -206,7 +222,7 @@ class HistoryReader:
             return
         source = self._candidate(refs["run_ref"], candidate_ref)
         if descriptor["source_kind"] == "candidate_adoption":
-            audit = descriptor["record"]["audit"]
+            audit = self._verify_adoption_record(descriptor)
             candidate_evidence(source, audit)
             if len(source.raw_tasks) != audit["row_count"]:
                 raise WorkbenchCommandRejected("history_source_invalid", "采用记录与原候选安排条数不一致。", 500)
@@ -215,7 +231,7 @@ class HistoryReader:
     def _read_trial(self, packet, refs, descriptor):
         source = _cached(self._scenarios, refs["scenario_ref"], lambda: load_saved_scenario(self.conn, refs["scenario_ref"]))
         saved, head, rows = source
-        audit = descriptor["record"]["audit"]
+        audit = self._verify_adoption_record(descriptor)
         trial_evidence(source, audit)
         if len(rows) != audit["row_count"]:
             raise WorkbenchCommandRejected("history_source_invalid", "采用记录与原试调安排条数不一致。", 500)

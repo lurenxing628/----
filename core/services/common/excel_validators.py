@@ -49,6 +49,7 @@ def _normalize_batch_date_cell(value: Any, field_label: str) -> Tuple[Optional[s
 def get_batch_row_validate_and_normalize(
     *,
     parts_cache: dict,
+    max_quantity: Optional[int] = None,
 ) -> Callable[[dict], Optional[str]]:
     """使用已有零件缓存构建“批次信息”Excel 原地归一化校验器。"""
 
@@ -65,7 +66,7 @@ def get_batch_row_validate_and_normalize(
 
         qty = row.get("数量")
         try:
-            q = parse_required_int(qty, field="数量")
+            q = parse_required_int(qty, field="数量", max_value=max_quantity)
             if q <= 0:
                 return "“数量”必须大于 0"
             row["数量"] = q

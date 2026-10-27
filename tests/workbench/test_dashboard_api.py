@@ -554,3 +554,16 @@ def test_plan_without_resource_cohort_beyond_calendar_window_keeps_analysis_read
     for kind in ("machine", "operator"):
         assert first["resource_common"][kind]["unknown_workload_count"] == gaps
     assert reader.analysis(sources, DashboardAnalysisQuery("overview")) == first
+
+
+def test_reviewed_batch_quantity_change_reports_material_review_required_issue(dashboard_case):
+    dashboard_case.command(dashboard_case.item("material"), follow())
+    req_id = dashboard_case.conn.execute("SELECT id FROM BatchMaterials WHERE batch_id='DB1'").fetchone()[0]
+    dashboard_case.conn.execute(
+        "INSERT INTO BatchMaterialReviews(requirement_id,batch_quantity) VALUES (?,2)",
+        (req_id,),
+    )
+    dashboard_case.conn.execute("UPDATE Batches SET quantity=5, ready_status='yes' WHERE batch_id='DB1'")
+    dashboard_case.conn.commit()
+    item = dashboard_case.item("material")
+    assert [row["code"] for row in item["source"]["readiness_issues"]] == ["material_review_required"]

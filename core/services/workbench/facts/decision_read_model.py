@@ -4,7 +4,6 @@ from copy import deepcopy
 from typing import Any, Dict, List, Optional, overload
 
 from core.models.workbench_preflight import preflight_window
-from core.shared.strict_json import canonical_json
 
 from .admission_scope import project_admitted_scope
 from .candidate_delivery import project_delivery_detail
@@ -108,7 +107,7 @@ class _Members:
 def build_admission_read_model(capture, *, facts):
     """Small history/status scope; the decision block lives in its separate column."""
     options = dict(capture["run_options"])
-    summary = dict(scope_summary(canonical_json(capture["input"])), run_options=options)
+    summary = dict(scope_summary(capture["input"]), run_options=options)
     workload = project_admitted_scope(capture["input"], facts, summary=summary)
     return {"scope_summary": summary, "input": capture["input"], "run_options": options,
             **{field: workload[field] for field in ("batches", "operation_count", "objective", "objective_label")},
@@ -278,14 +277,14 @@ def _header_artifact(artifact):
 
 
 def _header(run, receipt, candidates):
-    saved_manifest = {row["candidate_ref"]: row for row in receipt.get("candidates", [])}
+    saved_manifest = {row["candidate_ref"]: row for row in receipt["candidates"]}
     manifest = [dict(candidate_ref=row["candidate_ref"], run_ref=row["run_ref"],
         sequence=row["sequence"], candidate_key=row["artifact"].get("candidate_key"),
         **{field: saved_manifest[row["candidate_ref"]][field] for field in ("label", "status", "task_count", "selected")},
         artifact=_header_artifact(row["artifact"])) for row in candidates]
     summary = receipt.get("summary") or {}
-    return {"state": receipt.get("state", run["state"]), "result_persisted": receipt.get("result_persisted", False),
-        "error": failure_reason(dict(run, state=receipt.get("state", run["state"])), receipt), "candidates": manifest,
+    return {"state": receipt["state"], "result_persisted": receipt["result_persisted"],
+        "error": failure_reason(dict(run, state=receipt["state"]), receipt), "candidates": manifest,
         "selection": receipt.get("selection"),
         "summary": {key: value for key, value in summary.items() if type(value) in (int, float, str, bool) or value is None}}
 

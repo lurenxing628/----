@@ -8,7 +8,7 @@ from core.services.workbench.facts.candidate_facts import (
     operation_ref_rows,
 )
 from core.services.workbench.facts.candidate_values import corrupt
-from core.services.workbench.facts.trial_origin import operation_contexts
+from core.services.workbench.facts.trial_origin import delivery_origin, operation_contexts
 
 
 def _table_paths(rows, key, prefix):
@@ -35,6 +35,7 @@ class ConditionSource:
         self.archive = self.input = self.execution = self.baseline = None
         self.artifact = self.raw_tasks = self.trial_rows = self.saved = self.calendar = None
         self.original_archive = self._original_calendar = None
+        self.original_facts = self.delivery_origin = self.trial_contexts = None
         self.operations, self.batches, self.entity_refs = {}, {}, {}
         self.original_entity_refs = {}
         self._input_paths = {}
@@ -101,7 +102,7 @@ class ConditionSource:
                 self.batches[batch_ref] = original["batch"]
                 self._batch_paths[batch_ref] = f"rows[{index}].original.batch"
         self._trial_unplanned(admission)
-        self._trial_input(admission, self.saved)
+        self._trial_input(admission)
 
     def _trial_unplanned(self, admission):
         source = admission["source"]
@@ -121,11 +122,14 @@ class ConditionSource:
             operations, batches = index_rows(self.table("BatchOperations"), "id"), index_rows(self.table("Batches"), "batch_id")
             refs, entity_refs = operation_ref_rows(self.table("WorkbenchPlanSourceRefs")), self.entity_refs
             prefix = self._origins["environment"]
+        self.original_facts = facts
         self.original_entity_refs = entity_refs
         self._origins["original"] = prefix
         op_paths = _table_paths(operations.values(), "id", prefix + ".tables.BatchOperations")
         batch_paths = _table_paths(batches.values(), "batch_id", prefix + ".tables.Batches")
-        for ref in operation_contexts(self.trial_rows, admission, facts):
+        self.delivery_origin = delivery_origin(admission, self.trial_rows, facts)
+        self.trial_contexts = operation_contexts(self.trial_rows, admission, facts, origin=self.delivery_origin)
+        for ref in self.trial_contexts:
             key = refs.get(ref)
             if key not in operations or ref in self.operations:
                 continue
@@ -136,7 +140,7 @@ class ConditionSource:
             if batch_ref is not None and batch_id in batches and batch_ref not in self.batches:
                 self.batches[batch_ref], self._batch_paths[batch_ref] = batches[batch_id], batch_paths[batch_id]
 
-    def _trial_input(self, admission, saved):
+    def _trial_input(self, admission):
         source = admission["source"]
         self.input = {}
         inputs = ((admission["input"], "head.admission.input"),
@@ -150,18 +154,11 @@ class ConditionSource:
             for key, value in values.items():
                 self.input[key], self._input_paths[key] = value, prefix + "." + key
         date_inputs = (inputs[0], inputs[2], inputs[1])
-        for key, field, boundary in (("start_date", "start", min), ("end_date", "end", max)):
+        for key in ("start_date", "end_date"):
             for values, prefix in date_inputs:
                 if values is not None and key in values:
                     self.input[key], self._input_paths[key] = values[key], prefix + "." + key
                     break
-            else:
-                tasks = saved.get("tasks")
-                if tasks:
-                    index, task = boundary(enumerate(tasks), key=lambda item: item[1][field])
-                    value = task[field]
-                    self.input[key] = value[:10] if type(value) is str else value
-                    self._input_paths[key] = f"saved.tasks[{index}].{field}"
 
     def table(self, name):
         """Keep saved empty tables distinct from missing tables and columns."""

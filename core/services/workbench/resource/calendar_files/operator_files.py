@@ -15,6 +15,7 @@ from core.infrastructure.transaction import TransactionManager
 from core.models.calendar import OperatorCalendar
 from core.models.calendar_period_columns import export_period_columns, parse_period_columns
 from core.models.workbench_action_values import FileDownload
+from core.models.workbench_calendar import operator_clock
 from core.models.workbench_calendar_file import (
     CLOCK_FIELDS,
     CODE_FIELDS,
@@ -35,7 +36,7 @@ from core.models.workbench_command import (
     WorkbenchCommandOutcome,
     WorkbenchCommandRejected,
 )
-from core.models.workbench_operator_calendar import apply_rest_day_rules, operator_clock
+from core.models.workbench_operator_calendar import apply_rest_day_rules
 from core.models.workbench_resource_action import (
     action_row,
     check_resource_preview,

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from typing import Any, Dict
@@ -12,7 +11,6 @@ from core.models.workbench_command import WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_material_query import MaterialPageRequest
 from core.models.workbench_resource_table_query import table_query_required, toolbar_scope
-from core.shared.strict_parse import is_exact_non_negative_number
 from data.repositories.workbench_identity_repo import WorkbenchIdentityRepository
 from data.repositories.workbench_material_query_repo import WorkbenchMaterialQueryRepository
 
@@ -20,7 +18,9 @@ from .table_facts import (
     damaged_material_status,
     material_counts,
     material_ordered_rows,
+    material_ref,
     material_status,
+    material_stock,
     material_table_index,
     material_toolbar_rows,
 )
@@ -39,19 +39,13 @@ def _validate_ref(ref):
 
 
 def _project(row):
-    if type(row.get("ref")) is not str or re.fullmatch(r"[0-9a-f]{48}", row["ref"]) is None or row.get("revision") is None:
-        raise WorkbenchCommandRejected("storage_failure", "物料缺少系统编号，请联系维护人员核对资料。", 500)
-    stock = row["stock_qty"]
-    if stock is not None and not is_exact_non_negative_number(stock):
-        cause = ValueError("Materials material_id={!r} stock_qty={!r}".format(row["material_id"], stock))
-        raise WorkbenchCommandRejected(
-            "storage_failure", "物料「{}」的库存数量不是 0 或大于 0 的有效数字，请核对原资料。".format(row["material_id"]),
-            500) from cause
+    ref = material_ref(row)
+    stock = material_stock(row)
+    status = material_status(row)
     issues = [{"code": "stock_level_unknown", "scope": "collection", "message": "还没有设置低库存的判断标准。"}]
     if stock is None:
         issues.append({"code": "stock_unknown", "message": "库存数量还没填写。"})
-    status = material_status(row)
-    identity = WorkbenchEntityIdentity(row["ref"], "material", row["material_id"], int(row["revision"]), True)
+    identity = WorkbenchEntityIdentity(ref, "material", row["material_id"], int(row["revision"]), True)
     entity = {"ref": identity.ref, "business_code": row["material_id"], "label": row["name"],
               "status": status, "fields": {key: row[key] for key in ("spec", "unit", "stock_qty", "remark")},
               "relationships": {"batch_requirement_count": int(row["requirement_count"])}, "issues": issues}
@@ -69,7 +63,13 @@ class WorkbenchMaterialQueryService:
     def read_snapshot(self):
         with TransactionManager(self.conn).transaction():
             previous = self._snapshot
-            self._snapshot = {"fingerprint": None, "records": {}, "indexes": {}, "scopes": {}, "orders": {}}
+            self._snapshot = {
+                "fingerprint": None,
+                "records": {},
+                "indexes": {},
+                "scopes": {},
+                "orders": {},
+            }
             try:
                 yield self.state_fingerprint()
             finally:
@@ -107,7 +107,7 @@ class WorkbenchMaterialQueryService:
     def metrics(self, query: MaterialPageRequest):
         if query.column_filters:
             index = self.table_index(query)
-            rows = [index.rows[code].state["material"] for code in index.matching_keys(query)]
+            rows = [index.rows[code] for code in index.matching_keys(query)]
             counts = material_counts(rows)
         else:
             counts = self.toolbar_metrics(query)
@@ -154,21 +154,30 @@ class WorkbenchMaterialQueryService:
             raise WorkbenchCommandRejected("storage_failure", "物料的系统编号和实际记录对不上。请刷新重试；仍不行请联系维护人员。", 500)
         return self._record(row)
 
+    def _ordered_rows(self, query: MaterialPageRequest):
+        if self._snapshot is not None and self._snapshot["fingerprint"] is not None:
+            key = (tuple(toolbar_scope(query).items()), query.sort, query.direction)
+            orders = self._snapshot["orders"]
+            if key not in orders:
+                orders[key] = material_ordered_rows(self._toolbar_rows(query), query)
+            return orders[key]
+        return material_ordered_rows(self._toolbar_rows(query), query)
+
     def count(self, query: MaterialPageRequest) -> int:
-        if table_query_required(query):
+        if query.column_filters:
             return len(self.table_index(query).matching_keys(query))
         return len(self._toolbar_rows(query))
 
     def page(self, query: MaterialPageRequest):
         if table_query_required(query):
-            records, total = self.table_index(query).page(query)
+            index = self.table_index(query)
+            matching = index.matching_keys(query)
+            start = (query.number - 1) * query.size
+            page_keys = matching[start:start + query.size]
+            records, total = [self._record(index.rows[code]) for code in page_keys], len(matching)
         else:
             if self._snapshot is not None and self._snapshot["fingerprint"] is not None:
-                key = (tuple(toolbar_scope(query).items()), query.sort, query.direction)
-                orders = self._snapshot["orders"]
-                if key not in orders:
-                    orders[key] = material_ordered_rows(self._toolbar_rows(query), query)
-                ordered = orders[key]
+                ordered = self._ordered_rows(query)
                 start = (query.number - 1) * query.size
                 rows, total = ordered[start:start + query.size], len(ordered)
             else:
@@ -184,13 +193,14 @@ class WorkbenchMaterialQueryService:
         key = tuple(toolbar_scope(query).items())
         cache = self._snapshot["indexes"] if self._snapshot is not None else {}
         if key not in cache:
-            cache[key] = material_table_index(self._toolbar_rows(query), self._record)
+            cache[key] = material_table_index(self._toolbar_rows(query))
         return cache[key]
 
     def matching_rows(self, query):
-        index = self.table_index(query)
-        return [{"business_code": code, "ref": index.rows[code].identity.ref, "revision": index.rows[code].identity.revision}
-                for code in index.matching_keys(query)]
+        if table_query_required(query):
+            index = self.table_index(query)
+            return [index.rows[code] for code in index.matching_keys(query)]
+        return self._ordered_rows(query)
 
     def facets(self, query, column, search="", number=1, size=100):
         return self.table_index(query).facets(query, column, search, number, size)

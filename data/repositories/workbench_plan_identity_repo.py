@@ -27,7 +27,6 @@ from core.shared.strict_parse import is_exact_positive_int
 from .base_repo import BaseRepository
 
 _REF_PATTERN = re.compile(r"[0-9a-f]{48}\Z")
-_ROW_SOURCES = {"schedule": ("Schedule", "schedule_row")}
 
 
 def _fail(code: str) -> NoReturn:
@@ -44,10 +43,10 @@ def _catalog_failure(code: str, message: str, plan_ref: Optional[str] = None) ->
     return WorkbenchPlanCatalogReference(plan_ref, False, (WorkbenchPlanReferenceIssue(code, message),))
 
 
-def _catalog_identity_matches(record, locator, expected) -> bool:
+def _catalog_identity_matches(record, locator) -> bool:
     return (isinstance(record["ref"], str) and _REF_PATTERN.fullmatch(record["ref"]) is not None
             and (record["version"], record["plan_role"]) == (locator.version, locator.plan_role)
-            and all(record[column] == value for column, value in expected.items()))
+            and record["kind"] == "official" and record["source_table"] == "schedule")
 
 
 def _requested_task_ids(rows: Iterable[Tuple[Any, Any, Any]], target_version: int) -> Dict[int, int]:
@@ -157,23 +156,17 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
             cached[kind, key] = row
         return row
 
-    def _plan_record(self, locator: WorkbenchPlanLocator, *, history_proven=False) -> Dict[str, Any]:
-        if locator.plan_role != ROLE_ADOPTED:
-            _fail("identity_missing")
+    def _plan_record(self, locator: WorkbenchPlanLocator) -> Dict[str, Any]:
         record = self._source("official", str(locator.version))
         if record is None:
             _fail("identity_missing")
-        self._validate_record(record, locator, history_proven=history_proven)
+        self._validate_record(record, locator)
         return record
 
-    def _validate_record(self, record, locator: WorkbenchPlanLocator, *, history_proven=False) -> None:
-        if (record["version"], record["plan_role"]) != (locator.version, locator.plan_role):
+    def _validate_record(self, record, locator: WorkbenchPlanLocator) -> None:
+        if not _catalog_identity_matches(record, locator):
             _fail("plan_binding_invalid")
-        if locator.plan_role != ROLE_ADOPTED:
-            _fail("plan_binding_invalid")
-        if not history_proven and not self._history_exists(locator.version):
-            _fail("plan_binding_invalid")
-        if record["kind"] != "official" or record["source_table"] != "schedule":
+        if not self._history_exists(locator.version):
             _fail("plan_binding_invalid")
 
     def _resolved_record(self, plan_ref: object):
@@ -202,7 +195,7 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
         return self._resolved_record(plan_ref)[0]
 
     def get_plan_ref(self, locator) -> str:
-        """Also accepts the existing private PlanCatalogLocator's three fields."""
+        """Also accepts the existing private PlanCatalogLocator's two fields."""
         self.read_revision()
         locator = _locator(locator)
         record = self._plan_record(locator)
@@ -211,7 +204,7 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
             cached[record["ref"]] = locator, record
         return str(record["ref"])
 
-    def _catalog_source(self, locator: WorkbenchPlanLocator) -> Optional[Tuple[str, str, Dict[str, Any]]]:
+    def _catalog_source(self, locator: WorkbenchPlanLocator) -> Optional[Tuple[str, str]]:
         if locator.plan_role != ROLE_ADOPTED:
             return None
         history_reader = self._binding_cache("history_reader")
@@ -225,9 +218,7 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
             self._binding_facts["history"][locator.version] = source is not None
         if source is None:
             return None
-        return "official", source["identity_key"], {
-            "version": source["version"], "plan_role": ROLE_ADOPTED, "source_table": "schedule",
-        }
+        return "official", source["identity_key"]
 
     def get_catalog_reference(self, locator) -> WorkbenchPlanCatalogReference:
         """Retain a proven object's ref for a disabled catalog entry, never permission.
@@ -244,19 +235,15 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
         source = self._catalog_source(normalized)
         if source is None:
             return _catalog_failure("source_missing", "计划源对象已不存在。")
-        kind, key, expected = source
+        kind, key = source
         record = self._source(kind, key)
         if record is None:
             return _catalog_failure("identity_missing", "计划的永久身份缺失，不能自动补建。")
-        if not _catalog_identity_matches(record, normalized, expected):
+        if not _catalog_identity_matches(record, normalized):
             return _catalog_failure("identity_invalid", "永久身份与当前计划源对象不一致。")
         plan_ref = record["ref"]
         if invalid_context is not None:
             return _catalog_failure("plan_binding_invalid", invalid_context, plan_ref)
-        try:
-            self._validate_record(record, normalized, history_proven=True)
-        except WorkbenchPlanReferenceError as exc:
-            return _catalog_failure("plan_binding_invalid", str(exc), plan_ref)
         cached = self._binding_cache("resolved")
         if cached is not None:
             cached[plan_ref] = normalized, record
@@ -285,21 +272,18 @@ class WorkbenchPlanIdentityRepository(BaseRepository):
         return output
 
     def _task_rows(self, record, ids):
-        if record["source_table"] not in _ROW_SOURCES:
-            _fail("plan_binding_invalid")
-        table, kind = _ROW_SOURCES[record["source_table"]]
-        params = [record["ref"], kind, *ids, record["version"]]
+        params = [record["ref"], *ids, record["version"]]
         marks = ",".join("?" for _ in ids)
         return self.fetchall(f"""SELECT s.id, s.op_id, r.operation_id, r.operation_ref,
             r.version AS mapped_version, o.ref AS current_operation_ref, t.ref AS task_ref
-            FROM "{table}" s
+            FROM "Schedule" s
             LEFT JOIN WorkbenchPlanSourceRefs r ON r.source_key = CAST(s.id AS TEXT)
                 AND r.active = 1 AND r.source_table = 'schedule'
             LEFT JOIN WorkbenchTaskRefs t ON t.row_ref = r.ref AND t.plan_ref = ?
             LEFT JOIN BatchOperations bo ON bo.id = s.op_id
             LEFT JOIN WorkbenchPlanSourceRefs o ON o.kind = 'operation' AND o.active = 1
                 AND o.source_key = CAST(bo.id AS TEXT)
-            WHERE r.kind = ? AND s.id IN ({marks}) AND s.version = ?""", params)
+            WHERE r.kind = 'schedule_row' AND s.id IN ({marks}) AND s.version = ?""", params)
 
     def get_task_refs(self, plan_ref: str, rows: Iterable[Tuple[Any, Any, Any]]) -> Dict[int, str]:
         """Task refs keyed by schedule id; ``rows`` are the arrangements' ``(schedule_id, op_id, version)``."""

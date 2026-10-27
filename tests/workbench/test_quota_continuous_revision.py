@@ -76,7 +76,8 @@ def test_all_writers_preserve_existing_batches_and_plans_after_adoption(ready_ad
     with TransactionManager(case.conn).transaction(begin_immediate=True):
         old = current(case)
         prepared = prepare_hours({'operations': [{'ref': ref, 'setup_hours': 0, 'unit_hours': 5.5}],
-                                  'groups': [], 'confirm_zero_unit_hours': False}, [old], [], confirmations={})
+                                  'groups': [], 'confirm_zero_unit_hours': False}, [old], [],
+                                 confirmations={'P1': {ref: {'hours': {'state': 'confirmed'}}}})
         assert apply_prepared_hours(case.conn, prepared)
     confirm_hours(case)
     import_hours(case, 6.5, 'csv')

@@ -23,8 +23,6 @@ class ExecutionFact:
     state_revision: str = ""
     schedule_version: Optional[int] = None
     schedule_id: Optional[int] = None
-    source_table: Optional[str] = None
-    effective_plan_role: Optional[str] = None
     ledger_operation_ref: Optional[str] = None
     ledger_execution_state: Optional[str] = None
     remaining_quantity: Optional[int] = None
@@ -45,8 +43,6 @@ def _initial_fact(scope: OperationExecutionScope) -> ExecutionFact:
         batch_id=scope.batch_id,
         schedule_version=scope.schedule_version,
         schedule_id=scope.schedule_id,
-        source_table=scope.source_table,
-        effective_plan_role=scope.effective_plan_role,
     )
 
 
@@ -72,11 +68,10 @@ class ExecutionFactProvider:
     def facts_by_op_id_for_plan_rows(
         self,
         rows: Sequence[Mapping[str, Any]],
-        plan_fields: Mapping[str, Any],
         *,
         execution_projections: Sequence[ExecutionProjection],
     ) -> Dict[int, ExecutionFact]:
-        scopes_by_op_id = scopes_by_op_id_for_plan_rows(rows, plan_fields)
+        scopes_by_op_id = scopes_by_op_id_for_plan_rows(rows)
         facts_by_scope = self.facts_by_scope(
             list(scopes_by_op_id.values()),
             execution_projections=execution_projections,

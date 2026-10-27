@@ -252,7 +252,7 @@ class ResourceTableFacts:
         return result
 
     def index(self, query, codes):
-        rows, cells, legacy_values = {}, {}, {}
+        rows, cells = {}, {}
         records = self.metrics.kind_records(query.kind)
         statuses = None if query.kind == "op_type" else self.metrics._statuses(query.kind)
         for code in codes:
@@ -261,5 +261,4 @@ class ResourceTableFacts:
             raw = records[code]
             status = None if statuses is None else statuses[code]
             cells[code] = self.cells(query.kind, code, query.category, raw=raw, status=status)
-            legacy_values[code] = {"business_code": code, "label": raw["name"], "status": status, "default_days": raw.get("default_days")}
-        return ResourceTableIndex(rows, cells, legacy_values)
+        return ResourceTableIndex(rows, cells)

@@ -215,7 +215,7 @@ class WorkbenchTrialService:
                 result = {**saved, "tasks": [dict(task) for task in saved["tasks"]],
                           "comparison": dict(saved["comparison"]),
                           "capacity": trial_capacity(projected, archive, source_ref=admission["source"]["identity"])}
-                pairs, preparation = preparation_projection(projected, admission, saved.get("operation_effort"),
+                pairs, preparation = preparation_projection(projected, admission, saved["operation_effort"],
                     current_evidence={"kind": "scenario", "scenario_ref": saved["scenario_ref"]}, contexts=contexts)
                 result["unplanned_operations"] = unplanned_operations(contexts)
                 result["scope_complete"] = not result["unplanned_operations"]

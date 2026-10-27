@@ -136,7 +136,9 @@ def test_scenario_fragments_share_exact_logical_limit_without_counting_physical_
 
     tasks = [{"row_ref": format(index, "048x"), "description": "保存任务正文" * 40, "ordinal": index}
              for index in range(1, 5)]
-    snapshot = {"name": "中文试调", "saved_date": date(2026, 10, 15), "binary": b"\x00\xff", "tasks": tasks}
+    effort = {"effort_basis": "runtime_requirement_v1", "items": []}
+    snapshot = {"name": "中文试调", "saved_date": date(2026, 10, 15), "binary": b"\x00\xff",
+                "operation_effort": effort, "tasks": tasks}
     encoded = codec.encode_scenario(snapshot)
     expected_bytes = len(dump(snapshot).encode("utf-8"))
     assert encoded.logical_bytes == expected_bytes
@@ -178,7 +180,8 @@ def test_scenario_row_binding_is_checked_when_assembling_the_saved_rows():
     from core.models.workbench_trial_scenario_archive import encode_scenario
 
     row = {"row_ref": "1" * 48, "content": "保存工序"}
-    encoded = encode_scenario({"name": "试调", "tasks": [row]})
+    encoded = encode_scenario({"name": "试调", "operation_effort": {"effort_basis": "runtime_requirement_v1", "items": []},
+                               "tasks": [row]})
     repo = SimpleNamespace(conn=None, schema_issues=lambda: [],
         scenario_header=lambda _ref: {"snapshot_json": encoded.header},
         iter_scenario_rows=lambda _ref: [{"row_ref": row["row_ref"], "payload_json": dump(dict(row, row_ref="2" * 48))}])

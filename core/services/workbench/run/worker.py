@@ -144,6 +144,6 @@ class WorkbenchRunWorker:
             with TransactionManager(self.conn).transaction(begin_immediate=True):
                 models = build_failure_read_models(row, admission, result)
                 self.repo.insert_decision_read_models(row["run_ref"], models["run_model"], models["candidate_models"])
-                self.repo.finish(row["run_ref"], "failed", result, self._now())
+                self.repo.finish(row["run_ref"], result, self._now())
         except Exception as storage_exc:
             raise WorkbenchCommandUncertain(row["request_key"]) from storage_exc

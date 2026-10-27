@@ -310,7 +310,7 @@ def test_run_without_candidate_results_cannot_reread_its_admission_official_plan
         repo.claim(run_ref, new_run_ref(), "2026-09-10T12:00:01")
         failure = {"state": "failed", "result_persisted": False, "candidates": [],
                    "error": {"code": "fixture_saved_failure", "message": "Saved worker failure"}}
-        repo.finish(run_ref, "failed", failure, "2026-09-10T12:00:02")
+        repo.finish(run_ref, failure, "2026-09-10T12:00:02")
         admission = decode_model(repo.admission_read_model(run_ref, ("decision",)), ("decision",))["decision"]
         models = build_failure_read_models(repo.head(run_ref), admission, failure)
         repo.insert_decision_read_models(run_ref, models["run_model"], models["candidate_models"])

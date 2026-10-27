@@ -52,6 +52,7 @@ class PreflightChecks:
         self.external_contexts = {row["operation_id"]: row for row in tables["BatchExternalContexts"]}
         self.external_members = member_index(self.external_contexts, tables["BatchOperations"])
         self.availability = MaterialAvailability(tables)
+        self.day = date.today().isoformat()
         # 批级齐套结论按批次算一次，同批每道工序复用。
         self._batch_reviewed = {}
         self._batch_readiness = {}
@@ -154,9 +155,11 @@ class PreflightChecks:
 
     def _batch_reasons(self, batch):
         if self._reviewed(batch["batch_id"]):
-            status, problems = self.availability.readiness_state(batch, date.today().isoformat())
-            return problems or ([] if status == "yes" else [issue("material_not_ready", "按当前日期的到料，物料尚未全部齐套。")])
-        diagnosis = self.availability.readiness_diagnostics(batch, date.today().isoformat())
+            status, problems = self.availability.readiness_state(batch, self.day)
+            return [issue(problem["code"], problem["message"]) for problem in problems] or (
+                [] if status == "yes" else [issue("material_not_ready", "按当前日期的到料，物料尚未全部齐套。")]
+            )
+        diagnosis = self.availability.readiness_diagnostics(batch, self.day)
         reasons = []
         if batch["ready_status"] != "yes":
             reasons.append(issue("batch_not_ready", "这批还没确认齐套。请到批次管理确认齐套状态。"))

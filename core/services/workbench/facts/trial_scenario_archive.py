@@ -46,7 +46,8 @@ def _require_head(saved, header, head, originals):
     admission = head["admission"]
     expected = {"scenario_ref": header["scenario_ref"], "draft_ref": head["draft_ref"],
                 "status": "saved", "name": header["name"], "saved_at": header["saved_at"]}
-    if (not same({key: saved[key] for key in expected}, expected) or head["status"] != "saved"
+    if (not same({key: saved[key] for key in expected}, expected)
+            or head["status"] != "saved"
             or type(head["revision"]) is not int or type(header["revision"]) is not int
             or head["revision"] != header["revision"] + 1):
         _invalid("试调方案和它的草稿编号或版本对不上。请刷新后重试。")

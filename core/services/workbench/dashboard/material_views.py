@@ -22,4 +22,4 @@ def current_material_views(raw, day):
                 if problems:
                     view["ready_status"] = None
             requirements.append(view)
-    return batches, requirements
+    return batches, requirements, availability

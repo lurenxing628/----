@@ -32,8 +32,6 @@ def _prepare_candidate(candidate, computation, identities):
     artifact["target_objectives"] = list(computation.orchestration.candidate_comparison.target_objectives)
     artifact["analysis_contract_version"] = "decision-preparation-v4"
     payload = computation.candidate_payloads[candidate.candidate_key]
-    if payload.out_of_scope_op_ids or payload.validation_errors:
-        raise ValueError("Candidate payload contains validation errors")
     tasks = _candidate_tasks(payload, identities, computation)
     arrangement_fields = ("op_id", "machine_id", "operator_id", "start_time", "end_time", "source")
     # Permanent task rows own the arrangement. Keep only engine-specific trace

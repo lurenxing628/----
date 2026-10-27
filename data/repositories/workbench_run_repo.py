@@ -14,7 +14,7 @@ _CANDIDATE_MODEL_FIELDS = ("summary", "preparation", "completion", "delivery", "
 def encode_result(result):
     """Encode the receipt body and its separately stored small state fields."""
     return {"state": result["state"], "result_json": canonical_json(result),
-            "error_json": canonical_json(result.get("error"))}
+            "error_json": canonical_json(result["error"])}
 
 
 def encode_decision_read_models(read_models):
@@ -170,10 +170,8 @@ class WorkbenchRunRepository:
         return ({"state": "running", "stage": "computing", "executor_ref": executor_ref,
                  "started_at": now} if cursor.rowcount == 1 else None)
 
-    def finish(self, run_ref, state, result, now):
-        prepared = encode_result(result)
-        prepared["state"] = state
-        return self.finish_prepared(run_ref, prepared, now)
+    def finish(self, run_ref, result, now):
+        return self.finish_prepared(run_ref, encode_result(result), now)
 
     def finish_prepared(self, run_ref, result, now):
         state = result["state"]

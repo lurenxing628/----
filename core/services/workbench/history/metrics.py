@@ -23,11 +23,10 @@ from core.services.workbench.facts.preparation_projection import (
 )
 from core.services.workbench.facts.resource_intervals import task_interval
 from core.services.workbench.facts.resource_projection import resource_cohort
-from core.services.workbench.facts.trial_origin import delivery_origin as trial_delivery_origin
 from core.services.workbench.run.decision_resource_engine import ResourceWindowInput, ResourceWindowMetrics
 from core.services.workbench.run.preflight import batch_dependencies, classify, task_row
 from core.services.workbench.trial.capacity import capacity_tasks as trial_resource_tasks
-from core.services.workbench.trial.preparation import preparation_projection, trial_changeovers
+from core.services.workbench.trial.preparation import after_preparation_rows, trial_changeovers
 from data.repositories.workbench_preflight_facts_repo import PREFLIGHT_TABLES
 
 from .metric_gate import COVERAGE_FIELDS, metric_reason
@@ -192,11 +191,9 @@ def _run(reader, packet, window):
     return values, scope, "available" if selected is not None and candidate["status"] == "completed" else "unavailable"
 
 
-def _trial_preparation(saved, head, projected):
-    pairs, _common = preparation_projection(projected, head["admission"], saved["operation_effort"],
-        current_evidence={"kind": "scenario", "scenario_ref": saved["scenario_ref"]})
-    arranged = {row["operation_ref"] for row in projected}
-    return [dict(pair["after"], operation_ref=ref, arranged=ref in arranged) for ref, pair in pairs.items()]
+def _trial_preparation(saved, head, *, contexts):
+    return after_preparation_rows(head["admission"], saved["operation_effort"],
+        current_evidence={"kind": "scenario", "scenario_ref": saved["scenario_ref"]}, contexts=contexts)
 
 
 def _trial_resources(packet, projected, window, calendar):
@@ -225,16 +222,16 @@ def _trial(packet, window, *, reader):
     # Drafts and saved scenarios are permanent, so a trial source always carries both.
     saved, head, projected = packet["saved"], packet["head"], packet["rows"]
     comparison = saved["comparison"]
+    condition = reader.condition_source(packet)
     values = delivery_metric_values(comparison["delivery_summary"])
-    efforts = _trial_preparation(saved, head, projected)
+    efforts = _trial_preparation(saved, head, contexts=condition.trial_contexts)
     values.update(preparation_summary(efforts)["metrics"])
     tasks = saved["tasks"]
     scheduled = {row["operation_ref"] for row in tasks}
-    condition = reader.condition_source(packet)
     operations, batches = set(condition.operations), set(condition.batches)
     deferred, ordinary = None, None
     completion_reason = metric_reason("trial_pending_members_missing", "保存的未安排数量与实际工序身份不齐，应排、待料和其他未安排范围待确认。")
-    _batches, _operations, deferred_ids, deferred_issues = trial_delivery_origin(head["admission"], projected)
+    _batches, _operations, deferred_ids, deferred_issues = condition.delivery_origin
     if not deferred_issues:
         effort_by_ref = {row["operation_ref"]: row for row in efforts}
         missing = []
@@ -269,7 +266,7 @@ def _trial(packet, window, *, reader):
         reason=metric_reason("trial_arrangement_time_missing", "部分保存安排缺少可核对的时间区间，总时长保留已知跨度。") if missing_times or not tasks else None)
     values["makespan_hours"]["covered_operation_refs"] = sorted({task["operation_ref"] for task in valid_tasks})
     common = (trial_changeovers(projected, head["admission"], start=window["start"], end=window["end"],
-                               next_operation_refs=operations)
+                               next_operation_refs=operations, facts=condition.original_facts)
               if window["start"] is not None else None)
     if common is not None:
         after = common["after"]

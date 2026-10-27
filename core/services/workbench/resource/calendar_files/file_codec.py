@@ -73,10 +73,13 @@ def read_clock(value, field="clock"):
 def read_number(value, field):
     if type(value) is bool:
         raise ValidationError("这一项必须填数字。", field=field)
-    if type(value) in (int, float):
-        return float(value)
-    if type(value) is str and NUMBER.match(value.strip()) is not None:
-        return float(value.strip())
+    try:
+        if type(value) in (int, float):
+            return float(value)
+        if type(value) is str and NUMBER.match(value.strip()) is not None:
+            return float(value.strip())
+    except OverflowError as exc:
+        raise ValidationError("这一项必须填数字。", field=field) from exc
     raise ValidationError("这一项必须填数字。", field=field)
 
 

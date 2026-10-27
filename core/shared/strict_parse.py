@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import math
+import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
 
 from core.errors import ValidationError
 
+ILLEGAL_XML_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
 _DATETIME_FORMAT_HINT = "YYYY-MM-DD / YYYY-MM-DD HH:MM / YYYY-MM-DD HH:MM:SS"
 _INT64_MAX = (1 << 63) - 1
 
@@ -71,6 +73,30 @@ def is_exact_non_negative_number(value: Any, *, positive: bool = False) -> bool:
     return is_exact_finite_number(value) and (value > 0 if positive else value >= 0)
 
 
+def scaled_decimal(number: Decimal, scale10: int = 0) -> Decimal:
+    if number.is_zero():
+        return Decimal(0)
+    if not scale10:
+        return number
+    sign, digits, exp = number.as_tuple()
+    assert isinstance(exp, int)
+    return Decimal((sign, digits, exp + scale10))
+
+
+def decimal_integral_span(number: Decimal, *, scale10: int = 0) -> Optional[int]:
+    if number.is_zero():
+        return 1
+    _sign, digits, exp = number.as_tuple()
+    assert isinstance(exp, int)
+    nz_digits = list(digits)
+    while nz_digits and nz_digits[-1] == 0:
+        nz_digits.pop()
+    nz_exp = exp + scale10 + (len(digits) - len(nz_digits))
+    if nz_exp < 0:
+        return None
+    return len(nz_digits) + nz_exp
+
+
 def integer_value(value: Any) -> Optional[int]:
     """A stored integer: an int (not bool) as is, an integral float, or UTF-8 bytes / text / other value whose
     literal is an integer ('1', ' 1 ', '1.0', '1e3'); None for anything else, blank included."""
@@ -84,15 +110,21 @@ def integer_value(value: Any) -> Optional[int]:
         except UnicodeDecodeError:
             return None
     text = str(value).strip()
-    try:
-        return int(text)
-    except ValueError:
-        pass
+    if len(text) <= 4300:
+        try:
+            return int(text)
+        except ValueError:
+            pass
     try:
         number = Decimal(text)
     except InvalidOperation:
         return None
-    return int(number) if number.is_finite() and number == number.to_integral_value() else None
+    if not number.is_finite():
+        return None
+    span = decimal_integral_span(number)
+    if span is None or span > 4300:
+        return None
+    return 0 if number.is_zero() else int(number)
 
 
 def _raise_blank_required(field: str) -> None:
@@ -107,9 +139,17 @@ def _ensure_min_float(value: float, *, field: str, min_value: Optional[float], m
     return float(value)
 
 
-def _ensure_min_int(value: int, *, field: str, min_value: Optional[int]) -> int:
+def _ensure_min_int(
+    value: int,
+    *,
+    field: str,
+    min_value: Optional[int],
+    max_value: Optional[int] = None,
+) -> int:
     if min_value is not None and value < int(min_value):
         raise ValidationError(f"“{field}”必须大于等于 {min_value}", field=field)
+    if max_value is not None and value > int(max_value):
+        raise ValidationError(f"“{field}”不能超过 {max_value}", field=field)
     return int(value)
 
 
@@ -131,22 +171,30 @@ def _looks_like_integer_float(value: Any) -> bool:
     return False
 
 
-def _parse_finite_int(value: Any, *, field: str, reject_integer_float: bool = False) -> int:
+def _parse_finite_int(
+    value: Any,
+    *,
+    field: str,
+    reject_integer_float: bool = False,
+    min_value: Optional[int] = None,
+    max_value: Optional[int] = None,
+) -> int:
     if isinstance(value, bool):
         raise ValidationError(f"“{field}”必须是整数", field=field)
     if isinstance(value, int):
-        return int(value)
+        return _ensure_min_int(int(value), field=field, min_value=min_value, max_value=max_value)
     if isinstance(value, float):
         if not math.isfinite(value):
             raise ValidationError(f"“{field}”必须是{'有限整数' if math.isinf(value) else '整数'}", field=field)
         if reject_integer_float or not value.is_integer():
             raise ValidationError(f"“{field}”必须是整数", field=field)
-        return int(value)
-    if isinstance(value, str) and not _looks_like_integer_float(value):
+        return _ensure_min_int(int(value), field=field, min_value=min_value, max_value=max_value)
+    if isinstance(value, str) and not _looks_like_integer_float(value) and len(value.strip()) <= 4300:
         try:
-            return int(value.strip())
+            parsed_int = int(value.strip())
         except ValueError as exc:
             raise ValidationError(f"“{field}”必须是整数", field=field) from exc
+        return _ensure_min_int(parsed_int, field=field, min_value=min_value, max_value=max_value)
     try:
         number = value if isinstance(value, Decimal) else Decimal(str(value).strip())
     except InvalidOperation as exc:
@@ -155,9 +203,16 @@ def _parse_finite_int(value: Any, *, field: str, reject_integer_float: bool = Fa
         raise ValidationError(f"“{field}”必须是整数", field=field)
     if number.is_infinite():
         raise ValidationError(f"“{field}”必须是有限整数", field=field)
-    if number != number.to_integral_value() or (reject_integer_float and _looks_like_integer_float(value)):
+    span = decimal_integral_span(number)
+    if span is None or (reject_integer_float and _looks_like_integer_float(value)):
         raise ValidationError(f"“{field}”必须是整数", field=field)
-    return int(number)
+    if min_value is not None and number < int(min_value):
+        raise ValidationError(f"“{field}”必须大于等于 {min_value}", field=field)
+    if max_value is not None and number > int(max_value):
+        raise ValidationError(f"“{field}”不能超过 {max_value}", field=field)
+    if span > 4300:
+        raise ValidationError(f"“{field}”必须是有限整数", field=field)
+    return 0 if number.is_zero() else int(number)
 
 
 def parse_required_float(
@@ -179,14 +234,17 @@ def parse_required_int(
     *,
     field: str,
     min_value: Optional[int] = None,
+    max_value: Optional[int] = None,
     reject_integer_float: bool = False,
 ) -> int:
     if is_blank_input(value):
         _raise_blank_required(field)
-    return _ensure_min_int(
-        _parse_finite_int(value, field=field, reject_integer_float=bool(reject_integer_float)),
+    return _parse_finite_int(
+        value,
         field=field,
+        reject_integer_float=bool(reject_integer_float),
         min_value=min_value,
+        max_value=max_value,
     )
 
 

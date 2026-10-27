@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from core.models.workbench_command import WorkbenchCommandOutcome, WorkbenchCommandRejected
 from core.models.workbench_identity import WorkbenchEntityIdentity
 from core.models.workbench_process_commands import normalize_process_input
+from core.models.workbench_process_route import normalize_route_preview_input
 from data.repositories.external_group_repo import ExternalGroupRepository
 
 from .group_apply import apply_groups, group_changes, prepare_groups
@@ -41,9 +42,9 @@ class WorkbenchProcessMutationService:
         self._route_preview = None
 
     def normalize(self, action, input):
-        route_out = [] if action == "route_confirm" else None
-        normalized = normalize_process_input(action, input, route_out=route_out)
-        self._route_preview = (normalized["route"], route_out[0]) if route_out else None
+        normalized = normalize_process_input(action, input)
+        if action == "route_confirm":
+            self._route_preview = normalize_route_preview_input(normalized["route"])
         return normalized
 
     checked_facts = staticmethod(checked_process_facts)
@@ -93,11 +94,9 @@ class WorkbenchProcessMutationService:
             changes = prepare_hours(payload, operations, groups, confirmations=confirmations)
             affected, auxiliary = [], None
         elif stage == "route":
-            route_normalized = (self._route_preview[1]
-                                if self._route_preview is not None and self._route_preview[0] is payload["route"]
-                                else None)
-            changes, sequences = prepare_route(self.conn, self.logger, payload, operations,
-                                               facts=route_facts, normalized=route_normalized)
+            changes, sequences = prepare_route(
+                self.conn, self.logger, payload, operations, facts=route_facts, normalized=self._route_preview
+            )
             affected, auxiliary = affected_group_rows(groups, operations, sequences), None
         else:
             changes = prepare_source(payload, operations, identities,
