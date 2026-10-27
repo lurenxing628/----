@@ -2,7 +2,6 @@
 
 import codecs
 import csv
-import re
 from tempfile import SpooledTemporaryFile
 
 from core.models.workbench_action_values import FileDownload
@@ -12,26 +11,14 @@ from core.models.workbench_relation_file import (
     relation_kind,
     table_descriptor,
 )
-from core.models.workbench_table_descriptor import cell_notes
-from core.services.common.excel_instruction_sheet import (
-    add_enum_dropdowns,
-    append_instruction_sheet,
-    close_write_only_sheets,
+from core.services.workbench.facts.file_writer import (
+    ILLEGAL,
+    XLSX_MAX_CELL_CHARACTERS,
+    check_capacity,
+    write_template_xlsx,
 )
-from core.services.workbench.facts.process_file_xml import preserve_carriage_returns
 
 from .file_codec import file_error
-
-XLSX_MAX_ROWS = 1048576
-XLSX_MAX_CELL_CHARACTERS = 32767
-ILLEGAL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
-
-
-def check_capacity(count, fmt):
-    if type(fmt) is not str or fmt not in ("csv", "xlsx"):
-        raise file_error("只能下载 CSV 或 XLSX，没有开始下载。请重新选择格式。", field="format")
-    if fmt == "xlsx" and count + 1 > XLSX_MAX_ROWS:
-        raise file_error("行数超过 XLSX 能放的 1048576 行（含表头），请改用 CSV。", count + 1)
 
 
 def _value(value, field, row, fmt):
@@ -55,7 +42,10 @@ def write_relation_file(kind, rows, fmt, *, template=False):
     filename = descriptor["file_stem"] + ("导入模板" if template else "清单")
     if fmt == "csv":
         return _csv(kind, rows, filename)
-    return _xlsx(kind, rows, filename, template, descriptor)
+    return write_template_xlsx(
+        rows, filename, template, descriptor,
+        cell_value=lambda raw, field, row_no: _value(raw, field, row_no, "xlsx"),
+    )
 
 
 def _csv(kind, rows, filename):
@@ -71,57 +61,3 @@ def _csv(kind, rows, filename):
         text.flush()
         buffer.seek(0)
         return FileDownload(filename + ".csv", "text/csv; charset=utf-8", buffer.read(), count)
-
-
-def _headers(kind, ws, template, descriptor):
-    from openpyxl.cell import WriteOnlyCell
-    from openpyxl.comments import Comment
-    from openpyxl.styles import Font
-
-    cells, notes = [], cell_notes(descriptor)
-    for index, item in enumerate(public_columns(kind)):
-        cell = WriteOnlyCell(ws, value=item["label"])
-        cell.font = Font(bold=True)
-        if template:
-            cell.comment = Comment(notes[index], "APS")
-        cells.append(cell)
-    return cells
-
-
-def _xlsx(kind, rows, filename, template, descriptor):
-    import openpyxl
-    from openpyxl.cell import WriteOnlyCell
-    from openpyxl.utils import get_column_letter
-
-    wb = openpyxl.Workbook(write_only=True)
-    ws = wb.create_sheet(descriptor["sheet_name"])
-    sheets, count = [ws], 0
-    columns = file_columns(kind)
-    try:
-        ws.freeze_panes = "A2"
-        for index, column in enumerate(public_columns(kind), 1):
-            ws.column_dimensions[get_column_letter(index)].width = max(18, len(column["label"]) * 2 + 4)
-        ws.append(_headers(kind, ws, template, descriptor))
-        for count, row in enumerate(rows, 1):
-            check_capacity(count, "xlsx")
-            cells = []
-            for field in columns:
-                value = _value(row[field], field, count + 1, "xlsx")
-                cell = WriteOnlyCell(ws, value=value)
-                cell.data_type, cell.number_format = "s", "@"
-                cells.append(cell)
-            ws.append(cells)
-        ws.auto_filter.ref = "A1:" + get_column_letter(len(columns)) + str(count + 1)
-        add_enum_dropdowns(ws, descriptor, count, write_only=True)
-        preserve_carriage_returns(ws)
-        sheets.append(append_instruction_sheet(wb, descriptor))
-        with SpooledTemporaryFile(max_size=4 * 1024 * 1024, mode="w+b") as buffer:
-            wb.save(buffer)
-            buffer.seek(0)
-            return FileDownload(
-                filename + ".xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                buffer.read(), count)
-    finally:
-        close_write_only_sheets(sheets)
-        wb.close()

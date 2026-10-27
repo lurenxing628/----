@@ -431,7 +431,8 @@ def test_ig_pending_contents_bound_memory_expire_scores_and_verify_full_decode(m
         limits = IteratedGreedyLimits(due_date_seed=False, checkpoint_count=3, max_decodes=20)
         pool = EliteRepairPool(limits=EliteRepairLimits(), objective_name="min_overdue",
                                 operations=operations, metrics_by_op_id=metrics, start_dt=case["start_dt"], seed=0,
-                                best=source, report_state=report, graph_context=context, decode_session=session)
+                                best=source, report_state=report, graph_context=context,
+                                clock=clock, deadline=started + 10, decode_session=session)
         search = ig_module._IteratedGreedySearch(
             limits=limits, parent=parent, profile=decode_profile, pool=pool, evaluate=evaluate,
             metrics_by_op_id=metrics, start_dt=case["start_dt"], seed=0, deadline=started + 10,

@@ -30,11 +30,11 @@ def window_anchors_by_batch(schedule_map: Dict[int, Dict[str, Any]],
     return anchors
 
 
-def prefix_op_ids_for_anchors(operations: List[Any], bid: str, anchors: Dict[Optional[str], int]) -> List[int]:
+def prefix_op_ids_for_anchors(operations: List[Any], anchors: Dict[Optional[str], int]) -> List[int]:
     """窗口里的工序加上它们的前道。不分件的批次就是工序号不超过窗口里最大号的全部工序；
     分件批次里，分件工序只跟同一件和共同工序走，另一件排在后面的工序不算前道（与排产计算的分件前后关系一致）。"""
     # BatchOperation.batch_id/seq are required (core/models/batch_operation.py; NOT NULL in schema).
-    batch_ops = [op for op in operations if op and op.id and op.batch_id == bid and op.seq > 0]
+    batch_ops = [op for op in operations if op and op.id and op.seq > 0]
     top = max(anchors.values())
     common_bound = max(
         (op.seq for op in batch_ops if op.piece_id is None and op.seq <= top),
@@ -47,14 +47,12 @@ def prefix_op_ids_for_anchors(operations: List[Any], bid: str, anchors: Dict[Opt
     ]
 
 
-def rows_in_window(start: Optional[datetime], end: Optional[datetime],
+def rows_in_window(start: datetime, end: datetime,
                    schedule_map: Dict[int, Dict[str, Any]]) -> Dict[int, Dict[str, Any]]:
-    """指定时段时，和时段重叠的原安排（开工即完工的按时刻落在时段内）才决定一批要保留到第几道。
+    """和时段重叠的原安排（开工即完工的按时刻落在时段内）才决定一批要保留到第几道。
 
-    没指定时段（start/end 为 None）原样返回。时刻读不出来的行也算进来，交给前缀校验按坏数据严格处理。
+    时刻读不出来的行也算进来，交给前缀校验按坏数据严格处理。
     """
-    if start is None or end is None:
-        return schedule_map
     result = {}
     for oid, row in schedule_map.items():
         parsed_times = row.get("_parsed_times")

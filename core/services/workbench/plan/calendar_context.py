@@ -7,8 +7,6 @@ from core.services.capacity.plan_calendar_intervals import instant
 from core.services.workbench.facts.plan_serialization import plain_plan_facts
 from core.services.workbench.facts.zero_duration_evidence import overlaps
 
-from .point_evidence import annotate_plan_points
-
 SelectedPlanContext = namedtuple("SelectedPlanContext", "rows start end time_scope binding")
 
 
@@ -17,7 +15,7 @@ def require_snapshot(conn):
         raise RuntimeError("Plan projections require a caller-owned read transaction.")
 
 
-def selected_context(conn, entry, scope, rows, resources, plan_span, *, read_context=None):
+def selected_context(conn, entry, scope, rows, resources, plan_span, *, read_context):
     require_snapshot(conn)
     if not entry.can_view or entry.plan_identity is None:
         raise WorkbenchCommandRejected("plan_unavailable", "所选计划暂不可用，请刷新列表后重新选择。")
@@ -25,21 +23,16 @@ def selected_context(conn, entry, scope, rows, resources, plan_span, *, read_con
     start, end = instant(time_scope["range_start"]), instant(time_scope["range_end"])
     if start > end or (start == end and scope.range_start is not None):
         raise WorkbenchCommandRejected("plan_unavailable", "查询的时间范围无效。请重新选择起止日期。")
-    selected = _selected_rows(conn, entry, scope, rows, start, end, read_context=read_context)
+    selected = _selected_rows(entry, scope, rows, start, end, read_context=read_context)
     binding = _context_binding(entry, scope, selected, resources, time_scope)
     return SelectedPlanContext(selected, start, end, time_scope, plain_plan_facts(binding))
 
 
-def _selected_rows(conn, entry, scope, rows, start, end, *, read_context):
+def _selected_rows(entry, scope, rows, start, end, *, read_context):
     selected, unique = [], {}
-    prepared = rows if read_context is not None else annotate_plan_points(conn, rows)
-    times = read_context.datetime_intervals(entry) if read_context is not None else None
-    for original in prepared:
-        if times is None:
-            row, low, high = _validated_row(original, entry.locator.version)
-        else:
-            row = original
-            low, high = times[row["schedule_id"]]
+    times = read_context.datetime_intervals(entry)
+    for row in rows:
+        low, high = times[row["schedule_id"]]
         key = row["schedule_id"]
         if key in unique and unique[key] != row:
             raise WorkbenchCommandRejected("plan_unavailable", "同一条安排读到了两份不一样的数据，算不出实际占用。请刷新后重试。")
@@ -47,16 +40,6 @@ def _selected_rows(conn, entry, scope, rows, start, end, *, read_context):
             selected.append(row)
         unique[key] = row
     return selected
-
-
-def _validated_row(original, version):
-    row = dict(original)
-    if row["version"] != version:
-        raise WorkbenchCommandRejected("plan_unavailable", "这条安排不属于所选计划的这一版。请刷新后重试。")
-    low, high = instant(row["start_time"]), instant(row["end_time"])
-    if low > high or (low == high and not row.get("_point_work")):
-        raise WorkbenchCommandRejected("plan_unavailable", "工序安排的起止时间无效，请核对计划资料。")
-    return row, low, high
 
 
 def _context_binding(entry, scope, selected, resources, time_scope):

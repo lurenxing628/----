@@ -79,7 +79,7 @@ def downtime_overlap(seed, downtimes):
     return overlaps[0] if overlaps else None
 
 
-def _freeze_hold_window(*, facts, cfg, prev_version, start_dt, reschedulable_operations, meta, hold_window):
+def _freeze_hold_window(*, facts, prev_version, start_dt, reschedulable_operations, meta, hold_window):
     """只按本次的不重排时段保留原安排。正式计划里的锁定标记（旧版「锁定近期排程」顺带打上的）不再起作用：
     已开工、做完的工序由报工记录保护，其余工序要不要保持原安排，每次排产由不重排时段决定。
 
@@ -88,7 +88,7 @@ def _freeze_hold_window(*, facts, cfg, prev_version, start_dt, reschedulable_ope
     """
     return build_freeze_window_seed(
         # 试调在来源排产起日上准备这份冻结结果，与来源排产同一口径。
-        cfg=cfg, prev_version=prev_version, start_dt=start_dt,
+        prev_version=prev_version, start_dt=start_dt,
         reschedulable_operations=reschedulable_operations, meta=meta,
         # 零工时点事件的见证在冻结前缀校验时取一次，随 seed 的 _point_evidence 带出。
         point_validator=stored_point_validator(facts, prev_version),
@@ -98,7 +98,7 @@ def _freeze_hold_window(*, facts, cfg, prev_version, start_dt, reschedulable_ope
     )
 
 
-def held_arrangements(*, facts, cfg, prev_version, start_dt, reschedulable_operations, hold_window):
+def held_arrangements(*, facts, prev_version, start_dt, reschedulable_operations, hold_window):
     """排产会原样保留的原安排：落在本次不重排时段里的（含同批次一起保留的前道）；与排产计算同一口径、同样严格。
 
     返回完整冻结结果；保留信息里 hold_window 是本次的不重排时段，freeze_skipped_batch_ids 是前道原安排不全、
@@ -106,7 +106,7 @@ def held_arrangements(*, facts, cfg, prev_version, start_dt, reschedulable_opera
     """
     freeze_meta = {}
     frozen, seeds = _freeze_hold_window(
-        facts=facts, cfg=cfg, prev_version=prev_version, start_dt=start_dt,
+        facts=facts, prev_version=prev_version, start_dt=start_dt,
         reschedulable_operations=reschedulable_operations, meta=freeze_meta, hold_window=hold_window)
     return HeldArrangements(frozen, seeds, freeze_meta)
 
@@ -185,7 +185,7 @@ def build_runtime(conn, *, facts, cfg, prev_version, start_dt, batches, operatio
     resources = runtime_resource_facts(facts)
     if held is None:
         held = held_arrangements(
-            facts=facts, cfg=cfg, prev_version=prev_version, start_dt=start_dt,
+            facts=facts, prev_version=prev_version, start_dt=start_dt,
             reschedulable_operations=mutable, hold_window=hold_window)
     frozen, seeds, to_schedule = prepare_runtime_seeds(
         conn, run_label="排产计算", batches=batches, operations=operations, algo_ops=algo_ops,

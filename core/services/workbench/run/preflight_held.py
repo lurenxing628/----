@@ -20,7 +20,7 @@ from core.services.workbench.facts.table_cells import number_text
 from core.services.workbench.facts.zero_duration import PointEventError, estimate_point_event
 
 from .candidate_adoption_constraints import arrangement_problem, calendar_duration_conflict, external_holds_resources
-from .input_config import candidate_config, window_label
+from .input_config import window_label
 from .input_runtime import downtime_overlap, held_arrangements, held_machine_downtimes
 
 _KEEP = "排产会原样保留这个安排，排出的方案都不能采用。"
@@ -227,9 +227,8 @@ def _skipped_freeze(meta, batches):
 
 def _held(facts, settings, version, operations, held_ids, *, hold_window_bounds):
     models = [stored_batch_operation(op) for op in operations]
-    cfg = candidate_config(settings, snapshot=facts.config_snapshot)
     held = held_arrangements(
-        cfg=cfg, prev_version=version, facts=facts,
+        prev_version=version, facts=facts,
         start_dt=datetime.combine(local_date(settings["start_date"]), datetime.min.time()),
         reschedulable_operations=[op for op in models if op.id in held_ids],
         hold_window=hold_window_bounds)

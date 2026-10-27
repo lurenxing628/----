@@ -90,8 +90,7 @@ class _BaselineReader:
             return _unavailable("not_recorded", self.facts)
         evidence = read_adoption_baseline(self.conn, plan_ref=self.scope.plan_ref, version=locator.version,
             history=self.repo.get_history_identity_row(locator.version), facts=self.facts,
-            point_annotator=lambda rows: self.context.attach_points(rows, version=rows[0]["version"],
-                source_table="schedule") if rows else rows,
+            point_annotator=lambda rows: self.context.attach_points(rows, version=rows[0]["version"]) if rows else rows,
             context=self.context)
         base = evidence["baseline"]
         base_entry = self._base_entry(WorkbenchPlanLocator(base["version"], "adopted"))

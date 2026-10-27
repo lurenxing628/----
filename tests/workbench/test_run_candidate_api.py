@@ -15,7 +15,6 @@ from core.models.workbench_run_analysis import operation_metrics
 from core.models.workbench_run_baseline import RunCandidateBaselineScope, _resource_change
 from core.models.workbench_run_candidate import RunCandidateReadScope
 from core.services.workbench.facts.candidate_archive import load_adoption_candidate
-from core.services.workbench.facts.candidate_facts import GenerationFacts
 from core.services.workbench.facts.candidate_projection import algorithm_facts
 from core.services.workbench.facts.candidate_read_source import read_candidate_source
 from core.services.workbench.facts.candidate_store import CandidateStore
@@ -193,8 +192,7 @@ def test_adopted_external_supplier_uses_original_lineage_and_null_resources_are_
 
 def test_archived_resource_identity_survives_missing_display_directory(candidate_case):
     _, refs = compute(candidate_case)
-    _, _, _, _, capture, _ = load_adoption_candidate(candidate_case.conn, refs[0])
-    facts = GenerationFacts(capture)
+    _, _, _, _, _, _, facts = load_adoption_candidate(candidate_case.conn, refs[0])
     ref = facts.entity_refs["machine", "M1"]
     facts.tables["Machines"].clear()
     gaps = []

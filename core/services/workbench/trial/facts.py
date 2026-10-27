@@ -9,21 +9,11 @@ from core.services.workbench.facts.schema_compat import project_facts
 from core.services.workbench.facts.trial_origin import context_operation_refs
 from core.services.workbench.run.jobs_facts import run_baseline
 from core.services.workbench.run.preflight_facts import PreflightFacts
-from data.repositories.workbench_trial_query_repo import BOOKKEEPING_TABLES
 
 
 def facts_unchanged(admission, live):
     """Compare saved production content; preserve original historical metadata."""
-
-    def inputs(value):
-        return {**value, "schema": [row for row in value["schema"] if row[2] not in BOOKKEEPING_TABLES],
-                "columns": {name: columns for name, columns in value["columns"].items() if name not in BOOKKEEPING_TABLES},
-                "tables": {name: rows for name, rows in value["tables"].items() if name not in BOOKKEEPING_TABLES}}
-
-    original, current = admission["facts"], live["facts"]
-    if original.get("version") != "production-facts-v2":
-        original, current = inputs(original), inputs(current)
-    return same(project_facts(original), project_facts(current))
+    return same(project_facts(admission["facts"]), project_facts(live["facts"]))
 
 
 def execution_facts(tables, selected_refs, *, operation_refs, service):

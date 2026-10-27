@@ -90,7 +90,7 @@ def _plan_capture(conn, ref, capture):
         locator, _binding = context.references._resolved_record(ref)
         source = SOURCE_SCHEDULE
         table, kind = "Schedule", "schedule_row"
-        query = {"version": locator.version, "source_table": source}
+        query = {"version": locator.version}
         if table in capture.table_names:
             selected = [row for row in capture.table(table) if row["version"] == locator.version]
             context.seed_source_rows(selected, **query)
@@ -138,7 +138,7 @@ def _plan_capture(conn, ref, capture):
             types = {row["operation_ref"]: {"ref": None, "label": None} for row in result}
         return result, {"identity": project_plan(entry, ref), "source_table": table, **runtime,
                         "operation_types": types, "trial_operation_types": slot_types,
-                        "material_policy": plan_material_policy(conn, locator.version, history=history),
+                        "material_policy": plan_material_policy(history),
                         "deferred_operation_ids": sorted(deferred), "deferred_operation_issues": deferred_issues}, tables["BatchOperations"], operations, issues
 
 

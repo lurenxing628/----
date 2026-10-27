@@ -340,6 +340,7 @@ def _assert_controlled_worse_reference_keeps_source():
     repair_pool = EliteRepairPool(limits=EliteRepairLimits(), objective_name="min_overdue",
                                   operations=operations, metrics_by_op_id=graph_metrics, start_dt=START_DT, seed=0,
                                   best=source, report_state=report, graph_context=context,
+                                  clock=monotonic, deadline=started_at + 1.0,
                                   decode_session=session.decode_session)
 
     decision_features = PreparedDecisionFeatures(graph_metrics, build_v2_common_rank_cache(graph_metrics))
@@ -514,7 +515,7 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
                       order=["B3", "B1", "B2"])
     mode_stage = LocalSearchStage(
         best=sgs_best, version=0, deadline=deadline, batches=decoder.batches,
-        start_dt=START_DT, end_date=None, dispatch_mode_cfg="sgs", dispatch_rule_cfg="slack",
+        start_dt=START_DT, end_date=None,
         resource_pool=decoder.resource_pool, objective_name=view.objective, attempts=[], improvement_trace=[],
         optimizer_algo_stats=None, t_begin=now - 8.0, readiness_gate_enabled=False,
         clock=clock, rng_factory=Random, search_report_state=view.report, decode_session=decoder,
@@ -537,7 +538,7 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
         budget.record_decode("sgs_resume", 6.0)
     local_stage = LocalSearchStage(
         best=view.candidate, version=0, deadline=deadline, batches=decoder.batches,
-        start_dt=START_DT, end_date=None, dispatch_mode_cfg="sgs", dispatch_rule_cfg="slack",
+        start_dt=START_DT, end_date=None,
         resource_pool=decoder.resource_pool, objective_name=view.objective, attempts=[], improvement_trace=[],
         optimizer_algo_stats=None, t_begin=now - 8.0, readiness_gate_enabled=False,
         clock=clock, rng_factory=Random, search_report_state=view.report, decode_session=decoder,
@@ -557,7 +558,7 @@ def test_unaffordable_required_ig_capture_stops_stage_and_preserves_other_work()
     repair_pool = EliteRepairPool(
         limits=EliteRepairLimits(), objective_name=view.objective, operations=search.operations,
         metrics_by_op_id=search.metrics, start_dt=START_DT, seed=0, best=view.candidate, report_state=view.report,
-        graph_context=search.graph_context, decode_session=decoder,
+        graph_context=search.graph_context, clock=clock, deadline=deadline, decode_session=decoder,
     )
     assert view.candidate is not None
     repair_pool.observe(view.candidate, profiles[0])
@@ -651,8 +652,8 @@ def test_real_shared_optimizer_preserves_start_archive_resource_bridge_and_piece
         prepared_contexts.append(context)
         return ScheduleGraphDispatchPreparation(None, None, context)
 
-    with patch.object(graph_candidates, "_validate_decision_features",
-                      wraps=graph_candidates._validate_decision_features) as feature_admissions:
+    with patch.object(graph_candidates, "_priority_keys_for_profile",
+                      wraps=graph_candidates._priority_keys_for_profile) as feature_admissions:
         shared = optimize_shared_schedule(
             calendar_service=ContinuousCalendar(), cfg=cfg, algo_ops_to_schedule=operations,
             batches=batches, start_dt=START_DT, end_date=None, downtime_map=downtime,
@@ -1232,17 +1233,17 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
         reference = PoolEntry(order=parent.order, score=tuple(candidate["score"]), candidate=candidate,
                               batch_order=parent.batch_order, resource_overrides=parent.inherited)
         metrics = _context["node_metrics_by_op_id"]
-        profile = ig_decode_profile(next(p for p in resolve_v2_profiles(seed=0, objective_name="min_overdue") if p.slug == "balanced"))
-        limits = IteratedGreedyLimits(due_date_seed=False)
-        repair_pool = EliteRepairPool(
-            limits=EliteRepairLimits(), objective_name=view.objective, operations=operations,
-            metrics_by_op_id=metrics, start_dt=START_DT, seed=0, best=candidate, report_state=report,
-            graph_context=_context, decode_session=decoder,
-        )
         decision_metrics = enrich_graph_ready_v2_metrics(metrics, operations=operations, batches=batches,
                                                          start_dt=START_DT, graph_ready_context=_context,
                                                          calendar_service=scheduler.calendar, downtime_map={},
                                                          seed_results=[])
+        profile = ig_decode_profile(next(p for p in resolve_v2_profiles(seed=0, objective_name="min_overdue") if p.slug == "balanced"))
+        limits = IteratedGreedyLimits(due_date_seed=False)
+        repair_pool = EliteRepairPool(
+            limits=EliteRepairLimits(), objective_name=view.objective, operations=operations,
+            metrics_by_op_id=decision_metrics, start_dt=START_DT, seed=0, best=candidate, report_state=report,
+            graph_context=_context, clock=monotonic, deadline=deadline, decode_session=decoder,
+        )
         evaluate = partial(
             evaluate_graph_ready_candidate,
             prepared_decision_features=PreparedDecisionFeatures(decision_metrics,
@@ -1255,13 +1256,13 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
         run = IteratedGreedyRun(
             limits=limits, state=graph_state, parent_profile=lambda candidate: profile,
             pool=repair_pool, evaluate=evaluate, operations=operations, graph_context=_context,
-            metrics_by_op_id=metrics, objective_name=view.objective, start_dt=START_DT, seed=0,
+            metrics_by_op_id=decision_metrics, objective_name=view.objective, start_dt=START_DT, seed=0,
             deadline=deadline, clock=monotonic, t_begin=started_at, attempts=[], improvement_trace=[],
             report_state=report, decode_session=decoder,
         )
         search = _IteratedGreedySearch(
             limits=limits, parent=parent, profile=profile, pool=repair_pool, evaluate=evaluate,
-            metrics_by_op_id=metrics, start_dt=START_DT, seed=0, deadline=deadline, clock=monotonic,
+            metrics_by_op_id=decision_metrics, start_dt=START_DT, seed=0, deadline=deadline, clock=monotonic,
             t_begin=started_at, attempts=[], improvement_trace=[], report_state=report,
             report=run.report, operations=operations, graph_context=_context, decode_session=decoder,
         )
@@ -1353,7 +1354,7 @@ def test_shared_ig_sync_keeps_same_evidence_pointer_and_defers_new_parent():
     assert ordinary_candidate is not None
     ordinary_stage = LocalSearchStage(
         best=ordinary_candidate, version=0, deadline=life.started_at + 1,
-        batches=batches, start_dt=START_DT, end_date=None, dispatch_mode_cfg="batch_order", dispatch_rule_cfg="slack",
+        batches=batches, start_dt=START_DT, end_date=None,
         resource_pool=pool, objective_name=ordinary_view.objective, attempts=[], improvement_trace=[],
         optimizer_algo_stats=None, t_begin=life.started_at, readiness_gate_enabled=False,
         clock=monotonic, rng_factory=Random, search_report_state=ordinary_view.report, decode_session=life_decoder,

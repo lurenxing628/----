@@ -64,19 +64,19 @@ def _index_for(search, reference):
 
 
 def _pressure(search, index, features, op_id):
-    metric = search.metrics.get(op_id, {})
+    metric = search.metrics[op_id]
     signal = features["signals"].get(op_id, 0.0)
-    due_pressure = float(metric.get("due_pressure", 0.0))
+    due_pressure = float(metric["due_pressure"])
     finish = index.rows[op_id].end_time
     objective = search.report["objective_name"]
     if objective == "min_weighted_tardiness":
-        weighted = float(metric.get("weighted_due_pressure", due_pressure))
+        weighted = float(metric["weighted_due_pressure"])
         factor = weighted / due_pressure if due_pressure > 0 else 1.0
         return -signal * factor, -weighted, -signal, -index.positions[op_id]
     if objective == "min_changeover":
         return -index.switches[op_id], -signal, -due_pressure, -index.positions[op_id]
     if objective in ("min_overdue", "min_tardiness"):
-        return -signal, -due_pressure, -int(bool(metric.get("is_on_critical_path"))), -index.positions[op_id]
+        return -signal, -due_pressure, -int(bool(metric["is_on_critical_path"])), -index.positions[op_id]
     # Latest finish is the primary pressure for makespan-style objectives.
     return -finish.toordinal(), -finish.hour, -finish.minute, -finish.second
 

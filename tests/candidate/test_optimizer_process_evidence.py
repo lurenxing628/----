@@ -494,7 +494,7 @@ def test_unknown_and_unverified_results_do_not_claim_valid_or_complete_milestone
         resource_pool=None, objective_name="min_tardiness", optimizer_algo_stats=None,
         readiness_gate_enabled=False, version=0, clock=clock)
     search = _IteratedGreedySearch(limits=limits, parent=parent, profile=profile, pool=pool, evaluate=evaluate,
-        metrics_by_op_id=context["node_metrics_by_op_id"], start_dt=START_DT, seed=0, deadline=2.0, clock=clock,
+        metrics_by_op_id=graph_metrics, start_dt=START_DT, seed=0, deadline=2.0, clock=clock,
         t_begin=0.0, attempts=[], improvement_trace=[], report_state=recorder, report=report,
         decode_session=session, operations=operations, graph_context=context)
     tracker = search.incumbent

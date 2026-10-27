@@ -24,13 +24,13 @@ class InsertionScreen:
                 continue
             self.rows[row.op_id] = (str(row.batch_id), row.machine_id, row.operator_id, duration,
                                     row.op_type_id or "")
-            metric = search.metrics.get(row.op_id, {})
-            due = metric.get("due_deadline_hours")
+            metric = search.metrics[row.op_id]
+            due = metric["due_deadline_hours"]
             if is_exact_finite_number(due):
                 self.due[str(row.batch_id)] = float(due)
-            pressure = metric.get("due_pressure", 0.0)
-            weighted = metric.get("weighted_due_pressure", pressure)
-            weighted_hours = metric.get("weighted_processing_hours", 0.0)
+            pressure = metric["due_pressure"]
+            weighted = metric["weighted_due_pressure"]
+            weighted_hours = metric["weighted_processing_hours"]
             if pressure > 0:
                 self.weights[str(row.batch_id)] = weighted / pressure
             elif duration > 0 and type(weighted_hours) in (int, float) and weighted_hours > 0:

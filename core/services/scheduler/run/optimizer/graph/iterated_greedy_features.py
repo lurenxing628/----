@@ -24,13 +24,13 @@ def tardy_signals(search: Any, rows: Dict[int, Any]) -> Dict[int, float]:
     """Tardiness in hours past the metric due deadline, plus a hair for critical-path operations."""
     signals: Dict[int, float] = {}
     for op_id in search.parent.order:
-        metric = search.metrics.get(op_id, {})
+        metric = search.metrics[op_id]
         row = rows.get(op_id)
         tardy = 0.0
-        if row is not None and "due_deadline_hours" in metric:
+        if row is not None:
             finish = (row.end_time - search.start_dt).total_seconds() / 3600.0
             tardy = max(finish - float(metric["due_deadline_hours"]), 0.0)
-        signals[op_id] = tardy + (1e-3 if metric.get("is_on_critical_path") else 0.0)
+        signals[op_id] = tardy + (1e-3 if metric["is_on_critical_path"] else 0.0)
     return signals
 
 

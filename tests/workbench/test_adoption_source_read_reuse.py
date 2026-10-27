@@ -256,7 +256,7 @@ def test_arrangement_comparison_keeps_canonical_types_and_reuses_only_completed_
     assert calls == [candidate["start_time"], candidate["end_time"]]
     context = PlanReadContext.__new__(PlanReadContext)
     context._intervals = {}
-    query = {"version": 2, "source_table": "schedule"}
+    query = {"version": 2}
     assert context.peek_source_intervals(**query) is None
     completed = {1: (base["start_time"], base["end_time"])}
     context._intervals[context.source_key(query)] = completed

@@ -68,8 +68,7 @@ class CapturedResourceFacts:
         return (operator_id, machine_id) in self._authorized_pairs
 
     def validate_fixed(self, conn, operations):
-        selected = [op for op in operations if str(op.source or "").strip().lower() == "internal"
-                    and op.operator_id]
+        selected = [op for op in operations if op.source == INTERNAL and op.operator_id]
         if not selected:
             return
         qualifications = self.qualifications_for(op.operator_id for op in selected)

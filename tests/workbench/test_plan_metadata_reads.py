@@ -62,7 +62,7 @@ def test_metadata_time_scan_retains_raw_values_with_declared_datetime_converter(
     try:
         conn.execute("PRAGMA query_only=1")
         repo = PlanMetadataRepository(conn)
-        span = repo.get_plan_time_span(version=3, source_table="schedule")
+        span = repo.get_plan_time_span(version=3)
         assert span is not None and isinstance(span["start_time"], str) and isinstance(span["end_time"], str)
     finally:
         conn.close()

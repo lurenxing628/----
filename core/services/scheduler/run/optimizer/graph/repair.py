@@ -43,7 +43,7 @@ class EliteRepairPool:
                  metrics_by_op_id: Dict[int, Dict[str, Any]], start_dt: Any, seed: int,
                  best: Optional[Dict[str, Any]], report_state: OptimizationSearchReportState,
                  graph_context: Dict[str, Any],
-                 clock: Optional[Callable[[], float]] = None, deadline: Optional[float] = None,
+                 clock: Callable[[], float], deadline: float,
                  decode_session: SharedDecodeSession) -> None:
         self.limits = limits
         self.objective_name = objective_name
@@ -94,7 +94,7 @@ class EliteRepairPool:
         elite_identity = (profile.feature_basis, fingerprint.output_key)
         if elite_identity in self.seen_elites:
             return
-        if self.clock is not None and self.deadline is not None and self.clock() >= self.deadline:
+        if self.clock() >= self.deadline:
             self.report["repair_stop_reason"] = "time_budget"
             return
         self.seen_elites.add(elite_identity)

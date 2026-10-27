@@ -149,10 +149,6 @@ def project_tasks(plan_ref, rows, task_refs, operation_refs, resources, *, facts
         (origins or {}).get(row["op_id"], {}).get("resource_directory", [])]
     for row in rows:
         start, end = (value.replace(" ", "T") for value in context.row_times(plan_ref, row))
-        if start > end or (start == end and not row.get("_point_work")):
-            raise WorkbenchCommandRejected("plan_unavailable", "工序安排的起止时间无效，请核对计划资料。")
-        if row["schedule_id"] not in task_refs or row["op_id"] not in operation_refs:
-            raise WorkbenchCommandRejected("identity_missing", "安排编号缺失，请刷新后重试。")
         piece = row.get("piece_id")
         if piece is not None:
             piece = _required_text(piece)

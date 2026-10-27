@@ -13,7 +13,11 @@ from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 
 
 class SummaryMetrics(Protocol):
-    # Diagnostic attributes remain optional getattr inputs; do not import algorithms here.
+    invalid_due_count: int
+    invalid_due_batch_ids_sample: List[str]
+    unscheduled_batch_count: int
+    unscheduled_batch_ids_sample: List[str]
+
     def to_dict(self) -> Dict[str, Any]: ...
 
 

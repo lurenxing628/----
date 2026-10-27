@@ -91,12 +91,24 @@ def _gap(field, value):
             "message": "排产时未记录此项。"}
 
 
-def _scope_value_valid(key, value):
+SCOPE_INPUT_REQUIRED_KEYS = ("start_date", "end_date", "ready_check", "missing_resource_policy", "completed_policy")
+SCOPE_INPUT_OPTIONAL_KEYS = ("material_strategy", "hold_window")
+_SCOPE_INPUT_DOMAINS = {
+    "missing_resource_policy": ("auto_assign", "exclude"),
+    "completed_policy": ("preserve_actuals",),
+    "material_strategy": ("strict", "stage"),
+}
+
+
+def stored_scope_input_keys(settings):
+    return SCOPE_INPUT_REQUIRED_KEYS + tuple(key for key in SCOPE_INPUT_OPTIONAL_KEYS if key in settings)
+
+
+def stored_scope_value_valid(key, value):
     if key == "hold_window":
         return stored_hold_window_valid(value)
-    domains = {"missing_resource_policy": ("auto_assign", "exclude"), "completed_policy": ("preserve_actuals",), "material_strategy": ("strict", "stage")}
-    if key in domains:
-        return type(value) is str and value in domains[key]
+    if key in _SCOPE_INPUT_DOMAINS:
+        return type(value) is str and value in _SCOPE_INPUT_DOMAINS[key]
     if key == "ready_check":
         return type(value) is bool
     try:
@@ -121,10 +133,9 @@ def _scope_batch_count(refs, gaps):
 
 def scope_summary(raw):
     settings, result, gaps = stored_json(raw), {}, []
-    optional = tuple(key for key in ("material_strategy", "hold_window") if key in settings)
-    for key in ("start_date", "end_date", "ready_check", "missing_resource_policy", "completed_policy") + optional:
+    for key in stored_scope_input_keys(settings):
         value = settings.get(key)
-        valid = _scope_value_valid(key, value)
+        valid = stored_scope_value_valid(key, value)
         result[key] = value if valid else None
         if not valid:
             gaps.append(_gap(key, value))

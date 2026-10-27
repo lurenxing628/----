@@ -48,9 +48,9 @@ def test_one_capture_reuses_projections_and_only_reads_new_identity_keys(dashboa
     monkeypatch.setattr(DashboardSourceRepository, "entity_ref_rows", refs)
     enriched, enrich = [], WorkbenchPlanCatalogRepository.enrich_arrangements
 
-    def enrich_once(repo, arrangements, *, version, captured_machines=None):
+    def enrich_once(repo, arrangements, *, captured_machines=None):
         enriched.append(captured_machines)
-        return enrich(repo, arrangements, version=version, captured_machines=captured_machines)
+        return enrich(repo, arrangements, captured_machines=captured_machines)
 
     monkeypatch.setattr(WorkbenchPlanCatalogRepository, "enrich_arrangements", enrich_once)
     case.conn.set_trace_callback(sql.append)

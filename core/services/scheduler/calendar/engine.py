@@ -49,15 +49,19 @@ class CalendarEngine:
     - 读取日历数据（WorkCalendar/OperatorCalendar）但不负责 CRUD/导入
     """
 
-    def __init__(self, conn, logger=None, *, capture=None, shift_facts: Optional[ShiftFacts] = None):
+    def __init__(self, conn, logger=None, *, capture=None, shift_facts: Optional[ShiftFacts] = None,
+                 captured_global_rows=None):
         self.conn = conn
         self.logger = logger
         self.capture = capture
         self.repo = CalendarRepository(conn, logger=logger)
         self.operator_calendar_repo = OperatorCalendarRepository(conn, logger=logger)
         self.operator_shift_calendar = OperatorShiftCalendar(conn, logger=logger, capture=capture, facts=shift_facts)
-        self._captured_global_rows = (None if capture is None else {
-            str(row["date"]): row for row in capture.business_table("WorkCalendar")})
+        self._captured_global_rows = (
+            dict(captured_global_rows) if captured_global_rows is not None
+            else None if capture is None
+            else {str(row["date"]): row for row in capture.business_table("WorkCalendar")}
+        )
         self._captured_personal_rows = (None if capture is None else {
             (row["operator_id"], str(row["date"])): row for row in capture.business_table("OperatorCalendar")})
         # 本引擎拥有一次请求/排产快照的日期与班次事实；维护入口统一清空派生缓存。

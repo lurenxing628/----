@@ -51,7 +51,7 @@ def _source_label(row):
     version = row["base_version"]
     if type(version) is not int or version <= 0:
         return "计划（来源读不到）"
-    label = {"official": "正式计划", "scenario": "试调方案", "selection": "候选方案"}.get(row["base_plan_kind"], "计划")
+    label = "正式计划" if row["base_plan_kind"] == "official" else "计划"
     return label + " v" + str(version)
 
 

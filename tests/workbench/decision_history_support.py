@@ -231,11 +231,10 @@ def _save_cloned_read_models(conn, run_ref, source_run_ref):
     disposition = dispositions(receipt, expected_refs=admission_operation_refs(facts, capture["input"]))
     prepared = {}
     for candidate in rows:
-        prepared_tasks = {}
         raw_tasks, intervals, scheduled = validate_saved_tasks(store.tasks(candidate["candidate_ref"]), candidate, facts,
-                                                               prepared_tasks=prepared_tasks)
+                                                               prepared_tasks={})
         prepared[candidate["candidate_ref"]] = {"raw_tasks": raw_tasks, "intervals": intervals,
-                                                "prepared_tasks": prepared_tasks, "scheduled_op_ids": scheduled}
+                                                "scheduled_op_ids": scheduled}
     official = read_decision_baseline(capture, facts, disposition, source_resolver=decision_baseline_source_resolver(conn))
     states = official["source_states"]
     dependencies = repo.dependency_heads(

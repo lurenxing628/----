@@ -40,12 +40,8 @@ class CandidateRunInput(ScheduleRunInput):
 
 
 def _projection_map(execution_projections, selected_refs):
-    if not isinstance(execution_projections, (list, tuple)):
-        fail("execution_projection_type", "Supply AJ ExecutionProjection objects, not a reconstructed dictionary.")
     result = {}
     for projection in execution_projections:
-        if not isinstance(projection, ExecutionProjection):
-            fail("execution_projection_type", "Every execution item must be an AJ ExecutionProjection.")
         if projection.operation_ref in result:
             fail("execution_projection_duplicate", "同一道工序读到了多份报工记录，这次排产没有开始。请刷新重试；仍不行请联系维护人员。")
         result[projection.operation_ref] = projection

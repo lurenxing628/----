@@ -102,7 +102,7 @@ def _critical_block_moves(timeline: List[Any], rows: Dict[int, Any], metrics: Di
 def _is_critical_block_pair(left: Any, right: Any, ids: Tuple[int, int], metrics: Dict[int, Dict[str, Any]],
                             latest: Optional[datetime], objective_name: str) -> bool:
     touches = left.end_time == right.start_time
-    critical_signal = any(bool(metrics[op_id].get("is_on_critical_path")) for op_id in ids)
+    critical_signal = any(bool(metrics[op_id]["is_on_critical_path"]) for op_id in ids)
     same_machine = left.machine_id is not None and left.machine_id == right.machine_id
     nonzero_duration = left.start_time < left.end_time and right.start_time < right.end_time
     changeover_signal = (
@@ -130,7 +130,7 @@ def _time_insert_moves(timeline: List[Any], rows: Dict[int, Any], metrics: Dict[
 
 def _target_priority(row: Any, metric: Dict[str, Any], start_dt: datetime, objective_name: str) -> Tuple[Any, ...]:
     finish = (row.end_time - start_dt).total_seconds() / 3600.0
-    tardy = max(finish - float(metric.get("due_deadline_hours", 1e9)), 0.0)
+    tardy = max(finish - float(metric["due_deadline_hours"]), 0.0)
     if objective_name == "min_weighted_tardiness":
-        return (-float(metric.get("weighted_due_pressure", metric.get("due_pressure", 0.0))), -tardy, row.op_id)
-    return (-tardy, -float(metric.get("due_pressure", 0.0)), -finish, row.op_id)
+        return (-float(metric["weighted_due_pressure"]), -tardy, row.op_id)
+    return (-tardy, -float(metric["due_pressure"]), -finish, row.op_id)

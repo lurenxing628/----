@@ -35,12 +35,13 @@ def load_adoption_candidate(conn, candidate_ref):
     validate_manifest(run, candidates, receipt)
     candidate = next(row for row in candidates if row["candidate_ref"] == candidate_ref)
     capture = store.capture(run_ref)
-    scope = completed_dispositions(receipt, expected_refs=admission_operation_refs(GenerationFacts(capture), capture["input"]))
+    facts = GenerationFacts(capture)
+    scope = completed_dispositions(receipt, expected_refs=admission_operation_refs(facts, capture["input"]))
     ids = require_candidate_scope(run, candidate, scope, capture, scheduled_op_ids=scheduled_ids(candidate))
     tasks = store.tasks(candidate_ref)
     if len(tasks) != len(ids):
         raise CandidateAdoptionBlocked("candidate_artifact_invalid", "这个候选方案的工序明细条数对不上，不能采用。请重新排产后再试。")
-    return run, candidate, scope, tasks, capture, ids
+    return run, candidate, scope, tasks, capture, ids, facts
 
 
 def require_candidate_scope(run, candidate, scope, capture, *, scheduled_op_ids):

@@ -208,7 +208,7 @@ def _official_projection(run, facts, disposition, official, refs, batch_refs, de
     work = preparation_work_items(facts, prepared["rows"], disposition, available=available)
     completion = project_completion_summary(delivery, work, available=available, schedulable_coverage=coverage["schedulable"])
     return {"identity": dict(official["identity"]), "source_states": official["source_states"],
-        "dependencies": dependencies or {"candidates": [], "scenarios": []},
+        "dependencies": dependencies,
         "operation_refs": sorted({row["operation_ref"] for row in tasks}), "deferred_operation_refs": sorted(official_deferred),
         "core_metrics": values, "coverage": coverage, "preparation": prepared["summary"], "completion": completion,
         "delivery": delivery, "arrangements": _arrangements(tasks), "resources": _resources(facts, tasks),
@@ -259,7 +259,7 @@ def build_admission_decision_read_model(run, capture, official, *, facts, receip
             "dispositions": None if disposition is None else list(disposition.values())}
 
 
-def prepare_admission_read_models(run, capture, official, *, facts, receipt, dependencies=None):
+def prepare_admission_read_models(run, capture, official, *, facts, receipt, dependencies):
     return {"scope": build_admission_read_model(capture, facts=facts),
             "decision": build_admission_decision_read_model(run, capture, official, facts=facts, receipt=receipt, dependencies=dependencies)}
 
@@ -318,10 +318,7 @@ def build_decision_read_models(run, capture, receipt, candidates, prepared_candi
         ref = candidate["candidate_ref"]
         packet = prepared_candidates[ref]
         intervals = packet["intervals"]
-        tasks = packet.get("tasks")
-        if tasks is None:
-            tasks = project_validated_tasks(packet["raw_tasks"], candidate, facts, intervals,
-                                            prepared_tasks=packet.get("prepared_tasks"))
+        tasks = project_validated_tasks(packet["raw_tasks"], candidate, facts, intervals)
         delivery = project_decision_delivery(facts, tasks, batch_refs, candidate=candidate, available=True,
             deferred_ids=deferred_ids, intervals=intervals)
         summary = project_candidate_summary(candidate, tasks, facts, batch_refs, basis, candidates, delivery,

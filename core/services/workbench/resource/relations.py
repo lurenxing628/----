@@ -82,7 +82,7 @@ class WorkbenchResourceRelationService:
             rows = self.repo.rows(identity.entity_key, query.relation)
             records = self._records(rows)
             facts = self.repo.facts(query.relation, list(records))
-            self._validate_facts(query.relation, rows, facts)
+            self._validate_facts(query.relation, facts)
             qualifications = self._qualifications(query.relation, records, facts)
             fingerprint = {"parent_identity": asdict(identity), "parent": parent, "rows": rows, "facts": facts}
             yield fingerprint, self._page(identity, query, rows, qualifications, facts)
@@ -100,7 +100,7 @@ class WorkbenchResourceRelationService:
             records[code] = row
         return records
 
-    def _validate_facts(self, relation, rows, facts):
+    def _validate_facts(self, relation, facts):
         if relation == "suppliers":
             if any(not supports_source(row["category"], "external") for row in facts["capabilities"]):
                 _invalid_facts("供应商单独设置的能力工种不存在，或者不是外协工种")

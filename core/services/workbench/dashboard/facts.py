@@ -136,7 +136,7 @@ class DashboardFacts:
             self.plan_issues = [source_issue("no_official_plan", "当前没有正式计划，未改读候选结果。")]
             return
         self.raw["ScheduleHistory"] = sorted(context.history_rows(version), key=lambda row: row["id"])
-        self.raw["Schedule"] = context.source_rows(version=version, source_table="schedule")
+        self.raw["Schedule"] = context.source_rows(version=version)
         try:
             ref = context.references.get_plan_ref(WorkbenchPlanLocator(version, "adopted"))
             _, entry, span = context.selected(ref)

@@ -24,17 +24,11 @@ def calendar_engine(tables):
 
 def original_duration(original, *, effort=None):
     """Saved zero-hour work requires a frozen point witness."""
-    op, batch, execution = original["operation"], original["batch"], original["execution"]
-    if op["source"] == "external":
-        group = original.get("external_group")
-        days = group["total_days"] if group and group["merge_mode"] == "merged" else op["ext_days"]
-        if not number(days, positive=True):
-            reject("external_duration_unknown", "原外协周期缺失或无效，不能推测完工时间。", 422)
-        return {"basis": "calendar_days", "days": days, "total_hours": None, "quantity": None}
+    op = original["operation"]
     if effort is None:
         effort = new_slot_effort(original)
-    else:
-        _original_target(op, batch, execution)
+    if op["source"] == "external":
+        return {"basis": "calendar_days", "days": effort.external_cycle_days, "total_hours": None, "quantity": None}
     quantity = effort.target_quantity
     total = effort.required_standard_hours
     if total == 0:

@@ -55,7 +55,7 @@ def validate_adoption(conn, candidate_ref):
     try:
         with CandidateStore(conn).snapshot():
             require_adoption_schema(conn)
-            _run, candidate, scope, tasks, capture, ids = load_adoption_candidate(conn, candidate_ref)
+            _run, candidate, scope, tasks, capture, ids, _facts = load_adoption_candidate(conn, candidate_ref)
             current_capture = ProductionFactsCapture(conn)
             facts = PreflightFacts(conn, capture=current_capture)
             with facts.snapshot(fingerprint=False):

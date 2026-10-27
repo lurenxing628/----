@@ -2,14 +2,11 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from core.errors import ValidationError
-from core.models.enums import YesNo
-from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 from core.models.scheduler_degradation_messages import FREEZE_WINDOW_DEGRADED_MESSAGE
-from core.shared.boolean_normalize import to_yes_no
 from core.shared.local_datetime import format_local_datetime as fmt_dt
 
 from .freeze_window_prefixes import (
@@ -46,10 +43,8 @@ class _FreezeSeedScope:
     seed_operations_by_batch: Dict[str, List[Any]]
     op_by_id: Dict[int, Any]
     op_ids_all: List[int]
-    # 调用方指定的时段：只有和 [anchor_start, anchor_end) 重叠的原安排算"要保留"，同批次前道从 start_str 起补齐。
-    # 为 None 时沿用旧口径：读到的窗口内原安排都算。
-    anchor_start: Optional[datetime] = None
-    anchor_end: Optional[datetime] = None
+    anchor_start: datetime
+    anchor_end: datetime
 
 
 def _init_freeze_meta(meta: Dict[str, Any]) -> Dict[str, Any]:
@@ -64,25 +59,6 @@ def _init_freeze_meta(meta: Dict[str, Any]) -> Dict[str, Any]:
 def _set_freeze_disabled(meta: Dict[str, Any], reason: str) -> None:
     meta["freeze_state"] = "disabled"
     meta["freeze_disabled_reason"] = reason
-
-
-def _freeze_window_days(cfg: ScheduleConfigSnapshot, prev_version: int, *, meta: Dict[str, Any]) -> int:
-    enabled = to_yes_no(cfg.freeze_window_enabled, default=YesNo.NO.value) == YesNo.YES.value
-    meta["freeze_enabled"] = bool(enabled)
-    days = cfg.freeze_window_days
-    meta["freeze_days"] = days
-
-    if not enabled:
-        _set_freeze_disabled(meta, _FREEZE_DISABLED_CONFIG_DISABLED)
-        meta["freeze_days"] = 0
-        return 0
-    if days <= 0:
-        _set_freeze_disabled(meta, _FREEZE_DISABLED_NO_DAYS)
-        return 0
-    if prev_version <= 0:
-        _set_freeze_disabled(meta, _FREEZE_DISABLED_NO_PREVIOUS_VERSION)
-        return 0
-    return int(days)
 
 
 def _freeze_unavailable() -> ValidationError:
@@ -149,21 +125,20 @@ def _hold_window_days(hold_window: Tuple[datetime, datetime], start_dt: datetime
 
 def _prepare_freeze_seed_scope(
     *,
-    cfg: Any,
     prev_version: int,
     start_dt: datetime,
     seed_operations: List[Any],
     freeze_meta: Dict[str, Any],
     hold_window: Optional[Tuple[datetime, datetime]],
 ) -> Optional[_FreezeSeedScope]:
-    if hold_window is not None:
-        freeze_days = _hold_window_days(hold_window, start_dt, prev_version, freeze_meta)
-    else:
-        freeze_days = _freeze_window_days(cfg, prev_version, meta=freeze_meta)
+    if hold_window is None:
+        _set_freeze_disabled(freeze_meta, _FREEZE_DISABLED_CONFIG_DISABLED)
+        return None
+    freeze_days = _hold_window_days(hold_window, start_dt, prev_version, freeze_meta)
     if freeze_days <= 0:
         return None
 
-    freeze_end = hold_window[1] if hold_window is not None else start_dt + timedelta(days=freeze_days)
+    freeze_end = hold_window[1]
     seed_operations_by_batch = group_seed_operations_by_batch(seed_operations)
     op_by_id: Dict[int, Any] = {int(op.id): op for op in seed_operations if op and op.id}
     op_ids_all = sorted(op_by_id)
@@ -177,8 +152,8 @@ def _prepare_freeze_seed_scope(
         seed_operations_by_batch=seed_operations_by_batch,
         op_by_id=op_by_id,
         op_ids_all=op_ids_all,
-        anchor_start=hold_window[0] if hold_window is not None else None,
-        anchor_end=hold_window[1] if hold_window is not None else None,
+        anchor_start=hold_window[0],
+        anchor_end=hold_window[1],
     )
 
 
@@ -223,7 +198,7 @@ def _apply_freeze_prefixes(
         rows_in_window(scope.anchor_start, scope.anchor_end, schedule_map), scope.op_by_id)
 
     for bid, anchors in anchors_lookup.items():
-        prefix = prefix_op_ids_for_anchors(scope.seed_operations_by_batch.get(bid, []), bid, anchors)
+        prefix = prefix_op_ids_for_anchors(scope.seed_operations_by_batch.get(bid, []), anchors)
         if any(oid not in schedule_map for oid in prefix):
             # 前道原安排不在冻结窗口里（窗口前还没报工，或者没排过）的批次整批不冻结、照常重排，
             # 由调用方事先提醒；窗口内读到的行本身没有坏，不整次拒绝。
@@ -262,7 +237,6 @@ def _finish_freeze_seed_result(
 
 def build_freeze_window_seed(
     *,
-    cfg: Any,
     prev_version: int,
     start_dt: datetime,
     reschedulable_operations: List[Any],
@@ -274,13 +248,12 @@ def build_freeze_window_seed(
     """上一版计划读不出来或冻结前缀有坏行时抛 ValidationError(field="freeze_window")，不降级成部分冻结。
 
     前道原安排不在窗口里的批次不冻结、记进 meta["freeze_skipped_batch_ids"]。
-    hold_window=(开始, 结束) 时不看配置里的冻结开关和天数：和这段时间重叠的原安排保留，同批次排在前面的
-    从 start_dt 起读到的原安排一起保留；记进 meta["hold_window"]。为 None 时按配置里的冻结天数。
+    hold_window=(开始, 结束) 时：和这段时间重叠的原安排保留，同批次排在前面的
+    从 start_dt 起读到的原安排一起保留；记进 meta["hold_window"]。为 None 时不保留。
     """
     freeze_meta = _init_freeze_meta(meta)
 
     scope = _prepare_freeze_seed_scope(
-        cfg=cfg,
         prev_version=int(prev_version),
         start_dt=start_dt,
         seed_operations=reschedulable_operations,

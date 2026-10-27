@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple, cast
-
-from core.models.schedule_plan_role import SOURCE_SCHEDULE
+from typing import Any, Dict, List, Optional, cast
 
 from .base_repo import BaseRepository
 from .schedule_detail_query import build_schedule_detail_sql
@@ -15,7 +13,7 @@ from .schedule_time_sql import (
     require_dt_for_sql,
 )
 
-_SCHEDULE_PLAN_ROWS_SQL = """
+SCHEDULE_PLAN_ROWS_SQL = """
 SELECT
     id,
     op_id,
@@ -59,38 +57,23 @@ class SchedulePlanQueryRepository(BaseRepository):
         self,
         *,
         version: int,
-        source_table: str = SOURCE_SCHEDULE,
     ) -> Optional[Dict[str, Any]]:
-        if source_table == SOURCE_SCHEDULE:
-            return self.fetchone(
-                """
-                SELECT id AS source_row_id, lock_status
-                FROM Schedule
-                WHERE version = ?
-                ORDER BY id ASC
-                LIMIT 1
-                """,
-                (int(version),),
-            )
-        return None
-
-    def _plan_rows_sql(
-        self,
-        *,
-        source_table: str = SOURCE_SCHEDULE,
-    ) -> Tuple[str, List[Any]]:
-        if source_table == SOURCE_SCHEDULE:
-            return _SCHEDULE_PLAN_ROWS_SQL, []
-        raise ValueError(f"未知的排产方案数据来源：{source_table}")
+        return self.fetchone(
+            """
+            SELECT id AS source_row_id, lock_status
+            FROM Schedule
+            WHERE version = ?
+            ORDER BY id ASC
+            LIMIT 1
+            """,
+            (int(version),),
+        )
 
     def get_plan_time_span(
         self,
         *,
         version: int,
-        source_table: str = SOURCE_SCHEDULE,
     ) -> Optional[ScheduleTimeSpanRow]:
-        if source_table != SOURCE_SCHEDULE:
-            raise ValueError(f"未知的排产方案数据来源：{source_table}")
         summary = self.fetchvalue(
             f"""
             SELECT {interval_summary_sql()} AS interval_summary
@@ -109,18 +92,16 @@ class SchedulePlanQueryRepository(BaseRepository):
         self,
         *,
         version: int,
-        source_table: str = SOURCE_SCHEDULE,
         start_time: str,
         end_time: str,
     ) -> List[ScheduleDetailRow]:
-        plan_sql, extra_params = self._plan_rows_sql(source_table=source_table)
         parsed_start_time = require_dt_for_sql(start_time, "计划明细查询时间写法不对，无法读取排程明细")
         parsed_end_time = require_dt_for_sql(end_time, "计划明细查询时间写法不对，无法读取排程明细")
-        params: List[Any] = [int(version)] + extra_params + [parsed_end_time, parsed_start_time]
+        params: List[Any] = [int(version), parsed_end_time, parsed_start_time]
         where_clauses = [DETAIL_OVERLAP_OR_BAD_TIME_SQL]
         sql = build_schedule_detail_sql(
             where_clauses=where_clauses,
-            plan_rows_cte_sql=plan_sql,
+            plan_rows_cte_sql=SCHEDULE_PLAN_ROWS_SQL,
         )
         return cast(List[ScheduleDetailRow], self.fetchall(sql, tuple(params)))
 
@@ -128,13 +109,11 @@ class SchedulePlanQueryRepository(BaseRepository):
         self,
         *,
         version: int,
-        source_table: str = SOURCE_SCHEDULE,
     ) -> List[Dict[str, Any]]:
         """零工时点事件（开工即完工）是合法安排，计入完工时间，不算时间无效行。"""
-        plan_sql, extra_params = self._plan_rows_sql(source_table=source_table)
         sql = f"""
             WITH plan_rows AS (
-                {plan_sql.strip()}
+                {SCHEDULE_PLAN_ROWS_SQL.strip()}
             )
             SELECT
               b.batch_id AS batch_id,
@@ -151,8 +130,7 @@ class SchedulePlanQueryRepository(BaseRepository):
             GROUP BY b.batch_id
             ORDER BY b.due_date ASC, b.batch_id ASC
         """
-        params: List[Any] = [int(version)] + extra_params
-        rows = self.fetchall(sql, tuple(params))
+        rows = self.fetchall(sql, (int(version),))
         for row in rows:
             _first, row["finish_time"], row["invalid_time_count"] = decode_interval_summary(row.pop("interval_summary"))
         return rows

@@ -121,7 +121,7 @@ def _window(items: List[int], *, size: int, rnd: random.Random) -> Tuple[int, ..
 
 
 class TimeWindowGenerator(DestroyGenerator):
-    name = "time_window"
+    name = IG_GENERATORS[0]
 
     def select(self, order: Sequence[int], *, size: int, rnd: random.Random, features: Dict[str, Any]) -> Tuple[int, ...]:
         count = _bounded(size, order)
@@ -133,7 +133,7 @@ class TimeWindowGenerator(DestroyGenerator):
 
 
 class ResourceWindowGenerator(DestroyGenerator):
-    name = "resource_window"
+    name = IG_GENERATORS[1]
 
     def select(self, order: Sequence[int], *, size: int, rnd: random.Random, features: Dict[str, Any]) -> Tuple[int, ...]:
         count = _bounded(size, order)
@@ -156,7 +156,7 @@ class ResourceWindowGenerator(DestroyGenerator):
 
 
 class TardyRandomGenerator(DestroyGenerator):
-    name = "tardy_random"
+    name = IG_GENERATORS[2]
 
     def select(self, order: Sequence[int], *, size: int, rnd: random.Random, features: Dict[str, Any]) -> Tuple[int, ...]:
         return tardy_random_destroy(order, rnd=rnd, size=size, signals=features["signals"])
@@ -181,8 +181,6 @@ _GENERATOR_TYPES = {
     ResourceWindowGenerator.name: ResourceWindowGenerator,
     TardyRandomGenerator.name: TardyRandomGenerator,
 }
-if tuple(_GENERATOR_TYPES) != IG_GENERATORS:
-    raise RuntimeError("Destroy generator registry must list exactly IG_GENERATORS in order.")
 
 
 def build_generators(names: Sequence[str], *, initial_size: int, max_size: int) -> List[DestroyGenerator]:

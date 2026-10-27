@@ -96,8 +96,6 @@ def restart_after_stall(
     *,
     local_state: LocalSearchState,
     rnd: Any,
-    dispatch_mode_cfg: str,
-    dispatch_rule_cfg: str,
     evaluate_shaken_order: ShakenOrderEvaluator,
     decode_session: SharedDecodeSession,
 ) -> RestartOutcome:
@@ -108,9 +106,7 @@ def restart_after_stall(
     and records any skipped request.
     """
     shaken_order = _shake_order(local_state.best.get("order") or local_state.current_order, rnd)
-    best_strat, best_params, best_dispatch_mode, best_dispatch_rule = resolve_current_strategy_state(
-        local_state.best, dispatch_mode_cfg=dispatch_mode_cfg, dispatch_rule_cfg=dispatch_rule_cfg
-    )
+    best_strat, best_params, best_dispatch_mode, best_dispatch_rule = resolve_current_strategy_state(local_state.best)
     stop_reason: Optional[str] = None
     rejected_mode: Optional[str] = None
     calls_before = decode_session.actual_decoder_calls
@@ -126,9 +122,7 @@ def restart_after_stall(
     else:
         local_state.accept_current(candidate)
     decode_attempted = decode_session.actual_decoder_calls > calls_before
-    cur_strat, cur_params, cur_dispatch_mode, cur_dispatch_rule = resolve_current_strategy_state(
-        local_state.current, dispatch_mode_cfg=dispatch_mode_cfg, dispatch_rule_cfg=dispatch_rule_cfg
-    )
+    cur_strat, cur_params, cur_dispatch_mode, cur_dispatch_rule = resolve_current_strategy_state(local_state.current)
     return RestartOutcome(
         strategy=cur_strat,
         params=cur_params,

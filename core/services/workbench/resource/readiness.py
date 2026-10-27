@@ -40,7 +40,7 @@ def process_readiness(conn, total, logger=None):
 
 
 def _metric_item(group):
-    counts, issues = dict(group["counts"]), list(group["issues"])
+    counts, issues = group["counts"], group["issues"]
     unavailable = any(issue["code"] in ("resource_metrics_unavailable", "resource_availability_unavailable") for issue in issues)
     status = "unavailable" if unavailable else "zero" if counts.get("total") == 0 else "recorded"
     return {"status": status, "counts": counts, "issues": issues, "basis": group["basis"]}
@@ -55,7 +55,7 @@ def resource_readiness(counts, metrics, calendar, process):
                          "issues": [], "basis": "这里只数物料资料有多少条，没有按批次需求核对齐套。"}
     items["calendar"] = {"status": "unavailable" if calendar["status"] != "known" else
                           "not_configured" if not calendar["stats"]["configured_days"] else "recorded",
-                         "counts": dict(calendar["stats"]), "basis": calendar["basis"],
+                         "counts": calendar["stats"], "basis": calendar["basis"],
                          "issues": calendar["stats"]["issues"] + [issue for day in calendar["days"] for issue in day["issues"]]}
     return {"status": "unknown", "ratio": None, "basis": "static_resource_facts_not_schedule_precheck",
             "message": "整体就绪度暂无数据；这里只汇总静态资料，不代表排产检查结果。", "items": items}

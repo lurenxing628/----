@@ -85,7 +85,7 @@ def residual_capacity_for_operation(
     *,
     batch: Any,
     start_dt: datetime,
-    due_exclusive: datetime,
+    due_exclusive: Optional[datetime],
     calendar_service: Any,
     resource_pool: Optional[Dict[str, Any]],
     prepared: FixedResourceBlockingFacts,
@@ -93,7 +93,8 @@ def residual_capacity_for_operation(
     pool = prepared.pool_view(resource_pool)
     resource_key = (_text(op.machine_id), _text(op.operator_id), _text(op.op_type_id))
     machine_ids = pool.candidate_machine_ids(op, key=resource_key)
-    if not machine_ids or due_exclusive <= start_dt:
+    window_end = residual_capacity_window_end(start_dt=start_dt, due_exclusive=due_exclusive)
+    if not machine_ids or window_end <= start_dt:
         return _capacity_payload(
             0.0,
             0.0,
@@ -103,7 +104,6 @@ def residual_capacity_for_operation(
             bottleneck_machine_count=1 if machine_ids else 0,
         )
 
-    window_end = residual_capacity_window_end(start_dt=start_dt, due_exclusive=due_exclusive)
     priority = batch.priority if batch is not None else None
     machine_operators = pool.machine_operators(op, machine_ids=machine_ids, key=resource_key)
     effective_candidate_machine_count = len(machine_operators)
@@ -173,9 +173,9 @@ def seed_results_by_resource_id(seed_results: Iterable[Any]) -> Dict[str, Dict[s
     return out
 
 
-def residual_capacity_window_end(*, start_dt: datetime, due_exclusive: datetime) -> datetime:
+def residual_capacity_window_end(*, start_dt: datetime, due_exclusive: Optional[datetime]) -> datetime:
     max_end = start_dt + timedelta(days=_RESIDUAL_CAPACITY_MAX_WINDOW_DAYS)
-    return min(due_exclusive, max_end)
+    return max_end if due_exclusive is None else min(due_exclusive, max_end)
 
 
 def bottleneck_on(*, bottleneck_score: float, residual_capacity_pressure: float, machine_count: int) -> float:

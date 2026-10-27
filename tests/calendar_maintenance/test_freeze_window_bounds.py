@@ -42,10 +42,10 @@ def test_piece_batches_hold_only_the_covered_piece_and_common_work():
            Op(id=5, batch_id="B1", seq=30, piece_id="B"), Op(id=6, batch_id="B1", seq=40, piece_id=None)]
     anchors = window_anchors_by_batch({3: {}}, {op.id: op for op in ops})
     assert anchors == {"B1": {"A": 30}}
-    assert prefix_op_ids_for_anchors(ops, "B1", anchors["B1"]) == [1, 2, 3]
-    assert prefix_op_ids_for_anchors(ops, "B1", {None: 40}) == [1, 2, 3, 4, 5, 6]
+    assert prefix_op_ids_for_anchors(ops, anchors["B1"]) == [1, 2, 3]
+    assert prefix_op_ids_for_anchors(ops, {None: 40}) == [1, 2, 3, 4, 5, 6]
     plain = [Op(id=index, batch_id="B2", seq=index * 10, piece_id=None) for index in (1, 2, 3)]
-    assert prefix_op_ids_for_anchors(plain, "B2", {None: 20}) == [1, 2]
+    assert prefix_op_ids_for_anchors(plain, {None: 20}) == [1, 2]
 
 
 @pytest.mark.parametrize("mismatch", ["other_machine", "bare_true"])
@@ -77,7 +77,7 @@ def test_point_prefix_carries_its_witness_and_a_mismatched_witness_rejects_the_w
             return evidence
 
         frozen, seeds = build_freeze_window_seed(
-            cfg=None, prev_version=1, start_dt=datetime(2026, 9, 9), reschedulable_operations=ops, meta=meta,
+            prev_version=1, start_dt=datetime(2026, 9, 9), reschedulable_operations=ops, meta=meta,
             point_validator=validator, schedule_rows_reader=lambda **_: rows,
             hold_window=(datetime(2026, 9, 9, 9), datetime(2026, 9, 9, 11)))
         return frozen, seeds, meta, seen

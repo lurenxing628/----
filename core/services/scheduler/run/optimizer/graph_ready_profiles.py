@@ -15,15 +15,6 @@ GRAPH_READY_V2_GENERATED_ORIGIN = "graph_ready_v2_generated"
 GRAPH_READY_V2_REPAIRED_ORIGIN = "graph_ready_v2_repaired"
 GRAPH_READY_V2_ITERATED_GREEDY_ORIGIN = "graph_ready_v2_iterated_greedy"
 
-GRAPH_READY_REQUIRED_CONTEXT_FIELDS = (
-    "schedulable_op_ids",
-    "fixed_op_ids",
-    "predecessor_op_ids_by_op_id",
-    "successor_op_ids_by_op_id",
-    "sort_key_by_op_id",
-    "graph_priority_key_by_op_id",
-)
-
 GRAPH_READY_SELECTION_TIEBREAKER = (
     "failed_ops",
     "objective_score",

@@ -21,32 +21,6 @@ from .schedule_summary_assembly import (
 )
 
 
-def _metric_int(metrics: Any, key: str) -> Optional[int]:
-    if metrics is None:
-        return None
-    raw = getattr(metrics, key, None)
-    if raw is None:
-        return None
-    return max(0, int(raw))
-
-
-def _metric_sample(metrics: Any, key: str, *, limit: int) -> Optional[List[str]]:
-    if metrics is None:
-        return None
-    raw = getattr(metrics, key, None)
-    if not isinstance(raw, (list, tuple)):
-        return None
-    out: List[str] = []
-    for item in raw:
-        text = str(item).strip()
-        if not text or text in out:
-            continue
-        out.append(text)
-        if len(out) >= limit:
-            break
-    return out
-
-
 def _warning_list(value: Optional[List[str]]) -> List[str]:
     out: List[str] = []
     for item in value or []:
@@ -109,40 +83,15 @@ def _build_runtime_state(
         append_summary_warning_fn=_append_summary_warning,
         incomplete_batch_ids=incomplete_batch_ids,
     )
-    metric_invalid_count = _metric_int(best_metrics, "invalid_due_count")
-    invalid_due_count = (
-        metric_invalid_count if metric_invalid_count is not None else overdue_meta["invalid_due_count"]
-    )
-    metric_invalid_sample = _metric_sample(best_metrics, "invalid_due_batch_ids_sample", limit=10)
-    invalid_due_batch_ids_sample = (
-        metric_invalid_sample
-        if metric_invalid_sample is not None
-        else overdue_meta["invalid_due_batch_ids_sample"]
-    )
-    metric_unscheduled_count = _metric_int(best_metrics, "unscheduled_batch_count")
-    metric_unscheduled_sample = _metric_sample(best_metrics, "unscheduled_batch_ids_sample", limit=20)
-    if metric_unscheduled_count is not None and metric_unscheduled_sample is not None:
-        unscheduled_batch_count = metric_unscheduled_count
-        unscheduled_batch_ids_sample = metric_unscheduled_sample
-    else:
-        normalized_batch_ids = [str(batch_id).strip() for batch_id in batches]
-        unscheduled_batch_ids_all = [
-            batch_id for batch_id in sorted(normalized_batch_ids) if batch_id and batch_id not in finish_by_batch
-        ]
-        unscheduled_batch_count = (
-            metric_unscheduled_count if metric_unscheduled_count is not None else len(unscheduled_batch_ids_all)
-        )
-        unscheduled_batch_ids_sample = (
-            metric_unscheduled_sample if metric_unscheduled_sample is not None else unscheduled_batch_ids_all[:20]
-        )
+    assert best_metrics is not None
     return RuntimeState(
         finish_by_batch=finish_by_batch,
         overdue_items=overdue_items,
         near_due_items=overdue_meta["near_due_items"],
-        invalid_due_count=invalid_due_count,
-        invalid_due_batch_ids_sample=invalid_due_batch_ids_sample,
-        unscheduled_batch_count=unscheduled_batch_count,
-        unscheduled_batch_ids_sample=unscheduled_batch_ids_sample,
+        invalid_due_count=best_metrics.invalid_due_count,
+        invalid_due_batch_ids_sample=list(best_metrics.invalid_due_batch_ids_sample[:10]),
+        unscheduled_batch_count=best_metrics.unscheduled_batch_count,
+        unscheduled_batch_ids_sample=list(best_metrics.unscheduled_batch_ids_sample[:20]),
         incomplete_batch_ids=incomplete_batch_ids,
     )
 

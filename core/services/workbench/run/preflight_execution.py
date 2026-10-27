@@ -1,7 +1,7 @@
 """Consume the unique execution ledger for the preflight operation scope."""
 
 
-def execution_projections(facts, operations, *, prepared=None):
+def execution_projections(facts, operations, *, prepared):
     from core.services.workbench.execution.ledger import ExecutionLedgerService
     from core.services.workbench.facts.run_input_codec import validate_projection_dto
 
@@ -15,10 +15,9 @@ def execution_projections(facts, operations, *, prepared=None):
     result = {row.operation_ref: row.to_dict() for row in projections}
     if set(result) != set(refs) or len(projections) != len(refs):
         raise ValueError("ExecutionProjection did not cover the exact preflight operation scope")
-    if prepared is not None:
-        for projection in projections:
-            validate_projection_dto(projection)
-        prepared.extend(projections)
+    for projection in projections:
+        validate_projection_dto(projection)
+    prepared.extend(projections)
     return result
 
 

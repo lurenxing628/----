@@ -6,15 +6,10 @@ from core.models.scheduler_history_parser import parse_result_summary_payload
 from core.models.workbench_preflight import stored_hold_window_valid
 from core.models.workbench_trial import issue, reject
 from core.services.workbench.facts.preflight_checks import stored_date
-from data.repositories.schedule_history_repo import ScheduleHistoryRepository
 
 
-def plan_material_policy(conn, version, *, history=None):
-    if history is None:
-        stored = ScheduleHistoryRepository(conn).get_by_version(version)
-        raw = stored.result_summary if stored else None
-    else:
-        raw = history["result_summary"]
+def plan_material_policy(history):
+    raw = history["result_summary"] if history is not None else None
     # Every official plan's adoption audit records the run's material policy and dates.
     summary = parse_result_summary_payload(raw).payload
     if summary is None or "material_policy" not in summary:

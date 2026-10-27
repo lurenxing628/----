@@ -70,34 +70,38 @@ def test_fixed_decision_features_admit_effective_profiles_once_and_preserve_raw_
     profile = next(item for item in profiles if item.formula_version.startswith("graph_ready_v2")
                    and item.feature_basis == SUCCESSOR_WORKLOAD_BASIS)
     original = deepcopy((metrics, ranks))
-    validate = candidates._validate_decision_features
+    compute = candidates._priority_keys_for_profile
     calls = []
 
     def counted(*args, **kwargs):
         calls.append(kwargs["profile"])
-        return validate(*args, **kwargs)
+        return compute(*args, **kwargs)
 
-    monkeypatch.setattr(candidates, "_validate_decision_features", counted)
-    owner.decision_features.validate(profile)
-    owner.decision_features.validate(replace(profile, slug="repair-label", candidate_origin="graph_ready_v2_repaired"))
-    owner.decision_features.validate(replace(profile, candidate_origin="graph_ready_v2_iterated_greedy"))
+    monkeypatch.setattr(candidates, "_priority_keys_for_profile", counted)
+    first = owner.decision_features.priority_keys_for_profile(profile)
+    assert owner.decision_features.priority_keys_for_profile(
+        replace(profile, slug="repair-label", candidate_origin="graph_ready_v2_repaired")) is first
+    assert owner.decision_features.priority_keys_for_profile(
+        replace(profile, candidate_origin="graph_ready_v2_iterated_greedy")) is first
     assert len(calls) == 1
     for changed in (replace(profile, formula_slug="spt" if profile.formula_slug != "spt" else "edd"),
                     replace(profile, feature_basis=BATCH_WORKLOAD_BASIS),
                     replace(profile, jitter_seed=profile.jitter_seed + 1),
                     replace(profile, effective_weights=dict(profile.effective_weights, critical_path=99.0))):
-        owner.decision_features.validate(changed)
+        owner.decision_features.priority_keys_for_profile(changed)
     assert len(calls) == 5
     assert (metrics, ranks) == original
 
     broken = deepcopy(metrics)
     broken[next(iter(broken))]["impact_count"] = float("nan")
-    failed_owner = SharedGraphFeatures(broken, ranks)  # Admission stays at the first actual decision.
+    failed_owner = SharedGraphFeatures(broken, ranks)
+    hybrid_profile = replace(profile, formula_slug="graph_due_hybrid")
     with pytest.raises(ValidationError) as expected:
-        validate(select_profile_metrics(broken, profile=profile), profile=profile, v2_common_rank_cache=ranks)
+        compute(select_profile_metrics(broken, profile=hybrid_profile), profile=hybrid_profile,
+                v2_common_rank_cache=ranks, normalized_metrics_cache={})
     for _ in range(2):
         with pytest.raises(ValidationError) as actual:
-            failed_owner.decision_features.validate(profile)
+            failed_owner.decision_features.priority_keys_for_profile(hybrid_profile)
         assert (actual.value.field, str(actual.value), actual.value.details) == (
             expected.value.field, str(expected.value), expected.value.details)
     assert len(calls) == 7
@@ -242,7 +246,7 @@ def test_real_operation_and_qualified_resource_move_preserves_seed_dag_and_downt
             limits=EliteRepairLimits(), objective_name="min_overdue", operations=mutable_operations,
             metrics_by_op_id=metrics, start_dt=START_DT, seed=0, best=stale_parent,
             report_state=OptimizationSearchReportState(objective_name="min_overdue", started_at=0.0),
-            graph_context=context, decode_session=sessions[-1],
+            graph_context=context, clock=lambda: 0.0, deadline=10.0, decode_session=sessions[-1],
         )
         elite = elite_pool.make_elite(stale_parent, successor)
         prepared_parent = elite["prepared_parent"]
@@ -334,7 +338,8 @@ def test_repair_positions_and_move_prefixes_preserve_exact_consumption(monkeypat
     visit_report = OptimizationSearchReportState(objective_name="min_overdue", started_at=0.0)
     visit_pool = EliteRepairPool(
         limits=EliteRepairLimits(), objective_name="min_overdue", operations=[], metrics_by_op_id={},
-        start_dt=START_DT, seed=0, best=None, report_state=visit_report, graph_context={}, decode_session=session,
+        start_dt=START_DT, seed=0, best=None, report_state=visit_report, graph_context={},
+        clock=lambda: 0.0, deadline=10.0, decode_session=session,
     )
     elite = {"neighborhood": parent, "candidate": {}, "prepared_parent": None, "decision_offset": 0, "stream_offsets": {}, "portfolio_id": 1}
 
@@ -489,9 +494,16 @@ def test_optimizer_changeover_signals_follow_type_identity_and_skip_point_events
     assert 2 in index.adjacent[1] and 3 in index.adjacent[2]
 
     # The insertion screen keeps point rows for successor readiness without occupying or switching.
+    screen_metric = {
+        "due_deadline_hours": 8.0,
+        "due_pressure": 0.5,
+        "weighted_due_pressure": 0.5,
+        "weighted_processing_hours": 1.0,
+    }
     search = SimpleNamespace(
         parent=SimpleNamespace(predecessors={1: set(), 2: {1}, 3: {2}, 4: set(), 5: set(), 6: set()}),
-        metrics={}, report={"objective_name": "min_changeover"},
+        metrics={op_id: dict(screen_metric) for op_id in reference.order},
+        report={"objective_name": "min_changeover"},
     )
     screen = InsertionScreen(search, reference)
     assert screen.supported and 2 in screen.rows

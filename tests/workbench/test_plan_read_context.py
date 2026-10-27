@@ -29,12 +29,12 @@ def test_read_context_owns_capture_and_next_request_observes_change(plan_api, mo
     selected = calendar_context.selected_context
 
     def storage_rows(repo, **values):
-        captures["raw", values["version"], values["source_table"]] += 1
+        captures["raw", values["version"]] += 1
         return storage(repo, **values)
 
-    def detail_rows(repo, arrangements, *, version, captured_machines=None):
-        captures["detail", version] += 1
-        return detail(repo, arrangements, version=version, captured_machines=captured_machines)
+    def detail_rows(repo, arrangements, *, captured_machines=None):
+        captures["detail", arrangements[0]["version"]] += 1
+        return detail(repo, arrangements, captured_machines=captured_machines)
 
     def selection(*args, **kwargs):
         selected_calls.append(args[2].plan_ref)
@@ -65,7 +65,7 @@ def test_read_context_owns_capture_and_next_request_observes_change(plan_api, mo
                     assert rejected.value.code == "task_binding_invalid"
         conn.set_trace_callback(None)
         assert conn.total_changes == changes
-        assert captures["raw", 3, "schedule"] == captures["detail", 3] == 1
+        assert captures["raw", 3] == captures["detail", 3] == 1
         assert selected_calls == [ref]
         assert sum("FROM WorkbenchPlanIdentityClock WHERE singleton = 1" in sql for sql in statements) == 1
         assert not any("SELECT schema_version FROM pragma_schema_version" in sql for sql in statements)

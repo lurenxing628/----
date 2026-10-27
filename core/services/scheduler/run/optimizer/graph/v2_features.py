@@ -29,7 +29,6 @@ from .workload import batch_ordering_workload_signals, build_work_buckets, opera
 _NO_DUE_DEADLINE_HOURS = 1_000_000_000.0
 _NO_DUE_CRITICAL_RATIO = 1_000_000_000.0
 _NO_DUE_SACRIFICE_PENALTY = 2.0
-_NO_DUE_CAPACITY_WINDOW_DAYS = 30
 
 # 真零工时自制工序（total==0：setup=unit=0，或 quantity=0 且 setup=0）在系统口径下合法
 # （见 _operation_hours 内注释），但 duration 类特征有两条恒>0 的承重合同：
@@ -153,12 +152,9 @@ def _enrich_feature_basis(*, batches, start_dt, calendar_service,
         bottleneck_score = prepared["bottleneck_score_by_op_id"][op_id]
         capacity_start_dt = start_dt + timedelta(hours=float(ready_offset_hours_by_op_id[op_id]))
         parsed_due_exclusive = prepared["due_exclusive_by_op_id"][op_id]
-        capacity_due_exclusive = parsed_due_exclusive or (
-            capacity_start_dt + timedelta(days=_NO_DUE_CAPACITY_WINDOW_DAYS)
-        )
         capacity_window_end = residual_capacity_window_end(
             start_dt=capacity_start_dt,
-            due_exclusive=capacity_due_exclusive,
+            due_exclusive=parsed_due_exclusive,
         )
         window_key = (
             op.source,

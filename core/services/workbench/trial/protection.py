@@ -24,7 +24,7 @@ def prepare_frozen_arrangements(admission, rows, live, *, settings):
     facts = live["preflight_facts"]
     try:
         config = facts.configuration()
-        cfg = candidate_config(settings, snapshot=config)
+        candidate_config(settings, snapshot=config)
     except ValidationError:
         # 排产参数本身读不出来时，正式采用会直接拦下并说明是哪项参数；这里不替它判冻结。
         return HeldArrangements(set(), [], {})
@@ -33,7 +33,7 @@ def prepare_frozen_arrangements(admission, rows, live, *, settings):
     operations = [stored_batch_operation(op) for op in tables["BatchOperations"] if op["batch_id"] in batch_ids]
     moving = _rescheduled_ids(rows, live)
     return held_arrangements(
-        facts=facts, cfg=cfg, prev_version=version,
+        facts=facts, prev_version=version,
         start_dt=datetime.combine(date.fromisoformat(anchor["start_date"]), time.min),
         reschedulable_operations=[op for op in operations if op.id in moving],
         hold_window=hold_window(anchor, snapshot=config)[0])

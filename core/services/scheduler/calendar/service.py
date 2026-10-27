@@ -22,11 +22,11 @@ class CalendarService:
     - 内部按职责拆分：管理侧（CRUD/标准化）与引擎侧（时间推进/效率）
     """
 
-    def __init__(self, conn, logger=None, *, capture=None):
+    def __init__(self, conn, logger=None, *, capture=None, captured_global_rows=None):
         self.conn = conn
         self.logger = logger
         self._admin = CalendarAdmin(conn, logger=logger)
-        self._engine = CalendarEngine(conn, logger=logger, capture=capture)
+        self._engine = CalendarEngine(conn, logger=logger, capture=capture, captured_global_rows=captured_global_rows)
 
     def normalization_operation(self):
         """One calendar-row normalization operation; workday defaults come from this service's engine."""

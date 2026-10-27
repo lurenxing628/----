@@ -13,7 +13,7 @@ from core.services.scheduler.run.optimizer.search_stage import SearchStage
 
 from .budget import GraphReadySearchBudget
 from .candidates import PreparedDecisionFeatures, evaluate_graph_ready_candidate
-from .context import graph_node_metrics_by_op_id, validate_graph_ready_context
+from .context import graph_node_metrics_by_op_id
 from .iterated_greedy_contract import IteratedGreedyLimits
 from .iterated_greedy_run import IteratedGreedyRun
 from .predecode import GraphReadyProfileSearch
@@ -26,10 +26,6 @@ from .v2_ranks import build_v2_common_rank_cache
 if TYPE_CHECKING:
     from core.services.scheduler.run.optimizer.search_report import OptimizationSearchReportState
     from core.services.scheduler.run.optimizer.shared_decode import SharedDecodeSession
-
-
-class GraphReadyDeadlineExhausted(RuntimeError):
-    pass
 
 
 @dataclass
@@ -60,13 +56,12 @@ def prepare_shared_graph_features(
     *, graph_ready_context: Dict[str, Any], scheduler: GreedyScheduler, algo_ops_to_schedule: List[OpForScheduleAlgo],
     batches: Dict[str, Any], start_dt: datetime, downtime_map: Dict[str, List[Tuple[datetime, datetime]]],
     seed_sr_list: List[ScheduleResult], resource_pool: Optional[Dict[str, Any]],
-    deadline: Optional[float] = None, clock: Optional[Callable[[], float]] = None,
-) -> SharedGraphFeatures:
+    deadline: float, clock: Callable[[], float],
+) -> Optional[SharedGraphFeatures]:
     """Build both existing bases and their ranks once before target stages are assembled."""
-    if deadline is not None and clock is not None and clock() >= deadline:
-        raise GraphReadyDeadlineExhausted()
-    schedulable_ids = validate_graph_ready_context(graph_ready_context, algo_ops_to_schedule=algo_ops_to_schedule,
-                                                  seed_sr_list=seed_sr_list)
+    if clock() >= deadline:
+        return None
+    schedulable_ids = {op.id for op in algo_ops_to_schedule}
     metrics = enrich_graph_ready_v2_metrics(
         graph_node_metrics_by_op_id(graph_ready_context, schedulable_ids=schedulable_ids),
         operations=algo_ops_to_schedule, batches=batches,

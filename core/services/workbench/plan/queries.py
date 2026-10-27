@@ -38,7 +38,7 @@ def selected_plan(context, locator):
     identity = entry.plan_identity
     if not entry.can_view or identity is None:
         raise WorkbenchCommandRejected("plan_unavailable", "所选计划的状态、摘要或明细无效，看不了。请回计划列表查看不可用原因。")
-    span = repo.get_plan_time_span(version=locator.version, source_table=identity.source_table)
+    span = repo.get_plan_time_span(version=locator.version)
     if span is None:
         raise WorkbenchCommandRejected("plan_unavailable", "所选计划没有可查看的明细。请刷新计划列表后重新选择。")
     public_span: Dict[str, Union[str, bool]] = {"start": public_time(span.get("start_time")), "end": public_time(span.get("end_time"))}
@@ -80,21 +80,16 @@ class WorkbenchPlanQueryService:
         repo = context.repo
         heads, has_more = repo.history_page(page_size=scope.size, before_version=seek)
         query = PagePlanQueryService(repo, repo.latest_version() if heads else None)
-        plans = []
-        for head in heads:
-            plans.extend(self._catalog_history(query, head))
+        plans = [self.catalog_role(query, head) for head in heads]
         next_seek = heads[-1]["version"] if has_more else None
         data = {"plans": plans, "page": {"collection": scope.collection, "size": scope.size,
                 "unit": "version", "has_more": has_more}}
         return data, next_seek
 
-    def _catalog_history(self, query, history):
-        return [self.catalog_role(query, history, ROLE_ADOPTED)]
-
-    def catalog_role(self, query, history, role=ROLE_ADOPTED):
-        """某个版本某个角色的计划目录投影；采用历史也用它核对正式计划身份。"""
-        locator = WorkbenchPlanLocator(history["version"], role)
-        name = plan_role_label(role)
+    def catalog_role(self, query, history):
+        """某个版本正式计划目录投影；采用历史也用它核对正式计划身份。"""
+        locator = WorkbenchPlanLocator(history["version"], ROLE_ADOPTED)
+        name = plan_role_label(ROLE_ADOPTED)
         ref, blocked = self._catalog_reference(locator, name)
         if blocked is not None:
             return blocked
@@ -148,7 +143,7 @@ class WorkbenchPlanQueryService:
             raise WorkbenchCommandRejected("query_too_large", "本次范围的安排超过 10000 条，请缩小时间范围后重试。", 413)
         tasks, task_facts, resources, resource_state = context.projected_tasks(scope.plan_ref, rows)
         projections, facts, gantt_graph, provenance = workspace_projections(
-            self.conn, entry=entry, scope=scope, rows=rows, resources=resources, plan_span=span, logger=self.logger, context=context,
+            self.conn, entry=entry, scope=scope, resources=resources, plan_span=span, logger=self.logger, context=context,
         )
         baseline_facts = facts.get("baseline", {})
         source_resources = (task_facts["resource_directory"] + baseline_facts.get("resource_directory", [])

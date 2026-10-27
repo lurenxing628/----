@@ -166,13 +166,13 @@ def test_cross_layer_schema_checks_share_leaf_contracts_in_one_snapshot(candidat
             assert calibration.schema_installed()
             candidate_archive.require_adoption_schema(conn)
             identities.read_revision()
-            assert preflight_execution.execution_projections(PreflightFacts(conn), []) == {}
+            assert preflight_execution.execution_projections(PreflightFacts(conn), [], prepared=[]) == {}
         assert calls == {name: 1 for name, _, _ in checks}
 
 
 def _admission(case):
     _, candidates = compute(case)
-    run, _, scope, _, capture, _ = load_adoption_candidate(case.conn, candidates[0])
+    run, _, scope, _, capture, _, _ = load_adoption_candidate(case.conn, candidates[0])
     assert scope is not None
     return scope, capture, run["accepted_at"]
 

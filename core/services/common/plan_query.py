@@ -46,7 +46,6 @@ class SchedulePlanQueryService:
         history_row = self.repo.get_history_identity_row(int(resolution.version)) or {}
         source_row = self.repo.get_first_plan_identity_row(
             version=int(resolution.version),
-            source_table=resolution.source_table,
         ) or {}
         identity = build_plan_identity(
             version=int(resolution.version),
@@ -79,7 +78,6 @@ class SchedulePlanQueryService:
 
         if self.repo.get_plan_time_span(
             version=int(version),
-            source_table=SOURCE_SCHEDULE,
         ) is None:
             raise ValueError("所选方案没有可查看的明细。")
         return self.resolve_plan(version, role)
@@ -88,13 +86,11 @@ class SchedulePlanQueryService:
         self,
         *,
         version: int,
-        source_table: str = SOURCE_SCHEDULE,
         start_time: str,
         end_time: str,
     ) -> List[ScheduleDetailRow]:
         return self.repo.list_detail_rows_between(
             version=int(version),
-            source_table=source_table,
             start_time=start_time,
             end_time=end_time,
         )
@@ -103,9 +99,7 @@ class SchedulePlanQueryService:
         self,
         *,
         version: int,
-        source_table: str = SOURCE_SCHEDULE,
     ) -> List[Dict[str, Any]]:
         return self.repo.list_overdue_base_rows(
             version=int(version),
-            source_table=source_table,
         )

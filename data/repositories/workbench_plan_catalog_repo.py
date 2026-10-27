@@ -12,9 +12,8 @@ import sqlite3
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from core.infrastructure.connection_guards import schema_contract_memo
-from core.models.schedule_plan_role import SOURCE_SCHEDULE
 
-from .schedule_plan_query_repo import SchedulePlanQueryRepository
+from .schedule_plan_query_repo import SCHEDULE_PLAN_ROWS_SQL, SchedulePlanQueryRepository
 from .schedule_rows import ScheduleTimeSpanRow
 
 DEFAULT_PLAN_PAGE_SIZE = 20
@@ -43,7 +42,7 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
         super().__init__(conn, logger=logger)
         self._histories: Dict[int, Optional[Dict[str, Any]]] = {}
         self._history_rows: Dict[int, List[Dict[str, Any]]] = {}
-        self._spans: Dict[Tuple[int, str], Optional[ScheduleTimeSpanRow]] = {}
+        self._spans: Dict[int, Optional[ScheduleTimeSpanRow]] = {}
         self._storage_columns: Dict[str, List[str]] = {}
         self._latest_version: Optional[int] = None
         self._latest_version_loaded = False
@@ -110,36 +109,35 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
                 self._history_rows[row["version"]].append(row)
 
     def get_plan_time_span(
-        self, *, version: int, source_table: str = SOURCE_SCHEDULE,
+        self, *, version: int,
     ) -> Optional[ScheduleTimeSpanRow]:
-        key = (version, source_table)
-        if key not in self._spans:
-            self._spans[key] = super().get_plan_time_span(
-                version=version, source_table=source_table,
-            )
-        return self._spans[key]
+        if version not in self._spans:
+            self._spans[version] = super().get_plan_time_span(version=version)
+        return self._spans[version]
 
     def first_raw_plan_identity_row(
-        self, *, version: int, source_table: str = SOURCE_SCHEDULE,
+        self, *, version: int,
     ) -> Optional[Dict[str, Any]]:
-        sql, extra = self._plan_rows_sql(source_table=source_table)
-        return self.fetchone("SELECT id AS source_row_id, lock_status FROM (" + sql + ") raw ORDER BY id ASC LIMIT 1",
-                             [version] + extra)
+        return self.fetchone(
+            "SELECT id AS source_row_id, lock_status FROM (" + SCHEDULE_PLAN_ROWS_SQL + ") raw ORDER BY id ASC LIMIT 1",
+            (version,),
+        )
 
     def iter_raw_plan_rows(
-        self, *, version: int, source_table: str = SOURCE_SCHEDULE,
+        self, *, version: int,
     ) -> Iterator[Dict[str, Any]]:
         """Stream plan rows in id order without declared DATE/TIMESTAMP conversion."""
-        sql, extra = self._plan_rows_sql(source_table=source_table)
         fields = ("id", "op_id", "machine_id", "operator_id", "start_time", "end_time", "lock_status", "version")
         selected = ", ".join("CASE WHEN 1 THEN raw." + field + " END AS " + field for field in fields)
-        return self.iter_rows("SELECT " + selected + " FROM (" + sql + ") raw ORDER BY raw.id ASC", [version] + extra)
+        return self.iter_rows(
+            "SELECT " + selected + " FROM (" + SCHEDULE_PLAN_ROWS_SQL + ") raw ORDER BY raw.id ASC",
+            (version,),
+        )
 
     def list_plan_storage_rows(
-        self, *, version: Any, source_table: str = SOURCE_SCHEDULE,
+        self, *, version: Any,
     ) -> List[Dict[str, Any]]:
         """Capture every persisted field without declared DATE/TIMESTAMP conversion."""
-        _, extra = self._plan_rows_sql(source_table=source_table)
         table = "Schedule"
         if table not in self._storage_columns:
             self._storage_columns[table] = [str(row[1]) for row in schema_contract_memo(self.conn).structure.table_info(table)]
@@ -148,9 +146,9 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
             quoted = '"' + name.replace('"', '""') + '"'
             expressions.append(f"CASE WHEN 1 THEN r.{quoted} ELSE NULL END AS {quoted}")
         sql = "SELECT " + ", ".join(expressions) + ' FROM "Schedule" r WHERE r.version = ?'
-        return self.fetchall(sql + " ORDER BY r.id ASC, r.rowid ASC", [version] + extra)
+        return self.fetchall(sql + " ORDER BY r.id ASC, r.rowid ASC", (version,))
 
-    def enrich_arrangements(self, arrangements, *, version, captured_machines=None):
+    def enrich_arrangements(self, arrangements, *, captured_machines=None):
         """Enrich captured arrangements; supplied machines are complete, including missing keys."""
         operation_ids = list(dict.fromkeys(row["op_id"] for row in arrangements))
         operations = {}
@@ -181,8 +179,8 @@ class WorkbenchPlanCatalogRepository(SchedulePlanQueryRepository):
             operation = operations.get(row["op_id"], {})
             detail = {key: operation.get(key) for key in _OPERATION_DETAIL_FIELDS}
             detail.update({key: row[key] for key in
-                           ("op_id", "start_time", "end_time", "lock_status", "machine_id", "operator_id")})
-            detail.update(schedule_id=row["id"], version=row.get("version", version),
+                           ("op_id", "start_time", "end_time", "lock_status", "machine_id", "operator_id", "version")})
+            detail.update(schedule_id=row["id"],
                           machine_name=names["machine"].get(str(row["machine_id"])) if row["machine_id"] is not None else None,
                           operator_name=names["operator"].get(str(row["operator_id"])) if row["operator_id"] is not None else None)
             result.append(detail)

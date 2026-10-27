@@ -103,7 +103,7 @@ class WorkbenchTrialAdoptionHistoryService:
             if locator != WorkbenchPlanLocator(plan["version"], "adopted"):
                 raise ValueError("Receipt plan identity mismatch")
             history = query.repo.get_history_identity_row(plan["version"])
-            identity = reader.catalog_role(query, history, "adopted")
+            identity = reader.catalog_role(query, history)
             if identity["plan_ref"] != plan["plan_ref"]:
                 raise ValueError("Receipt plan ref mismatch")
             return identity, identity["blocked_reasons"]

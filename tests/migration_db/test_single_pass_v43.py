@@ -98,7 +98,7 @@ def test_retained_sql_readers_parse_each_row_endpoint_once(tmp_path, monkeypatch
 
         monkeypatch.setattr(schedule_time_sql, "parse_dt_for_sql", counted)
         repo = SchedulePlanQueryRepository(conn)
-        common = {"version": 1, "source_table": "schedule"}
+        common = {"version": 1}
         rows = repo.list_detail_rows_between(**common, start_time="2026-10-15 08:00:00", end_time="2026-10-15 10:00:00")
         assert len(rows) == 3 and len(calls) == 8  # Two query parameters, two endpoints for each row.
         calls.clear()

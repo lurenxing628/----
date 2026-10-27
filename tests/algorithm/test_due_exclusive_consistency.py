@@ -81,7 +81,7 @@ def test_due_exclusive_consistency() -> None:
         objective_name="min_overdue",
         time_budget_seconds=5,
         best_score=None,
-        best_metrics=None,
+        best_metrics=metrics,
         attempts=[],
         improvement_trace=[],
         frozen_op_ids=set(),

@@ -83,8 +83,7 @@ class _LocalSearchRun:
             **self.inputs,
         )
 
-    def restart(self, *, local_state: LocalSearchState,
-                dispatch_mode_cfg: str, dispatch_rule_cfg: str) -> RestartOutcome:
+    def restart(self, *, local_state: LocalSearchState) -> RestartOutcome:
         inputs = self.inputs
 
         def _evaluate(shaken_order: List[str], strategy: Any, params: Dict[str, Any],
@@ -101,8 +100,7 @@ class _LocalSearchRun:
             )
 
         return restart_after_stall(
-            local_state=local_state, rnd=inputs["rnd"], dispatch_mode_cfg=dispatch_mode_cfg,
-            dispatch_rule_cfg=dispatch_rule_cfg,
+            local_state=local_state, rnd=inputs["rnd"],
             evaluate_shaken_order=_evaluate, decode_session=inputs["decode_session"],
         )
 
@@ -121,8 +119,6 @@ class LocalSearchStage(SearchStage):
         batches: Dict[str, Any],
         start_dt: datetime,
         end_date: Optional[date],
-        dispatch_mode_cfg: str,
-        dispatch_rule_cfg: str,
         resource_pool: Optional[Dict[str, Any]],
         objective_name: str,
         attempts: List[Dict[str, Any]],
@@ -142,8 +138,6 @@ class LocalSearchStage(SearchStage):
         self.local_state: Optional[LocalSearchState] = None
         self.clock = clock
         self.deadline = deadline
-        self.dispatch_mode_cfg = dispatch_mode_cfg
-        self.dispatch_rule_cfg = dispatch_rule_cfg
         self._neighborhoods = neighborhoods
         self._unaffordable_modes: Set[str] = set()
         self.stop_reason: Optional[str] = None
@@ -158,7 +152,7 @@ class LocalSearchStage(SearchStage):
             return
         best = cast(Dict[str, Any], best)
         local_state = LocalSearchState.from_best(best, resource_pool=resource_pool)
-        strategy_state = resolve_current_strategy_state(best, dispatch_mode_cfg=dispatch_mode_cfg, dispatch_rule_cfg=dispatch_rule_cfg)
+        strategy_state = resolve_current_strategy_state(best)
         active_neighborhoods = _active_neighborhoods(
             neighborhoods=neighborhoods, cur_dispatch_mode=strategy_state[2],
         )
@@ -205,9 +199,7 @@ class LocalSearchStage(SearchStage):
             self.pending_restart = True
 
     def _best_dispatch_mode(self, local_state: LocalSearchState) -> str:
-        return resolve_current_strategy_state(
-            local_state.best, dispatch_mode_cfg=self.dispatch_mode_cfg, dispatch_rule_cfg=self.dispatch_rule_cfg,
-        )[2]
+        return resolve_current_strategy_state(local_state.best)[2]
 
     def _sync_strategy_and_neighborhoods(self, strategy_state: Tuple[Any, Any, str, str]) -> None:
         if strategy_state[2] != self.strategy_state[2]:
@@ -264,10 +256,7 @@ class LocalSearchStage(SearchStage):
             self.counters.no_improve = 0
             self._current_stall_rounds = 0
             self._tried_sgs_rules.clear()
-            restart = self._run.restart(
-                local_state=local_state,
-                dispatch_mode_cfg=self.dispatch_mode_cfg, dispatch_rule_cfg=self.dispatch_rule_cfg,
-            )
+            restart = self._run.restart(local_state=local_state)
             self.counters.record_round(decode_attempted=restart.decode_attempted)
             self._sync_strategy_and_neighborhoods(
                 (restart.strategy, restart.params, restart.dispatch_mode, restart.dispatch_rule),
@@ -290,9 +279,7 @@ class LocalSearchStage(SearchStage):
             self._current_stall_rounds = 0
             self._tried_sgs_rules.clear()
         self._sync_strategy_and_neighborhoods(
-            resolve_current_strategy_state(
-                local_state.current, dispatch_mode_cfg=self.dispatch_mode_cfg, dispatch_rule_cfg=self.dispatch_rule_cfg,
-            ),
+            resolve_current_strategy_state(local_state.current),
         )
         self.vns_state.record_round(best_improved=outcome.best_improved)
         self._handle_budget_skip(

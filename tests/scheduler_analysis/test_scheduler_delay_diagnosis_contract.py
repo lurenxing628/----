@@ -7,9 +7,9 @@ import pytest
 from core.infrastructure.database import ensure_schema, get_connection
 from core.models.schedule_plan_role import (
     ROLE_ADOPTED,
+    SOURCE_SCHEDULE,
 )
 from core.services.common.plan_query import SchedulePlanQueryService
-from data.repositories.schedule_plan_query_repo import SOURCE_SCHEDULE
 from tests._support.paths import REPO_ROOT
 
 SCHEMA_PATH = REPO_ROOT / "schema.sql"
@@ -105,7 +105,7 @@ def _seed_db(tmp_path):
 
 def _overdue_rows(query, resolution):
     return query.list_plan_overdue_base_rows_for_resolution(
-        version=resolution.version, source_table=resolution.source_table)
+        version=resolution.version)
 
 
 def test_overdue_bad_finish_time_has_its_own_bucket(tmp_path):
@@ -179,7 +179,6 @@ def test_overdue_allow_points_recognizes_zero_duration_point_event_batches(tmp_p
         resolution = query.resolve_plan(VERSION, ROLE_ADOPTED)
         rows = query.list_plan_overdue_base_rows_for_resolution(
             version=resolution.version,
-            source_table=resolution.source_table,
         )
         by_batch = {row["batch_id"]: row for row in rows}
         assert by_batch["B_PURE_POINT"]["finish_time"] == "2026-05-04 12:00:00"

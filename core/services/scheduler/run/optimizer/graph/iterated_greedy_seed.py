@@ -14,7 +14,7 @@ from datetime import datetime
 from itertools import chain, combinations
 from typing import Any, Callable, Dict, FrozenSet, Iterator, List, Optional, Tuple
 
-from core.algorithm_contracts.types import ScheduleResult, ScheduleSummary
+from core.algorithm_contracts.types import ScheduleResult
 from core.algorithm_contracts.value_domains import INTERNAL
 from core.shared.strict_parse import finite_float, is_number
 
@@ -65,8 +65,8 @@ def build_due_date_seed(*, parent: Any, candidate: Dict[str, Any], metrics: Dict
     search: Optional[_SeedSearch] = None
     try:
         budget.check()
-        order = _check_scope(parent, candidate, graph_context)
-        jobs, offset = _observed_jobs(order, candidate, metrics, start_dt, budget)
+        order = _check_scope(parent, graph_context)
+        jobs, offset = _observed_jobs(candidate, metrics, start_dt, budget)
         result["estimated_start_offset_hours"] = offset
         budget.check()
         search = _SeedSearch(jobs, offset, _estimate(order, jobs, offset), budget)
@@ -94,46 +94,32 @@ def build_due_date_seed(*, parent: Any, candidate: Dict[str, Any], metrics: Dict
     return _finish_result(result, search)
 
 
-def _check_scope(parent: Any, candidate: Dict[str, Any], graph: Dict[str, Any]) -> Tuple[int, ...]:
-    order = tuple(parent.order)
-    if not order or any(type(op_id) is not int for op_id in order) or len(set(order)) != len(order):
-        raise _NotApplicable("invalid_parent_order")
-    summary: ScheduleSummary = candidate["summary"]
-    if not summary.success or summary.failed_ops != 0:
-        raise _NotApplicable("candidate_not_successful")
+def _check_scope(parent: Any, graph: Dict[str, Any]) -> Tuple[int, ...]:
     _check_graph(parent, graph)
-    return order
+    return tuple(parent.order)
 
 
 def _check_graph(parent: Any, graph: Dict[str, Any]) -> None:
-    if not isinstance(graph.get("fixed_op_ids"), (set, frozenset, list, tuple)):
-        raise _NotApplicable("missing_fixed_operation_context")
     if graph["fixed_op_ids"]:
         raise _NotApplicable("fixed_operations")
-    links = [parent.predecessors, parent.successors,
-             graph.get("predecessor_op_ids_by_op_id"), graph.get("successor_op_ids_by_op_id")]
-    if any(not isinstance(mapping, dict) for mapping in links):
-        raise _NotApplicable("missing_precedence_context")
-    edge_sets = [values for mapping in links for values in mapping.values()]
-    if any(not isinstance(values, (set, frozenset, list, tuple)) for values in edge_sets):
-        raise _NotApplicable("invalid_precedence_context")
-    if any(edge_sets):
+    links = (
+        parent.predecessors,
+        parent.successors,
+        graph["predecessor_op_ids_by_op_id"],
+        graph["successor_op_ids_by_op_id"],
+    )
+    if any(values for mapping in links for values in mapping.values()):
         raise _NotApplicable("precedence_constraints")
 
 
-def _observed_jobs(order: Tuple[int, ...], candidate: Dict[str, Any], metrics: Dict[int, Dict[str, Any]],
+def _observed_jobs(candidate: Dict[str, Any], metrics: Dict[int, Dict[str, Any]],
                    start_dt: datetime, budget: _Budget) -> Tuple[Dict[int, _Job], float]:
     rows: List[ScheduleResult] = candidate["results"]
-    if len(rows) != len(order):
-        raise _NotApplicable("result_scope_mismatch")
-    expected = set(order)
     jobs: Dict[int, _Job] = {}
     batches, resources, starts = set(), set(), []
     for row in rows:
         budget.check()
         op_id = row.op_id
-        if op_id not in expected or op_id in jobs:
-            raise _NotApplicable("result_scope_mismatch")
         if row.batch_id in batches:
             raise _NotApplicable("not_one_operation_per_batch")
         batches.add(row.batch_id)

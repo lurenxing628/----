@@ -32,12 +32,12 @@ class ReportEngine:
 
     def _fetch_overdue_base_rows_for_plan(self, resolution: SchedulePlanResolution):
         return self.plan_query_service.list_plan_overdue_base_rows_for_resolution(
-            version=resolution.version, source_table=resolution.source_table,
+            version=resolution.version,
         )
 
     def _list_plan_rows_between(self, resolution, start_time, end_time):
         return self.plan_query_service.list_plan_detail_rows_between_for_resolution(
-            version=resolution.version, source_table=resolution.source_table,
+            version=resolution.version,
             start_time=start_time, end_time=end_time,
         )
 

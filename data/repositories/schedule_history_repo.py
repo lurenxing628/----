@@ -1,21 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, cast
-
-from core.models.schedule_history import ScheduleHistory
+from typing import Any, Dict, cast
 
 from .base_repo import BaseRepository
 
 
 class ScheduleHistoryRepository(BaseRepository):
     """排产历史仓库（ScheduleHistory）。"""
-
-    def get_by_version(self, version: int) -> Optional[ScheduleHistory]:
-        row = self.fetchone(
-            "SELECT id, schedule_time, version, strategy, batch_count, op_count, result_status, result_summary, created_by FROM ScheduleHistory WHERE version = ? ORDER BY id DESC LIMIT 1",
-            (version,),
-        )
-        return ScheduleHistory.from_row(row) if row else None
 
     def allocate_next_version(self) -> int:
         """

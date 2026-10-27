@@ -113,8 +113,7 @@ def resource_calendar_summary(conn, logger=None):
     last = first + timedelta(days=6)
     rows = WorkbenchResourceSummaryRepository(conn, logger=logger).calendar_rows(
         first.isoformat(), (last + timedelta(days=1)).isoformat())
-    service = CalendarService(conn, logger=logger)
-    service._engine._captured_global_rows = rows
+    service = CalendarService(conn, logger=logger, captured_global_rows=rows)
     days = [_day_summary(service, first + timedelta(days=index), rows.get((first + timedelta(days=index)).isoformat()), today)
             for index in range(7)]
     stats = _week_stats(days)

@@ -22,17 +22,15 @@ class LocalSearchState:
             best=best,
             current_order=list(best["order"]),
             # Every candidate carries the run's own pool normalized as ``resource_pool or {}``.
-            current_resource_pool=resource_pool or {},
+            current_resource_pool=best["resource_pool"] or resource_pool or {},
             current_resource_pair_rank=best.get("resource_pair_rank") or {},
         )
 
     def accept_current(self, candidate: Dict[str, Any]) -> None:
         self.current = candidate
         self.current_resource_pair_rank = candidate["resource_pair_rank"]
-        self.current_order = list(candidate.get("order") or self.current_order)
-        candidate_resource_pool = candidate.get("resource_pool")
-        if isinstance(candidate_resource_pool, dict):
-            self.current_resource_pool = candidate_resource_pool
+        self.current_order = list(candidate["order"])
+        self.current_resource_pool = candidate["resource_pool"] or {}
 
     def improve_best(self, candidate: Dict[str, Any]) -> None:
         self.best = candidate
@@ -62,15 +60,12 @@ def candidate_can_update_best(
 
 def resolve_current_strategy_state(
     source: Dict[str, Any],
-    *,
-    dispatch_mode_cfg: str,
-    dispatch_rule_cfg: str,
 ) -> Tuple[Any, Dict[str, Any], str, str]:
     return (
         source["strategy"],
         dict(source["params"]),
-        str(source.get("dispatch_mode") or dispatch_mode_cfg),
-        str(source.get("dispatch_rule") or dispatch_rule_cfg),
+        str(source["dispatch_mode"]),
+        str(source["dispatch_rule"]),
     )
 
 

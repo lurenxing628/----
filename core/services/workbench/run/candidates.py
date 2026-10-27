@@ -1,8 +1,5 @@
 """Self-contained permanent candidate catalog and full-scope workspace service."""
 
-from datetime import date
-
-from core.models.workbench_preflight import stored_hold_window_valid
 from core.models.workbench_run_candidate import blocked_reasons, read_capabilities
 from core.services.workbench.facts.candidate_delivery import candidate_delivery_risks
 from core.services.workbench.facts.candidate_projection import (
@@ -16,6 +13,10 @@ from core.services.workbench.facts.candidate_tasks import (
     task_span,
 )
 from core.services.workbench.facts.candidate_values import gap
+from core.services.workbench.facts.run_history_projection import (
+    stored_scope_input_keys,
+    stored_scope_value_valid,
+)
 
 
 class WorkbenchRunCandidateQueryService:
@@ -87,22 +88,9 @@ class WorkbenchRunCandidateQueryService:
 def _generation(run, capture, candidate):
     settings = capture["input"]
     values, gaps = {}, []
-    domains = {"missing_resource_policy": ("auto_assign", "exclude"), "completed_policy": ("preserve_actuals",), "material_strategy": ("strict", "stage")}
-    optional = tuple(key for key in ("material_strategy", "hold_window") if key in settings)
-    for key in ("start_date", "end_date", "ready_check", "missing_resource_policy", "completed_policy") + optional:
+    for key in stored_scope_input_keys(settings):
         value = settings.get(key)
-        if key in domains:
-            valid = type(value) is str and value in domains[key]
-        elif key == "hold_window":
-            # 不设（null）是合法记录，不算缺口；读不懂的才记缺口并回显 null。
-            valid = stored_hold_window_valid(value)
-        elif key == "ready_check":
-            valid = type(value) is bool
-        else:
-            try:
-                valid = type(value) is str and date.fromisoformat(value).isoformat() == value
-            except ValueError:
-                valid = False
+        valid = stored_scope_value_valid(key, value)
         values[key] = value if valid else None
         if not valid:
             gaps.append(gap("input." + key, "not_recorded" if value is None else "invalid_stored_value"))

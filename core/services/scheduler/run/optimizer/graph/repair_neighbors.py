@@ -85,8 +85,7 @@ def _batch_signals(
         for target, source in (("due_pressure", "due_pressure"), ("saveability", "saveability"), ("sacrifice", "sacrifice_penalty")):
             row[target] = max(row[target], float(metric[source]))
         row["critical"] = max(row["critical"], float(metric["is_on_critical_path"]))
-        row["weighted_due_pressure"] = max(row["weighted_due_pressure"],
-                                            float(metric.get("weighted_due_pressure", metric["due_pressure"])))
+        row["weighted_due_pressure"] = max(row["weighted_due_pressure"], float(metric["weighted_due_pressure"]))
     for batch, row in signals.items():
         row["changeovers"] = prepared_parent.changeovers_by_batch.get(batch, 0.0)
     return signals

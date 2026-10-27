@@ -9,7 +9,7 @@ from .occupancy import project_plan_occupancy
 from .process_order import project_process_order
 
 
-def resource_directory(rows, resources, *, tasks=None, baseline=None, archived=()):
+def resource_directory(rows, resources, *, tasks, baseline=None, archived=()):
     directory = {}
     for row in rows:
         for kind in ("machine", "operator", "supplier"):
@@ -24,19 +24,18 @@ def resource_directory(rows, resources, *, tasks=None, baseline=None, archived=(
             previous = directory.setdefault((kind, identity.ref), value)
             if previous != value:
                 raise WorkbenchCommandRejected("plan_unavailable", "同一台设备或同一个人员有两套名称或编号，对不上。请到资料总览核对。")
-    if tasks is not None:
-        compared = [task for item in (baseline or {}).get("items", []) for task in (item["before"], item["after"]) if task is not None]
-        used = {(kind, task[kind + "_ref"]) for task in list(tasks) + compared for kind in ("machine", "operator", "supplier")
-                if task[kind + "_ref"] is not None}
-        for row in archived:
-            directory.setdefault((row["kind"], row["ref"]), row)
-        if not used <= set(directory):
-            raise WorkbenchCommandRejected("plan_unavailable", "安排引用的资源缺少可核对的来源目录，请核对原采用记录。")
-        directory = {key: value for key, value in directory.items() if key in used}
+    compared = [task for item in (baseline or {}).get("items", []) for task in (item["before"], item["after"]) if task is not None]
+    used = {(kind, task[kind + "_ref"]) for task in list(tasks) + compared for kind in ("machine", "operator", "supplier")
+            if task[kind + "_ref"] is not None}
+    for row in archived:
+        directory.setdefault((row["kind"], row["ref"]), row)
+    if not used <= set(directory):
+        raise WorkbenchCommandRejected("plan_unavailable", "安排引用的资源缺少可核对的来源目录，请核对原采用记录。")
+    directory = {key: value for key, value in directory.items() if key in used}
     return [directory[key] for key in sorted(directory)]
 
 
-def workspace_projections(conn, *, entry, scope, rows, resources, plan_span, logger, context):
+def workspace_projections(conn, *, entry, scope, resources, plan_span, logger, context):
     baseline, baseline_facts = build_plan_baseline(conn, entry=entry, scope=scope, context=context)
     selected = context.calendar_selection(entry, scope, resources, plan_span)
     calendar, calendar_facts = project_plan_calendar(conn, scope=scope, resources=resources, selected=selected)

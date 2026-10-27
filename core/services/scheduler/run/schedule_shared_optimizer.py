@@ -18,7 +18,6 @@ from core.models.schedule_config_runtime_snapshot import ScheduleConfigSnapshot
 from .optimizer.candidate_profile import build_candidate_profile
 from .optimizer.config import is_ortools_enabled, resolve_optimizer_config
 from .optimizer.graph.ready import (
-    GraphReadyDeadlineExhausted,
     build_graph_search_stages,
     prepare_shared_graph_features,
 )
@@ -117,7 +116,6 @@ def optimize_shared_schedule(
     downtime_map: Dict[str, List[Tuple[datetime, datetime]]], seed_results: List[Dict[str, Any]],
     resource_pool: Optional[Dict[str, Any]], version: int,
     readiness_gate_enabled: bool = False,
-    graph_ready_context: Optional[Any] = None, graph_dispatch_mode_override: Optional[str] = None,
     graph_prepare: Optional[Callable[[], Any]] = None, search_budget: SearchBudget,
     _runtime: Optional[OptimizerRuntime] = None,
 ) -> SharedOptimizationResult:
@@ -125,8 +123,6 @@ def optimize_shared_schedule(
     runtime = resolve_runtime(_runtime, search_budget)
     started_at = runtime.clock()
     algo_stats: Dict[str, Any] = {"fallback_counts": {}}
-    if graph_dispatch_mode_override not in (None, "sgs"):
-        raise ValidationError("图派工模式覆盖只允许使用 sgs。", field="graph_dispatch_mode_override")
     seeds = coerce_seed_results(seed_results, optimizer_algo_stats=algo_stats)
     scheduler = runtime.scheduler_factory(calendar_service=calendar_service, config_service=cfg)
     config = resolve_optimizer_config(cfg)
@@ -137,11 +133,15 @@ def optimize_shared_schedule(
         raise SearchBudgetExhausted("candidate_time_budget_reached")
 
     graph_preparation_calls = 0
+    graph_ready_context: Optional[Any] = None
+    graph_dispatch_mode_override: Optional[str] = None
     if graph_prepare is not None:
         preparation = graph_prepare()
         graph_preparation_calls = 1
         graph_ready_context = preparation.graph_ready_context
         graph_dispatch_mode_override = preparation.graph_dispatch_mode_override
+    if graph_dispatch_mode_override not in (None, "sgs"):
+        raise ValidationError("图派工模式覆盖只允许使用 sgs。", field="graph_dispatch_mode_override")
     piece = bool(graph_ready_context is not None and graph_ready_context.get("piece_scope"))
     if any(op.piece_id is not None for op in algo_ops_to_schedule) and not piece:
         raise ValidationError("分件排产需要真实工艺依赖图。", field="graph_ready_context")
@@ -220,8 +220,6 @@ def optimize_shared_schedule(
                 **{key: common[key] for key in ("scheduler", "algo_ops_to_schedule", "batches", "start_dt",
                                                "downtime_map", "seed_sr_list", "resource_pool", "deadline", "clock")},
                 graph_ready_context=cast(Dict[str, Any], graph_ready_context))
-        except GraphReadyDeadlineExhausted:
-            pass
         finally:
             shared_budget.charge_preparation(targets[0], "graph_features", runtime.clock() - feature_started_at)
 
@@ -244,7 +242,7 @@ def optimize_shared_schedule(
         if not piece:
             view.local_stage = LocalSearchStage(
                 **decode_common, batches=batches, best=view.state.best, version=version,
-                dispatch_mode_cfg=dispatch_mode, dispatch_rule_cfg=config.dispatch_rule, objective_name=view.objective,
+                objective_name=view.objective,
                 attempts=view.state.attempts, improvement_trace=view.state.improvement_trace,
                 rng_factory=runtime.rng_factory, search_report_state=view.report,
                 neighborhoods=_business_neighborhoods(view.objective),

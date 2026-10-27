@@ -15,7 +15,7 @@ finish_by_batch 里的值是被失败截断的部分完工时间，按它做超�
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Set, Tuple
 
 from core.algorithm_contracts.types import ScheduleResult
 from core.algorithms.evaluation_completion import parse_due_exclusive_datetime
@@ -93,11 +93,13 @@ def build_incomplete_batch_items(
     """
     if not incomplete_batch_ids:
         return []
-    scheduled_count_by_batch = _scheduled_op_count_by_batch(results, incomplete_batch_ids)
-    failed_count_by_batch, first_reason_by_batch = _failure_stats_by_batch(failure_details, incomplete_batch_ids)
+    selected_batch_ids = sorted(incomplete_batch_ids)[:50]
+    selected_set = set(selected_batch_ids)
+    scheduled_count_by_batch = _scheduled_op_count_by_batch(results, selected_set)
+    failed_count_by_batch, first_reason_by_batch = _failure_stats_by_batch(failure_details, selected_set)
 
     items: List[Dict[str, Any]] = []
-    for batch_id in sorted(incomplete_batch_ids):
+    for batch_id in selected_batch_ids:
         batch = batches.get(batch_id)
         due_text = normalize_text(batch.due_date) if batch is not None else None
         finish_time = finish_by_batch.get(batch_id)
@@ -134,7 +136,7 @@ def incomplete_batches_payload(
         results=results,
         failure_details=failure_details,
     )
-    return {"count": len(items), "items": items[:50]}
+    return {"count": len(incomplete_batch_ids), "items": items}
 
 
 def _record_invalid_due(*, batch_id: str, invalid_due_ids_sample: List[str]) -> None:

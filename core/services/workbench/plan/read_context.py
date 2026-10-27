@@ -63,12 +63,11 @@ class PlanReadContext:
 
     @staticmethod
     def query(entry):
-        identity, locator = entry.plan_identity, entry.locator
-        return {"version": locator.version, "source_table": identity.source_table}
+        return {"version": entry.locator.version}
 
     @staticmethod
     def source_key(query):
-        return PointPlanCatalogRepository._source_key(**query)
+        return query["version"]
 
     def source_rows(self, entry=None, **query):
         return self.repo.source_rows(**(self.query(entry) if entry is not None else query))
@@ -141,7 +140,7 @@ class PlanReadContext:
         cache = self._enriched.setdefault(self.source_key(query), {})
         missing = [row for row in prepared if row["id"] not in cache]
         if missing:
-            rows = self.repo.enrich_arrangements(missing, version=query["version"], captured_machines=self.captured_machines)
+            rows = self.repo.enrich_arrangements(missing, captured_machines=self.captured_machines)
             points = {row["id"]: row["_point_work"] for row in missing if row.get("_point_work")}
             cache.update((row["schedule_id"], dict(row, _point_work=points[row["schedule_id"]])
                           if row["schedule_id"] in points else row) for row in rows)
@@ -235,9 +234,8 @@ class PlanReadContext:
 
     def row_times(self, plan_ref, row):
         if plan_ref not in self._plan_time_maps:
-            locator, record = self.references._resolved_record(plan_ref)
-            query = {"version": locator.version, "source_table": record["source_table"]}
-            self._plan_time_maps[plan_ref] = self._interval_map(query)
+            locator, _record = self.references._resolved_record(plan_ref)
+            self._plan_time_maps[plan_ref] = self._interval_map({"version": locator.version})
         return self._plan_time_maps[plan_ref][row["schedule_id"]]
 
     def calendar_selection(self, entry, scope, resources, plan_span):

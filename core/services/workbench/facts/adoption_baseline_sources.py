@@ -65,8 +65,7 @@ def _candidate_source(conn, audit):
     candidate_ref, run_ref = audit["candidate_ref"], audit["run_ref"]
     _source_exists(conn, "WorkbenchRunJobs", "run_ref", run_ref)
     _source_exists(conn, "WorkbenchRunCandidates", "candidate_ref", candidate_ref)
-    run, candidate, scope, tasks, capture, _ = load_adoption_candidate(conn, candidate_ref)
-    facts = GenerationFacts(capture)
+    run, candidate, scope, tasks, capture, _, facts = load_adoption_candidate(conn, candidate_ref)
     tables = _candidate_tables(facts)
     AdmissionBaseline(capture, facts, scope)
     prepared = CandidateAdmissionProof(decoded_baseline(capture["baseline"]), tables)

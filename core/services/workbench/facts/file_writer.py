@@ -87,7 +87,11 @@ def write_resource_file(kind, rows, fmt, *, template=False, category=None):
                 + ("导入模板" if template else "清单"))
     if fmt == "csv":
         return _csv(kind, rows, filename, descriptor)
-    return _xlsx(kind, rows, filename, template, descriptor)
+    return write_template_xlsx(
+        rows, filename, template, descriptor,
+        cell_value=lambda raw, field, row_no: _cell_text(_value(raw, field, row_no, "xlsx", kind)),
+        min_width=24,
+    )
 
 
 def _csv(kind, rows, filename, descriptor):
@@ -123,7 +127,7 @@ def _headers(ws, template, descriptor):
     return cells
 
 
-def _xlsx(kind, rows, filename, template, descriptor):
+def write_template_xlsx(rows, filename, template, descriptor, *, cell_value, min_width=18):
     import openpyxl
     from openpyxl.cell import WriteOnlyCell
     from openpyxl.utils import get_column_letter
@@ -136,13 +140,13 @@ def _xlsx(kind, rows, filename, template, descriptor):
     try:
         ws.freeze_panes = "A2"
         for index, column in enumerate(columns, 1):
-            ws.column_dimensions[get_column_letter(index)].width = max(24, len(column["label"]) * 2 + 4)
+            ws.column_dimensions[get_column_letter(index)].width = max(min_width, len(column["label"]) * 2 + 4)
         ws.append(_headers(ws, template, descriptor))
         for count, row in enumerate(rows, 1):
             check_capacity(count, "xlsx")
             cells = []
             for field in fields:
-                value = _cell_text(_value(row[field], field, count + 1, "xlsx", kind))
+                value = cell_value(row[field], field, count + 1)
                 cell = WriteOnlyCell(ws, value=value)
                 if type(value) is str:
                     cell.data_type, cell.number_format = "s", "@"
@@ -156,7 +160,7 @@ def _xlsx(kind, rows, filename, template, descriptor):
             wb.save(buffer)
             buffer.seek(0)
             return FileDownload(filename + ".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                        buffer.read(), count)
+                                buffer.read(), count)
     finally:
         close_write_only_sheets(sheets)
         wb.close()
